@@ -51,14 +51,20 @@ export class DocumentUndoHistory<
   #redo: HistoryEntry<Snapshot>[] = []
   #checkpoints = new Map<DocumentHistoryCheckpoint, Checkpoint<Snapshot>>()
 
+  constructor(private readonly checkpointContent: (snapshot: Snapshot) => string = content) {}
+
   get availability() {
     return { canUndo: this.#undo.length > 0, canRedo: this.#redo.length > 0 }
   }
 
   clear() {
+    this.clearUndoRedo()
+    this.#checkpoints.clear()
+  }
+
+  clearUndoRedo() {
     this.#undo = []
     this.#redo = []
-    this.#checkpoints.clear()
   }
 
   captureCheckpoint(snapshot: Snapshot, acceptsActor: (actor: CommandActor) => boolean) {
@@ -125,7 +131,7 @@ export class DocumentUndoHistory<
       return null
     return {
       revision: current.revision,
-      changed: content(checkpoint.snapshot) !== content(current),
+      changed: this.checkpointContent(checkpoint.snapshot) !== this.checkpointContent(current),
     }
   }
 
@@ -167,9 +173,15 @@ export class DocumentUndoHistory<
     this.#checkpoints.clear()
   }
 
-  record(before: Snapshot | null, after: Snapshot, actors: readonly CommandActor[] = []) {
+  record(
+    before: Snapshot | null,
+    after: Snapshot,
+    actors: readonly CommandActor[] = [],
+    checkpointBase = before,
+  ) {
+    // Ordinary Undo can start after adoption; a turn still owns the entire saved publication.
+    if (checkpointBase) this.observe(checkpointBase, after, actors)
     if (!before) return
-    this.observe(before, after, actors)
     const { revision: _beforeRevision, updatedAt: _beforeTime, ...beforeContent } = before
     const { revision: _afterRevision, updatedAt: _afterTime, ...afterContent } = after
     if (canonicalJson(beforeContent) === canonicalJson(afterContent)) return

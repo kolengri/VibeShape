@@ -17,6 +17,13 @@ scope. ACP readiness, MCP attachment and project authority remain distinct state
 chat authorizes validated model writes under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md);
 external clients retain their separate approval policy.
 
+Browser sessions finish V1-to-V2 adoption before built-in chat captures a turn checkpoint.
+Subsequent V2+ authority upgrades preserve that internal baseline and its actor/revision lineage
+while resetting ordinary Undo/Redo stacks where required. Upgrade transactions check the checkpoint
+budget and ownership against their original base, independently of the ordinary Undo boundary.
+Restoring a turn retains the current authority version through the existing historical-target
+lifting rules; it does not fabricate a V2 snapshot at a historical V1 revision.
+
 Pending solid-feature CAD reviews present their exact draft geometry in the owning project's viewport before
 Apply. This presentation is disposable: it does not create a saved revision, grant selection
 authority to draft topology, or appear in another project's viewport. Returning to a project restores

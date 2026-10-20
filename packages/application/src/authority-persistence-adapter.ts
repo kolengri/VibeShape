@@ -6,6 +6,7 @@ import {
   documentAuthoritySnapshotSchema,
 } from "@vibeshape/domain/document-v2"
 import type { DocumentAuthorityEvent } from "@vibeshape/domain/document-v2-command-schemas"
+import { promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import {
   type AuthoredAuthoritySnapshot,
@@ -74,6 +75,20 @@ export type AuthorityDocumentRepositoryPort = VersionedDocumentRepositoryPort &
     closeAuthorityCleanly: (input: VersionedCloseInput) => Promise<SessionPortResult<unknown>>
   }>
 
+function checkpointContent(snapshot: AuthoredAuthoritySnapshot) {
+  const {
+    revision: _revision,
+    updatedAt: _updatedAt,
+    schemaVersion: _schema,
+    ...content
+  } = promoteDocumentSnapshotV4(snapshot)
+  return canonicalJson({
+    ...content,
+    repairIntents: snapshot.schemaVersion === 5 ? snapshot.repairIntents : [],
+    suspendedParts: snapshot.schemaVersion === 5 ? snapshot.suspendedParts : [],
+  })
+}
+
 /** V0 remains disposable runtime data; all authored writes retain full authored authority. */
 export function createAuthorityPersistenceAdapter(
   repository: AuthorityDocumentRepositoryPort,
@@ -93,7 +108,7 @@ export function createAuthorityPersistenceAdapter(
     repository,
     initialSnapshot?.schemaVersion === 1 ? initialSnapshot : null,
   )
-  const history = new DocumentUndoHistory<AuthoredAuthoritySnapshot>()
+  const history = new DocumentUndoHistory<AuthoredAuthoritySnapshot>(checkpointContent)
   const current = () => authority ?? legacy.currentV1Snapshot
   function historyPreview(target: AuthoredAuthoritySnapshot | null) {
     if (!target) return null
@@ -138,9 +153,11 @@ export function createAuthorityPersistenceAdapter(
     next: AuthoredAuthoritySnapshot,
     acceptHistory: () => void,
   ) {
-    if (base?.schemaVersion !== next.schemaVersion && next.schemaVersion !== 5) history.clear()
+    if (base?.schemaVersion !== next.schemaVersion && next.schemaVersion !== 5)
+      history.clearUndoRedo()
     acceptHistory()
     authority = next
+    if (!base) legacy = createVersionedPersistenceAdapter(repository)
     const projected = runtimeProjection(next)
     return projected.ok
       ? { ok: true as const, value: projected.snapshot }
@@ -231,7 +248,7 @@ export function createAuthorityPersistenceAdapter(
         if (!prepared.ok) return prepared
         if (
           !history.permitsPublication(
-            prepared.historyBase,
+            base,
             prepared.snapshot,
             prepared.events.map(({ actor }) => actor),
           )
@@ -261,6 +278,7 @@ export function createAuthorityPersistenceAdapter(
             prepared.historyBase,
             prepared.snapshot,
             prepared.events.map(({ actor }) => actor),
+            base,
           )
         })
       },
@@ -517,14 +535,17 @@ export function createAuthorityPersistenceAdapter(
       }
     },
     async closeCleanly(input) {
-      if (!authority) return legacy.closeCleanly(input)
       try {
+        if (!authority) return await legacy.closeCleanly(input)
         return await repository.closeAuthorityCleanly(input)
       } catch {
         return authorityFailure(
           "persistence-failed",
           "The authored document could not close cleanly.",
         )
+      } finally {
+        history.clear()
+        legacy = createVersionedPersistenceAdapter(repository, legacy.currentV1Snapshot)
       }
     },
   }

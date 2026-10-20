@@ -5,6 +5,7 @@ import {
   applyVersionedDocumentCommand,
   booleanFeatureType,
   boxFeatureType,
+  canonicalJson,
   createLengthQuantity,
   featureRecordSchema,
 } from "@vibeshape/domain"
@@ -273,7 +274,326 @@ async function checkpointRename(
   )
 }
 
+type CheckpointUpgrade = "texture" | "import" | "repair" | "cascade"
+async function checkpointUpgrade(
+  f: ReturnType<typeof fixture>,
+  kind: CheckpointUpgrade,
+  by: CommandActor = assistantActor,
+) {
+  const base = f.current()
+  const feature = base.features[0]
+  if (!feature) throw new Error("Missing upgrade feature")
+  const { createDefaultSurfaceTextureLayer, surfaceTextureLayerIdSchema } = await import(
+    "@vibeshape/domain/surface-textures"
+  )
+  const change = {
+    kind: "textures.replace-layers",
+    featureId: feature.id,
+    layers: [
+      createDefaultSurfaceTextureLayer(
+        feature.id,
+        "result",
+        surfaceTextureLayerIdSchema.parse(id(1510)),
+      ),
+    ],
+  }
+  const removal = {
+    schemaVersion: 5,
+    kind: "org.vibeshape.history.remove-retaining-dependents",
+    payload: { target: { kind: "feature", id: feature.id } },
+  }
+  if (kind === "texture" || kind === "repair")
+    return f.adapter.authoredMetadata.apply({
+      sessionId,
+      lease,
+      baseSnapshot: f.runtime(),
+      command: {
+        ...f.envelope(1511),
+        actor: by,
+        ...(kind === "texture"
+          ? { schemaVersion: 3, kind: "org.vibeshape.document.metadata-command", payload: change }
+          : removal),
+      },
+    })
+  let revision = base.revision
+  let ordinal = 1520
+  const command = (schemaVersion: number, kind: string, payload: unknown) => ({
+    ...f.envelope(ordinal++),
+    schemaVersion,
+    actor: by,
+    baseRevision: revision++,
+    kind,
+    payload,
+  })
+  const body = part(base).bodyHistory[0]
+  if (!body) throw new Error("Missing assembly source body")
+  const frame = { translation: [0, 0, 0], quaternion: [0, 0, 0, 1] }
+  const bytes = new Uint8Array([1, 2, 3])
+  const digest = "a".repeat(64)
+  const asset = sourceAssetSchema.parse({
+    id: id(1540),
+    digest,
+    byteLength: bytes.byteLength,
+    filename: "Turn.step",
+    format: "step",
+    representation: "exact-solid",
+    normalization: {
+      sourceUnit: "millimeter",
+      scaleToMillimeters: 1,
+      normalizedUnit: "millimeter",
+    },
+    outputs: [id(1541)],
+  })
+  const commands = [
+    command(3, "org.vibeshape.document.upgrade-v3", { change: null }),
+    command(4, "org.vibeshape.document.upgrade-v4", {}),
+    command(4, "org.vibeshape.document.add-source-assets", { assets: [asset] }),
+    command(4, "org.vibeshape.document.assembly-command", {
+      changes: [
+        {
+          kind: "definition.create",
+          definition: {
+            schemaVersion: 1,
+            id: id(1542),
+            name: "Turn component",
+            sources: [{ kind: "part", partId: part(base).id, body, contentHash: "b".repeat(64) }],
+            sourceFrame: frame,
+          },
+        },
+        {
+          kind: "instance.create",
+          instance: {
+            schemaVersion: 1,
+            id: id(1543),
+            definitionId: id(1542),
+            name: "Turn occurrence",
+            grounded: true,
+            worldFrame: frame,
+          },
+        },
+      ],
+    }),
+  ]
+  if (kind === "cascade") commands.push(command(5, removal.kind, removal.payload))
+  return f.adapter.authoredTransaction.apply({
+    sessionId,
+    lease,
+    baseSnapshot: f.runtime(),
+    command: { transactionId: id(1550), commands, assetBlobs: [{ digest, bytes }] },
+  })
+}
+
 describe("internal assistant history checkpoints", () => {
+  it.each([3, 4])(
+    "does not offer Undo for an empty V%s adoption followed by a failed model save",
+    async (version) => {
+      const original = initial().v2
+      const seed =
+        version === 3
+          ? original
+          : success(
+              applyDocumentV3Command(original, {
+                schemaVersion: 3,
+                kind: "org.vibeshape.document.upgrade-v3",
+                commandId: id(1600),
+                documentId: original.id,
+                baseRevision: original.revision,
+                issuedAt,
+                actor,
+                payload: { change: null },
+              }),
+            ).snapshot
+      const f = fixture(seed)
+      const checkpoints = f.adapter.history.checkpoints
+      if (!checkpoints) throw new Error("Missing checkpoint port")
+      const handle = checkpoints.capture((value) => value.type === "mcp")
+      if (!handle) throw new Error("Missing baseline")
+      success(
+        await f.adapter.authoredMetadata.apply({
+          sessionId,
+          lease,
+          baseSnapshot: f.runtime(),
+          command: {
+            ...f.envelope(1601),
+            schemaVersion: version,
+            actor: assistantActor,
+            kind:
+              version === 3
+                ? "org.vibeshape.document.upgrade-v3"
+                : "org.vibeshape.document.upgrade-v4",
+            payload: version === 3 ? { change: null } : {},
+          },
+        }),
+      )
+      f.fail(true)
+      expect(
+        (await f.metadata(1602, { kind: "part.rename", partId: part(seed).id, name: "Unsaved" }))
+          .ok,
+      ).toBe(false)
+      expect(checkpoints.read(handle)).toEqual({ revision: seed.revision + 1, changed: false })
+      expect(checkpoints.preview(handle)).toBeNull()
+      expect(f.current()).toMatchObject({
+        schemaVersion: version,
+        parts: [part(seed)],
+        features: seed.features,
+      })
+    },
+  )
+
+  it.each(["texture", "import", "repair", "cascade"] as const)(
+    "preserves a V2 turn baseline across %s authority adoption and restores through the current schema",
+    async (kind) => {
+      const seed = initial().v2
+      const f = fixture(seed)
+      success(
+        await f.metadata(1500, {
+          kind: "part.set-visibility",
+          partId: part(seed).id,
+          visible: false,
+        }),
+      )
+      const baseline = f.current()
+      const baselineContent = canonicalJson(baseline)
+      const checkpoints = f.adapter.history.checkpoints
+      if (!checkpoints) throw new Error("Missing checkpoint port")
+      const handle = checkpoints.capture(
+        (value) =>
+          value.type === "mcp" &&
+          value.clientId === assistantActor.clientId &&
+          value.sessionId === sessionId,
+      )
+      if (!handle) throw new Error("Missing baseline")
+      await checkpointRename(f, 1501, "Before upgrade")
+      success(await checkpointUpgrade(f, kind))
+      await checkpointRename(f, 1560, "After upgrade")
+      const saved = f.current()
+      const savedContent = canonicalJson(saved)
+      expect(checkpoints.read(handle)).toEqual({ revision: saved.revision, changed: true })
+      expect(checkpoints.seal(handle, saved.revision)).toBe(true)
+      expect(checkpoints.preview(handle)?.authority).toEqual(baseline)
+      expect(canonicalJson(checkpoints.preview(handle)?.authority)).toBe(baselineContent)
+      expect(canonicalJson(f.current())).toBe(savedContent)
+      const attempts = f.publicationAttempts()
+      success(
+        await checkpoints.restore({
+          handle,
+          sessionId,
+          lease,
+          baseSnapshot: f.runtime(),
+          request: {
+            direction: "undo",
+            commandId: commandIdSchema.parse(id(1561)),
+            documentId: saved.id,
+            baseRevision: saved.revision,
+            issuedAt,
+            actor,
+          },
+        }),
+      )
+      expect(f.publicationAttempts()).toBe(attempts + 1)
+      expect(f.current()).toMatchObject({
+        schemaVersion: saved.schemaVersion,
+        revision: saved.revision + 1,
+        name: baseline.name,
+        parts: [part(baseline)],
+        features: baseline.features,
+        history: baseline.history,
+      })
+      expect(f.writes.at(-1)?.event).toMatchObject({
+        schemaVersion: saved.schemaVersion,
+        type: "org.vibeshape.document.restored",
+        targetRevision: baseline.revision,
+      })
+      expect(checkpoints.read(handle)).toBeNull()
+      success(await f.navigate(1562, "redo"))
+      expect(f.current()).toEqual({ ...saved, revision: saved.revision + 2, updatedAt: issuedAt })
+      if (kind === "import" || kind === "cascade") {
+        expect(f.current()).toMatchObject({
+          assets: [{ filename: "Turn.step" }],
+          assembly: {
+            definitions: [{ pinnedModels: [expect.anything()] }],
+            instances: [{ name: "Turn occurrence", grounded: true }],
+          },
+        })
+        expect(f.drafts[0]?.assetBlobs?.[0]?.bytes).toEqual(new Uint8Array([1, 2, 3]))
+      }
+      const events = [
+        ...f.writes.map(({ event }) => event),
+        ...f.drafts.flatMap(({ events }) => events),
+      ].sort((a, b) => a.revision - b.revision)
+      expect(success(replayDocumentAuthorityEvents(seed, events)).snapshot).toEqual(f.current())
+    },
+  )
+
+  it("keeps a captured baseline on failed upgrade and checks transaction budget against the actual pre-upgrade head", async () => {
+    const f = fixture()
+    const checkpoints = f.adapter.history.checkpoints
+    if (!checkpoints) throw new Error("Missing checkpoint port")
+    const handle = checkpoints.capture((value) => value.type === "mcp")
+    if (!handle) throw new Error("Missing baseline")
+    await checkpointRename(f, 1570, "Saved before upgrade")
+    const before = f.current()
+    f.fail(true)
+    expect((await checkpointUpgrade(f, "import")).ok).toBe(false)
+    expect(f.current()).toBe(before)
+    expect(checkpoints.read(handle)).toEqual({ revision: before.revision, changed: true })
+    f.fail(false)
+    const attempts = f.publicationAttempts()
+    const policy = vi
+      .spyOn(DocumentUndoHistory.prototype, "permitsPublication")
+      .mockImplementation(function (this: DocumentUndoHistory, base) {
+        return base.revision !== before.revision
+      })
+    try {
+      expect(await checkpointUpgrade(f, "import")).toMatchObject({
+        ok: false,
+        diagnostic: { code: "checkpoint-budget-exceeded" },
+      })
+      expect(f.publicationAttempts()).toBe(attempts)
+      expect(f.current()).toBe(before)
+      expect(checkpoints.read(handle)).toEqual({ revision: before.revision, changed: true })
+    } finally {
+      policy.mockRestore()
+    }
+  })
+
+  it.each([actor, { ...assistantActor, sessionId: sessionIdSchema.parse(id(1580)) }])(
+    "invalidates a turn baseline when another actor performs an authority upgrade: %j",
+    async (by) => {
+      const f = fixture()
+      const checkpoints = f.adapter.history.checkpoints
+      if (!checkpoints) throw new Error("Missing checkpoint port")
+      const handle = checkpoints.capture((value) => value.type === "mcp")
+      if (!handle) throw new Error("Missing baseline")
+      await checkpointRename(f, 1581, "Owning actor save")
+      success(await checkpointUpgrade(f, "import", by))
+      expect(checkpoints.read(handle)).toBeNull()
+      expect(checkpoints.preview(handle)).toBeNull()
+    },
+  )
+
+  it.each([1, 2])(
+    "releases internal handles and ordinary stacks when authority v%s closes",
+    async (version) => {
+      const f = fixture(version === 1 ? initial().v1 : initial().v2)
+      const checkpoints = f.adapter.history.checkpoints
+      if (!checkpoints) throw new Error("Missing checkpoint port")
+      const handle = checkpoints.capture(() => true)
+      if (!handle) throw new Error("Missing baseline")
+      await checkpointRename(f, 1590, "Saved turn")
+      success(
+        await f.adapter.closeCleanly({
+          documentId: f.current().id,
+          revision: f.current().revision,
+          sessionId,
+          lease,
+        }),
+      )
+      expect(checkpoints.read(handle)).toBeNull()
+      expect(f.adapter.history.availability).toEqual({ canUndo: false, canRedo: false })
+    },
+  )
+
   it.each([1, 2])(
     "rejects v%s publication before repository access and preserves the last saved checkpoint on quota or budget failure",
     async (version) => {
@@ -940,6 +1260,9 @@ describe("authored authority persistence adapter", () => {
 
   it("recovers full authored metadata while resetting only transient undo checkpoints", async () => {
     const f = fixture()
+    const checkpoints = f.adapter.history.checkpoints
+    const handle = checkpoints?.capture(() => true)
+    if (!handle) throw new Error("Missing checkpoint")
     success(
       await f.metadata(10, { kind: "part.rename", partId: part(f.current()).id, name: "Durable" }),
     )
@@ -947,6 +1270,7 @@ describe("authored authority persistence adapter", () => {
     expect(part(f.current()).name).toBe("Durable")
     expect(recovered.value.snapshot.schemaVersion).toBe(0)
     expect(f.adapter.history?.availability.canUndo).toBe(false)
+    expect(checkpoints?.read(handle)).toBeNull()
     expect(f.adapter.authoredMetadata?.snapshot).toEqual(f.current())
   })
 })
