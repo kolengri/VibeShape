@@ -68,7 +68,7 @@ function AssistantCheckpointActions({ checkpoint }: { checkpoint: AssistantCheck
       {onViewBefore && (
         <Button
           size="sm"
-          variant="ghost"
+          variant={checkpoint.viewingBefore ? "secondary" : "ghost"}
           aria-pressed={Boolean(checkpoint.viewingBefore)}
           disabled={disabled}
           onClick={onViewBefore}
