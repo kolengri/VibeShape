@@ -2,10 +2,12 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { documentIdSchema, featureIdSchema, sketchIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { AssistantMessages } from "./assistant-messages"
+import type { AssistantToolHighlight } from "./assistant-tool-highlight"
 import type { ChatMessage } from "./chat-history"
 
 beforeEach(() => {
@@ -13,10 +15,10 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-function view(messages: readonly ChatMessage[]) {
+function view(messages: readonly ChatMessage[], onHighlight?: AssistantToolHighlight) {
   return (
     <I18nProvider i18n={i18n} initialLocale="en">
-      <AssistantMessages messages={messages} />
+      <AssistantMessages messages={messages} onHighlight={onHighlight} />
     </I18nProvider>
   )
 }
@@ -25,7 +27,250 @@ function transcript(messages: readonly ChatMessage[]) {
   return render(view(messages))
 }
 
+function toolMessage(
+  id: string,
+  title = "Read agent skill",
+  status = "completed",
+  text = "",
+): ChatMessage {
+  return { id, role: "tool", text, tool: { title, status } }
+}
+
 describe("assistant tool messages", () => {
+  it.each([
+    ["retained native progress", "Preparing preview"],
+    [
+      "API parameters and empty failure",
+      JSON.stringify({
+        command: "call_cad_tool",
+        arguments: { name: "preview_draft" },
+        result: { ok: false },
+      }),
+    ],
+  ])("explains missing failure evidence alongside %s", async (_label, text) => {
+    const message = toolMessage("failed", "preview_draft", "failed", text)
+    transcript([{ ...message, tool: { ...message.tool, hasFailureDetails: false } }])
+    await userEvent.click(screen.getByText("Preview draft"))
+    expect(
+      screen.getByText("The agent did not provide an error message for this call."),
+    ).toBeTruthy()
+    expect(screen.getByText("Technical details")).toBeTruthy()
+  })
+
+  it("keeps failure evidence distinct for individual calls inside a group", async () => {
+    transcript([
+      {
+        ...toolMessage("missing", "preview_draft", "failed", "Preparing preview"),
+        tool: { title: "preview_draft", status: "failed", hasFailureDetails: false },
+      },
+      {
+        ...toolMessage(
+          "reported",
+          "preview_draft",
+          "failed",
+          "The preview contains an open shell.",
+        ),
+        tool: { title: "preview_draft", status: "failed", hasFailureDetails: true },
+      },
+    ])
+    await userEvent.click(screen.getByText("Preview draft"))
+    const calls = within(screen.getByRole("list", { name: "Tool calls" })).getAllByRole("listitem")
+    const missing = calls[0],
+      reported = calls[1]
+    if (!missing || !reported) throw new Error("Both failed calls must remain inspectable.")
+    expect(
+      within(missing).getByText("The agent did not provide an error message for this call."),
+    ).toBeTruthy()
+    expect(
+      within(reported).queryByText("The agent did not provide an error message for this call."),
+    ).toBeNull()
+    expect(
+      within(reported).getAllByText("The preview contains an open shell.").length,
+    ).toBeGreaterThan(0)
+  })
+
+  it("makes missing failure evidence explicit without adding an empty disclosure", () => {
+    transcript([toolMessage("failed", "preview_draft", "failed")])
+    expect(screen.getByText("Failed")).toBeTruthy()
+    expect(
+      screen.getByText("The agent did not provide an error message for this call."),
+    ).toBeTruthy()
+    expect(document.querySelector("details")).toBeNull()
+  })
+
+  it("highlights the grouped union and each expanded call independently without selecting", async () => {
+    const projectId = documentIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3300")
+    const firstId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+    const secondId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3302")
+    const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3303")
+    const targets = { projectId, featureIds: [firstId], sketchIds: [sketchId] }
+    const messages: ChatMessage[] = [
+      {
+        ...toolMessage("one", "create_cylinder", "completed", "First body"),
+        tool: { title: "create_cylinder", status: "completed", targets },
+      },
+      {
+        ...toolMessage("two", "create_cylinder", "completed", "Second body"),
+        tool: {
+          title: "create_cylinder",
+          status: "completed",
+          targets: { ...targets, featureIds: [secondId, firstId] },
+        },
+      },
+    ]
+    const onHighlight = vi.fn<AssistantToolHighlight>()
+    const rendered = render(view(messages, onHighlight))
+    const summary = screen.getByText("Create cylinder").closest("summary")
+    if (!summary) throw new Error("Grouped actions need a summary.")
+    fireEvent.pointerEnter(summary)
+    const groupOwner = onHighlight.mock.calls.at(-1)?.[0]
+    expect(onHighlight.mock.calls.at(-1)?.[1]).toEqual({
+      ...targets,
+      featureIds: [firstId, secondId],
+    })
+    fireEvent.pointerLeave(summary)
+    expect(onHighlight).toHaveBeenLastCalledWith(groupOwner, null)
+    await userEvent.click(summary)
+    const calls = within(screen.getByRole("list", { name: "Tool calls" })).getAllByRole("listitem")
+    const firstCall = calls[0]
+    if (!firstCall) throw new Error("The first call must remain inspectable.")
+    fireEvent.focus(firstCall)
+    const callOwner = onHighlight.mock.calls.at(-1)?.[0]
+    expect(callOwner).not.toBe(groupOwner)
+    expect(onHighlight.mock.calls.at(-1)?.[1]).toEqual(targets)
+    fireEvent.pointerEnter(firstCall)
+    fireEvent.blur(firstCall)
+    expect(onHighlight.mock.calls.at(-1)?.[1]).toEqual(targets)
+    fireEvent.pointerLeave(firstCall)
+    expect(onHighlight).toHaveBeenLastCalledWith(callOwner, null)
+    fireEvent.focus(firstCall)
+    rendered.unmount()
+    expect(
+      onHighlight.mock.calls.some(([owner, value]) => owner === callOwner && value === null),
+    ).toBe(true)
+  })
+
+  it("does not infer highlights from readable titles or mixed-project metadata", () => {
+    const projectId = documentIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3300")
+    const otherProject = documentIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3399")
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+    const onHighlight = vi.fn<AssistantToolHighlight>()
+    render(
+      view(
+        [
+          toolMessage("old", "create_boolean"),
+          ...[projectId, otherProject].map(
+            (id, index): ChatMessage => ({
+              ...toolMessage(`mixed-${index}`, "create_cylinder"),
+              tool: {
+                title: "create_cylinder",
+                status: "completed",
+                targets: { projectId: id, featureIds: [featureId], sketchIds: [] },
+              },
+            }),
+          ),
+        ],
+        onHighlight,
+      ),
+    )
+    expect(document.querySelector("[tabindex]")).toBeNull()
+    fireEvent.pointerEnter(screen.getByText("Create cylinder").parentElement as HTMLElement)
+    expect(onHighlight).not.toHaveBeenCalled()
+  })
+  it("compresses consecutive repeated actions into one row with a right-hand count", () => {
+    const { container } = transcript([
+      ...Array.from({ length: 7 }, (_, index) => toolMessage(`skill-${index}`)),
+      toolMessage("list", "List mcp resources"),
+      toolMessage("read-1", "Read mcp resource"),
+      toolMessage("read-2", "Read mcp resource"),
+      toolMessage("tree", "Model tree"),
+    ])
+    expect(screen.getAllByText("Read agent skill")).toHaveLength(1)
+    expect(screen.getAllByText("Read mcp resource")).toHaveLength(1)
+    expect(screen.getAllByText("Completed")).toHaveLength(4)
+    const count = screen.getByText("7 tool calls").parentElement
+    expect(count?.querySelector('[aria-hidden="true"]')?.textContent).toBe("7")
+    expect(count?.parentElement?.lastElementChild).toBe(count)
+    expect(screen.getByText("2 tool calls")).toBeTruthy()
+    expect(container.querySelector("details, summary, button, svg")).toBeNull()
+  })
+
+  it("preserves transcript order and keeps different statuses and unnamed tools separate", () => {
+    const { container } = transcript([
+      toolMessage("first"),
+      { id: "reply", role: "assistant", text: "Checking the next file" },
+      toolMessage("second"),
+      toolMessage("third"),
+      toolMessage("failed", "Read agent skill", "failed"),
+      toolMessage("running", "Read agent skill", "in_progress"),
+      toolMessage("other", "Model tree"),
+      toolMessage("last"),
+      toolMessage("unnamed-1", ""),
+      toolMessage("unnamed-2", ""),
+    ])
+    expect(screen.getAllByText("Read agent skill")).toHaveLength(5)
+    expect(screen.getByText("2 tool calls")).toBeTruthy()
+    expect(screen.getAllByText("Tool")).toHaveLength(2)
+    expect(screen.getByText("Failed")).toBeTruthy()
+    expect(screen.getByText("Running")).toBeTruthy()
+    const log = screen.getByRole("log")
+    expect(log.children[0]?.textContent).toBe("Read agent skillCompleted")
+    expect(log.children[1]?.textContent).toBe("AssistantChecking the next file")
+    expect(log.children[2]?.textContent).toBe("Read agent skillCompleted22 tool calls")
+    expect(container.querySelector("details")).toBeNull()
+  })
+
+  it("retains every call's output inside one collapsed group", async () => {
+    transcript([
+      toolMessage("one", "create_cylinder", "completed", "First cylinder: 10 mm"),
+      toolMessage("two", "create_cylinder", "completed", "Second cylinder: 20 mm"),
+      toolMessage("empty", "create_cylinder", "completed", "{}"),
+    ])
+    const heading = screen.getByText("Create cylinder")
+    const group = heading.closest("details")
+    expect(group?.open).toBe(false)
+    expect(screen.getByText("3 tool calls")).toBeTruthy()
+    await userEvent.click(heading)
+    expect(group?.open).toBe(true)
+    const calls = within(screen.getByRole("list", { name: "Tool calls" })).getAllByRole("listitem")
+    expect(calls).toHaveLength(3)
+    expect(
+      calls.map(
+        (call) =>
+          within(call).queryByRole("region", { name: "Output" })?.textContent ?? call.textContent,
+      ),
+    ).toEqual(["OutputFirst cylinder: 10 mm", "OutputSecond cylinder: 20 mm", "Call 3None"])
+    expect(screen.getAllByText("Technical details")).toHaveLength(2)
+  })
+
+  it("updates a repeated-action count without closing the group or moving a reader's scroll", async () => {
+    const messages = [
+      toolMessage("one", "read_mcp_resource", "completed", "First resource"),
+      toolMessage("two", "read_mcp_resource", "completed", "Second resource"),
+    ]
+    const { rerender } = transcript(messages)
+    await userEvent.click(screen.getByText("Read mcp resource"))
+    const group = screen.getByText("Read mcp resource").closest("details")
+    const log = screen.getByRole("log")
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 900 },
+    })
+    log.scrollTop = 100
+    fireEvent.scroll(log)
+    rerender(
+      view([...messages, toolMessage("three", "read_mcp_resource", "completed", "Third resource")]),
+    )
+    expect(screen.getByText("Read mcp resource").closest("details")).toBe(group)
+    expect(group?.open).toBe(true)
+    expect(screen.getByText("3 tool calls")).toBeTruthy()
+    expect(
+      screen.getAllByRole("region", { name: "Output" }).map((output) => output.textContent),
+    ).toEqual(["OutputFirst resource", "OutputSecond resource", "OutputThird resource"])
+    expect(log.scrollTop).toBe(100)
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
   it.each(["", "  \n\t ", "{}", " { } ", "[]", "null", '"  "'])(
     "keeps empty tool output noninteractive (%j)",
     (text) => {

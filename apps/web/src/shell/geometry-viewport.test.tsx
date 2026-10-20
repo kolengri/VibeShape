@@ -8,6 +8,7 @@ import type {
   ViewerSelection,
 } from "@vibeshape/viewer"
 import type { ViewerToolPlane } from "@vibeshape/viewer/three-viewport"
+import { surfaceTextureProjectFixture } from "../../../../tests/fixtures/surface-texture-project"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { PartVisibilityOverrides } from "../editor-session/part-visibility"
@@ -51,6 +52,7 @@ const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
 const { createSketchProjectionStore } = await import("../features/sketch/sketch-projection-store")
 const { i18n } = await import("../i18n")
+const surfaceTextures = await import("@vibeshape/application/surface-textures")
 const { authoredTreeFixture, requireAuthoredFixture } = await import(
   "../test-support/authored-tree-fixture"
 )
@@ -341,6 +343,7 @@ function renderViewport(
     selectedBodies?: readonly ModelBodySelection[]
     preselectedBodies?: readonly ModelBodySelection[]
     preselectedSketchId?: string
+    preselectedSketchIds?: readonly string[]
     selectedSketchIds?: readonly string[]
     onBodySelectionChange?: (body: ModelBodySelection | null) => void
     onBodyPreselectionChange?: (body: ModelBodySelection | null) => void
@@ -522,6 +525,23 @@ function renderViewport(
       ),
     rerenderController: (nextController: DocumentControllerState) =>
       result.rerender(element(nextController)),
+    rerenderFeaturePreview: (
+      nextPreview: FeaturePreviewState | undefined,
+      nextController = controller,
+    ) =>
+      result.rerender(
+        element(
+          nextController,
+          sketchContext,
+          sketchProfilePreview,
+          hiddenSketchIds,
+          axialGizmo,
+          axialGizmoPending,
+          workspaceTask,
+          featureHighlight?.partVisibilityOverrides,
+          nextPreview,
+        ),
+      ),
     rerenderSketchProfilePreview: (
       nextPreview: SketchProfileSelector | null,
       nextHiddenSketchIds = hiddenSketchIds,
@@ -581,6 +601,116 @@ beforeEach(() => {
   })
   saveActiveProjectThumbnailMock.mockReset()
   saveActiveProjectThumbnailMock.mockResolvedValue({ ok: true })
+})
+
+function assistantPreviewFixture() {
+  const { snapshot } = authoredTreeFixture()
+  const source = readyController([], [])
+  if (!source.report) throw new Error("Expected an empty committed report.")
+  const controller = {
+    ...source,
+    report: { ...source.report, snapshot: { ...snapshot, features: [], sketches: [] } },
+  }
+  const preview = {
+    status: "ready",
+    display: "result",
+    assistantDraft: {
+      documentId: snapshot.id,
+      draftId: "assistant-draft",
+      baseRevision: snapshot.revision,
+    },
+    meshes: [
+      { ...taskPreviewMesh, previewMaterial: "model" },
+      { ...taskPreviewMesh, featureId: datumId, previewMaterial: "datum" },
+    ],
+  } satisfies FeaturePreviewState
+  return { controller, preview }
+}
+
+describe("assistant draft preview display", () => {
+  it("consumes Result and Changes as presentation only while retaining unsaved authority and geometry", async () => {
+    const { controller, preview } = assistantPreviewFixture()
+    const snapshot = controller.report.snapshot
+    const rendered = renderViewport(controller, null, undefined, preview)
+    const { port, createViewport } = rendered
+    await waitFor(() => expect(port.setMeshes).toHaveBeenCalled())
+    expect(screen.getByText("Agent preview · not saved yet")).toBeTruthy()
+    expect(screen.queryByRole("radio", { name: "Result" })).toBeNull()
+    expect(screen.queryByRole("radio", { name: "Changes" })).toBeNull()
+    expect(port.setMeshes).toHaveBeenLastCalledWith(preview.meshes)
+    const fits = vi.mocked(port.fit).mock.calls.length
+    rendered.rerenderFeaturePreview({ ...preview, display: "changes" })
+    const highlighted = vi.mocked(port.setMeshes).mock.lastCall?.[0]
+    expect(highlighted?.map(({ previewMaterial }) => previewMaterial)).toEqual([
+      "highlight",
+      "highlight",
+    ])
+    for (const [index, presented] of (highlighted ?? []).entries()) {
+      const original = preview.meshes[index]
+      if (!original) throw new Error("Expected the original draft mesh.")
+      expect(presented.appearance).toBe("preview")
+      expect(presented.positions).toBe(original.positions)
+      expect(presented.normals).toBe(original.normals)
+      expect(presented.indices).toBe(original.indices)
+    }
+    rendered.rerenderFeaturePreview({ ...preview, display: "result" })
+    expect(port.setMeshes).toHaveBeenLastCalledWith(preview.meshes)
+    expect(controller.report.snapshot).toBe(snapshot)
+    expect(preview.meshes[0]?.previewMaterial).toBe("model")
+    expect(port.fit).toHaveBeenCalledTimes(fits)
+    expect(createViewport).toHaveBeenCalledTimes(1)
+    expect(port.dispose).not.toHaveBeenCalled()
+    expect(renderProjectThumbnailMock).not.toHaveBeenCalled()
+    expect(saveActiveProjectThumbnailMock).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: "Apply" })).toBeNull()
+  })
+
+  it("does not change ordinary feature previews when they carry a display preference", async () => {
+    const { controller } = assistantPreviewFixture()
+    const preview: FeaturePreviewState = {
+      status: "ready",
+      kind: "primitive",
+      display: "result",
+      meshes: [taskPreviewMesh],
+    }
+    const rendered = renderViewport(controller, null, undefined, preview)
+    await waitFor(() => expect(rendered.port.setMeshes).toHaveBeenLastCalledWith(preview.meshes))
+    expect(screen.getByText("Unsaved feature preview")).toBeTruthy()
+    expect(screen.queryByText("Agent preview · not saved yet")).toBeNull()
+    rendered.rerenderFeaturePreview({ ...preview, display: "changes" })
+    expect(rendered.port.setMeshes).toHaveBeenLastCalledWith(preview.meshes)
+  })
+
+  it("does not recompute surface texture geometry when only the draft display mode changes", async () => {
+    const { controller, preview } = assistantPreviewFixture()
+    const { snapshot, layer } = surfaceTextureProjectFixture()
+    const texturedController: DocumentControllerState = {
+      ...controller,
+      authoredSnapshot: { ...snapshot, schemaVersion: 3, surfaceTextures: [layer] },
+      report: {
+        ...controller.report,
+        snapshot: { ...controller.report.snapshot, id: snapshot.id, revision: snapshot.revision },
+      },
+    }
+    const draftPreview: FeaturePreviewState = {
+      ...preview,
+      assistantDraft: { ...preview.assistantDraft, documentId: snapshot.id },
+    }
+    const compute = vi.spyOn(surfaceTextures, "previewSurfaceTextureRelief").mockResolvedValue([])
+    vi.useFakeTimers()
+    try {
+      const rendered = renderViewport(texturedController, null, undefined, draftPreview)
+      await act(async () => vi.advanceTimersByTimeAsync(150))
+      expect(compute).toHaveBeenCalledTimes(1)
+      rendered.rerenderFeaturePreview({ ...draftPreview, display: "changes" })
+      await act(async () => vi.advanceTimersByTimeAsync(150))
+      rendered.rerenderFeaturePreview({ ...draftPreview, display: "result" })
+      await act(async () => vi.advanceTimersByTimeAsync(150))
+      expect(compute).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe("GeometryViewport", () => {
@@ -2748,6 +2878,31 @@ function bodyController(roles = ["pattern.instance.0", "pattern.instance.1"]) {
 }
 
 describe("constituent viewport projection", () => {
+  it("preselects every visible sketch linked to an assistant group without selecting them", async () => {
+    const controller = readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay])
+    const { port } = renderViewport(controller, null, undefined, undefined, undefined, {
+      preselectedSketchIds: [
+        profileSketchDisplay.sketchId,
+        secondProfileSketchDisplay.sketchId,
+        "missing",
+      ],
+    })
+    await waitFor(() =>
+      expect(port.setSketches).toHaveBeenCalledWith([
+        expect.objectContaining({
+          sketchId: profileSketchDisplay.sketchId,
+          preselected: true,
+          selected: false,
+        }),
+        expect.objectContaining({
+          sketchId: secondProfileSketchDisplay.sketchId,
+          preselected: true,
+          selected: false,
+        }),
+      ]),
+    )
+  })
+
   it("projects independent exact sketch selection and hover into the existing renderer", async () => {
     const controller = readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay])
     const { port } = renderViewport(controller, null, undefined, undefined, undefined, {

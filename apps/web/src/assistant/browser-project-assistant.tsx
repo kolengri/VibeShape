@@ -6,8 +6,10 @@ import { registerProjectRuntimeResource } from "../document/project-runtime-reso
 import { createApiChatRegistry } from "./api-chat-controller"
 import { ApiConfigurationForm } from "./api-configuration-form"
 import { assistantCheckpointBusy } from "./assistant-checkpoints"
+import { type AssistantDraftDisplay, useAssistantDraftDisplay } from "./assistant-draft-display"
 import { AssistantPanel } from "./assistant-panel"
 import { assistantStorage } from "./assistant-preferences"
+import { useAssistantToolHighlight } from "./assistant-tool-highlight"
 import { createBrowserToolSession } from "./browser-tool-session"
 
 const chats = createApiChatRegistry({
@@ -36,12 +38,14 @@ export function BrowserProjectAssistant({
   const busy = useSyncExternalStore(chats.subscribe, chats.isBusy, chats.isBusy)
   useReportActivity(busy)
   const project = controller.report?.snapshot
+  const draftDisplay = useAssistantDraftDisplay(controller)
   if (!project) return null
   return (
     <BrowserProjectChat
       key={project.id}
       projectId={project.id}
       projectName={project.name}
+      draftDisplay={draftDisplay}
       open={open}
       onClose={onClose}
     />
@@ -51,15 +55,18 @@ export function BrowserProjectAssistant({
 function BrowserProjectChat({
   projectId,
   projectName,
+  draftDisplay,
   open,
   onClose,
 }: {
   projectId: string
   projectName: string
+  draftDisplay?: AssistantDraftDisplay | undefined
   open: boolean
   onClose: () => void
 }) {
   const [chat] = useState(() => chats.get(projectId))
+  const onToolHighlight = useAssistantToolHighlight(projectId)
   const state = useSyncExternalStore(chat.subscribe, chat.getSnapshot, chat.getSnapshot)
   const error = useApiChatError(state)
   useEffect(() => {
@@ -70,6 +77,8 @@ function BrowserProjectChat({
       open={open}
       projectName={projectName}
       messages={state.messages}
+      draftDisplay={draftDisplay}
+      onToolHighlight={onToolHighlight}
       busy={state.busy}
       canSend={state.connected && !assistantCheckpointBusy(state)}
       canUndoAgentChanges={state.canUndoAgentChanges}

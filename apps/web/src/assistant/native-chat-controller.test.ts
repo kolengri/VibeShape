@@ -5,6 +5,7 @@ import type {
   AssistantResult,
   AssistantSnapshot,
 } from "@vibeshape/automation-api/assistant"
+import { assistantToolTargetsSchema } from "@vibeshape/automation-api/assistant"
 import { checkpointFixture } from "./assistant-checkpoints.test-fixture"
 import { readChatHistory, writeChatHistory } from "./chat-history"
 import { createNativeChatController } from "./native-chat-controller"
@@ -875,6 +876,120 @@ describe("project-scoped agent chat", () => {
     await until(() => !chat.getSnapshot().busy)
     expect(readChatHistory(otherProjectId, disk)).toBeNull()
     expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+    chat.dispose()
+  })
+  it("retains per-call target namespaces through partial completion, clears failures and fences sessions", async () => {
+    const f = fixture(),
+      disk = storage()
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+    chat.start()
+    await chat.connect(agent)
+    const sending = chat.send("Build")
+    const scope = { projectId, sessionToken: f.snapshot().sessionToken }
+    const feature = assistantToolTargetsSchema.parse({
+      projectId,
+      featureIds: [otherProjectId],
+      sketchIds: [],
+    })
+    const sketch = assistantToolTargetsSchema.parse({
+      projectId,
+      featureIds: [],
+      sketchIds: [otherProjectId],
+    })
+    f.emit({
+      ...scope,
+      type: "tool",
+      toolCallId: "feature",
+      status: "in_progress",
+      targets: feature,
+      text: "x".repeat(32_768),
+    })
+    f.emit({ ...scope, type: "tool", toolCallId: "sketch", status: "in_progress", targets: sketch })
+    f.emit({ ...scope, type: "tool", toolCallId: "feature", status: "completed" })
+    f.emit({
+      ...scope,
+      sessionToken: "foreign",
+      type: "tool",
+      toolCallId: "feature",
+      targets: sketch,
+    })
+    const messages = () => chat.getSnapshot().messages.filter(({ role }) => role === "tool")
+    expect(messages().map(({ tool }) => tool?.targets)).toEqual([feature, sketch])
+    expect(messages()[0]?.text).toHaveLength(32_000)
+    f.emit({
+      ...scope,
+      type: "tool",
+      toolCallId: "feature",
+      targets: { ...feature, featureIds: [] },
+    })
+    expect(messages()[0]?.tool?.targets?.featureIds).toEqual([])
+    f.emit({ ...scope, type: "tool", toolCallId: "sketch", status: "failed" })
+    expect(messages()[1]?.tool?.targets).toBeUndefined()
+    f.finish()
+    await sending
+    await until(() => !chat.getSnapshot().busy)
+    expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+    chat.dispose()
+  })
+  it("preserves the displayed preview failure across empty partial updates and history persistence", async () => {
+    const f = fixture(),
+      disk = storage()
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+    chat.start()
+    await chat.connect(agent)
+    const sending = chat.send("Preview")
+    const scope = { projectId, sessionToken: f.snapshot().sessionToken }
+    f.emit({
+      ...scope,
+      type: "tool",
+      toolCallId: "preview",
+      title: "Preview draft",
+      status: "in_progress",
+      text: "Preparing preview",
+    })
+    f.emit({
+      ...scope,
+      type: "tool",
+      toolCallId: "preview",
+      status: "failed",
+      text: "The preview contains an open shell.",
+      hasFailureDetails: true,
+    })
+    f.emit({
+      ...scope,
+      type: "tool",
+      toolCallId: "preview",
+      status: "failed",
+      text: " \n ",
+      hasFailureDetails: false,
+    })
+    f.emit({ ...scope, type: "tool", toolCallId: "preview", status: "failed" })
+    f.emit({
+      ...scope,
+      type: "tool",
+      toolCallId: "no-reason",
+      status: "in_progress",
+      text: "Preparing preview",
+    })
+    f.emit({
+      ...scope,
+      type: "tool",
+      toolCallId: "no-reason",
+      status: "failed",
+      hasFailureDetails: false,
+    })
+    const messages = chat.getSnapshot().messages.filter(({ role }) => role === "tool")
+    expect(messages[0]?.text).toBe("The preview contains an open shell.")
+    expect(messages[0]?.tool?.status).toBe("failed")
+    expect(messages[0]?.tool?.hasFailureDetails).toBe(true)
+    expect(messages[1]?.text).toBe("Preparing preview")
+    expect(messages[1]?.tool?.status).toBe("failed")
+    expect(messages[1]?.tool?.hasFailureDetails).toBe(false)
+    f.finish()
+    await sending
+    await until(() => !chat.getSnapshot().busy)
+    expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+    expect(chat.getSnapshot().error).toBeNull()
     chat.dispose()
   })
   it.each(["cancel", "disconnect", "dispose"] as const)(

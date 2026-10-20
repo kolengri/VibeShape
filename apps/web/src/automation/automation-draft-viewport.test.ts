@@ -8,6 +8,7 @@ import {
   createFeatureTypeRegistry,
   createLengthQuantity,
   createModuleRegistry,
+  datumPlaneFeatureType,
   documentCoreModule,
   featureCoreModule,
   partDesignFeatureTypeHandlers,
@@ -264,9 +265,19 @@ describe("exact automation review viewport", () => {
     const base = f.snapshot()
     const { committed, review } = await f.pendingReview()
     const projected = automationDraftViewportPreview(review, base)
+    if (!review.draftViewport) throw new Error("Expected retained review geometry.")
     expect(projected?.status).toBe("ready")
+    expect(projected?.assistantDraft).toEqual({
+      documentId: base.id,
+      draftId: review.draftViewport.draft.draftId,
+      baseRevision: base.revision,
+    })
     expect(projected?.meshes).toHaveLength(1)
-    expect(projected?.meshes[0]).toMatchObject({ outputRole: "result", appearance: "preview" })
+    expect(projected?.meshes[0]).toMatchObject({
+      outputRole: "result",
+      appearance: "preview",
+      previewMaterial: "model",
+    })
     expect(projected?.meshes[0]?.positions).toEqual(new Float32Array([0, 0, 0, 2, 0, 0, 0, 3, 0]))
     expect(f.snapshot()).toBe(base)
     expect(f.snapshot().features).toHaveLength(0)
@@ -281,6 +292,51 @@ describe("exact automation review viewport", () => {
     expect(f.snapshot().features).toHaveLength(1)
     expect(f.reviews.getSnapshot()).toBeNull()
     f.session.dispose()
+  })
+
+  it("retains body buffers and datum material intent without promoting either draft output", async () => {
+    const f = fixture()
+    const { review, committed } = await f.pendingReview()
+    if ("kind" in review.input) throw new Error("Expected the exact draft evaluation.")
+    const original = documentSnapshotSchema.parse(f.worker.mock.calls[0]?.[0].document)
+    const snapshot = documentSnapshotSchema.parse({
+      ...original,
+      features: [
+        ...original.features,
+        {
+          schemaVersion: 0,
+          id: id(900),
+          type: datumPlaneFeatureType.type,
+          parameters: {
+            mode: "offset",
+            support: { kind: "origin-plane", plane: "xy" },
+            offset: createLengthQuantity(10),
+          },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+        },
+      ],
+    })
+    const exact = rebuild(snapshot)
+    const viewport = createAutomationDraftViewport(review.input, snapshot, exact)
+    expect(
+      viewport?.preview.meshes.map(({ appearance, previewMaterial }) => ({
+        appearance,
+        previewMaterial,
+      })),
+    ).toEqual([
+      { appearance: "preview", previewMaterial: "model" },
+      { appearance: "preview", previewMaterial: "datum" },
+    ])
+    expect(viewport?.preview.meshes[0]?.positions).toBe(
+      exact.geometry[0]?.geometry.bodies?.[0]?.mesh.positions,
+    )
+    expect(viewport?.preview.meshes[1]?.positions).toBe(exact.geometry[1]?.geometry.mesh.positions)
+    expect(f.snapshot()).not.toBe(snapshot)
+    expect(f.commit).not.toHaveBeenCalled()
+    f.session.dispose()
+    await committed
   })
 
   it("preserves every exact output role and refuses other projects, revisions, drafts, and rebuild generations", async () => {

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test"
-import { BufferAttribute, LineBasicMaterial, MeshBasicMaterial, Raycaster, Vector3 } from "three"
+import {
+  BufferAttribute,
+  LineBasicMaterial,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Raycaster,
+  Vector3,
+} from "three"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { ModelMeshPresentation } from "./model-meshes"
 import type { ViewerMesh } from "./three-viewport"
@@ -152,5 +159,74 @@ describe("current model mesh resource ownership", () => {
     presentation.setMeshes([mesh])
     dispose()
     expect(released).toHaveBeenCalledTimes(1)
+  })
+
+  it("switches preview materials for identical buffers while retaining preview authority and body colors", () => {
+    const { presentation, materials, dispose } = fixture()
+    const preview: ViewerMesh = { ...mesh, appearance: "preview", textureSource: mesh }
+    const [highlight] = presentation.setMeshes([preview])
+    if (!highlight) throw new Error("Expected a highlighted preview.")
+    expect(highlight.surface.material).toBe(materials.preview.surface)
+    const surface = highlight.surface
+    const edges = highlight.edges
+    const surfaceGeometry = surface.geometry
+    const edgeGeometry = edges.geometry
+    const surfaceReleased = vi.spyOn(surfaceGeometry, "dispose")
+    const edgesReleased = vi.spyOn(edgeGeometry, "dispose")
+    const [solid] = presentation.setMeshes([{ ...preview, previewMaterial: "model" }])
+    if (!solid || !(solid.surface.material instanceof MeshStandardMaterial))
+      throw new Error("Expected a solid preview material.")
+    expect(solid.surface.material.transparent).toBe(false)
+    expect(solid.surface.material.opacity).toBe(1)
+    expect(solid.source.appearance).toBe("preview")
+    expect(solid.surface).toBe(surface)
+    expect(solid.edges).toBe(edges)
+    expect(solid.surface.geometry).toBe(surfaceGeometry)
+    expect(solid.edges.geometry).toBe(edgeGeometry)
+    expect(solid.textureSource).toBeNull()
+    expect(solid.surface.geometry.getAttribute("position").array).toBe(mesh.positions)
+    expect(solid.surface.geometry.getAttribute("normal").array).toBe(mesh.normals)
+    expect(solid.surface.geometry.index?.array).toBe(mesh.indices)
+    const solidColor = solid.surface.material.color.getHex()
+    const released = vi.spyOn(solid.surface.material, "dispose")
+    const [changes] = presentation.setMeshes([{ ...preview, previewMaterial: "highlight" }])
+    if (!changes) throw new Error("Expected the updated preview.")
+    expect(changes.surface.material).toBe(materials.preview.surface)
+    expect(changes.edges.material).toBe(materials.preview.edges)
+    expect(changes.source.appearance).toBe("preview")
+    expect(changes.surface).toBe(surface)
+    expect(changes.edges).toBe(edges)
+    expect(changes.surface.geometry).toBe(surfaceGeometry)
+    expect(changes.edges.geometry).toBe(edgeGeometry)
+    expect((surfaceGeometry.getAttribute("position") as BufferAttribute).version).toBe(0)
+    expect((surfaceGeometry.getAttribute("normal") as BufferAttribute).version).toBe(0)
+    expect(surfaceGeometry.index?.version).toBe(0)
+    expect(surfaceReleased).not.toHaveBeenCalled()
+    expect(edgesReleased).not.toHaveBeenCalled()
+    expect(released).toHaveBeenCalledTimes(1)
+    const [committed] = presentation.setMeshes([mesh])
+    if (!committed || !(committed.surface.material instanceof MeshStandardMaterial))
+      throw new Error("Expected the committed body material.")
+    expect(solidColor).toBe(committed.surface.material.color.getHex())
+    expect(surfaceReleased).toHaveBeenCalledTimes(1)
+    expect(edgesReleased).toHaveBeenCalledTimes(1)
+    dispose()
+  })
+
+  it("keeps datum preview material separate from solid and highlighted draft bodies", () => {
+    const { presentation, materials, dispose } = fixture()
+    const preview: ViewerMesh = { ...mesh, appearance: "preview", previewMaterial: "datum" }
+    const [datum] = presentation.setMeshes([preview])
+    const geometry = datum?.surface.geometry
+    expect(datum?.surface.material).toBe(materials.datum.surface)
+    expect(datum?.edges.material).toBe(materials.datum.edges)
+    expect(datum?.source.appearance).toBe("preview")
+    const [changes] = presentation.setMeshes([{ ...preview, previewMaterial: "highlight" }])
+    expect(changes?.surface.material).toBe(materials.preview.surface)
+    const [restored] = presentation.setMeshes([preview])
+    expect(restored?.surface.material).toBe(materials.datum.surface)
+    expect(restored?.source.appearance).toBe("preview")
+    expect(restored?.surface.geometry).toBe(geometry)
+    dispose()
   })
 })

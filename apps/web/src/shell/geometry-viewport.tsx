@@ -1279,6 +1279,7 @@ const PREVIEW_MESSAGE_KEYS: Readonly<
 
 function previewMessageKey(preview: FeaturePreviewState | undefined) {
   if (!preview || preview.status === "idle") return null
+  if (preview.assistantDraft && hasFeaturePreviewGeometry(preview)) return "assistantPreviewUnsaved"
   return PREVIEW_MESSAGE_KEYS[preview.kind ?? "extrusion"][preview.status]
 }
 
@@ -1353,6 +1354,7 @@ type GeometryViewportProps = Readonly<{
     visibility: ViewerOriginPlaneVisibility
   }>
   preselectedSketchId?: string | null | undefined
+  preselectedSketchIds?: readonly string[] | undefined
   selectedSketchIds?: readonly string[] | undefined
   preselectedBody?: ModelBodySelection | null
   preselectedBodies?: readonly ModelBodySelection[] | undefined
@@ -1650,13 +1652,15 @@ function useViewportMeshPresentation({
     return authored ? authoredBodyKeys(authored, true, partVisibilityOverrides) : new Set<string>()
   }, [authority, partVisibilityOverrides])
   const { sourceMesh, excludedFeatureIds, selectionMeshes } = facePickingPresentation(sketchContext)
+  const previewGeometry = previewMeshes(featurePreview, committedMeshes)
+  const previewReady = hasFeaturePreviewGeometry(featurePreview)
   const meshes = useMemo(() => {
     const hidden = new Set(allHiddenFeatureIds)
     const presented = withFacePickingSource(
-      selectionMeshes ?? previewMeshes(featurePreview, committedMeshes),
+      selectionMeshes ?? previewGeometry,
       sourceMesh,
       excludedFeatureIds,
-      hasFeaturePreviewGeometry(featurePreview),
+      previewReady,
     )
     return presented.filter(
       (mesh) => !hidden.has(mesh.featureId) && !hiddenBodies.has(authoredBodyKey(mesh)),
@@ -1666,7 +1670,8 @@ function useViewportMeshPresentation({
     allHiddenFeatureIds,
     committedMeshes,
     excludedFeatureIds,
-    featurePreview,
+    previewGeometry,
+    previewReady,
     sourceMesh,
     selectionMeshes,
     hiddenBodies,
@@ -1761,19 +1766,45 @@ function useClearInvalidBodyHighlight(
 
 function useGeometryViewportScene(props: GeometryViewportProps) {
   const { controller, featurePreview, preselectedFeatureId, selectedFeatureId } = props
-  const { allCommittedMeshes, allHiddenFeatureIds, hiddenBodies, meshes } =
-    useViewportMeshPresentation(props)
+  const {
+    allCommittedMeshes,
+    allHiddenFeatureIds,
+    hiddenBodies,
+    meshes: sourceMeshes,
+  } = useViewportMeshPresentation(props)
+  // Shading follows geometry/texture work so changing this preference never recomputes geometry.
+  const meshes = useMemo(
+    () =>
+      featurePreview?.assistantDraft
+        ? sourceMeshes.map((mesh) =>
+            mesh.appearance === "preview"
+              ? {
+                  ...mesh,
+                  previewMaterial:
+                    featurePreview.display === "changes"
+                      ? ("highlight" as const)
+                      : mesh.previewMaterial === "datum"
+                        ? ("datum" as const)
+                        : ("model" as const),
+                }
+              : mesh,
+          )
+        : sourceMeshes,
+    [sourceMeshes, featurePreview?.assistantDraft, featurePreview?.display],
+  )
   const baseSketches = useViewportSketchPresentation(props)
   const sketches = useMemo(
     () =>
       baseSketches.map((sketch) => {
         const selected = props.selectedSketchIds?.includes(sketch.sketchId)
-        const preselected = props.preselectedSketchId === sketch.sketchId
+        const preselected =
+          props.preselectedSketchId === sketch.sketchId ||
+          Boolean(props.preselectedSketchIds?.includes(sketch.sketchId))
         return selected || preselected
           ? { ...sketch, selected: Boolean(selected), preselected }
           : sketch
       }),
-    [baseSketches, props.selectedSketchIds, props.preselectedSketchId],
+    [baseSketches, props.selectedSketchIds, props.preselectedSketchId, props.preselectedSketchIds],
   )
   const featurePreselection = useHighlightedFeatureMesh(
     controller,

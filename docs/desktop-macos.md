@@ -111,6 +111,18 @@ fallbacks, so the same setting is not shown twice. Project-access and MCP-attach
 to the global footer rather than a repeated chat summary. An ACP connection alone does not prove
 that its MCP client has attached or that the person has granted access to the model.
 
+Within the running desktop host, reconnecting the same project and agent restores accepted user
+model, mode, and session-option choices before the connection becomes ready. Restoration uses the
+new session's advertised catalog, applies the model before dependent options, and verifies effective
+values. Choices are isolated by project and agent configuration; stale responses cannot overwrite a
+replacement session. These recovery choices are held in memory, not persisted across application
+restart. Reconnecting does not replay modeling commands.
+If recovery fails temporarily, the choices remain available for another explicit reconnect. If the
+agent no longer advertises a saved choice, recovery fails visibly and removes only unavailable
+choices; the next explicit reconnect restores supported values and lets the person choose
+replacements. Neither failure is reported as a ready connection with restored settings.
+
+
 Session controls use fixed grid tracks determined by the composer's width. Changing a selected
 label does not move the controls or resize the composer; long labels truncate in the trigger and
 remain complete in its menu. Narrow composers place attachment and turn actions below the settings.

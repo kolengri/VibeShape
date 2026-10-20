@@ -4,6 +4,7 @@ import {
   type SupportFrameGeometryRecord,
   sketchFrame,
 } from "@vibeshape/application/support-frame"
+import type { AssistantToolTargets } from "@vibeshape/automation-api/assistant"
 import {
   boxFeatureParametersSchema,
   canonicalJson,
@@ -574,6 +575,7 @@ type WorkspaceContentProps = Readonly<{
     idleOriginPlaneSelectionAvailable: boolean
     originPlaneVisibility: ViewerOriginPlaneVisibility
     preselectedSketchId?: SketchId | null | undefined
+    preselectedSketchIds?: readonly SketchId[] | undefined
     preselectedBody?: ModelBodySelection | null
     selectedBody?: ModelBodySelection | null
     selectedSketchIds?: readonly string[] | undefined
@@ -687,6 +689,7 @@ function workspaceBodySelectionProps(
 ) {
   return {
     preselectedSketchId: model.preselectedSketchId,
+    preselectedSketchIds: model.preselectedSketchIds,
     selectedSketchIds: model.selectedSketchIds,
     preselectedBody: model.preselectedBody ?? null,
     selectedBody: model.selectedBody ?? null,
@@ -1916,6 +1919,7 @@ export type EditorWorkspaceActions = Readonly<{
 }>
 
 type EditorWorkspaceProps = Readonly<{
+  assistantToolTargets?: AssistantToolTargets | null | undefined
   viewControls?: ReactNode
   actions: EditorWorkspaceActions
   activeTool: ActivePartDesignTool | null
@@ -2200,6 +2204,7 @@ function EditorModelTree({
       modelTreeSelection={props.modelTreeSelection}
       onModelTreeSelectionChange={actions.selectModelTreeItems}
       highlightedFeatureId={props.preselectedBody?.featureId ?? props.preselectedFeatureId}
+      {...workspaceToolTreeHighlights(props)}
       selectedResultFeatureId={props.selectedBody?.featureId ?? props.selection?.featureId ?? null}
       revealRequest={revealRequest}
       onRevealFeature={onRevealFeature}
@@ -2302,12 +2307,22 @@ function workspaceBodySelectionActions(actions: EditorWorkspaceActions) {
   }
 }
 
-function workspaceBodyHighlights(props: EditorWorkspaceProps) {
-  const parts = currentAuthoredParts(historyInsertionContext(props.controller))
+function workspaceToolTargets(props: EditorWorkspaceProps) {
+  const targets = props.assistantToolTargets
+  return !props.controller.assistantCheckpointPresentation &&
+    targets?.projectId === props.controller.report?.snapshot.id
+    ? targets
+    : null
+}
+
+function workspaceSelectedBodies(
+  props: EditorWorkspaceProps,
+  parts: ReturnType<typeof currentAuthoredParts>,
+) {
   const featureMeshes = props.modelTreeSelection?.some((item) => item.kind === "feature")
     ? viewerMeshes(props.controller, props.hiddenFeatureIds, [], props.partVisibility?.overrides)
     : []
-  const selectedBodies = props.modelTreeSelection?.length
+  return props.modelTreeSelection?.length
     ? props.modelTreeSelection.flatMap((item) => {
         if (item.kind === "body") return [item]
         if (item.kind === "feature") {
@@ -2323,19 +2338,63 @@ function workspaceBodyHighlights(props: EditorWorkspaceProps) {
         return body ? [body] : []
       })
     : undefined
-  const relatedParts =
-    !props.preselectedBody && props.preselectedFeatureId
-      ? parts.filter(({ part }) =>
-          part.bodyHistory.some((body) => body.featureId === props.preselectedFeatureId),
-        )
-      : []
-  const preselectedBodies = relatedParts.length
-    ? relatedParts.flatMap(({ part }) => {
-        const body = selectedAuthoredBody(parts, part.id, props.partVisibility?.overrides)
-        return body ? [body] : []
+}
+
+function workspaceToolTreeHighlights(props: EditorWorkspaceProps) {
+  const targets = workspaceToolTargets(props)
+  return {
+    highlightedFeatureIds: targets?.featureIds,
+    highlightedSketchIds: targets?.sketchIds,
+  }
+}
+
+function workspaceHoveredPartBodies(
+  props: EditorWorkspaceProps,
+  parts: ReturnType<typeof currentAuthoredParts>,
+  featureIds: ReadonlyMap<string, FeatureId>,
+) {
+  if (props.preselectedBody) return []
+  return parts.flatMap(({ part }) => {
+    const related = part.bodyHistory.some(
+      (body) => body.featureId === props.preselectedFeatureId || featureIds.has(body.featureId),
+    )
+    const body = related && selectedAuthoredBody(parts, part.id, props.partVisibility?.overrides)
+    return body ? [body] : []
+  })
+}
+
+function workspaceBodyHighlights(
+  props: EditorWorkspaceProps,
+  featurePreview?: ReturnType<typeof useFeaturePreview>,
+) {
+  const targets = workspaceToolTargets(props)
+  const highlighted = new Map<string, FeatureId>(targets?.featureIds.map((id) => [id, id]))
+  const parts = currentAuthoredParts(historyInsertionContext(props.controller))
+  const sourceMeshes =
+    featurePreview?.status === "ready" || featurePreview?.retained
+      ? featurePreview.meshes
+      : viewerMeshes(props.controller, props.hiddenFeatureIds, [], props.partVisibility?.overrides)
+  const toolBodies = targets
+    ? sourceMeshes.flatMap((mesh) => {
+        const featureId = highlighted.get(mesh.featureId)
+        return featureId
+          ? [
+              {
+                featureId,
+                ...(mesh.outputRole === undefined ? {} : { outputRole: mesh.outputRole }),
+              },
+            ]
+          : []
       })
-    : undefined
-  return { selectedBodies, preselectedBodies }
+    : []
+  const preselectedBodies = [
+    ...workspaceHoveredPartBodies(props, parts, highlighted),
+    ...toolBodies,
+  ]
+  return {
+    selectedBodies: workspaceSelectedBodies(props, parts),
+    preselectedBodies: preselectedBodies.length ? preselectedBodies : undefined,
+  }
 }
 
 function EditorContent({
@@ -2382,7 +2441,7 @@ function EditorContent({
   )
   const selectedSketch =
     controller.report?.snapshot.sketches.find(({ id }) => id === activeSketchId) ?? null
-  const { selectedBodies, preselectedBodies } = workspaceBodyHighlights(props)
+  const { selectedBodies, preselectedBodies } = workspaceBodyHighlights(props, featurePreview)
   const sketchSelection = editorSketchSelection(
     props.activeTool,
     featureProfileSelections,
@@ -2448,6 +2507,7 @@ function EditorContent({
         originPlaneVisibility: props.originPlaneVisibility,
         preselectedFeatureId: props.preselectedFeatureId,
         preselectedSketchId: props.preselectedSketchId,
+        preselectedSketchIds: workspaceToolTargets(props)?.sketchIds,
         preselectedBody: props.preselectedBody ?? null,
         selectedBody: props.selectedBody ?? null,
         selectedBodies,

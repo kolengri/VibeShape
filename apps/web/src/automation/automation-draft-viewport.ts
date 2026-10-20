@@ -12,8 +12,15 @@ export type AutomationDraftViewport = Readonly<{
   generation: number
   preview: Readonly<{
     status: "ready"
+    display: "result" | "changes"
+    assistantDraft: Pick<AutomationDraftPreview["draft"], "documentId" | "draftId" | "baseRevision">
     meshes: readonly (FeatureEvaluationEngineResult["mesh"] &
-      Readonly<{ featureId: string; outputRole?: string; appearance: "preview" }>)[]
+      Readonly<{
+        featureId: string
+        outputRole?: string
+        appearance: "preview"
+        previewMaterial: "model" | "datum"
+      }>)[]
   }>
 }>
 
@@ -44,6 +51,12 @@ export function createAutomationDraftViewport(
     generation: rebuild.generation,
     preview: {
       status: "ready",
+      display: "result",
+      assistantDraft: {
+        documentId: draft.documentId,
+        draftId: draft.draftId,
+        baseRevision: draft.baseRevision,
+      },
       // Every draft body is presentation-only, including new datum planes.
       meshes: [
         ...bodies.map(({ geometry: { featureId, outputRole, mesh } }) => ({
@@ -51,6 +64,7 @@ export function createAutomationDraftViewport(
           featureId,
           ...(outputRole === undefined ? {} : { outputRole }),
           appearance: "preview" as const,
+          previewMaterial: "model" as const,
         })),
         ...rebuild.geometry
           .filter(({ featureId }) => datumIds.has(featureId))
@@ -58,6 +72,7 @@ export function createAutomationDraftViewport(
             ...geometry.mesh,
             featureId,
             appearance: "preview" as const,
+            previewMaterial: "datum" as const,
           })),
       ],
     },

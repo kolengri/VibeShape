@@ -72,14 +72,18 @@ function refreshGeometry(surface: Mesh, source: ViewerMesh) {
   }
 }
 
-function disposeEntry(entry: ModelMeshEntry) {
-  entry.surface.geometry.dispose()
-  entry.edges.geometry.dispose()
-  entry.textureSource?.surface.geometry.dispose()
+function disposeEntryMaterials(entry: ModelMeshEntry) {
   if (entry.ownsMaterials) {
     const materials = [entry.surface.material, entry.edges.material].flat()
     for (const material of materials) material.dispose()
   }
+}
+
+function disposeEntry(entry: ModelMeshEntry) {
+  entry.surface.geometry.dispose()
+  entry.edges.geometry.dispose()
+  entry.textureSource?.surface.geometry.dispose()
+  disposeEntryMaterials(entry)
 }
 
 /** Owns only the currently presented bodies; hidden and replaced resources are released immediately. */
@@ -125,6 +129,16 @@ export class ModelMeshPresentation {
 
   #updateEntry(previous: ModelMeshEntry | undefined, source: ViewerMesh): ModelMeshEntry {
     if (previous && samePresentation(previous.source, source)) {
+      if (
+        source.appearance === "preview" &&
+        previous.source.previewMaterial !== source.previewMaterial
+      ) {
+        disposeEntryMaterials(previous)
+        const materials = this.#entryMaterials(source)
+        previous.surface.material = materials.surface
+        previous.edges.material = materials.edges
+        previous.ownsMaterials = materials.owned
+      }
       refreshGeometry(previous.surface, source)
       if (previous.textureSource && source.textureSource) {
         refreshGeometry(previous.textureSource.surface, source.textureSource)
@@ -138,12 +152,10 @@ export class ModelMeshPresentation {
   }
 
   #createEntry(source: ViewerMesh): ModelMeshEntry {
-    const shared = this.#sharedMaterials(source.appearance)
-    const surfaceMaterial = shared?.surface ?? this.#modelMaterial(source)
-    const edgeMaterial = shared?.edges ?? new LineBasicMaterial({ color: new Color("#263746") })
-    const surface = new Mesh(createViewerGeometry(source), surfaceMaterial)
+    const materials = this.#entryMaterials(source)
+    const surface = new Mesh(createViewerGeometry(source), materials.surface)
     surface.name = viewerBodyKey(source)
-    const edges = new LineSegments(new EdgesGeometry(surface.geometry, 28), edgeMaterial)
+    const edges = new LineSegments(new EdgesGeometry(surface.geometry, 28), materials.edges)
     edges.name = `${surface.name}:edges`
     return {
       source,
@@ -152,17 +164,29 @@ export class ModelMeshPresentation {
       textureSource:
         source.appearance !== "preview" && source.textureSource
           ? {
-              surface: new Mesh(createViewerGeometry(source.textureSource), surfaceMaterial),
+              surface: new Mesh(createViewerGeometry(source.textureSource), materials.surface),
               source: source.textureSource,
             }
           : null,
-      ownsMaterials: shared === null,
+      ownsMaterials: materials.owned,
     }
   }
 
-  #sharedMaterials(appearance: ViewerMesh["appearance"]) {
-    if (appearance === "preview") return this.#materials.preview
-    if (appearance === "datum") return this.#materials.datum
+  #entryMaterials(source: ViewerMesh) {
+    const shared = this.#sharedMaterials(source)
+    return {
+      surface: shared?.surface ?? this.#modelMaterial(source),
+      edges: shared?.edges ?? new LineBasicMaterial({ color: new Color("#263746") }),
+      owned: shared === null,
+    }
+  }
+
+  #sharedMaterials(source: ViewerMesh) {
+    if (source.appearance === "preview") {
+      if (source.previewMaterial === "model") return null
+      return source.previewMaterial === "datum" ? this.#materials.datum : this.#materials.preview
+    }
+    if (source.appearance === "datum") return this.#materials.datum
     return null
   }
 

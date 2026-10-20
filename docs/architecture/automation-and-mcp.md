@@ -34,6 +34,22 @@ Apply. This presentation is disposable: it does not create a saved revision, gra
 authority to draft topology, or appear in another project's viewport. Returning to a project restores
 its pending review; approval still uses the existing revision-checked commit path.
 
+Draft display is project-owned presentation state: Result uses normal materials and Changes uses
+highlight materials, while both retain preview authority and the same mesh buffers. Display changes
+do not approve, commit, or mutate a draft. The chat exposes these controls after a completed batch
+and fences them against the current document ID and base revision.
+
+Assistant tool messages may carry bounded, validated project-scoped feature and sketch IDs. The API
+path captures them before output truncation; native ACP uses programmatic tool names and validated
+inputs when supplied by the provider. Partial updates retain metadata per call within a bounded
+session tracker; failures clear it. Titles, prose, variable IDs, dependencies and arbitrary nested
+UUIDs are not target sources. Optional metadata round-trips in existing v1 histories. Transient
+owner-scoped preselection projects these identities to History, the authored tree and visible
+meshes, without changing document or selection authority. Missing metadata has no inferred link.
+Failure-detail presence also round-trips independently of retained parameters or progress text.
+Calls without supplied failure evidence explain that absence while preserving other useful output;
+empty partial updates retain earlier genuine failure evidence. Older v1 messages remain readable.
+
 ## Revision-bound visual inspection
 
 `render_preview` is a read-only tool shared by local and remote MCP. Its explicit `source` selects

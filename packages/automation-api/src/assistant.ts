@@ -1,3 +1,4 @@
+import { documentIdSchema, featureIdSchema, sketchIdSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
 import { utf8StringBytes } from "./query-byte-budget"
 
@@ -11,6 +12,13 @@ const id = z
   .refine((value) => !value.includes("\0"))
 const label = z.string().max(512)
 const scope = { projectId: id, sessionToken: id }
+// Display hints only; these IDs never grant access or authorize a CAD operation.
+export const assistantToolTargetsSchema = z.strictObject({
+  projectId: documentIdSchema,
+  featureIds: z.array(featureIdSchema).max(32),
+  sketchIds: z.array(sketchIdSchema).max(32),
+})
+export type AssistantToolTargets = z.infer<typeof assistantToolTargetsSchema>
 const choice = z.strictObject({ id, name: label })
 const configOption = z.strictObject({
   id,
@@ -157,6 +165,8 @@ export const assistantErrorCodeSchema = z.enum([
   "queue-full",
   "stale-session",
   "unsupported",
+  "settings-unavailable",
+  "settings-recovery-failed",
   "permission-expired",
   "request-failed",
   "timeout",
@@ -219,6 +229,8 @@ export const assistantEventSchema = z.discriminatedUnion("type", [
     title: label.optional(),
     status: label.optional(),
     text: z.string().max(32_768).optional(),
+    hasFailureDetails: z.boolean().optional(),
+    targets: assistantToolTargetsSchema.optional(),
   }),
   z.strictObject({
     ...scope,

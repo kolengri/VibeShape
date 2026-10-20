@@ -1,5 +1,6 @@
 import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import { Eye, EyeOff, MessageSquarePlus, Settings, Undo2, X } from "@vibeshape/ui/components/icons"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { type ReactNode, useId, useState } from "react"
@@ -9,15 +10,19 @@ import {
   type AssistantComposerDraft,
   type AssistantComposerProps,
 } from "./assistant-composer"
+import type { AssistantDraftDisplay } from "./assistant-draft-display"
 import { AssistantIconAction } from "./assistant-icon-action"
 import { AssistantMessages } from "./assistant-messages"
 import { AssistantQuestionForm } from "./assistant-question"
+import type { AssistantToolHighlight } from "./assistant-tool-highlight"
 import type { ChatMessage } from "./chat-history"
 
 type AssistantPanelProps = AssistantComposerProps & {
   open: boolean
   projectName: string
   messages: readonly ChatMessage[]
+  onToolHighlight?: AssistantToolHighlight | undefined
+  draftDisplay?: AssistantDraftDisplay | undefined
   configuration: ReactNode
   permission?: ReactNode
   question?: AssistantQuestion | null
@@ -45,38 +50,79 @@ type AssistantCheckpointState = Pick<
   | "busy"
 >
 
+function hasAssistantCheckpoint(checkpoint: AssistantCheckpointState) {
+  return Boolean(
+    checkpoint.canUndoAgentChanges || checkpoint.undoingAgentChanges || checkpoint.preparingBefore,
+  )
+}
+
 function AssistantCheckpointActions({ checkpoint }: { checkpoint: AssistantCheckpointState }) {
   const t = useTranslations("app.assistant")
-  if (!checkpoint.canUndoAgentChanges) return null
+  const { onViewBefore, onUndoAgentChanges } = checkpoint
+  if (!hasAssistantCheckpoint(checkpoint)) return null
   const disabled = Boolean(
     checkpoint.busy || checkpoint.undoingAgentChanges || checkpoint.preparingBefore,
   )
   return (
     <>
-      {checkpoint.onViewBefore && (
-        <AssistantIconAction
-          label={t(checkpoint.viewingBefore ? "viewCurrent" : "viewBefore")}
-          pressed={Boolean(checkpoint.viewingBefore)}
+      {onViewBefore && (
+        <Button
+          size="sm"
+          variant={checkpoint.viewingBefore ? "secondary" : "ghost"}
+          aria-pressed={Boolean(checkpoint.viewingBefore)}
           disabled={disabled}
-          onAction={async () => {
-            await checkpoint.onViewBefore?.()
-          }}
+          onClick={onViewBefore}
         >
           {checkpoint.viewingBefore ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
-        </AssistantIconAction>
+          {t(checkpoint.viewingBefore ? "viewCurrent" : "viewBefore")}
+        </Button>
       )}
-      {checkpoint.onUndoAgentChanges && (
-        <AssistantIconAction
-          label={t("undoAgentChanges")}
-          disabled={disabled}
-          onAction={async () => {
-            await checkpoint.onUndoAgentChanges?.()
-          }}
-        >
+      {onUndoAgentChanges && (
+        <Button size="sm" variant="ghost" disabled={disabled} onClick={onUndoAgentChanges}>
           <Undo2 aria-hidden="true" />
-        </AssistantIconAction>
+          {t("undoAgentChanges")}
+        </Button>
       )}
     </>
+  )
+}
+
+function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
+  const t = useTranslations("app.assistant")
+  const preview = useTranslations("app.shell.viewport")
+  return (
+    <section
+      aria-label={t("changeReview")}
+      className="mb-3 space-y-2 rounded-md border bg-panel-muted p-2"
+    >
+      <p className="text-xs text-muted-foreground">
+        {props.draftDisplay ? preview("assistantPreviewUnsaved") : t("changesSaved")}
+      </p>
+      <div className="flex flex-wrap items-center gap-1">
+        {props.draftDisplay && (
+          <fieldset className="flex items-center gap-1">
+            <legend className="sr-only">{preview("assistantPreviewDisplay")}</legend>
+            <Button
+              size="sm"
+              variant={props.draftDisplay.mode === "changes" ? "secondary" : "ghost"}
+              aria-pressed={props.draftDisplay.mode === "changes"}
+              onClick={() => props.draftDisplay?.onChange("changes")}
+            >
+              {preview("assistantPreviewChanges")}
+            </Button>
+            <Button
+              size="sm"
+              variant={props.draftDisplay.mode === "result" ? "secondary" : "ghost"}
+              aria-pressed={props.draftDisplay.mode === "result"}
+              onClick={() => props.draftDisplay?.onChange("result")}
+            >
+              {preview("assistantPreviewResult")}
+            </Button>
+          </fieldset>
+        )}
+        <AssistantCheckpointActions checkpoint={props} />
+      </div>
+    </section>
   )
 }
 
@@ -88,7 +134,6 @@ function AssistantHeader({
   onClose,
   onReset,
   canReset,
-  checkpoint,
 }: {
   titleId: string
   projectName: string
@@ -97,7 +142,6 @@ function AssistantHeader({
   onClose: () => void
   onReset: () => Promise<void>
   canReset: boolean
-  checkpoint: AssistantCheckpointState
 }) {
   const t = useTranslations("app.assistant")
   return (
@@ -108,7 +152,6 @@ function AssistantHeader({
         </h2>
         <p className="truncate text-xs text-muted-foreground">{projectName}</p>
       </div>
-      <AssistantCheckpointActions checkpoint={checkpoint} />
       <AssistantIconAction label={t("newChat")} disabled={!canReset} onAction={onReset}>
         <MessageSquarePlus aria-hidden="true" />
       </AssistantIconAction>
@@ -179,7 +222,6 @@ export function AssistantPanel(props: AssistantPanelProps) {
           onClose={props.onClose}
           onReset={props.onReset}
           canReset={!props.busy && !props.queuedMessages?.length && props.messages.length > 0}
-          checkpoint={props}
         />
         {(settingsOpen || !props.canSend) && (
           <section
@@ -189,7 +231,15 @@ export function AssistantPanel(props: AssistantPanelProps) {
             {props.configuration}
           </section>
         )}
-        <AssistantMessages messages={props.messages} />
+        <AssistantMessages
+          messages={props.messages}
+          onHighlight={props.onToolHighlight}
+          footer={
+            !props.busy && (props.draftDisplay || hasAssistantCheckpoint(props)) ? (
+              <AssistantChangeReview props={props} />
+            ) : null
+          }
+        />
         <AssistantComposer
           {...props}
           draft={draft}

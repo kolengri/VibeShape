@@ -19,6 +19,13 @@ import { createAssistantPermissions } from "./assistant-permissions"
 import { assistantPromptContent } from "./assistant-prompt-content"
 import { createAssistantQuestions } from "./assistant-questions"
 import {
+  type AssistantSessionChoice,
+  assistantSessionChoiceSelected,
+  assistantSessionChoiceSupported,
+  assistantSessionRequestedChoice,
+  createAssistantSessionPreferences,
+} from "./assistant-session-preferences"
+import {
   assistantSteeringThreadStatus,
   assistantSteerOutcomeSchema,
   supportsAssistantSteering,
@@ -29,17 +36,24 @@ import {
   spawnAssistantProcess,
   waitForAssistantSpawn,
 } from "./assistant-transport"
-import { applySessionOptions, sessionUpdateEvent } from "./assistant-updates"
+import {
+  applySessionOptions,
+  createAssistantToolTargetTracker,
+  sessionUpdateEvent,
+} from "./assistant-updates"
 
 type ThreadStatus = NonNullable<ReturnType<typeof assistantSteeringThreadStatus>>
 type TerminalThreadStatus = Exclude<ThreadStatus, "active">
 type Owner = {
   snapshot: AssistantSnapshot
+  preferencesKey: string
+  toolTargets: ReturnType<typeof createAssistantToolTargetTracker>
   process: ChildProcessWithoutNullStreams | null
   connection: acp.ClientConnection | null
   permissions: ReturnType<typeof createAssistantPermissions>
   questions: ReturnType<typeof createAssistantQuestions>
   configRevision: number
+  modeRevision: number
   mcp: acp.McpServerStdio[]
   resumeSessionId: string | undefined
   busy: boolean
@@ -147,12 +161,16 @@ async function settleShutdown(pending: Promise<unknown>, timeoutMs: number) {
 export function createAssistantService(options: AssistantServiceOptions) {
   if (!isAbsolute(options.cwd)) throw new Error("The assistant working directory must be absolute.")
   const owners = new Map<string, Owner>()
+  const preferences = createAssistantSessionPreferences()
   let disposed = false
   const stopping = new Map<string, Promise<void>>()
   const requestTimeout = options.requestTimeoutMs ?? 30_000
 
   function isCurrent(owner: Owner) {
     return owners.get(owner.snapshot.projectId) === owner
+  }
+  function assertCurrent(owner: Owner) {
+    if (!isCurrent(owner) || !owner.process || disposed) throw new AssistantFailure("stale-session")
   }
   function emit(owner: Owner, event: AssistantEvent) {
     if (!isCurrent(owner)) return
@@ -192,6 +210,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     owner.stopping = stopping.get(owner.snapshot.projectId) ?? Promise.resolve()
     owner.failureCode = code
     owner.acceptingUpdates = false
+    owner.toolTargets.clear()
     owner.externalTurn = null
     clearTimeout(owner.externalTimer)
     owner.permissions.cancel()
@@ -242,7 +261,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
   }
   function emitUpdate(owner: Owner, value: acp.SessionUpdate) {
-    const event = sessionUpdateEvent(owner.snapshot, value)
+    const event = sessionUpdateEvent(owner.snapshot, value, owner.toolTargets)
     if (!event) return
     if (event.type !== "text" && event.type !== "thought") {
       emit(owner, event)
@@ -269,7 +288,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     return (
       ["config_option_update", "current_mode_update"].includes(params.update.sessionUpdate) &&
       hasConnectedSession(owner, params.sessionId) &&
-      owner.snapshot.status === "ready"
+      (owner.snapshot.status === "ready" || owner.snapshot.status === "connecting")
     )
   }
   function update(owner: Owner, params: acp.SessionNotification) {
@@ -283,6 +302,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
     if (params.update.sessionUpdate === "current_mode_update") {
       owner.snapshot.currentModeId = params.update.currentModeId
+      owner.modeRevision += 1
       snapshot(owner)
     } else if (params.update.sessionUpdate === "config_option_update") {
       applySessionOptions(owner.snapshot, undefined, params.update.configOptions)
@@ -321,6 +341,9 @@ export function createAssistantService(options: AssistantServiceOptions) {
     owner.snapshot.sessionId = sessionId ?? null
     applySessionOptions(owner.snapshot, session.modes, session.configOptions)
     owner.configRevision += 1
+    owner.snapshot.status = "connecting"
+    await recoverSettings(owner)
+    assertCurrent(owner)
     owner.snapshot.status = "ready"
     owner.acceptingUpdates = true
     return snapshot(owner)
@@ -408,6 +431,10 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
     const owner: Owner = {
       snapshot: state,
+      preferencesKey: createHash("sha256")
+        .update(JSON.stringify([input.projectId, input.agent]))
+        .digest("hex"),
+      toolTargets: createAssistantToolTargetTracker(),
       process: null,
       connection: null,
       permissions: createAssistantPermissions(
@@ -421,6 +448,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         options.questionTimeoutMs ?? 300_000,
       ),
       configRevision: 0,
+      modeRevision: 0,
       mcp: [],
       resumeSessionId: input.resumeSessionId,
       busy: true,
@@ -490,6 +518,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     const pending = hasLiveTurnOwner(owner)
     owner.acceptingUpdates = pending && owner.snapshot.status !== "cancelling"
     if (pending) return
+    owner.toolTargets.clear()
     if (owner.snapshot.status === "prompting" || owner.snapshot.status === "cancelling")
       owner.snapshot.status = "ready"
     clearTimeout(owner.cancelTimer)
@@ -704,6 +733,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     if (config) return setConfigOption(owner, config.id, modeId)
     if (!owner.snapshot.modes.some((mode) => mode.id === modeId))
       throw new AssistantFailure("unsupported")
+    const revision = owner.modeRevision
     await bounded(
       owner,
       agent(owner).request(acp.methods.agent.session.setMode, {
@@ -711,7 +741,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
         modeId,
       }),
     )
-    owner.snapshot.currentModeId = modeId
+    assertCurrent(owner)
+    if (owner.modeRevision === revision) owner.snapshot.currentModeId = modeId
   }
   async function setModel(owner: Owner, modelId: string) {
     const config = owner.snapshot.configOptions.find((option) => option.category === "model")
@@ -731,11 +762,44 @@ export function createAssistantService(options: AssistantServiceOptions) {
         value,
       }),
     )
-    if (!isCurrent(owner) || !owner.process) throw new AssistantFailure("stale-session")
+    assertCurrent(owner)
     // A newer full notification supersedes an in-flight response's older option set.
     if (owner.configRevision === revision) {
       applySessionOptions(owner.snapshot, undefined, result.configOptions)
       owner.configRevision += 1
+    }
+  }
+  function assertSelectedChoice(owner: Owner, choice: AssistantSessionChoice) {
+    if (!assistantSessionChoiceSupported(owner.snapshot, choice))
+      throw new AssistantFailure("settings-unavailable")
+    if (!assistantSessionChoiceSelected(owner.snapshot, choice))
+      throw new AssistantFailure("settings-recovery-failed")
+  }
+  async function restoreChoice(owner: Owner, choice: AssistantSessionChoice) {
+    assertCurrent(owner)
+    if (!assistantSessionChoiceSupported(owner.snapshot, choice))
+      throw new AssistantFailure("settings-unavailable")
+    if (assistantSessionChoiceSelected(owner.snapshot, choice)) return
+    if (choice.kind === "mode") await setMode(owner, choice.value)
+    else await setConfigOption(owner, choice.id, choice.value)
+    assertCurrent(owner)
+    assertSelectedChoice(owner, choice)
+  }
+  async function recoverSettings(owner: Owner) {
+    const choices = preferences.read(owner.preferencesKey)
+    try {
+      for (const choice of choices) await restoreChoice(owner, choice)
+      for (const choice of choices) assertSelectedChoice(owner, choice)
+    } catch (error) {
+      assertCurrent(owner)
+      const code =
+        error instanceof AssistantFailure && error.code === "settings-unavailable"
+          ? "settings-unavailable"
+          : "settings-recovery-failed"
+      if (code === "settings-unavailable")
+        preferences.discardUnavailable(owner.preferencesKey, owner.snapshot)
+      stop(owner, code)
+      throw new AssistantFailure(code)
     }
   }
   function performControl(owner: Owner, request: AssistantRequest) {
@@ -756,9 +820,13 @@ export function createAssistantService(options: AssistantServiceOptions) {
     if (hasLiveTurnOwner(owner)) return failure("agent-busy")
     owner.busy = true
     try {
+      const choice = assistantSessionRequestedChoice(owner.snapshot, request)
       await performControl(owner, request)
       if (!isCurrent(owner) || !owner.process) return failure("stale-session")
-      return { ok: true, value: snapshot(owner) }
+      const value = snapshot(owner)
+      assertCurrent(owner)
+      if (choice) preferences.remember(owner.preferencesKey, choice, value)
+      return { ok: true, value }
     } catch (error) {
       if (!isCurrent(owner) || disposed) return failure("stale-session")
       return failure(errorCode(error, "request-failed"))
@@ -847,6 +915,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
       disposed = true
       for (const owner of owners.values()) stop(owner)
       owners.clear()
+      preferences.clear()
       return Promise.all(stopping.values()).then(() => undefined)
     },
   }

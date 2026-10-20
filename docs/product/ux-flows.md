@@ -53,6 +53,34 @@ offset-only planes keep their original frames. Changing an already referenced pl
 can leave an oriented sketch support unresolved; use explicit support repair rather than silently
 retargeting it.
 
+## Assistant transcript
+
+Consecutive tool calls with the same title and status share one compact row with a count on the
+right. A different action, status, or conversational message starts a new row, preserving order
+and keeping failures visible. Groups with reported output stay collapsed by default; opening one
+reveals each call's output in order within a bounded scrolling region. Empty output has no
+disclosure. Streaming updates preserve the reader's transcript position when scrolled away from
+the bottom.
+
+When the agent supplies validated project-scoped object identities, hovering or focusing a tool
+row highlights matching History entries, authored Parts or sketches, and currently visible geometry.
+A group highlights the union; an expanded call highlights its own targets. Inspection never changes
+selection, visibility, the camera, History position, or saved geometry. Older messages and providers
+without structured identities remain readable without inferred links. Consumed construction Parts
+are collapsed separately from the main Parts count; unavailable terminal Parts remain visible for
+repair.
+
+After a batch finishes, its available inspection controls appear after the messages inside the chat,
+not in the viewport toolbar or chat header. An unsaved agent preview defaults to **Result**, using
+normal model materials; **Changes** uses the blue preview material. Both remain disposable previews
+without topology-picking authority. The caption explicitly distinguishes unsaved preview from saved
+changes. Saved batches expose **View before** / **View current** and **Undo agent changes** through
+the existing internal checkpoint. These controls remain hidden while the agent is busy and do not
+move the transcript when the person is reading earlier messages.
+
+Failed calls retain the reported diagnostic in their expandable output. If the agent supplied no
+error detail, the row says so explicitly instead of offering an empty disclosure.
+
 ## Application menu
 
 The VibeShape menu groups global actions into Project (files, local projects, and geometry export),

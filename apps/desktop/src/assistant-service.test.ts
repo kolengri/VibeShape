@@ -7,13 +7,17 @@ import type {
   AssistantResult,
   AssistantSnapshot,
 } from "@vibeshape/automation-api/assistant"
-import { assistantRequestSchema } from "@vibeshape/automation-api/assistant"
+import {
+  assistantRequestSchema,
+  assistantToolTargetsSchema,
+} from "@vibeshape/automation-api/assistant"
 import { type AssistantServiceOptions, createAssistantService } from "./assistant-service"
 
 const fixture = String.raw`
 const readline = require("node:readline");
 const scenario = process.argv[2];
-let authenticated = false, pending, permissionPrompt, questionPrompt, selectedModel = "small", selectedEffort = "brief", configCalls = 0, attachedMcp, steerCalls = 0;
+let authenticated = false, pending, permissionPrompt, questionPrompt, selectedModel = "small", selectedEffort = "brief", configCalls = 0, attachedMcp, steerCalls = 0, targetTurns = 0;
+let selectedBehavior = "ask", selectedDetail = "terse", settingCalls = [];
 const send = message => process.stdout.write(JSON.stringify({jsonrpc:"2.0",...message})+"\n");
 const reply = (id,result) => send({id,result});
 let sessionId = "fake-session";
@@ -39,6 +43,40 @@ const configs = (value, effort = value === "large" ? "extreme" : "brief") => [
  ] : [])
 ];
 const options = {modes:{currentModeId:"ask",availableModes:[{id:"ask",name:"Ask"},{id:"edit",name:"Edit"}]},configOptions:configs("small")};
+const reconnectFlags = () => {
+ const fs = require("node:fs"), path = require("node:path").join(__dirname,"reconnect-fixture.json");
+ return fs.existsSync(path) ? JSON.parse(fs.readFileSync(path,"utf8")) : {};
+};
+const reconnectConfigs = () => {
+ const flags = reconnectFlags(), entry = (id,name,category,currentValue,values) => ({id,name,category,type:"select",currentValue,options:values.map(value=>({value,name:value}))});
+ return [
+  entry("engine","Engine","model",selectedModel,flags.noLarge ? ["small"] : ["small","large"]),
+  ...(flags.legacyMode || (flags.removeModeOnDetail && selectedDetail === "full") ? [] : [entry("behavior","Behavior","mode",selectedBehavior,["ask","edit"])]),
+  entry("depth","Depth","thought_level",selectedEffort,selectedModel === "large" ? (flags.noExtreme ? ["deep"] : ["deep","extreme"]) : ["brief","deep"]),
+  ...(flags.noDetail ? [] : [entry("detail","Response detail","other",selectedDetail,["terse","full"])])
+ ];
+};
+const reconnectSetting = (id,method,params) => {
+ const flags = reconnectFlags(), settingId = params.configId ?? "legacy-mode";
+ if (flags.reject === settingId) return send({id,error:{code:-32603,message:"Fixture setting rejected"}});
+ if (method === "session/set_mode") selectedBehavior = params.modeId;
+ else {
+  const config = reconnectConfigs().find(option=>option.id === params.configId);
+  if (!config?.options.some(option=>option.value === params.value)) return send({id,error:{code:-32602,message:"Fixture choice unavailable"}});
+  if (params.configId === "engine") { selectedModel = params.value; selectedEffort = selectedModel === "large" ? "deep" : "brief"; }
+  if (params.configId === "behavior") selectedBehavior = params.value;
+  if (params.configId === "depth") selectedEffort = flags.normalize === "depth" ? "deep" : params.value;
+  if (params.configId === "detail") { selectedDetail = params.value; if (flags.resetModeOnDetail) selectedBehavior = "ask"; }
+ }
+ settingCalls.push({id:params.configId ?? "legacy-mode",value:params.value ?? params.modeId});
+ const result = method === "session/set_mode" ? {} : {configOptions:reconnectConfigs()};
+ if (flags.notify || flags.wait === (params.configId ?? "legacy-mode")) {
+  if (method === "session/set_mode") update({sessionUpdate:"current_mode_update",currentModeId:selectedBehavior});
+  else update({sessionUpdate:"config_option_update",configOptions:result.configOptions});
+ }
+ if (flags.wait === (params.configId ?? "legacy-mode")) return afterSignal("settings-release",()=>reply(id,result));
+ return reply(id,result);
+};
 process.on("SIGTERM", () => { text("late obsolete output"); setTimeout(()=>process.exit(0),40); });
 readline.createInterface({input:process.stdin}).on("line", line => {
  const message = JSON.parse(line), {id,method,params} = message;
@@ -65,8 +103,10 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    attachedMcp = params.mcpServers.filter(server=>!names.has(server.name));
    const mcp = attachedMcp[0];
    if (params.mcpServers.length !== 1 || attachedMcp.length !== 1 || !/^vs_[0-9a-f]{16}$/.test(mcp.name) || mcp.command !== "/electron" || mcp.args[1] !== "--descriptor" || mcp.env[0].name !== "ELECTRON_RUN_AS_NODE") return process.exit(10);
-   return reply(id,method === "session/new" ? {sessionId,...options} : options);
+   const settings = scenario.startsWith("reconnect") ? {modes:options.modes,configOptions:reconnectConfigs()} : options;
+   return reply(id,method === "session/new" ? {sessionId,...settings} : settings);
  }
+ if (scenario.startsWith("reconnect") && (method === "session/set_mode" || method === "session/set_config_option")) return reconnectSetting(id,method,params);
  if (method === "session/set_mode") return reply(id,{});
  if (method === "session/set_config_option") {
    if (!scenario.startsWith("config")) return reply(id,{configOptions:configs(params.value)});
@@ -164,6 +204,7 @@ readline.createInterface({input:process.stdin}).on("line", line => {
  if (method !== "session/prompt") return send({id,error:{code:-32601,message:"Unknown method"}});
  if (!params.prompt[0].text.includes("VibeShape") || !params.prompt[0].text.includes("Project ID")) return process.exit(13);
  const prompt = params.prompt.filter(block=>block.type === "text").at(-1).text;
+ if (scenario.startsWith("reconnect") && prompt === "inspect-settings") { text(JSON.stringify({settingCalls,selectedBehavior,configs:reconnectConfigs()})); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "inspect-mcp") { text(JSON.stringify(attachedMcp)); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "inspect-attachments") { text(JSON.stringify(params.prompt)); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "ask-question" || prompt === "unsupported-question") {
@@ -185,6 +226,19 @@ readline.createInterface({input:process.stdin}).on("line", line => {
  if (prompt === "permission" || prompt === "permission-always") {
    permissionPrompt = id;
    return send({id:"permission",method:"session/request_permission",params:{sessionId,toolCall:{toolCallId:"tool",title:"Run tool"},options:[{optionId:"yes",name:"Allow",kind:prompt === "permission-always" ? "allow_always" : "allow_once"},{optionId:"no",name:"Reject",kind:"reject_once"}]}});
+ }
+ if (scenario === "failure-details") {
+   update({sessionUpdate:"tool_call",toolCallId:"preview",title:"Preview draft",status:"in_progress"});
+   update({sessionUpdate:"tool_call_update",toolCallId:"preview",status:"completed",rawOutput:{isError:true,structuredContent:{result:{ok:false,diagnostic:{code:"preview-failed",message:"The preview contains an open shell.",retryable:false}}}}});
+   update({sessionUpdate:"tool_call_update",toolCallId:"preview",status:"completed"});
+   return reply(id,{stopReason:"end_turn"});
+ }
+ if (scenario === "targets") {
+   const featureId = "0195b5ac-b250-7a2c-8c33-000000000102";
+   const rawInput = {draftId:featureId,commandId:featureId,baseRevision:0,featureId,widthMm:1,depthMm:2,heightMm:3};
+   update({sessionUpdate:"tool_call",toolCallId:"tool",title:"create_box",status:"in_progress",...(targetTurns++ === 0 ? {name:"mcp__vs_fixture__create_box"} : {}),rawInput});
+   update({sessionUpdate:"tool_call_update",toolCallId:"tool",name:null,status:"completed"});
+   return reply(id,{stopReason:"end_turn"});
  }
  update({sessionUpdate:"agent_thought_chunk",content:{type:"text",text:"Thinking"}});
  update({sessionUpdate:"tool_call",toolCallId:"tool",title:"Inspect model",status:"in_progress"});
@@ -236,6 +290,8 @@ async function host(
     service,
     events,
     signal: (name: string) => writeFile(join(directory, name), ""),
+    settingsFixture: (flags: Record<string, unknown>) =>
+      writeFile(join(directory, "reconnect-fixture.json"), JSON.stringify(flags)),
     connect: (scenario = "normal", projectId = "project-a", resumeSessionId?: string) =>
       service.handle({
         operation: "connect",
@@ -274,6 +330,290 @@ function scope(snapshot: AssistantSnapshot) {
   return { projectId: snapshot.projectId, sessionToken: snapshot.sessionToken }
 }
 
+type SettingsHost = Awaited<ReturnType<typeof host>>
+async function chooseSessionSettings(context: SettingsHost, session: AssistantSnapshot) {
+  ready(
+    await context.service.handle({
+      operation: "setModel",
+      input: { ...scope(session), modelId: "large" },
+    }),
+  )
+  ready(
+    await context.service.handle({
+      operation: "setMode",
+      input: { ...scope(session), modeId: "edit" },
+    }),
+  )
+  ready(
+    await context.service.handle({
+      operation: "setConfigOption",
+      input: { ...scope(session), configId: "depth", value: "extreme" },
+    }),
+  )
+  return ready(
+    await context.service.handle({
+      operation: "setConfigOption",
+      input: { ...scope(session), configId: "detail", value: "full" },
+    }),
+  )
+}
+function sessionValues(snapshot: AssistantSnapshot) {
+  return Object.fromEntries(
+    snapshot.configOptions.map(({ id, currentValue }) => [id, currentValue]),
+  )
+}
+async function crashSession(context: SettingsHost, session: AssistantSnapshot) {
+  expect(
+    await context.service.handle({
+      operation: "prompt",
+      input: { ...scope(session), text: "crash" },
+    }),
+  ).toMatchObject({ ok: false })
+}
+async function inspectSessionSettings(context: SettingsHost, session: AssistantSnapshot) {
+  ready(
+    await context.service.handle({
+      operation: "prompt",
+      input: { ...scope(session), text: "inspect-settings" },
+    }),
+  )
+  const event = await context.waitFor(
+    (event) =>
+      event.type === "text" &&
+      event.sessionToken === session.sessionToken &&
+      event.text.startsWith('{"settingCalls"'),
+  )
+  if (event.type !== "text") throw new Error("Missing fixture settings")
+  return JSON.parse(event.text)
+}
+
+describe("native accepted settings reconnect", () => {
+  const selected = { engine: "large", behavior: "edit", depth: "extreme", detail: "full" }
+
+  it("automatically restores accepted settings after a crash before publishing ready", async () => {
+    const context = await host()
+    const session = ready(await context.connect("reconnect"))
+    await chooseSessionSettings(context, session)
+    await crashSession(context, session)
+    const start = context.events.length
+    const restored = ready(await context.connect("reconnect"))
+    expect(sessionValues(restored)).toEqual(selected)
+    const published = context.events
+      .slice(start)
+      .filter((event) => event.type === "snapshot" && event.snapshot.status === "ready")
+    expect(published).toHaveLength(1)
+    expect(published[0]?.type === "snapshot" ? sessionValues(published[0].snapshot) : null).toEqual(
+      selected,
+    )
+    expect((await inspectSessionSettings(context, restored)).settingCalls).toEqual([
+      { id: "engine", value: "large" },
+      { id: "behavior", value: "edit" },
+      { id: "depth", value: "extreme" },
+      { id: "detail", value: "full" },
+    ])
+  })
+
+  it("restores legacy agent modes after explicit disconnect without capturing provider defaults", async () => {
+    const context = await host()
+    await context.settingsFixture({ legacyMode: true })
+    const session = ready(await context.connect("reconnect"))
+    await chooseSessionSettings(context, session)
+    await context.service.handle({ operation: "disconnect", input: scope(session) })
+    const restored = ready(await context.connect("reconnect"))
+    expect(restored.currentModeId).toBe("edit")
+    expect(sessionValues(restored)).toEqual({ engine: "large", depth: "extreme", detail: "full" })
+    expect((await inspectSessionSettings(context, restored)).settingCalls[1]).toEqual({
+      id: "legacy-mode",
+      value: "edit",
+    })
+    const fresh = ready(await context.connect("reconnect", "other-project"))
+    expect((await inspectSessionSettings(context, fresh)).settingCalls).toEqual([])
+  })
+
+  it.each(["noExtreme", "noDetail", "noLarge"])(
+    "fails once for %s, prunes only unsupported choices and permits the next explicit reconnect",
+    async (flag) => {
+      const context = await host()
+      const session = ready(await context.connect("reconnect"))
+      await chooseSessionSettings(context, session)
+      await crashSession(context, session)
+      await context.settingsFixture({ [flag]: true })
+      const start = context.events.length
+      expect(await context.connect("reconnect")).toEqual({
+        ok: false,
+        code: "settings-unavailable",
+      })
+      expect(
+        context.events
+          .slice(start)
+          .some((event) => event.type === "snapshot" && event.snapshot.status === "ready"),
+      ).toBe(false)
+      expect(
+        context.events
+          .slice(start)
+          .some((event) => event.type === "error" && event.code === "settings-unavailable"),
+      ).toBe(true)
+      const restored = ready(await context.connect("reconnect"))
+      const expected =
+        flag === "noExtreme"
+          ? { ...selected, depth: "deep" }
+          : flag === "noDetail"
+            ? { engine: "large", behavior: "edit", depth: "extreme" }
+            : { engine: "small", behavior: "edit", depth: "brief", detail: "full" }
+      expect(sessionValues(restored)).toEqual(expected)
+    },
+  )
+
+  it.each(["reject", "normalize"])(
+    "retains all accepted choices after a %s restoration failure and restores them on retry",
+    async (failure) => {
+      const context = await host()
+      const session = ready(await context.connect("reconnect"))
+      await chooseSessionSettings(context, session)
+      await crashSession(context, session)
+      await context.settingsFixture({ [failure]: "depth" })
+      const start = context.events.length
+      expect(await context.connect("reconnect")).toEqual({
+        ok: false,
+        code: "settings-recovery-failed",
+      })
+      expect(
+        context.events
+          .slice(start)
+          .some((event) => event.type === "snapshot" && event.snapshot.status === "ready"),
+      ).toBe(false)
+      await context.settingsFixture({ notify: true })
+      expect(sessionValues(ready(await context.connect("reconnect")))).toEqual(selected)
+    },
+  )
+
+  it("reconciles the final catalog instead of silently claiming settings reset by a later option", async () => {
+    const context = await host()
+    const session = ready(await context.connect("reconnect"))
+    await chooseSessionSettings(context, session)
+    await crashSession(context, session)
+    await context.settingsFixture({ resetModeOnDetail: true })
+    expect(await context.connect("reconnect")).toEqual({
+      ok: false,
+      code: "settings-recovery-failed",
+    })
+    await context.settingsFixture({})
+    expect(sessionValues(ready(await context.connect("reconnect")))).toEqual(selected)
+  })
+
+  it("prunes a choice removed by a later catalog update and permits the next reconnect", async () => {
+    const context = await host()
+    const session = ready(await context.connect("reconnect"))
+    await chooseSessionSettings(context, session)
+    await crashSession(context, session)
+    await context.settingsFixture({ removeModeOnDetail: true })
+    expect(await context.connect("reconnect")).toEqual({ ok: false, code: "settings-unavailable" })
+    expect(sessionValues(ready(await context.connect("reconnect")))).toEqual({
+      engine: "large",
+      depth: "extreme",
+      detail: "full",
+    })
+  })
+
+  it("keeps accepted choices isolated by project and exact agent configuration", async () => {
+    const context = await host()
+    const session = ready(await context.connect("reconnect"))
+    await chooseSessionSettings(context, session)
+    const project = ready(await context.connect("reconnect", "other-project"))
+    expect(sessionValues(project)).toEqual({
+      engine: "small",
+      behavior: "ask",
+      depth: "brief",
+      detail: "terse",
+    })
+    const provider = ready(await context.connect("reconnect-other"))
+    expect(sessionValues(provider)).toEqual({
+      engine: "small",
+      behavior: "ask",
+      depth: "brief",
+      detail: "terse",
+    })
+    ready(
+      await context.service.handle({
+        operation: "setConfigOption",
+        input: { ...scope(provider), configId: "depth", value: "deep" },
+      }),
+    )
+    expect(sessionValues(ready(await context.connect("reconnect")))).toEqual(selected)
+    expect(sessionValues(ready(await context.connect("reconnect-other")))).toEqual({
+      engine: "small",
+      behavior: "ask",
+      depth: "deep",
+      detail: "terse",
+    })
+  })
+
+  it("does not remember rejected user changes or stale control replies", async () => {
+    const context = await host()
+    const session = ready(await context.connect("reconnect"))
+    await chooseSessionSettings(context, session)
+    await context.settingsFixture({ reject: "depth" })
+    expect(
+      await context.service.handle({
+        operation: "setConfigOption",
+        input: { ...scope(session), configId: "depth", value: "deep" },
+      }),
+    ).toEqual({ ok: false, code: "request-failed" })
+    await context.settingsFixture({ wait: "depth" })
+    const start = context.events.length
+    const pending = context.service.handle({
+      operation: "setConfigOption",
+      input: { ...scope(session), configId: "depth", value: "deep" },
+    })
+    await context.waitFor(
+      (event) =>
+        context.events.indexOf(event) >= start &&
+        event.type === "snapshot" &&
+        event.snapshot.configOptions.some(
+          ({ id, currentValue }) => id === "depth" && currentValue === "deep",
+        ),
+    )
+    await context.settingsFixture({})
+    expect(sessionValues(ready(await context.connect("reconnect")))).toEqual(selected)
+    expect(await pending).toEqual({ ok: false, code: "stale-session" })
+    expect(sessionValues(ready(await context.connect("reconnect")))).toEqual(selected)
+  })
+
+  it("fences obsolete recovery callbacks and rejects prompts/configuration while recovery is pending", async () => {
+    const context = await host()
+    const session = ready(await context.connect("reconnect"))
+    await chooseSessionSettings(context, session)
+    await crashSession(context, session)
+    await context.settingsFixture({ wait: "engine" })
+    const start = context.events.length
+    const pending = context.connect("reconnect")
+    const event = await context.waitFor(
+      (event) =>
+        context.events.indexOf(event) >= start &&
+        event.type === "snapshot" &&
+        event.snapshot.currentModelId === "large",
+    )
+    if (event.type !== "snapshot") throw new Error("Missing recovery snapshot")
+    expect(event.snapshot.status).toBe("connecting")
+    expect(
+      await context.service.handle({
+        operation: "setModel",
+        input: { ...scope(event.snapshot), modelId: "small" },
+      }),
+    ).toEqual({ ok: false, code: "agent-busy" })
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(event.snapshot), text: "Must not replay" },
+      }),
+    ).toEqual({ ok: false, code: "agent-busy" })
+    await context.settingsFixture({})
+    expect(sessionValues(ready(await context.connect("reconnect")))).toEqual(selected)
+    expect(await pending).toEqual({ ok: false, code: "stale-session" })
+    expect(sessionValues(ready(await context.connect("reconnect")))).toEqual(selected)
+  })
+})
+
 async function steeringHost(scenario = "steer", options: Partial<AssistantServiceOptions> = {}) {
   const context = await host(options)
   const session = ready(await context.connect(scenario))
@@ -293,6 +633,61 @@ async function steeringHost(scenario = "steer", options: Partial<AssistantServic
       }),
   }
 }
+
+describe("native assistant tool metadata", () => {
+  it("preserves an SDK raw preview diagnostic and failed status without failing the turn", async () => {
+    const context = await host()
+    const snapshot = ready(await context.connect("failure-details"))
+    const result = ready(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(snapshot), text: "Preview" },
+      }),
+    )
+    const tools = context.events.filter((event) => event.type === "tool")
+    expect(tools.map(({ status }) => status)).toEqual(["in_progress", "failed", "failed"])
+    expect(tools[0]?.text).toBeUndefined()
+    expect(tools[1]?.text).toContain("The preview contains an open shell.")
+    expect(tools[2]?.text).toBeUndefined()
+    expect(tools.every((event) => !("rawOutput" in event))).toBe(true)
+    expect(result.status).toBe("ready")
+    expect(
+      context.events.some((event) => event.type === "completed" && event.stopReason === "end_turn"),
+    ).toBe(true)
+  })
+  it("captures SDK names and raw inputs at the producer and resets metadata between turns", async () => {
+    const context = await host()
+    const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
+    const snapshot = ready(await context.connect("targets", projectId))
+    const expected = assistantToolTargetsSchema.parse({
+      projectId,
+      featureIds: ["0195b5ac-b250-7a2c-8c33-000000000102"],
+      sketchIds: [],
+    })
+    await context.service.handle({
+      operation: "prompt",
+      input: { ...scope(snapshot), text: "Build" },
+    })
+    const first = context.events.filter((event) => event.type === "tool")
+    expect(first).toHaveLength(2)
+    for (const event of first) {
+      expect(event.targets).toEqual(expected)
+      expect(event).not.toHaveProperty("rawInput")
+      expect(event).not.toHaveProperty("name")
+    }
+    await context.service.handle({
+      operation: "prompt",
+      input: { ...scope(snapshot), text: "Again" },
+    })
+    const second = context.events.filter((event) => event.type === "tool").slice(2)
+    expect(second).toHaveLength(2)
+    expect(
+      second.every(
+        (event) => !event.targets?.featureIds.length && !event.targets?.sketchIds.length,
+      ),
+    ).toBe(true)
+  })
+})
 
 describe("native active-turn steering", () => {
   it.each(["steer-foreign", "steer-future"])(

@@ -1216,6 +1216,57 @@ describe("ModelTree History disclosure", () => {
     expect(document.activeElement).toBe(browser().getByRole("treeitem", { name: "Planes" }))
   })
 
+  it("navigates into consumed parts and back to their disclosure without document writes", async () => {
+    const user = userEvent.setup()
+    const fixture = authoredInsertionController()
+    const authority = fixture.controller.authoredSnapshot
+    const report = fixture.controller.report
+    if (!authority || authority.schemaVersion === 1 || !report)
+      throw new Error("Authored tree evidence is required.")
+    const consumedPart = requireAuthoredFixture(authority.parts[2])
+    const onAuthoredMetadata = vi.fn().mockResolvedValue({ ok: true })
+    const onPartSelect = vi.fn()
+    renderTree({
+      controller: {
+        ...fixture.controller,
+        historyInsertion: null,
+        authoredSnapshot: {
+          ...authority,
+          parts: authority.parts.map((part) =>
+            part.id === consumedPart.id ? { ...part, consumedBy: fixture.transformerId } : part,
+          ),
+        },
+        report: {
+          ...report,
+          rebuild: {
+            ok: false,
+            diagnostic: {
+              code: "rebuild-failed",
+              message: "Rebuild unavailable for this tree fixture.",
+              retryable: false,
+              sourceCode: null,
+            },
+          },
+        },
+      },
+      onAuthoredMetadata,
+      onPartSelect,
+    })
+    const consumed = browser().getByRole("treeitem", { name: "Consumed parts" })
+    consumed.focus()
+    await user.keyboard("{ArrowRight}")
+    expect(consumed.getAttribute("aria-expanded")).toBe("true")
+    await user.keyboard("{ArrowRight}")
+    expect(document.activeElement).toBe(browser().getByRole("treeitem", { name: "Part Part 3" }))
+    await user.keyboard("{ArrowLeft}")
+    expect(document.activeElement).toBe(consumed)
+    await user.keyboard("{ArrowLeft}")
+    expect(consumed.getAttribute("aria-expanded")).toBe("false")
+    expect(browser().queryByRole("treeitem", { name: "Part Part 3" })).toBeNull()
+    expect(onAuthoredMetadata).not.toHaveBeenCalled()
+    expect(onPartSelect).not.toHaveBeenCalled()
+  })
+
   it("navigates horizontal History with left and right arrows and keeps its tab stop scoped", async () => {
     const user = userEvent.setup()
     renderTree({}, false)
