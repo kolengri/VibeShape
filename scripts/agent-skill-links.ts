@@ -40,13 +40,12 @@ function localTargetViolation(root: string, target: string): string | undefined 
     return "local link escapes repository root"
 }
 
-function localLinkViolation(
+function localPathViolation(
   href: string,
   source: string,
   repositoryRoot: string,
   read: (path: string) => ReturnType<typeof markdownReferences>,
 ): string | undefined {
-  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(href)) return
   try {
     const base = href.startsWith("/") ? join(repositoryRoot, "index.md") : source
     const url = new URL(href.replace(/^\//u, ""), pathToFileURL(base))
@@ -59,6 +58,18 @@ function localLinkViolation(
   } catch (error) {
     return `invalid local link ${href}: ${String(error)}`
   }
+}
+
+function localLinkViolation(
+  href: string,
+  source: string,
+  repositoryRoot: string,
+  read: (path: string) => ReturnType<typeof markdownReferences>,
+): string | undefined {
+  const protocol = URL.parse(href)?.protocol
+  if (protocol === "file:") return `nonportable file URL: ${href}`
+  if (protocol || href.startsWith("//")) return
+  return localPathViolation(href, source, repositoryRoot, read)
 }
 
 export function validateAgentSkillLinks(repositoryRoot: string): string[] {

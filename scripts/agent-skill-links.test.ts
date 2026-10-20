@@ -2,6 +2,7 @@ import { afterEach, expect, it } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
+import { pathToFileURL } from "node:url"
 import { validateAgentSkillLinks } from "./agent-skill-links"
 
 const roots: string[] = []
@@ -84,6 +85,34 @@ it("rejects links through external symlinks while allowing repository-local syml
   symlinkSync(join(root, "docs"), join(root, "alias"), "dir")
   expect(validateAgentSkillLinks(root)).toEqual([
     ".agents/skills/developer/SKILL.md: local link escapes repository root: /external/outside.md#outside",
+  ])
+})
+
+it("rejects file URLs while preserving network and VibeShape resource links", () => {
+  const links = ["file:///etc/hosts", "FiLe:relative.md", "file://localhost/tmp/guide.md"]
+  const root = fixture({
+    ".agents/skills/developer/SKILL.md": [
+      ...links.map((href) => `[file](${href})`),
+      '<a href=" file:///tmp/guide.md">file</a>',
+      "[network](https://example.com/guide.md)",
+      "[resource](vibeshape://agent-skills)",
+    ].join("\n"),
+  })
+  expect(validateAgentSkillLinks(root)).toEqual(
+    [...links, " file:///tmp/guide.md"].map(
+      (href) => `.agents/skills/developer/SKILL.md: nonportable file URL: ${href}`,
+    ),
+  )
+})
+
+it("rejects normalized file schemes targeting existing repository files", () => {
+  const root = fixture({ "docs/guide.md": "# Guide" })
+  const href = pathToFileURL(join(root, "docs/guide.md")).href
+  const source = join(root, ".agents/skills/developer/SKILL.md")
+  mkdirSync(dirname(source), { recursive: true })
+  writeFileSync(source, `<a href="${href.replace("file:", "fi&#9;le:")}">guide</a>`)
+  expect(validateAgentSkillLinks(root)).toEqual([
+    `.agents/skills/developer/SKILL.md: nonportable file URL: ${href.replace("file:", "fi\tle:")}`,
   ])
 })
 
