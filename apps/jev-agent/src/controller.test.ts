@@ -1,7 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import type { Tool } from "@modelcontextprotocol/sdk/types.js"
+import {
+  type AssistantQuestionInput,
+  assistantQuestionTool,
+} from "@vibeshape/automation-api/assistant"
 import type { Decide, Decision } from "./contracts"
-import { createController, type ToolPort } from "./controller"
+import { createController, type ToolPort, type ToolResult } from "./controller"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const tool: Tool = {
@@ -99,6 +103,119 @@ function fixture(
   })
   return { controller, calls, port }
 }
+
+const question: Tool = { name: assistantQuestionTool.name, inputSchema: { type: "object" } }
+const questionInput: AssistantQuestionInput = {
+  message: "Choose the material",
+  fields: [
+    {
+      id: "material",
+      label: "Material",
+      required: true,
+      secret: false,
+      options: [{ id: "pla", name: "PLA" }],
+    },
+  ],
+}
+function questionFixture() {
+  const decisions: Decision[] = [
+    {
+      kind: "tool",
+      tool: question,
+      arguments: questionInput,
+      needsArguments: false,
+      confidence: 1,
+    },
+    { kind: "tool", tool, arguments: { baseRevision: 0 }, needsArguments: false, confidence: 1 },
+  ]
+  const f = fixture({
+    timeoutMs: 10,
+    decide: async () => decisions.shift() ?? { kind: "done", confidence: 1 },
+  })
+  f.port.tools = [question, tool]
+  return f
+}
+
+describe("Jev structured questions", () => {
+  it("waits beyond the ordinary timeout and executes dependent CAD only after a valid answer", async () => {
+    const f = questionFixture()
+    const started = Promise.withResolvers<AbortSignal>()
+    const answer = Promise.withResolvers<ToolResult>()
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name !== question.name) return original(name, args, signal)
+      f.calls.push(name)
+      expect(args).toEqual(questionInput)
+      started.resolve(signal)
+      return answer.promise
+    }
+    const pending = f.controller.run(
+      "Make the part",
+      [],
+      new AbortController().signal,
+      async () => {},
+    )
+    const signal = await started.promise
+    await Bun.sleep(30)
+    expect(signal.aborted).toBe(false)
+    expect(f.calls).not.toContain(tool.name)
+    answer.resolve({
+      value: { action: "accept", content: { material: "pla" } },
+      photos: [],
+      failed: false,
+    })
+    expect(await pending).toContain("ended the turn")
+    expect(f.calls.filter((name) => name === tool.name)).toHaveLength(1)
+  })
+
+  it.each([
+    ["cancelled", { action: "cancel" }],
+    ["declined or expired", { action: "decline" }],
+    ["invalid choice", { action: "accept", content: { material: "unknown" } }],
+    ["missing answer", { action: "accept", content: {} }],
+  ])("stops dependent CAD after a %s question result", async (_name, value) => {
+    const f = questionFixture()
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name !== question.name) return original(name, args, signal)
+      f.calls.push(name)
+      return { value, photos: [], failed: false }
+    }
+    expect(
+      await f.controller.run("Make the part", [], new AbortController().signal, async () => {}),
+    ).toContain("rejected the step")
+    expect(f.calls).toContain(question.name)
+    expect(f.calls).not.toContain(tool.name)
+  })
+
+  it("honors Stop during a question without classifying the question as an uncertain CAD write", async () => {
+    const f = questionFixture()
+    const started = Promise.withResolvers<AbortSignal>()
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name !== question.name) return original(name, args, signal)
+      started.resolve(signal)
+      return new Promise((_, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+      })
+    }
+    const stop = new AbortController()
+    const pending = f.controller
+      .run("Make the part", [], stop.signal, async () => {})
+      .catch((error: unknown) => error)
+    const signal = await started.promise
+    await Bun.sleep(30)
+    expect(signal.aborted).toBe(false)
+    stop.abort(new Error("Stop question"))
+    expect(await pending).toEqual(new Error("Stop question"))
+    expect(signal.aborted).toBe(true)
+    expect(f.calls).not.toContain(tool.name)
+    expect(
+      await f.controller.run("Continue", [], new AbortController().signal, async () => {}),
+    ).toContain("ended the turn")
+    expect(f.calls).toContain(tool.name)
+  })
+})
 
 describe("Jev CAD control loop", () => {
   it.each(["commit_draft", "undo_model"])(

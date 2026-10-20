@@ -4,10 +4,30 @@ import {
   assistantToolTargetsSchema,
 } from "@vibeshape/automation-api/assistant"
 import type { ApiToolCall } from "./api-chat-completions"
-import { createApiChatController, createApiChatRegistry } from "./api-chat-controller"
+import {
+  createApiChatController as createController,
+  createApiChatRegistry as createRegistry,
+} from "./api-chat-controller"
 import { checkpointActor, checkpointFixture } from "./assistant-checkpoints.test-fixture"
 import type { BrowserToolSession } from "./browser-tool-session"
-import { readChatHistory } from "./chat-history"
+import {
+  historyStoreFor,
+  readChatHistory,
+  trackHistoryController,
+} from "./chat-history.test-fixture"
+
+function createApiChatController(options: Parameters<typeof createController>[0]) {
+  return trackHistoryController(
+    options.storage,
+    createController({
+      ...options,
+      historyStore: options.historyStore ?? historyStoreFor(options.storage),
+    }),
+  )
+}
+function createApiChatRegistry(options: Parameters<typeof createRegistry>[0]) {
+  return createRegistry({ ...options, historyStore: historyStoreFor(options.storage) })
+}
 
 const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
 const otherProjectId = "0195b5ac-b250-7a2c-8c33-000000000102"
@@ -96,6 +116,33 @@ function deferredApiRequests() {
       return content
     },
   }
+}
+
+async function delayedHistoryRetry() {
+  const storage = disk()
+  const store = historyStoreFor(storage)
+  const saved = [
+    { id: crypto.randomUUID(), role: "user", text: "Earlier question" },
+    { id: crypto.randomUUID(), role: "assistant", text: "Earlier answer" },
+  ]
+  await store.commit({
+    projectId,
+    expectedRevision: 0,
+    upserts: saved.map((value, position) => ({ id: value.id, position, value })),
+    deletedIds: [],
+  })
+  store.failure = new Error("Storage unavailable")
+  const api = deferredApiRequests()
+  const chat = createApiChatController({ projectId, storage, createTools: tools, fetch: api.fetch })
+  await chat.connect(configuration)
+  expect(chat.getSnapshot().storageFailed).toBe(true)
+  store.failure = undefined
+  let release = () => {}
+  store.loadGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const retry = chat.retryHistory()
+  return { chat, api, storage, retry, release }
 }
 
 describe("browser API project chat", () => {
@@ -189,7 +236,7 @@ describe("browser API project chat", () => {
         ...(outcome === "success" ? { targets } : {}),
       })
       if (outcome !== "throw") expect(JSON.parse(message?.text ?? "").truncated).toBe(true)
-      expect(readChatHistory(projectId, storage)?.messages).toEqual([
+      expect((await readChatHistory(projectId, storage))?.messages).toEqual([
         ...chat.getSnapshot().messages,
       ])
       chat.dispose()
@@ -263,7 +310,7 @@ describe("browser API project chat", () => {
       expect(chat.getSnapshot().messages.at(-1)?.text).toBe(
         "The preview failed; I can correct the model.",
       )
-      expect(readChatHistory(projectId, storage)?.messages).toEqual([
+      expect((await readChatHistory(projectId, storage))?.messages).toEqual([
         ...chat.getSnapshot().messages,
       ])
       chat.dispose()
@@ -381,8 +428,10 @@ describe("browser API project chat", () => {
       arguments: { query: "model info" },
       result: { total: 1, tools: [] },
     })
-    expect(readChatHistory(projectId, storage)?.messages).toEqual([...chat.getSnapshot().messages])
-    expect(readChatHistory(otherProjectId, storage)).toBeNull()
+    expect((await readChatHistory(projectId, storage))?.messages).toEqual([
+      ...chat.getSnapshot().messages,
+    ])
+    expect(await readChatHistory(otherProjectId, storage)).toBeNull()
     expect([...storage.values.values()].join()).not.toContain("runtime-secret")
     expect(JSON.stringify(chat.getSnapshot())).not.toContain("runtime-secret")
     chat.dispose()
@@ -581,6 +630,169 @@ describe("browser API project chat", () => {
     chat.dispose()
   })
 
+  it("retains both earlier and failed live attachment inputs before continuing after a provider error", async () => {
+    const api = deferredApiRequests()
+    const storage = disk()
+    const chat = createApiChatController({
+      projectId,
+      storage,
+      createTools: tools,
+      fetch: api.fetch,
+    })
+    await chat.connect(configuration)
+    await chat.send("First file", [textFile("earlier private dimensions")])
+    api.respond(0, completion("Received the first file"))
+    await idle(chat)
+    await chat.send("", [textFile("failed private dimensions")])
+    api.respond(1, new Response("Unavailable", { status: 503 }))
+    await idle(chat)
+    expect(chat.getSnapshot().error).toBe("endpoint")
+    await chat.send("Continue with both files")
+    const users = api.requests[2]?.messages.filter(({ role }) => role === "user")
+    expect(users).toEqual([
+      { role: "user", content: api.content(0) },
+      { role: "user", content: api.content(1) },
+      { role: "user", content: "Continue with both files" },
+    ])
+    expect(JSON.stringify(users)).toContain("earlier private dimensions")
+    expect(JSON.stringify(users)).toContain("failed private dimensions")
+    api.respond(2, completion("Done"))
+    await idle(chat)
+    expect(JSON.stringify(await readChatHistory(projectId, storage))).not.toContain(
+      "private dimensions",
+    )
+    chat.dispose()
+  })
+
+  it("keeps a failed file prompt unique when storage retry prepends history during Send", async () => {
+    const { chat, api, storage, retry, release } = await delayedHistoryRetry()
+    await chat.send("", [textFile("retained private dimensions")])
+    release()
+    await retry
+    expect(chat.getSnapshot().messages.map(({ text }) => text)).toEqual([
+      "Earlier question",
+      "Earlier answer",
+      "",
+    ])
+    api.respond(0, new Response("Unavailable", { status: 503 }))
+    await idle(chat)
+    await chat.send("Continue")
+    expect(api.requests[1]?.messages.filter(({ role }) => role !== "system")).toEqual([
+      { role: "user", content: api.content(0) },
+      { role: "user", content: "Continue" },
+    ])
+    api.respond(1, completion("Done"))
+    await idle(chat)
+    expect(JSON.stringify(await readChatHistory(projectId, storage))).not.toContain(
+      "private dimensions",
+    )
+    chat.dispose()
+  })
+
+  it.each(["failed", "cancelled", "completed"] as const)(
+    "keeps live file context when late storage retry resolves after a %s turn",
+    async (outcome) => {
+      const { chat, api, storage, retry, release } = await delayedHistoryRetry()
+      await chat.send("", [textFile("retained private dimensions")])
+      if (outcome === "cancelled") {
+        const cancelled = chat.cancel()
+        api.respond(0, completion("Ignored after Stop"))
+        await cancelled
+      } else {
+        api.respond(
+          0,
+          outcome === "completed"
+            ? completion("Received")
+            : new Response("Unavailable", { status: 503 }),
+        )
+      }
+      await idle(chat)
+      release()
+      await retry
+      await chat.retryHistory()
+      await chat.send("Continue")
+      expect(api.requests[1]?.messages.filter(({ role }) => role !== "system")).toEqual([
+        { role: "user", content: api.content(0) },
+        ...(outcome === "completed" ? [{ role: "assistant", content: "Received" }] : []),
+        { role: "user", content: "Continue" },
+      ])
+      expect(chat.getSnapshot().contextOmittedMessages).toBe(2)
+      api.respond(1, completion("Done"))
+      await idle(chat)
+      expect(JSON.stringify(await readChatHistory(projectId, storage))).not.toContain(
+        "private dimensions",
+      )
+      chat.dispose()
+    },
+  )
+
+  it("retains recovered display history when a queued attachment fails after storage retry", async () => {
+    const { chat, api, storage, retry, release } = await delayedHistoryRetry()
+    await chat.send("First")
+    await chat.enqueue("Queued", [textFile("queued private dimensions")])
+    api.respond(0, completion("First answer"))
+    await until(chat, () => api.requests.length === 2)
+    release()
+    await retry
+    api.respond(1, new Response("Unavailable", { status: 503 }))
+    await idle(chat)
+    const expected = ["Earlier question", "Earlier answer", "First", "First answer", "Queued"]
+    expect(chat.getSnapshot().messages.map(({ text }) => text)).toEqual(expected)
+    expect((await readChatHistory(projectId, storage))?.messages.map(({ text }) => text)).toEqual(
+      expected,
+    )
+    expect(await chat.resumeQueue()).toBe(true)
+    await until(chat, () => api.requests.length === 3)
+    expect(api.requests[2]?.messages.filter(({ role }) => role === "user")).toEqual([
+      { role: "user", content: "First" },
+      { role: "user", content: api.content(1) },
+    ])
+    api.respond(2, completion("Done"))
+    await idle(chat)
+    expect(JSON.stringify(await readChatHistory(projectId, storage))).not.toContain(
+      "private dimensions",
+    )
+    chat.dispose()
+  })
+
+  it.each(["", "Use the file"])(
+    "marks restored attachment contents as unavailable in the next actual request: %s",
+    async (text) => {
+      const storage = disk()
+      const firstApi = deferredApiRequests()
+      const first = createApiChatController({
+        projectId,
+        storage,
+        createTools: tools,
+        fetch: firstApi.fetch,
+      })
+      await first.connect(configuration)
+      await first.send(text, [textFile("private dimensions")])
+      firstApi.respond(0, completion("Received"))
+      await idle(first)
+      await first.flushHistory()
+      first.dispose()
+      const api = deferredApiRequests()
+      const reopened = createApiChatController({
+        projectId,
+        storage,
+        createTools: tools,
+        fetch: api.fetch,
+      })
+      await reopened.connect(configuration)
+      await reopened.send("Continue")
+      const users = api.requests[0]?.messages.filter(({ role }) => role === "user")
+      expect(users).toHaveLength(2)
+      expect(users?.[0]?.content).toContain('"unavailableAttachments":["dimensions.txt"]')
+      expect(users?.[0]?.content).toContain("Ask the user to attach these files again")
+      expect(JSON.stringify(users)).not.toContain("private dimensions")
+      expect(users?.[1]?.content).toBe("Continue")
+      api.respond(0, completion("Please attach the file again"))
+      await idle(reopened)
+      reopened.dispose()
+    },
+  )
+
   it("drains a bounded FIFO, removes queued messages, and preserves a failed attachment turn until explicit resume", async () => {
     const api = deferredApiRequests()
     const chat = createApiChatController({
@@ -687,7 +899,9 @@ describe("browser API project chat", () => {
       "Queued",
       "Complete answer",
     ])
-    expect(readChatHistory(projectId, storage)?.messages).toEqual([...chat.getSnapshot().messages])
+    expect((await readChatHistory(projectId, storage))?.messages).toEqual([
+      ...chat.getSnapshot().messages,
+    ])
     chat.dispose()
   })
 
@@ -750,6 +964,74 @@ describe("browser API project chat", () => {
     expect(chat.getSnapshot().question).toBeNull()
     chat.dispose()
   })
+
+  it.each(["answer", "dismiss", "expire", "stop"])(
+    "blocks same-batch CAD and queued prompts until question resolution: %s",
+    async (resolution) => {
+      let cadCalls = 0,
+        requests = 0
+      const chat = createApiChatController({
+        projectId,
+        storage: disk(),
+        createTools: () => ({
+          ...tools(),
+          execute: async () => {
+            cadCalls += 1
+            return {}
+          },
+        }),
+        fetch: async () =>
+          ++requests === 1
+            ? completion("", [
+                call("blocking-question", "ask_user_question", {
+                  message: "Choose",
+                  fields: [{ id: "size", label: "Size", required: true }],
+                }),
+                call("dependent-cad", "call_cad_tool", { name: "model_info", arguments: {} }),
+              ])
+            : completion("Done"),
+      })
+      try {
+        await chat.connect(configuration)
+        await chat.send("Ask then act")
+        await until(chat, () => chat.getSnapshot().question !== null)
+        await chat.enqueue("Queued continuation")
+        expect(cadCalls).toBe(0)
+        expect(requests).toBe(1)
+        expect(await chat.respondQuestion({ size: "" })).toBe(false)
+        if (resolution === "stop") await chat.cancel()
+        else if (resolution === "expire") {
+          const question = chat.getSnapshot().question
+          if (!question) throw new Error("Missing question")
+          const now = Date.now
+          Date.now = () => question.expiresAt
+          try {
+            expect(await chat.respondQuestion({ size: "10 mm" })).toBe(false)
+          } finally {
+            Date.now = now
+          }
+        } else
+          expect(
+            await chat.respondQuestion(resolution === "dismiss" ? null : { size: "10 mm" }),
+          ).toBe(true)
+        await idle(chat)
+        if (resolution === "answer") {
+          expect(cadCalls).toBe(1)
+          expect(requests).toBe(3)
+        } else {
+          expect(cadCalls).toBe(0)
+          expect(requests).toBe(1)
+          expect(chat.getSnapshot()).toMatchObject({
+            queuePaused: true,
+            queuedMessages: [{ text: "Queued continuation" }],
+          })
+        }
+        expect(await chat.respondQuestion({ size: "late answer" })).toBe(false)
+      } finally {
+        chat.dispose()
+      }
+    },
+  )
 
   it("settles pending structured questions on Stop and keeps queued text for recovery", async () => {
     let requests = 0
@@ -939,4 +1221,41 @@ describe("retained browser project chats", () => {
     expect(disposals).toBe(2)
     expect(guards.size).toBe(0)
   })
+})
+
+it("delivers successive requests without replacing earlier queued work or its context", async () => {
+  const api = deferredApiRequests()
+  const chat = createApiChatController({
+    projectId,
+    storage: disk(),
+    createTools: tools,
+    fetch: api.fetch,
+  })
+  await chat.connect(configuration)
+  await chat.send("Create the body")
+  await chat.enqueue("Add a lid")
+  await chat.send("Also round the corners")
+  api.respond(0, completion("Body saved"))
+  await until(chat, () => api.requests.length === 2)
+  expect(
+    api.requests[1]?.messages.filter(({ role }) => role === "user").map(({ content }) => content),
+  ).toEqual(["Create the body", "Add a lid"])
+  api.respond(1, completion("Lid saved"))
+  await until(chat, () => api.requests.length === 3)
+  expect(
+    api.requests[2]?.messages.filter(({ role }) => role === "user").map(({ content }) => content),
+  ).toEqual(["Create the body", "Add a lid", "Also round the corners"])
+  expect(api.requests[2]?.messages[0]?.content).toContain(
+    "Keep every unresolved request in session context",
+  )
+  api.respond(2, completion("All requested geometry saved"))
+  await idle(chat)
+  expect(chat.getSnapshot().queuedMessages).toEqual([])
+  expect(
+    chat
+      .getSnapshot()
+      .messages.filter(({ role }) => role === "user")
+      .map(({ text }) => text),
+  ).toEqual(["Create the body", "Add a lid", "Also round the corners"])
+  chat.dispose()
 })

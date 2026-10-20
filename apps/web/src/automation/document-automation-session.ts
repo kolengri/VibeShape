@@ -125,6 +125,12 @@ export function createDocumentAutomationSession(
     commandDispatcher: input.commands,
     queryDispatcher: queries.dispatcher,
     createDraftId: input.createDraftId,
+    async validateRecoverySources(snapshot) {
+      if (closed || !input.materializeSourceAssets)
+        throw new Error("Recovery source ownership is unavailable.")
+      await input.materializeSourceAssets(snapshot)
+      if (closed) throw new Error("The recovery session closed during source validation.")
+    },
     review: {
       confirm: async (review) => {
         // The serialized host reevaluates this draft immediately before confirming it.
@@ -314,6 +320,19 @@ export function createDocumentAutomationSession(
     },
     host: {
       ...host,
+      async restoreDraft(actor: unknown, journal: unknown) {
+        if (closed || !host.restoreDraft)
+          return {
+            ok: false as const,
+            diagnostic: {
+              code: "document-write-unavailable" as const,
+              message: "The browser automation session is closed.",
+              retryable: false,
+              issues: [],
+            },
+          }
+        return host.restoreDraft(actor, journal)
+      },
       async applyCommand(actor: unknown, request: unknown) {
         const epoch = previewEpoch
         const result = await host.applyCommand(actor, request)

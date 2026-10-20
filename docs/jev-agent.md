@@ -78,6 +78,12 @@ Connect in the intended project. The desktop supplies one project-bound stdio MC
 configure a separate standalone VibeShape server. The agent discovers that server's actual tool
 names. API credentials are not forwarded to the MCP child process.
 
+When the attachment advertises `ask_user_question`, Jev can select its structured native question
+contract and wait for a validated answer before dependent CAD work. The question bypasses the short
+operation/provider timeout; host expiry and Stop still cancel it. Cancellation, expiry or an invalid
+answer stops dependent work. Questions are read-only interactions, not approval for a CAD write.
+Composing their open text/field arguments can require the configured argument helper.
+
 `bun run agent:jev` starts the same ACP stdio endpoint from a checkout. Its stdout is reserved for
 ACP JSON-RPC, so it is intended for an ACP client rather than an interactive terminal conversation.
 

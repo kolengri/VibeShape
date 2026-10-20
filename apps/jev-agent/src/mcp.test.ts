@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { assistantQuestionTool } from "@vibeshape/automation-api/assistant"
 import { connectMcp } from "./mcp"
 
 it("connects an actual stdio MCP process, restricts its catalog and forwards only explicit environment", async () => {
@@ -16,10 +17,17 @@ it("connects an actual stdio MCP process, restricts its catalog and forwards onl
 import { Server } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/server/index.js"))};
 import { StdioServerTransport } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/server/stdio.js"))};
 import { ListToolsRequestSchema, CallToolRequestSchema } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/types.js"))};
+import { assistantQuestionInputSchema, assistantQuestionTool } from ${JSON.stringify(import.meta.resolve("@vibeshape/automation-api/assistant"))};
 const server = new Server({name:"test-vibeshape",version:"1"},{capabilities:{tools:{}}});
 let calls = 0;
-server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:["model_info","read_agent_skill","create_draft","commit_draft","undo_model","create_project","foreign_tool"].map(name=>({name,inputSchema:{type:"object"}}))}));
-server.setRequestHandler(CallToolRequestSchema,async()=>({content:[{type:"text",text:"ok"}],structuredContent:{calls:++calls,privatePresent:Boolean(process.env.VIBESHAPE_JEV_TEST_PRIVATE),explicit:process.env.VIBESHAPE_JEV_TEST_FORWARD}}));
+server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[...["model_info","read_agent_skill","create_draft","commit_draft","undo_model","change_metadata","list_recoverable_drafts","restore_draft","create_project","foreign_tool"].map(name=>({name,inputSchema:{type:"object"}})),assistantQuestionTool]}));
+server.setRequestHandler(CallToolRequestSchema,async(request)=>{
+ if(request.params.name===assistantQuestionTool.name){
+  assistantQuestionInputSchema.parse(request.params.arguments);
+  return {content:[{type:"text",text:"answered"}],structuredContent:{action:"accept",content:{material:"pla"}}};
+ }
+ return {content:[{type:"text",text:"ok"}],structuredContent:{calls:++calls,privatePresent:Boolean(process.env.VIBESHAPE_JEV_TEST_PRIVATE),explicit:process.env.VIBESHAPE_JEV_TEST_FORWARD}};
+});
 await server.connect(new StdioServerTransport());
 `
   try {
@@ -41,6 +49,10 @@ await server.connect(new StdioServerTransport());
         "create_draft",
         "commit_draft",
         "undo_model",
+        "change_metadata",
+        "list_recoverable_drafts",
+        "restore_draft",
+        "ask_user_question",
       ])
       const first = await port.call("model_info", {}, new AbortController().signal)
       expect(first.value).toEqual({ calls: 1, privatePresent: false, explicit: "forwarded" })
@@ -76,6 +88,21 @@ await server.connect(new StdioServerTransport());
           expect.objectContaining({ timeout: 2_147_483_647 }),
         )
       }
+      const input = {
+        message: "Choose the material",
+        fields: [{ id: "material", label: "Material", required: true }],
+      }
+      const answered = await port.call(
+        assistantQuestionTool.name,
+        input,
+        new AbortController().signal,
+      )
+      expect(answered.value).toEqual({ action: "accept", content: { material: "pla" } })
+      expect(callTool).toHaveBeenLastCalledWith(
+        { name: assistantQuestionTool.name, arguments: input },
+        expect.anything(),
+        expect.objectContaining({ timeout: 2_147_483_647 }),
+      )
     } finally {
       await port.close()
     }

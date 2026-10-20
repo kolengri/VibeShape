@@ -28,7 +28,7 @@ bundle; omitting it uses the same default bundle directory as `prepare:local`.
 The first Electron invocation downloads the pinned runtime and checks its upstream checksums.
 Packaging also uses macOS `sips`, `iconutil`, `codesign`, `hdiutil`, Swift/AppKit and
 `osascript`/Finder. It emits a runnable
-`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.9-mac-arm64.dmg`, `SHA256SUMS`, and a
+`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.10-mac-arm64.dmg`, `SHA256SUMS`, and a
 `desktop-build.json` recording the source commit, editor inventory, main/preload/MCP bundles and image digest.
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
@@ -135,6 +135,11 @@ project settles accepted persistence work. The new turn first reconciles the aut
 draft and revisions; it never resends the interrupted prompt or uncertain CAD writes. A provider
 without session restoration reports that limitation instead of starting an unrelated conversation.
 Recovery does not open the configuration drawer or move the transcript reading position.
+After authenticated local resume, the assistant can inspect `list_recoverable_drafts` and explicitly
+adopt compatible semantic intent with `restore_draft`. Adoption requires the exact committed base,
+creates a new private draft attributed to the current actor, and still requires ordinary preview
+and commit. Bounded tab-memory retention does not survive reload or Stop; it never replays an
+uncertain saved write. See [ADR-0119](adr/0119-explicit-private-draft-recovery.md).
 Each recovery owner has its own five-attempt budget; ordinary bounded delivery-envelope retries
 remain separate. Accepted writes from the interrupted turn are sealed before continuation takes a
 new internal checkpoint under the recovered actor. If continuation changes the model, its latest
@@ -154,10 +159,19 @@ silently treated as readable documents. File contents stay in memory; saved tran
 their names, not a durable attachment archive. Attachment content is task data, never application
 instructions or permission to read an arbitrary filesystem path.
 
-Structured questions originate from ACP form elicitation, not parsed assistant prose. The current
-form UI supports string fields and advertised choices, including a separate custom-answer field
-when the agent supplies one. Unsupported form types are declined. Replies validate the original
-request and project/session scope; expiration, cancellation, and disconnect release pending forms.
+The native project's private MCP attachment advertises `ask_user_question`, independently of an
+agent harness's own input tool or ACP elicitation forwarding. It calls the desktop's existing
+question owner through a captured project/session and MCP transport generation. ACP form
+elicitation remains supported by that same owner; assistant prose never creates a form. Questions
+accept bounded non-secret string fields and advertised choices, including an optional custom-answer
+field when supplied. Unsupported form types are declined. Replies validate field values, ownership
+and the absolute expiration deadline. Duplicate, stale and late replies cannot settle a form again.
+
+An unanswered form blocks dependent CAD calls, queue drain, steering and recovery continuation,
+including when the provider reports ready prematurely. A valid reply releases that wait. Dismissal,
+expiry, Stop and disconnect cancel the question and pause queued work without granting an answer.
+Native forms normally live for five minutes; providers can impose a shorter MCP call timeout.
+The host cannot extend a provider-owned timeout through generic ACP configuration.
 
 Sending while a turn is running queues the message rather than silently canceling or steering it.
 The controller accepts up to eight queued messages with a bounded memory budget and sends them in
@@ -215,7 +229,9 @@ VibeShape AI server or hosted worker is needed. The provider must allow the brow
 CORS. API credentials remain in runtime memory, and model calls happen only after an explicit Send.
 Existing CAD WebWorkers continue to compute geometry on the person's device.
 Browser chat discovers and executes CAD through `discover_cad_tools` and `call_cad_tool`; its separate
-`ask_user_question` function requests bounded non-secret form answers and settles on response or Stop.
+`ask_user_question` function requests the same bounded non-secret form answers. API forms expire
+after two minutes. Dismissal, expiry or Stop ends dependent same-response tool execution and pauses
+the queue rather than returning a successful empty answer.
 
 ## Mesh handoff
 
@@ -244,9 +260,9 @@ checks, and disclose its actual signing/notarization status before publishing a 
 The current Apple Silicon channel is ad-hoc signed and not notarized; it must not claim Developer ID
 authentication. A Developer ID release additionally requires its signing and notarization checks:
 
-- Tag: `desktop-v0.1.9` for desktop package version `0.1.9`.
-- Apple Silicon asset: `VibeShape-0.1.9-mac-arm64.dmg`.
-- Intel asset, only after target verification: `VibeShape-0.1.9-mac-x64.dmg`.
+- Tag: `desktop-v0.1.10` for desktop package version `0.1.10`.
+- Apple Silicon asset: `VibeShape-0.1.10-mac-arm64.dmg`.
+- Intel asset, only after target verification: `VibeShape-0.1.10-mac-x64.dmg`.
 - Upload the image as a GitHub release asset with an advertised `sha256:` digest and matching size.
 - Include checksums and corresponding-source provenance with the release.
 

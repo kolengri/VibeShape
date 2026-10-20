@@ -1401,6 +1401,81 @@ it("requires a metadata commit result to preserve exact command identity, revisi
 })
 
 describe("authenticated local reload recovery", () => {
+  it.each(["list_recoverable_drafts", "restore_draft"] as const)(
+    "binds %s results to the current authenticated document and actor",
+    async (tool) => {
+      const broker = makeBroker({ origin })
+      broker.setClient({ name: "test-client", version: "1.0" })
+      const credential = localConnectResponseSchema.parse(
+        await (await broker.handle(request("connect", { protocolVersion: 1, document }))).json(),
+      )
+      const recoveryId = "0195b5ac-b220-7a2c-8c33-000000000001"
+      const operation = localOperationSchema.parse({
+        tool,
+        arguments: tool === "restore_draft" ? { recoveryId, baseRevision: document.revision } : {},
+      })
+      const pending = broker.invoke(operation)
+      const polled = localPollResponseSchema.parse(
+        await (
+          await broker.handle(
+            request(
+              "poll",
+              { protocolVersion: 1, sequence: 1, document, progress: null },
+              credential.token,
+            ),
+          )
+        ).json(),
+      )
+      if (!polled.work) throw new Error("Recovery work must be delivered.")
+      const value =
+        tool === "list_recoverable_drafts"
+          ? { schemaVersion: 1, documentId: document.id, revision: document.revision, items: [] }
+          : {
+              schemaVersion: 1,
+              recoveryId,
+              attribution: { type: "current-actor", actor: credential.actor },
+              draft: {
+                schemaVersion: 1,
+                draftId: "0195b5ac-b220-7a2c-8c33-000000000002",
+                documentId: document.id,
+                baseRevision: document.revision,
+                revision: document.revision + 1,
+                commandCount: 1,
+                expiresAt: new Date(Date.now() + 300_000).toISOString(),
+              },
+            }
+      const incorrect =
+        tool === "list_recoverable_drafts"
+          ? { ...value, documentId: recoveryId }
+          : {
+              ...value,
+              attribution: {
+                type: "current-actor",
+                actor: { type: "mcp", clientId: "org.example.other", sessionId: recoveryId },
+              },
+            }
+      const envelope = { protocolVersion: 1, requestId: polled.work.requestId, tool }
+      expect(
+        (
+          await broker.handle(
+            request(
+              "result",
+              { ...envelope, result: { ok: true, value: incorrect } },
+              credential.token,
+            ),
+          )
+        ).status,
+      ).toBe(400)
+      expect(
+        (
+          await broker.handle(
+            request("result", { ...envelope, result: { ok: true, value } }, credential.token),
+          )
+        ).status,
+      ).toBe(200)
+      expect(await pending).toMatchObject({ ok: true, value })
+    },
+  )
   it("suspends access, cancels work without replay and rotates the token on resume", async () => {
     let at = 1000
     const broker = makeBroker({ origin, now: () => at })

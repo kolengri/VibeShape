@@ -82,6 +82,7 @@ import {
 } from "../features/extrusion/extrusion-manipulator"
 import { useHolePointPicking } from "../features/hole/use-hole-point-picking"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
+import type { ModelEdgeSelection } from "../features/part-design/model-edge-selection"
 import {
   type ActivePartDesignTool,
   activeFeatureId,
@@ -167,6 +168,7 @@ import { ModelTree } from "./model-tree"
 import type { ModelTreeSelection } from "./model-tree-selection"
 import { ReferencePickProvider, useReferencePicking } from "./reference-pick-context"
 import { TaskPanel } from "./task-panel"
+import { useModelEdgeSelection } from "./use-model-edge-selection"
 import { useViewerPreferences } from "./viewer-preferences"
 import { SAFE_VIEWPORT_CENTER } from "./viewport-chrome-styles"
 import type { EditorWorkspaceName } from "./workspace"
@@ -1919,6 +1921,10 @@ export type EditorWorkspaceActions = Readonly<{
 }>
 
 type EditorWorkspaceProps = Readonly<{
+  selectedModelEdges?: ModelEdgeSelection | null | undefined
+  modelEdgeSelectionEnabled?: boolean | undefined
+  onModelEdgeToggle?: ((selection: ModelEdgeSelection) => void) | undefined
+  onModelEdgeSelectionChange?: ((selection: ModelEdgeSelection | null) => void) | undefined
   assistantToolTargets?: AssistantToolTargets | null | undefined
   viewControls?: ReactNode
   actions: EditorWorkspaceActions
@@ -2682,6 +2688,20 @@ function modelEdgeAxesMatch(
 }
 
 function useModelFeaturePicking(props: EditorWorkspaceProps) {
+  const idleEdges = useModelEdgeSelection({
+    controller: props.controller,
+    enabled: Boolean(
+      props.modelEdgeSelectionEnabled &&
+        !props.activeTool &&
+        !props.activeSketchTool &&
+        props.workspace === "model",
+    ),
+    selected: props.selectedModelEdges ?? null,
+    hiddenFeatureIds: props.hiddenFeatureIds,
+    visibility: props.partVisibility?.overrides,
+    onToggle: props.onModelEdgeToggle,
+    onChange: props.onModelEdgeSelectionChange,
+  })
   const holePicking = useHolePointPicking(props.controller, props.activeTool, props.hiddenSketchIds)
   const edgeTreatmentPicking = useEdgeTreatmentPicking(
     props.controller,
@@ -2700,7 +2720,8 @@ function useModelFeaturePicking(props: EditorWorkspaceProps) {
     viewportContext:
       holePicking.viewportContext ??
       edgeTreatmentPicking.viewportContext ??
-      shellPicking.viewportContext,
+      shellPicking.viewportContext ??
+      idleEdges,
   }
 }
 

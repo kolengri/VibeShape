@@ -1819,7 +1819,39 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   }
 
   function canWriteAuthoredMetadata(active: PersistentDocumentSession | null) {
-    return canWriteAuthoredState(active) && !getProjectActiveWorkBlock()
+    return authoredMetadataWriteBlock(active) === null
+  }
+
+  function authoredMetadataWriteBlock(active: PersistentDocumentSession | null) {
+    if (!active || state.status !== "ready" || state.report === null)
+      return "document-unavailable" as const
+    if (active.mode !== "read-write") return "read-only" as const
+    if (state.saveStatus === "saving") return "save-in-progress" as const
+    return getProjectActiveWorkBlock()
+  }
+
+  function authoredMetadataBlockedResult(
+    sourceCode: NonNullable<ReturnType<typeof authoredMetadataWriteBlock>>,
+  ) {
+    const messages = {
+      "document-unavailable": "Reopen the project before changing parts or folders.",
+      "read-only": "Open the document with write access before changing parts or folders.",
+      "save-in-progress": "Wait for saving to finish before changing parts or folders.",
+      "editor-draft": "Finish or cancel the active edit before changing parts or folders.",
+      "surface-texture-draft":
+        "Finish or cancel the surface texture edit before changing parts or folders.",
+      "automation-busy":
+        "Wait for the AI operation or review to finish before changing parts or folders.",
+    }
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "command-rejected" as const,
+        message: messages[sourceCode],
+        retryable: true,
+        sourceCode,
+      },
+    }
   }
 
   function canWriteAuthoredState(active: PersistentDocumentSession | null) {
@@ -2443,16 +2475,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     change: DocumentV2MetadataChange,
   ): Promise<DocumentMutationResult> {
     const active = session
-    if (!active || !canWriteAuthoredMetadata(active))
-      return {
-        ok: false,
-        diagnostic: {
-          code: "command-rejected",
-          message: "Finish the active edit before changing parts or folders.",
-          retryable: true,
-          sourceCode: null,
-        },
-      }
+    const blocked = authoredMetadataWriteBlock(active)
+    if (!active || blocked) return authoredMetadataBlockedResult(blocked ?? "document-unavailable")
     const result = await commitActiveAuthoredCommand(
       active,
       documentV2MetadataCommandSchema.parse({
