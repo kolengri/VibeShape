@@ -197,7 +197,59 @@ describe("embedded project access", () => {
     connection = createLocalAutomationConnection({ projectId, accessPolicy: "native-project" })
   }
 
-  it("automatically pairs a newly attached native client and serves model_info without auto-apply", async () => {
+  it.each([401, 410])(
+    "recovers native access after result credential loss (%s) without replaying queued work",
+    async (status) => {
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(0)
+      const acknowledgement = deferred<ReturnType<typeof ok>>()
+      const second = { ...work, requestId: "69a2b4b3-322c-4154-bae6-bfafb86b4256" }
+      const original = mocks.request.getMockImplementation()
+      let polls = 0
+      mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+        if (path === "/poll") {
+          polls++
+          return polls <= 2
+            ? ok({ protocolVersion: 1, work: polls === 1 ? work : second, cancelledRequestIds: [] })
+            : emptyPoll
+        }
+        if (path === "/result") return acknowledgement.promise
+        return original?.(path, ...args)
+      })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(mocks.execute).toHaveBeenCalledTimes(1)
+      acknowledgement.resolve({ ok: false, status, data: {} })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: false, error: false })
+      expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(2)
+      expect(mocks.execute).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it("keeps Stop authoritative during native credential recovery", async () => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    const original = mocks.request.getMockImplementation()
+    let delivered = false
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/poll" && !delivered) {
+        delivered = true
+        return ok({ protocolVersion: 1, work, cancelledRequestIds: [] })
+      }
+      if (path === "/result") return { ok: false, status: 410, data: {} }
+      return original?.(path, ...args)
+    })
+    await vi.advanceTimersByTimeAsync(500)
+    await connection.disable()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+    expect(mocks.execute).toHaveBeenCalledTimes(1)
+  })
+
+  it("automatically pairs a newly attached native client and serves model_info with connected model authority", async () => {
     useNativeProject()
     mocks.request.mockResolvedValueOnce(ok({ protocolVersion: 1, client: null, paired: false }))
     await ready()
@@ -235,7 +287,7 @@ describe("embedded project access", () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(connection.getSnapshot()).toMatchObject({
       connected: true,
-      autoApply: false,
+      autoApply: true,
       projectBound: true,
       projectManagement: false,
     })
@@ -247,7 +299,8 @@ describe("embedded project access", () => {
       undefined,
       id,
     )
-    expect(enableAutoApply).not.toHaveBeenCalled()
+    expect(enableAutoApply).toHaveBeenCalledWith(credential.actor)
+    expect(mocks.createHandle).toHaveBeenCalledWith({ approvalPolicy: "connected-assistant" })
     expect(connection.setProjectManagement(true)).toBe(false)
   })
 
@@ -265,14 +318,14 @@ describe("embedded project access", () => {
     expect(mocks.createHandle).not.toHaveBeenCalled()
   })
 
-  it("isolates native approval choices from external access and other projects", async () => {
+  it("isolates connected model authority from external access and other projects", async () => {
     const externalPreference = JSON.stringify({ client, autoApply: true })
     window.localStorage.setItem("vibeshape-local-ai-preferences", externalPreference)
     useNativeProject()
     await ready()
     await vi.advanceTimersByTimeAsync(0)
-    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
-    expect(connection.enableAutoApply()).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
+    expect(connection.disableAutoApply()).toBe(false)
     const secondId = "0195b5ac-b250-7a2c-8c33-000000000002"
     const other = createLocalAutomationConnection({
       projectId: secondId,
@@ -287,7 +340,7 @@ describe("embedded project access", () => {
       other.start()
       await other.status()
       await vi.advanceTimersByTimeAsync(0)
-      expect(other.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+      expect(other.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
       expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
       expect(mocks.request).toHaveBeenCalledWith(
         "/connect",
@@ -321,7 +374,7 @@ describe("embedded project access", () => {
     expect(connection.getSnapshot().connected).toBe(false)
     expect(mocks.request.mock.calls.some(([path]) => path === "/connect")).toBe(false)
     expect(await connection.enable()).toBe(true)
-    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
   })
 
   it.each(["current owner", "replacement owner"])(
@@ -362,7 +415,7 @@ describe("embedded project access", () => {
         mocks.request.mock.calls.some(([path]) => path === "/connect" || path === "/resume"),
       ).toBe(false)
       expect(await connection.enable()).toBe(true)
-      expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+      expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
     },
   )
 
@@ -401,7 +454,7 @@ describe("embedded project access", () => {
       storage.mockRestore()
     }
     expect(await connection.enable()).toBe(true)
-    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
   })
 
   it.each([
@@ -472,24 +525,22 @@ describe("embedded project access", () => {
     }
   })
 
-  it("restores only an explicitly chosen native project approval mode", async () => {
+  it("restores connected model authority without a second approval choice", async () => {
+    window.localStorage.setItem(
+      `vibeshape-local-ai-preferences:${id}`,
+      JSON.stringify({ client, autoApply: false }),
+    )
     useNativeProject()
     await ready()
     await vi.advanceTimersByTimeAsync(0)
-    expect(connection.enableAutoApply()).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
+    expect(connection.disableAutoApply()).toBe(false)
     connection.dispose()
     sessionStorage.clear()
     useNativeProject()
     await ready()
     await vi.advanceTimersByTimeAsync(0)
     expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
-    expect(connection.disableAutoApply()).toBe(true)
-    connection.dispose()
-    sessionStorage.clear()
-    useNativeProject()
-    await ready()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
   })
 
   it("revokes a late native automatic grant after Stop without restoring preferences", async () => {
@@ -535,7 +586,7 @@ describe("embedded project access", () => {
     expect(connection.getSnapshot().connected).toBe(false)
     expect(mocks.createHandle).not.toHaveBeenCalled()
     expect(await connection.enable()).toBe(true)
-    expect(connection.getSnapshot().autoApply).toBe(false)
+    expect(connection.getSnapshot().autoApply).toBe(true)
   })
 
   it("keeps native access disabled when its Stop preference cannot be read", async () => {
@@ -582,7 +633,8 @@ describe("local AI project management consent", () => {
       ctrlKey: false,
       pointerType: "mouse",
     })
-    expect(screen.getByRole("menuitemradio", { name: "Approve each change" })).toBeTruthy()
+    expect(screen.queryByRole("menuitemradio")).toBeNull()
+    expect(screen.getByRole("button", { name: "Stop AI" })).toBeTruthy()
     expect(screen.queryByRole("menuitemcheckbox", { name: "Allow project management" })).toBeNull()
   })
 
@@ -1082,7 +1134,7 @@ describe("browser-owned local AI connection lifecycle", () => {
     acknowledgement.resolve({ ok: false, status: 401, data: {} })
     await vi.advanceTimersByTimeAsync(0)
     expect(mocks.execute).toHaveBeenCalledTimes(1)
-    expect(connection.getSnapshot()).toMatchObject({ connected: false, busy: false, error: true })
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, busy: false })
     expect(dispose).toHaveBeenCalledTimes(1)
   })
   it("requires explicit pairing and an idle browser opt-in, then resets on disconnect", async () => {

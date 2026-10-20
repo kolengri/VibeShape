@@ -35,8 +35,10 @@ it.each(["manual", "native-project"] as const)(
       } else {
         expect(instructions).not.toContain(manual)
         expect(instructions).toContain("automatically connects this embedded assistant")
-        expect(instructions).toContain("current project's read and proposal tools")
-        expect(instructions).toContain("manual Apply unless the person has explicitly chosen")
+        expect(instructions).toContain("current project's read and model-editing tools")
+        expect(instructions).toContain(
+          "authorizes validated model commits without another Apply step",
+        )
         expect(instructions).toContain("Respect Stop AI; never enable access or switch projects")
         expect(instructions).toContain("Project management is unavailable")
       }

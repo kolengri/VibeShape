@@ -16,8 +16,9 @@ in-app ACP agent instead receives a separate project-bound MCP attachment automa
 configured agent connects. Its internal server name is project-specific; discover advertised tool
 names instead of assuming `vibeshape` is the namespace. Select the intended project, discover tools,
 and call `model_info`; no external MCP configuration or initial **Enable AI session** action is
-required for the embedded agent. Its default access enables reads and proposals, with ordinary
-manual Apply. A copied external configuration still requires explicit **Enable AI session** approval;
+required for the embedded agent. Connecting the built-in chat authorizes validated changes to that project, without a second
+Apply action. The same policy applies to the built-in browser API chat; external clients keep their
+separate pairing and approval policy. A copied external configuration still requires explicit **Enable AI session** approval;
 successful tool discovery alone does not grant document authority. Manual project navigation
 replaces the external client's document scope.
 
@@ -26,18 +27,25 @@ Other tools never wait for future pairing; establish project identity before mod
 or any prior grant, unpaired reads fail immediately. A timeout or failed invocation is not an empty
 model and does not authorize another project or a replacement CAD workflow.
 
+A retryable `session-suspended` diagnostic is a transient connection pause. Keep the current project
+and allow automatic recovery; do not ask the person to enable an already authorized embedded
+session. Retry only the safe `model_info` identity read after recovery, inspect the saved revision
+and affected records, and decide what remains. Never replay an uncertain write. Explicit Stop AI
+still prevents automatic reconnection and requires the person's intentional Enable action.
+
 The app's ACP chat retains its own document session, tool authority, transcript and queue when another
 project tab is selected. Background tools remain bound to their original project, including exact
-preview, revisions, persistence and approval policy. A pending manual review waits in that project's
-tab; selecting that project shows exact solid-feature draft geometry in its viewport before Apply
-without saving it.
-It never becomes another project's review. Embedded agents cannot list, create or open projects
+preview, revisions, persistence and connected model authority. Exact construction previews appear
+in that project before each saved stage; a preview itself remains unsaved. It never becomes another
+project's geometry. The chat keeps an internal turn checkpoint for **View before** and **Undo agent
+changes** without adding items to parametric History. Do not create checkpoint features or folders.
+A changed project or intervening human edit invalidates a stale undo target. Embedded agents cannot list, create or open projects
 through their MCP attachment. The configured executable connects automatically for each project;
 explicitly disconnecting one project does not disconnect the others. Saved transcript text
 is not proof that the agent's native context resumed. Static web chat uses a direct compatible API;
 it does not spawn a local stdio agent or publish the browser's project as a reachable MCP server.
 
-Native approval choices are remembered per project, separately from external clients. **Stop AI**
+Native connection state is retained per project, separately from external clients. **Stop AI**
 revokes that project's access and keeps it disabled across reload or reopening until the person
 chooses **Enable AI session**. Reconnecting the ACP process does not undo Stop. No tool can change
 the approval mode or restore a stopped connection.
@@ -75,10 +83,10 @@ Remote uses stateless Streamable HTTP with JSON POST responses. `405 Method Not 
 
 After tool discovery and pairing, call `model_info` with `{}`. Check the actual project and `summary.revision`, and retain any measurement diagnostic. A failed invocation is a connectivity/access failure, not an empty model. Distinguish configuration, protocol initialization, tool discovery, pairing, and a successful invocation when reporting setup.
 
-Manual browser Apply is the default. Clicking the status bar's **AI connection and approval mode** opens **Approve each change** and **Apply automatically**. The automatic option opens **Set up auto-apply**, which requires a separate explicit human opt-in for supported first-party CAD edits. Local access and approval mode are remembered for that client and browser origin across projects and browser sessions; remote consent remains session-bound. It covers current feature versions, supported same-type upgrades, feature/sketch/variable lifecycle edits, suppression and removal. An existing grant applies a valid coherent CAD draft without repeated confirmation. Unknown, extension and import feature targets remain outside this grant. Metadata and separate import, assembly, history and texture reviews remain manual. No MCP tool enables it. An idle person can choose **Approve each change** to disable auto-apply without ending pairing; already running operations must finish first. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
+For external MCP clients, manual browser Apply is the default. Clicking the status bar's **AI connection and approval mode** opens **Approve each change** and **Apply automatically**. The automatic option opens **Set up auto-apply**, which requires a separate explicit human opt-in for supported first-party CAD edits. Local access and approval mode are remembered for that client and browser origin across projects and browser sessions; remote consent remains session-bound. It covers current feature versions, supported same-type upgrades, feature/sketch/variable lifecycle edits, suppression and removal. An existing grant applies a valid coherent CAD draft without repeated confirmation. Unknown, extension and import feature targets remain outside this grant. Metadata and separate import, assembly, history and texture reviews remain manual. No MCP tool enables it. An idle person can choose **Approve each change** to disable auto-apply without ending pairing; already running operations must finish first. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
 
 Keep the paired tab open. Local stdio automatically restores the same approved client and project
-following transient transport errors, reload, background pauses or bridge restart. The browser retains the latest explicitly chosen approval mode, including manual mode. Recovery
+following transient transport errors, reload, background pauses or bridge restart. External connections retain the latest explicitly chosen approval mode, including manual mode. Built-in chat retains connected model authority. Recovery
 credentials remain tab-scoped and the bridge stores them privately under the current OS user; they
 never enter project backups. An active tab renews its one-hour lease. After lease expiry, loss of tab storage, or a project
 change, the remembered local client can establish fresh authority. A different client requires

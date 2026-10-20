@@ -2,6 +2,7 @@ import type { AssistantSnapshot } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useId, useRef, useState } from "react"
 import type { createNativeChatController } from "./native-chat-controller"
 
@@ -27,7 +28,13 @@ function SessionSelector({
 }) {
   const descriptionId = useId()
   return (
-    <div className="min-w-0 [&_[data-slot=field-label]]:sr-only [&_[role=combobox]>span:first-child]:truncate">
+    <div
+      className={cn(
+        "min-w-0 max-w-full [&_[data-slot=field-label]]:sr-only [&_[role=combobox]>span:first-child]:truncate",
+        "[&_[role=combobox]]:h-6 [&_[role=combobox]]:gap-1 [&_[role=combobox]]:px-1.5 [&_[role=combobox]]:py-0 [&_[role=combobox]]:text-xs",
+        "[&_[role=combobox]]:border-0 [&_[role=combobox]]:bg-transparent [&_[role=combobox]]:shadow-none [&_[role=combobox]]:hover:bg-accent dark:[&_[role=combobox]]:bg-transparent",
+      )}
+    >
       <SelectField
         label={label}
         menuLabel={label}
@@ -80,7 +87,7 @@ function SessionChoices({
   const configs = snapshot.configOptions
   return (
     <div
-      className="grid min-w-0 grid-cols-1 items-end gap-1 @xs/composer:grid-cols-2 @sm/composer:grid-cols-3"
+      className="grid min-w-0 grid-cols-1 items-end gap-x-1 gap-y-0.5 @xs/composer:grid-cols-2 @sm/composer:grid-cols-3"
       aria-busy={pending || undefined}
     >
       {snapshot.modes.length > 0 && !configs.some((config) => config.category === "mode") && (

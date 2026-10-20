@@ -1,5 +1,10 @@
 # Quick load-free lightweighting
 
+Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
+The built-in chat commits validated changes to its current project without another Apply action;
+manual review requirements below describe external MCP clients. Publishing or updating the reusable
+local library remains separately reviewed for every connection.
+
 Use this workflow when `analyze_quick_lightweighting` and `request_quick_lightweighting` are
 advertised and the user authorized load-free material removal. Both paired local and remote MCP
 use the editor's browser worker. These tools generate periodic lattice geometry and do not analyze loads,

@@ -72,11 +72,14 @@ describe("assistant transcript and composer", () => {
       { id: "assistant", role: "assistant", text: "Would you prefer option one or option two?" },
     ]
     render(panel({ messages, sessionControls: <button type="button">Advertised model</button> }))
-    const summary = screen.getByText("Run tests")
+    const summary = screen.getByText("Run tests", { selector: "summary span" }).closest("summary")
+    if (!summary) throw new Error("The tool output must expose a native summary control.")
     const details = summary.closest("details")
     expect(details?.open).toBe(false)
     expect(details?.querySelector("summary")?.textContent).toContain("Completed")
     expect(screen.queryByRole("form", { name: "Agent question" })).toBeNull()
+    summary.focus()
+    expect(document.activeElement).toBe(summary)
     await userEvent.click(summary)
     expect(details?.open).toBe(true)
     expect(screen.getByRole("region", { name: "Tool details" }).textContent).toContain(

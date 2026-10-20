@@ -8,8 +8,10 @@ import { createSurfaceTexturePreviewWorker } from "./surface-texture-preview-wor
 export function useTexturedMeshes(
   controller: DocumentControllerState,
   sources: readonly ViewerMesh[],
+  committedOnly = false,
 ) {
-  const context = useSurfaceTexturePreviewContext()
+  const transientContext = useSurfaceTexturePreviewContext()
+  const context = committedOnly ? null : transientContext
   const authority = controller.authoredSnapshot
   const report = controller.report
   const draft = context?.draft

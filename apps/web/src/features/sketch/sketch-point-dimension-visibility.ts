@@ -10,8 +10,8 @@ import {
 
 export function useSketchPointDimensionVisibility() {
   const [showAll, setShowAll] = useState(false)
-  const [hoveredPointId, setHoveredPointId] = useState<string | null>(null)
-  const [focusedPointId, setFocusedPointId] = useState<string | null>(null)
+  const [hoveredEntityId, setHoveredEntityId] = useState<string | null>(null)
+  const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null)
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelClear = useCallback(() => {
     if (clearTimer.current !== null) clearTimeout(clearTimer.current)
@@ -23,7 +23,7 @@ export function useSketchPointDimensionVisibility() {
       const target =
         event.target instanceof Element
           ? event.target.closest(
-              'circle[data-sketch-entity-type="point"], [data-sketch-coordinate-point-id]',
+              "[data-sketch-entity-id], [data-sketch-coordinate-point-id], [data-sketch-constraint-id]",
             )
           : null
       const pointId =
@@ -31,12 +31,14 @@ export function useSketchPointDimensionVisibility() {
         target?.getAttribute("data-sketch-entity-id")
       if (pointId) {
         cancelClear()
-        setHoveredPointId(pointId)
+        setHoveredEntityId(pointId)
+      } else if (target?.hasAttribute("data-sketch-constraint-id")) {
+        cancelClear()
       } else if (clearTimer.current === null) {
-        // Allow the pointer to cross the small gap from a point to its editable labels.
+        // Keep annotations reachable while the pointer crosses the gap from their geometry.
         clearTimer.current = setTimeout(() => {
           clearTimer.current = null
-          setHoveredPointId(null)
+          setHoveredEntityId(null)
         }, 150)
       }
     },
@@ -44,30 +46,37 @@ export function useSketchPointDimensionVisibility() {
   )
   const onPointerLeave = useCallback(() => {
     cancelClear()
-    setHoveredPointId(null)
+    setHoveredEntityId(null)
   }, [cancelClear])
   const onFocus = useCallback((event: FocusEvent<HTMLDivElement>) => {
-    setFocusedPointId(
+    setFocusedEntityId(
       event.target
-        .closest("[data-sketch-coordinate-point-id]")
-        ?.getAttribute("data-sketch-coordinate-point-id") ?? null,
+        .closest("[data-sketch-coordinate-point-id], [data-sketch-entity-id]")
+        ?.getAttribute("data-sketch-coordinate-point-id") ??
+        event.target.closest("[data-sketch-entity-id]")?.getAttribute("data-sketch-entity-id") ??
+        null,
     )
   }, [])
   const onBlur = useCallback((event: FocusEvent<HTMLDivElement>) => {
     const target =
       event.relatedTarget instanceof Element
-        ? event.relatedTarget.closest("[data-sketch-coordinate-point-id]")
+        ? event.relatedTarget.closest("[data-sketch-coordinate-point-id], [data-sketch-entity-id]")
         : null
-    setFocusedPointId(target?.getAttribute("data-sketch-coordinate-point-id") ?? null)
+    setFocusedEntityId(
+      target?.getAttribute("data-sketch-coordinate-point-id") ??
+        target?.getAttribute("data-sketch-entity-id") ??
+        null,
+    )
   }, [])
-  const activePointIds = useMemo(
-    () => [hoveredPointId, focusedPointId].filter((id): id is string => id !== null),
-    [hoveredPointId, focusedPointId],
+  const activeEntityIds = useMemo(
+    () => [hoveredEntityId, focusedEntityId].filter((id): id is string => id !== null),
+    [hoveredEntityId, focusedEntityId],
   )
   return {
     showAll,
     setShowAll,
-    activePointIds,
+    activeEntityIds,
+    activePointIds: activeEntityIds,
     onPointerOver,
     onPointerLeave,
     onFocus,

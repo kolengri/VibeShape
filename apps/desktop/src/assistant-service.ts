@@ -19,6 +19,11 @@ import { createAssistantPermissions } from "./assistant-permissions"
 import { assistantPromptContent } from "./assistant-prompt-content"
 import { createAssistantQuestions } from "./assistant-questions"
 import {
+  assistantSteeringThreadStatus,
+  assistantSteerOutcomeSchema,
+  supportsAssistantSteering,
+} from "./assistant-steering"
+import {
   assistantConnectionFailure,
   killAssistantProcess,
   spawnAssistantProcess,
@@ -26,6 +31,8 @@ import {
 } from "./assistant-transport"
 import { applySessionOptions, sessionUpdateEvent } from "./assistant-updates"
 
+type ThreadStatus = NonNullable<ReturnType<typeof assistantSteeringThreadStatus>>
+type TerminalThreadStatus = Exclude<ThreadStatus, "active">
 type Owner = {
   snapshot: AssistantSnapshot
   process: ChildProcessWithoutNullStreams | null
@@ -42,6 +49,17 @@ type Owner = {
   cancelTimer: ReturnType<typeof setTimeout> | undefined
   failureCode: AssistantErrorCode | undefined
   stopping: Promise<void> | undefined
+  steering: {
+    sawIdle: boolean
+    sawActive: boolean
+    completed: TerminalThreadStatus | null
+    cancelEpoch: number
+  } | null
+  steerReceipts: Map<string, { fingerprint: string; result: Promise<AssistantResult> }>
+  externalTurn: { active: boolean } | null
+  externalTimer: ReturnType<typeof setTimeout> | undefined
+  threadStatus: ReturnType<typeof assistantSteeringThreadStatus>
+  cancelEpoch: number
 }
 
 export type AssistantServiceOptions = {
@@ -70,6 +88,22 @@ class AssistantFailure extends Error {
 function failure(code: AssistantErrorCode): AssistantResult {
   return { ok: false, code }
 }
+
+function hasLiveTurnOwner(owner: Owner) {
+  return owner.busy || owner.steering !== null || owner.externalTurn !== null
+}
+
+function recordPendingSteeringActivity(
+  pending: NonNullable<Owner["steering"]>,
+  status: ThreadStatus,
+) {
+  if (status === "active") {
+    if (pending.sawIdle) pending.sawActive = true
+    return
+  }
+  if (pending.sawActive) pending.completed = status
+  pending.sawIdle = true
+}
 function errorCode(error: unknown, fallback: AssistantErrorCode): AssistantErrorCode {
   if (error instanceof AssistantFailure) return error.code
   if (error instanceof acp.RequestError) {
@@ -84,6 +118,7 @@ function errorCode(error: unknown, fallback: AssistantErrorCode): AssistantError
 function applyInitialization(owner: Owner, init: acp.InitializeResponse) {
   if (init.protocolVersion !== acp.PROTOCOL_VERSION) throw new AssistantFailure("protocol-error")
   owner.snapshot.canResume = init.agentCapabilities?.loadSession === true
+  if (supportsAssistantSteering(init)) owner.snapshot.canSteer = true
   owner.snapshot.attachmentCapabilities = {
     text: init.agentCapabilities?.promptCapabilities?.embeddedContext === true,
     images: init.agentCapabilities?.promptCapabilities?.image === true,
@@ -157,6 +192,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
     owner.stopping = stopping.get(owner.snapshot.projectId) ?? Promise.resolve()
     owner.failureCode = code
     owner.acceptingUpdates = false
+    owner.externalTurn = null
+    clearTimeout(owner.externalTimer)
     owner.permissions.cancel()
     owner.questions.cancel()
     clearTimeout(owner.cancelTimer)
@@ -217,6 +254,9 @@ export function createAssistantService(options: AssistantServiceOptions) {
   function acceptsUpdate(owner: Owner, sessionId: string) {
     return isCurrent(owner) && owner.acceptingUpdates && sessionId === owner.snapshot.sessionId
   }
+  function hasConnectedSession(owner: Owner, sessionId: string) {
+    return isCurrent(owner) && owner.process !== null && sessionId === owner.snapshot.sessionId
+  }
   function requestPermission(
     owner: Owner,
     params: acp.RequestPermissionRequest,
@@ -228,13 +268,12 @@ export function createAssistantService(options: AssistantServiceOptions) {
   function acceptsIdleConfiguration(owner: Owner, params: acp.SessionNotification) {
     return (
       ["config_option_update", "current_mode_update"].includes(params.update.sessionUpdate) &&
-      isCurrent(owner) &&
-      owner.process !== null &&
-      owner.snapshot.status === "ready" &&
-      params.sessionId === owner.snapshot.sessionId
+      hasConnectedSession(owner, params.sessionId) &&
+      owner.snapshot.status === "ready"
     )
   }
   function update(owner: Owner, params: acp.SessionNotification) {
+    if (hasConnectedSession(owner, params.sessionId)) updateSteeringActivity(owner, params.update)
     if (!acceptsUpdate(owner, params.sessionId) && !acceptsIdleConfiguration(owner, params)) return
     owner.eventBytes += Buffer.byteLength(JSON.stringify(params))
     owner.eventCount += 1
@@ -391,6 +430,12 @@ export function createAssistantService(options: AssistantServiceOptions) {
       cancelTimer: undefined,
       failureCode: undefined,
       stopping: undefined,
+      steering: null,
+      steerReceipts: new Map(),
+      externalTurn: null,
+      externalTimer: undefined,
+      threadStatus: null,
+      cancelEpoch: 0,
     }
     owners.set(input.projectId, owner)
     snapshot(owner)
@@ -429,8 +474,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         ? "stale-session"
         : (owner.failureCode ?? errorCode(error, "request-failed"))
     if (isCurrent(owner) && owner.process) {
-      owner.snapshot.status =
-        code === "authentication-required" ? "authentication-required" : "ready"
+      if (code === "authentication-required") owner.snapshot.status = "authentication-required"
       emit(owner, {
         projectId: owner.snapshot.projectId,
         sessionToken: owner.snapshot.sessionToken,
@@ -441,22 +485,162 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
     return failure(code)
   }
+  function settleTurnReadiness(owner: Owner) {
+    if (!isCurrent(owner) || !owner.process) return
+    const pending = hasLiveTurnOwner(owner)
+    owner.acceptingUpdates = pending && owner.snapshot.status !== "cancelling"
+    if (pending) return
+    if (owner.snapshot.status === "prompting" || owner.snapshot.status === "cancelling")
+      owner.snapshot.status = "ready"
+    clearTimeout(owner.cancelTimer)
+  }
+  function finishExternalTurn(owner: Owner, status: TerminalThreadStatus) {
+    const cancelled = owner.snapshot.status === "cancelling"
+    owner.externalTurn = null
+    clearTimeout(owner.externalTimer)
+    settleTurnReadiness(owner)
+    emit(owner, {
+      projectId: owner.snapshot.projectId,
+      sessionToken: owner.snapshot.sessionToken,
+      type: "completed",
+      stopReason: cancelled ? "cancelled" : status === "idle" ? "end_turn" : "error",
+    })
+    if (status === "systemError" || status === "notLoaded")
+      emit(owner, {
+        projectId: owner.snapshot.projectId,
+        sessionToken: owner.snapshot.sessionToken,
+        type: "error",
+        code: "request-failed",
+      })
+    snapshot(owner)
+  }
+  function updateSteeringActivity(owner: Owner, update: acp.SessionUpdate) {
+    if (!owner.snapshot.canSteer) return
+    const status = assistantSteeringThreadStatus(update)
+    if (!status) return
+    owner.threadStatus = status
+    if (owner.steering) recordPendingSteeringActivity(owner.steering, status)
+    if (owner.externalTurn) {
+      if (status === "active") owner.externalTurn.active = true
+      else if (owner.externalTurn.active) finishExternalTurn(owner, status)
+    }
+  }
+  function supportedAttachments(owner: Owner, attachments: readonly AssistantAttachment[]) {
+    const capabilities = owner.snapshot.attachmentCapabilities
+    return attachments.every((attachment) =>
+      attachment.type === "image" ? capabilities.images : capabilities.text,
+    )
+  }
+  function settleSteering(owner: Owner) {
+    owner.steering = null
+    if (!isCurrent(owner) || !owner.process) return
+    settleTurnReadiness(owner)
+    snapshot(owner)
+  }
+  function acceptSteerOutcome(owner: Owner, outcome: "injected" | "startedNewTurn") {
+    const pending = owner.steering
+    if (outcome !== "startedNewTurn" || !pending) return
+    if (pending.completed) return finishExternalTurn(owner, pending.completed)
+    owner.externalTurn = { active: pending.sawActive }
+    // A reserved fallback owns a new logical turn before its active notification arrives.
+    if (!pending.sawActive) owner.threadStatus = null
+    owner.snapshot.status = "prompting"
+    owner.externalTimer = setTimeout(
+      () => stop(owner, "timeout"),
+      options.promptTimeoutMs ?? 10 * 60_000,
+    )
+    if (pending.cancelEpoch !== owner.cancelEpoch) requestCancellation(owner)
+  }
+  async function performSteering(
+    owner: Owner,
+    input: Extract<AssistantRequest, { operation: "steer" }>["input"],
+  ) {
+    const pending: NonNullable<Owner["steering"]> = {
+      sawIdle: owner.threadStatus !== null && owner.threadStatus !== "active",
+      sawActive: false,
+      completed: null,
+      cancelEpoch: owner.cancelEpoch,
+    }
+    owner.steering = pending
+    owner.acceptingUpdates = true
+    try {
+      const response = await bounded(
+        owner,
+        agent(owner).request("_session/steering", {
+          sessionId: sessionId(owner),
+          prompt: assistantPromptContent(owner.snapshot.projectId, input.text, input.attachments),
+        }),
+      )
+      if (!isCurrent(owner) || !owner.process) throw new AssistantFailure("stale-session")
+      const parsed = assistantSteerOutcomeSchema.safeParse(response)
+      if (!parsed.success) throw new AssistantFailure("protocol-error")
+      if (parsed.data.outcome === "failed") throw new AssistantFailure("request-failed")
+      acceptSteerOutcome(owner, parsed.data.outcome)
+      return parsed.data.outcome
+    } finally {
+      settleSteering(owner)
+    }
+  }
+  function steerBlocked(owner: Owner, attachments: readonly AssistantAttachment[]) {
+    if (!owner.snapshot.canSteer) return "unsupported"
+    if (owner.snapshot.status !== "prompting" || owner.steering) return "agent-busy"
+    return supportedAttachments(owner, attachments) ? null : "unsupported"
+  }
+  function rememberSteer(
+    owner: Owner,
+    requestId: string,
+    fingerprint: string,
+    result: Promise<AssistantResult>,
+  ) {
+    owner.steerReceipts.set(requestId, { fingerprint, result })
+    if (owner.steerReceipts.size > 128) {
+      const oldest = owner.steerReceipts.keys().next().value
+      if (oldest) owner.steerReceipts.delete(oldest)
+    }
+    void result.then((value) => {
+      if (!value.ok) owner.steerReceipts.delete(requestId)
+    })
+  }
+  function steer(
+    owner: Owner,
+    input: Extract<AssistantRequest, { operation: "steer" }>["input"],
+  ): Promise<AssistantResult> {
+    const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex")
+    const previous = owner.steerReceipts.get(input.requestId)
+    if (previous)
+      return previous.fingerprint === fingerprint
+        ? previous.result
+        : Promise.resolve(failure("invalid-request"))
+    const blocked = steerBlocked(owner, input.attachments)
+    if (blocked) return Promise.resolve(failure(blocked))
+    const result: Promise<AssistantResult> = performSteering(owner, input).then(
+      (steerOutcome) => ({ ok: true, value: snapshot(owner), steerOutcome }),
+      (error) => failure(errorCode(error, "request-failed")),
+    )
+    rememberSteer(owner, input.requestId, fingerprint, result)
+    return result
+  }
   function preparePrompt(
     owner: Owner,
     attachments: readonly AssistantAttachment[],
   ):
     | { ok: true; connection: acp.ClientConnection; sessionId: string }
     | { ok: false; code: AssistantErrorCode } {
-    if (owner.busy || owner.snapshot.status !== "ready") return { ok: false, code: "agent-busy" }
-    const capabilities = owner.snapshot.attachmentCapabilities
-    const supported = attachments.every((attachment) =>
-      attachment.type === "image" ? capabilities.images : capabilities.text,
-    )
-    if (!supported) return { ok: false, code: "unsupported" }
+    if (hasLiveTurnOwner(owner) || owner.snapshot.status !== "ready")
+      return { ok: false, code: "agent-busy" }
+    if (!supportedAttachments(owner, attachments)) return { ok: false, code: "unsupported" }
     const connection = owner.connection
     const sessionId = owner.snapshot.sessionId
     if (!connection || !sessionId) return { ok: false, code: "agent-exited" }
     return { ok: true, connection, sessionId }
+  }
+  function releasePrompt(owner: Owner) {
+    owner.busy = false
+    settleTurnReadiness(owner)
+    if (!owner.acceptingUpdates) {
+      owner.permissions.cancel()
+      owner.questions.cancel()
+    }
   }
   async function prompt(
     owner: Owner,
@@ -467,20 +651,27 @@ export function createAssistantService(options: AssistantServiceOptions) {
     if (!prepared.ok) return prepared
     const { connection, sessionId } = prepared
     owner.busy = true
+    // Terminal metadata from a previous prompt cannot seed this turn's steering lifecycle.
+    owner.threadStatus = null
     owner.eventBytes = 0
     owner.eventCount = 0
     owner.acceptingUpdates = true
     owner.snapshot.status = "prompting"
     snapshot(owner)
     try {
-      const result = await bounded(
-        owner,
-        connection.agent.request(acp.methods.agent.session.prompt, {
-          sessionId,
-          prompt: assistantPromptContent(owner.snapshot.projectId, text, attachments),
-        }),
-        options.promptTimeoutMs ?? 10 * 60_000,
-      )
+      let result: acp.PromptResponse
+      try {
+        result = await bounded(
+          owner,
+          connection.agent.request(acp.methods.agent.session.prompt, {
+            sessionId,
+            prompt: assistantPromptContent(owner.snapshot.projectId, text, attachments),
+          }),
+          options.promptTimeoutMs ?? 10 * 60_000,
+        )
+      } finally {
+        releasePrompt(owner)
+      }
       if (!isCurrent(owner) || !owner.process) return failure("stale-session")
       emit(owner, {
         projectId: owner.snapshot.projectId,
@@ -488,16 +679,9 @@ export function createAssistantService(options: AssistantServiceOptions) {
         type: "completed",
         stopReason: result.stopReason,
       })
-      owner.snapshot.status = "ready"
       return { ok: true, value: snapshot(owner) }
     } catch (error) {
       return promptFailure(owner, error)
-    } finally {
-      owner.busy = false
-      owner.acceptingUpdates = false
-      owner.permissions.cancel()
-      owner.questions.cancel()
-      clearTimeout(owner.cancelTimer)
     }
   }
   function agent(owner: Owner) {
@@ -569,7 +753,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
   }
   async function control(owner: Owner, request: AssistantRequest): Promise<AssistantResult> {
-    if (owner.busy) return failure("agent-busy")
+    if (hasLiveTurnOwner(owner)) return failure("agent-busy")
     owner.busy = true
     try {
       await performControl(owner, request)
@@ -582,16 +766,21 @@ export function createAssistantService(options: AssistantServiceOptions) {
       owner.busy = false
     }
   }
-  function cancel(owner: Owner): AssistantResult {
-    if (owner.snapshot.status !== "prompting") return { ok: true, value: snapshot(owner) }
+  function requestCancellation(owner: Owner) {
     owner.acceptingUpdates = false
     owner.permissions.cancel()
     owner.questions.cancel()
     owner.snapshot.status = "cancelling"
+    clearTimeout(owner.cancelTimer)
     owner.cancelTimer = setTimeout(() => stop(owner, "timeout"), options.cancelTimeoutMs ?? 2_000)
     void agent(owner)
       .notify(acp.methods.agent.session.cancel, { sessionId: sessionId(owner) })
       .catch(() => stop(owner, "agent-exited"))
+  }
+  function cancel(owner: Owner): AssistantResult {
+    if (owner.snapshot.status !== "prompting") return { ok: true, value: snapshot(owner) }
+    owner.cancelEpoch += 1
+    requestCancellation(owner)
     return { ok: true, value: snapshot(owner) }
   }
   function owned(input: { projectId: string; sessionToken: string }) {
@@ -624,6 +813,12 @@ export function createAssistantService(options: AssistantServiceOptions) {
       return { ok: true, value: { ...owner.snapshot } }
     }
     if (!owner.process || !owner.connection) return failure("agent-exited")
+    return dispatchConnectedRequest(owner, request)
+  }
+  function dispatchConnectedRequest(
+    owner: Owner,
+    request: Exclude<AssistantRequest, { operation: "connect" | "disconnect" }>,
+  ): Promise<AssistantResult> | AssistantResult {
     switch (request.operation) {
       case "respondPermission":
         return respondPermission(owner, request.input.requestId, request.input.allow)
@@ -633,6 +828,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
         return cancel(owner)
       case "prompt":
         return prompt(owner, request.input.text, request.input.attachments)
+      case "steer":
+        return steer(owner, request.input)
       default:
         return control(owner, request)
     }

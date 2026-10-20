@@ -6,7 +6,7 @@ import type {
   GeometryViewportOptions,
   ViewerMesh,
 } from "@vibeshape/viewer/three-viewport"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   PrintViewportStatus,
   usePrintViewportFactory,
@@ -52,16 +52,61 @@ function selectedOccurrenceMesh(meshes: readonly ViewerMesh[], instanceId: strin
   }
   return { featureId: instanceId, positions, normals, indices, triangleFaceIds }
 }
+function useAssemblyViewportMount(
+  canvas: RefObject<HTMLCanvasElement | null>,
+  viewport: RefObject<GeometryViewport | null>,
+  onSelect: (id: string | null) => void,
+  readOnlyRef: RefObject<boolean>,
+  factory: typeof createAssemblyViewport,
+) {
+  const [ready, setReady] = useState(false)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let disposed = false
+    const element = canvas.current
+    if (!element) return
+    void factory(element, {
+      onSelectionChange: (selection) => {
+        if (selection && !readOnlyRef.current) onSelect(selection.featureId)
+      },
+    })
+      .then((created) => {
+        if (disposed) {
+          created.dispose()
+          return
+        }
+        viewport.current = created
+        created.setInteractionMode(readOnlyRef.current ? "camera-only" : "select")
+        created.setOriginPlaneVisibility({ xy: false, xz: false, yz: false })
+        setReady(true)
+      })
+      .catch(() => {
+        if (!disposed) setFailed(true)
+      })
+    return () => {
+      disposed = true
+      viewport.current?.dispose()
+      viewport.current = null
+    }
+  }, [canvas, factory, onSelect, readOnlyRef, viewport])
+  return { ready, failed }
+}
+
 function useAssemblyViewportRenderer(
   inspection: AssemblyInspection | null,
   selectedId: string | null,
   onSelect: (id: string | null) => void,
   autoFit: boolean,
+  readOnly: boolean,
 ) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const viewport = useRef<GeometryViewport | null>(null)
-  const [ready, setReady] = useState(false)
-  const [failed, setFailed] = useState(false)
+  const readOnlyRef = useRef(readOnly)
+  const previousReadOnly = useRef(readOnly)
+  useLayoutEffect(() => {
+    readOnlyRef.current = readOnly
+    viewport.current?.setInteractionMode(readOnly ? "camera-only" : "select")
+  }, [readOnly])
   const profile = useViewerPreferences((state) => state.printerProfile)
   const printBedVisible = useViewerPreferences((state) => state.printBedVisible)
   const groundGridVisible = useViewerPreferences((state) => state.groundGridVisible)
@@ -74,40 +119,24 @@ function useAssemblyViewportRenderer(
     groundGridVisible,
   )
   usePrintViewportSynchronization(viewport, printPresentation)
-  const highlight = useMemo(() => selectedOccurrenceMesh(meshes, selectedId), [meshes, selectedId])
-  useEffect(() => {
-    let disposed = false
-    const element = canvas.current
-    if (!element) return
-    void printPresentation
-      .factory(element, {
-        onSelectionChange: (selection) => {
-          if (selection) onSelect(selection.featureId)
-        },
-      })
-      .then((created) => {
-        if (disposed) {
-          created.dispose()
-          return
-        }
-        viewport.current = created
-        created.setOriginPlaneVisibility({ xy: false, xz: false, yz: false })
-        setReady(true)
-      })
-      .catch(() => {
-        if (!disposed) setFailed(true)
-      })
-    return () => {
-      disposed = true
-      viewport.current?.dispose()
-      viewport.current = null
-    }
-  }, [onSelect, printPresentation.factory])
+  const highlight = useMemo(
+    () => (readOnly ? null : selectedOccurrenceMesh(meshes, selectedId)),
+    [meshes, readOnly, selectedId],
+  )
+  const { ready, failed } = useAssemblyViewportMount(
+    canvas,
+    viewport,
+    onSelect,
+    readOnlyRef,
+    printPresentation.factory,
+  )
   useEffect(() => {
     if (!ready) return
+    const toggled = previousReadOnly.current !== readOnly
+    previousReadOnly.current = readOnly
     viewport.current?.setMeshes(meshes)
-    if (autoFit && meshes.length) viewport.current?.fit()
-  }, [autoFit, meshes, ready])
+    if (autoFit && meshes.length && !toggled) viewport.current?.fit()
+  }, [autoFit, meshes, readOnly, ready])
   useEffect(() => {
     if (ready) viewport.current?.setFeatureSelection(highlight)
   }, [highlight, ready])
@@ -127,14 +156,16 @@ export function AssemblyViewport({
   selectedId,
   onSelect,
   autoFit = true,
+  readOnly = false,
 }: {
   inspection: AssemblyInspection | null
   selectedId: string | null
   onSelect: (id: string | null) => void
   autoFit?: boolean
+  readOnly?: boolean
 }) {
   const t = useTranslations("app.assembly")
-  const view = useAssemblyViewportRenderer(inspection, selectedId, onSelect, autoFit)
+  const view = useAssemblyViewportRenderer(inspection, selectedId, onSelect, autoFit, readOnly)
   return (
     <section className="relative h-full min-h-0" aria-label={t("viewportRegion")}>
       <canvas
@@ -142,7 +173,8 @@ export function AssemblyViewport({
         role="img"
         className="block h-full w-full"
         aria-label={t("viewport")}
-        data-assembly-selected-instance={selectedId ?? ""}
+        data-assembly-selected-instance={readOnly ? "" : (selectedId ?? "")}
+        data-read-only-presentation={readOnly ? "true" : undefined}
       />
       <Button
         type="button"

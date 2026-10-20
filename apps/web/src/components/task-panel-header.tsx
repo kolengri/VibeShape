@@ -28,7 +28,14 @@ export function TaskPanelHeader({
 }) {
   const supplement = useContext(supplementalContent)
   return (
-    <header className={cn("sticky top-0 z-10 grid min-w-0 gap-2 bg-panel", className)}>
+    <header
+      className={cn(
+        "sticky top-0 z-10 grid min-w-0 gap-2 bg-panel",
+        // Cover the compact scrollport's top padding without moving the header or its actions.
+        "max-lg:before:pointer-events-none max-lg:before:absolute max-lg:before:inset-x-0 max-lg:before:-top-4 max-lg:before:h-4 max-lg:before:bg-panel max-lg:before:content-['']",
+        className,
+      )}
+    >
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <h2 className="min-w-0 truncate text-sm font-medium" title={title}>
           {title}

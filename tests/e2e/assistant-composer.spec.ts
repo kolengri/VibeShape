@@ -2,6 +2,7 @@ import type { Locator, Page, Route } from "@playwright/test"
 import { z } from "zod"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
 
 const endpoint = "https://assistant-composer.example.test/v1/chat/completions"
 const headers = {
@@ -188,19 +189,27 @@ test("transfers selected files, answers structured model questions, collapses to
   await expect(panel.getByRole("log")).toContainText(
     "The requested dimensions and corner treatment are ready.",
   )
-  const tools = panel.getByRole("log").locator("details")
+  const tools = panel.getByRole("log").locator(":scope > details")
   await expect(tools).toHaveCount(2)
   for (const row of await tools.all()) {
     await expect(row).not.toHaveAttribute("open")
-    await expect(row.locator("section")).not.toBeVisible()
+    await expect(
+      row.getByRole("region", { name: "Tool details", exact: true, includeHidden: true }),
+    ).not.toBeVisible()
   }
-  await tools.last().locator("summary").click()
-  await expect(
-    tools.last().getByRole("region", { name: "Tool details", exact: true }),
-  ).toContainText('"query": "model info"')
-  await expect(
-    tools.last().getByRole("region", { name: "Tool details", exact: true }),
-  ).toContainText('"result"')
+  await tools.last().locator(":scope > summary").click()
+  const details = tools.last().getByRole("region", { name: "Tool details", exact: true })
+  const parameters = details.getByRole("region", { name: "Parameters", exact: true })
+  await expect(parameters.getByText("Query", { exact: true })).toBeVisible()
+  await expect(parameters.getByText("model info", { exact: true })).toBeVisible()
+  const result = details.getByRole("region", { name: "Result", exact: true })
+  await expect(result).toBeVisible()
+  await expect(result.getByText("Tools", { exact: true })).toBeVisible()
+  const technical = details.locator("details")
+  await expect(technical).not.toHaveAttribute("open")
+  await technical.getByText("Technical details", { exact: true }).click()
+  await expect(technical.locator("pre")).toContainText('"query": "model info"')
+  await expect(technical.locator("pre")).toContainText('"result"')
   await contained(page, composer)
   await expect(panel.locator('[data-slot="spinner"]')).toHaveCount(0)
   await page.screenshot({
@@ -244,6 +253,189 @@ test("transfers selected files, answers structured model questions, collapses to
   expect(stored).not.toContain("width=42 mm")
   expect(stored).not.toContain("hole=5 mm")
   expect(stored).not.toContain("fixture-memory-key")
+})
+
+test("preserves the reading position through tool and answer updates and resumes following at the bottom", async ({
+  page,
+}) => {
+  let requests = 0
+  let readingTurn: Route | undefined
+  let followingTurn: Route | undefined
+  const longAnswer = Array.from(
+    { length: 70 },
+    (_, index) =>
+      `Reading line ${index + 1}: Keep these earlier modeling notes available for review.`,
+  ).join("\n")
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers })
+      return
+    }
+    const request = requestSchema.parse(route.request().postDataJSON())
+    requests += 1
+    switch (requests) {
+      case 1:
+        expect(lastContent(request)).toBe("Write a long report")
+        await fulfill(route, answer(longAnswer))
+        break
+      case 2:
+        expect(lastContent(request)).toBe("Inspect while I read")
+        readingTurn = route
+        break
+      case 3:
+        expect(JSON.parse(lastContent(request))).toHaveProperty("tools")
+        await fulfill(route, answer("Inspection finished while you were reading earlier notes."))
+        break
+      case 4:
+        expect(lastContent(request)).toBe("Continue at the bottom")
+        followingTurn = route
+        break
+      default:
+        throw new Error("Unexpected scroll regression fixture request")
+    }
+  })
+  await page.setViewportSize({ width: 1024, height: 800 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/")
+  await saved(page)
+  const panel = await connect(page)
+  const log = panel.getByRole("log")
+  const input = panel.getByRole("textbox", { name: "Message", exact: true })
+  const send = panel.getByRole("button", { name: "Send", exact: true })
+  await input.fill("Write a long report")
+  await send.click()
+  await expect(log).toContainText("Reading line 70:")
+  await expect(panel.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
+  expect(await log.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(500)
+
+  await input.fill("Inspect while I read")
+  await send.click()
+  await expect.poll(() => Boolean(readingTurn)).toBe(true)
+  const readingPosition = await log.evaluate(async (node) => {
+    node.scrollTop = Math.max(0, node.scrollTop - 900)
+    await new Promise<void>((resolve) =>
+      node.ownerDocument.defaultView?.requestAnimationFrame(() => resolve()),
+    )
+    return node.scrollTop
+  })
+  await expect
+    .poll(() => log.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight))
+    .toBeGreaterThan(48)
+  if (!readingTurn) throw new Error("The reading turn must be held until the user scrolls up.")
+  await fulfill(
+    readingTurn,
+    tool("discover_cad_tools", { query: "model info", limit: 1 }, "inspect-while-reading"),
+  )
+  await expect(log).toContainText("Inspection finished while you were reading earlier notes.")
+  await expect(panel.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
+  const updatedPosition = await log.evaluate(async (node) => {
+    await new Promise<void>((resolve) =>
+      node.ownerDocument.defaultView?.requestAnimationFrame(() =>
+        node.ownerDocument.defaultView?.requestAnimationFrame(() => resolve()),
+      ),
+    )
+    return node.scrollTop
+  })
+  expect(Math.abs(updatedPosition - readingPosition)).toBeLessThanOrEqual(1)
+  expect(
+    await log.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight),
+  ).toBeGreaterThan(48)
+
+  await log.evaluate(async (node) => {
+    node.scrollTop = node.scrollHeight
+    await new Promise<void>((resolve) =>
+      node.ownerDocument.defaultView?.requestAnimationFrame(() => resolve()),
+    )
+  })
+  await expect
+    .poll(() => log.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight))
+    .toBeLessThanOrEqual(1)
+  await input.fill("Continue at the bottom")
+  await send.click()
+  await expect.poll(() => Boolean(followingTurn)).toBe(true)
+  if (!followingTurn) throw new Error("The following turn must wait for the bottom position.")
+  await fulfill(followingTurn, answer(`${longAnswer}\nThe latest answer is at the bottom.`))
+  await expect(log).toContainText("The latest answer is at the bottom.")
+  await expect(panel.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
+  await expect
+    .poll(() => log.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight))
+    .toBeLessThanOrEqual(48)
+  expect(requests).toBe(4)
+})
+
+test("resumes transcript following after closing a scrolled tool result", async ({ page }) => {
+  let requests = 0
+  let pendingAnswer: Route | undefined
+  const longAnswer = Array.from(
+    { length: 60 },
+    (_, index) => `Updated report line ${index + 1}`,
+  ).join("\n")
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers })
+      return
+    }
+    const request = requestSchema.parse(route.request().postDataJSON())
+    requests += 1
+    if (requests === 1) {
+      expect(lastContent(request)).toBe("Inspect available commands")
+      await fulfill(route, tool("discover_cad_tools", { limit: 6 }, "inspect-commands"))
+    } else if (requests === 2) {
+      expect(JSON.parse(lastContent(request))).toHaveProperty("tools")
+      await fulfill(route, answer("Inspection finished."))
+    } else if (requests === 3) {
+      expect(lastContent(request)).toBe("Continue the report")
+      pendingAnswer = route
+    } else {
+      throw new Error("Unexpected tool-scroll regression fixture request")
+    }
+  })
+  await page.setViewportSize({ width: 1024, height: 800 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/")
+  await saved(page)
+  const panel = await connect(page)
+  const log = panel.getByRole("log")
+  const input = panel.getByRole("textbox", { name: "Message", exact: true })
+  const send = panel.getByRole("button", { name: "Send", exact: true })
+  await input.fill("Inspect available commands")
+  await send.click()
+  await expect(log).toContainText("Inspection finished.")
+  await expect(panel.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
+  const summary = log.locator("summary").filter({ hasText: "Discover cad tools" }).first()
+  await summary.click()
+  const output = log.getByRole("region", { name: "Tool details", exact: true })
+  expect(await output.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(
+    100,
+  )
+  await log.evaluate(async (node) => {
+    node.scrollTop = node.scrollHeight
+    await new Promise<void>((resolve) =>
+      node.ownerDocument.defaultView?.requestAnimationFrame(() => resolve()),
+    )
+  })
+  await output.evaluate(async (node) => {
+    node.scrollTop = 100
+    await new Promise<void>((resolve) =>
+      node.ownerDocument.defaultView?.requestAnimationFrame(() => resolve()),
+    )
+  })
+  await input.fill("Continue the report")
+  await send.click()
+  await expect.poll(() => Boolean(pendingAnswer)).toBe(true)
+  expect(await output.evaluate((node) => node.scrollTop)).toBe(100)
+  await summary.click()
+  await expect(output).toBeHidden()
+  await expect
+    .poll(() => log.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight))
+    .toBeLessThanOrEqual(48)
+  if (!pendingAnswer) throw new Error("The answer must wait until tool details close.")
+  await fulfill(pendingAnswer, answer(longAnswer))
+  await expect(log).toContainText("Updated report line 60")
+  await expect
+    .poll(() => log.evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight))
+    .toBeLessThanOrEqual(48)
+  expect(requests).toBe(3)
 })
 
 test("retains an oversized draft before any request and keeps the light composer usable at 200 percent", async ({
@@ -291,4 +483,113 @@ test("retains an oversized draft before any request and keeps the light composer
     path: `artifacts/placement-drag-continuity/assistant-ui/composer-${test.info().project.name}-light-200.png`,
     animations: "disabled",
   })
+})
+
+test("compares and atomically undoes a connected assistant turn spanning saved stages", async ({
+  page,
+}) => {
+  test.setTimeout(180_000)
+  let requests = 0
+  let stageGate: Route | undefined
+  let nextRevision = 0
+  let draftId = ""
+  const valueSchema = z.object({ ok: z.literal(true), value: z.record(z.string(), z.unknown()) })
+  const draftSchema = z.object({ draftId: z.string(), revision: z.number() })
+  const call = (name: string, args: unknown) =>
+    tool("call_cad_tool", { name, arguments: args }, `step-${requests}`)
+  const savedStageCommand = (step: number, result: Record<string, unknown>) => {
+    if (step === 3 || step === 6) {
+      const draft = draftSchema.parse(result)
+      draftId = draft.draftId
+      const part = step === 3 ? 1 : 2
+      return call("create_box", {
+        draftId,
+        baseRevision: draft.revision,
+        commandId: `0195b5ac-b250-7a2c-8c33-00000000080${part}`,
+        featureId: `0195b5ac-b250-7a2c-8c33-00000000081${part}`,
+        label: `Assistant stage ${part}`,
+        widthMm: 10 + part * 5,
+        depthMm: 12,
+        heightMm: 20 + part * 10,
+      })
+    }
+    if (step === 4 || step === 7) return call("commit_draft", { draftId })
+    return null
+  }
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers })
+      return
+    }
+    const request = requestSchema.parse(route.request().postDataJSON())
+    requests += 1
+    if (requests === 1) {
+      await fulfill(route, call("model_info", {}))
+      return
+    }
+    const result = valueSchema.parse(JSON.parse(lastContent(request))).value
+    const stage = savedStageCommand(requests, result)
+    if (stage) {
+      await fulfill(route, stage)
+    } else if (requests === 2) {
+      const summary = z.object({ revision: z.number() }).parse(result.summary)
+      await fulfill(route, call("create_draft", { baseRevision: summary.revision }))
+    } else if (requests === 5) {
+      nextRevision = z.number().parse(result.revision)
+      stageGate = route
+    } else if (requests === 8) {
+      await fulfill(route, answer("Both saved stages are complete."))
+    } else throw new Error(`Unexpected assistant fixture request ${requests}`)
+  })
+  await page.goto("/")
+  await saved(page)
+  await invokeModelCommand(page, "Primitives", "Box")
+  await page
+    .getByRole("form", { name: "Create box", exact: true })
+    .getByRole("button", { name: "Create box", exact: true })
+    .click()
+  await saved(page)
+  const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+  const panel = await connect(page)
+  await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Build two saved stages")
+  await panel.getByRole("button", { name: "Send", exact: true }).click()
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
+  await expect.poll(() => Boolean(stageGate)).toBe(true)
+  await expect(panel.getByRole("button", { name: "Undo agent changes", exact: true })).toHaveCount(
+    0,
+  )
+  await expect(page.getByRole("region", { name: "Review AI changes", exact: true })).toHaveCount(0)
+  if (!stageGate) throw new Error("Expected the second construction stage gate")
+  await fulfill(stageGate, call("create_draft", { baseRevision: nextRevision }))
+  await expect(panel.getByText("Both saved stages are complete.", { exact: true })).toBeVisible()
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
+  const before = panel.getByRole("button", { name: "View before", exact: true })
+  await expect(before).toBeEnabled()
+  await before.click()
+  await expect(panel.getByRole("button", { name: "View current", exact: true })).toBeEnabled()
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+  await expect(page.getByRole("treeitem", { name: "Assistant stage 1", exact: true })).toBeVisible()
+  await expect(page.getByRole("treeitem", { name: "Assistant stage 2", exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath("assistant-view-before.png") })
+  await panel.getByRole("button", { name: "View current", exact: true }).click()
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
+  await page.screenshot({ path: test.info().outputPath("assistant-view-current.png") })
+  await panel.getByRole("button", { name: "Undo agent changes", exact: true }).click()
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+  await expect(page.getByRole("treeitem", { name: "Assistant stage 1", exact: true })).toHaveCount(
+    0,
+  )
+  await expect(page.getByRole("treeitem", { name: "Assistant stage 2", exact: true })).toHaveCount(
+    0,
+  )
+  await expect(before).toHaveCount(0)
+  await page
+    .getByRole("toolbar", { name: "Model commands", exact: true })
+    .getByRole("button", { name: "Redo", exact: true })
+    .click()
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
+  await page.reload()
+  await saved(page)
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
 })

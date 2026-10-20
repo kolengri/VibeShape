@@ -1,6 +1,6 @@
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import type { CommandDispatcher } from "@vibeshape/domain/command-dispatcher"
-import type { DocumentEvent } from "@vibeshape/domain/commands"
+import type { CommandActor, DocumentEvent } from "@vibeshape/domain/commands"
 import {
   commandActorSchema,
   commandActorsEqual,
@@ -38,7 +38,16 @@ import {
 } from "@vibeshape/protocol"
 import { z } from "zod"
 import { authorityTransactionSchema } from "./authority-transaction"
+import type {
+  DocumentHistoryCheckpoint,
+  DocumentHistoryCheckpointState,
+} from "./document-undo-history"
 import { draftCommandFailure } from "./draft-validation-diagnostics"
+
+export type {
+  DocumentHistoryCheckpoint,
+  DocumentHistoryCheckpointState,
+} from "./document-undo-history"
 
 const DEFAULT_LEASE_DURATION_MS = 30_000
 
@@ -72,6 +81,20 @@ export type DocumentHistoryPort = Readonly<{
       baseSnapshot: DocumentSnapshot
     }>,
   ) => Promise<SessionPortResult<DocumentSnapshot>>
+  checkpoints?: Readonly<{
+    capture: (acceptsActor: (actor: CommandActor) => boolean) => DocumentHistoryCheckpoint | null
+    read: (handle: DocumentHistoryCheckpoint) => DocumentHistoryCheckpointState | null
+    preview: (handle: DocumentHistoryCheckpoint) => DocumentHistoryPreview | null
+    release: (handle: DocumentHistoryCheckpoint) => void
+    seal: (handle: DocumentHistoryCheckpoint, revision: number) => boolean
+    restore: (input: {
+      handle: DocumentHistoryCheckpoint
+      request: DocumentHistoryRequest
+      sessionId: SessionId
+      lease: { epoch: number; nowMs: number }
+      baseSnapshot: DocumentSnapshot
+    }) => Promise<SessionPortResult<DocumentSnapshot>>
+  }>
 }>
 
 const openSessionInputSchema = z
@@ -355,7 +378,12 @@ function portDiagnostic(
   message: string,
   source: SessionPortDiagnostic,
 ) {
-  return diagnostic(code, message, source.retryable, source.code)
+  return diagnostic(
+    code,
+    source.code === "checkpoint-budget-exceeded" ? source.message : message,
+    source.retryable,
+    source.code,
+  )
 }
 
 function commandDiagnostic(source: { code: string; message: string; retryable: boolean }) {
@@ -507,8 +535,23 @@ async function persistHistoryRequest(
   sessionId: SessionId,
   lease: { epoch: number; nowMs: number },
   baseSnapshot: DocumentSnapshot,
+  checkpoint?: DocumentHistoryCheckpoint,
 ) {
   try {
+    if (checkpoint) {
+      if (!history.checkpoints)
+        return {
+          ok: false as const,
+          diagnostic: diagnostic("command-rejected", "The internal checkpoint is unavailable."),
+        }
+      return await history.checkpoints.restore({
+        handle: checkpoint,
+        request,
+        sessionId,
+        lease,
+        baseSnapshot,
+      })
+    }
     return await history.navigate({ request, sessionId, lease, baseSnapshot })
   } catch {
     return {
@@ -543,6 +586,16 @@ export class PersistentDocumentSession {
   #lease: WriterLease | null
   #closed = false
   #operationQueue: Promise<void> = Promise.resolve()
+  #pendingOperations = 0
+
+  get hasPendingOperations() {
+    return this.#pendingOperations > 0
+  }
+
+  /** Captures the saved head after work already accepted by this session. */
+  settleAcceptedOperations(): Promise<number> {
+    return this.#enqueue(async () => this.#snapshot.revision)
+  }
 
   constructor(input: {
     snapshot: DocumentSnapshot
@@ -588,6 +641,34 @@ export class PersistentDocumentSession {
 
   navigateHistory(input: unknown): Promise<PersistentDocumentHistoryResult> {
     return this.#enqueue(() => this.#navigateHistory(input))
+  }
+
+  captureHistoryCheckpoint(acceptsActor: (actor: CommandActor) => boolean) {
+    if (this.#closed || !this.#lease || this.hasPendingOperations) return null
+    return this.#dependencies.repository.history?.checkpoints?.capture(acceptsActor) ?? null
+  }
+
+  readHistoryCheckpoint(handle: DocumentHistoryCheckpoint) {
+    if (this.#closed || !this.#lease) return null
+    return this.#dependencies.repository.history?.checkpoints?.read(handle) ?? null
+  }
+
+  releaseHistoryCheckpoint(handle: DocumentHistoryCheckpoint) {
+    this.#dependencies.repository.history?.checkpoints?.release(handle)
+  }
+
+  sealHistoryCheckpoint(handle: DocumentHistoryCheckpoint, revision: number) {
+    if (this.#closed || !this.#lease) return false
+    return this.#dependencies.repository.history?.checkpoints?.seal(handle, revision) ?? false
+  }
+
+  previewHistoryCheckpoint(handle: DocumentHistoryCheckpoint) {
+    if (this.#closed || !this.#lease) return null
+    return this.#dependencies.repository.history?.checkpoints?.preview(handle) ?? null
+  }
+
+  restoreHistoryCheckpoint(handle: DocumentHistoryCheckpoint, input: unknown) {
+    return this.#enqueue(() => this.#navigateHistory(input, handle))
   }
 
   moveHistoryItem(input: unknown): Promise<PersistentDocumentHistoryResult> {
@@ -703,7 +784,10 @@ export class PersistentDocumentSession {
     return { ok: true, snapshot: restored, rebuild: await this.#rebuild() }
   }
 
-  async #navigateHistory(input: unknown): Promise<PersistentDocumentHistoryResult> {
+  async #navigateHistory(
+    input: unknown,
+    checkpoint?: DocumentHistoryCheckpoint,
+  ): Promise<PersistentDocumentHistoryResult> {
     if (this.#closed)
       return {
         ok: false,
@@ -716,6 +800,13 @@ export class PersistentDocumentSession {
       this.#snapshot.revision,
     )
     if (!validated.ok) return validated
+    if (checkpoint && validated.request.direction !== "undo")
+      return {
+        ok: false,
+        diagnostic: historyRequestDiagnostic(
+          "Internal checkpoints restore only an owned baseline.",
+        ),
+      }
     const lease = await this.#renewWriteAccess()
     if (!lease.ok) return lease
     const result = await persistHistoryRequest(
@@ -724,6 +815,7 @@ export class PersistentDocumentSession {
       this.#sessionId,
       { epoch: lease.lease.epoch, nowMs: lease.nowMs },
       this.#snapshot,
+      checkpoint,
     )
     if (!result.ok)
       return {
@@ -1151,7 +1243,10 @@ export class PersistentDocumentSession {
   }
 
   #enqueue<Result>(operation: () => Promise<Result>): Promise<Result> {
-    const result = this.#operationQueue.then(operation)
+    this.#pendingOperations += 1
+    const result = this.#operationQueue.then(operation).finally(() => {
+      this.#pendingOperations -= 1
+    })
     this.#operationQueue = result.then(
       () => undefined,
       () => undefined,

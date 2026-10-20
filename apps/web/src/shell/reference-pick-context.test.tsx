@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, mock } from "bun:test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { type ReactNode, useLayoutEffect } from "react"
+import { type ReactNode, useLayoutEffect, useState } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 import { ReferencePickField } from "../features/part-design/reference-pick-field"
 import { i18n } from "../i18n"
@@ -180,6 +180,104 @@ function App({
 }
 
 describe("workspace reference picking", () => {
+  it("keeps joined controls keyboard reachable and cancels 3D picking when the native list changes", async () => {
+    const user = userEvent.setup()
+    const onChange = mock((_value: string) => {})
+    const onBlur = mock(() => {})
+    function SelectionField() {
+      const [value, setValue] = useState("")
+      return (
+        <form aria-label="References">
+          <ReferencePickField
+            id="target-solid"
+            name="targetBody"
+            label="Target solid"
+            value={value}
+            placeholder="Choose a body"
+            options={[
+              { value: "right", label: "Split · right" },
+              { value: "left", label: "Split · left", disabled: true },
+            ]}
+            candidates={candidates}
+            required
+            onBlur={onBlur}
+            onValueChange={(next) => {
+              setValue(next)
+              onChange(next)
+            }}
+          />
+          <button type="button">Next control</button>
+          <Probe />
+        </form>
+      )
+    }
+    render(
+      <App state={controller()}>
+        <SelectionField />
+      </App>,
+    )
+    const pick = screen.getByRole("button", { name: "Select Target solid in 3D" })
+    const select = screen.getByRole("combobox", { name: "Target solid" }) as HTMLSelectElement
+    expect(select.name).toBe("targetBody")
+    expect(select.required).toBe(true)
+    expect(select.checkValidity()).toBe(false)
+
+    await user.tab()
+    expect(document.activeElement).toBe(pick)
+    await user.keyboard("{Enter}")
+    expect(pick.getAttribute("aria-pressed")).toBe("true")
+    expect(latest?.viewportContext).toBeTruthy()
+    await user.tab()
+    expect(document.activeElement).toBe(select)
+    expect(onBlur).toHaveBeenCalledTimes(1)
+    await user.selectOptions(select, "right")
+    expect(onChange).toHaveBeenCalledWith("right")
+    expect(pick.textContent).toContain("Split · right")
+    expect(pick.getAttribute("aria-pressed")).toBe("false")
+    expect(latest?.viewportContext).toBeUndefined()
+    expect(select.checkValidity()).toBe(true)
+    await user.selectOptions(select, "left")
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(select.value).toBe("right")
+    await user.tab()
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Next control" }))
+    expect(onBlur).toHaveBeenCalledTimes(2)
+  })
+
+  it("retains missing references and associated errors when both joined controls are disabled", () => {
+    render(
+      <App state={controller()}>
+        <ReferencePickField
+          id="unavailable-solid"
+          label="Tool solid"
+          value="missing-body"
+          placeholder="Choose a body"
+          options={[]}
+          candidates={candidates}
+          disabled
+          required
+          description="Choose a committed body."
+          error="The selected body is unavailable."
+          onValueChange={() => {}}
+        />
+      </App>,
+    )
+    const select = screen.getByRole("combobox", { name: "Tool solid" }) as HTMLSelectElement
+    const pick = screen.getByRole("button", {
+      name: "Select Tool solid in 3D",
+    }) as HTMLButtonElement
+    expect(select.disabled).toBe(true)
+    expect(pick.disabled).toBe(true)
+    expect(select.value).toBe("missing-body")
+    expect(select.getAttribute("aria-invalid")).toBe("true")
+    expect(pick.getAttribute("aria-invalid")).toBe("true")
+    const descriptions =
+      "unavailable-solid-description unavailable-solid-error unavailable-solid-pick-help"
+    expect(select.getAttribute("aria-describedby")).toBe(descriptions)
+    expect(pick.getAttribute("aria-describedby")).toBe(descriptions)
+    expect(screen.getByRole("alert").textContent).toBe("The selected body is unavailable.")
+  })
+
   it("switches ownership, ignores stale picks and old-owner unmount cleanup, and applies once", async () => {
     const user = userEvent.setup()
     const state = controller()

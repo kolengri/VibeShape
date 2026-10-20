@@ -1,6 +1,6 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { variableIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -84,7 +84,7 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("VariablesForm", () => {
-  it("keeps the protected removal reason visible and associated with its action", () => {
+  it("keeps row actions compact and exposes protected removal reasons on keyboard focus", async () => {
     renderForm({
       variables: [
         { schemaVersion: 0, id: variableId, name: "width", expression: "20 mm" },
@@ -95,8 +95,23 @@ describe("VariablesForm", () => {
     expect(remove.disabled).toBe(true)
     expect(remove.getAttribute("title")).toBeNull()
     const reason = screen.getByText(copy.removeInUse)
-    expect(reason.className).not.toContain("sr-only")
+    expect(reason.className).toContain("sr-only")
     expect(remove.getAttribute("aria-describedby")).toBe(reason.id)
+    const actions = remove.closest("td")
+    expect(actions).toBeTruthy()
+    if (actions) {
+      const rename = within(actions).getByRole("button", { name: copy.rename })
+      expect(rename.textContent).toBe("")
+      expect(rename.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
+    }
+    expect(remove.textContent).toBe("")
+    expect(remove.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
+    const explanation = screen.getAllByRole("group", { name: copy.remove })[0]
+    expect(explanation?.getAttribute("tabindex")).toBe("0")
+    act(() => explanation?.focus())
+    expect((await screen.findByRole("tooltip")).textContent).toContain(copy.removeInUse)
+    await userEvent.click(remove)
+    expect(screen.getAllByRole("textbox", { name: copy.nameInput })).toHaveLength(2)
   })
 
   it("adds a focused draft row, evaluates it, and guards async double submission", async () => {

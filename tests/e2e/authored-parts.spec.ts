@@ -1,7 +1,68 @@
-import type { Page } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { createSolids, openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { invokeModelCommand } from "./model-command-support"
+
+test("uses uniform browser rows and keeps full-row selection visible beneath child controls", async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await page.goto("/")
+  await createSolids(page)
+  await invokeModelCommand(page, "Create", "Datum plane")
+  const form = page.getByRole("form", { name: "Create datum plane", exact: true })
+  await form.getByRole("button", { name: "Create datum plane", exact: true }).click()
+  await saved(page)
+  const tree = page.getByRole("complementary", { name: "Model tree", exact: true })
+  const origin = tree.getByRole("treeitem", { name: "XY", exact: true })
+  const datum = tree.getByRole("treeitem", { name: "Datum plane 1", exact: true })
+  const part = tree.getByRole("treeitem", { name: "Part Box 1", exact: true })
+  const rowMetrics = (locator: Locator) =>
+    locator.evaluate((element) => {
+      const browser = element.ownerDocument.defaultView
+      if (!browser) throw new Error("Expected the model browser window.")
+      return {
+        height: element.getBoundingClientRect().height,
+        fontSize: browser.getComputedStyle(element).fontSize,
+        iconSize: element.querySelector("svg")?.getBoundingClientRect().width,
+        iconX: element.querySelector("svg")?.getBoundingClientRect().left,
+      }
+    })
+  expect(await rowMetrics(datum)).toEqual(await rowMetrics(origin))
+  expect(await rowMetrics(part)).toEqual(await rowMetrics(origin))
+  for (const theme of ["Light", "Dark"]) {
+    await setTheme(page, theme)
+    await part.click()
+    await part.hover()
+    await expect(part).toHaveAttribute("aria-selected", "true")
+    const presentation = await part.evaluate((button) => {
+      const row = button.parentElement
+      if (!row) throw new Error("Expected an owning browser row.")
+      const browser = button.ownerDocument.defaultView
+      if (!browser) throw new Error("Expected the model browser window.")
+      const overlay = browser.getComputedStyle(row, "::after")
+      return {
+        background: browser.getComputedStyle(row).backgroundColor,
+        labelBackground: browser.getComputedStyle(button).backgroundColor,
+        overlayInset: [overlay.top, overlay.right, overlay.bottom, overlay.left],
+        overlayShadow: overlay.boxShadow,
+        pointerEvents: overlay.pointerEvents,
+      }
+    })
+    expect(presentation.background).not.toBe("rgba(0, 0, 0, 0)")
+    expect(presentation.labelBackground).toBe("rgba(0, 0, 0, 0)")
+    expect(presentation.overlayInset).toEqual(["0px", "0px", "0px", "0px"])
+    expect(presentation.overlayShadow).not.toBe("none")
+    expect(presentation.pointerEvents).toBe("none")
+    await tree.screenshot({
+      path: test.info().outputPath(`browser-rows-${theme.toLowerCase()}.png`),
+    })
+    await tree.getByRole("button", { name: "Rename part Box 1", exact: true }).click()
+    await expect(page.getByRole("dialog", { name: "Rename item", exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  }
+})
 
 async function setTheme(page: Page, theme: string) {
   await openApplicationMenuItem(page, "Settings…")

@@ -1,5 +1,10 @@
 # Planar source import
 
+Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
+The built-in chat commits validated changes to its current project without another Apply action;
+manual review requirements below describe external MCP clients. Publishing or updating the reusable
+local library remains separately reviewed for every connection.
+
 Use this flow when the five planar import tools are advertised and the user authorized importing
 selected SVG/DXF source bytes into the paired project. The result is an ordinary editable Sketch
 with exact supported curves and captured source provenance. Import creates no Part. Native

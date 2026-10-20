@@ -1,5 +1,10 @@
 # Assembly and local component library
 
+Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
+The built-in chat commits validated changes to its current project without another Apply action;
+manual review requirements below describe external MCP clients. Publishing or updating the reusable
+local library remains separately reviewed for every connection.
+
 Discover the named tools and their live schemas in the paired local or remote MCP session. Read
 `model_info`, then `model_assembly` at its committed revision. Assembly writes have a separate owned
 draft; ordinary CAD `create_draft` and its command IDs do not apply to this workflow.

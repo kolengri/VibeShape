@@ -661,6 +661,10 @@ export function orderedEligibleViewerSelections(
 export type GeometryViewportOptions = Readonly<{
   /** The element's width reserves a left safe area for the orientation scene. */
   orientationInsetOffsetElement?: HTMLElement | null
+  /** Additional drawing surface above the canvas whose inset owns navigation input. */
+  orientationInputElement?: () => HTMLElement | SVGSVGElement | null
+  /** Runs before a marker drag's first rotation or a valid axis click's view change. */
+  onOrientationNavigationStart?: () => void
   isSelectionCandidateEligible?: (selection: ViewerSelection) => boolean
   onOriginPlanePreselectionChange?: (plane: ViewerOriginPlane | null) => void
   onOriginPlaneSelectionChange?: (plane: ViewerOriginPlane | null) => void
@@ -1620,15 +1624,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#orientationInteraction = new OrientationInsetInteraction({
       canvas,
       placement: () => this.#orientationInsetPlacement(),
-      canInteract: () =>
-        this.#controls.enableRotate &&
-        !this.#sketchProjection &&
-        (this.#interactionMode !== "camera-only" ||
-          !!this.#sketchPlaneFrame ||
-          this.#pointerOrbit) &&
-        !this.#translationGizmoInteracting &&
-        !this.#angularGizmoInteracting &&
-        this.#surfaceTexturePointer === null,
+      inputElement: () => options.orientationInputElement?.() ?? null,
       navigationEnabled: () => this.#controls.enabled,
       setNavigationEnabled: (enabled) => {
         this.#controls.enabled = enabled
@@ -1638,12 +1634,16 @@ class ThreeGeometryViewport implements GeometryViewport {
         this.#pointerDown = null
         this.#onNavigationStart()
       },
-      rotate: (dx, dy) => this.#rotatePointerOrbit(dx, dy),
-      activate: ({ x, y }) => {
-        this.#updateOrientationCamera()
-        const axis = this.#orientationMarker.axisAt(new Vector2(x, y), this.#orientationCamera)
-        if (axis) this.setStandardView(orientationAxisViews[axis])
+      onNavigationStart: () => {
+        this.#sketchProjection = null
+        options.onOrientationNavigationStart?.()
       },
+      rotate: (dx, dy) => this.#rotatePointerOrbit(dx, dy),
+      axisAt: ({ x, y }) => {
+        this.#updateOrientationCamera()
+        return this.#orientationMarker.axisAt(new Vector2(x, y), this.#orientationCamera)
+      },
+      activate: (axis) => this.setStandardView(orientationAxisViews[axis]),
     })
     this.#sectionDecoration = new SectionViewDecoration({
       canvas,
@@ -2144,7 +2144,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   setSketchNavigationElement(element: HTMLElement | SVGSVGElement | null) {
     if (this.#disposed || element === this.#sketchNavigationElement) return
     this.#onNavigationBlur()
-    this.#orientationInteraction.cancel()
+    // The inset keeps canvas capture while normal sketch input switches to orbit input.
     this.#removeSketchNavigationPointerGuard()
     const target = this.#controls.target.clone()
     const enabled = this.#controls.enabled
@@ -2209,7 +2209,6 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setInteractionMode(mode: ViewerInteractionMode) {
     if (this.#disposed || mode === this.#interactionMode) return
-    this.#orientationInteraction.cancel()
     this.#interactionMode = mode
     this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()

@@ -1,10 +1,12 @@
 import { applyVersionedDocumentCommand, reduceDocumentEvent } from "@vibeshape/domain"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import {
+  authoredDocumentSnapshotSchema,
   type DocumentAuthoritySnapshot,
   documentAuthoritySnapshotSchema,
 } from "@vibeshape/domain/document-v2"
 import type { DocumentAuthorityEvent } from "@vibeshape/domain/document-v2-command-schemas"
+import { promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import {
   type AuthoredAuthoritySnapshot,
@@ -20,7 +22,7 @@ import {
   runtimeProjection,
 } from "./authority-persistence-operations"
 import { prepareAuthorityTransaction } from "./authority-transaction"
-import { DocumentUndoHistory } from "./document-undo-history"
+import { type DocumentHistoryCheckpoint, DocumentUndoHistory } from "./document-undo-history"
 import { draftCommandFailure } from "./draft-validation-diagnostics"
 import { matchesHistoryOperation } from "./history-mutation"
 import {
@@ -73,6 +75,20 @@ export type AuthorityDocumentRepositoryPort = VersionedDocumentRepositoryPort &
     closeAuthorityCleanly: (input: VersionedCloseInput) => Promise<SessionPortResult<unknown>>
   }>
 
+function checkpointContent(snapshot: AuthoredAuthoritySnapshot) {
+  const {
+    revision: _revision,
+    updatedAt: _updatedAt,
+    schemaVersion: _schema,
+    ...content
+  } = promoteDocumentSnapshotV4(snapshot)
+  return canonicalJson({
+    ...content,
+    repairIntents: snapshot.schemaVersion === 5 ? snapshot.repairIntents : [],
+    suspendedParts: snapshot.schemaVersion === 5 ? snapshot.suspendedParts : [],
+  })
+}
+
 /** V0 remains disposable runtime data; all authored writes retain full authored authority. */
 export function createAuthorityPersistenceAdapter(
   repository: AuthorityDocumentRepositoryPort,
@@ -92,8 +108,16 @@ export function createAuthorityPersistenceAdapter(
     repository,
     initialSnapshot?.schemaVersion === 1 ? initialSnapshot : null,
   )
-  const history = new DocumentUndoHistory<AuthoredAuthoritySnapshot>()
+  const history = new DocumentUndoHistory<AuthoredAuthoritySnapshot>(checkpointContent)
   const current = () => authority ?? legacy.currentV1Snapshot
+  function historyPreview(target: AuthoredAuthoritySnapshot | null) {
+    if (!target) return null
+    const ownedTarget = documentAuthoritySnapshotSchema.parse(JSON.parse(canonicalJson(target)))
+    const projected = runtimeProjection(ownedTarget)
+    return projected.ok
+      ? { targetRevision: target.revision, snapshot: projected.snapshot, authority: ownedTarget }
+      : null
+  }
 
   function prepareDraft(base: AuthoredAuthoritySnapshot, input: PersistenceDraftValidationInput) {
     const match = matchRuntimeProjection(base, input.baseSnapshot)
@@ -124,11 +148,33 @@ export function createAuthorityPersistenceAdapter(
     return { ok: true as const, events, snapshot: next }
   }
 
+  function acceptSavedAuthority(
+    base: AuthoredAuthoritySnapshot | null,
+    next: AuthoredAuthoritySnapshot,
+    acceptHistory: () => void,
+  ) {
+    if (base?.schemaVersion !== next.schemaVersion && next.schemaVersion !== 5)
+      history.clearUndoRedo()
+    acceptHistory()
+    authority = next
+    if (!base) legacy = createVersionedPersistenceAdapter(repository)
+    const projected = runtimeProjection(next)
+    return projected.ok
+      ? { ok: true as const, value: projected.snapshot }
+      : authorityFailure("invalid-event", projected.diagnostic.message)
+  }
+
   async function persist(
     input: AuthorityCommitInput,
     next: AuthoredAuthoritySnapshot,
     record = true,
+    checkpoint?: DocumentHistoryCheckpoint,
   ) {
+    if (authority && !history.permitsPublication(authority, next, [input.event.actor]))
+      return authorityFailure(
+        "checkpoint-budget-exceeded",
+        "The model change exceeds the assistant checkpoint limit and was not saved.",
+      )
     let result: SessionPortResult<unknown>
     try {
       result = await repository.commitAuthority({
@@ -143,13 +189,12 @@ export function createAuthorityPersistenceAdapter(
       return authorityFailure("persistence-failed", "The authored document change was not saved.")
     }
     if (!result.ok) return result
-    if (authority?.schemaVersion !== next.schemaVersion && next.schemaVersion !== 5) history.clear()
-    if (record && authority) history.record(authority, next)
-    authority = next
-    const projected = runtimeProjection(next)
-    return projected.ok
-      ? { ok: true as const, value: projected.snapshot }
-      : authorityFailure("invalid-event", projected.diagnostic.message)
+    return acceptSavedAuthority(authority, next, () => {
+      if (!authority) return
+      if (checkpoint) history.acceptCheckpoint(checkpoint, authority)
+      else if (record) history.record(authority, next, [input.event.actor])
+      else history.observe(authority, next, [input.event.actor])
+    })
   }
 
   async function mutateHistory(
@@ -201,6 +246,17 @@ export function createAuthorityPersistenceAdapter(
         if (match) return match
         const prepared = prepareAuthorityTransaction(base, input.command, createPart)
         if (!prepared.ok) return prepared
+        if (
+          !history.permitsPublication(
+            base,
+            prepared.snapshot,
+            prepared.events.map(({ actor }) => actor),
+          )
+        )
+          return authorityFailure(
+            "checkpoint-budget-exceeded",
+            "The model change exceeds the assistant checkpoint limit and was not saved.",
+          )
         let saved: SessionPortResult<unknown>
         try {
           saved = await repository.commitAuthorityDraft({
@@ -217,17 +273,14 @@ export function createAuthorityPersistenceAdapter(
           return authorityFailure("persistence-failed", "The authored transaction was not saved.")
         }
         if (!saved.ok) return saved
-        if (
-          base.schemaVersion !== prepared.snapshot.schemaVersion &&
-          prepared.snapshot.schemaVersion !== 5
-        )
-          history.clear()
-        history.record(prepared.historyBase, prepared.snapshot)
-        authority = prepared.snapshot
-        const projected = runtimeProjection(prepared.snapshot)
-        return projected.ok
-          ? { ok: true as const, value: projected.snapshot }
-          : authorityFailure("invalid-event", projected.diagnostic.message)
+        return acceptSavedAuthority(base, prepared.snapshot, () => {
+          history.record(
+            prepared.historyBase,
+            prepared.snapshot,
+            prepared.events.map(({ actor }) => actor),
+            base,
+          )
+        })
       },
     },
     authoredMetadata: {
@@ -273,17 +326,7 @@ export function createAuthorityPersistenceAdapter(
       },
       preview(direction) {
         if (!authority) return legacy.history?.preview?.(direction) ?? null
-        const target = history.target(direction)
-        if (!target) return null
-        const ownedTarget = documentAuthoritySnapshotSchema.parse(JSON.parse(canonicalJson(target)))
-        const projected = runtimeProjection(ownedTarget)
-        return projected.ok
-          ? {
-              targetRevision: target.revision,
-              snapshot: projected.snapshot,
-              authority: ownedTarget,
-            }
-          : null
+        return historyPreview(history.target(direction))
       },
       async navigate(input) {
         if (!authority)
@@ -315,6 +358,66 @@ export function createAuthorityPersistenceAdapter(
         )
         if (saved.ok) history.accept(parsed.data.direction)
         return saved
+      },
+      checkpoints: {
+        capture(acceptsActor) {
+          return authority
+            ? history.captureCheckpoint(
+                authoredDocumentSnapshotSchema.parse(JSON.parse(canonicalJson(authority))),
+                acceptsActor,
+              )
+            : (legacy.history?.checkpoints?.capture(acceptsActor) ?? null)
+        },
+        read(handle) {
+          return authority
+            ? history.checkpointState(handle, authority)
+            : (legacy.history?.checkpoints?.read(handle) ?? null)
+        },
+        preview(handle) {
+          return authority
+            ? historyPreview(history.checkpointTarget(handle, authority))
+            : (legacy.history?.checkpoints?.preview(handle) ?? null)
+        },
+        release(handle) {
+          history.releaseCheckpoint(handle)
+          legacy.history?.checkpoints?.release(handle)
+        },
+        seal(handle, revision) {
+          return authority
+            ? history.sealCheckpoint(handle, authority, revision)
+            : (legacy.history?.checkpoints?.seal(handle, revision) ?? false)
+        },
+        async restore(input) {
+          if (!authority)
+            return (
+              legacy.history?.checkpoints?.restore(input) ??
+              authorityFailure("history-unavailable", "The internal checkpoint is unavailable.")
+            )
+          const base = authority
+          const match = matchRuntimeProjection(base, input.baseSnapshot)
+          if (match) return match
+          const parsed = documentHistoryRequestSchema.safeParse(input.request)
+          if (!parsed.success || parsed.data.direction !== "undo")
+            return authorityFailure("invalid-input", "The internal checkpoint request is invalid.")
+          const result = prepareAuthorityRestore(
+            base,
+            parsed.data,
+            history.checkpointTarget(input.handle, base),
+          )
+          if (!result.ok) return result
+          return persist(
+            {
+              ...input,
+              storedAt: result.event.issuedAt,
+              baseSnapshot: base,
+              event: result.event,
+              snapshot: result.snapshot,
+            },
+            result.snapshot,
+            false,
+            input.handle,
+          )
+        },
       },
     },
     semanticHistory: {
@@ -363,6 +466,17 @@ export function createAuthorityPersistenceAdapter(
       const base = authority
       const prepared = prepareDraft(base, input)
       if (!prepared.ok) return prepared
+      if (
+        !history.permitsPublication(
+          base,
+          prepared.snapshot,
+          prepared.events.map(({ actor }) => actor),
+        )
+      )
+        return authorityFailure(
+          "checkpoint-budget-exceeded",
+          "The model change exceeds the assistant checkpoint limit and was not saved.",
+        )
       let saved: SessionPortResult<unknown>
       try {
         saved = await repository.commitAuthorityDraft({
@@ -375,7 +489,11 @@ export function createAuthorityPersistenceAdapter(
         return authorityFailure("persistence-failed", "The authored draft was not saved.")
       }
       if (saved.ok) {
-        history.record(base, prepared.snapshot)
+        history.record(
+          base,
+          prepared.snapshot,
+          prepared.events.map(({ actor }) => actor),
+        )
         authority = prepared.snapshot
       }
       return saved
@@ -417,14 +535,17 @@ export function createAuthorityPersistenceAdapter(
       }
     },
     async closeCleanly(input) {
-      if (!authority) return legacy.closeCleanly(input)
       try {
+        if (!authority) return await legacy.closeCleanly(input)
         return await repository.closeAuthorityCleanly(input)
       } catch {
         return authorityFailure(
           "persistence-failed",
           "The authored document could not close cleanly.",
         )
+      } finally {
+        history.clear()
+        legacy = createVersionedPersistenceAdapter(repository, legacy.currentV1Snapshot)
       }
     },
   }

@@ -1,12 +1,19 @@
 import type { AssistantAgent, AssistantBridge } from "@vibeshape/automation-api/assistant"
+import { getNativeProjectAutomationConnection } from "../automation/native-project-automation"
+import { getProjectRuntime } from "../document/document-controller"
 import { registerProjectRuntimeResource } from "../document/project-runtime-resources"
+import type { AssistantCheckpointHost } from "./assistant-checkpoints"
 import { assistantStorage, readAssistantPreferences } from "./assistant-preferences"
 import { createNativeChatController } from "./native-chat-controller"
 
 type Chat = ReturnType<typeof createNativeChatController>
 type StoragePort = Parameters<typeof createNativeChatController>[0]["storage"]
 
-export function createNativeProjectChatRegistry(bridge: AssistantBridge, storage: StoragePort) {
+export function createNativeProjectChatRegistry(
+  bridge: AssistantBridge,
+  storage: StoragePort,
+  checkpointHost?: (projectId: string) => AssistantCheckpointHost,
+) {
   const projects = new Map<string, Chat>()
   const releases = new Map<string, () => void>()
   const listeners = new Set<() => void>()
@@ -17,7 +24,12 @@ export function createNativeProjectChatRegistry(bridge: AssistantBridge, storage
   function get(projectId: string): Chat {
     const existing = projects.get(projectId)
     if (existing) return existing
-    const controller = createNativeChatController({ projectId, bridge, storage })
+    const controller = createNativeChatController({
+      projectId,
+      bridge,
+      storage,
+      ...(checkpointHost ? { checkpointHost: checkpointHost(projectId) } : {}),
+    })
     let attempted = false
     let explicitlyDisconnected = false
     const chat: Chat = {
@@ -48,7 +60,14 @@ export function createNativeProjectChatRegistry(bridge: AssistantBridge, storage
     const unregister = registerProjectRuntimeResource(projectId, {
       isBusy: () => {
         const state = controller.getSnapshot()
-        return state.busy || state.connecting || state.queuedMessages.length > 0
+        return (
+          state.busy ||
+          state.connecting ||
+          state.undoingAgentChanges ||
+          state.preparingBefore ||
+          state.settlingCheckpoint ||
+          state.queuedMessages.length > 0
+        )
       },
       async dispose() {
         await controller.disconnect()
@@ -70,7 +89,13 @@ export function createNativeProjectChatRegistry(bridge: AssistantBridge, storage
     isBusy: () =>
       [...projects.values()].some((chat) => {
         const state = chat.getSnapshot()
-        return state.busy || state.connecting
+        return (
+          state.busy ||
+          state.connecting ||
+          state.undoingAgentChanges ||
+          state.preparingBefore ||
+          state.settlingCheckpoint
+        )
       }),
     subscribe(listener: () => void) {
       listeners.add(listener)
@@ -99,7 +124,12 @@ const registries = new WeakMap<
 export function getNativeProjectChatRegistry(bridge: AssistantBridge) {
   let registry = registries.get(bridge)
   if (!registry) {
-    registry = createNativeProjectChatRegistry(bridge, assistantStorage())
+    registry = createNativeProjectChatRegistry(bridge, assistantStorage(), (projectId) => ({
+      open: () => getProjectRuntime(projectId)?.createAssistantCheckpointPort() ?? null,
+      currentActor: () => getNativeProjectAutomationConnection(projectId).currentActor(),
+      subscribeActor: (listener) =>
+        getNativeProjectAutomationConnection(projectId).subscribe(listener),
+    }))
     registries.set(bridge, registry)
   }
   return registry

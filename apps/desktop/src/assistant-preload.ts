@@ -26,7 +26,10 @@ export function exposeAssistantBridge(
       const result = assistantResultSchema.safeParse(
         await ipcRenderer.invoke(ASSISTANT_REQUEST_CHANNEL, parsed.data),
       )
-      return result.success ? result.data : { ok: false, code: "protocol-error" }
+      if (!result.success) return { ok: false, code: "protocol-error" }
+      if (parsed.data.operation === "steer" && result.data.ok && !result.data.steerOutcome)
+        return { ok: false, code: "protocol-error" }
+      return result.data
     } catch {
       return { ok: false, code: "request-failed" }
     }
@@ -35,6 +38,7 @@ export function exposeAssistantBridge(
     protocolVersion: 1,
     connect: (input) => invoke({ operation: "connect", input }),
     prompt: (input) => invoke({ operation: "prompt", input }),
+    steer: (input) => invoke({ operation: "steer", input }),
     cancel: (input) => invoke({ operation: "cancel", input }),
     disconnect: (input) => invoke({ operation: "disconnect", input }),
     respondPermission: (input) => invoke({ operation: "respondPermission", input }),

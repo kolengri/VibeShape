@@ -1,5 +1,10 @@
 # Native source import
 
+Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
+The built-in chat commits validated changes to its current project without another Apply action;
+manual review requirements below describe external MCP clients. Publishing or updating the reusable
+local library remains separately reviewed for every connection.
+
 Use this flow only when the five import tools are advertised and the user authorized importing
 the selected source into the paired project. STEP/STP and BREP create exact solids. STL and 3MF
 create triangle meshes; they do not acquire BREP faces, edges or solid volume. SVG/DXF planar

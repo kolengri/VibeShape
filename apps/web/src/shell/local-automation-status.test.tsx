@@ -49,6 +49,47 @@ async function openSetup() {
 afterEach(cleanup)
 
 describe("local AI auto-apply controls", () => {
+  it.each([false, true])(
+    "shows internal automatic access without approval or project-management setup (busy: %s)",
+    async (busy) => {
+      const { connection } = setup({
+        ...manual,
+        projectBound: true,
+        autoApply: true,
+        busy,
+        client: { name: "Embedded assistant", version: "1" },
+      })
+      expect(screen.getByRole("status").textContent).toBe("AI access on · Auto-apply on")
+      const info = screen.getByRole("button", { name: "AI connection and approval mode" })
+      await userEvent.click(info)
+      expect(
+        screen.getByRole("dialog", { name: "AI connection and approval mode" }).textContent,
+      ).toBe("Embedded assistant")
+      expect(screen.queryByRole("menuitemradio")).toBeNull()
+      expect(
+        screen.queryByRole("menuitemcheckbox", { name: "Allow project management" }),
+      ).toBeNull()
+      expect(screen.queryByText("Approve each change")).toBeNull()
+      expect(screen.queryByText("Apply automatically")).toBeNull()
+      expect(screen.queryByRole("dialog", { name: "Set up auto-apply" })).toBeNull()
+      await userEvent.keyboard("{Escape}")
+      expect(document.activeElement).toBe(info)
+      await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+      expect(connection.disable).toHaveBeenCalledTimes(1)
+      expect(connection.enable).not.toHaveBeenCalled()
+      expect(connection.enableAutoApply).not.toHaveBeenCalled()
+      expect(connection.disableAutoApply).not.toHaveBeenCalled()
+      expect(connection.setProjectManagement).not.toHaveBeenCalled()
+    },
+  )
+
+  it("does not claim automatic access for an internal snapshot that has not enabled it", () => {
+    setup({ ...manual, projectBound: true })
+    expect(screen.getByRole("status").textContent).toBe("AI on")
+    expect(screen.queryByText("AI access on · Auto-apply on")).toBeNull()
+    expect(screen.queryByText("Approve each change")).toBeNull()
+  })
+
   it("explains why AI access is disabled until an MCP client is connected", async () => {
     const { connection, rerender } = setup({ ...manual, connected: false, client: null })
     const enable = screen.getByRole("button", { name: "Enable AI session" })

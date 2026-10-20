@@ -885,6 +885,7 @@ function EditorWorkspaceComposition({
       hiddenSketchIds={hiddenSketchIds}
       originPlaneVisibility={session.originPlaneVisibility}
       onSketchFinalContextChange={sessionActions.setSketchFinalContext}
+      onSketchOrbitStart={() => sessionActions.setSketchCameraMode("orbit")}
       preselectedFeatureId={session.preselectedFeatureId}
       preselectedSketchId={session.preselectedSketchId}
       preselectedBody={session.preselectedBody}

@@ -5,6 +5,7 @@ import { type DocumentControllerState, getProjectRuntime } from "../document/doc
 import { registerProjectRuntimeResource } from "../document/project-runtime-resources"
 import { createApiChatRegistry } from "./api-chat-controller"
 import { ApiConfigurationForm } from "./api-configuration-form"
+import { assistantCheckpointBusy } from "./assistant-checkpoints"
 import { AssistantPanel } from "./assistant-panel"
 import { assistantStorage } from "./assistant-preferences"
 import { createBrowserToolSession } from "./browser-tool-session"
@@ -12,6 +13,10 @@ import { createBrowserToolSession } from "./browser-tool-session"
 const chats = createApiChatRegistry({
   storage: assistantStorage(),
   createTools: createBrowserToolSession,
+  checkpointHost: (projectId, currentActor) => ({
+    open: () => getProjectRuntime(projectId)?.createAssistantCheckpointPort() ?? null,
+    currentActor,
+  }),
   registerResource: registerProjectRuntimeResource,
   registerGuard: (projectId, blocked) =>
     getProjectRuntime(projectId)?.registerProjectActionGuard(() =>
@@ -54,9 +59,9 @@ function BrowserProjectChat({
   open: boolean
   onClose: () => void
 }) {
-  const t = useTranslations("app.assistant.api")
   const [chat] = useState(() => chats.get(projectId))
   const state = useSyncExternalStore(chat.subscribe, chat.getSnapshot, chat.getSnapshot)
+  const error = useApiChatError(state)
   useEffect(() => {
     void chats.activate(projectId)
   }, [projectId, state.busy])
@@ -66,7 +71,13 @@ function BrowserProjectChat({
       projectName={projectName}
       messages={state.messages}
       busy={state.busy}
-      canSend={state.connected}
+      canSend={state.connected && !assistantCheckpointBusy(state)}
+      canUndoAgentChanges={state.canUndoAgentChanges}
+      undoingAgentChanges={state.undoingAgentChanges}
+      viewingBefore={state.viewingBefore}
+      preparingBefore={state.preparingBefore}
+      onUndoAgentChanges={chat.undoAgentChanges}
+      onViewBefore={chat.viewBefore}
       onClose={onClose}
       onSend={chat.send}
       onQueue={chat.enqueue}
@@ -76,11 +87,12 @@ function BrowserProjectChat({
       queuedMessages={state.queuedMessages}
       queuePaused={state.queuePaused}
       onRemoveQueued={chat.removeQueued}
+      supportsActiveSteer={state.supportsActiveSteer}
       onResumeQueue={chat.resumeQueue}
       onCancel={chat.cancel}
       onReset={chat.reset}
       storageFailed={state.storageFailed}
-      error={state.error ? t(`errors.${state.error}`) : null}
+      error={error}
       sessionControls={
         state.model ? (
           <span className="block min-w-0 truncate text-xs text-muted-foreground">
@@ -100,4 +112,10 @@ function BrowserProjectChat({
       }
     />
   )
+}
+
+function useApiChatError(state: ReturnType<ReturnType<typeof chats.get>["getSnapshot"]>) {
+  const t = useTranslations("app.assistant.api")
+  if (state.checkpointError) return t(state.checkpointError)
+  return state.error ? t(`errors.${state.error}`) : null
 }

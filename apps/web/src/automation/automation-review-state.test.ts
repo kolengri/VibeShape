@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "bun:test"
+import { assemblyDraftStateSchema } from "@vibeshape/automation-api/assembly-tools"
 import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import { commandActorSchema, commandIdSchema, partIdSchema } from "@vibeshape/domain"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { createAutomationReviewController } from "./automation-review-state"
+import { createConnectedAssistantReviews } from "./connected-assistant-reviews"
 
 function reviewInput(): DraftReviewInput {
   const documentId = "0195b5ac-b250-7a2c-8c33-000000000001"
@@ -229,5 +231,98 @@ describe("browser automation review ownership", () => {
     expect(displayed.preview.summary.data.name).toBe("Reviewed model")
     controller.cancel(owner)
     await expect(decision).resolves.toBe("cancelled")
+  })
+})
+
+describe("connected assistant model authority", () => {
+  it("retains exact detached applying input without opening the visible review", async () => {
+    const visible = createAutomationReviewController()
+    const connected = createConnectedAssistantReviews(visible, () => true)
+    const owner = Symbol()
+    const input = reviewInput()
+    await expect(connected.request(owner, input)).resolves.toBe("approved")
+    expect(visible.getSnapshot()).toBeNull()
+    expect(connected.getSnapshot()).toMatchObject({ status: "applying", input })
+    expect(connected.getSnapshot()?.input).not.toBe(input)
+    await expect(connected.request(Symbol(), reviewInput())).resolves.toBe("cancelled")
+    connected.complete(Symbol(), { ok: true, value: {} })
+    expect(connected.getSnapshot()?.status).toBe("applying")
+    connected.complete(owner, { ok: true, value: {} })
+    expect(connected.getSnapshot()).toBeNull()
+  })
+
+  it("rejects revoked authority and preserves an external pending review", async () => {
+    const visible = createAutomationReviewController()
+    const owner = Symbol()
+    const pending = visible.request(owner, reviewInput())
+    const connected = createConnectedAssistantReviews(visible, () => true)
+    await expect(connected.request(Symbol(), reviewInput())).resolves.toBe("cancelled")
+    expect(visible.getSnapshot()?.status).toBe("ready")
+    connected.cancel(Symbol())
+    expect(visible.getSnapshot()?.status).toBe("ready")
+    visible.cancel(owner)
+    await expect(pending).resolves.toBe("cancelled")
+    const revoked = createConnectedAssistantReviews(visible, () => false)
+    await expect(revoked.request(Symbol(), reviewInput())).resolves.toBe("cancelled")
+    expect(revoked.getSnapshot()).toBe(visible.getSnapshot())
+  })
+
+  it("keeps expiry and failure ownership without retaining stale internal approvals", async () => {
+    const visible = createAutomationReviewController()
+    const connected = createConnectedAssistantReviews(visible, () => true)
+    const expired: DraftReviewInput = {
+      ...reviewInput(),
+      metadata: {
+        change: {
+          kind: "part.rename",
+          partId: partIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000005"),
+          name: "Cover",
+        },
+        targetName: "Part",
+        range: null,
+      },
+    }
+    const owner = Symbol()
+    vi.useFakeTimers()
+    vi.advanceTimersByTime(61_000)
+    await expect(connected.request(owner, expired)).resolves.toBe("cancelled")
+    expect(connected.getSnapshot()).toBeNull()
+    await expect(connected.request(owner, reviewInput())).resolves.toBe("approved")
+    connected.complete(owner, {
+      ok: false,
+      diagnostic: { code: "stale-revision", message: "Changed", retryable: true },
+    })
+    expect(connected.getSnapshot()).toBeNull()
+    await expect(connected.request(owner, reviewInput())).resolves.toBe("approved")
+    connected.cancel(owner)
+    expect(connected.getSnapshot()).toBeNull()
+  })
+
+  it("retains manual review for library publication outside the current model", async () => {
+    const visible = createAutomationReviewController()
+    const connected = createConnectedAssistantReviews(visible, () => true)
+    const owner = Symbol()
+    const source = reviewInput()
+    const draft = assemblyDraftStateSchema.parse({
+      schemaVersion: 1,
+      draftId: source.preview.draft.draftId,
+      documentId: source.preview.draft.documentId,
+      baseRevision: 1,
+      draftVersion: 0,
+      changeCount: 0,
+      expiresAt: source.preview.draft.expiresAt,
+    })
+    const pending = connected.request(owner, {
+      kind: "library",
+      actor: source.actor,
+      documentName: "Model",
+      draft,
+      changes: [],
+    })
+    expect(visible.getSnapshot()?.status).toBe("ready")
+    const id = visible.getSnapshot()?.id
+    if (!id) throw new Error("Expected the library review.")
+    await visible.decide(id, "rejected")
+    await expect(pending).resolves.toBe("rejected")
   })
 })

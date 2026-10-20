@@ -1,5 +1,10 @@
 # Surface relief through MCP
 
+Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
+The built-in chat commits validated changes to its current project without another Apply action;
+manual review requirements below describe external MCP clients. Publishing or updating the reusable
+local library remains separately reviewed for every connection.
+
 Read the current revision and terminal feature/body role before authoring. Discover
 `model_surface_textures`, `create_surface_texture`, `update_surface_texture` and
 `remove_surface_texture`; local and paired remote MCP share these names and contracts. Use the

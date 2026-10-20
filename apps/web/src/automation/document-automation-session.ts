@@ -200,8 +200,7 @@ export function createDocumentAutomationSession(
         if (closed || epoch !== previewEpoch)
           throw new Error("The browser draft preview was cancelled.")
         if (!result.ok) throw new Error(result.code)
-        if (!closed && commitActive && result.rebuild)
-          reviewEvaluation = { snapshot, rebuild: result.rebuild }
+        if (!closed && result.rebuild) reviewEvaluation = { snapshot, rebuild: result.rebuild }
         return { measurements: result.evidence, diagnostics: result.diagnostics }
       },
     },
@@ -211,6 +210,22 @@ export function createDocumentAutomationSession(
     renderedPreview.dispose()
     committedSketch.dispose()
     return factory
+  }
+  const host = factory.host
+  async function presentDraftPreview(actor: unknown, request: unknown, epoch: number) {
+    const result = await host.previewDraft(actor, request)
+    if (closed || epoch !== previewEpoch || !result.ok || commitActive) return result
+    const evaluated = reviewEvaluation
+    reviewEvaluation = null
+    const viewport = evaluated
+      ? createAutomationDraftViewport(
+          { preview: result.value },
+          evaluated.snapshot,
+          evaluated.rebuild,
+        )
+      : null
+    if (viewport) reviews.presentDraftViewport(reviewOwner, viewport)
+    return result
   }
   return {
     ok: true as const,
@@ -236,7 +251,26 @@ export function createDocumentAutomationSession(
       return true
     },
     host: {
-      ...factory.host,
+      ...host,
+      async applyCommand(actor: unknown, request: unknown) {
+        const epoch = previewEpoch
+        const result = await host.applyCommand(actor, request)
+        if (!result.ok || closed || epoch !== previewEpoch) return result
+        reviews.clearDraftViewport(reviewOwner)
+        // Drawing is disposable: a failed rebuild must not turn accepted private intent into a
+        // failed command or save it. Explicit preview/commit still report validation diagnostics.
+        await presentDraftPreview(actor, { schemaVersion: 1, draftId: result.value.draftId }, epoch)
+        return result
+      },
+      async previewDraft(actor: unknown, request: unknown) {
+        reviews.clearDraftViewport(reviewOwner)
+        return presentDraftPreview(actor, request, previewEpoch)
+      },
+      async discardDraft(actor: unknown, request: unknown) {
+        const result = await host.discardDraft(actor, request)
+        if (result.ok) reviews.clearDraftViewport(reviewOwner)
+        return result
+      },
       async commitDraft(actor: unknown, request: unknown) {
         if (commitActive)
           return {
@@ -249,11 +283,12 @@ export function createDocumentAutomationSession(
             },
           }
         commitActive = true
+        reviews.clearDraftViewport(reviewOwner)
         reviewEvaluation = null
         // A later opt-in cannot authorize a commit that already started under manual review.
         commitGrant = autoApplyActor
         try {
-          const committed = await factory.host.commitDraft(actor, request)
+          const committed = await host.commitDraft(actor, request)
           const result =
             closed && !committed.ok && committed.diagnostic.code === "automation-operation-failed"
               ? {
@@ -268,7 +303,7 @@ export function createDocumentAutomationSession(
                 }
               : committed
           if (!result.ok && result.diagnostic.code === "draft-review-rejected")
-            await factory.host.discardDraft(actor, request)
+            await host.discardDraft(actor, request)
           reviews.complete(reviewOwner, result)
           return result
         } finally {

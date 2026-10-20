@@ -65,6 +65,13 @@ export const automationDraftStateSchema = z
     baseRevision: revisionSchema,
     revision: revisionSchema,
     commandCount: z.number().int().nonnegative().safe(),
+    commandBudget: z
+      .object({
+        limit: z.number().int().positive().max(1_024),
+        remaining: z.number().int().nonnegative().max(1_024),
+      })
+      .strict()
+      .optional(),
     expiresAt: timestampSchema,
   })
   .strict()

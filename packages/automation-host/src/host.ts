@@ -271,7 +271,7 @@ function invalidRequest<Value>(error: z.ZodError): AutomationHostResult<Value> {
   )
 }
 
-function createDraftState(record: ManagedDraft): AutomationDraftState {
+function createDraftState(record: ManagedDraft, commandLimit: number): AutomationDraftState {
   return automationDraftStateSchema.parse({
     schemaVersion: 1,
     draftId: record.draft.id,
@@ -279,6 +279,7 @@ function createDraftState(record: ManagedDraft): AutomationDraftState {
     baseRevision: record.draft.baseRevision,
     revision: record.draft.snapshot?.revision ?? 0,
     commandCount: record.draft.events.length,
+    commandBudget: { limit: commandLimit, remaining: commandLimit - record.draft.events.length },
     expiresAt: new Date(record.expiresAt).toISOString(),
   })
 }
@@ -587,7 +588,7 @@ export function createAutomationHost(
       : failure(
           hostDiagnostic(
             "draft-command-limit-reached",
-            "The automation draft has reached its command limit.",
+            `The automation draft has reached its ${options.maxCommandsPerDraft}-command limit. Preview and commit a valid stage before starting the next draft; saved geometry does not need to be rebuilt.`,
           ),
         )
   }
@@ -680,7 +681,7 @@ export function createAutomationHost(
       expiresAt: operation.value.at + options.draftTtlMs,
     }
     drafts.set(created.draft.id, record)
-    return { ok: true, value: createDraftState(record) }
+    return { ok: true, value: createDraftState(record, options.maxCommandsPerDraft) }
   }
 
   async function applyCommand(
@@ -731,7 +732,7 @@ export function createAutomationHost(
     )
     drafts.set(record.draft.id, record)
     invalidateDraftInspection(record.draft.id)
-    return { ok: true, value: createDraftState(record) }
+    return { ok: true, value: createDraftState(record, options.maxCommandsPerDraft) }
   }
 
   async function revalidateAfterGeometry(
@@ -851,7 +852,7 @@ export function createAutomationHost(
     if (!refreshed.ok) return refreshed
     const value = automationDraftInspectionViewSchema.parse({
       schemaVersion: 1,
-      draft: createDraftState(owned.value),
+      draft: createDraftState(owned.value, options.maxCommandsPerDraft),
       view: inspected.view,
     })
     if (serializedQueryBytes(value) > 128 * 1024)
@@ -982,7 +983,7 @@ export function createAutomationHost(
     if (!queried.ok) return failure(queried.diagnostic)
     const preview = automationDraftPreviewSchema.parse({
       schemaVersion: 2,
-      draft: createDraftState(record),
+      draft: createDraftState(record, options.maxCommandsPerDraft),
       summary: queried.view,
       geometry,
     })
@@ -1045,7 +1046,7 @@ export function createAutomationHost(
 
     const value = automationDraftPreviewSchema.parse({
       schemaVersion: 2,
-      draft: createDraftState(owned.value),
+      draft: createDraftState(owned.value, options.maxCommandsPerDraft),
       summary: queried.view,
       geometry: exact.value.geometry,
     })
@@ -1058,7 +1059,10 @@ export function createAutomationHost(
       )
     const record = renew(owned.value, exact.value.at)
     drafts.set(record.draft.id, record)
-    return { ok: true, value: { ...value, draft: createDraftState(record) } }
+    return {
+      ok: true,
+      value: { ...value, draft: createDraftState(record, options.maxCommandsPerDraft) },
+    }
   }
 
   async function commitDraft(

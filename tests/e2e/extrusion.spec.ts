@@ -486,8 +486,7 @@ test.describe("selector-backed extrusion", () => {
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    const startPanel = page.getByRole("complementary", { name: "Task panel" })
-    await expect(startPanel.getByRole("heading", { name: "Start with a sketch" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Start with a sketch" })).toHaveCount(0)
 
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
@@ -496,7 +495,10 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
 
     await closeVariablesDialog(page)
-    await startPanel.getByRole("button", { name: "Create sketch" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page, "xz")
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).dblclick()
@@ -555,9 +557,42 @@ test.describe("selector-backed extrusion", () => {
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-feature-count", "0")
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-sketch-count", "0")
     const rollbackGuidance = page.getByTestId("sketch-rollback-guidance")
+    const expectNoticeSafe = async (notice: Locator) => {
+      await expect(notice).toBeInViewport({ ratio: 1 })
+      const bounds = await notice.boundingBox()
+      const viewportBounds = await normalSketchViewport.boundingBox()
+      if (!bounds || !viewportBounds) throw new Error("The sketch notice has no visible bounds.")
+      expect(bounds.x).toBeGreaterThanOrEqual(viewportBounds.x)
+      expect(bounds.y).toBeGreaterThanOrEqual(viewportBounds.y)
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewportBounds.x + viewportBounds.width)
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewportBounds.y + viewportBounds.height)
+      const obstacles = page
+        .getByRole("toolbar")
+        .or(page.getByRole("complementary", { name: "Task panel", exact: true }))
+        .or(page.getByRole("img", { name: "World axes", exact: true }))
+      for (const obstacle of await obstacles.all()) {
+        if (!(await obstacle.isVisible())) continue
+        const obstacleBounds = await obstacle.boundingBox()
+        if (!obstacleBounds) continue
+        const separated =
+          bounds.x + bounds.width <= obstacleBounds.x ||
+          obstacleBounds.x + obstacleBounds.width <= bounds.x ||
+          bounds.y + bounds.height <= obstacleBounds.y ||
+          obstacleBounds.y + obstacleBounds.height <= bounds.y
+        expect(
+          separated,
+          "The sketch notice must not cover toolbars, task controls, or axes.",
+        ).toBe(true)
+      }
+      return {
+        bottom: viewportBounds.y + viewportBounds.height - bounds.y - bounds.height,
+        center: bounds.x + bounds.width / 2,
+      }
+    }
     await expect(rollbackGuidance).toContainText(
       "No earlier solid exists at this point in History.",
     )
+    const guidancePosition = await expectNoticeSafe(rollbackGuidance)
     const showFinalResult = rollbackGuidance.getByRole("button", { name: "Show final result" })
     await showFinalResult.focus()
     await page.keyboard.press("Enter")
@@ -570,6 +605,23 @@ test.describe("selector-backed extrusion", () => {
     await expect(page.getByTestId("sketch-final-context-status")).toContainText(
       "Final result · display only",
     )
+    const finalNotice = page.getByTestId("sketch-final-context-status")
+    const finalPosition = await expectNoticeSafe(finalNotice)
+    expect(Math.abs(finalPosition.bottom - guidancePosition.bottom)).toBeLessThan(1)
+    expect(Math.abs(finalPosition.center - guidancePosition.center)).toBeLessThan(1)
+
+    const originalViewportSize = page.viewportSize()
+    if (!originalViewportSize) throw new Error("This layout scenario requires a browser viewport.")
+    await page.setViewportSize({ width: 800, height: 1000 })
+    const narrowFinalPosition = await expectNoticeSafe(finalNotice)
+    await finalNotice.getByRole("button", { name: "Hide final result" }).click()
+    const narrowGuidancePosition = await expectNoticeSafe(rollbackGuidance)
+    expect(Math.abs(narrowGuidancePosition.bottom - narrowFinalPosition.bottom)).toBeLessThan(1)
+    expect(Math.abs(narrowGuidancePosition.center - narrowFinalPosition.center)).toBeLessThan(1)
+    await rollbackGuidance.getByRole("button", { name: "Show final result" }).click()
+    await expectNoticeSafe(finalNotice)
+    await page.setViewportSize(originalViewportSize)
+    await expectNoticeSafe(finalNotice)
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(normalSketchViewport).toHaveAttribute("data-sketch-reference-candidate-count", "0")
     await expect(

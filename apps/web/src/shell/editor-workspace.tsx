@@ -31,6 +31,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import { Eye, EyeOff } from "@vibeshape/ui/components/icons"
+import { cn } from "@vibeshape/ui/lib/cn"
 import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
@@ -56,6 +57,7 @@ import { AutomationReviewPanel } from "../automation/automation-review-panel"
 import {
   commitAuthoredMetadata,
   type DocumentControllerState,
+  getProjectRuntime,
   moveHistoryItem,
   removeFeature,
   removeSketch,
@@ -165,6 +167,7 @@ import type { ModelTreeSelection } from "./model-tree-selection"
 import { ReferencePickProvider, useReferencePicking } from "./reference-pick-context"
 import { TaskPanel } from "./task-panel"
 import { useViewerPreferences } from "./viewer-preferences"
+import { SAFE_VIEWPORT_CENTER } from "./viewport-chrome-styles"
 import type { EditorWorkspaceName } from "./workspace"
 import { WorkspacePanels } from "./workspace-panels"
 import { WorkspaceTaskPanel } from "./workspace-task-context"
@@ -551,6 +554,7 @@ type WorkspaceContentProps = Readonly<{
     onSketchConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
     onSketchSelectionChange: (entityIds: readonly SketchEntityId[]) => void
     onSketchFinalContextChange: (visible: boolean) => void
+    onSketchOrbitStart?: (() => void) | undefined
     onSketchUndo: () => void
   }>
   controller: DocumentControllerState
@@ -1128,6 +1132,7 @@ function useWorkspaceSketchContext(
   onPierceSelect: (candidate: ViewerSketchReferenceCandidate) => void,
   onIntersectionSelect: (selection: ViewerSelection) => void,
   projectionStore: ReturnType<typeof useSketchProjectionStoreApi>,
+  onSketchOrbitStart: (() => void) | undefined,
 ) {
   return useMemo<GeometryViewportSketchContext | undefined>(() => {
     if (!active) return undefined
@@ -1137,6 +1142,7 @@ function useWorkspaceSketchContext(
     return {
       frame,
       mode,
+      onOrientationNavigationStart: mode === "normal" ? onSketchOrbitStart : undefined,
       ...(projectionStore ? { projectionStore } : {}),
       ...(editorTool === "use"
         ? {
@@ -1167,6 +1173,7 @@ function useWorkspaceSketchContext(
     mode,
     onIntersectionSelect,
     onPierceSelect,
+    onSketchOrbitStart,
     onUseSelect,
     pierceCandidates,
     projectionStore,
@@ -1344,14 +1351,14 @@ function SketchContextStatus({
   if (!showFinalContext && !offerFinalContext) return null
   return (
     <div
-      className={
-        showFinalContext
-          ? "absolute right-3 top-3 z-30 flex items-center gap-2 rounded-md border border-border/80 bg-background/90 px-2.5 py-1.5 text-xs shadow-sm backdrop-blur"
-          : "absolute bottom-3 left-1/2 z-30 flex max-w-[min(32rem,calc(100%-1.5rem))] -translate-x-1/2 items-center gap-3 rounded-md border border-border/80 bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur"
-      }
+      className={cn(
+        "absolute bottom-24 z-30 flex max-h-[calc(100%-10rem)] w-lg -translate-x-1/2 flex-wrap items-center gap-2 overflow-y-auto",
+        "rounded-md border border-border/80 bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-testid={showFinalContext ? "sketch-final-context-status" : "sketch-rollback-guidance"}
     >
-      <span className="text-muted-foreground" role="status">
+      <span className="min-w-0 flex-1 basis-48 break-words text-muted-foreground" role="status">
         {showFinalContext ? (
           <>
             <span className="font-medium text-foreground">{t("finalContextLabel")}</span>
@@ -1366,9 +1373,14 @@ function SketchContextStatus({
         size="sm"
         type="button"
         variant="secondary"
+        className="h-auto min-h-8 max-w-full whitespace-normal"
         onClick={() => onFinalContextChange(!showFinalContext)}
       >
-        {showFinalContext ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+        {showFinalContext ? (
+          <EyeOff className="size-3.5" aria-hidden="true" />
+        ) : (
+          <Eye className="size-3.5" aria-hidden="true" />
+        )}
         {showFinalContext ? t("hideFinalContext") : t("showFinalContext")}
       </Button>
     </div>
@@ -1446,7 +1458,7 @@ function WorkspaceContentView({
           modelPierceCandidateCount={modelPierceCandidateCount}
         />
       }
-      sketchActive={sketchActive}
+      sketchActive={sketchActive && !props.controller.assistantCheckpointPresentation}
       status={
         <SketchContextStatus
           offerFinalContext={offerFinalContext}
@@ -1728,6 +1740,7 @@ function useWorkspaceReferenceSelection({
     selectPierce,
     selectModelIntersection,
     projectionStore,
+    props.actions.onSketchOrbitStart,
   )
 }
 
@@ -1914,6 +1927,7 @@ type EditorWorkspaceProps = Readonly<{
   hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   onSketchFinalContextChange: (visible: boolean) => void
+  onSketchOrbitStart?: (() => void) | undefined
   preselectedSketchId?: SketchId | null | undefined
   preselectedBody?: ModelBodySelection | null
   selectedBody?: ModelBodySelection | null
@@ -2400,6 +2414,7 @@ function EditorContent({
         onSketchConstraintSelectionChange: actions.setSketchSelectedConstraintId,
         onSketchSelectionChange: actions.setSketchSelectedEntityIds,
         onSketchFinalContextChange: props.onSketchFinalContextChange,
+        onSketchOrbitStart: props.onSketchOrbitStart,
         onSketchUndo: actions.undoSketchDraft,
       }}
       controller={controller}
@@ -2642,6 +2657,11 @@ function useWorkspaceFeaturePreview(
   props: EditorWorkspaceProps,
   review: ReturnType<typeof automationReviews.getSnapshot>,
 ) {
+  const draftPresentation = useSyncExternalStore(
+    automationReviews.subscribe,
+    automationReviews.getDraftViewportSnapshot,
+    automationReviews.getDraftViewportSnapshot,
+  )
   const { featurePreview: formPreview, setPreviewFeature } = useEditorFeaturePreview(
     props.controller,
     props.activeTool,
@@ -2668,11 +2688,35 @@ function useWorkspaceFeaturePreview(
   const manipulatorFeature =
     manipulatorCandidate?.tool === activeTool ? manipulatorCandidate.feature : null
   const featurePreview: ReturnType<typeof useFeaturePreview> =
-    automationDraftViewportPreview(review, props.controller.report?.snapshot ?? null) ?? formPreview
+    automationDraftViewportPreview(
+      review,
+      props.controller.report?.snapshot ?? null,
+      props.activeTool || props.activeSketchTool ? null : draftPresentation,
+    ) ?? formPreview
   return { featurePreview, manipulatorFeature, onFeaturePreviewChange }
 }
 
 export function EditorWorkspace(props: EditorWorkspaceProps) {
+  const documentId = props.controller.report?.snapshot.id
+  useEffect(
+    () => () => {
+      if (documentId) getProjectRuntime(documentId)?.clearAssistantCheckpointPreview()
+    },
+    [documentId],
+  )
+  useEffect(() => {
+    if (
+      documentId &&
+      props.controller.assistantCheckpointPresentation &&
+      (props.activeTool || props.activeSketchTool)
+    )
+      getProjectRuntime(documentId)?.clearAssistantCheckpointPreview()
+  }, [
+    documentId,
+    props.activeSketchTool,
+    props.activeTool,
+    props.controller.assistantCheckpointPresentation,
+  ])
   return (
     <SurfaceTexturePreviewProvider active={props.activeTool?.kind === "surface-texture"}>
       <EditorWorkspaceContent {...props} />

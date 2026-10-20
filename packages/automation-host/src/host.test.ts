@@ -669,7 +669,10 @@ describe("automation draft host", () => {
       ),
     ).toMatchObject({
       ok: false,
-      diagnostic: { code: "draft-command-limit-reached" },
+      diagnostic: {
+        code: "draft-command-limit-reached",
+        message: expect.stringContaining("1-command limit"),
+      },
     })
 
     const collisionHost = automationHost(store.port, { draftIds: [draftIdA, draftIdA] })

@@ -11,7 +11,7 @@ import {
   reduceVersionedDocumentEvent,
   type VersionedDocumentEvent,
 } from "@vibeshape/domain"
-import { DocumentUndoHistory } from "./document-undo-history"
+import { type DocumentHistoryCheckpoint, DocumentUndoHistory } from "./document-undo-history"
 import { draftCommandFailure, draftDiagnosticCause } from "./draft-validation-diagnostics"
 import { matchesHistoryOperation } from "./history-mutation"
 import type {
@@ -163,7 +163,7 @@ function parseHistoryNavigation(
 function buildHistoryRestore(
   authority: DocumentSnapshotV1,
   request: DocumentHistoryRequest,
-  history: DocumentUndoHistory,
+  target: DocumentSnapshotV1 | null,
 ):
   | {
       ok: true
@@ -172,7 +172,6 @@ function buildHistoryRestore(
       projected: DocumentSnapshot
     }
   | { ok: false; diagnostic: SessionPortDiagnostic } {
-  const target = history.target(request.direction)
   if (!target) return failed("history-unavailable", "There is no saved change in this direction.")
   const event = documentRestoredEventSchema.safeParse({
     ...request,
@@ -205,6 +204,61 @@ export function createVersionedPersistenceAdapter(
   }> {
   let authority = initialSnapshot
   const history = new DocumentUndoHistory()
+  function historyPreview(target: DocumentSnapshotV1 | null) {
+    if (!target) return null
+    const ownedTarget = documentSnapshotV1Schema.parse(JSON.parse(canonicalJson(target)))
+    const projected = projectDocumentSnapshotV1ToV0(ownedTarget)
+    return projected.ok
+      ? { targetRevision: target.revision, snapshot: projected.snapshot, authority: ownedTarget }
+      : null
+  }
+
+  async function saveHistoryChange(input: VersionedCommitInput, failureMessage: string) {
+    try {
+      return await repository.commit(input)
+    } catch {
+      return failed("persistence-failed", failureMessage)
+    }
+  }
+
+  async function navigate(
+    input: Parameters<NonNullable<PersistentDocumentRepositoryPort["history"]>["navigate"]>[0],
+    checkpoint?: DocumentHistoryCheckpoint,
+  ) {
+    const parsed = parseHistoryNavigation(input, authority, projectInput)
+    if (!parsed.ok) return parsed
+    if (checkpoint && parsed.request.direction !== "undo")
+      return failed("invalid-input", "Internal checkpoints restore only an owned baseline.")
+    const target = checkpoint
+      ? history.checkpointTarget(checkpoint, parsed.authority)
+      : history.target(parsed.request.direction)
+    const restored = buildHistoryRestore(parsed.authority, parsed.request, target)
+    if (!restored.ok) return restored
+    if (!history.permitsPublication(parsed.authority, restored.restored, [parsed.request.actor]))
+      return failed(
+        "checkpoint-budget-exceeded",
+        "The model change exceeds the assistant checkpoint limit and was not saved.",
+      )
+    const persisted = await saveHistoryChange(
+      {
+        sessionId: input.sessionId,
+        lease: input.lease,
+        storedAt: parsed.request.issuedAt,
+        baseSnapshot: authority,
+        event: restored.event,
+        snapshot: restored.restored,
+      },
+      "The history change was not saved.",
+    )
+    if (!persisted.ok) return persisted
+    if (checkpoint) history.acceptCheckpoint(checkpoint, parsed.authority)
+    else {
+      history.observe(parsed.authority, restored.restored, [parsed.request.actor])
+      history.accept(parsed.request.direction)
+    }
+    authority = restored.restored
+    return { ok: true as const, value: restored.projected }
+  }
 
   const projectInput = (
     snapshot: DocumentSnapshotV1 | null,
@@ -258,21 +312,27 @@ export function createVersionedPersistenceAdapter(
       )
     const projected = projectDocumentSnapshotV1ToV0(reduced.snapshot)
     if (!projected.ok) return failed("invalid-event", projected.diagnostic.message)
-    let persisted: VersionedPortResult<unknown>
-    try {
-      persisted = await repository.commit({
+    if (
+      authority &&
+      !history.permitsPublication(authority, reduced.snapshot, [reduced.event.actor])
+    )
+      return failed(
+        "checkpoint-budget-exceeded",
+        "The model change exceeds the assistant checkpoint limit and was not saved.",
+      )
+    const persisted = await saveHistoryChange(
+      {
         sessionId: input.sessionId,
         lease: input.lease,
         storedAt: reduced.event.issuedAt,
         baseSnapshot: authority,
         event: reduced.event,
         snapshot: reduced.snapshot,
-      })
-    } catch {
-      return failed("persistence-failed", "The History move was not saved.")
-    }
+      },
+      "The History move was not saved.",
+    )
     if (!persisted.ok) return persisted
-    history.record(authority, reduced.snapshot)
+    history.record(authority, reduced.snapshot, [reduced.event.actor])
     authority = reduced.snapshot
     return { ok: true as const, value: projected.snapshot }
   }
@@ -283,40 +343,24 @@ export function createVersionedPersistenceAdapter(
         return history.availability
       },
       preview(direction) {
-        const target = history.target(direction)
-        if (!target) return null
-        const ownedTarget = documentSnapshotV1Schema.parse(JSON.parse(canonicalJson(target)))
-        const projected = projectDocumentSnapshotV1ToV0(ownedTarget)
-        return projected.ok
-          ? {
-              targetRevision: target.revision,
-              snapshot: projected.snapshot,
-              authority: ownedTarget,
-            }
-          : null
+        return historyPreview(history.target(direction))
       },
-      async navigate(input) {
-        const parsed = parseHistoryNavigation(input, authority, projectInput)
-        if (!parsed.ok) return parsed
-        const restored = buildHistoryRestore(parsed.authority, parsed.request, history)
-        if (!restored.ok) return restored
-        let persisted: VersionedPortResult<unknown>
-        try {
-          persisted = await repository.commit({
-            sessionId: input.sessionId,
-            lease: input.lease,
-            storedAt: parsed.request.issuedAt,
-            baseSnapshot: authority,
-            event: restored.event,
-            snapshot: restored.restored,
-          })
-        } catch {
-          return failed("persistence-failed", "The history change was not saved.")
-        }
-        if (!persisted.ok) return persisted
-        authority = restored.restored
-        history.accept(parsed.request.direction)
-        return { ok: true, value: restored.projected }
+      navigate,
+      checkpoints: {
+        capture: (acceptsActor) =>
+          authority
+            ? history.captureCheckpoint(
+                documentSnapshotV1Schema.parse(JSON.parse(canonicalJson(authority))),
+                acceptsActor,
+              )
+            : null,
+        read: (handle) => (authority ? history.checkpointState(handle, authority) : null),
+        preview: (handle) =>
+          authority ? historyPreview(history.checkpointTarget(handle, authority)) : null,
+        release: (handle) => history.releaseCheckpoint(handle),
+        seal: (handle, revision) =>
+          authority ? history.sealCheckpoint(handle, authority, revision) : false,
+        restore: (input) => navigate(input, input.handle),
       },
     },
     semanticHistory: {
@@ -338,6 +382,11 @@ export function createVersionedPersistenceAdapter(
       if (!reduced.ok) return failed("invalid-event", reduced.diagnostic.message)
       const resultMatch = projectInput(reduced.snapshot, input.snapshot)
       if (resultMatch) return resultMatch
+      if (authority && !history.permitsPublication(authority, reduced.snapshot, [translated.actor]))
+        return failed(
+          "checkpoint-budget-exceeded",
+          "The model change exceeds the assistant checkpoint limit and was not saved.",
+        )
       let persisted: VersionedPortResult<unknown>
       try {
         persisted = await repository.commit({
@@ -350,7 +399,7 @@ export function createVersionedPersistenceAdapter(
         return failed("persistence-failed", "The versioned persistence commit failed.")
       }
       if (persisted.ok) {
-        history.record(authority, reduced.snapshot)
+        history.record(authority, reduced.snapshot, [translated.actor])
         authority = reduced.snapshot
       }
       return persisted
@@ -362,6 +411,17 @@ export function createVersionedPersistenceAdapter(
     async commitDraft(input) {
       const prepared = prepareDraft(input)
       if (!prepared.ok) return prepared
+      if (
+        !history.permitsPublication(
+          prepared.baseSnapshot,
+          prepared.snapshot,
+          prepared.events.map(({ actor }) => actor),
+        )
+      )
+        return failed(
+          "checkpoint-budget-exceeded",
+          "The model change exceeds the assistant checkpoint limit and was not saved.",
+        )
       let persisted: VersionedPortResult<unknown>
       try {
         persisted = await repository.commitDraft({
@@ -374,7 +434,11 @@ export function createVersionedPersistenceAdapter(
         return failed("persistence-failed", "The versioned draft persistence commit failed.")
       }
       if (persisted.ok) {
-        history.record(authority, prepared.snapshot)
+        history.record(
+          authority,
+          prepared.snapshot,
+          prepared.events.map(({ actor }) => actor),
+        )
         authority = prepared.snapshot
       }
       return persisted
