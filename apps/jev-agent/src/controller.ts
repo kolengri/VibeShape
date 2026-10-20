@@ -11,7 +11,7 @@ import type {
   Photo,
 } from "./contracts"
 
-import { readOnlyTool, validateToolInput } from "./tool-contract"
+import { readOnlyTool, toolTimeoutMs, validateToolInput } from "./tool-contract"
 
 export type ToolResult = { value: unknown; photos: Photo[]; failed: boolean }
 export type ToolPort = {
@@ -82,10 +82,10 @@ export function createController(options: ControllerOptions) {
   const history: Observation[] = []
   let referencePhotos: Photo[] = []
   let previewPhotos: Photo[] = []
-  const timed = (signal: AbortSignal) =>
-    AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs)])
+  const timed = (signal: AbortSignal, timeoutMs = options.timeoutMs) =>
+    AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
   const call = (name: string, args: Record<string, unknown>, signal: AbortSignal) =>
-    options.port.call(name, args, timed(signal))
+    options.port.call(name, args, timed(signal, toolTimeoutMs(name, options.timeoutMs)))
   async function model(signal: AbortSignal) {
     const result = await call("model_info", {}, signal)
     const parsed = modelEnvelope.safeParse(result.value)

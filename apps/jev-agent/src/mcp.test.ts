@@ -18,7 +18,7 @@ import { StdioServerTransport } from ${JSON.stringify(import.meta.resolve("@mode
 import { ListToolsRequestSchema, CallToolRequestSchema } from ${JSON.stringify(import.meta.resolve("@modelcontextprotocol/sdk/types.js"))};
 const server = new Server({name:"test-vibeshape",version:"1"},{capabilities:{tools:{}}});
 let calls = 0;
-server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:["model_info","read_agent_skill","create_draft","create_project","foreign_tool"].map(name=>({name,inputSchema:{type:"object"}}))}));
+server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:["model_info","read_agent_skill","create_draft","commit_draft","undo_model","create_project","foreign_tool"].map(name=>({name,inputSchema:{type:"object"}}))}));
 server.setRequestHandler(CallToolRequestSchema,async()=>({content:[{type:"text",text:"ok"}],structuredContent:{calls:++calls,privatePresent:Boolean(process.env.VIBESHAPE_JEV_TEST_PRIVATE),explicit:process.env.VIBESHAPE_JEV_TEST_FORWARD}}));
 await server.connect(new StdioServerTransport());
 `
@@ -36,7 +36,12 @@ await server.connect(new StdioServerTransport());
       120_000,
     )
     try {
-      expect(port.tools.map((tool) => tool.name)).toEqual(["read_agent_skill", "create_draft"])
+      expect(port.tools.map((tool) => tool.name)).toEqual([
+        "read_agent_skill",
+        "create_draft",
+        "commit_draft",
+        "undo_model",
+      ])
       const first = await port.call("model_info", {}, new AbortController().signal)
       expect(first.value).toEqual({ calls: 1, privatePresent: false, explicit: "forwarded" })
       expect(callTool).toHaveBeenLastCalledWith(
@@ -53,6 +58,24 @@ await server.connect(new StdioServerTransport());
         new AbortController().signal,
       )
       expect(second.value).toEqual({ calls: 2, privatePresent: false, explicit: "forwarded" })
+      for (const [name, args] of [
+        ["commit_draft", { draftId: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac" }],
+        [
+          "undo_model",
+          {
+            documentId: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
+            baseRevision: 0,
+            commandId: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
+          },
+        ],
+      ] as const) {
+        await port.call(name, args, new AbortController().signal)
+        expect(callTool).toHaveBeenLastCalledWith(
+          { name, arguments: args },
+          expect.anything(),
+          expect.objectContaining({ timeout: 2_147_483_647 }),
+        )
+      }
     } finally {
       await port.close()
     }

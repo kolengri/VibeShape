@@ -13,7 +13,7 @@ import { assistantToolResultFailed } from "@vibeshape/automation-api/assistant-t
 import type { z } from "zod"
 import type { Photo } from "./contracts"
 import type { ToolPort } from "./controller"
-import { allowedTool, validateToolInput } from "./tool-contract"
+import { allowedTool, toolTimeoutMs, validateToolInput } from "./tool-contract"
 
 type Elicit = (
   params: z.infer<typeof ElicitRequestSchema>["params"],
@@ -78,7 +78,7 @@ export async function connectMcp(
         const result = CallToolResultSchema.parse(
           await client.callTool({ name, arguments: args }, CallToolResultSchema, {
             signal,
-            timeout: timeoutMs,
+            timeout: toolTimeoutMs(name, timeoutMs),
           }),
         )
         const photos: Photo[] = []

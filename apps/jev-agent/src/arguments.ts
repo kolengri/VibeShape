@@ -118,7 +118,10 @@ async function requestCompletion(config: ArgumentConfig, body: string, signal: A
       () =>
         request(config.endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+          headers: {
+            "Content-Type": "application/json",
+            ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+          },
           body,
           signal,
           redirect: "error",

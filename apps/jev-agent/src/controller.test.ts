@@ -44,6 +44,7 @@ function fixture(
     failure?: boolean
     transportError?: boolean
     maxSteps?: number
+    timeoutMs?: number
   } = {},
 ) {
   const calls: string[] = []
@@ -93,13 +94,103 @@ function fixture(
     decide,
     maxSteps: options.maxSteps ?? 4,
     minConfidence: 0.5,
-    timeoutMs: 1000,
+    timeoutMs: options.timeoutMs ?? 1000,
     images: false,
   })
   return { controller, calls, port }
 }
 
 describe("Jev CAD control loop", () => {
+  it.each(["commit_draft", "undo_model"])(
+    "keeps a manual %s review open beyond the ordinary operation budget",
+    async (name) => {
+      const review: Tool = { name, inputSchema: { type: "object" } }
+      let decisions = 0
+      const f = fixture({
+        timeoutMs: 10,
+        decide: async () =>
+          decisions++ === 0
+            ? {
+                kind: "tool",
+                tool: review,
+                arguments:
+                  name === "commit_draft"
+                    ? { draftId: documentId }
+                    : { documentId, baseRevision: 0, commandId: documentId },
+                needsArguments: false,
+                confidence: 1,
+              }
+            : { kind: "done", confidence: 1 },
+      })
+      f.port.tools = [review]
+      const original = f.port.call
+      f.port.call = async (toolName, args, signal) => {
+        if (toolName === name) await Bun.sleep(30)
+        signal.throwIfAborted()
+        return original(toolName, args, signal)
+      }
+      expect(
+        await f.controller.run(
+          "Apply this change",
+          [],
+          new AbortController().signal,
+          async () => {},
+        ),
+      ).toContain("ended the turn")
+      expect(f.calls).toContain(name)
+    },
+  )
+  it("still forwards Stop to a pending manual review after the ordinary budget expires", async () => {
+    const review: Tool = { name: "commit_draft", inputSchema: { type: "object" } }
+    const f = fixture({
+      timeoutMs: 10,
+      decide: async () => ({
+        kind: "tool",
+        tool: review,
+        arguments: { draftId: documentId },
+        needsArguments: false,
+        confidence: 1,
+      }),
+    })
+    f.port.tools = [review]
+    const started = Promise.withResolvers<AbortSignal>()
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name !== review.name) return original(name, args, signal)
+      started.resolve(signal)
+      return new Promise((_, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+        if (signal.aborted) reject(signal.reason)
+      })
+    }
+    const cancellation = new AbortController()
+    const pending = f.controller
+      .run("Apply", [], cancellation.signal, async () => {})
+      .then(
+        () => null,
+        (error: unknown) => error,
+      )
+    const reviewSignal = await started.promise
+    await Bun.sleep(30)
+    const wasAborted = reviewSignal.aborted
+    cancellation.abort(new Error("Stopped manual review"))
+    expect(await pending).toEqual(new Error("Stopped manual review"))
+    expect(wasAborted).toBe(false)
+    expect(reviewSignal.aborted).toBe(true)
+  })
+  it("retains the short timeout for an ordinary operation", async () => {
+    const f = fixture({ timeoutMs: 10 })
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name === tool.name) await Bun.sleep(30)
+      signal.throwIfAborted()
+      return original(name, args, signal)
+    }
+    await expect(
+      f.controller.run("Create", [], new AbortController().signal, async () => {}),
+    ).rejects.toThrow()
+    expect(f.calls).not.toContain(tool.name)
+  })
   it("keeps authoring available when cancelled during the pre-dispatch notification", async () => {
     let decisions = 0
     const f = fixture({

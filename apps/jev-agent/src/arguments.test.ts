@@ -28,7 +28,10 @@ const completion = (content: string, finishReason = "stop") =>
     choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: finishReason }],
   })
 
-function fixture(handler: (init: RequestInit) => Response | Promise<Response>) {
+function fixture(
+  handler: (init: RequestInit) => Response | Promise<Response>,
+  apiKey = "secret-test-key",
+) {
   const calls: { url: string; init: RequestInit }[] = []
   const fakeFetch: typeof fetch = Object.assign(
     async (input: string | URL | Request, init?: RequestInit) => {
@@ -42,13 +45,23 @@ function fixture(handler: (init: RequestInit) => Response | Promise<Response>) {
     complete: createArgumentCompleter({
       endpoint: "https://provider.example/v1/chat/completions",
       model: "helper-pinned",
-      apiKey: "secret-test-key",
+      apiKey,
       fetch: fakeFetch,
     }),
   }
 }
 
 describe("argument completion", () => {
+  test("omits Authorization for a keyless helper", async () => {
+    const { complete, calls } = fixture((init) => {
+      const headers = new Headers(init.headers)
+      expect(headers.has("Authorization")).toBe(false)
+      expect(headers.get("Content-Type")).toBe("application/json")
+      return completion('{"geometry":{}}')
+    }, "")
+    await expect(complete(tool, state, {}, signal())).resolves.toEqual({ geometry: {} })
+    expect(calls).toHaveLength(1)
+  })
   test("makes one non-streaming JSON request and preserves every selected value", async () => {
     const { complete, calls } = fixture(() =>
       completion(JSON.stringify({ plane: "XZ", geometry: { width: 20 }, preview: false })),

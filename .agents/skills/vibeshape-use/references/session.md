@@ -64,6 +64,9 @@ The optional source-checkout Jev controller connects through the native app's cu
 setting and the same injected project attachment described above. It does not add MCP tools or
 permissions. It selects actions and closed parameter values with Jev; a separately configured
 language model supplies open arguments. Images require an explicit experimental opt-in.
+Manual-review calls use a separate client horizon of about 24.8 days, bypassing the short provider
+and ordinary-operation timeout. Stop and the server's authority, liveness and proposal expiry still
+apply; this client horizon does not extend consent or guarantee that a review remains available.
 The controller stops on uncertain writes, schema rejection, low selected-branch confidence or its
 step limit. Inspect the saved model before continuing; a `done` decision is not verification.
 After an uncertain dispatch, this process permits read-only inspection only. Inspect saved state
@@ -142,5 +145,5 @@ preview/review/commit path.
 - Current shared serialized operation limit is 192 KiB; semantic pages are bounded to 128 KiB. Reduce page size or divide valid authoring work when necessary. Do not truncate a replacement record.
 - Remote additionally limits operations to 30/minute and 128 per tab lifetime, with bounded onboarding attempts. Follow reported rate-limit guidance; do not repeatedly reconnect to evade budgets.
 - `busy` requires waiting for the pending request. Stale committed state requires a fresh read/draft. Validation failures require corrected input. A duplicate command ID is an error, not proof of an earlier success.
-- A review operation may wait up to six minutes. Keep it pending while the person reviews; client timeout/cancellation interrupts pending work; local access can recover without replay. Do not start a second commit.
+- Local CAD draft review has no wall-clock deadline while the browser remains live and authorized; other review operations retain their advertised expiry, typically up to six minutes. Keep the request pending while the person reviews; client timeout/cancellation interrupts pending work. Local access can recover without replay. Do not start a second commit.
 - Unknown outcomes require inspection before retrying; a fresh ID does not make a duplicate write safe.

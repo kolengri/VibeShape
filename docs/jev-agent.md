@@ -50,7 +50,15 @@ use your existing local environment/wrapper setup when launching the app from Fi
 | `JEV_ENABLE_IMAGES` | `1` enables experimental PNG/JPEG input; default `0` |
 | `JEV_MIN_CONFIDENCE` | Minimum selected-branch confidence; default `0.5`, range `0`–`1` |
 | `JEV_MAX_STEPS` | Decisions per turn; default `24`, maximum `48` |
-| `JEV_TIMEOUT_MS` | Per-operation timeout; default `60000`, range `1000`–`120000` |
+| `JEV_TIMEOUT_MS` | Provider and ordinary MCP operation timeout; default `60000`, range `1000`–`120000`. Manual-review calls use the separate horizon below. |
+
+Manual-review calls (CAD/assembly commits, import commits, metadata/library changes, history,
+surface textures and lightweighting requests) bypass this short operation budget. Stop, disconnect,
+server liveness, authority and proposal expiry still apply. The pinned MCP SDK cannot disable its
+request timer, so these calls use the maximum safe platform timer, `2147483647` ms (about 24.8 days),
+in both client layers. This practical client ceiling does not extend any server-side review expiry.
+Local CAD draft review otherwise remains pending while the browser stays authorized; other review
+services retain their advertised limits.
 
 The helper endpoint must use HTTPS or loopback HTTP, without URL credentials, query parameters or
 a fragment. For an already configured local compatible model, an endpoint can be
