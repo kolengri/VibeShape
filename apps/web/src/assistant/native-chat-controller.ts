@@ -8,20 +8,20 @@ import type {
   AssistantResult,
   AssistantSnapshot,
 } from "@vibeshape/automation-api/assistant"
-import { assistantPromptSchema } from "@vibeshape/automation-api/assistant"
+import {
+  assistantPromptSchema,
+  assistantQuestionAnswersMatch,
+  assistantQuestionResponseSchema,
+} from "@vibeshape/automation-api/assistant"
 import {
   type AssistantCheckpointHost,
   type AssistantCheckpointState,
   createAssistantCheckpoints,
 } from "./assistant-checkpoints"
-import {
-  type AgentChatSession,
-  type ChatMessage,
-  clearChatHistory,
-  readChatHistory,
-  retainChatMessages,
-  writeChatHistory,
-} from "./chat-history"
+import { type AgentChatSession, type ChatMessage, retainChatMessages } from "./chat-history"
+
+import { createChatHistoryCoordinator } from "./chat-history-coordinator"
+import type { ChatHistoryStore } from "./chat-history-storage"
 
 type Permission = Extract<AssistantEvent, { type: "permission" }>
 type ToolMessageState = NonNullable<ChatMessage["tool"]> & { id: string; text?: string }
@@ -96,12 +96,14 @@ export function createNativeChatController({
   projectId,
   bridge,
   storage,
+  historyStore,
   checkpointHost,
   automation,
 }: {
   projectId: string
   bridge: AssistantBridge
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem">
+  historyStore?: ChatHistoryStore | undefined
   checkpointHost?: AssistantCheckpointHost
   automation?: {
     getSnapshot: () => {
@@ -116,10 +118,9 @@ export function createNativeChatController({
     retryRecovery: () => Promise<boolean>
   }
 }) {
-  const saved = readChatHistory(projectId, storage)
-  let agentSession: AgentChatSession | undefined = saved?.agentSession
+  let agentSession: AgentChatSession | undefined
   let state: ChatState = {
-    messages: saved?.messages ?? [],
+    messages: [],
     snapshot: null,
     permission: null,
     question: null,
@@ -141,13 +142,13 @@ export function createNativeChatController({
     settlingCheckpoint: false,
     checkpointError: null,
   }
+  let resettingHistory = false
   let disposed = false
   let generation = 0
   let snapshotEpoch = 0
   let agent: AssistantAgent | null = null
   let connecting: number | null = null
   let unsubscribe: (() => void) | undefined
-  let saveTimer: ReturnType<typeof setTimeout> | undefined
   let promptInFlight = false
   let activeControl: symbol | null = null
   let activePrompt: PromptTurn | null = null
@@ -183,14 +184,22 @@ export function createNativeChatController({
   function settleCheckpoints() {
     if (!promptInFlight && !steering && !state.busy) void checkpoints?.finish().then(drainQueue)
   }
-  const save = () => {
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = undefined
-    const storageFailed = !writeChatHistory(projectId, state.messages, storage, agentSession)
-    if (state.storageFailed !== storageFailed) publish({ storageFailed })
-  }
+  const history = createChatHistoryCoordinator({
+    projectId,
+    storage,
+    store: historyStore,
+    current: () => ({ messages: state.messages, agentSession }),
+    restored: (saved) => {
+      agentSession = saved.agentSession
+      publish({ messages: saved.messages })
+    },
+    failed: (storageFailed) => {
+      if (state.storageFailed !== storageFailed) publish({ storageFailed })
+    },
+  })
+  const save = () => history.save()
   const queueSave = () => {
-    saveTimer ??= setTimeout(save, 200)
+    void save()
   }
   const append = (role: ChatMessage["role"], text: string) => {
     const messages = [...state.messages]
@@ -200,8 +209,8 @@ export function createNativeChatController({
       last?.role === role &&
       last.id !== steering?.historyTailId
     )
-      messages[messages.length - 1] = { ...last, text: (last.text + text).slice(0, 32_000) }
-    else messages.push({ id: crypto.randomUUID(), role, text: text.slice(0, 32_000) })
+      messages[messages.length - 1] = { ...last, text: last.text + text }
+    else messages.push({ id: crypto.randomUUID(), role, text })
     publish({ messages: retainChatMessages(messages) })
     queueSave()
   }
@@ -229,12 +238,15 @@ export function createNativeChatController({
     const at = generation
     const epoch = snapshotEpoch
     const cleanup =
-      snapshot.status === "prompting" ? {} : clearTurnState(snapshotToolStatus(snapshot.status))
+      snapshot.status === "prompting" || hasPendingQuestion(snapshot)
+        ? {}
+        : clearTurnState(snapshotToolStatus(snapshot.status))
     publish({
       ...cleanup,
       snapshot,
       busy: hostTurnActive(snapshot),
       supportsActiveSteer: snapshot.canSteer === true && typeof bridge.steer === "function",
+      ...(snapshot.questionStatus === "paused" ? { queuePaused: true } : {}),
     })
     if (!snapshotCurrent(snapshot, at, epoch)) return
     rememberSession(snapshot)
@@ -266,7 +278,7 @@ export function createNativeChatController({
     const merged = mergeToolMessage(previous, event)
     const { id, text: detail, ...tool } = merged
     toolMessages.set(event.toolCallId, merged)
-    const text = (detail ?? "").slice(0, 32_000)
+    const text = detail ?? ""
     const messages = [...state.messages]
     const index = messages.findIndex((message) => message.id === id)
     const message: ChatMessage = {
@@ -319,7 +331,30 @@ export function createNativeChatController({
     if (patch.messages) publish(patch)
   }
   function hostTurnActive(snapshot = state.snapshot) {
-    return snapshot?.status === "prompting" || snapshot?.status === "cancelling"
+    return (
+      snapshot?.status === "prompting" ||
+      snapshot?.status === "cancelling" ||
+      hasPendingQuestion(snapshot)
+    )
+  }
+  function hasPendingQuestion(snapshot = state.snapshot) {
+    const canWait = snapshot?.status === "ready" || snapshot?.status === "prompting"
+    return canWait && (questions.size > 0 || snapshot.questionStatus === "pending")
+  }
+  function hasUnansweredQuestion() {
+    return hasPendingQuestion() || state.snapshot?.questionStatus === "paused"
+  }
+  function questionAnswerValid(
+    question: AssistantQuestion,
+    answers: Record<string, string> | null,
+  ) {
+    return (
+      assistantQuestionResponseSchema.shape.answers.safeParse(answers).success &&
+      (answers === null || assistantQuestionAnswersMatch(question, answers))
+    )
+  }
+  function interruptedWorkCanContinue() {
+    return !hasUnansweredQuestion() && (state.busy || hostTurnActive() || promptInFlight)
   }
   function clearTurnState(status = terminalToolStatus): Partial<ChatState> {
     permissions.clear()
@@ -345,7 +380,12 @@ export function createNativeChatController({
   ) {
     if (event.type === "question") questions.set(event.question.requestId, event.question)
     else questions.delete(event.requestId)
-    publish({ question: questions.values().next().value ?? null })
+    publish({
+      question: questions.values().next().value ?? null,
+      ...(event.type === "question-resolved" && event.reason && event.reason !== "answered"
+        ? { queuePaused: true }
+        : {}),
+    })
   }
   function receiveError(code: AssistantErrorCode) {
     if (recovery) {
@@ -476,14 +516,17 @@ export function createNativeChatController({
     if (connecting === at) connecting = null
     if (isCurrent(at)) publish({ connecting: false })
   }
+  function connectionBlocked() {
+    return disposed || resettingHistory || connecting !== null || state.busy
+  }
   async function connect(configuration: AssistantAgent) {
-    if (disposed || connecting !== null || state.busy) return
+    if (connectionBlocked()) return
     const { at, done } = beginDisconnect()
     if (!isCurrent(at)) return
     connecting = at
     publish({ connecting: true, error: null })
     try {
-      await done
+      await Promise.all([done, history.ready])
       if (!isCurrent(at)) return
       agent = configuration
       automaticRecoveryAllowed = true
@@ -609,7 +652,8 @@ export function createNativeChatController({
   function captureRecoveryOwner(configuration: AssistantAgent) {
     const previous = state.snapshot
     const current = scope()
-    const interrupted = state.busy || hostTurnActive() || promptInFlight
+    const unanswered = hasUnansweredQuestion()
+    const interrupted = interruptedWorkCanContinue()
     const resumeSessionId = matchingResume(configuration) ?? previous?.sessionId ?? undefined
     const at = ++generation
     if (current) ignoredTokens.add(current.sessionToken)
@@ -617,7 +661,7 @@ export function createNativeChatController({
       at,
       agent: { command: configuration.command, args: [...configuration.args] },
       interrupted,
-      queuePaused: state.queuePaused,
+      queuePaused: state.queuePaused || unanswered,
       resumeSessionId,
       failure: undefined,
       shutdown: current ? bridge.disconnect(current).catch(() => undefined) : Promise.resolve(),
@@ -796,13 +840,14 @@ export function createNativeChatController({
   function continueInterruptedTurn() {
     // This is a new normal ACP turn in the loaded session, never a replay of the interrupted RPC.
     return launchPrompt(
-      "The connection interrupted the previous turn. Continue its remaining work in this resumed session. First read model_info and inspect the authoritative current document, pending draft, and revisions. An earlier CAD request may have completed without a response: reconcile its outcome before doing anything else. Never repeat an uncertain mutation or reapply an already completed change. If its outcome cannot be determined, stop and explain the uncertainty. Respect the user's latest instructions and finish only the remaining work.",
+      "The connection interrupted the previous turn. Continue its remaining work in this resumed session. First read model_info and list_recoverable_drafts, then inspect the authoritative saved revision and any listed semantic intent. An earlier CAD request may have completed without a response: reconcile its outcome before doing anything else. Recoverable intent is unapplied work, not a saved change. Only when its committed base still matches, explicitly call restore_draft to adopt the needed intent as a new draft attributed to your current actor; preview and commit through the ordinary validated path. Never repeat an uncertain mutation or reapply an already completed change. If its outcome cannot be determined, stop and explain the uncertainty. Save small usable validated milestones before lengthy work. Respect the user's latest instructions and finish only the remaining work.",
       [],
       undefined,
       true,
     )
   }
   function validPrompt(text: string, attachments: readonly AssistantAttachment[]) {
+    if (resettingHistory) return null
     const current = scope()
     if (!current || disposed) return null
     const parsed = assistantPromptSchema.safeParse({ ...current, text, attachments })
@@ -855,7 +900,13 @@ export function createNativeChatController({
     return activeControl !== null || steering !== null
   }
   function promptReady() {
-    return !recovery && !promptInFlight && !controlLocked() && state.snapshot?.status === "ready"
+    return (
+      !recovery &&
+      !promptInFlight &&
+      !controlLocked() &&
+      !hasPendingQuestion() &&
+      state.snapshot?.status === "ready"
+    )
   }
   function removeQueuedPrompt(item: QueuedPrompt) {
     const index = queued.indexOf(item)
@@ -982,8 +1033,16 @@ export function createNativeChatController({
   ) {
     if (!internal) recordPrompt(text, attachments, item)
   }
+  function queuedSteeringReady() {
+    return (
+      !hasUnansweredQuestion() &&
+      !controlLocked() &&
+      state.busy &&
+      state.snapshot?.status === "prompting"
+    )
+  }
   function prepareQueuedSteer(id: string) {
-    if (controlLocked() || !state.busy || state.snapshot?.status !== "prompting") return null
+    if (!queuedSteeringReady()) return null
     const request = bridge.steer
     if (!state.supportsActiveSteer || !request) {
       publish({ error: "unsupported" })
@@ -1087,6 +1146,13 @@ export function createNativeChatController({
       }
     }
   }
+  async function resetTranscript(at: number) {
+    if (!isCurrent(at) || resettingHistory) return false
+    resettingHistory = true
+    const cleared = await history.reset(() => isCurrent(at))
+    resettingHistory = false
+    return cleared && isCurrent(at)
+  }
   return {
     getSnapshot: () => state,
     start() {
@@ -1164,7 +1230,13 @@ export function createNativeChatController({
       publishQueue()
     },
     async resumeQueue() {
-      if (state.snapshot?.status !== "ready" || promptInFlight || activeControl) return false
+      if (
+        state.snapshot?.status !== "ready" ||
+        promptInFlight ||
+        activeControl ||
+        hasPendingQuestion()
+      )
+        return false
       publish({ queuePaused: false })
       drainQueue()
       return true
@@ -1188,10 +1260,10 @@ export function createNativeChatController({
       if (queued.length || state.busy || promptInFlight || state.settlingCheckpoint) return
       const { at, done } = beginDisconnect()
       await done
-      if (!isCurrent(at)) return
+      if (!(await resetTranscript(at))) return
       agentSession = undefined
       checkpoints?.clear()
-      publish({ messages: [], error: null, storageFailed: !clearChatHistory(projectId, storage) })
+      publish({ messages: [], error: null, storageFailed: false })
       if (agent) await connect(agent)
     },
     async respondPermission(allow: boolean) {
@@ -1209,6 +1281,7 @@ export function createNativeChatController({
       const current = scope(),
         question = state.question
       if (!current || !question) return false
+      if (!questionAnswerValid(question, answers)) return false
       const at = generation
       const snapshotAt = snapshotEpoch
       try {
@@ -1219,8 +1292,12 @@ export function createNativeChatController({
         })
         if (!isCurrent(at) || !result.ok) return false
         if (snapshotEpoch === snapshotAt) acceptSnapshot(result.value)
-        questions.delete(question.requestId)
-        publish({ question: questions.values().next().value ?? null })
+        receiveQuestion({
+          ...current,
+          type: "question-resolved",
+          requestId: question.requestId,
+          reason: answers === null ? "cancelled" : "answered",
+        })
         return true
       } catch {
         return false
@@ -1262,6 +1339,11 @@ export function createNativeChatController({
         if (activeControl === token) activeControl = null
       }
     },
+    async retryHistory() {
+      if (state.busy || promptInFlight || steering || activeControl) return
+      await history.retry()
+    },
+    flushHistory: () => history.flush(),
     dispose() {
       if (disposed) return
       const current = scope()

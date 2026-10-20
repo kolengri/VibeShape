@@ -8,7 +8,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 import { LATEST_PROTOCOL_VERSION, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js"
+import type { AssistantQuestionReply } from "@vibeshape/automation-api/assistant"
 import { DESKTOP_MCP_DESCRIPTOR_NAME } from "@vibeshape/automation-api/desktop-host"
+import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { startEditorServer } from "./editor-server"
 import { publishMcpDescriptor, readMcpDescriptor } from "./mcp-descriptor"
@@ -62,8 +64,16 @@ async function connect(context: Awaited<ReturnType<typeof host>>, name = "native
   return { client, transport }
 }
 
-async function project(context: Awaited<ReturnType<typeof host>>, id: string) {
-  const path = await context.service.publishProject(id, join(context.directory, `${id}.json`))
+async function project(
+  context: Awaited<ReturnType<typeof host>>,
+  id: string,
+  questions?: AssistantQuestionHost,
+) {
+  const path = await context.service.publishProject(
+    id,
+    join(context.directory, `${id}.json`),
+    questions,
+  )
   const descriptor = await readMcpDescriptor(path)
   const attached = await connect(
     {
@@ -111,6 +121,78 @@ function browser(
 describe("app-owned native MCP attachment", () => {
   const projectId = "0195b5ac-b220-7a2c-8c33-67a36a7f6101"
   const document = { id: projectId, name: "Open project", revision: 4 }
+
+  it("discovers and invokes native questions without ACP elicitation and rejects superseded transport callbacks", async () => {
+    const context = await host()
+    let calls = 0
+    let waiting = false
+    let started!: () => void
+    const began = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    let answer!: (reply: AssistantQuestionReply) => void
+    const questions: AssistantQuestionHost = {
+      canInvoke: () => !waiting,
+      request: async (_input, signal) => {
+        calls += 1
+        waiting = true
+        started()
+        return new Promise<AssistantQuestionReply>((resolve) => {
+          answer = resolve
+          signal.addEventListener("abort", () => resolve({ action: "cancel" }), { once: true })
+        })
+      },
+    }
+    const native = await project(context, projectId, questions)
+    expect((await native.client.listTools()).tools).toContainEqual(
+      expect.objectContaining({ name: "ask_user_question" }),
+    )
+    const input = {
+      message: "Choose a size",
+      fields: [{ id: "size", label: "Size", required: true }],
+    }
+    let completed = false
+    const call = native.client
+      .callTool({ name: "ask_user_question", arguments: input })
+      .then((result) => {
+        completed = true
+        return result
+      })
+    await began
+    expect(completed).toBe(false)
+    expect(await native.client.callTool({ name: "model_info", arguments: {} })).toMatchObject({
+      isError: true,
+      structuredContent: { result: { diagnostic: { code: "assistant-question-blocked" } } },
+    })
+    const replacement: AssistantQuestionHost = {
+      canInvoke: () => true,
+      request: async () => ({ action: "accept", content: { size: "20 mm" } }),
+    }
+    await context.service.publishProject(
+      projectId,
+      join(context.directory, `${projectId}.json`),
+      replacement,
+    )
+    expect(await call).toMatchObject({ isError: true, structuredContent: { action: "cancel" } })
+    answer({ action: "accept", content: { size: "stale answer" } })
+    expect(
+      await native.client.callTool({ name: "ask_user_question", arguments: input }),
+    ).toMatchObject({ isError: true, structuredContent: { action: "cancel" } })
+    expect(calls).toBe(1)
+    await native.client.close()
+    await context.service.whenClientReleased(projectId)
+    const current = await project(context, projectId, replacement)
+    expect(
+      await current.client.callTool({ name: "ask_user_question", arguments: input }),
+    ).toMatchObject({
+      isError: false,
+      structuredContent: { action: "accept", content: { size: "20 mm" } },
+    })
+    const external = await connect(context)
+    expect(
+      (await external.client.listTools()).tools.some((tool) => tool.name === "ask_user_question"),
+    ).toBe(false)
+  })
 
   async function grant(context: Awaited<ReturnType<typeof host>>) {
     const response = await browser(context, "connect", { protocolVersion: 1, document }, projectId)

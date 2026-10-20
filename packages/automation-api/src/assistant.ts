@@ -102,6 +102,57 @@ export const assistantQuestionSchema = z.strictObject({
   fields: z.array(questionField).min(1).max(16),
 })
 
+export const assistantQuestionInputSchema = z.strictObject({
+  message: assistantQuestionSchema.shape.message,
+  fields: z
+    .array(
+      z
+        .strictObject({ ...questionField.shape, secret: z.literal(false).default(false) })
+        .refine(
+          (field) =>
+            questionField.safeParse(field).success &&
+            (!field.options ||
+              (field.options.length > 0 &&
+                new Set(field.options.map((option) => option.id)).size === field.options.length)),
+        ),
+    )
+    .min(1)
+    .max(8)
+    .refine((fields) => new Set(fields.map((field) => field.id)).size === fields.length),
+})
+export type AssistantQuestionInput = z.infer<typeof assistantQuestionInputSchema>
+export type AssistantQuestionReply =
+  | { action: "accept"; content: Record<string, string> }
+  | { action: "cancel" | "decline" }
+export const assistantQuestionTool = {
+  name: "ask_user_question",
+  description:
+    "Ask the person a bounded structured question and wait for their answer before dependent work. Fields accept text or one advertised choice; include a separate optional text field for custom instructions. Secrets are not supported. Cancellation or expiration supplies no answer or authority; stop dependent work.",
+  inputSchema: z.toJSONSchema(assistantQuestionInputSchema, { io: "input" }),
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+}
+
+export function assistantQuestionAnswersMatch(
+  question: Pick<z.infer<typeof assistantQuestionSchema>, "fields">,
+  answers: Record<string, string>,
+) {
+  if (Object.keys(answers).some((id) => !question.fields.some((field) => field.id === id)))
+    return false
+  return question.fields.every((field) => {
+    const value = answers[field.id]
+    return value === undefined || (value === "" && field.required)
+      ? !field.required
+      : value.length >= (field.minLength ?? 0) &&
+          value.length <= (field.maxLength ?? 16_384) &&
+          (!field.options || field.options.some((option) => option.id === value))
+  })
+}
+
 export const assistantAgentSchema = z.strictObject({
   command: z
     .string()
@@ -186,6 +237,7 @@ export const assistantSnapshotSchema = z.strictObject({
   sessionId: id.nullable(),
   canResume: z.boolean(),
   canSteer: z.boolean().optional(),
+  questionStatus: z.enum(["pending", "paused"]).optional(),
   modes: z.array(choice).max(100),
   currentModeId: id.nullable(),
   models: z.array(choice).max(100),
@@ -242,7 +294,12 @@ export const assistantEventSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({ ...scope, type: z.literal("permission-resolved"), requestId: id }),
   z.strictObject({ ...scope, type: z.literal("question"), question: assistantQuestionSchema }),
-  z.strictObject({ ...scope, type: z.literal("question-resolved"), requestId: id }),
+  z.strictObject({
+    ...scope,
+    type: z.literal("question-resolved"),
+    requestId: id,
+    reason: z.enum(["answered", "cancelled", "expired"]).optional(),
+  }),
   z.strictObject({ ...scope, type: z.literal("completed"), stopReason: label }),
   z.strictObject({ ...scope, type: z.literal("error"), code: assistantErrorCodeSchema }),
 ])

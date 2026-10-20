@@ -1290,6 +1290,34 @@ describe("ModelTree History disclosure", () => {
     expect(browser().getByRole("treeitem", { name: "Variables" }).tabIndex).toBe(0)
   })
 
+  it("preserves manual History position across report refreshes and reveals a new selection once", () => {
+    const tree = renderTree({}, false)
+    const featureItem = timeline().getByRole("treeitem", { name: "Box 1" })
+    const sketchItem = timeline().getByRole("treeitem", { name: "Edit Profile" })
+    const featureScroll = vi.fn()
+    const sketchScroll = vi.fn()
+    const featureRow = featureItem.closest<HTMLElement>("[data-history-id]")
+    const sketchRow = sketchItem.closest<HTMLElement>("[data-history-id]")
+    if (!featureRow || !sketchRow) throw new Error("The History fixture requires selectable rows.")
+    featureRow.scrollIntoView = featureScroll
+    sketchRow.scrollIntoView = sketchScroll
+    const report = controller.report
+    if (!report) throw new Error("The History fixture requires a report.")
+    const refreshedController = {
+      ...controller,
+      report: {
+        ...report,
+        snapshot: { ...report.snapshot, features: [...report.snapshot.features] },
+      },
+    }
+    tree.rerenderTree({ controller: refreshedController })
+    expect(featureScroll).not.toHaveBeenCalled()
+    tree.rerenderTree({ controller: refreshedController, activeSketchId: sketchId })
+    expect(sketchScroll).toHaveBeenCalledTimes(1)
+    tree.rerenderTree({ controller: { ...refreshedController }, activeSketchId: sketchId })
+    expect(sketchScroll).toHaveBeenCalledTimes(1)
+  })
+
   it("starts with compact History icons and toggles details without changing browser content", async () => {
     const user = userEvent.setup()
     renderTree({}, false)

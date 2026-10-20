@@ -380,7 +380,7 @@ describe("native continuation controls through the real service", () => {
         if (replacement === "disconnect") disconnected = chat.disconnect()
         else context.emitSnapshot({ ...previous, status: "authentication-required" })
       })
-      context.emitSnapshot({ ...previous, status: "ready" })
+      context.emitSnapshot({ ...previous, status: "cancelling" })
       expect(replaced).toBe(true)
       await disconnected
       unsubscribe()

@@ -202,3 +202,65 @@ it("keeps metadata closed-world and separate from legacy CAD draft commands", as
     }).success,
   ).toBe(false)
 })
+
+it("accepts versioned Chamfer intent while preserving legacy flat tool arguments", () => {
+  const signature = {
+    kind: "face",
+    geometryClass: "PLANE",
+    measure: 20,
+    centroid: [0, 0, 0],
+    bounds: { min: [0, 0, 0], max: [2, 10, 0] },
+    boundaryCount: 4,
+    adjacentGeometryClasses: ["PLANE"],
+  }
+  const parameters = {
+    targetBody: { schemaVersion: 0, featureId: id, outputRole: "pattern.instance.1" },
+    mode: "distance-angle",
+    distance: createLengthQuantity(2, "mm", "#bevel"),
+    angle: {
+      schemaVersion: 0,
+      dimension: "angle",
+      value: Math.PI / 6,
+      unit: "rad",
+      source: { value: 30, unit: "deg", expression: "30 deg" },
+    },
+    measurement: "tangent",
+    flip: true,
+    tangentPropagation: true,
+    targets: [
+      {
+        kind: "face",
+        face: {
+          schemaVersion: 1,
+          featureId: id,
+          outputRole: "pattern.instance.1",
+          kind: "face",
+          signature,
+        },
+      },
+    ],
+    directionOverrides: [],
+  }
+  const base = { draftId: id, baseRevision: 0, commandId: id, featureId: id }
+  for (const tool of ["create_chamfer", "update_chamfer"]) {
+    expect(
+      localOperationSchema.safeParse({ tool, arguments: { ...base, parameters } }).success,
+    ).toBe(true)
+    expect(
+      localOperationSchema.safeParse({ tool, arguments: { ...base, parameters, distanceMm: 2 } })
+        .success,
+    ).toBe(false)
+    expect(
+      localOperationSchema.safeParse({
+        tool,
+        arguments: { ...base, targetFeatureId: id, distanceMm: 2 },
+      }).success,
+    ).toBe(true)
+    expect(
+      localOperationSchema.safeParse({
+        tool,
+        arguments: { ...base, parameters: { ...parameters, targets: [] } },
+      }).success,
+    ).toBe(false)
+  }
+})

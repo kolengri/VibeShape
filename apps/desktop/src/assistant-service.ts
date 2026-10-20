@@ -15,6 +15,7 @@ import {
   assistantSnapshotSchema,
 } from "@vibeshape/automation-api/assistant"
 import { type DesktopMcpSetup, desktopMcpSetupSchema } from "@vibeshape/automation-api/desktop-host"
+import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
 import { createAssistantPermissions } from "./assistant-permissions"
 import { assistantPromptContent } from "./assistant-prompt-content"
 import { createAssistantQuestions } from "./assistant-questions"
@@ -79,7 +80,7 @@ type Owner = {
 export type AssistantServiceOptions = {
   cwd: string
   applicationVersion: string
-  getMcpSetup: (projectId: string) => Promise<DesktopMcpSetup>
+  getMcpSetup: (projectId: string, questions: AssistantQuestionHost) => Promise<DesktopMcpSetup>
   onEvent: (event: AssistantEvent) => void
   isMcpClientAttached?: (projectId: string) => boolean | Promise<boolean>
   whenMcpClientReleased?: (projectId: string) => Promise<void>
@@ -104,7 +105,12 @@ function failure(code: AssistantErrorCode): AssistantResult {
 }
 
 function hasLiveTurnOwner(owner: Owner) {
-  return owner.busy || owner.steering !== null || owner.externalTurn !== null
+  return (
+    owner.busy ||
+    owner.steering !== null ||
+    owner.externalTurn !== null ||
+    owner.questions.hasPending()
+  )
 }
 
 function recordPendingSteeringActivity(
@@ -397,7 +403,30 @@ export function createAssistantService(options: AssistantServiceOptions) {
     if (!isCurrent(owner) || disposed) throw new AssistantFailure("stale-session")
     if (await options.isMcpClientAttached?.(projectId))
       throw new AssistantFailure("mcp-client-conflict")
-    const setup = desktopMcpSetupSchema.parse(await options.getMcpSetup(projectId))
+    const questions: AssistantQuestionHost = {
+      async request(input, signal) {
+        if (
+          !isCurrent(owner) ||
+          !owner.process ||
+          !owner.acceptingUpdates ||
+          owner.snapshot.status !== "prompting" ||
+          signal.aborted
+        )
+          return { action: "decline" }
+        const epoch = owner.cancelEpoch
+        const result = await owner.questions.requestInput(input, signal)
+        return isCurrent(owner) && owner.process && owner.cancelEpoch === epoch
+          ? result
+          : { action: "cancel" }
+      },
+      canInvoke: () =>
+        isCurrent(owner) &&
+        owner.process !== null &&
+        owner.acceptingUpdates &&
+        owner.snapshot.status === "prompting" &&
+        owner.snapshot.questionStatus === undefined,
+    }
+    const setup = desktopMcpSetupSchema.parse(await options.getMcpSetup(projectId, questions))
     if (!isCurrent(owner) || disposed) throw new AssistantFailure("stale-session")
     const server = setup.mcpServers.vibeshape
     owner.mcp = [
@@ -445,7 +474,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
       ),
       questions: createAssistantQuestions(
         state,
-        (event) => emit(owner, event),
+        (event) => questionEvent(owner, event),
         options.questionTimeoutMs ?? 300_000,
       ),
       configRevision: 0,
@@ -503,7 +532,14 @@ export function createAssistantService(options: AssistantServiceOptions) {
         ? "stale-session"
         : (owner.failureCode ?? errorCode(error, "request-failed"))
     if (isCurrent(owner) && owner.process) {
-      if (code === "authentication-required") owner.snapshot.status = "authentication-required"
+      if (code === "authentication-required") {
+        owner.snapshot.status = "authentication-required"
+        owner.acceptingUpdates = false
+        owner.externalTurn = null
+        clearTimeout(owner.externalTimer)
+        owner.permissions.cancel()
+        owner.questions.cancel()
+      }
       emit(owner, {
         projectId: owner.snapshot.projectId,
         sessionToken: owner.snapshot.sessionToken,
@@ -517,12 +553,30 @@ export function createAssistantService(options: AssistantServiceOptions) {
   function settleTurnReadiness(owner: Owner) {
     if (!isCurrent(owner) || !owner.process) return
     const pending = hasLiveTurnOwner(owner)
-    owner.acceptingUpdates = pending && owner.snapshot.status !== "cancelling"
+    owner.acceptingUpdates = pending && owner.snapshot.status === "prompting"
     if (pending) return
     owner.toolTargets.clear()
     if (owner.snapshot.status === "prompting" || owner.snapshot.status === "cancelling")
       owner.snapshot.status = "ready"
     clearTimeout(owner.cancelTimer)
+  }
+  function updateQuestionStatus(owner: Owner, event: AssistantEvent) {
+    if (event.type === "question") owner.snapshot.questionStatus = "pending"
+    else if (event.type === "question-resolved") {
+      if (event.reason !== "answered") owner.snapshot.questionStatus = "paused"
+      else if (!owner.questions.hasPending() && owner.snapshot.questionStatus !== "paused")
+        delete owner.snapshot.questionStatus
+    }
+  }
+  function questionEvent(owner: Owner, event: AssistantEvent) {
+    updateQuestionStatus(owner, event)
+    emit(owner, event)
+    if (!owner.acceptingUpdates) return
+    if (owner.connection?.signal.aborted) return
+    if (event.type === "question-resolved" && event.reason !== "answered" && owner.process)
+      requestCancellation(owner)
+    else settleTurnReadiness(owner)
+    snapshot(owner)
   }
   function finishExternalTurn(owner: Owner, status: TerminalThreadStatus) {
     const cancelled = owner.snapshot.status === "cancelling"
@@ -612,6 +666,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
   }
   function steerBlocked(owner: Owner, attachments: readonly AssistantAttachment[]) {
+    if (owner.snapshot.questionStatus) return "agent-busy"
     if (!owner.snapshot.canSteer) return "unsupported"
     if (owner.snapshot.status !== "prompting" || owner.steering) return "agent-busy"
     return supportedAttachments(owner, attachments) ? null : "unsupported"
@@ -681,6 +736,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     if (!prepared.ok) return prepared
     const { connection, sessionId } = prepared
     owner.busy = true
+    delete owner.snapshot.questionStatus
     // Terminal metadata from a previous prompt cannot seed this turn's steering lifecycle.
     owner.threadStatus = null
     owner.eventBytes = 0

@@ -362,10 +362,22 @@ export function HistoryTimelineCursor() {
   const disabled = gestures.disabled
   const instructions = useId()
   const x = markerPosition(layout, navigation.value)
+  const revealedBoundary = useRef<string | null>(null)
+  const item = navigation.items[navigation.position - 1]
+  const boundary = navigation.boundaryActive ? (item ? `${item.kind}:${item.id}` : "start") : "end"
   useEffect(() => {
     const track = handle.current?.parentElement
-    if (track && navigation.draft === null && layout.anchors.length) revealMarker(track, x)
-  }, [handle, layout, x, navigation.draft])
+    if (
+      !track ||
+      navigation.draft !== null ||
+      layout.settling ||
+      !layout.anchors.length ||
+      revealedBoundary.current === boundary
+    )
+      return
+    revealMarker(track, x)
+    revealedBoundary.current = boundary
+  }, [handle, layout, x, navigation.draft, boundary])
   return (
     <>
       <hr

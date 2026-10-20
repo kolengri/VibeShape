@@ -3,7 +3,6 @@ import { afterEach, beforeEach, expect, it, mock } from "bun:test"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { createRemoteAutomationConnection } from "../automation/remote-automation-connection"
 import type { DocumentControllerState } from "../document/document-controller"
-import type { ProjectAssistantActivity } from "./project-assistant-status"
 
 const work = (() => ({
   active: vi.fn(),
@@ -91,7 +90,6 @@ const { AutomationConnectionsProvider, AutomationEditorScope } = await import(".
 const { StatusBar } = await import("./status-bar")
 const { ViewerPreferencesProvider } = await import("./viewer-preferences")
 const { WorkspaceLayoutPreferencesProvider } = await import("./workspace-layout-preferences")
-const { ProjectAssistantStatus } = await import("./project-assistant-status")
 
 beforeEach(() => {
   work.local = {
@@ -206,7 +204,6 @@ function renderHeader(
   onOpenShortcutHelp = vi.fn(),
   hideModelExport = false,
   controllerOverrides: Partial<DocumentControllerState> = {},
-  assistantActivity?: ProjectAssistantActivity,
 ) {
   const controller = {
     status: "ready",
@@ -233,7 +230,6 @@ function renderHeader(
                 <ApplicationBar
                   controller={controller}
                   hideModelExport={hideModelExport}
-                  assistantActivity={assistantActivity}
                   onOpenCommandPalette={onOpenCommandPalette}
                   onOpenShortcutHelp={onOpenShortcutHelp}
                 />
@@ -248,70 +244,6 @@ function renderHeader(
   const result = render(element())
   return { ...result, refresh: () => result.rerender(element()) }
 }
-
-it("shows active project work with chat closed and keeps connected idle sessions quiet", () => {
-  let snapshot = { busy: false, connected: true }
-  const listeners = new Set<() => void>()
-  const activity = {
-    getSnapshot: () => snapshot,
-    subscribe(listener: () => void) {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
-    },
-  }
-  const header = renderHeader(undefined, undefined, false, {}, activity)
-  const bar = screen.getByRole("banner")
-  const status = within(bar)
-    .getAllByRole("status")
-    .find((node) => node.getAttribute("aria-live") === "polite")
-  if (!status) throw new Error("Missing project assistant status.")
-  const reservedSpace = status.parentElement?.firstElementChild
-  expect(reservedSpace?.getAttribute("aria-hidden")).toBe("true")
-  expect(status.textContent).toBe("")
-  expect(screen.queryByRole("dialog")).toBeNull()
-  const update = (busy: boolean, connected = true) =>
-    act(() => {
-      snapshot = { busy, connected }
-      for (const listener of listeners) listener()
-    })
-  update(true)
-  expect(status.textContent).toBe("AI working…")
-  const spinner = status.querySelector("svg")
-  expect(spinner?.classList.contains("motion-safe:animate-spin")).toBe(true)
-  expect(spinner?.getAttribute("aria-hidden")).toBe("true")
-  update(false)
-  expect(status.textContent).toBe("")
-  expect(status.querySelector("svg")).toBeNull()
-  expect(status.parentElement?.firstElementChild).toBe(reservedSpace)
-  update(false, false)
-  expect(status.textContent).toBe("")
-  header.unmount()
-  expect(listeners.size).toBe(0)
-})
-
-it("replaces the activity subscription when the displayed project changes", () => {
-  const pendingListeners = new Set<() => void>()
-  const active = {
-    getSnapshot: () => ({ busy: true }),
-    subscribe(listener: () => void) {
-      pendingListeners.add(listener)
-      return () => pendingListeners.delete(listener)
-    },
-  }
-  const view = render(
-    <I18nProvider i18n={i18n} initialLocale="en">
-      <ProjectAssistantStatus activity={active} />
-    </I18nProvider>,
-  )
-  expect(screen.getByRole("status").textContent).toBe("AI working…")
-  view.rerender(
-    <I18nProvider i18n={i18n} initialLocale="en">
-      <ProjectAssistantStatus />
-    </I18nProvider>,
-  )
-  expect(screen.getByRole("status").textContent).toBe("")
-  expect(pendingListeners.size).toBe(0)
-})
 
 it("keeps the saved idle status quiet while announcing loading, saving, and failure", () => {
   const header = renderHeader()

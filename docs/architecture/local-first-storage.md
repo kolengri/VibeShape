@@ -94,6 +94,29 @@ Recovery and portable replay retain referenced targets, including when stored hi
 are missing or corrupt. Navigation stacks are session-local; saved navigation results remain durable.
 See [ADR-0039](../adr/0039-committed-document-undo.md) for the bounds and replay contract.
 
+## Assistant transcripts
+
+`vibeshape-assistant-transcripts` is a separate version-1 IndexedDB/Dexie database; it does not change
+CAD authority or the document database schema. Project heads carry a compare-and-swap revision and
+optional validated provider-session metadata. Message rows are keyed by project and message ID,
+ordered by a project/position index and read in pages of 64. Incremental message upserts/deletions
+and the head advance share one transaction. Storage contains validated display text, tool targets,
+status and attachment names, not attachment bytes, credentials or raw provider payloads.
+
+The asynchronous chat coordinator merges restored records with messages already received in memory,
+serializes writes and reset, and fences superseded/disposed owners. A failed write leaves the prior
+committed transcript intact and exposes retry without truncating live conversation. Legacy local
+storage version-1 history is deleted only after successful import. Reset retains a revisioned empty
+head and affects only the selected project. Transcript history is independent of the API request's
+bounded context; older stored messages are not silently deleted to satisfy provider request limits.
+API context rebuilt from disk includes explicit unavailable-file markers for stored attachment
+names. Live failure recovery preserves the existing bounded wire context and the failed prompt's
+attachment content; neither path adds file bytes to transcript storage.
+After the first admitted API turn, the live controller owns its request context until reset or
+recreation. Late storage loads may prepend recovered display rows, but cannot rebuild live turns
+from attachment metadata or overwrite their omission count. Newly recovered older rows are counted
+as excluded request context without being removed from storage.
+
 ## Immutable local parts library
 
 `vibeshape-assembly-library` is a separate version-1 IndexedDB/Dexie database. Its mutable item

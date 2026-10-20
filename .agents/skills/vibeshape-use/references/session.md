@@ -32,13 +32,15 @@ model and does not authorize another project or a replacement CAD workflow.
 
 A retryable `session-suspended` diagnostic is a transient connection pause. Keep the current project
 and allow automatic recovery; do not ask the person to enable an already authorized embedded
-session. Retry only the safe `model_info` identity read after recovery, inspect the saved revision
-and affected records, and decide what remains. Never replay an uncertain write. Explicit Stop AI
+session. Read `model_info` after recovery, inspect the saved revision and affected records, and
+decide what remains. In the same authenticated local tab, `list_recoverable_drafts` can expose
+unapplied semantic intent; follow the explicit adoption procedure in
+[transactions](transactions.md). Never replay an uncertain write. Explicit Stop AI
 still prevents automatic reconnection and requires the person's intentional Enable action.
 
 The embedded desktop chat retries temporary ACP and native project-connection failures up to five
 times before exposing manual retry. When the provider supports loading the exact previous session,
-an interrupted turn resumes with instructions to reconcile the current model and pending draft
+an interrupted turn resumes with instructions to reconcile the current model and recoverable intent
 before further changes. The interrupted prompt and uncertain writes are never replayed by the
 controller. If restoration is unsupported, authentication is required, or retries are exhausted,
 report the actual state rather than asking for another pairing grant. External clients retain their
@@ -70,6 +72,9 @@ language model supplies open arguments. Images require an explicit experimental 
 Manual-review calls use a separate client horizon of about 24.8 days, bypassing the short provider
 and ordinary-operation timeout. Stop and the server's authority, liveness and proposal expiry still
 apply; this client horizon does not extend consent or guarantee that a review remains available.
+If advertised, `ask_user_question` uses the native host's structured-question owner and the same long
+client ceiling. Host question expiry and Stop still apply. Only a valid accepted answer allows
+dependent work; cancelling or failing a question grants no answer or CAD authority.
 The native host has no default whole-turn ACP deadline, so waiting for review does not end the agent
 after ten minutes. Stop and its bounded process-termination grace period remain available.
 Large tool arguments can be omitted from chat and result text summarized; use tool inspection for
@@ -125,7 +130,9 @@ change, the remembered local client can establish fresh authority. A different c
 new approval. An active owner is never displaced by fresh pairing. Stop AI clears both recovery
 authority and the browser preference, preventing automatic reconnection.
 
-Recovery does not replay interrupted commands, drafts, reviews or exports. After a timeout or
+Recovery does not automatically replay interrupted commands, drafts, reviews or exports. Explicit
+`restore_draft` adopts compatible retained intent into a new current-actor private draft, without
+saving or approving it. Tab-memory intent retention does not survive reload or Stop. After a timeout or
 uncertain write, wait for pairing recovery, call `model_info`, and inspect saved revision/records
 before deciding whether a fresh proposal is needed. A transaction already accepted by persistence
 may finish despite Stop AI. Remote HTTPS retains its existing fresh-pairing rule after reload.

@@ -8,6 +8,7 @@ import {
 import {
   booleanFeatureType,
   boxFeatureType,
+  chamferFeatureTypeV3,
   extrusionFeatureTypeV6,
   extrusionFeatureTypeV7,
   extrusionFeatureTypeV8,
@@ -150,10 +151,19 @@ describe("module registry", () => {
       expect(result.registry.getFeatureType(extrusionFeatureTypeV8.type)).toEqual(
         extrusionFeatureTypeV8,
       )
+      expect(result.registry.getFeatureType(chamferFeatureTypeV3.type)).toEqual(
+        chamferFeatureTypeV3,
+      )
+      expect(
+        result.registry.featureTypes
+          .filter(({ type }) => type.typeId === chamferFeatureTypeV3.type.typeId)
+          .map(({ type }) => type.schemaVersion),
+      ).toEqual([1, 2, 3])
       expect(result.registry.featureTypes.map(({ type }) => type.typeId)).toEqual([
         "org.vibeshape.feature.part-design.boolean",
         "org.vibeshape.feature.part-design.boolean",
         "org.vibeshape.feature.part-design.box",
+        "org.vibeshape.feature.part-design.chamfer",
         "org.vibeshape.feature.part-design.chamfer",
         "org.vibeshape.feature.part-design.chamfer",
         "org.vibeshape.feature.part-design.compound",

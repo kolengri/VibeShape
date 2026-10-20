@@ -5,6 +5,7 @@ import {
   boxFeatureType,
   chamferFeatureType,
   chamferFeatureTypeV2,
+  chamferFeatureTypeV3,
   coneFeatureType,
   cylinderFeatureType,
   datumPlaneFeatureType,
@@ -57,6 +58,7 @@ import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-des
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 import { terminalModelBodies } from "./model-bodies"
+import type { ModelEdgeSelection } from "./model-edge-selection"
 
 export type ActivePartDesignTool =
   | Readonly<{ kind: "inspect-imported"; featureId: FeatureId }>
@@ -95,9 +97,17 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-revolve"; featureId: FeatureId }>
   | Readonly<{ kind: "create-hole" }>
   | Readonly<{ kind: "edit-hole"; featureId: FeatureId }>
-  | Readonly<{ kind: "create-fillet"; targetFeatureId?: FeatureId | null }>
+  | Readonly<{
+      kind: "create-fillet"
+      targetFeatureId?: FeatureId | null
+      edgeSelection?: ModelEdgeSelection
+    }>
   | Readonly<{ kind: "edit-fillet"; featureId: FeatureId }>
-  | Readonly<{ kind: "create-chamfer"; targetFeatureId?: FeatureId | null }>
+  | Readonly<{
+      kind: "create-chamfer"
+      targetFeatureId?: FeatureId | null
+      edgeSelection?: ModelEdgeSelection
+    }>
   | Readonly<{ kind: "edit-chamfer"; featureId: FeatureId }>
   | Readonly<{ kind: "create-subtract" }>
   | Readonly<{ kind: "edit-subtract"; featureId: FeatureId }>
@@ -225,7 +235,8 @@ export function isFilletFeature(feature: FeatureRecord) {
 export function isChamferFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, chamferFeatureType.type) ||
-    hasFeatureType(feature, chamferFeatureTypeV2.type)
+    hasFeatureType(feature, chamferFeatureTypeV2.type) ||
+    hasFeatureType(feature, chamferFeatureTypeV3.type)
   )
 }
 

@@ -52,6 +52,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
+import { chamferFeatureTypeV3, readChamferFeatureParametersV3 } from "./part-design-chamfer"
 import {
   expectedHoleDependencyIds,
   holeFeatureType,
@@ -251,6 +252,7 @@ const bodySelectionParameterReaders = new Map<string, BodySelectionParameterRead
   [featureTypeKey(threadFeatureTypeV2.type), readThreadFeatureParameters],
   [featureTypeKey(patternFeatureType.type), readPatternFeatureParameters],
   [featureTypeKey(patternFeatureTypeV2.type), readPatternFeatureParametersV2],
+  [featureTypeKey(chamferFeatureTypeV3.type), readChamferFeatureParametersV3],
   [featureTypeKey(shellFeatureType.type), readShellFeatureParameters],
   [featureTypeKey(shellFeatureTypeV2.type), readShellFeatureParameters],
   [featureTypeKey(splitFeatureType.type), readSplitFeatureParameters],

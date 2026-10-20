@@ -72,6 +72,7 @@ import {
 } from "./section-view"
 import { SectionViewDecoration } from "./section-view-decoration"
 import { ToolPlaneDecoration, type ViewerToolPlane } from "./tool-plane-decoration"
+import { captureViewportImage } from "./viewport-image"
 
 export type { ViewerToolPlane } from "./tool-plane-decoration"
 
@@ -520,6 +521,7 @@ export type ViewerSketchProjectionBounds = Readonly<{
 export type { ViewerSection } from "./section-view"
 
 export type GeometryViewport = Readonly<{
+  captureImage?: () => Promise<Blob>
   setSurfaceTextureBrush: (brush: ViewerSurfaceTextureBrush | null, active?: boolean) => void
   clearSketchProjection: () => void
   orientToFrame: (frame: ViewerFrame) => boolean
@@ -1712,6 +1714,14 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
+  captureImage() {
+    if (this.#disposed) throw new Error("The viewport is unavailable.")
+    const background = this.#canvas.parentElement
+      ? getComputedStyle(this.#canvas.parentElement).backgroundColor
+      : "transparent"
+    return captureViewportImage(this.#canvas, this.#renderNow, background)
+  }
+
   setSection(section: ViewerSection | null) {
     if (this.#disposed) return
     if (sameViewerSection(this.#section, section)) return
@@ -2471,6 +2481,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     const profileHits = this.#raycaster
       .intersectObjects([...this.#sketchProfiles.keys()], false)
       .flatMap((hit) => {
+        if (!sectionPointVisible(this.#sectionPlanes, hit.point)) return []
         const profile = this.#sketchProfiles.get(hit.object as Mesh)
         return profile ? [{ profile, distance: hit.distance }] : []
       })
@@ -2609,7 +2620,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     for (const hit of this.#raycaster.intersectObject(this.#sketchPointObject, false)) {
       if (hit.index === undefined) continue
       const candidate = this.#sketchPointCandidates[hit.index]
-      if (candidate) hits.push({ candidate, distance: hit.distance })
+      if (candidate && sectionPointVisible(this.#sectionPlanes, new Vector3(...candidate.position)))
+        hits.push({ candidate, distance: hit.distance })
     }
     return hits
   }
@@ -2620,6 +2632,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       [...this.#sketchLineObjects.keys()],
       false,
     )) {
+      if (!sectionPointVisible(this.#sectionPlanes, hit.point)) continue
       const candidate = this.#sketchLineObjects.get(hit.object as LineSegments)
       if (candidate) hits.push({ candidate, distance: hit.distance })
     }
@@ -3501,10 +3514,17 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#preselectionGroup,
       this.#selectionGroup,
       this.#faceSelectionGroup,
+      this.#sketchGroup,
+      this.#sketchProfileGroup,
+      this.#sketchProfilePreselectionGroup,
+      this.#sketchProfileSelectionGroup,
+      this.#sketchPointCandidateGroup,
+      this.#sketchPointPreselectionGroup,
     ]
     for (const group of groups)
       group.traverse((object) => {
-        if (!(object instanceof Mesh || object instanceof LineSegments)) return
+        if (!(object instanceof Mesh || object instanceof LineSegments || object instanceof Points))
+          return
         const materials = Array.isArray(object.material) ? object.material : [object.material]
         for (const material of materials) {
           if (material.clippingPlanes === this.#sectionPlanes) continue

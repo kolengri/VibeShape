@@ -136,9 +136,39 @@ profiles to come from one sketch.
 
 ## Fillet and Chamfer
 
-Obtain durable resolved selections from `model_edges` or `draft_edges`. `edges` omission means **all edges**; preserve the entire array for a selected treatment. Body topology inspection references are not accepted as treatment selections. Radii/distances are positive mm fields; optional expressions are authoritative. Preserve an existing expression unless the request changes it.
+Legacy Fillet/Chamfer V1/V2 obtain durable resolved selections from `model_edges` or
+`draft_edges`. Omitting `edges` means all edges (V1); supplying it retains selected-edge intent
+(V2). Body topology references are not accepted by those legacy contracts. Radius/distance fields
+use positive mm and preserve authoritative expressions. Do not migrate an existing feature merely
+because a new version exists.
 
-If exact preview fails, inspect diagnostics and the complete treatment record. Correct the requested radius/distance or repair a missing selection through supported inspection; do not silently broaden to all edges. Sequential treatments usually target the prior treatment result, rather than an already consumed upstream solid.
+`create_chamfer` and `update_chamfer` also accept a strict V3 alternative with `draftId`,
+`baseRevision`, `commandId`, `featureId`, optional `label`, and `parameters`. Read the live schema.
+V3 parameters retain an exact `targetBody`, mode (`equal-distance`, `two-distances`, or
+`distance-angle`), expression-capable quantities, `measurement`, `flip`, `tangentPropagation`,
+`targets`, and `directionOverrides`. Obtain exact body-bound edges and faces through
+`model_body_topology` or `draft_body_topology`, retaining the output role. Generic feature references
+are empty and the sole dependency is the target body's producer. This contract is shared by local
+and paired remote MCP.
+
+Two-distance and distance-angle edge targets require an explicitly selected adjacent `sideFace`.
+A face target supplies its own side and expands its current native boundary. Catalogue adjacency
+classes do not identify exact adjacent faces; never guess a side from the nearest plane. The native
+worker validates incidence. The first distance and angle are relative to that side. Global flip XOR
+each edge override chooses the opposite side. Equal-distance mode has no direction controls.
+
+V3 Offset and Tangent are supported only on planar adjacent faces, where their measured behavior
+coincides. Curved V3 support fails explicitly; do not relabel a native OCCT mode or silently downgrade
+an advanced request. Legacy circular equal-distance V1/V2 operations retain their existing path.
+Native tangent propagation extends complete contours. With propagation disabled, every contour edge
+must be explicitly covered. Uniform complete-contour direction overrides are supported; partial or
+mixed directions within one contour fail explicitly.
+
+On exact preview failure, inspect the complete treatment record and diagnostic. Geometric failures
+advise reducing radius/distance or choosing another edge; missing or ambiguous references require
+explicit reselection on the current body. Do not broaden to all edges or promise that an oversized
+chamfer automatically crosses neighboring faces. Sequential treatments normally target the previous
+result. Preserve the source, verify the latest preview, then use ordinary draft commit authority.
 
 ## Variables
 

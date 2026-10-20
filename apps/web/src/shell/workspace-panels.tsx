@@ -66,7 +66,7 @@ function usePanelSizes(
       tree: {
         width: treeWidth,
         collapsed: narrow || treeCollapsed,
-        layout: narrow ? "drawer" : compact ? "sheet" : "desktop",
+        layout: `${narrow ? "drawer" : compact ? "sheet" : "desktop"}:${taskActive}`,
       },
     }
     // Breakpoints re-register constraints; apply preferences after that layout settles.
@@ -288,17 +288,19 @@ export function WorkspacePanels({
               minSize={taskLayout.centerMin}
               aria-hidden="true"
             />
-            <ResizableHandle
-              aria-label={t("taskResize")}
-              className={taskActive ? "pointer-events-auto max-lg:hidden" : "hidden"}
-              disabled={compact || !taskActive}
-              disableDoubleClick
-              onDoubleClick={() => {
-                actions.setCollapsed("task", false)
-                actions.setWidth("task", 320)
-                task.current?.resize(320)
-              }}
-            />
+            {/* A display:none separator sorts at the origin and suppresses the tree hit region. */}
+            {taskActive && !compact && (
+              <ResizableHandle
+                aria-label={t("taskResize")}
+                className="pointer-events-auto"
+                disableDoubleClick
+                onDoubleClick={() => {
+                  actions.setCollapsed("task", false)
+                  actions.setWidth("task", 320)
+                  task.current?.resize(320)
+                }}
+              />
+            )}
             <ResizablePanel
               id="workspace-task"
               panelRef={task}

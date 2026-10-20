@@ -409,6 +409,24 @@ describe("assistant transcript and composer", () => {
     expect(draft().value).toBe("")
   })
 
+  it("forwards explicit viewport capture and retains the provider image capability gate", async () => {
+    const onCaptureView = vi
+      .fn()
+      .mockResolvedValue(new File([new Uint8Array([1, 2, 3])], "view.png", { type: "image/png" }))
+    const view = render(
+      panel({ onCaptureView, attachmentCapabilities: { text: true, images: false } }),
+    )
+    expect(screen.queryByRole("button", { name: "Attach current view" })).toBeNull()
+    view.rerender(panel({ onCaptureView, attachmentCapabilities: { text: true, images: true } }))
+    expect(onCaptureView).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "Attach current view" }))
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false),
+    )
+    expect(onCaptureView).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "Remove view.png" })).toBeTruthy()
+  })
+
   it("blocks sending while files are read and does not resurrect a removed pending file", async () => {
     const readers: { onload: (() => void) | null; result: ArrayBuffer }[] = []
     vi.stubGlobal(

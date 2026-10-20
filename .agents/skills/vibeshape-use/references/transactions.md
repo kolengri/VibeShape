@@ -15,6 +15,12 @@ and corrections. Leave capacity to repair geometry, validate and commit each coh
 start the next draft at the actual saved revision. Existing saved features remain in the project.
 Do not discard a saved stage or reconstruct it just to obtain a new draft budget.
 
+For connected assistant work, aim to preview and commit a usable milestone within eight successful
+modeling commands, and before lengthy inspection, rendering, or construction of another independent
+part. This is a checkpoint cadence, not a lower command limit: finish or repair an incomplete
+coherent stage before committing, and retain enough budget for that repair. A preview is not saved
+work. Confirm the successful commit and actual saved revision before starting the next stage.
+
 Successful browser draft commands also request an exact disposable viewport preview. Valid geometry
 is visible before review and remains unsaved; incomplete or invalid intermediate geometry may have
 no preview. Explicit `preview_draft` still supplies the authoritative validation diagnostics. A
@@ -44,6 +50,21 @@ For an ordering failure, inspect the identified command, discard the private dra
 fresh draft with dependencies inserted before consumers. Do not retry commit unchanged.
 
 If the committed model changes while drafting, read the updated model and create a new draft, retaining the person's changes. Do not replay a stale full record. Use `discard_draft` to abandon private intent; it does not alter the saved model. MCP cancellation interrupts disposable work and cannot undo a transaction already accepted by persistence. Local pairing can recover automatically without replaying that work; remote access retains its existing revocation rules.
+
+After an authenticated local reconnect in the same tab, call `model_info` and
+`list_recoverable_drafts`. Reconcile any uncertain saved write before using retained intent. A listed
+item is unapplied semantic work, not a saved model or a live old draft. Inspect its ordered intent,
+expiry and exact `baseRevision`; when that base still matches and the work is still wanted, call
+`restore_draft` with its `recoveryId` and `baseRevision`. This explicitly creates a new private draft
+and command IDs attributed to the current actor. Inspect the returned draft, preview, then commit
+through the ordinary authority and review path. Do not reuse the old draft ID or restore intent
+that was already saved. A stale base requires fresh planning from the current model.
+
+Retention is limited to four complete journals, 64 commands each and 128 KiB combined, with the
+original draft expiry. It is memory-only and does not survive reload, Stop, explicit disconnect,
+revocation or a project/client change. Unsupported or over-budget capture fails rather than
+keeping partial intent. Remote sessions have no tab-memory recovery grant. If recovery is
+unavailable, inspect the actual saved model and continue from confirmed durable stages.
 
 After a timeout or unconfirmed commit, re-pair if needed and inspect the saved revision and affected IDs/parameters before retrying. Do not treat a reused command ID as an idempotency key. For committed Undo/Redo, follow the [saved-change History workflow](../../vibeshape-organization/SKILL.md), using its document/revision-bound tools and the connection's approval policy.
 

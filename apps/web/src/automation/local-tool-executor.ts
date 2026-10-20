@@ -54,6 +54,7 @@ import type { MeshExportQuality } from "@vibeshape/protocol"
 import type { ActiveAutomationInfo } from "../document/document-controller"
 import type { createBrowserAssemblyAutomationSession } from "./assembly-automation-session"
 import type { createBinaryExportSession } from "./binary-export-session"
+import type { DraftRecoveryPort } from "./draft-recovery-owner"
 import type { createBrowserHistoryAutomationSession } from "./history-automation-session"
 import type { createImportAutomationSession } from "./import-automation-session"
 import type { createBrowserLightweightingAutomationSession } from "./lightweighting-automation-session"
@@ -313,6 +314,7 @@ export function createLocalToolExecutor(
   session: LocalSessionPort,
   actor: CommandActor,
   projects?: ProjectToolPort,
+  recovery?: DraftRecoveryPort,
 ): LocalToolExecutor {
   function transfer(
     operation: Extract<
@@ -444,6 +446,13 @@ export function createLocalToolExecutor(
         )
   }
   async function execute(operation: LocalOperation, signal?: AbortSignal) {
+    if (operation.tool === "list_recoverable_drafts" || operation.tool === "restore_draft")
+      return recovery
+        ? recovery.execute(operation, signal)
+        : localFailure(
+            "draft-recovery-unavailable",
+            "Recoverable intent is available only to its authenticated local connection owner.",
+          )
     if (operation.tool === "render_preview") return renderPreview(operation, signal)
     const owned = ownedOperation(operation, signal)
     if (owned !== null) return owned
