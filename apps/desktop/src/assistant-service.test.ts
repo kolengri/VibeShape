@@ -12,6 +12,7 @@ import {
   assistantToolTargetsSchema,
 } from "@vibeshape/automation-api/assistant"
 import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type AssistantServiceOptions, createAssistantService } from "./assistant-service"
 
 const fixture = String.raw`
@@ -283,7 +284,6 @@ async function host(
     },
     env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     requestTimeoutMs: 3000,
-    promptTimeoutMs: 3000,
     ...overrides,
   })
   cleanups.push(() => service.close())
@@ -1773,6 +1773,74 @@ describe("native ACP service", () => {
         (event) => event.type === "text" && event.text === "late cancelled output",
       ),
     ).toBe(false)
+  })
+
+  it("keeps a default ACP prompt open beyond ten minutes and still acknowledges Stop", async () => {
+    const context = await host()
+    const session = ready(await context.connect())
+    vi.useFakeTimers()
+    try {
+      const turn = context.service.handle({
+        operation: "prompt",
+        input: { ...scope(session), text: "hold" },
+      })
+      await context.waitFor((event) => event.type === "text" && event.text === "started")
+      vi.advanceTimersByTime(11 * 60_000)
+      expect(context.events.some((event) => event.type === "error")).toBe(false)
+      expect(
+        await context.service.handle({ operation: "cancel", input: scope(session) }),
+      ).toMatchObject({ ok: true, value: { status: "cancelling" } })
+      expect(await turn).toMatchObject({ ok: true, value: { status: "ready" } })
+      expect(context.events).toContainEqual({
+        ...scope(session),
+        type: "completed",
+        stopReason: "cancelled",
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps a default steering fallback open beyond ten minutes until its completion", async () => {
+    const context = await host()
+    const session = ready(await context.connect("steer-new-current-idle"))
+    const active = context.service.handle({
+      operation: "prompt",
+      input: { ...scope(session), text: "hold" },
+    })
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "current turn idle before steering",
+    )
+    vi.useFakeTimers()
+    try {
+      const steering = context.service.handle({
+        operation: "steer",
+        input: { ...scope(session), requestId: "review-continuation", text: "Continue" },
+      })
+      await context.signal("current-idle-ack")
+      expect(await steering).toMatchObject({
+        ok: true,
+        steerOutcome: "startedNewTurn",
+        value: { status: "prompting" },
+      })
+      await active
+      vi.advanceTimersByTime(11 * 60_000)
+      expect(context.events.some((event) => event.type === "error")).toBe(false)
+      await context.signal("current-idle-fallback-start")
+      await context.waitFor(
+        (event) => event.type === "text" && event.text === "current-idle-fallback output",
+      )
+      await context.signal("current-idle-fallback-end")
+      await context.waitFor(
+        (event) =>
+          event.type === "snapshot" &&
+          event.snapshot.status === "ready" &&
+          context.events.filter((value) => value.type === "completed").length === 2,
+      )
+      expect(context.events.some((event) => event.type === "error")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("kills an agent that ignores cancellation", async () => {

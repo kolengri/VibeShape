@@ -249,8 +249,9 @@ export function createAssistantService(options: AssistantServiceOptions) {
   async function bounded<T>(
     owner: Owner,
     promise: Promise<T>,
-    timeoutMs = requestTimeout,
+    timeoutMs: number | null = requestTimeout,
   ): Promise<T> {
+    if (timeoutMs === null) return promise
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       return await Promise.race([
@@ -628,10 +629,10 @@ export function createAssistantService(options: AssistantServiceOptions) {
     // A reserved fallback owns a new logical turn before its active notification arrives.
     if (!pending.sawActive) owner.threadStatus = null
     owner.snapshot.status = "prompting"
-    owner.externalTimer = setTimeout(
-      () => stop(owner, "timeout"),
-      options.promptTimeoutMs ?? 10 * 60_000,
-    )
+    owner.externalTimer =
+      options.promptTimeoutMs === undefined
+        ? undefined
+        : setTimeout(() => stop(owner, "timeout"), options.promptTimeoutMs)
     if (pending.cancelEpoch !== owner.cancelEpoch) requestCancellation(owner)
   }
   async function performSteering(
@@ -752,7 +753,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
             sessionId,
             prompt: assistantPromptContent(owner.snapshot.projectId, text, attachments),
           }),
-          options.promptTimeoutMs ?? 10 * 60_000,
+          options.promptTimeoutMs ?? null,
         )
       } finally {
         releasePrompt(owner)

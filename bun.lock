@@ -26,7 +26,7 @@
     },
     "apps/desktop": {
       "name": "@vibeshape/desktop",
-      "version": "0.1.9",
+      "version": "0.1.10",
       "dependencies": {
         "@agentclientprotocol/sdk": "1.9.0",
         "@modelcontextprotocol/sdk": "catalog:",
@@ -44,6 +44,20 @@
         "@types/semver": "7.8.0",
         "@vibeshape/typescript-config": "workspace:*",
         "electron": "44.9.0",
+      },
+    },
+    "apps/jev-agent": {
+      "name": "@vibeshape/jev-agent",
+      "version": "0.0.0",
+      "dependencies": {
+        "@agentclientprotocol/sdk": "1.9.0",
+        "@modelcontextprotocol/sdk": "catalog:",
+        "@typesafe-ai/sdk": "0.7.0",
+        "@vibeshape/automation-api": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@vibeshape/typescript-config": "workspace:*",
       },
     },
     "apps/mcp-server": {
@@ -1105,6 +1119,8 @@
 
     "@types/webxr": ["@types/webxr@0.5.24", "", {}, "sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg=="],
 
+    "@typesafe-ai/sdk": ["@typesafe-ai/sdk@0.7.0", "", {}, "sha512-Yg3OZArCQMJx98ut8QVkhx3rFo9ON7pz8Hjzv8c3FGz69Sk8jYftLOlz+Wf6kq6jol/1m08aBnjRAzJr2x3GoQ=="],
+
     "@typescript/typescript-aix-ppc64": ["@typescript/typescript-aix-ppc64@7.0.2", "", { "os": "aix", "cpu": "ppc64" }, "sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ=="],
 
     "@typescript/typescript-darwin-arm64": ["@typescript/typescript-darwin-arm64@7.0.2", "", { "os": "darwin", "cpu": "arm64" }, "sha512-gowzar9MwS/aRWp6f3a4KUqzRjAZjOsmGNCM6LcTgXum+dBfgsBVMN+AgvOCCbguXyick6LJhpBszxMebJ8syA=="],
@@ -1164,6 +1180,8 @@
     "@vibeshape/geometry-worker": ["@vibeshape/geometry-worker@workspace:packages/geometry-worker"],
 
     "@vibeshape/i18n": ["@vibeshape/i18n@workspace:packages/i18n"],
+
+    "@vibeshape/jev-agent": ["@vibeshape/jev-agent@workspace:apps/jev-agent"],
 
     "@vibeshape/mcp-server": ["@vibeshape/mcp-server@workspace:apps/mcp-server"],
 

@@ -1,0 +1,22 @@
+{
+  "name": "@vibeshape/jev-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Experimental project-scoped ACP controller using Jev decisions over VibeShape MCP tools.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "typecheck": "bun run --bun tsc -p tsconfig.json && bun run --bun tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.9.0",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@typesafe-ai/sdk": "0.7.0",
+    "@vibeshape/automation-api": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}

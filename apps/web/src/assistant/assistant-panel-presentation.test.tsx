@@ -220,7 +220,7 @@ it("distinguishes retained transcript from bounded provider context and exposes 
     }),
   )
   expect(
-    screen.getByText(/24 earlier messages are outside the API context budget/).textContent,
+    screen.getByText(/24 earlier messages are not included in the current API request/).textContent,
   ).toContain("full conversation remains in chat history")
   const button = screen.getByRole("button", { name: "Retry chat storage" })
   fireEvent.click(button)
