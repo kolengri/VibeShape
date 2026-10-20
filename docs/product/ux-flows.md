@@ -53,6 +53,15 @@ offset-only planes keep their original frames. Changing an already referenced pl
 can leave an oriented sketch support unresolved; use explicit support repair rather than silently
 retargeting it.
 
+## Assistant transcript
+
+Consecutive tool calls with the same title and status share one compact row with a count on the
+right. A different action, status, or conversational message starts a new row, preserving order
+and keeping failures visible. Groups with reported output stay collapsed by default; opening one
+reveals each call's output in order within a bounded scrolling region. Empty output has no
+disclosure. Streaming updates preserve the reader's transcript position when scrolled away from
+the bottom.
+
 ## Application menu
 
 The VibeShape menu groups global actions into Project (files, local projects, and geometry export),

@@ -3611,6 +3611,9 @@
     },
     "assistant": {
       "toolDetails": "Tool details",
+      "toolCallCount": "{count, plural, one {# tool call} other {# tool calls}}",
+      "toolCalls": "Tool calls",
+      "toolCall": "Call {number}",
       "toolAction": "{action, select, create_cylinder {Create cylinder} draft_body_measurements {Measure draft body} create_union {Union bodies} preview_draft {Preview draft} create_draft {Create draft} commit_draft {Apply draft changes} discard_draft {Discard draft} create_variable {Create draft variable} set_variable_expression {Edit draft variable} replace_variable_table {Replace draft variables} draft_variables {Inspect draft variables} render_preview {Render preview} create_box {Create box} create_boolean {Create Boolean operation} create_body_subtract {Subtract bodies} other {{name}}}",
       "toolPurpose": "{action, select, create_cylinder {Add a cylinder to an unsaved CAD draft.} draft_body_measurements {Measure one body in the current draft.} create_union {Combine bodies in an unsaved CAD draft.} preview_draft {Check draft geometry before applying changes.} create_draft {Start an unsaved set of proposed CAD changes.} commit_draft {Validate draft changes and request Apply or use existing auto-apply consent.} discard_draft {Discard proposed draft changes without changing the saved model.} create_variable {Add a variable to an unsaved CAD draft.} set_variable_expression {Change a variable expression in an unsaved CAD draft.} replace_variable_table {Replace variable definitions in an unsaved CAD draft.} draft_variables {Inspect the variables defined in the draft.} render_preview {Render the selected model or draft revision.} create_box {Add a box to an unsaved CAD draft.} create_boolean {Propose a Boolean operation in an unsaved CAD draft.} create_body_subtract {Subtract bodies in an unsaved CAD draft.} other {Inspect this tool’s parameters and reported output.}}",
       "toolParameters": "Parameters",

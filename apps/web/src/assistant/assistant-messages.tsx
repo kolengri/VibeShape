@@ -17,12 +17,35 @@ function nearBottom(element: HTMLElement) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 48
 }
 
-function ToolMessage({ message }: { message: ChatMessage }) {
+type MessageGroup = [ChatMessage, ...ChatMessage[]]
+
+function groupMessages(messages: readonly ChatMessage[]) {
+  const groups: MessageGroup[] = []
+  for (const message of messages) {
+    const previous = groups.at(-1)
+    const title = message.tool?.title?.trim()
+    if (
+      message.role === "tool" &&
+      title &&
+      previous?.[0].role === "tool" &&
+      previous[0].tool?.title?.trim() === title &&
+      previous[0].tool?.status === message.tool?.status
+    ) {
+      previous.push(message)
+    } else {
+      groups.push([message])
+    }
+  }
+  return groups
+}
+
+function ToolMessage({ messages }: { messages: MessageGroup }) {
   const t = useTranslations("app.assistant")
+  const message = messages[0]
   const rawTitle = message.tool?.title?.trim() ?? ""
   const action = toolAction(rawTitle)
   const title = rawTitle ? t("toolAction", action) : t("role.tool")
-  const hasDetails = hasToolDetails(message.text)
+  const hasDetails = messages.some((item) => hasToolDetails(item.text))
   const heading = (
     <>
       <span className="min-w-0 flex-1 break-words font-medium" title={rawTitle || undefined}>
@@ -31,6 +54,12 @@ function ToolMessage({ message }: { message: ChatMessage }) {
       <span className="shrink-0 text-muted-foreground">
         {t("toolStatus", { status: message.tool?.status ?? "unknown" })}
       </span>
+      {messages.length > 1 && (
+        <span className="shrink-0 rounded bg-panel-muted px-1.5 py-0.5 font-medium tabular-nums">
+          <span aria-hidden="true">{messages.length}</span>
+          <span className="sr-only">{t("toolCallCount", { count: messages.length })}</span>
+        </span>
+      )}
     </>
   )
   if (!hasDetails) {
@@ -50,7 +79,26 @@ function ToolMessage({ message }: { message: ChatMessage }) {
         {heading}
       </summary>
       <section aria-label={t("toolDetails")} className="max-h-72 overflow-auto border-t p-2">
-        <AssistantToolDetails action={action.action} identity={rawTitle} text={message.text} />
+        {messages.length === 1 ? (
+          <AssistantToolDetails action={action.action} identity={rawTitle} text={message.text} />
+        ) : (
+          <ol aria-label={t("toolCalls")} className="divide-y">
+            {messages.map((item, index) => (
+              <li key={item.id} className="space-y-2 py-2 first:pt-0 last:pb-0">
+                <h4 className="text-xs font-medium">{t("toolCall", { number: index + 1 })}</h4>
+                {hasToolDetails(item.text) ? (
+                  <AssistantToolDetails
+                    action={action.action}
+                    identity={rawTitle}
+                    text={item.text}
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">{t("toolEmptyValue")}</p>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
     </details>
   )
@@ -92,9 +140,10 @@ export function AssistantMessages({ messages }: { messages: readonly ChatMessage
       }}
     >
       {messages.length === 0 && <p className="text-sm text-muted-foreground">{t("empty")}</p>}
-      {messages.map((message) =>
-        message.role === "tool" ? (
-          <ToolMessage key={message.id} message={message} />
+      {groupMessages(messages).map((group) => {
+        const message = group[0]
+        return message.role === "tool" ? (
+          <ToolMessage key={message.id} messages={group} />
         ) : (
           <article key={message.id} className="mb-4 min-w-0">
             <h3 className="mb-1 text-xs font-medium text-muted-foreground">
@@ -114,8 +163,8 @@ export function AssistantMessages({ messages }: { messages: readonly ChatMessage
               </ul>
             )}
           </article>
-        ),
-      )}
+        )
+      })}
       <div ref={end} />
     </div>
   )

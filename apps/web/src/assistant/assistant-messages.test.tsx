@@ -25,7 +25,110 @@ function transcript(messages: readonly ChatMessage[]) {
   return render(view(messages))
 }
 
+function toolMessage(
+  id: string,
+  title = "Read agent skill",
+  status = "completed",
+  text = "",
+): ChatMessage {
+  return { id, role: "tool", text, tool: { title, status } }
+}
+
 describe("assistant tool messages", () => {
+  it("compresses consecutive repeated actions into one row with a right-hand count", () => {
+    const { container } = transcript([
+      ...Array.from({ length: 7 }, (_, index) => toolMessage(`skill-${index}`)),
+      toolMessage("list", "List mcp resources"),
+      toolMessage("read-1", "Read mcp resource"),
+      toolMessage("read-2", "Read mcp resource"),
+      toolMessage("tree", "Model tree"),
+    ])
+    expect(screen.getAllByText("Read agent skill")).toHaveLength(1)
+    expect(screen.getAllByText("Read mcp resource")).toHaveLength(1)
+    expect(screen.getAllByText("Completed")).toHaveLength(4)
+    const count = screen.getByText("7 tool calls").parentElement
+    expect(count?.querySelector('[aria-hidden="true"]')?.textContent).toBe("7")
+    expect(count?.parentElement?.lastElementChild).toBe(count)
+    expect(screen.getByText("2 tool calls")).toBeTruthy()
+    expect(container.querySelector("details, summary, button, svg")).toBeNull()
+  })
+
+  it("preserves transcript order and keeps different statuses and unnamed tools separate", () => {
+    const { container } = transcript([
+      toolMessage("first"),
+      { id: "reply", role: "assistant", text: "Checking the next file" },
+      toolMessage("second"),
+      toolMessage("third"),
+      toolMessage("failed", "Read agent skill", "failed"),
+      toolMessage("running", "Read agent skill", "in_progress"),
+      toolMessage("other", "Model tree"),
+      toolMessage("last"),
+      toolMessage("unnamed-1", ""),
+      toolMessage("unnamed-2", ""),
+    ])
+    expect(screen.getAllByText("Read agent skill")).toHaveLength(5)
+    expect(screen.getByText("2 tool calls")).toBeTruthy()
+    expect(screen.getAllByText("Tool")).toHaveLength(2)
+    expect(screen.getByText("Failed")).toBeTruthy()
+    expect(screen.getByText("Running")).toBeTruthy()
+    const log = screen.getByRole("log")
+    expect(log.children[0]?.textContent).toBe("Read agent skillCompleted")
+    expect(log.children[1]?.textContent).toBe("AssistantChecking the next file")
+    expect(log.children[2]?.textContent).toBe("Read agent skillCompleted22 tool calls")
+    expect(container.querySelector("details")).toBeNull()
+  })
+
+  it("retains every call's output inside one collapsed group", async () => {
+    transcript([
+      toolMessage("one", "create_cylinder", "completed", "First cylinder: 10 mm"),
+      toolMessage("two", "create_cylinder", "completed", "Second cylinder: 20 mm"),
+      toolMessage("empty", "create_cylinder", "completed", "{}"),
+    ])
+    const heading = screen.getByText("Create cylinder")
+    const group = heading.closest("details")
+    expect(group?.open).toBe(false)
+    expect(screen.getByText("3 tool calls")).toBeTruthy()
+    await userEvent.click(heading)
+    expect(group?.open).toBe(true)
+    const calls = within(screen.getByRole("list", { name: "Tool calls" })).getAllByRole("listitem")
+    expect(calls).toHaveLength(3)
+    expect(
+      calls.map(
+        (call) =>
+          within(call).queryByRole("region", { name: "Output" })?.textContent ?? call.textContent,
+      ),
+    ).toEqual(["OutputFirst cylinder: 10 mm", "OutputSecond cylinder: 20 mm", "Call 3None"])
+    expect(screen.getAllByText("Technical details")).toHaveLength(2)
+  })
+
+  it("updates a repeated-action count without closing the group or moving a reader's scroll", async () => {
+    const messages = [
+      toolMessage("one", "read_mcp_resource", "completed", "First resource"),
+      toolMessage("two", "read_mcp_resource", "completed", "Second resource"),
+    ]
+    const { rerender } = transcript(messages)
+    await userEvent.click(screen.getByText("Read mcp resource"))
+    const group = screen.getByText("Read mcp resource").closest("details")
+    const log = screen.getByRole("log")
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 900 },
+    })
+    log.scrollTop = 100
+    fireEvent.scroll(log)
+    rerender(
+      view([...messages, toolMessage("three", "read_mcp_resource", "completed", "Third resource")]),
+    )
+    expect(screen.getByText("Read mcp resource").closest("details")).toBe(group)
+    expect(group?.open).toBe(true)
+    expect(screen.getByText("3 tool calls")).toBeTruthy()
+    expect(
+      screen.getAllByRole("region", { name: "Output" }).map((output) => output.textContent),
+    ).toEqual(["OutputFirst resource", "OutputSecond resource", "OutputThird resource"])
+    expect(log.scrollTop).toBe(100)
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
   it.each(["", "  \n\t ", "{}", " { } ", "[]", "null", '"  "'])(
     "keeps empty tool output noninteractive (%j)",
     (text) => {
