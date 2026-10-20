@@ -24,6 +24,25 @@ import {
 } from "./chat-history"
 
 type Permission = Extract<AssistantEvent, { type: "permission" }>
+type ToolMessageState = NonNullable<ChatMessage["tool"]> & { id: string; text?: string }
+
+function mergeToolMessage(
+  previous: ToolMessageState,
+  event: Extract<AssistantEvent, { type: "tool" }>,
+) {
+  const merged = {
+    ...previous,
+    ...(event.title !== undefined ? { title: event.title } : {}),
+    ...(event.status !== undefined ? { status: event.status } : {}),
+    ...(event.text?.trim() ? { text: event.text } : {}),
+    ...(event.hasFailureDetails !== undefined
+      ? { hasFailureDetails: previous.hasFailureDetails || event.hasFailureDetails }
+      : {}),
+    ...(event.targets !== undefined ? { targets: event.targets } : {}),
+  }
+  if (merged.status === "failed" || merged.status === "cancelled") delete merged.targets
+  return merged
+}
 type QueuedPrompt = {
   id: string
   text: string
@@ -116,15 +135,7 @@ export function createNativeChatController({
   let steering: QueuedSteer | null = null
   const questions = new Map<string, AssistantQuestion>()
   const ignoredTokens = new Set<string>()
-  const toolMessages = new Map<
-    string,
-    {
-      id: string
-      title?: string
-      status?: string
-      text?: string
-    }
-  >()
+  const toolMessages = new Map<string, ToolMessageState>()
   const permissions = new Map<string, Permission>()
   const listeners = new Set<() => void>()
   const publish = (patch: Partial<ChatState>) => {
@@ -200,25 +211,17 @@ export function createNativeChatController({
   }
   function updateTool(event: Extract<AssistantEvent, { type: "tool" }>) {
     const previous = toolMessages.get(event.toolCallId) ?? { id: crypto.randomUUID() }
-    const merged = {
-      ...previous,
-      ...(event.title !== undefined ? { title: event.title } : {}),
-      ...(event.status !== undefined ? { status: event.status } : {}),
-      ...(event.text !== undefined ? { text: event.text } : {}),
-    }
-    const { id } = merged
+    const merged = mergeToolMessage(previous, event)
+    const { id, text: detail, ...tool } = merged
     toolMessages.set(event.toolCallId, merged)
-    const text = (merged.text ?? "").slice(0, 32_000)
+    const text = (detail ?? "").slice(0, 32_000)
     const messages = [...state.messages]
     const index = messages.findIndex((message) => message.id === id)
     const message: ChatMessage = {
       id,
       role: "tool",
       text,
-      tool: {
-        ...(merged.title ? { title: merged.title } : {}),
-        ...(merged.status ? { status: merged.status } : {}),
-      },
+      tool,
     }
     if (index >= 0) messages[index] = message
     else messages.push(message)
@@ -244,7 +247,15 @@ export function createNativeChatController({
       messages = state.messages.map((message) =>
         owned.has(message.id) &&
         (message.tool?.status === "in_progress" || message.tool?.status === "pending")
-          ? { ...message, tool: { ...message.tool, status } }
+          ? {
+              ...message,
+              tool: {
+                ...message.tool,
+                status,
+                ...(status === "failed" ? { hasFailureDetails: false } : {}),
+                targets: undefined,
+              },
+            }
           : message,
       )
     }

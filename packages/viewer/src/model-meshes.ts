@@ -52,6 +52,7 @@ function sameTextureSource(left: ViewerMesh, right: ViewerMesh) {
 function samePresentation(left: ViewerMesh, right: ViewerMesh) {
   return (
     (left.appearance ?? "model") === (right.appearance ?? "model") &&
+    left.previewMaterial === right.previewMaterial &&
     sameGeometry(left, right) &&
     sameTextureSource(left, right)
   )
@@ -138,7 +139,7 @@ export class ModelMeshPresentation {
   }
 
   #createEntry(source: ViewerMesh): ModelMeshEntry {
-    const shared = this.#sharedMaterials(source.appearance)
+    const shared = this.#sharedMaterials(source)
     const surfaceMaterial = shared?.surface ?? this.#modelMaterial(source)
     const edgeMaterial = shared?.edges ?? new LineBasicMaterial({ color: new Color("#263746") })
     const surface = new Mesh(createViewerGeometry(source), surfaceMaterial)
@@ -160,9 +161,12 @@ export class ModelMeshPresentation {
     }
   }
 
-  #sharedMaterials(appearance: ViewerMesh["appearance"]) {
-    if (appearance === "preview") return this.#materials.preview
-    if (appearance === "datum") return this.#materials.datum
+  #sharedMaterials(source: ViewerMesh) {
+    if (source.appearance === "preview") {
+      if (source.previewMaterial === "model") return null
+      return source.previewMaterial === "datum" ? this.#materials.datum : this.#materials.preview
+    }
+    if (source.appearance === "datum") return this.#materials.datum
     return null
   }
 

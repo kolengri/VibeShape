@@ -6,7 +6,9 @@ import { useEffect, useState, useSyncExternalStore } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 import { registerProjectActionGuard } from "../document/document-controller"
 import { assistantCheckpointBusy } from "./assistant-checkpoints"
+import { type AssistantDraftDisplay, useAssistantDraftDisplay } from "./assistant-draft-display"
 import { AssistantPanel } from "./assistant-panel"
+import { useAssistantToolHighlight } from "./assistant-tool-highlight"
 import { NativeAgentConfiguration } from "./native-agent-configuration"
 import type { createNativeChatController } from "./native-chat-controller"
 import {
@@ -33,6 +35,7 @@ export function NativeProjectAssistant({
   const busy = useSyncExternalStore(registry.subscribe, registry.isBusy, registry.isBusy)
   useReportActivity(busy)
   const project = controller.report?.snapshot
+  const draftDisplay = useAssistantDraftDisplay(controller)
   if (!project) return null
   return (
     <NativeProjectChat
@@ -40,6 +43,7 @@ export function NativeProjectAssistant({
       bridge={bridge}
       projectId={project.id}
       projectName={project.name}
+      draftDisplay={draftDisplay}
       open={open}
       onClose={onClose}
     />
@@ -50,22 +54,27 @@ function NativeProjectChat({
   bridge,
   projectId,
   projectName,
+  draftDisplay,
   open,
   onClose,
 }: {
   bridge: AssistantBridge
   projectId: string
   projectName: string
+  draftDisplay?: AssistantDraftDisplay | undefined
   open: boolean
   onClose: () => void
 }) {
   const { chat, state, canSend, activeSteerTurn } = useNativeChat(projectId, bridge)
+  const onToolHighlight = useAssistantToolHighlight(projectId)
   const error = useNativeChatError(state)
   return (
     <AssistantPanel
       open={open}
       projectName={projectName}
       messages={state.messages}
+      draftDisplay={draftDisplay}
+      onToolHighlight={onToolHighlight}
       busy={state.busy}
       canSend={canSend && !assistantCheckpointBusy(state)}
       canUndoAgentChanges={state.canUndoAgentChanges}

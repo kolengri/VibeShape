@@ -41,6 +41,44 @@ beforeAll(() =>
 afterEach(cleanup)
 
 describe("authored tree controls", () => {
+  it("counts terminal parts and collapses consumed construction identities without a document write", async () => {
+    const { authority } = authoredTreeFixture()
+    const [body, lid, cutter] = authority.parts
+    if (!body || !lid || !cutter) throw new Error("Three authored parts are required.")
+    const onCommit = commit()
+    render(
+      providers(
+        <AuthoredPartsGroup
+          parts={[
+            { part: body, body: authoredTestBody(body), status: "available" },
+            { part: lid, body: null, status: "unavailable" },
+            { part: cutter, body: null, status: "consumed" },
+          ]}
+          revision={authority.revision}
+          selectedPartId={null}
+          highlightedPartIds={[cutter.id]}
+          disabled={false}
+          onSelect={vi.fn()}
+          onCommit={onCommit}
+        />,
+      ),
+    )
+    const parts = screen.getByRole("treeitem", { name: "Parts" })
+    expect(within(parts).getByText("2")).toBeTruthy()
+    expect(screen.getByRole("treeitem", { name: "Part Part 1" })).toBeTruthy()
+    expect(screen.getByRole("treeitem", { name: "Part Part 2" })).toBeTruthy()
+    expect(screen.queryByRole("treeitem", { name: "Part Part 3" })).toBeNull()
+    const consumed = screen.getByRole("treeitem", { name: "Consumed parts" })
+    expect(consumed.getAttribute("aria-expanded")).toBe("false")
+    expect(consumed.getAttribute("data-highlighted")).toBe("true")
+    expect(within(consumed).getByText("1")).toBeTruthy()
+    await userEvent.click(consumed)
+    expect(screen.getByRole("treeitem", { name: "Part Part 3" })).toBeTruthy()
+    await userEvent.click(consumed)
+    expect(screen.queryByRole("treeitem", { name: "Part Part 3" })).toBeNull()
+    expect(onCommit).not.toHaveBeenCalled()
+  })
+
   it("toggles Part presentation during a draft while rename and durable metadata remain blocked", async () => {
     const { authority } = authoredTreeFixture()
     const part = requireAuthoredFixture(authority.parts[0])
@@ -196,6 +234,8 @@ describe("authored tree controls", () => {
         />,
       ),
     )
+    expect(screen.queryByText("Consumed by a later operation")).toBeNull()
+    await userEvent.click(screen.getByRole("treeitem", { name: "Consumed parts" }))
     expect(screen.getByText("Consumed by a later operation")).toBeTruthy()
     expect(
       (screen.getByRole("button", { name: "Rename part Part 1" }) as HTMLButtonElement).disabled,

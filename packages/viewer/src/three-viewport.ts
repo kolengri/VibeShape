@@ -147,6 +147,8 @@ export function createLatestFramePublisher<Value>(
 export type ViewerMesh = Readonly<{
   textureSource?: Omit<ViewerMesh, "textureSource">
   appearance?: "datum" | "model" | "preview" | "selection-source"
+  /** Changes preview shading without granting committed picking authority. */
+  previewMaterial?: "highlight" | "model" | "datum"
   featureId: string
   outputRole?: string
   positions: Float32Array

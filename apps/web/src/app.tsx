@@ -1,3 +1,4 @@
+import type { AssistantToolTargets } from "@vibeshape/automation-api/assistant"
 import {
   appendSketchConstraint,
   createEmptySketch,
@@ -678,11 +679,12 @@ type EditorApplicationSession = Pick<
   | "selection"
   | "sketch"
   | "workspace"
->
+> & { assistantToolTargets: AssistantToolTargets | null }
 
 function useEditorApplicationSession() {
   return useEditorSession(
     useShallow((state) => ({
+      assistantToolTargets: state.assistantToolPreselection?.targets ?? null,
       activePartDesignTool: state.activePartDesignTool,
       commandPaletteOpen: state.commandPaletteOpen,
       extrusionDistanceRequest: state.extrusionDistanceRequest,
@@ -875,6 +877,7 @@ function EditorWorkspaceComposition({
       activeSketchTool={session.sketch.activeSketchTool}
       activeTool={session.activePartDesignTool}
       controller={controller}
+      assistantToolTargets={session.assistantToolTargets}
       extrusionDistanceRequest={session.extrusionDistanceRequest}
       hiddenFeatureIds={session.hiddenFeatureIds}
       partVisibility={{

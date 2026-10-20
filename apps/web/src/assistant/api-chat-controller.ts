@@ -267,7 +267,14 @@ export function createApiChatController(options: ApiChatOptions) {
           id,
           role: "tool",
           text: update.text,
-          tool: { title: update.name, status: update.status },
+          tool: {
+            title: update.name,
+            status: update.status,
+            ...(update.hasFailureDetails !== undefined
+              ? { hasFailureDetails: update.hasFailureDetails }
+              : {}),
+            ...(update.targets ? { targets: update.targets } : {}),
+          },
         }
         const index = next.findIndex((message) => message.id === id)
         if (index < 0) next.push(entry)
@@ -278,7 +285,15 @@ export function createApiChatController(options: ApiChatOptions) {
         const ids = new Set(toolMessages.values())
         const next = state.messages.map((message) =>
           ids.has(message.id) && message.tool?.status === "in_progress"
-            ? { ...message, tool: { ...message.tool, status } }
+            ? {
+                ...message,
+                tool: {
+                  ...message.tool,
+                  status,
+                  ...(status === "failed" ? { hasFailureDetails: false } : {}),
+                  targets: undefined,
+                },
+              }
             : message,
         )
         if (next.some((message, index) => message !== state.messages[index])) messages(next)

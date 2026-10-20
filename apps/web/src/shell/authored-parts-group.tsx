@@ -172,6 +172,7 @@ function AuthoredPartRow({
         data-part-id={part.id}
         data-feature-id={highlight?.featureId}
         data-part-status={status}
+        data-highlighted={highlighted}
         data-part-visible={visible}
         onPointerEnter={() => props.onPreselect?.(highlight)}
         onPointerLeave={() => props.onPreselect?.(null)}
@@ -269,6 +270,12 @@ function PartTextureContext({
 export function AuthoredPartsGroup(props: PartsProps) {
   const t = useTranslations("app.authoredTree")
   const [expanded, setExpanded] = useState(true)
+  const [consumedExpanded, setConsumedExpanded] = useState(false)
+  const activeParts = props.parts.filter(({ status }) => status !== "consumed")
+  const consumedParts = props.parts.filter(({ status }) => status === "consumed")
+  const consumedHighlighted = consumedParts.some(({ part }) =>
+    props.highlightedPartIds?.includes(part.id),
+  )
   useEffect(() => {
     if (props.revealRequest) setExpanded(true)
   }, [props.revealRequest])
@@ -291,18 +298,54 @@ export function AuthoredPartsGroup(props: PartsProps) {
         <Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />
         {t("parts")}
         <span aria-hidden="true" className={modelBrowserCount}>
-          {props.parts.length}
+          {activeParts.length}
         </span>
       </Button>
       {expanded && (
         <fieldset className="contents">
           <legend className="sr-only">{t("parts")}</legend>
-          {props.parts.length ? (
-            props.parts.map((resolved) => (
+          {activeParts.length ? (
+            activeParts.map((resolved) => (
               <AuthoredPartRow key={resolved.part.id} {...props} resolved={resolved} />
             ))
           ) : (
             <p className="py-2 pl-14 pr-2 text-xs text-muted-foreground">{t("emptyParts")}</p>
+          )}
+          {consumedParts.length > 0 && (
+            <div role="none">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                role="treeitem"
+                tabIndex={-1}
+                aria-expanded={consumedExpanded}
+                data-highlighted={consumedHighlighted ? "true" : undefined}
+                className={cn(
+                  modelBrowserGroupRow,
+                  "pl-7 text-muted-foreground",
+                  consumedHighlighted && modelBrowserHighlightedRow,
+                )}
+                onClick={() => setConsumedExpanded(!consumedExpanded)}
+              >
+                <ChevronDown
+                  aria-hidden="true"
+                  className={cn("size-4 shrink-0", !consumedExpanded && "-rotate-90")}
+                />
+                {t("consumedParts")}
+                <span aria-hidden="true" className={modelBrowserCount}>
+                  {consumedParts.length}
+                </span>
+              </Button>
+              {consumedExpanded && (
+                <fieldset className="contents">
+                  <legend className="sr-only">{t("consumedParts")}</legend>
+                  {consumedParts.map((resolved) => (
+                    <AuthoredPartRow key={resolved.part.id} {...props} resolved={resolved} />
+                  ))}
+                </fieldset>
+              )}
+            </div>
           )}
         </fieldset>
       )}

@@ -70,6 +70,8 @@ export type FeaturePreviewKind =
   | "subtract"
 
 export type FeaturePreviewState = Readonly<{
+  assistantDraft?: Readonly<{ documentId: string; draftId: string; baseRevision: number }>
+  display?: "result" | "changes"
   candidateMesh?: ViewerMesh
   kind?: FeaturePreviewKind
   meshes: readonly ViewerMesh[]

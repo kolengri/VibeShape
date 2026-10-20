@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   createEmptySketch,
+  documentIdSchema,
   featureIdSchema,
   partIdSchema,
   type SketchProfileSelector,
@@ -101,6 +102,34 @@ describe("Transient model tree selection", () => {
     expect(store.getState().hiddenSketchIds).toEqual([])
     expect(store.getState().partVisibilityOverrides).toEqual({})
     expect(store.getState().modelTreeSelection).toEqual(selected)
+  })
+
+  it("owns assistant hover independently of selection and ignores stale clears", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    const selection = [{ kind: "part", id: partId }] as const
+    actions.setModelTreeSelection(selection)
+    actions.setBodyPreselection({ featureId })
+    const targets = {
+      projectId: documentIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3300"),
+      featureIds: [featureId, otherFeatureId],
+      sketchIds: [sketchId],
+    }
+    actions.setAssistantToolPreselection("summary", targets)
+    expect(store.getState().preselectedBody).toBeNull()
+    expect(store.getState().assistantToolPreselection?.targets).toEqual(targets)
+    actions.setAssistantToolPreselection("call", { ...targets, featureIds: [otherFeatureId] })
+    actions.setAssistantToolPreselection("summary", null)
+    expect(store.getState().assistantToolPreselection?.owner).toBe("call")
+    actions.setAssistantToolPreselection("call", null)
+    expect(store.getState().assistantToolPreselection).toBeNull()
+    actions.setAssistantToolPreselection("summary", targets)
+    actions.setSketchPreselection(otherSketchId)
+    expect(store.getState().assistantToolPreselection).toBeNull()
+    expect(store.getState().preselectedSketchId).toBe(otherSketchId)
+    expect(store.getState().modelTreeSelection).toEqual(selection)
+    expect(store.getState().hiddenFeatureIds).toEqual([])
+    expect(store.getState().partVisibilityOverrides).toEqual({})
   })
 
   it("replaces part selection with an origin plane and preserves tree selection on plane deselection", () => {

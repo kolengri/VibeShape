@@ -1,4 +1,7 @@
-import { assistantAgentSchema } from "@vibeshape/automation-api/assistant"
+import {
+  assistantAgentSchema,
+  assistantToolTargetsSchema,
+} from "@vibeshape/automation-api/assistant"
 import { documentIdSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
 
@@ -9,7 +12,12 @@ const chatMessageSchema = z.strictObject({
   role: z.enum(["user", "assistant", "thought", "tool"]),
   text: z.string().max(32_000),
   tool: z
-    .strictObject({ title: z.string().max(512).optional(), status: z.string().max(512).optional() })
+    .strictObject({
+      title: z.string().max(512).optional(),
+      status: z.string().max(512).optional(),
+      hasFailureDetails: z.boolean().optional(),
+      targets: assistantToolTargetsSchema.optional(),
+    })
     .optional(),
   attachments: z
     .array(z.strictObject({ id: z.string().min(1).max(256), name: z.string().min(1).max(512) }))

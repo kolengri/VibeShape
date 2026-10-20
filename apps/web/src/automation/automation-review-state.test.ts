@@ -2,8 +2,15 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { assemblyDraftStateSchema } from "@vibeshape/automation-api/assembly-tools"
 import { automationDraftPreviewSchema } from "@vibeshape/automation-api/drafts"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
-import { commandActorSchema, commandIdSchema, partIdSchema } from "@vibeshape/domain"
+import {
+  commandActorSchema,
+  commandIdSchema,
+  documentIdSchema,
+  draftIdSchema,
+  partIdSchema,
+} from "@vibeshape/domain"
 import { vi } from "../../../../tests/unit/support/bun-test"
+import type { AutomationDraftViewport } from "./automation-draft-viewport"
 import { createAutomationReviewController } from "./automation-review-state"
 import { createConnectedAssistantReviews } from "./connected-assistant-reviews"
 
@@ -56,6 +63,210 @@ function reviewInput(): DraftReviewInput {
 }
 
 afterEach(() => vi.useRealTimers())
+
+function draftViewport(input = reviewInput()): AutomationDraftViewport {
+  const { draft, geometry } = input.preview
+  return {
+    draft,
+    generation: geometry.measurements.generation,
+    preview: {
+      status: "ready",
+      display: "result",
+      assistantDraft: {
+        documentId: draft.documentId,
+        draftId: draft.draftId,
+        baseRevision: draft.baseRevision,
+      },
+      meshes: [
+        {
+          featureId: "draft-body",
+          appearance: "preview",
+          previewMaterial: "model",
+          positions: new Float32Array([0, 0, 0, 2, 0, 0, 0, 3, 0]),
+          normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+          indices: new Uint32Array([0, 1, 2]),
+          triangleFaceIds: new Uint32Array([1]),
+        },
+      ],
+    },
+  }
+}
+
+describe("automation draft display ownership", () => {
+  it("defaults to Result and publishes display-only snapshots without copying draft geometry", () => {
+    const controller = createAutomationReviewController()
+    const owner = Symbol()
+    const viewport = draftViewport()
+    const listener = vi.fn()
+    controller.subscribe(listener)
+    controller.presentDraftViewport(owner, viewport)
+    expect(controller.getDraftViewportSnapshot()).toBe(viewport)
+    expect(controller.setDraftViewportDisplay("old-draft", "changes")).toBe(false)
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(controller.setDraftViewportDisplay(viewport.draft.draftId, "changes")).toBe(true)
+    const changed = controller.getDraftViewportSnapshot()
+    expect(changed?.preview.display).toBe("changes")
+    expect(changed?.preview.meshes).toBe(viewport.preview.meshes)
+    expect(changed?.draft).toBe(viewport.draft)
+    expect(changed?.preview.meshes[0]?.appearance).toBe("preview")
+    expect(controller.getSnapshot()).toBeNull()
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(controller.setDraftViewportDisplay(viewport.draft.draftId, "changes")).toBe(true)
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(controller.setDraftViewportDisplay(viewport.draft.draftId, "result")).toBe(true)
+    expect(controller.getDraftViewportSnapshot()?.preview.display).toBe("result")
+  })
+
+  it("retains the chosen mode across incremental revisions of the same draft", () => {
+    const controller = createAutomationReviewController()
+    const owner = Symbol()
+    const first = draftViewport()
+    controller.presentDraftViewport(owner, first)
+    controller.setDraftViewportDisplay(first.draft.draftId, "changes")
+    const next = {
+      ...first,
+      draft: { ...first.draft, revision: first.draft.revision + 1 },
+      generation: first.generation + 1,
+      preview: { ...first.preview, meshes: [...first.preview.meshes] },
+    }
+    controller.presentDraftViewport(owner, next)
+    const presented = controller.getDraftViewportSnapshot()
+    expect(presented?.preview.display).toBe("changes")
+    expect(presented?.generation).toBe(next.generation)
+    expect(presented?.draft.revision).toBe(next.draft.revision)
+    expect(presented?.preview.meshes).toBe(next.preview.meshes)
+  })
+
+  it.each(["draft", "project", "base revision", "owner"] as const)(
+    "resets Result when the %s changes",
+    (source) => {
+      const controller = createAutomationReviewController()
+      const owner = Symbol()
+      const first = draftViewport()
+      controller.presentDraftViewport(owner, first)
+      controller.setDraftViewportDisplay(first.draft.draftId, "changes")
+      const draft = {
+        ...first.draft,
+        ...(source === "draft"
+          ? { draftId: draftIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000009") }
+          : {}),
+        ...(source === "project"
+          ? { documentId: documentIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000009") }
+          : {}),
+        ...(source === "base revision" ? { baseRevision: first.draft.baseRevision + 1 } : {}),
+      }
+      controller.presentDraftViewport(source === "owner" ? Symbol() : owner, {
+        ...first,
+        draft,
+        preview: { ...first.preview, display: "changes", assistantDraft: draft },
+      })
+      expect(controller.getDraftViewportSnapshot()?.preview.display).toBe("result")
+      controller.presentDraftViewport(owner, first)
+      expect(controller.getDraftViewportSnapshot()?.preview.display).toBe("result")
+    },
+  )
+
+  it("isolates controller instances and clears the mode with the owning draft", () => {
+    const first = createAutomationReviewController()
+    const second = createAutomationReviewController()
+    const owner = Symbol()
+    const viewport = draftViewport()
+    first.presentDraftViewport(owner, viewport)
+    second.presentDraftViewport(Symbol(), viewport)
+    first.setDraftViewportDisplay(viewport.draft.draftId, "changes")
+    expect(second.getDraftViewportSnapshot()?.preview.display).toBe("result")
+    first.clearDraftViewport(Symbol())
+    expect(first.getDraftViewportSnapshot()?.preview.display).toBe("changes")
+    first.clearDraftViewport(owner)
+    expect(first.getDraftViewportSnapshot()).toBeNull()
+    expect(first.setDraftViewportDisplay(viewport.draft.draftId, "changes")).toBe(false)
+    first.presentDraftViewport(owner, viewport)
+    expect(first.getDraftViewportSnapshot()?.preview.display).toBe("result")
+  })
+
+  it("preserves the manual review decision and persistence lock while changing display", async () => {
+    const controller = createAutomationReviewController()
+    const owner = Symbol()
+    const input = reviewInput()
+    const viewport = draftViewport(input)
+    controller.presentDraftViewport(owner, viewport)
+    controller.setDraftViewportDisplay(viewport.draft.draftId, "changes")
+    const decision = controller.request(owner, input, viewport)
+    const original = controller.getSnapshot()
+    if (!original) throw new Error("Expected pending manual review.")
+    expect(controller.getDraftViewportSnapshot()).toBe(original.draftViewport ?? null)
+    expect(controller.getDraftViewportSnapshot()?.preview.display).toBe("changes")
+    let decided = false
+    void decision.then(() => {
+      decided = true
+    })
+    controller.setDraftViewportDisplay(viewport.draft.draftId, "result")
+    await Promise.resolve()
+    expect(decided).toBe(false)
+    expect(controller.getSnapshot()).toMatchObject({ id: original.id, status: "ready" })
+    expect(controller.getSnapshot()?.input).toBe(original.input)
+    const applied = controller.decide(original.id, "approved")
+    await expect(decision).resolves.toBe("approved")
+    controller.setDraftViewportDisplay(viewport.draft.draftId, "changes")
+    expect(controller.getSnapshot()?.status).toBe("applying")
+    await controller.decide(original.id, "rejected")
+    expect(controller.getSnapshot()?.status).toBe("applying")
+    controller.complete(owner, { ok: true, value: {} })
+    await applied
+    expect(controller.getDraftViewportSnapshot()).toBeNull()
+    expect(controller.setDraftViewportDisplay(viewport.draft.draftId, "changes")).toBe(false)
+  })
+
+  it.each(["document", "draft", "base revision", "revision", "generation", "origin"] as const)(
+    "refuses display writes when pending review has a mismatched %s fence",
+    async (fence) => {
+      const controller = createAutomationReviewController()
+      const owner = Symbol()
+      const input = reviewInput()
+      const viewport = draftViewport(input)
+      const mismatched: AutomationDraftViewport = {
+        ...viewport,
+        draft: {
+          ...viewport.draft,
+          ...(fence === "document"
+            ? { documentId: documentIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000009") }
+            : {}),
+          ...(fence === "draft"
+            ? { draftId: draftIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000009") }
+            : {}),
+          ...(fence === "base revision" ? { baseRevision: viewport.draft.baseRevision + 1 } : {}),
+          ...(fence === "revision" ? { revision: viewport.draft.revision + 1 } : {}),
+        },
+        generation: viewport.generation + (fence === "generation" ? 1 : 0),
+        preview: {
+          ...viewport.preview,
+          assistantDraft: {
+            ...viewport.preview.assistantDraft,
+            ...(fence === "origin" ? { baseRevision: viewport.draft.baseRevision + 1 } : {}),
+          },
+        },
+      }
+      const decision = controller.request(owner, input, mismatched)
+      expect(controller.getDraftViewportSnapshot()).toBeNull()
+      expect(controller.setDraftViewportDisplay(viewport.draft.draftId, "changes")).toBe(false)
+      expect(controller.getSnapshot()?.status).toBe("ready")
+      controller.cancel(owner)
+      await expect(decision).resolves.toBe("cancelled")
+    },
+  )
+
+  it("does not manufacture preview geometry for a review without retained buffers", async () => {
+    const controller = createAutomationReviewController()
+    const owner = Symbol()
+    const input = reviewInput()
+    const decision = controller.request(owner, input)
+    expect(controller.getDraftViewportSnapshot()).toBeNull()
+    expect(controller.setDraftViewportDisplay(input.preview.draft.draftId, "changes")).toBe(false)
+    expect(controller.getSnapshot()?.status).toBe("ready")
+    controller.cancel(owner)
+    await expect(decision).resolves.toBe("cancelled")
+  })
+})
 
 describe("browser automation review ownership", () => {
   it("keeps Apply pending through persistence and accepts a decision only once", async () => {

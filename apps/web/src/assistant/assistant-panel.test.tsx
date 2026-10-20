@@ -61,6 +61,73 @@ afterEach(() => {
 })
 
 describe("assistant transcript and composer", () => {
+  it("places change inspection after the finished batch inside the transcript", async () => {
+    const changeDisplay = vi.fn()
+    const before = vi.fn().mockResolvedValue(true)
+    const undo = vi.fn().mockResolvedValue(true)
+    const props: Partial<PanelProps> = {
+      messages: [{ id: "last", role: "assistant", text: "The container is ready." }],
+      draftDisplay: { mode: "result", onChange: changeDisplay },
+      canUndoAgentChanges: true,
+      onViewBefore: before,
+      onUndoAgentChanges: undo,
+    }
+    const rendered = render(panel({ ...props, busy: true }))
+    expect(screen.queryByRole("region", { name: "Agent changes" })).toBeNull()
+    rendered.rerender(panel(props))
+    const review = screen.getByRole("region", { name: "Agent changes" })
+    expect(screen.getByRole("log").contains(review)).toBe(true)
+    expect(
+      review.compareDocumentPosition(screen.getByText("The container is ready.")) &
+        Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy()
+    expect(within(review).getByText("Agent preview · not saved yet")).toBeTruthy()
+    expect(
+      within(review).getByRole("button", { name: "Result" }).getAttribute("aria-pressed"),
+    ).toBe("true")
+    await userEvent.click(within(review).getByRole("button", { name: "Changes" }))
+    expect(changeDisplay).toHaveBeenLastCalledWith("changes")
+    expect(before).not.toHaveBeenCalled()
+    expect(undo).not.toHaveBeenCalled()
+    rendered.rerender(
+      panel({ ...props, draftDisplay: { mode: "changes", onChange: changeDisplay } }),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Result" }))
+    expect(changeDisplay).toHaveBeenLastCalledWith("result")
+    await userEvent.click(screen.getByRole("button", { name: "View before" }))
+    expect(before).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole("button", { name: "Undo agent changes" }))
+    expect(undo).toHaveBeenCalledTimes(1)
+  })
+
+  it("labels saved changes and preserves the reading position when the batch finishes", () => {
+    const props: Partial<PanelProps> = {
+      messages: [{ id: "last", role: "assistant", text: "Saved." }],
+      canUndoAgentChanges: true,
+      onViewBefore: async () => true,
+      onUndoAgentChanges: async () => true,
+    }
+    const rendered = render(panel({ ...props, busy: true }))
+    const log = screen.getByRole("log")
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 900 },
+    })
+    log.scrollTop = 100
+    fireEvent.scroll(log)
+    const scrollCalls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    rendered.rerender(panel(props))
+    const review = screen.getByRole("region", { name: "Agent changes" })
+    expect(within(review).getByText("Changes saved to this project")).toBeTruthy()
+    expect(within(review).queryByRole("button", { name: "Changes" })).toBeNull()
+    expect(log.scrollTop).toBe(100)
+    expect(vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls).toHaveLength(scrollCalls)
+    rendered.rerender(panel({ ...props, viewingBefore: true }))
+    expect(screen.getByRole("button", { name: "View current" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    )
+  })
+
   it("collapses tool output behind its structured name and status without interpreting assistant prose", async () => {
     const messages: PanelProps["messages"] = [
       {

@@ -55,6 +55,48 @@ type PendingReview = {
   decided: boolean
 }
 
+type DraftViewportIdentity = AutomationDraftViewport["preview"]["assistantDraft"]
+
+function sameDraftViewportSource(left: DraftViewportIdentity, right: DraftViewportIdentity) {
+  return (
+    left.draftId === right.draftId &&
+    left.documentId === right.documentId &&
+    left.baseRevision === right.baseRevision
+  )
+}
+
+function withDraftViewportDisplay(
+  viewport: AutomationDraftViewport,
+  display: AutomationDraftViewport["preview"]["display"],
+): AutomationDraftViewport {
+  return viewport.preview.display === display
+    ? viewport
+    : { ...viewport, preview: { ...viewport.preview, display } }
+}
+
+function retainDraftViewportDisplay(
+  viewport: AutomationDraftViewport,
+  previous: AutomationDraftViewport | null,
+) {
+  return withDraftViewportDisplay(
+    viewport,
+    previous && sameDraftViewportSource(previous.draft, viewport.draft)
+      ? previous.preview.display
+      : "result",
+  )
+}
+
+function reviewDraftViewport(state: AutomationReviewState | null) {
+  if (!state || state.status === "error") return null
+  const { input, draftViewport } = state
+  if ("kind" in input || input.metadata || !draftViewport) return null
+  const { draft, geometry } = input.preview
+  if (!sameDraftViewportSource(draft, draftViewport.draft)) return null
+  if (draft.revision !== draftViewport.draft.revision) return null
+  if (geometry.measurements.generation !== draftViewport.generation) return null
+  return draftViewport
+}
+
 // One visible review owns the editor's confirmation surface at a time.
 export function createAutomationReviewController() {
   let state: AutomationReviewState | null = null
@@ -92,6 +134,7 @@ export function createAutomationReviewController() {
     draftViewport: AutomationDraftViewport | null = null,
   ): Promise<Decision> {
     if (pending) return Promise.resolve("cancelled")
+    const previous = draftPresentation?.owner === owner ? draftPresentation.viewport : null
     draftPresentation = null
     const expiresIn = hasReviewDeadline(input) ? Date.parse(expiresAt(input)) - Date.now() : null
     if (expiresIn !== null && (!Number.isFinite(expiresIn) || expiresIn <= 0))
@@ -118,7 +161,7 @@ export function createAutomationReviewController() {
         input: structuredClone(input),
         status: "ready",
         diagnostic: null,
-        draftViewport,
+        draftViewport: draftViewport ? retainDraftViewportDisplay(draftViewport, previous) : null,
       })
     })
   }
@@ -159,11 +202,35 @@ export function createAutomationReviewController() {
       })
   }
 
+  function getDraftViewportSnapshot(): AutomationDraftViewport | null {
+    const viewport = pending ? reviewDraftViewport(state) : draftPresentation?.viewport
+    if (!viewport) return null
+    return sameDraftViewportSource(viewport.draft, viewport.preview.assistantDraft)
+      ? viewport
+      : null
+  }
+
+  function setDraftViewportDisplay(
+    draftId: string,
+    display: AutomationDraftViewport["preview"]["display"],
+  ): boolean {
+    const viewport = getDraftViewportSnapshot()
+    if (!viewport || viewport.draft.draftId !== draftId) return false
+    const next = withDraftViewportDisplay(viewport, display)
+    if (next === viewport) return true
+    if (draftPresentation?.viewport === viewport) {
+      draftPresentation = { ...draftPresentation, viewport: next }
+      for (const listener of listeners) listener()
+    } else if (state?.draftViewport === viewport) publish({ ...state, draftViewport: next })
+    return true
+  }
+
   return {
     request,
     decide,
     cancel,
     complete,
+    setDraftViewportDisplay,
     clearDraftViewport(owner: symbol) {
       if (draftPresentation?.owner === owner) {
         draftPresentation = null
@@ -174,10 +241,11 @@ export function createAutomationReviewController() {
     },
     presentDraftViewport(owner: symbol, viewport: AutomationDraftViewport) {
       if (pending) return
-      draftPresentation = { owner, viewport }
+      const previous = draftPresentation?.owner === owner ? draftPresentation.viewport : null
+      draftPresentation = { owner, viewport: retainDraftViewportDisplay(viewport, previous) }
       for (const listener of listeners) listener()
     },
-    getDraftViewportSnapshot: () => draftPresentation?.viewport ?? null,
+    getDraftViewportSnapshot,
     dismiss(id: string) {
       if (state?.id === id && state.status === "error") publish(null)
     },

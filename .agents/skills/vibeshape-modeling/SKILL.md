@@ -37,6 +37,23 @@ Before constructing a new model or reconstructing a mesh, choose a feature plan 
 
 Read the relevant complete features, sketches, and variables before editing. Prefer changing an existing parameter or variable over reconstructing the model. Use named create/update tools inside a single draft for a coherent edit, followed by exact preview and the ordinary review/commit path. Do not make a new part beside an old one when the request is to revise the old part.
 
+Plan the final independent parts before creating construction solids. A container and its removable lid
+normally remain two independent terminal solids; do not fuse them together to reduce a browser count.
+Fuse attached details into their intended part and subtract cutters with the appropriate tool-retention
+setting. Prefer one associative pattern over manually copying the same detail. Inspect `model_parts`
+and exact body measurements after committing a stage: consumed construction parts and History entries
+are not additional printable components. Report the terminal part/body count separately from the
+number of authored operations.
+
+For a correction, update the existing primitive, sketch, feature, or variable through its available
+named `update_*` or variable tool, retaining its ID and dependencies. Do not append another feature
+merely to compensate for an editable parameter. When history cleanup is explicitly requested, inspect
+dependencies and consumers first; use supported `remove_feature`, `remove_sketch`, or suppression only
+for verified redundant intent and validate the complete result before committing. Do not silently
+delete user-authored intent, flatten editable geometry, or claim arbitrary History reordering or
+automatic feature consolidation: those operations are not exposed by the organization tools. History
+folders organize a contiguous range without changing feature order or geometry.
+
 Use the [inspection skill](../vibeshape-inspection/SKILL.md) to choose targets and diagnose exact preview. Fix the failing feature or constraint; do not delete unrelated geometry or relax constraints simply to obtain a green result. Existing selected edge treatments and body-scoped holes must retain their selection scope.
 
 ## Capability boundaries

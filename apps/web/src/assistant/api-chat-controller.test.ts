@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test"
-import type { AssistantAttachment } from "@vibeshape/automation-api/assistant"
+import {
+  type AssistantAttachment,
+  assistantToolTargetsSchema,
+} from "@vibeshape/automation-api/assistant"
 import type { ApiToolCall } from "./api-chat-completions"
 import { createApiChatController, createApiChatRegistry } from "./api-chat-controller"
 import { checkpointActor, checkpointFixture } from "./assistant-checkpoints.test-fixture"
@@ -96,6 +99,135 @@ function deferredApiRequests() {
 }
 
 describe("browser API project chat", () => {
+  it.each([
+    ["success", { title: "create_box", status: "completed" }],
+    ["diagnostic", { title: "create_box", status: "failed", hasFailureDetails: false }],
+    ["throw", { title: "create_box", status: "failed", hasFailureDetails: true }],
+  ] as const)(
+    "captures targets before 32k detail truncation and clears failures: %s",
+    async (outcome, expectedTool) => {
+      const storage = disk()
+      const targets = assistantToolTargetsSchema.parse({
+        projectId,
+        featureIds: [otherProjectId],
+        sketchIds: [],
+      })
+      const argumentsValue = {
+        draftId: projectId,
+        commandId: projectId,
+        baseRevision: 0,
+        featureId: otherProjectId,
+        widthMm: 1,
+        depthMm: 2,
+        heightMm: 3,
+      }
+      let requests = 0
+      const chat = createApiChatController({
+        projectId,
+        storage,
+        createTools: () => ({
+          ...tools(),
+          execute: async () => {
+            if (outcome === "throw") throw new Error("Tool failed")
+            return { ok: outcome === "success", detail: "x".repeat(40_000) }
+          },
+        }),
+        fetch: async () =>
+          ++requests === 1
+            ? completion("", [
+                call("create", "call_cad_tool", { name: "create_box", arguments: argumentsValue }),
+              ])
+            : completion("Done"),
+      })
+      await chat.connect(configuration)
+      await chat.send("Build")
+      await idle(chat)
+      const message = chat.getSnapshot().messages.find(({ role }) => role === "tool")
+      expect(message?.tool).toEqual({
+        ...expectedTool,
+        ...(outcome === "success" ? { targets } : {}),
+      })
+      if (outcome !== "throw") expect(JSON.parse(message?.text ?? "").truncated).toBe(true)
+      expect(readChatHistory(projectId, storage)?.messages).toEqual([
+        ...chat.getSnapshot().messages,
+      ])
+      chat.dispose()
+    },
+  )
+  it.each([
+    [
+      "local diagnostic",
+      {
+        ok: false,
+        detail: "x".repeat(40_000),
+        diagnostic: {
+          code: "preview-failed",
+          message: "The preview has an open shell.",
+          retryable: false,
+        },
+      },
+    ],
+    [
+      "MCP error text",
+      { isError: true, content: [{ type: "text", text: "The preview has an open shell." }] },
+    ],
+    [
+      "structured MCP diagnostic",
+      {
+        structuredContent: {
+          result: {
+            ok: false,
+            diagnostic: {
+              code: "preview-failed",
+              message: "The preview has an open shell.",
+              retryable: false,
+            },
+          },
+        },
+      },
+    ],
+    ["absent diagnostic", { ok: false }],
+  ] as const)(
+    "persists %s and continues the same turn without a retry/lifecycle error",
+    async (_label, output) => {
+      const storage = disk()
+      let requests = 0
+      const chat = createApiChatController({
+        projectId,
+        storage,
+        createTools: () => ({ ...tools(), execute: async () => output }),
+        fetch: async () =>
+          ++requests === 1
+            ? completion("", [
+                call("preview", "call_cad_tool", {
+                  name: "preview_draft",
+                  arguments: { draftId: projectId },
+                }),
+              ])
+            : completion("The preview failed; I can correct the model."),
+      })
+      await chat.connect(configuration)
+      await chat.send("Preview")
+      await idle(chat)
+      const message = chat.getSnapshot().messages.find(({ role }) => role === "tool")
+      expect(message?.tool).toEqual({
+        title: "preview_draft",
+        status: "failed",
+        hasFailureDetails: _label !== "absent diagnostic",
+      })
+      if (Object.keys(output).length > 1 || "structuredContent" in output)
+        expect(message?.text.includes("The preview has an open shell.")).toBe(true)
+      expect(chat.getSnapshot().error).toBeNull()
+      expect(requests).toBe(2)
+      expect(chat.getSnapshot().messages.at(-1)?.text).toBe(
+        "The preview failed; I can correct the model.",
+      )
+      expect(readChatHistory(projectId, storage)?.messages).toEqual([
+        ...chat.getSnapshot().messages,
+      ])
+      chat.dispose()
+    },
+  )
   it("does not dispatch a prompt whose captured baseline is immediately unreadable", async () => {
     const model = checkpointFixture(),
       api = deferredApiRequests(),

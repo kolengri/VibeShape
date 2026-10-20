@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     "./assistant": "./src/assistant.ts",
+    "./assistant-tool-targets": "./src/assistant-tool-targets.ts",
     "./project-tools": "./src/project-tools.ts",
     "./desktop-host": "./src/desktop-host.ts",
     "./project-result-context": "./src/project-result-context.ts",

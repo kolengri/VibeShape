@@ -2,10 +2,12 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { documentIdSchema, featureIdSchema, sketchIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
 import { AssistantMessages } from "./assistant-messages"
+import type { AssistantToolHighlight } from "./assistant-tool-highlight"
 import type { ChatMessage } from "./chat-history"
 
 beforeEach(() => {
@@ -13,10 +15,10 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-function view(messages: readonly ChatMessage[]) {
+function view(messages: readonly ChatMessage[], onHighlight?: AssistantToolHighlight) {
   return (
     <I18nProvider i18n={i18n} initialLocale="en">
-      <AssistantMessages messages={messages} />
+      <AssistantMessages messages={messages} onHighlight={onHighlight} />
     </I18nProvider>
   )
 }
@@ -35,6 +37,146 @@ function toolMessage(
 }
 
 describe("assistant tool messages", () => {
+  it.each([
+    ["retained native progress", "Preparing preview"],
+    [
+      "API parameters and empty failure",
+      JSON.stringify({
+        command: "call_cad_tool",
+        arguments: { name: "preview_draft" },
+        result: { ok: false },
+      }),
+    ],
+  ])("explains missing failure evidence alongside %s", async (_label, text) => {
+    const message = toolMessage("failed", "preview_draft", "failed", text)
+    transcript([{ ...message, tool: { ...message.tool, hasFailureDetails: false } }])
+    await userEvent.click(screen.getByText("Preview draft"))
+    expect(
+      screen.getByText("The agent did not provide an error message for this call."),
+    ).toBeTruthy()
+    expect(screen.getByText("Technical details")).toBeTruthy()
+  })
+
+  it("keeps failure evidence distinct for individual calls inside a group", async () => {
+    transcript([
+      {
+        ...toolMessage("missing", "preview_draft", "failed", "Preparing preview"),
+        tool: { title: "preview_draft", status: "failed", hasFailureDetails: false },
+      },
+      {
+        ...toolMessage(
+          "reported",
+          "preview_draft",
+          "failed",
+          "The preview contains an open shell.",
+        ),
+        tool: { title: "preview_draft", status: "failed", hasFailureDetails: true },
+      },
+    ])
+    await userEvent.click(screen.getByText("Preview draft"))
+    const calls = within(screen.getByRole("list", { name: "Tool calls" })).getAllByRole("listitem")
+    const missing = calls[0],
+      reported = calls[1]
+    if (!missing || !reported) throw new Error("Both failed calls must remain inspectable.")
+    expect(
+      within(missing).getByText("The agent did not provide an error message for this call."),
+    ).toBeTruthy()
+    expect(
+      within(reported).queryByText("The agent did not provide an error message for this call."),
+    ).toBeNull()
+    expect(
+      within(reported).getAllByText("The preview contains an open shell.").length,
+    ).toBeGreaterThan(0)
+  })
+
+  it("makes missing failure evidence explicit without adding an empty disclosure", () => {
+    transcript([toolMessage("failed", "preview_draft", "failed")])
+    expect(screen.getByText("Failed")).toBeTruthy()
+    expect(
+      screen.getByText("The agent did not provide an error message for this call."),
+    ).toBeTruthy()
+    expect(document.querySelector("details")).toBeNull()
+  })
+
+  it("highlights the grouped union and each expanded call independently without selecting", async () => {
+    const projectId = documentIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3300")
+    const firstId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+    const secondId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3302")
+    const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3303")
+    const targets = { projectId, featureIds: [firstId], sketchIds: [sketchId] }
+    const messages: ChatMessage[] = [
+      {
+        ...toolMessage("one", "create_cylinder", "completed", "First body"),
+        tool: { title: "create_cylinder", status: "completed", targets },
+      },
+      {
+        ...toolMessage("two", "create_cylinder", "completed", "Second body"),
+        tool: {
+          title: "create_cylinder",
+          status: "completed",
+          targets: { ...targets, featureIds: [secondId, firstId] },
+        },
+      },
+    ]
+    const onHighlight = vi.fn<AssistantToolHighlight>()
+    const rendered = render(view(messages, onHighlight))
+    const summary = screen.getByText("Create cylinder").closest("summary")
+    if (!summary) throw new Error("Grouped actions need a summary.")
+    fireEvent.pointerEnter(summary)
+    const groupOwner = onHighlight.mock.calls.at(-1)?.[0]
+    expect(onHighlight.mock.calls.at(-1)?.[1]).toEqual({
+      ...targets,
+      featureIds: [firstId, secondId],
+    })
+    fireEvent.pointerLeave(summary)
+    expect(onHighlight).toHaveBeenLastCalledWith(groupOwner, null)
+    await userEvent.click(summary)
+    const calls = within(screen.getByRole("list", { name: "Tool calls" })).getAllByRole("listitem")
+    const firstCall = calls[0]
+    if (!firstCall) throw new Error("The first call must remain inspectable.")
+    fireEvent.focus(firstCall)
+    const callOwner = onHighlight.mock.calls.at(-1)?.[0]
+    expect(callOwner).not.toBe(groupOwner)
+    expect(onHighlight.mock.calls.at(-1)?.[1]).toEqual(targets)
+    fireEvent.pointerEnter(firstCall)
+    fireEvent.blur(firstCall)
+    expect(onHighlight.mock.calls.at(-1)?.[1]).toEqual(targets)
+    fireEvent.pointerLeave(firstCall)
+    expect(onHighlight).toHaveBeenLastCalledWith(callOwner, null)
+    fireEvent.focus(firstCall)
+    rendered.unmount()
+    expect(
+      onHighlight.mock.calls.some(([owner, value]) => owner === callOwner && value === null),
+    ).toBe(true)
+  })
+
+  it("does not infer highlights from readable titles or mixed-project metadata", () => {
+    const projectId = documentIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3300")
+    const otherProject = documentIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3399")
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+    const onHighlight = vi.fn<AssistantToolHighlight>()
+    render(
+      view(
+        [
+          toolMessage("old", "create_boolean"),
+          ...[projectId, otherProject].map(
+            (id, index): ChatMessage => ({
+              ...toolMessage(`mixed-${index}`, "create_cylinder"),
+              tool: {
+                title: "create_cylinder",
+                status: "completed",
+                targets: { projectId: id, featureIds: [featureId], sketchIds: [] },
+              },
+            }),
+          ),
+        ],
+        onHighlight,
+      ),
+    )
+    expect(document.querySelector("[tabindex]")).toBeNull()
+    fireEvent.pointerEnter(screen.getByText("Create cylinder").parentElement as HTMLElement)
+    expect(onHighlight).not.toHaveBeenCalled()
+  })
   it("compresses consecutive repeated actions into one row with a right-hand count", () => {
     const { container } = transcript([
       ...Array.from({ length: 7 }, (_, index) => toolMessage(`skill-${index}`)),

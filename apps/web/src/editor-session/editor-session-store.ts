@@ -1,3 +1,4 @@
+import type { AssistantToolTargets } from "@vibeshape/automation-api/assistant"
 import type {
   FeatureId,
   PartId,
@@ -72,6 +73,7 @@ function clearHiddenSketchSelection(
 }
 
 function clearTreePreselection(state: Draft<EditorSessionState>) {
+  state.assistantToolPreselection = null
   state.preselectedSketchId = null
   state.preselectedBody = null
   state.preselectedFeatureId = null
@@ -101,6 +103,7 @@ export type SketchEditorSessionState = Readonly<{
 export type SketchCameraMode = "normal" | "orbit" | "navigate" | "navigate-held"
 
 export type EditorSessionState = Readonly<{
+  assistantToolPreselection: Readonly<{ owner: string; targets: AssistantToolTargets }> | null
   activePartDesignTool: ActivePartDesignTool | null
   partDesignToolGeneration: number
   commandPaletteOpen: boolean
@@ -132,6 +135,7 @@ type ProfileFeatureReturnContext = Readonly<{
 }>
 
 export type EditorSessionActions = Readonly<{
+  setAssistantToolPreselection: (owner: string, targets: AssistantToolTargets | null) => void
   acknowledgeExtrusionDistance: (featureId: FeatureId) => void
   acknowledgeRevolveAngle: (featureId: FeatureId) => void
   beginSketchCreate: (sketch: SketchRecord) => void
@@ -221,6 +225,7 @@ function createEditorSessionState(overrides: SketchVisibilityOverrides): EditorS
     activePartDesignTool: null,
     partDesignToolGeneration: 0,
     commandPaletteOpen: false,
+    assistantToolPreselection: null,
     extrusionDistanceRequest: null,
     hiddenFeatureIds: [],
     hiddenSketchIds: Object.keys(overrides)
@@ -590,14 +595,34 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
           set((state) => {
             delete state.partVisibilityOverrides[partId]
           }),
+        setAssistantToolPreselection: (owner, targets) =>
+          set((state) => {
+            if (targets) {
+              state.preselectedFeatureId = null
+              state.preselectedBody = null
+              state.preselectedSketchId = null
+              state.assistantToolPreselection = {
+                owner,
+                targets: {
+                  projectId: targets.projectId,
+                  featureIds: [...targets.featureIds],
+                  sketchIds: [...targets.sketchIds],
+                },
+              }
+            } else if (state.assistantToolPreselection?.owner === owner) {
+              state.assistantToolPreselection = null
+            }
+          }),
         setSketchPreselection: (sketchId) =>
           set((state) => {
+            state.assistantToolPreselection = null
             state.preselectedSketchId = sketchId
             state.preselectedBody = null
             state.preselectedFeatureId = null
           }),
         setBodyPreselection: (body) =>
           set((state) => {
+            state.assistantToolPreselection = null
             state.preselectedSketchId = null
             state.preselectedBody = body
             state.preselectedFeatureId = null
@@ -635,6 +660,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
           }),
         setFeaturePreselection: (featureId) =>
           set((state) => {
+            state.assistantToolPreselection = null
             state.preselectedSketchId = null
             state.preselectedFeatureId = featureId
             state.preselectedBody = null

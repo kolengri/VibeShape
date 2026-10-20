@@ -953,6 +953,8 @@ type ModelTreeProps = {
   modelTreeSelection?: readonly ModelTreeSelection[] | undefined
   onModelTreeSelectionChange?: ((items: readonly ModelTreeSelection[]) => void) | undefined
   highlightedFeatureId?: FeatureRecord["id"] | null | undefined
+  highlightedFeatureIds?: readonly FeatureRecord["id"][] | undefined
+  highlightedSketchIds?: readonly SketchId[] | undefined
   selectedResultFeatureId?: string | null | undefined
   revealRequest?: Readonly<{ featureId: FeatureRecord["id"]; sequence: number }> | null
   onRevealFeature?: ((featureId: FeatureRecord["id"]) => void) | undefined
@@ -1033,6 +1035,13 @@ function ModelTreeWorkspaceItems({
   )
 }
 
+function featureHighlighted(props: ModelTreeProps, featureId: string) {
+  return (
+    props.highlightedFeatureId === featureId ||
+    Boolean(props.highlightedFeatureIds?.some((id) => id === featureId))
+  )
+}
+
 function DatumPlaneBrowserItem({
   feature,
   busy,
@@ -1047,12 +1056,12 @@ function DatumPlaneBrowserItem({
   return (
     <fieldset
       data-feature-id={feature.id}
-      data-highlighted={feature.id === props.highlightedFeatureId ? "true" : undefined}
+      data-highlighted={featureHighlighted(props, feature.id) ? "true" : undefined}
       disabled={busy || rolledBack}
       className={cn(
         "min-w-0",
         rolledBack && "opacity-60",
-        feature.id === props.highlightedFeatureId && "bg-accent/60",
+        featureHighlighted(props, feature.id) && "bg-accent/60",
       )}
     >
       <legend className="sr-only">{feature.label ?? t("unnamedFeature")}</legend>
@@ -1558,7 +1567,9 @@ function SketchHistoryRow({
         row.supportHealth?.status === "ambiguous"
       }
       sourcePresentation={{
-        highlighted: props.sourcePreviewSketchId === sketch.id,
+        highlighted:
+          props.sourcePreviewSketchId === sketch.id ||
+          Boolean(props.highlightedSketchIds?.includes(sketch.id)),
         summary: undefined,
       }}
       activeFeatureId={props.activeFeatureId}
@@ -1678,7 +1689,7 @@ function FeatureHistoryRow({
       marker={props.marker}
       sourcePresentation={{
         highlighted:
-          row.ref.id === props.highlightedFeatureId ||
+          featureHighlighted(props, row.ref.id) ||
           Boolean(
             props.highlightedBody &&
               partForModelBody(
@@ -2160,28 +2171,35 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
         <fieldset className="contents">
           <legend className="sr-only">{props.t("items.sketches")}</legend>
           {sketches.map((row) => (
-            <SketchTreeItem
+            <div
               key={historyRefKey(row.ref)}
-              active={
-                props.modelTreeSelection?.some(
-                  (item) => item.kind === "sketch" && item.id === row.ref.id,
-                ) || row.ref.id === props.activeSketchId
-              }
-              controller={props.controller}
-              deletionBlocked={props.view.graphFailed || props.view.reorderUnavailable}
-              onActivate={props.onSketchActivate}
-              onSketchPreselectionChange={props.onSketchPreselectionChange}
-              onSketchSupportRepair={props.onSketchSupportRepair}
-              onFeatureRename={props.onFeatureRename}
-              onSketchDeleted={props.onSketchDeleted}
-              onSketchRemove={props.onSketchRemove}
-              onSketchRename={props.onSketchRename}
-              onVisibilityChange={props.onSketchVisibilityChange}
-              renameBlocked={row.ref.id === props.sketchRenameBlockedId}
-              row={row}
-              unnamedSketch={props.t("unnamedSketch")}
-              visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
-            />
+              data-highlighted={props.highlightedSketchIds?.some((id) => id === row.ref.id)}
+              className={cn(
+                props.highlightedSketchIds?.some((id) => id === row.ref.id) && "bg-accent/60",
+              )}
+            >
+              <SketchTreeItem
+                active={
+                  props.modelTreeSelection?.some(
+                    (item) => item.kind === "sketch" && item.id === row.ref.id,
+                  ) || row.ref.id === props.activeSketchId
+                }
+                controller={props.controller}
+                deletionBlocked={props.view.graphFailed || props.view.reorderUnavailable}
+                onActivate={props.onSketchActivate}
+                onSketchPreselectionChange={props.onSketchPreselectionChange}
+                onSketchSupportRepair={props.onSketchSupportRepair}
+                onFeatureRename={props.onFeatureRename}
+                onSketchDeleted={props.onSketchDeleted}
+                onSketchRemove={props.onSketchRemove}
+                onSketchRename={props.onSketchRename}
+                onVisibilityChange={props.onSketchVisibilityChange}
+                renameBlocked={row.ref.id === props.sketchRenameBlockedId}
+                row={row}
+                unnamedSketch={props.t("unnamedSketch")}
+                visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
+              />
+            </div>
           ))}
           {sketches.length === 0 && (
             <div className="grid gap-2 py-2 pl-14 pr-2">
@@ -2257,7 +2275,7 @@ function AuthoredPartsBranch({
         .filter((part) =>
           props.highlightedBody
             ? partForModelBody(parts, props.highlightedBody)?.part.id === part.part.id
-            : part.part.bodyHistory.some((body) => body.featureId === props.highlightedFeatureId),
+            : part.part.bodyHistory.some((body) => featureHighlighted(props, body.featureId)),
         )
         .map((part) => part.part.id)}
       disabled={authoredTreeWriteBlocked(props)}

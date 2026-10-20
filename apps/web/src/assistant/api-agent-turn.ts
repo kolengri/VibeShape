@@ -1,3 +1,9 @@
+import type { AssistantToolTargets } from "@vibeshape/automation-api/assistant"
+import {
+  assistantToolResultFailed,
+  assistantToolResultText,
+  assistantToolTargets,
+} from "@vibeshape/automation-api/assistant-tool-targets"
 import { z } from "zod"
 import type { ApiConfiguration } from "./api-assistant-preferences"
 import { type ApiQuestionInput, apiCadInstructions, apiQuestionInputSchema } from "./api-cad-tools"
@@ -25,11 +31,23 @@ function toolLabel(tool: ApiToolCall) {
   return tool.function.name
 }
 
+function cadToolTargets(projectId: string, tool: ApiToolCall, input: unknown) {
+  if (tool.function.name !== "call_cad_tool") return undefined
+  const cad = z
+    .strictObject({ name: z.string().min(1).max(64), arguments: z.record(z.string(), z.unknown()) })
+    .safeParse(input)
+  return cad.success
+    ? assistantToolTargets(projectId, cad.data.name, cad.data.arguments)
+    : undefined
+}
+
 export type ApiToolUpdate = {
   id: string
   name: string
   status: "in_progress" | "completed" | "failed"
   text: string
+  hasFailureDetails?: boolean | undefined
+  targets?: AssistantToolTargets | undefined
 }
 
 export function apiAgentMessages(projectId: string, messages: readonly ApiWireMessage[]) {
@@ -53,7 +71,14 @@ function toolDetails(tool: ApiToolCall, input: unknown, result?: unknown) {
     {
       command: tool.function.name,
       arguments: JSON.stringify(input).slice(0, 7_000),
-      ...(result === undefined ? {} : { result: JSON.stringify(result).slice(0, 7_000) }),
+      ...(result === undefined
+        ? {}
+        : {
+            result: (
+              (assistantToolResultFailed(result) ? assistantToolResultText(result) : undefined) ??
+              JSON.stringify(result)
+            ).slice(0, 7_000),
+          }),
       truncated: true,
     },
     null,
@@ -73,6 +98,14 @@ type AgentTurnOptions = {
   fetch?: ApiFetch | undefined
 }
 
+async function executeTool(options: AgentTurnOptions, tool: ApiToolCall, input: unknown) {
+  if (tool.function.name !== "ask_user_question")
+    return options.tools.execute(tool.function.name, input, options.signal)
+  const parsed = apiQuestionInputSchema.safeParse(input)
+  if (!parsed.success) throw new ApiAssistantError("invalid-tool")
+  return options.askQuestion(parsed.data, options.signal)
+}
+
 async function executeTools(
   options: AgentTurnOptions,
   toolCalls: ApiToolCall[],
@@ -84,25 +117,30 @@ async function executeTools(
     ids.add(tool.id)
     const input = argumentsValue(tool)
     const name = toolLabel(tool)
-    options.onTool({ id: tool.id, name, status: "in_progress", text: toolDetails(tool, input) })
+    const targets = cadToolTargets(options.projectId, tool, input)
+    options.onTool({
+      id: tool.id,
+      name,
+      status: "in_progress",
+      text: toolDetails(tool, input),
+      targets,
+    })
     try {
-      let output: unknown
-      if (tool.function.name === "ask_user_question") {
-        const parsed = apiQuestionInputSchema.safeParse(input)
-        if (!parsed.success) throw new ApiAssistantError("invalid-tool")
-        output = await options.askQuestion(parsed.data, options.signal)
-      } else output = await options.tools.execute(tool.function.name, input, options.signal)
+      const output = await executeTool(options, tool, input)
       assertApiActive(options.signal)
       messages.push({
         role: "tool",
         tool_call_id: tool.id,
         content: boundedApiJson(output, 128 * 1024, "response-limit"),
       })
+      const failed = assistantToolResultFailed(output)
       options.onTool({
         id: tool.id,
         name,
-        status: "completed",
+        status: failed ? "failed" : "completed",
         text: toolDetails(tool, input, output),
+        ...(failed ? { hasFailureDetails: Boolean(assistantToolResultText(output)) } : {}),
+        targets: failed ? undefined : targets,
       })
     } catch (error) {
       options.onTool({
@@ -110,6 +148,7 @@ async function executeTools(
         name,
         status: "failed",
         text: toolDetails(tool, input, { error: apiErrorCode(error) }),
+        hasFailureDetails: true,
       })
       throw error
     }

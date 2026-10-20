@@ -203,7 +203,15 @@ const controller: DocumentControllerState = {
 }
 
 const noop = () => undefined
-function WorkspaceHarness({ treeSelection }: { treeSelection: readonly ModelTreeSelection[] }) {
+function WorkspaceHarness({
+  treeSelection,
+  toolTargets,
+  hiddenFeatureIds = [],
+}: {
+  treeSelection: readonly ModelTreeSelection[]
+  toolTargets?: WorkspaceProps["assistantToolTargets"]
+  hiddenFeatureIds?: WorkspaceProps["hiddenFeatureIds"]
+}) {
   const [activeTool, setActiveTool] = useState<ActivePartDesignTool | null>(null)
   const [preselectedFeatureId, setPreselectedFeatureId] = useState<FeatureId | null>(null)
   const actions: WorkspaceProps["actions"] = {
@@ -234,6 +242,7 @@ function WorkspaceHarness({ treeSelection }: { treeSelection: readonly ModelTree
     editSketch: noop,
     preselectFeature: setPreselectedFeatureId,
     select: noop,
+    selectPart: noop,
     selectSavedSketchProfile: noop,
     selectOriginPlane: noop,
     selectSketchPlane: noop,
@@ -270,7 +279,8 @@ function WorkspaceHarness({ treeSelection }: { treeSelection: readonly ModelTree
               activeSketchId={null}
               activeSketchTool={null}
               controller={controller}
-              hiddenFeatureIds={[]}
+              assistantToolTargets={toolTargets}
+              hiddenFeatureIds={hiddenFeatureIds}
               hiddenSketchIds={[]}
               originPlaneVisibility={{ xy: true, xz: true, yz: true }}
               onSketchFinalContextChange={noop}
@@ -313,6 +323,71 @@ function historyRow() {
 }
 
 describe("workspace body highlight composition", () => {
+  it("links assistant targets to visible exact outputs and matching tree and History identities", async () => {
+    const otherFeature = requireAuthoredFixture(snapshot.features[1])
+    const toolTargets = {
+      projectId: snapshot.id,
+      featureIds: [firstFeature.id, otherFeature.id],
+      sketchIds: [sketch.id],
+    }
+    const rendered = render(<WorkspaceHarness treeSelection={[]} toolTargets={toolTargets} />)
+    await waitFor(() =>
+      expect(port.setFeaturePreselection).toHaveBeenLastCalledWith([
+        expect.objectContaining({ featureId: firstFeature.id, outputRole: "result" }),
+        expect.objectContaining({ featureId: otherFeature.id, outputRole: "result" }),
+      ]),
+    )
+    for (const id of [firstFeature.id, otherFeature.id, sketch.id]) {
+      const row = screen
+        .getByRole("tree", { name: "Feature history" })
+        .querySelector(`[data-history-id="${id}"]`)
+      expect(row?.getAttribute("data-history-source-highlighted")).toBe("true")
+    }
+    const leftTree = screen.getByRole("tree", { name: "Project features" })
+    expect(
+      within(leftTree)
+        .getByRole("treeitem", { name: "Part Part 1" })
+        .closest('[data-highlighted="true"]'),
+    ).toBeTruthy()
+    expect(
+      within(leftTree)
+        .getByRole("treeitem", { name: "Guide" })
+        .closest('[data-highlighted="true"]'),
+    ).toBeTruthy()
+    expect(port.setFeatureSelection).toHaveBeenLastCalledWith(null)
+    rendered.rerender(
+      <WorkspaceHarness
+        treeSelection={[]}
+        toolTargets={toolTargets}
+        hiddenFeatureIds={[firstFeature.id]}
+      />,
+    )
+    await waitFor(() =>
+      expect(port.setFeaturePreselection).toHaveBeenLastCalledWith([
+        expect.objectContaining({ featureId: otherFeature.id }),
+      ]),
+    )
+    rendered.rerender(<WorkspaceHarness treeSelection={[]} />)
+    await waitFor(() => expect(port.setFeaturePreselection).toHaveBeenLastCalledWith(null))
+  })
+
+  it("ignores tool identities from another project even when feature IDs overlap", async () => {
+    const otherProject = { ...snapshot, id: fixture.authority.parts[0]?.id }
+    const { documentIdSchema } = await import("@vibeshape/domain")
+    render(
+      <WorkspaceHarness
+        treeSelection={[]}
+        toolTargets={{
+          projectId: documentIdSchema.parse(otherProject.id),
+          featureIds: [firstFeature.id],
+          sketchIds: [sketch.id],
+        }}
+      />,
+    )
+    await waitFor(() => expect(port.setFeaturePreselection).toHaveBeenLastCalledWith(null))
+    expect(historyRow().closest('[data-history-source-highlighted="true"]')).toBeNull()
+  })
+
   it("projects authored feature selections to their exact rebuilt output roles", async () => {
     render(<WorkspaceHarness treeSelection={[{ kind: "feature", id: firstFeature.id }]} />)
     await waitFor(() =>
