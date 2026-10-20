@@ -1,10 +1,15 @@
+import {
+  assistantQuestionInputSchema,
+  assistantQuestionTool,
+} from "@vibeshape/automation-api/assistant"
 import { localToolNameSchema, parseMcpToolCall } from "@vibeshape/automation-api/local-tools"
 import { projectToolNames } from "@vibeshape/automation-api/project-tools"
 import { localToolAnnotations } from "@vibeshape/automation-api/tool-metadata"
 import { z } from "zod"
 
 const projectTools = new Set<string>(projectToolNames)
-const manualReviewTools = new Set<string>([
+const humanWaitTools = new Set<string>([
+  assistantQuestionTool.name,
   "commit_draft",
   "commit_assembly_draft",
   "commit_import_upload",
@@ -22,13 +27,14 @@ const manualReviewTools = new Set<string>([
 ])
 
 export function toolTimeoutMs(name: string, operationTimeoutMs: number) {
-  // The SDK cannot disable its timer; use the platform ceiling for human review.
-  return manualReviewTools.has(name) ? 2_147_483_647 : operationTimeoutMs
+  // Host expiry and cancellation own human waits; the SDK still requires a timer.
+  return humanWaitTools.has(name) ? 2_147_483_647 : operationTimeoutMs
 }
 
 export function allowedTool(name: string) {
   return (
     name === "read_agent_skill" ||
+    name === assistantQuestionTool.name ||
     (localToolNameSchema.safeParse(name).success && !projectTools.has(name))
   )
 }
@@ -39,12 +45,14 @@ export function validateToolInput(name: string, args: unknown) {
   const valid =
     name === "read_agent_skill"
       ? skillInput.safeParse(args).success
-      : allowedTool(name) && parseMcpToolCall(name, args).success
+      : name === assistantQuestionTool.name
+        ? assistantQuestionInputSchema.safeParse(args).success
+        : allowedTool(name) && parseMcpToolCall(name, args).success
   if (!valid) throw new Error("The selected arguments do not match the VibeShape tool contract.")
 }
 
 export function readOnlyTool(name: string) {
-  if (name === "read_agent_skill") return true
+  if (name === "read_agent_skill" || name === assistantQuestionTool.name) return true
   const parsed = localToolNameSchema.safeParse(name)
   return parsed.success && localToolAnnotations(parsed.data).readOnlyHint
 }

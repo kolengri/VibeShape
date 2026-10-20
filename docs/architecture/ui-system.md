@@ -339,3 +339,16 @@ The CLI does not update components like an opaque dependency. For each update:
 6. Update third-party notices when the source or dependency set changes.
 
 Record the preset in the repository. Running `init --force` without review is prohibited because it may rewrite CSS tokens and component configuration.
+
+## Assistant presentation and viewport capture
+
+The project-keyed editor scope owns a small assistant presentation context. Only the toggle and
+mounted panel consume its visibility; chat updates remain inside the project chat controller. The
+fixed panel overlays the workspace, with CSS safe insets for viewport controls rather than canvas
+resizing. Closing hides the subtree without disposing its controller or transient composer state.
+
+A separate scope-local capture port registers the currently visible viewport. An explicit composer
+action requests a fresh render and synchronous copy of its WebGL buffer before asynchronous PNG
+encoding. The copy is bounded to 1,600 pixels on its largest dimension and never resizes the live
+canvas. Unregistered or replaced viewports discard outstanding results. Provider capabilities and
+the ordinary attachment admission pipeline remain authoritative.

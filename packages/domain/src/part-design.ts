@@ -1,3 +1,14 @@
+import { chamferFeatureTypeHandlerV3 } from "./part-design-chamfer"
+
+export {
+  type ChamferFeatureParametersV3,
+  chamferEdgeRefSchema,
+  chamferFeatureParametersV3Schema,
+  chamferFeatureTypeV3,
+  chamferTargetSchema,
+  readChamferFeatureParametersV3,
+} from "./part-design-chamfer"
+
 import { z } from "zod"
 import { type BodyReference, bodyReferenceSchema } from "./body-reference"
 import { bodyFaceRefSchema } from "./body-topology-reference"
@@ -1789,6 +1800,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
       return { distance: chamfer.distance.value }
     },
   },
+  chamferFeatureTypeHandlerV3,
   {
     type: legacyExtrusionFeatureType.type,
     parametersSchema: legacyExtrusionFeatureParametersSchema,

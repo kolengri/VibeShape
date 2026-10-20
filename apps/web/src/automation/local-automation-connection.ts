@@ -11,6 +11,7 @@ import type { CommandActor } from "@vibeshape/domain/commands"
 import { z } from "zod"
 import { createActiveDocumentAutomationSession as createVisibleDocumentAutomationSession } from "../document/document-controller"
 import { automationReviews } from "./automation-review-controller"
+import { createDraftRecoveryOwner } from "./draft-recovery-owner"
 import {
   LocalAutomationTransportError,
   localAutomationRequest as visibleAutomationRequest,
@@ -131,6 +132,7 @@ export function createLocalAutomationConnection(
   } = {},
 ) {
   const reviews = options.reviews ?? automationReviews
+  const recoveryOwner = createDraftRecoveryOwner()
   const nativeProjectAccess = options.accessPolicy === "native-project" && !!options.projectId
   const createActiveDocumentAutomationSession = () => {
     const create = options.createDocumentSession ?? createVisibleDocumentAutomationSession
@@ -260,7 +262,7 @@ export function createLocalAutomationConnection(
     }
     generation += 1
     if (nativeProjectAccess) nativeRecoveryPending = true
-    closeLocal(current)
+    closeLocal(current, true)
     publish({
       ...snapshot,
       connected: false,
@@ -284,14 +286,19 @@ export function createLocalAutomationConnection(
       return false
     }
   }
-  function closeLocal(current: Pair) {
+  function closeLocal(current: Pair, retainIntent = false) {
     if (current.timer) clearTimeout(current.timer)
     current.active?.controller.abort()
     current.queuedWork = null
+    if (retainIntent && !isProjectChange(current)) {
+      current.handle.cancel?.("request-cancelled")
+      recoveryOwner.retain(current.handle, current.credential)
+    } else recoveryOwner.clear()
     current.handle.dispose()
     if (pair === current) pair = null
   }
   async function disconnect(preserveRecovery = false) {
+    recoveryOwner.clear()
     generation += 1
     revokedThroughGeneration = generation
     const saved = readResume()
@@ -335,6 +342,7 @@ export function createLocalAutomationConnection(
     if (!current.handle.readIdentity()) void disconnect()
   }
   function createExecutor(current: Pair) {
+    const capturedHandle = current.handle
     return createLocalToolExecutor(
       current.handle,
       current.credential.actor,
@@ -356,6 +364,7 @@ export function createLocalAutomationConnection(
             return false
           const created = createActiveDocumentAutomationSession()
           if (!created.ok) return false
+          recoveryOwner.clear()
           current.handle.dispose()
           current.handle = created
           current.executor = createExecutor(current)
@@ -365,6 +374,11 @@ export function createLocalAutomationConnection(
           return true
         },
       }),
+      recoveryOwner.bind(
+        capturedHandle,
+        () => current.credential,
+        () => pair === current && current.handle === capturedHandle && snapshot.connected,
+      ),
     )
   }
   async function readStatus() {
@@ -721,14 +735,23 @@ export function createLocalAutomationConnection(
       queuedWork: null,
       timer: null,
     }
+    acceptConnection(current, saved, info)
+    return true
+  }
+  function acceptConnection(
+    current: Pair,
+    saved: NonNullable<ReturnType<typeof readResume>> | undefined,
+    info: NonNullable<Identity>,
+  ) {
+    const { credential } = current
     pair = current
+    recoveryOwner.authorize(saved?.token, credential, info)
     current.executor = createExecutor(current)
     publishConnection(current, preferredAutoApply(credential.client, saved?.autoApply === true))
     if (!writePreference(credential.client, snapshot.autoApply))
       publish({ ...snapshot, error: true })
     saveResume(current)
     void poll(current)
-    return true
   }
   async function discardLateConnection(created: Handle, at: number, credential: LocalConnection) {
     // Owner disposal/navigation yields to recovery; an explicit Stop still cancels late grants.
@@ -793,6 +816,7 @@ export function createLocalAutomationConnection(
       return
     }
     automaticConnectionBlocked = !(error instanceof LocalAutomationSessionLostError)
+    recoveryOwner.clear()
     clearResume()
     await revokeCredential(saved)
     if (generation === at) finishRejectedRecovery(error)
@@ -1028,6 +1052,7 @@ export function createLocalAutomationConnection(
     dispose() {
       if (disposed) return
       onPageHide()
+      recoveryOwner.clear()
       disposed = true
       if (statusTimer) clearTimeout(statusTimer)
       statusTimer = null

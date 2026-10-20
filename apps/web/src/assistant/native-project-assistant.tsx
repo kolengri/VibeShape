@@ -6,6 +6,7 @@ import { useEffect, useState, useSyncExternalStore } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 import { registerProjectActionGuard } from "../document/document-controller"
 import { assistantCheckpointBusy } from "./assistant-checkpoints"
+import type { AssistantComposerProps } from "./assistant-composer"
 import { type AssistantDraftDisplay, useAssistantDraftDisplay } from "./assistant-draft-display"
 import { AssistantPanel } from "./assistant-panel"
 import { useAssistantToolHighlight } from "./assistant-tool-highlight"
@@ -25,12 +26,13 @@ export function NativeProjectAssistant({
   controller,
   open,
   onClose,
+  onCaptureView,
 }: {
   bridge: AssistantBridge
   controller: DocumentControllerState
   open: boolean
   onClose: () => void
-}) {
+} & Pick<AssistantComposerProps, "onCaptureView">) {
   const registry = getNativeProjectChatRegistry(bridge)
   const busy = useSyncExternalStore(registry.subscribe, registry.isBusy, registry.isBusy)
   useReportActivity(busy)
@@ -46,6 +48,7 @@ export function NativeProjectAssistant({
       draftDisplay={draftDisplay}
       open={open}
       onClose={onClose}
+      onCaptureView={onCaptureView}
     />
   )
 }
@@ -57,6 +60,7 @@ function NativeProjectChat({
   draftDisplay,
   open,
   onClose,
+  onCaptureView,
 }: {
   bridge: AssistantBridge
   projectId: string
@@ -64,7 +68,7 @@ function NativeProjectChat({
   draftDisplay?: AssistantDraftDisplay | undefined
   open: boolean
   onClose: () => void
-}) {
+} & Pick<AssistantComposerProps, "onCaptureView">) {
   const { chat, state, canSend, activeSteerTurn } = useNativeChat(projectId, bridge)
   const onToolHighlight = useAssistantToolHighlight(projectId)
   const error = useNativeChatError(state)
@@ -86,6 +90,7 @@ function NativeProjectChat({
       onUndoAgentChanges={chat.undoAgentChanges}
       onViewBefore={chat.viewBefore}
       onClose={onClose}
+      onCaptureView={onCaptureView}
       onSend={chat.send}
       onQueue={chat.enqueue}
       {...(state.snapshot ? { attachmentCapabilities: state.snapshot.attachmentCapabilities } : {})}
@@ -102,6 +107,7 @@ function NativeProjectChat({
       onCancel={chat.cancel}
       onReset={chat.reset}
       storageFailed={state.storageFailed}
+      onRetryHistory={chat.retryHistory}
       error={error}
       configuration={<AgentConnection chat={chat} state={state} />}
       sessionControls={

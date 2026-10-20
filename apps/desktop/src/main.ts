@@ -570,10 +570,14 @@ function installAssistant() {
   assistant = createAssistantService({
     cwd: assistantDirectory,
     applicationVersion: app.getVersion(),
-    async getMcpSetup(projectId) {
+    async getMcpSetup(projectId, questions) {
       const id = localDocumentSchema.shape.id.parse(projectId)
       if (!nativeMcp) throw new Error("Native MCP is unavailable.")
-      const path = await nativeMcp.publishProject(id, join(assistantDirectory, `${id}.mcp.json`))
+      const path = await nativeMcp.publishProject(
+        id,
+        join(assistantDirectory, `${id}.mcp.json`),
+        questions,
+      )
       return mcpSetup(path)
     },
     async isMcpClientAttached(projectId?: string) {

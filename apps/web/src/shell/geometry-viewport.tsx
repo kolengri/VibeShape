@@ -89,13 +89,13 @@ import {
   useSectionViewportFactory,
   useSectionViewportSynchronization,
 } from "./section-viewport-presentation"
+import { useViewportCapture } from "./viewport-capture"
 import {
   SAFE_VIEWPORT_CENTER,
   SAFE_VIEWPORT_LEFT,
   SAFE_VIEWPORT_REGION,
   SAFE_VIEWPORT_RIGHT,
 } from "./viewport-chrome-styles"
-
 import { useWorkspaceTask } from "./workspace-task-context"
 
 const EMPTY_IDS = [] as const
@@ -3281,13 +3281,7 @@ function AxialGizmoSideControls({
 }
 
 function sectionDuringModeling(section: ViewerSection | null, props: GeometryViewportProps) {
-  if (
-    props.sketchContext ||
-    (props.featurePreview && props.featurePreview.status !== "idle") ||
-    props.originPlaneSelection
-  )
-    return null
-  return section
+  return props.sketchContext?.mode === "normal" ? null : section
 }
 
 function viewportGizmoData(
@@ -3500,6 +3494,21 @@ function GeometryViewport(props: GeometryViewportProps) {
     regionClassNames,
   } = useGeometryViewportHost(props)
   const { canvasRef, viewportRef } = model
+  const capturePort = useViewportCapture()
+  useEffect(
+    () =>
+      capturePort?.register(async () => {
+        const region = sketchReferenceRegionRef.current
+        if (
+          !region ||
+          region.getAttribute("aria-hidden") === "true" ||
+          region.getClientRects().length === 0
+        )
+          return null
+        return (await viewportRef.current?.captureImage?.()) ?? null
+      }),
+    [capturePort, sketchReferenceRegionRef, viewportRef],
+  )
   return (
     <section
       ref={sketchReferenceRegionRef}

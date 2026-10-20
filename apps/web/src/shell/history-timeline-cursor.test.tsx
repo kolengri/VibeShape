@@ -367,6 +367,25 @@ describe("History rollback divider", () => {
     expect(ports.insert.mock.calls[0]).toEqual([items[0], "below"])
     expect(frames.size).toBe(0)
   })
+  it("preserves manual scrolling during hover remeasurement and reveals explicit boundary navigation", async () => {
+    render(<Harness width={200} />)
+    const track = cursor().parentElement
+    const row = document.querySelector<HTMLElement>('[data-history-index="0"]')
+    if (!track || !row) throw new Error("The timeline requires a track and row.")
+    expect(track.scrollLeft).toBeGreaterThan(0)
+    track.scrollLeft = 0
+    await act(async () => {
+      row.className = "bg-accent ring-1 ring-primary"
+      fireEvent(row, new Event("transitionrun", { bubbles: true }))
+      flushFrames()
+    })
+    expect(track.scrollLeft).toBe(0)
+    fireEvent.keyDown(cursor(), { key: "Home" })
+    await waitFor(() => expect(cursor().getAttribute("aria-valuenow")).toBe("0"))
+    fireEvent.keyDown(cursor(), { key: "End" })
+    await waitFor(() => expect(cursor().getAttribute("aria-valuenow")).toBe("4"))
+    expect(track.scrollLeft).toBeGreaterThan(0)
+  })
   it("disposes an active drag without navigation or an idle animation frame", () => {
     const view = render(<Harness width={200} />)
     pointer("pointerdown", 292)

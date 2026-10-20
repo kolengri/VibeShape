@@ -11,13 +11,14 @@ import {
 import { ChevronDown, Cuboid, Eye, EyeOff, WarningIcon } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type ReactNode, useEffect, useState } from "react"
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react"
+import type { DocumentMutationResult } from "../document/document-controller"
 import {
   effectivePartVisibility,
   type PartVisibilityControl,
 } from "../editor-session/part-visibility"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
-import { useReportApplicationError } from "./application-notices"
+import { useReportApplicationError, useReportApplicationSuccess } from "./application-notices"
 import { AuthoredItemRename, type AuthoredMetadataCommit } from "./authored-item-rename"
 import { selectedAuthoredBody } from "./authored-tree-state"
 import {
@@ -139,45 +140,181 @@ function PartVisibilityError({ message, attempt }: { message: string | null; att
   )
 }
 
+function PartVisibilityNotice({ message, attempt }: { message: string | null; attempt: number }) {
+  const applicationOwnsNotice = useReportApplicationSuccess(message, attempt)
+  if (!message || applicationOwnsNotice) return null
+  return (
+    <p
+      role="status"
+      className="fixed inset-x-4 bottom-4 z-50 rounded-md border bg-popover p-3 text-sm text-popover-foreground shadow-lg"
+    >
+      {message}
+    </p>
+  )
+}
+
+function visibilityFailureMessage(
+  diagnostic: Extract<DocumentMutationResult, { ok: false }>["diagnostic"],
+) {
+  if (diagnostic.code === "write-access-unavailable") return "visibilityReadOnly"
+  if (diagnostic.sourceCode === "stale-revision") return "visibilityStale"
+  if (diagnostic.code !== "command-rejected") return "visibilityFailed"
+  return visibilityGuardMessage(diagnostic.sourceCode)
+}
+
+function visibilityGuardMessage(sourceCode: string | null | undefined) {
+  switch (sourceCode) {
+    case "automation-busy":
+      return "visibilityBusy"
+    case "editor-draft":
+    case "surface-texture-draft":
+      return "visibilityEditing"
+    case "save-in-progress":
+      return "visibilitySaving"
+    case "read-only":
+      return "visibilityReadOnly"
+    case "document-unavailable":
+      return "visibilityUnavailable"
+    default:
+      return "visibilityFailed"
+  }
+}
+
+function isTemporaryVisibilityRejection(result: DocumentMutationResult) {
+  return (
+    !result.ok &&
+    result.diagnostic.code === "command-rejected" &&
+    result.diagnostic.sourceCode === "automation-busy"
+  )
+}
+
+type VisibilityAuthority = Readonly<{
+  revision: number
+  visible: boolean
+  override: boolean | undefined
+}>
+
+function sameVisibilityAuthority(latest: VisibilityAuthority, base: VisibilityAuthority) {
+  return (
+    latest.revision === base.revision &&
+    latest.visible === base.visible &&
+    latest.override === base.override
+  )
+}
+
+function canClearCommittedOverride(
+  latest: VisibilityAuthority,
+  base: VisibilityAuthority,
+  requestedVisible: boolean,
+) {
+  if (latest.override !== base.override) return false
+  if (latest.revision === base.revision) return latest.visible === base.visible
+  return latest.revision === base.revision + 1 && latest.visible === requestedVisible
+}
+
+function usePartVisibility(part: ResolvedAuthoredPart["part"], props: Omit<PartsProps, "parts">) {
+  const t = useTranslations("app.authoredTree")
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [visibilityAttempt, setVisibilityAttempt] = useState(0)
+  const visible = effectivePartVisibility(part, props.visibility?.overrides)
+  const generation = useRef(0)
+  const current = useRef({
+    revision: props.revision,
+    visible: part.visible,
+    override: props.visibility?.overrides[part.id],
+  })
+  useLayoutEffect(() => {
+    current.current = {
+      revision: props.revision,
+      visible: part.visible,
+      override: props.visibility?.overrides[part.id],
+    }
+  }, [props.revision, part.visible, props.visibility?.overrides, part.id])
+  useLayoutEffect(() => {
+    setError(null)
+    setNotice(null)
+    return () => {
+      generation.current += 1
+    }
+  }, [
+    part.id,
+    props.onCommit,
+    props.visibility?.setOverride,
+    props.visibility?.clearOverride,
+    props.presentationOnlyVisibility,
+  ])
+
+  function reportRejection(
+    result: Extract<DocumentMutationResult, { ok: false }>,
+    requestedVisible: boolean,
+  ) {
+    if (isTemporaryVisibilityRejection(result) && props.visibility) {
+      props.visibility.setOverride(part.id, requestedVisible)
+      setNotice(t("visibilityTemporary", { name: part.name }))
+    } else setError(t(visibilityFailureMessage(result.diagnostic), { name: part.name }))
+  }
+
+  function applyCommitResult(
+    result: DocumentMutationResult,
+    base: VisibilityAuthority,
+    requestedVisible: boolean,
+  ) {
+    if (result.ok) {
+      if (canClearCommittedOverride(current.current, base, requestedVisible))
+        props.visibility?.clearOverride(part.id)
+    } else if (sameVisibilityAuthority(current.current, base))
+      reportRejection(result, requestedVisible)
+  }
+
+  async function commitVisibility(requestedVisible: boolean) {
+    const started = generation.current
+    const base = current.current
+    try {
+      const result = await props.onCommit(props.revision, {
+        kind: "part.set-visibility",
+        partId: part.id,
+        visible: requestedVisible,
+      })
+      if (generation.current === started) applyCommitResult(result, base, requestedVisible)
+    } catch {
+      if (generation.current === started && sameVisibilityAuthority(current.current, base))
+        setError(t("visibilityFailed", { name: part.name }))
+    }
+  }
+
+  const toggleVisibility = async () => {
+    setVisibilityAttempt((attempt) => attempt + 1)
+    setError(null)
+    setNotice(null)
+    const requestedVisible = !visible
+    if (props.presentationOnlyVisibility) {
+      props.visibility?.setOverride(part.id, requestedVisible)
+      return
+    }
+    if (props.visibility?.overrides[part.id] !== undefined && requestedVisible === part.visible) {
+      props.visibility.clearOverride(part.id)
+      setNotice(t("visibilityRestored", { name: part.name }))
+      return
+    }
+    await commitVisibility(requestedVisible)
+  }
+  return { visible, error, notice, visibilityAttempt, toggleVisibility }
+}
+
 function AuthoredPartRow({
   resolved,
   ...props
 }: Omit<PartsProps, "parts"> & { resolved: ResolvedAuthoredPart }) {
   const t = useTranslations("app.authoredTree")
   const { part, status } = resolved
-  const [error, setError] = useState<string | null>(null)
-  const [visibilityAttempt, setVisibilityAttempt] = useState(0)
+  const { visible, error, notice, visibilityAttempt, toggleVisibility } = usePartVisibility(
+    part,
+    props,
+  )
   const selected = props.selectedPartIds?.includes(part.id) ?? props.selectedPartId === part.id
   const highlighted = props.highlightedPartIds?.includes(part.id)
-  const visible = effectivePartVisibility(part, props.visibility?.overrides)
   const highlight = selectedAuthoredBody([resolved], part.id, props.visibility?.overrides)
-  const toggleVisibility = async () => {
-    setVisibilityAttempt((attempt) => attempt + 1)
-    setError(null)
-    if (props.presentationOnlyVisibility) {
-      props.visibility?.setOverride(part.id, !visible)
-      return
-    }
-    try {
-      const result = await props.onCommit(props.revision, {
-        kind: "part.set-visibility",
-        partId: part.id,
-        visible: !visible,
-      })
-      if (result.ok) props.visibility?.clearOverride(part.id)
-      else
-        setError(
-          t(
-            result.diagnostic.sourceCode === "stale-revision"
-              ? "visibilityStale"
-              : "visibilityFailed",
-            { name: part.name },
-          ),
-        )
-    } catch {
-      setError(t("visibilityFailed", { name: part.name }))
-    }
-  }
   return (
     <PartTextureContext
       resolved={resolved}
@@ -243,6 +380,7 @@ function AuthoredPartRow({
         />
         <MeshOperationNotice selected={selected} resolved={resolved} />
         <PartVisibilityError message={error} attempt={visibilityAttempt} />
+        <PartVisibilityNotice message={notice} attempt={visibilityAttempt} />
       </div>
     </PartTextureContext>
   )
