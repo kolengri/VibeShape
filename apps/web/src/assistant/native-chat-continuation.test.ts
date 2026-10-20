@@ -18,6 +18,18 @@ import { createNativeChatController } from "./native-chat-controller"
 const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
 const fixture = String.raw`
 const fs = require("node:fs"), path = require("node:path");
+const deferredAckWatch = fs.existsSync(path.join(__dirname,"defer-ack-watch"));
+if (deferredAckWatch) {
+ const watchFile = fs.watchFile;
+ // Hold the legacy watcher's initial baseline until the ACK exists.
+ fs.watchFile = (file, ...options) => {
+  if (path.basename(file) !== "ack") return watchFile(file,...options);
+  const initialization = setInterval(()=>{
+   if (!fs.existsSync(file)) return;
+   clearInterval(initialization); watchFile(file,...options);
+  },10);
+ };
+}
 const input = require("node:readline").createInterface({ input: process.stdin });
 const sessionId = "continuation-controls";
 let original;
@@ -51,6 +63,7 @@ input.on("line", line => {
  if (method === "_session/steering") {
    status("idle"); text("steering received");
    after("ack",()=>reply(id,{outcome:"startedNewTurn"}));
+   if (deferredAckWatch) text("ack observation ready");
    after("ack-failed",()=>reply(id,{outcome:"failed"}));
    after("fallback-start",()=>{
      status("active");
@@ -77,10 +90,11 @@ afterEach(async () => {
   for (const close of cleanups.splice(0).reverse()) await close()
 })
 
-async function host({ preexistingAck = false } = {}) {
+async function host({ ackTiming }: { ackTiming?: "preexisting" | "during-registration" } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "vibeshape-continuation-"))
   cleanups.push(() => rm(directory, { recursive: true, force: true }))
-  if (preexistingAck) await writeFile(join(directory, "ack"), "")
+  if (ackTiming === "preexisting") await writeFile(join(directory, "ack"), "")
+  if (ackTiming === "during-registration") await writeFile(join(directory, "defer-ack-watch"), "")
   const script = join(directory, "agent.cjs")
   await writeFile(script, fixture)
   const listeners = new Set<(event: AssistantEvent) => void>()
@@ -205,6 +219,10 @@ process.on("SIGTERM",()=>{service.close().finally(()=>process.exit(0));});
   await until(() =>
     events.some((event) => event.type === "text" && event.text === "steering received"),
   )
+  if (ackTiming === "during-registration")
+    await until(() =>
+      events.some((event) => event.type === "text" && event.text === "ack observation ready"),
+    )
   return {
     chat,
     events,
@@ -249,7 +267,20 @@ async function until(predicate: () => boolean | Promise<boolean>) {
 
 describe("native continuation controls through the real service", () => {
   it("accepts a preexisting ACK when steering registers its signal handler", async () => {
-    const context = await host({ preexistingAck: true })
+    const context = await host({ ackTiming: "preexisting" })
+    expect(await context.steering).toBe(true)
+    expect(context.chat.getSnapshot().queuedMessages).toEqual([])
+    expect(
+      context.chat
+        .getSnapshot()
+        .messages.filter((message) => message.role === "user")
+        .map((message) => message.text),
+    ).toEqual(["queued original", "queued continuation"])
+  })
+
+  it("accepts an ACK created during watcher initialization", async () => {
+    const context = await host({ ackTiming: "during-registration" })
+    await context.signal("ack")
     expect(await context.steering).toBe(true)
     expect(context.chat.getSnapshot().queuedMessages).toEqual([])
     expect(
