@@ -200,7 +200,7 @@ describe("authored tree controls", () => {
     const markup = rows.map((row) => row.innerHTML)
     const toggle = screen.getByRole("button", { name: "Hide part Part 1" })
     await userEvent.click(toggle)
-    expect(screen.getByRole("alert").textContent).toContain(
+    expect((await screen.findByRole("alert")).textContent).toContain(
       "Visibility for Part 1 could not be saved. Try again.",
     )
     expect(rows.map((row) => row.innerHTML)).toEqual(markup)
@@ -208,14 +208,14 @@ describe("authored tree controls", () => {
     await userEvent.click(screen.getByRole("button", { name: "Dismiss notification" }))
     expect(screen.queryByRole("alert")).toBeNull()
     await userEvent.click(toggle)
-    expect(screen.getByRole("alert").textContent).toContain("Visibility for Part 1")
+    expect((await screen.findByRole("alert")).textContent).toContain("Visibility for Part 1")
     await userEvent.click(toggle)
-    expect(screen.getByRole("alert").textContent).toContain(
+    expect((await screen.findByRole("alert")).textContent).toContain(
       "The document changed. Check the current visibility for Part 1 and try again.",
     )
     await userEvent.click(toggle)
     expect(onCommit).toHaveBeenCalledTimes(4)
-    expect(screen.queryByRole("alert")).toBeNull()
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull())
   })
 
   it("selects stable parts and persists visibility independently of geometry", async () => {
