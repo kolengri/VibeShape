@@ -23,8 +23,8 @@ const threadStatus = type => update({sessionUpdate:"session_info_update",_meta:{
 const afterSignal = (name, action) => {
  const fs = require("node:fs"), path = require("node:path").join(__dirname,name);
  let triggered = false;
- const check = () => { if (!triggered && fs.existsSync(path)) { triggered = true; fs.unwatchFile(path,check); action(); } };
- fs.watchFile(path,{interval:10},check);
+ const check = () => { if (!triggered && fs.existsSync(path)) { triggered = true; clearInterval(interval); action(); } };
+ const interval = setInterval(check,10);
  check();
 };
 const gatedFallback = prefix => afterSignal(prefix+"-start",()=>{
@@ -595,6 +595,49 @@ describe("native active-turn steering", () => {
       ).toMatchObject({ ok: true, value: { status: "ready" } })
     },
   )
+
+  it("consumes already-present fallback signals once even when the signal files change again", async () => {
+    const context = await host(),
+      session = ready(await context.connect("steer-new-current-idle"))
+    const input = scope(session)
+    const active = context.service.handle({
+      operation: "prompt",
+      input: { ...input, text: "hold" },
+    })
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "current turn idle before steering",
+    )
+    await context.signal("current-idle-fallback-start")
+    await context.signal("current-idle-fallback-end")
+    const steering = context.service.handle({
+      operation: "steer",
+      input: { ...input, requestId: "preexisting-signals", text: "Fallback direction" },
+    })
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "current-idle-fallback finished",
+    )
+    await active
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(1)
+    await context.signal("current-idle-ack")
+    expect(await steering).toMatchObject({
+      ok: true,
+      steerOutcome: "startedNewTurn",
+      value: { status: "ready" },
+    })
+    await context.signal("current-idle-fallback-start")
+    await context.signal("current-idle-fallback-end")
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...input, text: "Next prompt" },
+      }),
+    ).toMatchObject({ ok: true, value: { status: "ready" } })
+    expect(context.events.filter((event) => event.type === "completed")).toHaveLength(3)
+    for (const text of ["current-idle-fallback output", "current-idle-fallback finished"])
+      expect(
+        context.events.filter((event) => event.type === "text" && event.text === text),
+      ).toHaveLength(1)
+  })
 
   it("does not reuse the predecessor idle when steering an acknowledged fallback that has not become active", async () => {
     const context = await host(),

@@ -36,8 +36,10 @@ release. The local Apple Silicon artifact does not establish Intel compatibility
 Every package generates a branded drag-to-Applications disk image. Its background reuses the
 Benchy wireframe-to-solid artwork with an arrow between the app and Applications. The repository-owned
 AppKit renderer creates a 144 dpi background; Finder sets the mounted image to a fixed icon view.
-Automation targets only the uniquely mounted staging folder, closes its own window and detaches
-the image before compression and verification. It does not change global Finder settings. An
+Automation uses a unique temporary volume label and mountpoint basename, checks Finder's resolved
+disk path before changing or closing its window, then restores the public `VibeShape` label by the
+private mountpoint after all Finder work. It detaches before compression and verification, without
+changing existing mounted installers or global Finder settings. An
 interactive macOS session and normal Finder automation permission are required; failure refuses
 the package rather than shipping an unformatted installer.
 
