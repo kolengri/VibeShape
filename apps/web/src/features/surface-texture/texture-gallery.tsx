@@ -148,15 +148,12 @@ export function TextureGallery({
               type="button"
               size="icon-sm"
               variant="secondary"
-              className="absolute right-2 top-2"
+              className="absolute right-2 top-2 aria-pressed:ring-2 aria-pressed:ring-ring"
               aria-label={t("favoritePattern", { pattern: t(`patterns.${pattern}`) })}
               aria-pressed={favorites.includes(pattern)}
               onClick={() => toggleFavorite(pattern)}
             >
-              <Star
-                aria-hidden="true"
-                className={favorites.includes(pattern) ? "fill-current" : undefined}
-              />
+              <Star aria-hidden="true" />
             </Button>
           </div>
         ))}

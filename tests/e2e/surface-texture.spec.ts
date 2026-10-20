@@ -60,6 +60,45 @@ async function exportedStl(page: Page) {
   return { triangles, max }
 }
 
+test("favorite artwork keeps a visible pressed state in both themes", async ({ page }) => {
+  await createBox(page)
+  const panel = await openTexture(page)
+  await panel.getByRole("button", { name: "Browse textures", exact: true }).click()
+  const favorite = panel.getByRole("button", { name: "Favorite Knurling", exact: true })
+  for (const dark of [false, true]) {
+    await page
+      .locator("html")
+      .evaluate((element, dark) => element.classList.toggle("dark", dark), dark)
+    await favorite.hover()
+    await favorite.evaluate((button) => button.blur())
+    await expect(favorite).toHaveAttribute("aria-pressed", "false")
+    const unselected = await favorite.evaluate(
+      (button) => button.ownerDocument.defaultView?.getComputedStyle(button).boxShadow,
+    )
+    expect(unselected).toBeDefined()
+    await favorite.click()
+    await favorite.evaluate((button) => button.blur())
+    await expect(favorite).toHaveAttribute("aria-pressed", "true")
+    await expect
+      .poll(() =>
+        favorite.evaluate(
+          (button) => button.ownerDocument.defaultView?.getComputedStyle(button).boxShadow,
+        ),
+      )
+      .not.toBe(unselected)
+    await favorite.click()
+    await favorite.evaluate((button) => button.blur())
+    await expect(favorite).toHaveAttribute("aria-pressed", "false")
+    await expect
+      .poll(() =>
+        favorite.evaluate(
+          (button) => button.ownerDocument.defaultView?.getComputedStyle(button).boxShadow,
+        ),
+      )
+      .toBe(unselected)
+  }
+})
+
 test("surface relief previews, commits once, survives reopen, and changes the exported mesh", async ({
   page,
 }) => {

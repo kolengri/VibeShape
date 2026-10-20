@@ -160,7 +160,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   ...contextualPartDescriptors,
   {
     group: "modeling",
-    icon: "compound",
+    icon: "generative-design",
     id: editorCommandIds.generativeDesign,
     labelKey: "generativeDesign",
     ownerModuleId: editorOwner,
@@ -184,7 +184,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "modeling",
-    icon: "shell",
+    icon: "fdm-tools",
     id: editorCommandIds.createFdm,
     labelKey: "createFdm",
     ownerModuleId: partDesignOwner,
@@ -663,7 +663,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
-    icon: "fillet",
+    icon: "sketch-fillet",
     id: editorCommandIds.sketchFillet,
     labelKey: "sketchFillet",
     ownerModuleId: sketchOwner,
@@ -671,7 +671,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
-    icon: "chamfer",
+    icon: "sketch-chamfer",
     id: editorCommandIds.sketchChamfer,
     labelKey: "sketchChamfer",
     ownerModuleId: sketchOwner,
@@ -713,7 +713,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
-    icon: "transform",
+    icon: "sketch-transform",
     id: editorCommandIds.sketchTransform,
     labelKey: "sketchTransform",
     ownerModuleId: sketchOwner,
@@ -730,7 +730,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
-    icon: "orbit-view",
+    icon: "navigate-view",
     id: editorCommandIds.sketchNavigateView,
     labelKey: "sketchNavigateView",
     ownerModuleId: sketchOwner,

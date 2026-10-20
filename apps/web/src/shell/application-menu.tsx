@@ -10,11 +10,17 @@ import {
   DropdownMenuTrigger,
 } from "@vibeshape/ui/components/dropdown-menu"
 import {
+  BackupIcon,
   ChevronDown,
   CommandIcon,
   Download,
+  ExtensionsIcon,
   FolderOpen,
+  HelpIcon,
+  ImportGeometryIcon,
+  ImportSketchIcon,
   Keyboard,
+  LibraryIcon,
   Settings,
 } from "@vibeshape/ui/components/icons"
 import { type ReactNode, useRef, useState } from "react"
@@ -123,7 +129,7 @@ function ApplicationProjectMenu({
         }
         onSelect={() => void backup.save()}
       >
-        <Download aria-hidden="true" />
+        <BackupIcon aria-hidden="true" />
         {backupT("action")}
       </DropdownMenuItem>
       <DropdownMenuItem
@@ -131,6 +137,7 @@ function ApplicationProjectMenu({
         disabled={unitChangesBlocked}
         onSelect={() => launchDialog("source-import")}
       >
+        <ImportGeometryIcon aria-hidden="true" />
         {t("importGeometry")}
       </DropdownMenuItem>
       <DropdownMenuItem
@@ -138,6 +145,7 @@ function ApplicationProjectMenu({
         disabled={unitChangesBlocked}
         onSelect={() => launchDialog("planar-import")}
       >
+        <ImportSketchIcon aria-hidden="true" />
         {t("importSketch")}
       </DropdownMenuItem>
       <DropdownMenuItem
@@ -145,6 +153,7 @@ function ApplicationProjectMenu({
         disabled={controller.status !== "ready"}
         onSelect={() => launchDialog("library")}
       >
+        <LibraryIcon aria-hidden="true" />
         {t("library")}
       </DropdownMenuItem>
       {!hideModelExport && (
@@ -182,6 +191,7 @@ function ApplicationWorkspaceMenu({
       {editor && (
         <>
           <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("extensions")}>
+            <ExtensionsIcon aria-hidden="true" />
             {t("extensions")}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onOpenCommandPalette}>
@@ -210,6 +220,7 @@ function ApplicationHelpMenu({
     <DropdownMenuGroup aria-label={t("help")}>
       <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("help")}</p>
       <DropdownMenuItem aria-haspopup="dialog" onSelect={() => launchDialog("faq")}>
+        <HelpIcon aria-hidden="true" />
         {t("faq")}
       </DropdownMenuItem>
       {editor && (

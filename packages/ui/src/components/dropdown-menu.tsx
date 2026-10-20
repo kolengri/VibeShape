@@ -1,6 +1,6 @@
-import { CheckIcon } from "lucide-react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 import * as React from "react"
+import { IndicatorCheckIcon as CheckIcon } from "#components/icons"
 import { cn } from "#lib/cn"
 
 function DropdownMenu(props: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {

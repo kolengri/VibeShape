@@ -4,6 +4,17 @@
 
 :root {
   color-scheme: light;
+  --icon-geometry-stroke: #326db2;
+  --icon-geometry-highlight: #e4eef9;
+  --icon-geometry-fill: #bfd4ee;
+  --icon-geometry-shade: #8fb2dc;
+  --icon-action-stroke: #cd7b24;
+  --icon-action-highlight: #fae5c9;
+  --icon-action-fill: #f1bc77;
+  --icon-danger-stroke: #ba534d;
+  --icon-danger-fill: #f7e1de;
+  --icon-success-stroke: #2e8065;
+  --icon-success-fill: #deeee6;
   --background: oklch(0.985 0.002 247.84);
   --foreground: oklch(0.18 0.006 285.89);
   --card: oklch(1 0 0);

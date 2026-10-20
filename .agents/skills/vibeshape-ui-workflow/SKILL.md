@@ -72,6 +72,9 @@ Use current library documentation through Context7 before changing shadcn, Radix
 
 ## CAD Interaction Guardrails
 
+Use `vibeshape-icon-design` for new or revised UI artwork. Application/shared-control icons come
+from the source-owned colored catalog; convert upstream shadcn Lucide imports before acceptance.
+
 - Preview does not mutate the document; Apply creates one command and one undo entry.
 - `Escape` follows the documented cancellation hierarchy.
 - Selection and topology ambiguity are never repaired silently.

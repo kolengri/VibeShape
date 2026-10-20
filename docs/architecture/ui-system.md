@@ -34,7 +34,7 @@ packages/ui/
   package.json           # explicit exports
 ```
 
-`@vibeshape/ui` MAY import React, Radix, class-variance-authority, Tailwind utilities, Lucide, and TanStack Form inside its explicit integration entry point. Base components MUST NOT import TanStack Form. The package MUST NOT import domain, geometry worker, persistence, or application-state packages.
+`@vibeshape/ui` MAY import React, Radix, class-variance-authority, Tailwind utilities, and TanStack Form inside its explicit integration entry point. Base components MUST NOT import TanStack Form. The package MUST NOT import domain, geometry worker, persistence, or application-state packages.
 
 `apps/web` owns product-copy catalogs and composes the `@vibeshape/i18n` provider accepted in [ADR-0011](../adr/0011-use-intl-localization-layer.md). Shared primitives remain copy-free when possible; component-owned copy uses a distinct shared catalog namespace rather than hard-coded display strings.
 
@@ -119,7 +119,7 @@ VibeShape is a dense tool, not a marketing dashboard:
 - smaller radius than consumer cards, while following one radius scale;
 - panels separated by borders and resizable separators, not nested cards;
 - no gradients or glassmorphism in the working area;
-- consistent Lucide icon size and stroke, with accessible names or tooltips where needed;
+- source-owned colored icons with shared optical sizing and palette; see [the icon contract](../product/icon-design.md);
 - the viewport remains visually dominant.
 
 ## Browser and feature timeline

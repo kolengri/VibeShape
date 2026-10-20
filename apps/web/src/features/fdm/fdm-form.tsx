@@ -30,6 +30,7 @@ import {
   fdmFormValues,
   parseFdmForm,
 } from "./fdm-form-model"
+import { FdmToolIcon } from "./fdm-tool-icon"
 
 type Props = FeatureParameterFormProps<FdmFormMode, never> & {
   kind: FdmToolKind
@@ -425,7 +426,10 @@ export function FdmForm(props: FdmFormProps) {
                 >
                   {fdmToolKinds.map((tool) => (
                     <SelectOption key={tool} value={tool}>
-                      {t(`tools.${tool}`)}
+                      <span className="inline-flex items-center gap-2">
+                        <FdmToolIcon kind={tool} className="size-5 shrink-0" />
+                        <span>{t(`tools.${tool}`)}</span>
+                      </span>
                     </SelectOption>
                   ))}
                 </SelectField>

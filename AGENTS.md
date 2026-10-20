@@ -28,6 +28,7 @@ For tasks using VibeShape as a CAD application, start with `vibeshape-use` and l
 Use the repository-local skills under `.agents/skills` when their descriptions match the task:
 
 - `vibeshape-ui-workflow` for React, Tailwind, shadcn, accessibility, and CAD interaction work;
+- `vibeshape-icon-design` for SVG artwork, optical sizing, catalog registration, and colored-family integration;
 - `vibeshape-testing` for runtime changes and regression coverage;
 - `vibeshape-verify-scope` before reporting implementation work complete;
 - `vibeshape-dependency-audit` for audits, upgrades, CVEs, and engine dependency changes;
@@ -44,6 +45,8 @@ When a change affects a capability available through MCP, its tool/resource cont
 Default source lookup to scoped `rg` and direct reads, including multi-step investigations. Use the optional global `efficient-code-tools` skill only for structural code queries, dependency/consumer graphs, or verbose diagnostics. Reuse current evidence; repository verification remains authoritative.
 
 ## Tooling discipline
+
+- Use the source-owned colored family for CAD application/shared-control icons through `@vibeshape/ui/components/icons`; follow `vibeshape-icon-design` for artwork. Edit SVG masters/catalog, run `bun run icons:generate`, and verify `bun run icons:check`. Do not add direct Lucide imports or app-local action glyphs there.
 
 - Use Biome as the formatter, linter, and import organizer after the code scaffold exists.
 - Run the Fallow changed-code audit after TypeScript, JavaScript, TSX, CSS, or package-manifest changes; investigate graph evidence before deleting or suppressing reported code.

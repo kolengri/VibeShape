@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Icon Design"
+  short_description: "Create consistent colored SVG icons for VibeShape"
+  default_prompt: "Use $vibeshape-icon-design to draw, optically size, register, and verify this VibeShape UI icon."

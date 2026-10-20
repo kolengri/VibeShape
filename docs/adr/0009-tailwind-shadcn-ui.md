@@ -2,6 +2,7 @@
 
 - Status: **Accepted**
 - Date: 2026-08-07
+- Icon choice superseded by: [ADR-0117](0117-source-owned-colored-ui-icons.md). Other decisions remain accepted.
 
 ## Context
 

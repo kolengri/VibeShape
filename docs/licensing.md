@@ -59,7 +59,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | react-resizable-panels 4.13.2 | MIT | Preserve its notice and locked dependency notices; shared source-owned UI wrappers retain upstream keyboard and separator accessibility behavior |
 | cmdk | MIT | Include a third-party notice; the command-palette runtime ships in the browser bundle |
 | Radix UI | MIT | Include a third-party notice |
-| Lucide React | ISC | Include a third-party notice |
+| Lucide React (presentation site) | ISC | Include a third-party notice |
 | TanStack Form | MIT | Include a third-party notice |
 | dnd-kit React / DOM 0.5.0 | MIT | Browser-shipped History interaction; preserve notices for the exact locked dnd-kit packages and their transitives |
 | TanStack Hotkeys 0.9.0 | MIT | Browser-shipped keyboard matching; preserve the TanStack notice and inventory the locked store dependency |

@@ -8,7 +8,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@vibeshape/ui/components/context-menu"
-import { ChevronDown, CircleAlert, Cuboid, Eye, EyeOff } from "@vibeshape/ui/components/icons"
+import { ChevronDown, Cuboid, Eye, EyeOff, WarningIcon } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useEffect, useState } from "react"
@@ -80,7 +80,7 @@ function AuthoredPartStatus({
         status === "available" && "sr-only",
       )}
     >
-      {warning && <CircleAlert className="size-3 shrink-0" aria-hidden="true" />}
+      {warning && <WarningIcon className="size-3 shrink-0" aria-hidden="true" />}
       {t(label)}
     </p>
   )
