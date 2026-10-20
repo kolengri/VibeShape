@@ -22,6 +22,10 @@ Relate walls, ribs, text, and small radii to the intended extrusion widths and l
 
 Separate nominal CAD dimensions from calibrated hole/fit allowances. Use representative coupons for critical clearances; consider post-machining when required accuracy cannot be established by printing. Preserve access to holes and fasteners. Small loaded pins may benefit from a root radius or a separate hardware pin. Account for first-layer expansion at bed-level mating edges without stacking unverified CAD and slicer compensation. [Protolabs Network's FDM guide](https://www.hubs.com/knowledge-base/how-design-parts-fdm-3d-printing/) discusses these issues; its numeric examples are not universal limits.
 
+For insert-style lids and covers, read [lid fits and compliant retention](lid-fits.md)
+for corner relief, flexible corner segments, and perimeter grip fins. Distinguish
+rigid clearance from intentional spring contact and validate the expected fit range.
+
 ## Resin and other processes
 
 For SLA/MSLA, use the intended machine/resin guide for feature limits and support orientation. Hollowing must account for drainage, cleaning access, and cups in the build orientation; FDM corner-motion advice does not transfer to a resin exposure process. [Formlabs' SLA orientation guidance](https://formlabs.com/support/Model-Orientation/) discusses orientation and drain holes. Its [Form 2 design limits](https://formlabs.com/global/support/Design-Specs/) are tied to that machine, resin, and layer thickness, not all resin printers.

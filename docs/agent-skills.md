@@ -28,6 +28,13 @@ Each folder contains a `SKILL.md`, Codex UI metadata, and references only where 
 
 The modeling entrypoint separates common CAD intent from [mechanical design](../.agents/skills/vibeshape-modeling/references/mechanical-design.md) and [3D-printing design](../.agents/skills/vibeshape-modeling/references/3d-printing.md). Load the applicable categories together for a printed functional part. Printing guidance distinguishes FDM/FFF from resin and other processes; it does not alter visualization or exact-reconstruction geometry by default.
 
+For FDM/FFF insert lids and covers, [lid fits and compliant retention](../.agents/skills/vibeshape-modeling/references/lid-fits.md)
+provides self-contained instructions for corner clearance relief, integral corner
+flexure tabs, and distributed cantilever grip fins. It covers strategy selection,
+editable geometry, and a minimum/maximum opening travel budget. It distinguishes
+existing MCP features from sketch-driven construction and requires physical
+calibration before claiming a verified compliant fit.
+
 ## Optional local installation
 
 In a checkout of this repository, the skills already live under `.agents/skills`. For another Codex project, copy just the five application-use folders into that project's `.agents/skills`. For personal Codex use, copy them into the active Codex home's `skills` directory (normally `~/.codex/skills`). Inspect same-name destinations first; do not overwrite a different pack or unrelated skill. For a clean destination, from the VibeShape repository root:
