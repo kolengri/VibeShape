@@ -60,7 +60,9 @@ const path = z
   .string()
   .min(1)
   .max(4096)
-  .refine((value) => value.startsWith("/") && !value.includes("\0"))
+  .refine(
+    (value) => (value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value)) && !value.includes("\0"),
+  )
 
 export const desktopMcpDescriptorSchema = z.strictObject({
   protocolVersion: z.literal(1),

@@ -31,7 +31,10 @@ export async function createNativeFixture(
     ? undefined
     : (options.packagedApp ?? process.env.VIBESHAPE_PACKAGED_APP)
   const executablePath = packagedApp
-    ? join(resolve(packagedApp), "Contents/MacOS/VibeShape")
+    ? join(
+        resolve(packagedApp),
+        process.platform === "win32" ? "VibeShape.exe" : "Contents/MacOS/VibeShape",
+      )
     : nativeElectronExecutable
   const origin = packagedApp ? "http://127.0.0.1:43115" : await isolatedOrigin()
   const applications = new Map<ElectronApplication, ChildProcess>()
@@ -66,7 +69,7 @@ export async function createNativeFixture(
       if (packagedApp) {
         delete environment.VIBESHAPE_DESKTOP_TEST_PORT
         delete environment.VIBESHAPE_DESKTOP_EDITOR
-        environment.PATH = "/usr/bin:/bin"
+        if (process.platform !== "win32") environment.PATH = "/usr/bin:/bin"
       } else {
         environment.VIBESHAPE_DESKTOP_TEST_PORT = new URL(origin).port
         environment.VIBESHAPE_DESKTOP_EDITOR = join(nativeTestRoot, "apps/web/dist")

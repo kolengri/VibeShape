@@ -1,5 +1,7 @@
 # macOS desktop delivery
 
+For the Windows x64 portable application and cross-packaging, see [Windows desktop delivery](desktop-windows.md).
+
 The Electron application packages the existing Vite editor and worker/WASM assets into
 `VibeShape.app`. It runs without Terminal, an external browser, Bun, a cloud account, or a model API
 key. The native host owns menus, a persistent app profile and a loopback static server. CAD editing,

@@ -1,0 +1,40 @@
+name: Windows desktop
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-desktop:
+    name: Windows x64 native checks
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Install dependencies
+        run: bun ci
+      - name: Check native host types
+        run: bun run --cwd apps/desktop typecheck
+      - name: Check Windows packaging and native boundaries
+        run: bun test apps/desktop/src/package-target.test.ts apps/desktop/src/windows-archive.test.ts apps/desktop/src/windows-updates.test.ts apps/desktop/src/private-files.test.ts apps/desktop/src/startup-profile.test.ts apps/desktop/src/start.test.ts packages/automation-api/src/desktop-host.test.ts
+      - name: Build the source editor and native host
+        run: |
+          bun run build
+          bun run desktop:build
+      - name: Exercise Windows native CAD and persistence
+        run: bun run --bun playwright test --config playwright.desktop.config.ts windows.spec.ts

@@ -93,7 +93,7 @@ async function fixture(handler: (url: string, response: ServerResponse) => void)
     await rm(directory, { recursive: true, force: true })
   })
   return {
-    client: createDesktopUpdateClient(transport),
+    client: createDesktopUpdateClient(transport, "darwin"),
     directory,
     destination: join(directory, "update.dmg"),
     requests,

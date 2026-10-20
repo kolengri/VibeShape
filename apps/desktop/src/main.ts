@@ -1,4 +1,3 @@
-import { chmodSync, lstatSync, mkdirSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { ASSISTANT_EVENT_CHANNEL } from "@vibeshape/automation-api/assistant"
 import {
@@ -40,6 +39,7 @@ import { desktopMessage as t } from "./messages"
 import { createNativeSlicerService } from "./native-slicer"
 import { registerNativeSlicerIpc } from "./native-slicer-ipc"
 import { canSendNativeEvent, chosenNativeFile } from "./native-window-policy"
+import { preparePrivateDirectory } from "./private-files"
 import { initializeDesktopProfile } from "./startup-profile"
 import { createPendingUpdateWork } from "./update-work"
 import {
@@ -50,6 +50,22 @@ import {
 } from "./updates"
 
 app.setName("VibeShape")
+const updateFormat =
+  process.platform === "win32"
+    ? ({
+        ready: "windowsUpdateReadyDetail",
+        available: "windowsUpdateAvailableDetail",
+        reveal: "showInFolder",
+        type: "zipArchiveType",
+        extension: "zip",
+      } as const)
+    : ({
+        ready: "updateReadyDetail",
+        available: "updateAvailableDetail",
+        reveal: "showInFinder",
+        type: "diskImageType",
+        extension: "dmg",
+      } as const)
 const commandLineProfile = app.commandLine.getSwitchValue("user-data-dir")
 const profile =
   commandLineProfile || (!app.isPackaged && process.env.VIBESHAPE_DESKTOP_USER_DATA)
@@ -212,8 +228,8 @@ async function showDownloadedUpdate(path: string) {
   const finished = await dialog.showMessageBox({
     type: "info",
     message: t("updateReadyTitle"),
-    detail: t("updateReadyDetail"),
-    buttons: [t("showInFinder"), t("done")],
+    detail: t(updateFormat.ready),
+    buttons: [t(updateFormat.reveal), t("done")],
     defaultId: 0,
     cancelId: 1,
   })
@@ -225,7 +241,7 @@ async function chooseUpdateDestination(release: DesktopRelease) {
   const destination = await dialog.showSaveDialog({
     title: t("downloadTitle", { version: release.version }),
     defaultPath: join(app.getPath("downloads"), release.fileName),
-    filters: [{ name: t("diskImageType"), extensions: ["dmg"] }],
+    filters: [{ name: t(updateFormat.type), extensions: [updateFormat.extension] }],
     properties: ["createDirectory", "showOverwriteConfirmation"],
   })
   if (destination.canceled || quitting) return undefined
@@ -282,7 +298,7 @@ async function offerUpdate(release: DesktopRelease, signal: AbortSignal) {
     const choice = await dialog.showMessageBox({
       type: "info",
       message: t("updateAvailableTitle", { version: release.version }),
-      detail: t("updateAvailableDetail", { megabytes: Math.ceil(release.size / 1024 / 1024) }),
+      detail: t(updateFormat.available, { megabytes: Math.ceil(release.size / 1024 / 1024) }),
       buttons: [t("download"), t("later")],
       defaultId: 0,
       cancelId: 1,
@@ -296,7 +312,7 @@ async function offerUpdate(release: DesktopRelease, signal: AbortSignal) {
 async function findUpdate(signal: AbortSignal) {
   const architecture = process.arch
   if (architecture !== "arm64" && architecture !== "x64")
-    throw new Error("Updates are available for Apple Silicon and Intel Macs only.")
+    throw new Error("The desktop architecture is unsupported for updates.")
   return updateWork.run(() => findDesktopUpdate(app.getVersion(), architecture, signal))
 }
 
@@ -550,12 +566,6 @@ function mcpSetup(selectedDescriptor = descriptorPath) {
       },
     },
   })
-}
-function preparePrivateDirectory(path: string) {
-  mkdirSync(path, { recursive: true, mode: 0o700 })
-  if (!lstatSync(path).isDirectory())
-    throw new Error("Native workflows require a private directory.")
-  chmodSync(path, 0o700)
 }
 function closeAssistant() {
   unregisterAssistant?.()

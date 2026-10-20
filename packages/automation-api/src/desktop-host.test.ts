@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { desktopMcpDescriptorSchema } from "./desktop-host"
+import { desktopMcpDescriptorSchema, desktopMcpSetupSchema } from "./desktop-host"
 
 const descriptor = {
   protocolVersion: 1,
@@ -8,6 +8,32 @@ const descriptor = {
   pid: 42,
 }
 describe("desktop attachment descriptor boundary", () => {
+  it("accepts absolute Windows MCP paths while rejecting drive-relative paths", () => {
+    const setup = (command: string) => ({
+      protocolVersion: 1,
+      mcpServers: {
+        vibeshape: {
+          command,
+          args: [
+            "C:\\VibeShape\\resources\\app\\mcp.cjs",
+            "--descriptor",
+            "C:\\Users\\Me\\AppData\\Roaming\\VibeShape\\native\\desktop-mcp.json",
+          ],
+          env: { ELECTRON_RUN_AS_NODE: "1" },
+        },
+      },
+    })
+    expect(
+      desktopMcpSetupSchema.safeParse(setup("C:\\Program Files\\VibeShape\\VibeShape.exe")).success,
+    ).toBe(true)
+    for (const command of [
+      "C:VibeShape.exe",
+      "\\VibeShape.exe",
+      "VibeShape.exe",
+      "C:\\Vibe\0Shape.exe",
+    ])
+      expect(desktopMcpSetupSchema.safeParse(setup(command)).success).toBe(false)
+  })
   it("accepts only canonical loopback MCP endpoints in the supported port range", () => {
     expect(desktopMcpDescriptorSchema.safeParse(descriptor).success).toBe(true)
     for (const endpoint of [

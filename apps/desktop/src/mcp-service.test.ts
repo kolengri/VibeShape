@@ -13,6 +13,7 @@ import { vi } from "../../../tests/unit/support/bun-test"
 import { startEditorServer } from "./editor-server"
 import { publishMcpDescriptor, readMcpDescriptor } from "./mcp-descriptor"
 import { createDesktopMcpService } from "./mcp-service"
+import { preparePrivateDirectory } from "./private-files"
 
 const cleanups: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -20,8 +21,10 @@ afterEach(async () => {
 })
 
 async function host() {
-  const directory = await mkdtemp(join(tmpdir(), "vibeshape-native-mcp-"))
-  cleanups.push(() => rm(directory, { recursive: true, force: true }))
+  const root = await mkdtemp(join(tmpdir(), "vibeshape-native-mcp-"))
+  cleanups.push(() => rm(root, { recursive: true, force: true }))
+  const directory = process.platform === "win32" ? join(root, "private") : root
+  if (process.platform === "win32") preparePrivateDirectory(directory)
   const editor = join(directory, "editor")
   await mkdir(editor)
   await writeFile(
@@ -213,20 +216,24 @@ describe("app-owned native MCP attachment", () => {
     expect((await poll(context, replacement.token)).work).toBeNull()
   })
 
-  it("bounds an initial native read and never queues it for a later grant", async () => {
-    const context = await host()
-    const native = await project(context, projectId)
-    expect(
-      await native.client.callTool({ name: "model_info", arguments: {} }, undefined, {
-        timeout: 7000,
-      }),
-    ).toMatchObject({
-      isError: true,
-      structuredContent: { result: { diagnostic: { code: "not-paired", retryable: true } } },
-    })
-    const credential = await grant(context)
-    expect((await poll(context, credential.token)).work).toBeNull()
-  }, 9000)
+  it(
+    "bounds an initial native read and never queues it for a later grant",
+    async () => {
+      const context = await host()
+      const native = await project(context, projectId)
+      expect(
+        await native.client.callTool({ name: "model_info", arguments: {} }, undefined, {
+          timeout: 7000,
+        }),
+      ).toMatchObject({
+        isError: true,
+        structuredContent: { result: { diagnostic: { code: "not-paired", retryable: true } } },
+      })
+      const credential = await grant(context)
+      expect((await poll(context, credential.token)).work).toBeNull()
+    },
+    process.platform === "win32" ? 120_000 : 9000,
+  )
 
   it.each(["abort", "client-close", "service-close"])(
     "cancels native identity readiness on %s without leaking into a later owner",
@@ -380,7 +387,8 @@ describe("app-owned native MCP attachment", () => {
 
   it("discovers existing tools before consent, reserves one client and revokes it when its stream closes", async () => {
     const context = await host()
-    expect((await lstat(context.descriptorPath)).mode & 0o777).toBe(0o600)
+    if (process.platform !== "win32")
+      expect((await lstat(context.descriptorPath)).mode & 0o777).toBe(0o600)
     expect(await (await fetch(context.origin)).text()).toContain(
       'name="vibeshape-local-automation"',
     )
@@ -470,14 +478,21 @@ describe("app-owned native MCP attachment", () => {
     ).toBeGreaterThan(0)
   })
 
-  it("reads only private, owned descriptors and never follows symlinks", async () => {
+  it.skipIf(process.platform === "win32")(
+    "reads only private POSIX descriptors and never follows symlinks",
+    async () => {
+      const context = await host()
+      const link = join(context.directory, "linked.json")
+      await symlink(context.descriptorPath, link)
+      await expect(readMcpDescriptor(link)).rejects.toThrow()
+      await chmod(context.descriptorPath, 0o644)
+      await expect(readMcpDescriptor(context.descriptorPath)).rejects.toThrow("private file")
+      await chmod(context.descriptorPath, 0o600)
+    },
+  )
+
+  it("refuses oversized descriptors", async () => {
     const context = await host()
-    const link = join(context.directory, "linked.json")
-    await symlink(context.descriptorPath, link)
-    await expect(readMcpDescriptor(link)).rejects.toThrow()
-    await chmod(context.descriptorPath, 0o644)
-    await expect(readMcpDescriptor(context.descriptorPath)).rejects.toThrow("private file")
-    await chmod(context.descriptorPath, 0o600)
     await writeFile(context.descriptorPath, "x".repeat(4097))
     await expect(readMcpDescriptor(context.descriptorPath)).rejects.toThrow()
   })

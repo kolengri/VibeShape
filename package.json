@@ -61,6 +61,7 @@
     "desktop:build": "bun run --cwd apps/desktop build",
     "desktop:start": "bun run --cwd apps/desktop start",
     "desktop:package": "bun run --cwd apps/desktop package",
+    "desktop:package:windows": "bun run --cwd apps/desktop package:windows",
     "test:desktop": "bun run desktop:build && bun run --bun playwright test --config playwright.desktop.config.ts",
     "test:desktop:packaged": "bun run --bun playwright test --config playwright.desktop-packaged.config.ts",
     "test:distribution": "bun run --bun playwright test --config playwright.distribution.config.ts",

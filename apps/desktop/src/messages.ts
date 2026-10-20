@@ -25,6 +25,12 @@ const messages = {
     updateReadyDetail:
       "The disk image passed its SHA-256 integrity check. Open it in Finder and replace VibeShape in Applications when you are ready.",
     showInFinder: "Show in Finder",
+    showInFolder: "Show in folder",
+    zipArchiveType: "Windows ZIP archive",
+    windowsUpdateAvailableDetail:
+      "Download the Windows ZIP archive ({megabytes, number} MB). Your local projects stay available.",
+    windowsUpdateReadyDetail:
+      "The ZIP archive passed its SHA-256 integrity check. Quit VibeShape, extract the entire archive into a new folder, then open VibeShape.exe. Your local projects stay available.",
     done: "Done",
     updateErrorTitle: "VibeShape could not complete the update",
     updateErrorUnknown: "The update could not be completed. Try Check for Updates again.",
