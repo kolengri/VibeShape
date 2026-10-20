@@ -127,6 +127,9 @@
 | [0116](0116-connected-assistant-model-authority-and-checkpoints.md) | Accepted | Connected built-in chat model authority and internal turn comparison/undo checkpoints |
 | [0117](0117-source-owned-colored-ui-icons.md) | Accepted | Source-owned colored SVG icon family, optical sizing, generated React components and contextual command artwork |
 
+| [0118](0118-body-bound-directional-chamfer.md) | Accepted with bounded planar measurement support | Exact body/face-side Chamfer modes and native contour semantics |
+| [0119](0119-explicit-private-draft-recovery.md) | Accepted | Bounded private CAD intent retention and explicit current-actor restoration |
+
 Statuses:
 
 - `Proposed` — under discussion

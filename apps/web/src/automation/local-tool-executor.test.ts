@@ -8,11 +8,13 @@ import { documentSummaryViewSchema } from "@vibeshape/automation-api/queries"
 import {
   commandActorSchema,
   commandIdSchema,
+  documentIdSchema,
   draftIdSchema,
   featureIdSchema,
   generateUuidV7,
   parseDocumentCommand,
 } from "@vibeshape/domain"
+import { createLengthQuantity } from "@vibeshape/domain/units"
 import {
   quickLightweightingOperation,
   quickLightweightingValue,
@@ -46,6 +48,55 @@ const edgeReference = (featureId: ReturnType<typeof featureIdSchema.parse>, role
 })
 
 describe("local automation tool executor", () => {
+  it("requires an explicit local recovery port and never grants recovery to a remote or unbound executor", async () => {
+    const host = {
+      createDraft: vi.fn(),
+      inspectDraft: vi.fn(),
+      applyCommand: vi.fn(),
+      previewDraft: vi.fn(),
+      commitDraft: vi.fn(),
+      discardDraft: vi.fn(),
+    }
+    const session = {
+      documentId: id(2),
+      revision: 4,
+      host,
+      readCad: vi.fn(),
+      readInfo: () => null,
+      exportRevisionBound: vi.fn(),
+    }
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.recovery",
+      sessionId: id(1),
+    })
+    const operation = localOperationSchema.parse({ tool: "list_recoverable_drafts", arguments: {} })
+    expect(await createLocalToolExecutor(session, actor).execute(operation)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "draft-recovery-unavailable" },
+    })
+    const execute = vi.fn(async () => ({
+      ok: true,
+      value: { schemaVersion: 1, documentId: id(2), revision: 4, items: [] },
+    }))
+    const local = createLocalToolExecutor(session, actor, undefined, { execute })
+    expect(await local.execute(operation)).toMatchObject({ ok: true })
+    expect(execute).toHaveBeenCalledWith(operation, undefined)
+    const cancelled = new AbortController()
+    cancelled.abort()
+    expect(await local.execute(operation, cancelled.signal)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "request-cancelled" },
+    })
+    expect(
+      await local.execute({ ...operation, projectId: documentIdSchema.parse(id(3)) }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: { code: "project-target-mismatch" },
+    })
+    expect(execute).toHaveBeenCalledTimes(1)
+    for (const method of Object.values(host)) expect(method).not.toHaveBeenCalled()
+  })
   it("returns the shared material catalog without invoking document or geometry services", async () => {
     const host = {
       createDraft: vi.fn(),
@@ -811,3 +862,90 @@ it("counts complete model info bytes before returning a diagnostic catalog", asy
     await executor.execute(localOperationSchema.parse({ tool: "model_info", arguments: {} })),
   ).toMatchObject({ ok: false, diagnostic: { code: "query-result-too-large" } })
 })
+
+it.each(["create_chamfer", "update_chamfer"] as const)(
+  "routes %s V3 intent through the ordinary feature command",
+  async (tool) => {
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.client",
+      sessionId: id(10),
+    })
+    const host = {
+      createDraft: vi.fn(),
+      inspectDraft: vi.fn(),
+      applyCommand: vi.fn().mockResolvedValue({ ok: true, value: {} }),
+      previewDraft: vi.fn(),
+      commitDraft: vi.fn(),
+      discardDraft: vi.fn(),
+    }
+    const executor = createLocalToolExecutor(
+      {
+        documentId: id(11),
+        revision: 0,
+        host,
+        readCad: vi.fn(),
+        readInfo: () => null,
+        exportRevisionBound: vi.fn(),
+      },
+      actor,
+    )
+    const signature = {
+      kind: "face",
+      geometryClass: "PLANE",
+      measure: 20,
+      centroid: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [2, 10, 0] },
+      boundaryCount: 4,
+      adjacentGeometryClasses: ["PLANE"],
+    }
+    const parameters = {
+      targetBody: { schemaVersion: 0, featureId: id(12), outputRole: "pattern.instance.1" },
+      mode: "two-distances",
+      distance: createLengthQuantity(2, "mm", "#bevel"),
+      secondDistance: createLengthQuantity(3),
+      measurement: "offset",
+      flip: true,
+      tangentPropagation: true,
+      targets: [
+        {
+          kind: "face",
+          face: {
+            schemaVersion: 1,
+            featureId: id(12),
+            outputRole: "pattern.instance.1",
+            kind: "face",
+            signature,
+          },
+        },
+      ],
+      directionOverrides: [],
+    }
+    await executor.execute(
+      localOperationSchema.parse({
+        tool,
+        arguments: {
+          draftId: id(13),
+          baseRevision: 0,
+          commandId: id(15),
+          featureId: id(17),
+          parameters,
+        },
+      }),
+    )
+    expect(host.applyCommand).toHaveBeenCalledTimes(1)
+    const parsed = parseDocumentCommand(host.applyCommand.mock.calls.at(-1)?.[1].command)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok || !("feature" in parsed.command.payload))
+      throw new Error("The ordinary feature command must contain a validated feature.")
+    expect(parsed.command.kind).toBe(
+      tool === "create_chamfer" ? "org.vibeshape.feature.add" : "org.vibeshape.feature.update",
+    )
+    expect(parsed.command.payload.feature).toMatchObject({
+      type: { schemaVersion: 3 },
+      dependencies: [id(12)],
+      references: [],
+      parameters,
+    })
+  },
+)

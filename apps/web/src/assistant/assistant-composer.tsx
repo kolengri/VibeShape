@@ -6,14 +6,19 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
-import { Paperclip, Send, StopIcon, X } from "@vibeshape/ui/components/icons"
+import { ArrowUpRight, Image, Paperclip, Send, StopIcon, X } from "@vibeshape/ui/components/icons"
 import { Textarea } from "@vibeshape/ui/components/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import { cn } from "@vibeshape/ui/lib/cn"
 import {
   type Dispatch,
+  type DragEvent,
   type ReactNode,
+  type RefObject,
   type SetStateAction,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react"
@@ -39,6 +44,7 @@ export type AssistantComposerProps = {
   sessionControls?: ReactNode
   feedback?: ReactNode
   attachmentCapabilities?: { text: boolean; images: boolean }
+  onCaptureView?: (() => Promise<File | null>) | undefined
   queuedMessages?: readonly AssistantQueuedMessage[]
   queuePaused?: boolean
   supportsActiveSteer?: boolean
@@ -111,17 +117,23 @@ function AssistantQueue({
                 </p>
               ))}
             </details>
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              aria-describedby={unavailable ? reasonId : undefined}
-              disabled={Boolean(unavailable || steeringQueuedId)}
-              isLoading={steeringQueuedId === message.id}
-              onClick={() => onSteerQueued?.(message.id)}
-            >
-              {t("steerQueuedMessage")}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={t("steerQueuedMessage")}
+                  aria-describedby={unavailable ? reasonId : undefined}
+                  disabled={Boolean(unavailable || steeringQueuedId)}
+                  isLoading={steeringQueuedId === message.id}
+                  onClick={() => onSteerQueued?.(message.id)}
+                >
+                  <ArrowUpRight aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("steerQueuedMessage")}</TooltipContent>
+            </Tooltip>
             {onRemoveQueued && (
               <AssistantIconAction
                 label={t("removeQueuedMessage")}
@@ -147,29 +159,37 @@ function useAssistantSubmission(
   props: Pick<AssistantComposerProps, "busy" | "canSend" | "onSend" | "onQueue">,
   draft: AssistantComposerDraft,
   onAccepted: () => void,
+  lock: RefObject<boolean>,
+  attachments: ReturnType<typeof useAssistantAttachmentAdmission>,
+  capture: ReturnType<typeof useAssistantViewCapture>,
 ) {
-  const lock = useRef(false)
   const [pending, setPending] = useState(false)
-  const filesReady = draft.attachments.every((file) => file.status === "ready")
+  const action = props.busy ? props.onQueue : props.onSend
   const canSubmit =
     props.canSend &&
-    Boolean(draft.text.trim() || draft.attachments.length) &&
-    filesReady &&
+    assistantDraftReady(draft.text, draft.attachments) &&
     !pending &&
-    (!props.busy || Boolean(props.onQueue))
+    !capture.pending &&
+    Boolean(action)
   useReportActivity(pending)
   const submit = async () => {
-    if (lock.current || !canSubmit) return
-    const action = props.busy ? props.onQueue : props.onSend
+    const currentFiles = attachments.current()
+    if (
+      lock.current ||
+      capture.lock.current ||
+      !canSubmit ||
+      !assistantDraftReady(draft.text, currentFiles)
+    )
+      return
     if (!action) return
     lock.current = true
     setPending(true)
-    const attachments = draft.attachments.flatMap((file) =>
+    const readyAttachments = currentFiles.flatMap((file) =>
       file.attachment ? [file.attachment] : [],
     )
     try {
-      const accepted = attachments.length
-        ? await action(draft.text.trim(), attachments)
+      const accepted = readyAttachments.length
+        ? await action(draft.text.trim(), readyAttachments)
         : await action(draft.text.trim())
       if (accepted !== false) onAccepted()
     } catch {
@@ -182,14 +202,26 @@ function useAssistantSubmission(
   return { pending, canSubmit, submit }
 }
 
+function assistantDraftReady(text: string, files: readonly AssistantAttachmentDraft[]) {
+  return Boolean(text.trim() || files.length) && files.every((file) => file.status === "ready")
+}
+
 type ComposerActionsProps = Pick<
   AssistantComposerProps,
-  "busy" | "canSend" | "sessionControls" | "attachmentCapabilities" | "onQueue" | "onCancel"
+  | "busy"
+  | "canSend"
+  | "sessionControls"
+  | "attachmentCapabilities"
+  | "onQueue"
+  | "onCancel"
+  | "onCaptureView"
 > & {
   submitting: boolean
+  capturing: boolean
   canSubmit: boolean
   onSubmit: () => Promise<void>
   onSelectFiles: (files: readonly File[]) => void
+  onCapture: () => Promise<void>
 }
 
 function AssistantAttachmentAction({
@@ -266,9 +298,252 @@ function AssistantComposerActions(props: ComposerActionsProps) {
       <div className="min-w-0">{props.sessionControls}</div>
       <div className="flex shrink-0 items-center justify-self-end gap-1">
         <AssistantAttachmentAction {...props} />
+        {props.attachmentCapabilities?.images && props.onCaptureView && (
+          <AssistantCaptureAction {...props} />
+        )}
         <AssistantTurnActions {...props} />
       </div>
     </div>
+  )
+}
+
+function AssistantCaptureAction({
+  canSend,
+  submitting,
+  capturing,
+  onCapture,
+}: Pick<ComposerActionsProps, "canSend" | "submitting" | "capturing" | "onCapture">) {
+  const t = useTranslations("app.assistant")
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={t("captureView")}
+          disabled={!canSend || submitting}
+          isLoading={capturing}
+          onClick={onCapture}
+        >
+          <Image aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t("captureView")}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function useAssistantAttachmentAdmission(
+  props: Pick<AssistantComposerProps, "canSend" | "attachmentCapabilities">,
+  draft: AssistantComposerDraft,
+  onDraftChange: Dispatch<SetStateAction<AssistantComposerDraft>>,
+  submissionLock: RefObject<boolean>,
+) {
+  const enabled =
+    props.canSend &&
+    Boolean(props.attachmentCapabilities?.text || props.attachmentCapabilities?.images)
+  const live = useRef({ ...props, enabled, attachments: draft.attachments, onDraftChange })
+  const mounted = useRef(false)
+  const [selectionIssue, setSelectionIssue] = useState<"count" | "total" | null>(null)
+  useLayoutEffect(() => {
+    live.current = { ...props, enabled, attachments: draft.attachments, onDraftChange }
+  })
+  useLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  const update = (
+    change: (files: readonly AssistantAttachmentDraft[]) => readonly AssistantAttachmentDraft[],
+  ) => {
+    // Reserve synchronously: another picker/drop event can arrive before React commits.
+    live.current.attachments = change(live.current.attachments)
+    live.current.onDraftChange((current) => ({
+      ...current,
+      attachments: change(current.attachments),
+    }))
+  }
+  const selectFiles = (files: readonly File[]) => {
+    const { attachmentCapabilities: capabilities, enabled, attachments } = live.current
+    if (!mounted.current || !enabled || submissionLock.current || !files.length || !capabilities)
+      return
+    setSelectionIssue(null)
+    if (attachments.length + files.length > ASSISTANT_MAX_ATTACHMENTS) {
+      setSelectionIssue("count")
+      return
+    }
+    const size =
+      attachments.reduce((bytes, file) => bytes + file.size, 0) +
+      files.reduce((bytes, file) => bytes + file.size, 0)
+    if (size > ASSISTANT_MAX_ATTACHMENT_TOTAL_BYTES) {
+      setSelectionIssue("total")
+      return
+    }
+    const pending = files.map((file) => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      size: file.size,
+      status: "pending" as const,
+    }))
+    update((current) => [...current, ...pending])
+    readSelectedAttachments(files, pending, capabilities, (attachment) => {
+      if (!mounted.current) return
+      update((current) => current.map((value) => (value.id === attachment.id ? attachment : value)))
+    })
+  }
+  return {
+    current: () => live.current.attachments,
+    selectFiles,
+    selectionIssue,
+    clearIssue: () => setSelectionIssue(null),
+    remove: (id: string) => {
+      if (submissionLock.current) return
+      update((current) => current.filter((file) => file.id !== id))
+      setSelectionIssue(null)
+    },
+  }
+}
+
+function readSelectedAttachments(
+  files: readonly File[],
+  pending: readonly AssistantAttachmentDraft[],
+  capabilities: NonNullable<AssistantComposerProps["attachmentCapabilities"]>,
+  onRead: (attachment: AssistantAttachmentDraft) => void,
+) {
+  for (const [index, file] of files.entries()) {
+    const selected = pending[index]
+    if (selected) void readAssistantAttachment(file, selected.id, capabilities).then(onRead)
+  }
+}
+
+function useAssistantViewCapture(
+  props: Pick<AssistantComposerProps, "canSend" | "attachmentCapabilities" | "onCaptureView">,
+  onFiles: (files: readonly File[]) => void,
+  submissionLock: RefObject<boolean>,
+) {
+  const enabled = Boolean(
+    props.canSend && props.attachmentCapabilities?.images && props.onCaptureView,
+  )
+  const live = useRef({ enabled, onCaptureView: props.onCaptureView, onFiles })
+  const mounted = useRef(false)
+  const epoch = useRef(0)
+  const lock = useRef(false)
+  const [pending, setPending] = useState(false)
+  const [failed, setFailed] = useState(false)
+  useReportActivity(pending)
+  useLayoutEffect(() => {
+    live.current = { enabled, onCaptureView: props.onCaptureView, onFiles }
+  })
+  useLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  useLayoutEffect(() => {
+    return () => {
+      epoch.current += 1
+    }
+  }, [enabled])
+  const canCapture = () => live.current.enabled && !submissionLock.current && !lock.current
+  const capture = async () => {
+    const { onCaptureView } = live.current
+    if (!onCaptureView || !canCapture()) return
+    lock.current = true
+    setPending(true)
+    setFailed(false)
+    const started = epoch.current
+    const isCurrent = () => mounted.current && started === epoch.current
+    try {
+      const file = await onCaptureView()
+      if (isCurrent() && file) live.current.onFiles([file])
+    } catch {
+      if (isCurrent()) setFailed(true)
+    } finally {
+      lock.current = false
+      if (mounted.current) setPending(false)
+    }
+  }
+  return { capture, pending, lock, failed }
+}
+
+function useAssistantFileDrop(onFiles: (files: readonly File[]) => void) {
+  const depth = useRef(0)
+  const [active, setActive] = useState(false)
+  const isFileDrag = (event: DragEvent<HTMLElement>) =>
+    Array.from(event.dataTransfer.types).includes("Files") ||
+    Array.from(event.dataTransfer.items ?? []).some((item) => item.kind === "file") ||
+    event.dataTransfer.files.length > 0
+  const intercept = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  return {
+    active,
+    handlers: {
+      onDragEnter: (event: DragEvent<HTMLElement>) => {
+        if (!isFileDrag(event)) return
+        intercept(event)
+        depth.current += 1
+        setActive(true)
+      },
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        if (isFileDrag(event)) intercept(event)
+      },
+      onDragLeave: (event: DragEvent<HTMLElement>) => {
+        if (!depth.current) return
+        intercept(event)
+        depth.current = Math.max(0, depth.current - 1)
+        if (!depth.current) setActive(false)
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        if (!isFileDrag(event)) return
+        intercept(event)
+        depth.current = 0
+        setActive(false)
+        onFiles(Array.from(event.dataTransfer.files))
+      },
+    },
+  }
+}
+
+function AssistantComposerFeedback({
+  dropActive,
+  canAttach,
+  captureFailed,
+  selectionIssue,
+}: {
+  dropActive: boolean
+  canAttach: boolean
+  captureFailed: boolean
+  selectionIssue: "count" | "total" | null
+}) {
+  const t = useTranslations("app.assistant")
+  return (
+    <>
+      {dropActive && (
+        <p role="status" className="px-3 pt-2 text-xs text-muted-foreground">
+          {t(canAttach ? "dropFiles" : "dropFilesUnavailable")}
+        </p>
+      )}
+      {captureFailed && (
+        <p role="alert" className="px-3 pt-2 text-xs text-destructive">
+          {t("captureViewFailed")}
+        </p>
+      )}
+      {selectionIssue && (
+        <p role="alert" className="px-3 pt-2 text-xs text-destructive">
+          {selectionIssue === "count"
+            ? t("attachmentTooMany", { count: ASSISTANT_MAX_ATTACHMENTS })
+            : t("attachmentTotalTooLarge", {
+                limit: ASSISTANT_MAX_ATTACHMENT_TOTAL_BYTES / 1024 ** 2,
+              })}
+        </p>
+      )}
+    </>
   )
 }
 
@@ -283,79 +558,53 @@ export function AssistantComposer({
   const t = useTranslations("app.assistant")
   const id = useId()
   const composer = useRef<HTMLTextAreaElement>(null)
-  const [selectionIssue, setSelectionIssue] = useState<"count" | "total" | null>(null)
+  const submissionLock = useRef(false)
+  const admissions = useAssistantAttachmentAdmission(props, draft, onDraftChange, submissionLock)
+  const capture = useAssistantViewCapture(props, admissions.selectFiles, submissionLock)
   const pendingFiles = draft.attachments.some((attachment) => attachment.status === "pending")
-  const submission = useAssistantSubmission(props, draft, () => {
-    onDraftChange({ text: "", attachments: [] })
-    setSelectionIssue(null)
-  })
+  const submission = useAssistantSubmission(
+    props,
+    draft,
+    () => {
+      onDraftChange({ text: "", attachments: [] })
+      admissions.clearIssue()
+    },
+    submissionLock,
+    admissions,
+    capture,
+  )
+  const drop = useAssistantFileDrop(admissions.selectFiles)
+  const canAttach =
+    props.canSend &&
+    !submission.pending &&
+    Boolean(props.attachmentCapabilities?.text || props.attachmentCapabilities?.images)
   useReportActivity(pendingFiles)
   useEffect(() => {
     if (!submission.pending) composer.current?.focus()
   }, [submission.pending])
-  const selectFiles = (files: readonly File[]) => {
-    const capabilities = props.attachmentCapabilities
-    if (!capabilities || (!capabilities.text && !capabilities.images)) return
-    setSelectionIssue(null)
-    if (draft.attachments.length + files.length > ASSISTANT_MAX_ATTACHMENTS) {
-      setSelectionIssue("count")
-      return
-    }
-    const size =
-      draft.attachments.reduce((bytes, file) => bytes + file.size, 0) +
-      files.reduce((bytes, file) => bytes + file.size, 0)
-    if (size > ASSISTANT_MAX_ATTACHMENT_TOTAL_BYTES) {
-      setSelectionIssue("total")
-      return
-    }
-    const pending = files.map((file) => ({
-      id: crypto.randomUUID(),
-      name: file.name,
-      size: file.size,
-      status: "pending" as const,
-    }))
-    onDraftChange((current) => ({ ...current, attachments: [...current.attachments, ...pending] }))
-    for (const [index, file] of files.entries()) {
-      const selected = pending[index]
-      if (!selected) continue
-      void readAssistantAttachment(file, selected.id, capabilities).then((attachment) => {
-        onDraftChange((current) => ({
-          ...current,
-          attachments: current.attachments.map((value) =>
-            value.id === attachment.id ? attachment : value,
-          ),
-        }))
-      })
-    }
-  }
   return (
     <div className="shrink-0 space-y-2 p-3">
       {props.feedback}
       <AssistantQueue {...props} />
       <section
+        {...drop.handlers}
         aria-label={t("prompt")}
-        className="@container/composer min-w-0 overflow-hidden rounded-xl border bg-background focus-within:border-ring"
+        className={cn(
+          "@container/composer min-w-0 overflow-hidden rounded-xl border bg-background focus-within:border-ring",
+          drop.active && "border-ring ring-2 ring-ring/50",
+        )}
       >
         <AssistantAttachments
           attachments={draft.attachments}
           disabled={submission.pending}
-          onRemove={(attachmentId) => {
-            onDraftChange((current) => ({
-              ...current,
-              attachments: current.attachments.filter((file) => file.id !== attachmentId),
-            }))
-            setSelectionIssue(null)
-          }}
+          onRemove={admissions.remove}
         />
-        {selectionIssue && (
-          <p role="alert" className="px-3 pt-2 text-xs text-destructive">
-            {selectionIssue === "count"
-              ? t("attachmentTooMany", { count: ASSISTANT_MAX_ATTACHMENTS })
-              : t("attachmentTotalTooLarge", {
-                  limit: ASSISTANT_MAX_ATTACHMENT_TOTAL_BYTES / 1024 ** 2,
-                })}
-          </p>
-        )}
+        <AssistantComposerFeedback
+          dropActive={drop.active}
+          canAttach={canAttach}
+          captureFailed={capture.failed}
+          selectionIssue={admissions.selectionIssue}
+        />
         <label htmlFor={id} className="sr-only">
           {t("prompt")}
         </label>
@@ -368,7 +617,10 @@ export function AssistantComposer({
           maxLength={16_000}
           placeholder={t("placeholder")}
           disabled={!props.canSend || submission.pending}
-          onChange={(event) => onDraftChange({ ...draft, text: event.currentTarget.value })}
+          onChange={(event) => {
+            const text = event.currentTarget.value
+            onDraftChange((current) => ({ ...current, text }))
+          }}
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
@@ -383,9 +635,11 @@ export function AssistantComposer({
         <AssistantComposerActions
           {...props}
           submitting={submission.pending}
+          capturing={capture.pending}
           canSubmit={submission.canSubmit}
           onSubmit={submission.submit}
-          onSelectFiles={selectFiles}
+          onSelectFiles={admissions.selectFiles}
+          onCapture={capture.capture}
         />
       </section>
     </div>

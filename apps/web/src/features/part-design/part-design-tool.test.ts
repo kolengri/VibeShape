@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import {
   booleanFeatureType,
   boxFeatureType,
+  chamferFeatureTypeV3,
   coneFeatureType,
   createAngleQuantity,
   createLengthQuantity,
@@ -433,4 +434,9 @@ describe("basic primitive tool eligibility", () => {
       ).toBe(false)
     },
   )
+})
+
+it("opens a saved V3 Chamfer through the ordinary edit command", () => {
+  const feature = featureRecordSchema.parse({ ...box, type: chamferFeatureTypeV3.type })
+  expect(editPartDesignTool(feature)).toEqual({ kind: "edit-chamfer", featureId: feature.id })
 })

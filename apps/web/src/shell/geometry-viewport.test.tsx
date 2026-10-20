@@ -729,6 +729,38 @@ describe("assistant draft preview display", () => {
 })
 
 describe("GeometryViewport", () => {
+  it("retains Section clipping through orbit reference picking and feature previews", async () => {
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const rendered = renderViewport(controller)
+    await waitFor(() => expect(rendered.port.setMeshes).toHaveBeenCalled())
+    await userEvent.click(screen.getByRole("button", { name: "Section view" }))
+    await userEvent.click(screen.getByRole("checkbox", { name: "Enable section view" }))
+    await userEvent.keyboard("{Escape}")
+    const section = { axis: "z", offset: 0, flipped: false }
+    expect(rendered.port.setSection).toHaveBeenLastCalledWith(section)
+    rendered.rerenderSketchContext({
+      frame: null,
+      mode: "orbit",
+      faceIntersectionSelection: { onSelect: vi.fn() },
+    })
+    expect(rendered.port.setSection).toHaveBeenLastCalledWith(section)
+    rendered.rerenderFeaturePreview({
+      status: "ready",
+      kind: "primitive",
+      meshes: [taskPreviewMesh],
+    })
+    expect(rendered.port.setSection).toHaveBeenLastCalledWith(section)
+    rendered.rerenderSketchContext({ frame: null, mode: "normal" })
+    expect(rendered.port.setSection).toHaveBeenLastCalledWith(null)
+    rendered.rerenderSketchContext({ frame: null, mode: "orbit" })
+    expect(rendered.port.setSection).toHaveBeenLastCalledWith(section)
+    expect(rendered.createViewport).toHaveBeenCalledTimes(1)
+    expect(rendered.port.dispose).not.toHaveBeenCalled()
+  })
+
   it("reports outline preparation failure outside the viewport without disabling surfaces or selection", async () => {
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],

@@ -88,6 +88,40 @@ async function contained(page: Page, locator: Locator) {
   ).toBe(true)
 }
 
+for (const theme of ["light", "dark"] as const) {
+  test(`distinguishes human message bubbles from assistant prose in ${theme} theme`, async ({
+    page,
+  }) => {
+    await page.route(endpoint, async (route) => {
+      if (route.request().method() === "OPTIONS") {
+        await route.fulfill({ status: 204, headers })
+        return
+      }
+      await fulfill(route, answer("The model will keep these dimensions."))
+    })
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto("/")
+    await page
+      .locator("html")
+      .evaluate((root, dark) => root.classList.toggle("dark", dark), theme === "dark")
+    const panel = await connect(page)
+    await panel
+      .getByRole("textbox", { name: "Message", exact: true })
+      .fill("Keep the lid removable and use a 2 mm wall.")
+    await panel.getByRole("button", { name: "Send", exact: true }).click()
+    await expect(panel.getByRole("log")).toContainText("The model will keep these dimensions.")
+    const human = panel.locator('[data-message-role="user"]')
+    await expect(human).toHaveCSS("border-top-left-radius", "16px")
+    expect(
+      await human.evaluate(
+        (node) => node.ownerDocument.defaultView?.getComputedStyle(node).backgroundColor,
+      ),
+    ).not.toBe("rgba(0, 0, 0, 0)")
+    await contained(page, human)
+    await panel.screenshot({ path: test.info().outputPath(`human-bubble-${theme}.png`) })
+  })
+}
+
 test("transfers selected files, answers structured model questions, collapses tools, and preserves a stopped queue", async ({
   page,
 }) => {
@@ -220,18 +254,17 @@ test("transfers selected files, answers structured model questions, collapses to
   await composer.getByRole("textbox", { name: "Message", exact: true }).fill("Hold the active turn")
   await panel.getByRole("button", { name: "Send", exact: true }).click()
   await expect.poll(() => Boolean(held)).toBe(true)
-  const activity = page
-    .locator(".application-bar")
-    .getByRole("status")
-    .filter({ hasText: "AI working…" })
+  const activity = panel.locator("header").getByRole("status").filter({ hasText: "AI working…" })
   await expect(activity).toBeVisible()
   await panel.getByRole("button", { name: "Close chat", exact: true }).click()
   await expect(panel).not.toBeVisible()
-  await expect(activity).toBeVisible()
+  await expect(activity).not.toBeVisible()
+  await expect(page.locator(".application-bar")).not.toContainText("AI working…")
   await contained(page, page.locator(".application-bar"))
   await page.screenshot({ path: test.info().outputPath("assistant-working-chat-closed.png") })
   await page.getByRole("button", { name: "AI chat", exact: true }).click()
   await expect(panel).toBeVisible()
+  await expect(activity).toBeVisible()
   await attach(page, panel, "hole.txt", "text/plain", "hole=5 mm")
   await composer.getByRole("textbox", { name: "Message", exact: true }).fill("Add the hole later")
   await panel.getByRole("button", { name: "Queue message", exact: true }).click()

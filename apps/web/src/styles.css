@@ -80,17 +80,6 @@
   width: min(var(--assistant-width), calc(100vw - 16px));
 }
 
-@media (min-width: 64rem) {
-  .cad-shell {
-    /* Preserve the tree, task, viewport and resize-handle minimums while chat is docked. */
-    --assistant-width: clamp(208px, calc(100vw - 816px), 420px);
-  }
-
-  .cad-shell:has(> .assistant-panel) .editor-model-area {
-    margin-right: var(--assistant-width);
-  }
-}
-
 .application-bar[data-unified-chrome] {
   -webkit-app-region: drag;
   padding-left: 88px;
@@ -138,6 +127,31 @@
   --workspace-chrome-right: 0px;
 }
 
+/* Move viewport controls around the chat overlay without resizing its canvas. */
+.cad-shell:has(.assistant-panel:not([hidden])) .workspace-viewport {
+  --workspace-chrome-right: max(
+    0px,
+    min(var(--assistant-width), calc(100vw - 16px)) -
+    var(--workspace-task-size) -
+    8px
+  );
+}
+
+.cad-shell:has(.assistant-panel:not([hidden]))
+  .cad-workspace-grid[data-transparent="true"]
+  .workspace-viewport {
+  --workspace-chrome-right: max(
+    calc(var(--workspace-task-size) + 8px),
+    min(var(--assistant-width), calc(100vw - 16px))
+  );
+}
+
+.cad-shell:has(.assistant-panel:not([hidden]))
+  .cad-workspace-grid[data-task-active="false"]
+  .workspace-viewport {
+  --workspace-chrome-right: min(var(--assistant-width), calc(100vw - 16px));
+}
+
 .workspace-panel {
   --panel: transparent;
   height: 100%;
@@ -168,6 +182,11 @@
 
 .workspace-panel--task[data-collapsed="true"] {
   display: none;
+}
+
+/* Scrolling fields must not show through a sticky task heading. */
+.workspace-panel--task [data-slot="task-panel-header"] {
+  --panel: var(--workspace-solid-panel);
 }
 
 .cad-workspace-grid[data-transparent="false"] .workspace-panel {

@@ -16,7 +16,7 @@ import {
   type ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import type { Draft } from "immer"
+import { castDraft, type Draft } from "immer"
 import { immer } from "zustand/middleware/immer"
 import { createStore } from "zustand/vanilla"
 import {
@@ -24,6 +24,10 @@ import {
   finiteExtrusionDistance,
 } from "../features/extrusion/extrusion-distance-manipulator"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
+import {
+  type ModelEdgeSelection,
+  nextModelEdgeSelection,
+} from "../features/part-design/model-edge-selection"
 import {
   type ActivePartDesignTool,
   isExtrusionPartDesignTool,
@@ -58,6 +62,7 @@ function clearFeatureSelection(state: Draft<EditorSessionState>, featureId: Feat
       : item.kind !== "feature" || item.id !== featureId,
   )
   if (state.selection?.featureId === featureId) state.selection = null
+  if (state.selectedModelEdges?.targetBody.featureId === featureId) state.selectedModelEdges = null
   if (state.selectedBody?.featureId === featureId) state.selectedBody = null
   if (state.preselectedBody?.featureId === featureId) state.preselectedBody = null
   if (state.preselectedFeatureId === featureId) state.preselectedFeatureId = null
@@ -124,6 +129,8 @@ export type EditorSessionState = Readonly<{
   revolveAngleRequest: RevolveAngleRequest | null
   selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
+  selectedModelEdges: ModelEdgeSelection | null
+  modelEdgeSelectionEnabled: boolean
   sketch: SketchEditorSessionState
   workspace: EditorWorkspaceName
 }>
@@ -177,6 +184,9 @@ export type EditorSessionActions = Readonly<{
     sketchIds: readonly SketchId[],
     effectiveHiddenIds?: readonly SketchId[],
   ) => void
+  toggleModelEdgeSelection: (selection: ModelEdgeSelection) => void
+  setModelEdgeSelection: (selection: ModelEdgeSelection | null) => void
+  setModelEdgeSelectionEnabled: (enabled: boolean) => void
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
   setSketchCameraMode: (mode: SketchCameraMode) => void
@@ -245,6 +255,8 @@ function createEditorSessionState(overrides: SketchVisibilityOverrides): EditorS
     revolveAngleRequest: null,
     selectedOriginPlane: null,
     selection: null,
+    selectedModelEdges: null,
+    modelEdgeSelectionEnabled: false,
     sketch: createSketchState(),
     workspace: "model",
   }
@@ -629,6 +641,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
           }),
         setModelTreeSelection: (items) =>
           set((state) => {
+            state.selectedModelEdges = null
             state.modelTreeSelection = [...items]
             if (items.length) state.selectedOriginPlane = null
             const only = items.length === 1 ? items[0] : undefined
@@ -644,6 +657,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
           }),
         setSelectedBody: (body) =>
           set((state) => {
+            state.selectedModelEdges = null
             state.modelTreeSelection = body ? [{ kind: "body", ...body }] : []
             state.selectedBody = body
             state.selectedPartId = null
@@ -652,6 +666,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
           }),
         setSelectedPart: (partId) =>
           set((state) => {
+            state.selectedModelEdges = null
             state.modelTreeSelection = partId ? [{ kind: "part", id: partId }] : []
             state.selectedPartId = partId
             state.selectedBody = null
@@ -706,6 +721,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
           set((state) => {
             state.selectedOriginPlane = plane
             if (plane) {
+              state.selectedModelEdges = null
               state.selection = null
               state.selectedBody = null
               state.selectedPartId = null
@@ -744,8 +760,46 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
               closeSketch(state.sketch)
             }
           }),
+        toggleModelEdgeSelection: (selection) =>
+          set((state) => {
+            const next = nextModelEdgeSelection(state.selectedModelEdges, selection)
+            if (next === undefined) return
+            state.selectedModelEdges = castDraft(next)
+            state.selection = null
+            state.selectedBody = null
+            state.selectedPartId = null
+            state.selectedOriginPlane = null
+            state.modelTreeSelection = []
+          }),
+        setModelEdgeSelectionEnabled: (enabled) =>
+          set((state) => {
+            state.modelEdgeSelectionEnabled = enabled
+            if (!enabled) state.selectedModelEdges = null
+          }),
+        setModelEdgeSelection: (selection) =>
+          set((state) => {
+            if (
+              selection?.edges.some(
+                (edge) =>
+                  edge.kind !== "edge" ||
+                  edge.featureId !== selection.targetBody.featureId ||
+                  edge.outputRole !== selection.targetBody.outputRole,
+              ) ||
+              (selection?.edges.length ?? 0) > 256
+            )
+              return
+            state.selectedModelEdges = selection?.edges.length
+              ? { ...selection, edges: [...selection.edges] }
+              : null
+            state.selection = null
+            state.selectedBody = null
+            state.selectedPartId = null
+            state.selectedOriginPlane = null
+            state.modelTreeSelection = []
+          }),
         setSelection: (selection) =>
           set((state) => {
+            state.selectedModelEdges = null
             state.modelTreeSelection = []
             state.selection = selection
             state.selectedBody = null
@@ -857,6 +911,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
           }),
         startPartDesignTool: (tool) =>
           set((state) => {
+            state.selectedModelEdges = null
             clearTreePreselection(state)
             state.modelTreeSelection = []
             state.partDesignToolGeneration += 1
@@ -874,7 +929,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.activePartDesignTool =
               tool.kind === "create-extrusion" || tool.kind === "create-revolve"
                 ? { ...tool, profiles: [...tool.profiles] }
-                : tool
+                : castDraft(tool)
           }),
         switchWorkspace: (workspace) =>
           set((state) => {

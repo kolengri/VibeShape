@@ -6,6 +6,7 @@ import { InitializeRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 import { DESKTOP_MCP_PATH } from "@vibeshape/automation-api/desktop-host"
 import { localDocumentSchema } from "@vibeshape/automation-api/local-session"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
+import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
 import {
   BrowserRequestError,
   createBrowserBroker,
@@ -22,6 +23,7 @@ type Client = {
   stream?: ServerResponse
   released: Promise<void>
   resolveReleased: () => void
+  abort: AbortController
 }
 
 function reject(response: ServerResponse, status: number, message: string) {
@@ -40,6 +42,7 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
     ...(projectId ? { projectId } : {}),
   })
   let client: Client | null = null
+  let questions: AssistantQuestionHost | undefined
   let disposed = false
   let requests = 0
   let removeDescriptor: (() => Promise<void>) | undefined
@@ -49,7 +52,7 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
     for (const check of readinessWaiters) check()
   }
   function readinessOwnerCurrent(owner: Client, signal?: AbortSignal) {
-    return !disposed && client === owner && !signal?.aborted
+    return !disposed && client === owner && !owner.abort.signal.aborted && !signal?.aborted
   }
   function waitForInitialPair(owner: Client, signal?: AbortSignal) {
     return new Promise<boolean>((resolve) => {
@@ -92,6 +95,7 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
   async function release(owner: Client) {
     if (client !== owner) return
     client = null
+    owner.abort.abort()
     clearTimeout(owner.lease)
     broker.setClient(null)
     wakeReadiness()
@@ -122,10 +126,28 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
       )
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: randomUUID })
     let owner: Client
+    const questionHost = questions
+    const questionCurrent = () => readinessOwnerCurrent(owner) && questions === questionHost
+    const nativeQuestions: AssistantQuestionHost | undefined = questionHost && {
+      canInvoke: () => questionCurrent() && questionHost.canInvoke(),
+      async request(input, signal) {
+        if (!questionCurrent()) return { action: "cancel" }
+        const result = await questionHost.request(
+          input,
+          AbortSignal.any([signal, owner.abort.signal]),
+        )
+        return questionCurrent() ? result : { action: "cancel" }
+      },
+    }
     const server = createLocalMcpAdapter(
       projectId ? { ...broker, invoke: (...args) => invokeWhenReady(owner, ...args) } : broker,
       resources,
-      projectId ? { accessPolicy: "native-project" } : {},
+      projectId
+        ? {
+            accessPolicy: "native-project",
+            ...(nativeQuestions ? { questions: nativeQuestions } : {}),
+          }
+        : {},
     )
     let resolveReleased = () => {}
     const released = new Promise<void>((resolve) => {
@@ -137,6 +159,7 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
       lease: setTimeout(() => void release(owner), 10_000),
       released,
       resolveReleased,
+      abort: new AbortController(),
     }
     // Reserve before connecting or reading the client's initialization response.
     client = owner
@@ -188,6 +211,10 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
       return response
     },
     authenticate,
+    bindQuestions(host: AssistantQuestionHost) {
+      if (questions !== host) client?.abort.abort()
+      questions = host
+    },
     isClientAttached() {
       return client !== null
     },
@@ -258,7 +285,7 @@ export function createDesktopMcpService(origin: string) {
         Promise.resolve()
       )
     },
-    async publishProject(projectId: string, path: string) {
+    async publishProject(projectId: string, path: string, questions?: AssistantQuestionHost) {
       const id = localDocumentSchema.shape.id.parse(projectId)
       if (disposed) throw new Error("Native MCP is closed.")
       let project = projects.get(id)
@@ -267,6 +294,7 @@ export function createDesktopMcpService(origin: string) {
         project = { attachment, path, published: attachment.publish(path) }
         projects.set(id, project)
       }
+      if (questions) project.attachment.bindQuestions(questions)
       try {
         await project.published
         return project.path

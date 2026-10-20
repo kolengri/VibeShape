@@ -241,6 +241,10 @@ The X, Y, and Z axes may use conventional red, green, and blue, but every axis M
 
 ### Camera and Navigation
 
+History reveals a selected entry once when the explicit selection changes. Manual horizontal scrolling
+MUST survive unrelated report, hover, panel and transcript updates. Re-expanding a selected row does
+not authorize a new scroll to it.
+
 **Section view** opens its existing enable, plane, offset, and flip controls from the same viewport
 control group beside the standard-view selector. Its button highlights an active section; the panel
 closes with Escape and returns focus to its trigger.
@@ -399,6 +403,11 @@ Every modeling command follows `Idle -> Preview -> Validating -> Committed` or r
 - A confirmation cannot substitute for an unavailable backup or undo strategy.
 
 ## Forms, Parameters, and Units
+
+Fillet/Chamfer and idle Edges prepare exact topology catalogues without eagerly resolving every
+candidate. Resolve and cache ambiguity only for a picked/selected candidate or the open keyboard
+page of at most 32 entries. Idle Edges requests no face catalogue. Graphical activation still rejects
+ambiguous references visibly; deferring work must never turn uncertain intent into an accepted pick.
 
 ### Field Structure
 
@@ -567,7 +576,7 @@ Status changes that do not move focus use the appropriate live-region semantics.
 - Disabling the initiating control does not disable unrelated navigation or inspection. Conflicting actions use the same operation state instead of implementing independent timers.
 - Show named stages such as `Reading STEP`, `Healing geometry`, `Rebuilding features`, and `Tessellating`.
 - Show a percentage only when the underlying operation reports meaningful progress.
-- Otherwise animate a printing shimmer through the complete VibeShape wordmark, preserving its text, width, and height. A reserved-width application-bar status additionally identifies when the active project's AI is working, including while chat is closed; it uses the project's authoritative busy state and a static icon with reduced motion. Other buttons, tabs, panels, and dialogs do not add animated loaders. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion keeps a static highlighted wordmark.
+- Otherwise animate a printing shimmer through the complete VibeShape wordmark, preserving its text, width, and height. A reserved-width status in the chat header identifies when the active project's AI is working; it uses the project's authoritative busy state and a static icon with reduced motion. Other buttons, tabs, panels, and dialogs do not add animated loaders. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion keeps a static highlighted wordmark.
 - Keep camera navigation and unaffected document inspection responsive.
 - Distinguish `Cancel requested` from `Canceled`; logical cancellation may wait for the active kernel call to return.
 - Discard stale worker generations and state this in diagnostics only when relevant.
@@ -853,5 +862,6 @@ The Planes group provides one visibility eye for the origin planes even while co
 
 The ordinary XY ground grid covers the viewport through an analytic background shader rather than
 a fixed-size scene object. Neutral major lines and subtler subdivisions adapt to zoom, retain world
-alignment during panning, and fade near the horizon. The print-bed grid remains limited to the
+alignment during panning, and fade near the horizon. Orthographic zoom-out and depth-only camera
+retreat never cut the background at the camera eye plane. The print-bed grid remains limited to the
 configured physical envelope. Grid decoration does not participate in selection or Fit bounds.

@@ -7,8 +7,23 @@ import type {
 } from "@vibeshape/automation-api/assistant"
 import { assistantToolTargetsSchema } from "@vibeshape/automation-api/assistant"
 import { checkpointFixture } from "./assistant-checkpoints.test-fixture"
-import { readChatHistory, writeChatHistory } from "./chat-history"
-import { createNativeChatController } from "./native-chat-controller"
+import {
+  historyStoreFor,
+  readChatHistory,
+  trackHistoryController,
+  writeLegacyChatHistory,
+} from "./chat-history.test-fixture"
+import { createNativeChatController as createController } from "./native-chat-controller"
+
+function createNativeChatController(options: Parameters<typeof createController>[0]) {
+  return trackHistoryController(
+    options.storage,
+    createController({
+      ...options,
+      historyStore: options.historyStore ?? historyStoreFor(options.storage),
+    }),
+  )
+}
 
 const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
 const otherProjectId = "0195b5ac-b250-7a2c-8c33-000000000102"
@@ -480,7 +495,9 @@ describe("queued native steering", () => {
         .getSnapshot()
         .messages.filter(({ role, text }) => role === "user" && text === "  Steer exactly\n"),
     ).toHaveLength(1)
-    expect(JSON.stringify(readChatHistory(projectId, disk))).not.toContain("Exact private payload")
+    expect(JSON.stringify(await readChatHistory(projectId, disk))).not.toContain(
+      "Exact private payload",
+    )
     f.finish()
     await until(() => f.prompts.length === 2)
     expect(f.prompts.map(({ text }) => text)).toEqual(["Active", "Earlier"])
@@ -698,10 +715,10 @@ describe("project-scoped agent chat", () => {
     f.finish()
     await until(() => !chat.getSnapshot().busy)
     expect(f.prompts.map(({ text }) => text)).toEqual(["First", "Second", "Third"])
-    expect(readChatHistory(projectId, disk)?.messages[1]?.attachments).toEqual([
+    expect((await readChatHistory(projectId, disk))?.messages[1]?.attachments).toEqual([
       { id: "attached-file", name: "notes.txt" },
     ])
-    expect(JSON.stringify(readChatHistory(projectId, disk))).not.toContain(
+    expect(JSON.stringify(await readChatHistory(projectId, disk))).not.toContain(
       "file bytes remain in memory",
     )
     chat.dispose()
@@ -784,7 +801,9 @@ describe("project-scoped agent chat", () => {
       "Complete answer",
     ])
     expect(f.prompts.map(({ text }) => text)).toEqual(["First", "Queued", "Queued"])
-    expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+    expect((await readChatHistory(projectId, disk))?.messages).toEqual([
+      ...chat.getSnapshot().messages,
+    ])
     chat.dispose()
   })
 
@@ -867,6 +886,105 @@ describe("project-scoped agent chat", () => {
     chat.dispose()
   })
 
+  it.each(["answered", "cancelled", "expired"] as const)(
+    "retains queued messages across premature terminal readiness while a question is pending: %s",
+    async (reason) => {
+      const f = fixture(true)
+      const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
+      chat.start()
+      try {
+        await chat.connect(agent)
+        await chat.send("Ask before continuing")
+        const scope = { projectId, sessionToken: f.snapshot().sessionToken }
+        const question = {
+          requestId: "blocking-question",
+          message: "Choose size",
+          expiresAt: Date.now() + 10_000,
+          fields: [{ id: "size", label: "Size", required: true, secret: false }],
+        }
+        f.emit({ ...scope, type: "question", question })
+        await chat.enqueue("Dependent queued continuation")
+        f.finishExternal()
+        f.finish()
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(chat.getSnapshot().question).toEqual(question)
+        expect(f.prompts).toHaveLength(1)
+        expect(await chat.resumeQueue()).toBe(false)
+        expect(await chat.steerQueued(chat.getSnapshot().queuedMessages[0]?.id ?? "")).toBe(false)
+        f.emit({ ...scope, type: "question-resolved", requestId: question.requestId, reason })
+        f.emit({
+          ...scope,
+          type: "snapshot",
+          snapshot: {
+            ...f.snapshot(),
+            status: "ready",
+            ...(reason === "answered" ? {} : { questionStatus: "paused" as const }),
+          },
+        })
+        await Promise.resolve()
+        if (reason === "answered") {
+          await until(() => f.prompts.length === 2)
+          expect(f.prompts).toHaveLength(2)
+          f.finish()
+        } else {
+          expect(f.prompts).toHaveLength(1)
+          expect(chat.getSnapshot()).toMatchObject({
+            queuePaused: true,
+            queuedMessages: [{ text: "Dependent queued continuation" }],
+          })
+        }
+      } finally {
+        chat.dispose()
+      }
+    },
+  )
+
+  it("recovers the exact session without continuing or draining unanswered question work", async () => {
+    const f = fixture(true)
+    const bridge: AssistantBridge = {
+      ...f.bridge,
+      async connect(input) {
+        const result = await f.bridge.connect(input)
+        return result.ok && input.resumeSessionId
+          ? { ...result, value: { ...result.value, sessionId: input.resumeSessionId } }
+          : result
+      },
+    }
+    const chat = createNativeChatController({ projectId, bridge, storage: storage() })
+    chat.start()
+    try {
+      await chat.connect(agent)
+      await chat.send("Question-dependent original")
+      const scope = { projectId, sessionToken: f.snapshot().sessionToken }
+      f.emit({
+        ...scope,
+        type: "question",
+        question: {
+          requestId: "question-before-loss",
+          message: "Choose",
+          expiresAt: Date.now() + 10_000,
+          fields: [{ id: "size", label: "Size", required: true, secret: false }],
+        },
+      })
+      await chat.enqueue("Unsent dependent work")
+      f.emit({ ...scope, type: "error", code: "agent-exited" })
+      await until(() => f.connects.length === 2 && chat.getSnapshot().recovery === null)
+      expect(f.connects[1]?.resumeSessionId).toBe("session-1")
+      expect(f.prompts).toHaveLength(1)
+      expect(chat.getSnapshot()).toMatchObject({
+        busy: false,
+        question: null,
+        queuePaused: true,
+        queuedMessages: [{ text: "Unsent dependent work" }],
+      })
+      f.finish()
+      expect(await chat.respondQuestion({ size: "late old answer" })).toBe(false)
+    } finally {
+      chat.dispose()
+    }
+  })
+
   it("subscribes only when started and tolerates a React effect restart", () => {
     const f = fixture(),
       chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
@@ -912,8 +1030,10 @@ describe("project-scoped agent chat", () => {
       status: "completed",
     })
     await until(() => !chat.getSnapshot().busy)
-    expect(readChatHistory(otherProjectId, disk)).toBeNull()
-    expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+    expect(await readChatHistory(otherProjectId, disk)).toBeNull()
+    expect((await readChatHistory(projectId, disk))?.messages).toEqual([
+      ...chat.getSnapshot().messages,
+    ])
     chat.dispose()
   })
   it("retains per-call target namespaces through partial completion, clears failures and fences sessions", async () => {
@@ -953,7 +1073,7 @@ describe("project-scoped agent chat", () => {
     })
     const messages = () => chat.getSnapshot().messages.filter(({ role }) => role === "tool")
     expect(messages().map(({ tool }) => tool?.targets)).toEqual([feature, sketch])
-    expect(messages()[0]?.text).toHaveLength(32_000)
+    expect(messages()[0]?.text).toHaveLength(32_768)
     f.emit({
       ...scope,
       type: "tool",
@@ -966,7 +1086,9 @@ describe("project-scoped agent chat", () => {
     f.finish()
     await sending
     await until(() => !chat.getSnapshot().busy)
-    expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+    expect((await readChatHistory(projectId, disk))?.messages).toEqual([
+      ...chat.getSnapshot().messages,
+    ])
     chat.dispose()
   })
   it("preserves the displayed preview failure across empty partial updates and history persistence", async () => {
@@ -1026,7 +1148,9 @@ describe("project-scoped agent chat", () => {
     f.finish()
     await sending
     await until(() => !chat.getSnapshot().busy)
-    expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+    expect((await readChatHistory(projectId, disk))?.messages).toEqual([
+      ...chat.getSnapshot().messages,
+    ])
     expect(chat.getSnapshot().error).toBeNull()
     chat.dispose()
   })
@@ -1041,7 +1165,7 @@ describe("project-scoped agent chat", () => {
         text: "Prior turn",
         tool: { title: "Historical", status: "in_progress" },
       }
-      expect(writeChatHistory(projectId, [historical], disk)).toBe(true)
+      expect(writeLegacyChatHistory(projectId, [historical], disk)).toBe(true)
       const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
       chat.start()
       await chat.connect(agent)
@@ -1071,8 +1195,11 @@ describe("project-scoped agent chat", () => {
         "cancelled",
         "unknown-terminal",
       ])
-      expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+      expect((await readChatHistory(projectId, disk))?.messages).toEqual([
+        ...chat.getSnapshot().messages,
+      ])
       const reopened = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+      await reopened.flushHistory()
       expect(reopened.getSnapshot().messages).toEqual(chat.getSnapshot().messages)
       reopened.dispose()
       chat.dispose()
@@ -1103,7 +1230,9 @@ describe("project-scoped agent chat", () => {
           .messages.filter(({ role }) => role === "tool")
           .map(({ tool }) => tool?.status),
       ).toEqual(["failed", "failed", "completed"])
-      expect(readChatHistory(projectId, disk)?.messages).toEqual([...chat.getSnapshot().messages])
+      expect((await readChatHistory(projectId, disk))?.messages).toEqual([
+        ...chat.getSnapshot().messages,
+      ])
       chat.dispose()
       f.finish()
     },
@@ -1174,9 +1303,9 @@ describe("project-scoped agent chat", () => {
       expect(f.connects.map((input) => input.projectId)).toEqual([projectId, otherProjectId])
       expect(second.getSnapshot().snapshot).toBe(current)
       expect(f.snapshot()).toBe(current)
-      expect(readChatHistory(projectId, disk)?.messages.map((message) => message.text)).toEqual([
-        "Saved project A",
-      ])
+      expect(
+        (await readChatHistory(projectId, disk))?.messages.map((message) => message.text),
+      ).toEqual(["Saved project A"])
       second.dispose()
     },
   )
@@ -1205,7 +1334,7 @@ describe("project-scoped agent chat", () => {
     expect(chat.getSnapshot().messages.map((message) => message.text)).toEqual([
       "New settings response",
     ])
-    expect(readChatHistory(projectId, disk)?.agentSession?.agent).toEqual(replacement)
+    expect((await readChatHistory(projectId, disk))?.agentSession?.agent).toEqual(replacement)
     chat.dispose()
   })
   it("does not let a stale reconnect unlock the newer connection created by reset", async () => {
@@ -1233,25 +1362,29 @@ describe("project-scoped agent chat", () => {
     expect(chat.getSnapshot().connecting).toBe(false)
     chat.dispose()
   })
-  it("handles corrupt, cross-project, oversized and unavailable storage", () => {
+  it("reports corrupt, cross-project and unavailable legacy storage", async () => {
     const disk = storage()
     expect(
-      writeChatHistory(projectId, [{ id: crypto.randomUUID(), role: "user", text: "saved" }], disk),
+      writeLegacyChatHistory(
+        projectId,
+        [{ id: crypto.randomUUID(), role: "user", text: "saved" }],
+        disk,
+      ),
     ).toBe(true)
     const raw = disk.getItem(`vibeshape.project-chat.v1.${projectId}`)
     disk.setItem(`vibeshape.project-chat.v1.${otherProjectId}`, raw ?? "")
-    expect(readChatHistory(otherProjectId, disk)).toBeNull()
+    await expect(readChatHistory(otherProjectId, disk)).rejects.toThrow()
     disk.setItem(`vibeshape.project-chat.v1.${projectId}`, "{")
-    expect(readChatHistory(projectId, disk)).toBeNull()
+    await expect(readChatHistory(projectId, disk)).rejects.toThrow()
     disk.setItem(`vibeshape.project-chat.v1.${projectId}`, " ".repeat(750_001))
-    expect(readChatHistory(projectId, disk)).toBeNull()
+    await expect(readChatHistory(projectId, disk)).rejects.toThrow()
     const denied = {
       ...disk,
       setItem() {
         throw new Error("quota")
       },
     }
-    expect(writeChatHistory(projectId, [], denied)).toBe(false)
+    expect(writeLegacyChatHistory(projectId, [], denied)).toBe(false)
   })
   it("queues concurrent permission requests and removes only the resolved request even out of order", async () => {
     const f = fixture(),

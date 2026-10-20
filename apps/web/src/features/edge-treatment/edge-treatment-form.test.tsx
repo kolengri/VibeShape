@@ -1,5 +1,5 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { afterEach, describe, expect, it } from "bun:test"
 import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -107,23 +107,69 @@ function renderForm(overrides: Partial<React.ComponentProps<typeof EdgeTreatment
   return { ...view, props, onSave: props.onSave }
 }
 
-beforeEach(() => {
-  HTMLElement.prototype.scrollIntoView = vi.fn()
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  )
-})
-afterEach(() => {
-  cleanup()
-  vi.unstubAllGlobals()
-})
+async function chooseEdge(
+  user: ReturnType<typeof userEvent.setup>,
+  body = "Box 1",
+  edge = "Edge 1",
+) {
+  const summary = screen.getByText("Keyboard choices", { selector: "summary" })
+  if (!summary.closest("details")?.open) await user.click(summary)
+  await user.click(screen.getByRole("button", { name: `${body} · ${edge}` }))
+}
+
+afterEach(cleanup)
 
 describe("EdgeTreatmentForm", () => {
+  it("keeps the connected graphical picker stable when parent renders recreate body options", async () => {
+    const controller = {
+      saveStatus: "saved",
+      report: {
+        mode: "read-write",
+        snapshot: { id: "model", revision: 3 },
+        rebuild: { ok: true, response: { geometry: topologyCandidates } },
+      },
+    } as unknown as DocumentControllerState
+    const onSave = vi.fn(async () => ({ ok: true as const }))
+    function ConnectedForm() {
+      const picking = useEdgeTreatmentPicking(controller, { kind: "create-fillet" }, [])
+      return (
+        <>
+          <output data-testid="connected-picking">
+            {picking.viewportContext ? "active" : "inactive"}
+          </output>
+          <EdgeTreatmentForm
+            baseRevision={3}
+            copy={copy}
+            mode={{ kind: "create", createFeatureId: () => featureId, featureLabel: "Fillet" }}
+            operation="fillet"
+            options={[{ id: targetId, label: "Box 1" }]}
+            topologyCandidates={topologyCandidates}
+            variables={[]}
+            onCancel={() => {}}
+            onSaved={() => {}}
+            onSave={onSave}
+            onPickingContextChange={picking.onContextChange}
+            pickingRequest={picking.request}
+          />
+        </>
+      )
+    }
+    render(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <ConnectedForm />
+      </I18nProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId("connected-picking").textContent).toBe("active"))
+    const user = userEvent.setup()
+    await chooseEdge(user)
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole("radio", { name: "All edges" }))
+    await waitFor(() =>
+      expect(screen.getByTestId("connected-picking").textContent).toBe("inactive"),
+    )
+  })
+
   it("projects every retained edge into the selected source's viewport overlay and rejects a stale task context", () => {
     const geometry = topologyCandidates.map((record) => ({
       ...record,
@@ -172,7 +218,11 @@ describe("EdgeTreatmentForm", () => {
     )
     const selection = result.current.viewportContext?.referenceSelection
     expect(selection?.candidates).toEqual([
-      expect.objectContaining({ featureId: secondTargetId, candidateId: "edge-1", selected: true }),
+      expect.objectContaining({
+        featureId: secondTargetId,
+        candidateId: JSON.stringify([secondTargetId, "edge-1"]),
+        selected: true,
+      }),
     ])
     const candidate = selection?.candidates[0]
     if (!candidate) throw new Error("Expected the selected source overlay")
@@ -211,11 +261,8 @@ describe("EdgeTreatmentForm", () => {
         screen.getByRole<HTMLInputElement>("radio", { name: copy.selectedEdges }).checked,
       ).toBe(true)
       expect(screen.getByRole("status").textContent).toBe("0 edges selected")
-      const form = screen.getByRole("form") as HTMLFormElement
-      expect((form.elements.namedItem("targetFeatureId") as HTMLSelectElement).value).toBe(
-        secondTargetId,
-      )
-      expect(screen.getByRole("combobox", { name: copy.target }).textContent).toContain("Box 2")
+      expect(screen.queryByRole("combobox", { name: copy.target })).toBeNull()
+      expect(screen.getByText("Box 2", { exact: true })).toBeTruthy()
       expect(onPickingContextChange).toHaveBeenLastCalledWith(
         expect.objectContaining({
           targetFeatureId: secondTargetId,
@@ -224,7 +271,7 @@ describe("EdgeTreatmentForm", () => {
         }),
       )
       const user = userEvent.setup()
-      await user.selectOptions(screen.getByRole("combobox", { name: copy.pickEdges }), "edge-1")
+      await chooseEdge(user, "Box 2")
       await user.click(screen.getByRole("button", { name: copy.submit }))
       expect(view.onSave).toHaveBeenCalledWith(
         3,
@@ -250,11 +297,14 @@ describe("EdgeTreatmentForm", () => {
         targetFeatureId: tool.targetFeatureId,
       },
     })
-    expect(screen.getByRole<HTMLSelectElement>("combobox", { name: copy.target }).value).toBe("")
-    expect(onPickingContextChange).toHaveBeenLastCalledWith(null)
-    expect(screen.getByRole<HTMLSelectElement>("combobox", { name: copy.pickEdges }).disabled).toBe(
-      true,
+    expect(screen.queryByRole("combobox", { name: copy.target })).toBeNull()
+    expect(screen.getByText(copy.missingTarget, { exact: true })).toBeTruthy()
+    expect(onPickingContextChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ targetFeatureId: null, references: [] }),
     )
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Pick edges in viewport" }).disabled,
+    ).toBe(false)
     await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
     expect(view.onSave).not.toHaveBeenCalled()
   })
@@ -281,7 +331,7 @@ describe("EdgeTreatmentForm", () => {
       const user = userEvent.setup()
       await user.click(screen.getByRole("radio", { name: copy.selectedEdges }))
       expect(screen.getByRole("status").textContent).toBe("0 edges selected")
-      await user.selectOptions(screen.getByRole("combobox", { name: copy.pickEdges }), "edge-1")
+      await chooseEdge(user)
       const candidates = selectedEdgeCandidates(geometry, targetId, copy.edgeLabel)
       const firstReference = candidates[0]?.reference
       const secondReference = candidates[1]?.reference
@@ -395,7 +445,7 @@ describe("EdgeTreatmentForm", () => {
     renderForm({ onSave, topologyCandidates })
     const user = userEvent.setup()
     await user.click(screen.getByRole("radio", { name: copy.selectedEdges }))
-    await user.selectOptions(screen.getByRole("combobox", { name: copy.pickEdges }), "edge-1")
+    await chooseEdge(user)
     await user.click(screen.getByRole("button", { name: copy.submit }))
     await waitFor(() =>
       expect(onSave).toHaveBeenCalledWith(
@@ -408,7 +458,7 @@ describe("EdgeTreatmentForm", () => {
     )
   })
 
-  it("keeps a selected reference broken when its target changes", async () => {
+  it("replaces incompatible selected references when an edge on another body is picked", async () => {
     const selected = featureRecordSchema.parse({
       ...existing,
       type: filletFeatureTypeV2.type,
@@ -430,15 +480,8 @@ describe("EdgeTreatmentForm", () => {
       onPreviewChange,
     })
     const user = userEvent.setup()
-    await user.click(screen.getByRole("combobox", { name: copy.target }))
-    await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Box 2")
-    await user.click(screen.getByRole("option", { name: "Box 2" }))
-    await waitFor(() => expect(onPreviewChange).toHaveBeenLastCalledWith(null))
-    await user.click(screen.getByRole("button", { name: copy.submit }))
-    expect(await screen.findByText(copy.missingEdge)).toBeTruthy()
-    expect(onSave).not.toHaveBeenCalled()
-    await user.click(screen.getByRole("button", { name: copy.removeEdgeLabel("Edge 1") }))
-    await user.selectOptions(screen.getByRole("combobox", { name: copy.pickEdges }), "edge-1")
+    await chooseEdge(user, "Box 2")
+    expect(screen.getAllByRole("button", { name: copy.removeEdgeLabel("Edge 1") })).toHaveLength(1)
     await user.click(screen.getByRole("button", { name: copy.submit }))
     await waitFor(() =>
       expect(onSave).toHaveBeenLastCalledWith(

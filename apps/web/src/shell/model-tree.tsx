@@ -24,6 +24,7 @@ import {
   Layers3,
   ListFilter,
   PenLine,
+  SketchIcon,
 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
@@ -2161,7 +2162,7 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
         <ModelTreeGroupItem
           className="min-w-0 flex-1 pr-2"
           count={sketches.length}
-          icon={<PenLine aria-hidden="true" className="size-4 text-muted-foreground" />}
+          icon={<SketchIcon aria-hidden="true" className="size-4 text-muted-foreground" />}
           expanded={sketchesExpanded}
           onExpandedChange={setSketchesExpanded}
           title={props.t("items.sketches")}
@@ -2216,7 +2217,6 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
                   }
                   onClick={props.onCreateSketch}
                 >
-                  <PenLine aria-hidden="true" className="size-3.5" />
                   {props.t("createSketch")}
                 </Button>
               )}
@@ -2443,13 +2443,25 @@ function ModelTimeline(props: ModelTreeHistoryBranchProps) {
   const [detailed, setDetailed] = useState(false)
   const orderedRefs = useMemo(() => props.view.rows.map((row) => row.ref), [props.view.rows])
   const root = useRef<HTMLElement>(null)
+  const revealedSelection = useRef<string | null>(null)
+  const documentId = props.controller.report?.snapshot.id
   useEffect(() => {
     ensureTreeTabStop(root.current)
+  }, [expanded, props.view.rows])
+  useEffect(() => {
     const activeId = props.activeSketchId ?? props.activeFeatureId ?? props.selectedResultFeatureId
-    if (!activeId) return
+    if (!activeId) {
+      revealedSelection.current = null
+      return
+    }
+    const key = `${documentId}:${activeId}`
+    if (revealedSelection.current === key) return
     const row = findModelTreeRow(root.current, "data-history-id", activeId)
+    if (!row) return
     row?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+    revealedSelection.current = key
   }, [
+    documentId,
     expanded,
     props.activeFeatureId,
     props.activeSketchId,

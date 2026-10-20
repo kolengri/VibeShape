@@ -6,6 +6,7 @@ import { registerProjectRuntimeResource } from "../document/project-runtime-reso
 import { createApiChatRegistry } from "./api-chat-controller"
 import { ApiConfigurationForm } from "./api-configuration-form"
 import { assistantCheckpointBusy } from "./assistant-checkpoints"
+import type { AssistantComposerProps } from "./assistant-composer"
 import { type AssistantDraftDisplay, useAssistantDraftDisplay } from "./assistant-draft-display"
 import { AssistantPanel } from "./assistant-panel"
 import { assistantStorage } from "./assistant-preferences"
@@ -26,19 +27,16 @@ const chats = createApiChatRegistry({
     ),
 })
 
-export function getBrowserProjectChatController(projectId: string) {
-  return chats.get(projectId)
-}
-
 export function BrowserProjectAssistant({
   controller,
   open,
   onClose,
+  onCaptureView,
 }: {
   controller: DocumentControllerState
   open: boolean
   onClose: () => void
-}) {
+} & Pick<AssistantComposerProps, "onCaptureView">) {
   const busy = useSyncExternalStore(chats.subscribe, chats.isBusy, chats.isBusy)
   useReportActivity(busy)
   const project = controller.report?.snapshot
@@ -52,6 +50,7 @@ export function BrowserProjectAssistant({
       draftDisplay={draftDisplay}
       open={open}
       onClose={onClose}
+      onCaptureView={onCaptureView}
     />
   )
 }
@@ -62,13 +61,14 @@ function BrowserProjectChat({
   draftDisplay,
   open,
   onClose,
+  onCaptureView,
 }: {
   projectId: string
   projectName: string
   draftDisplay?: AssistantDraftDisplay | undefined
   open: boolean
   onClose: () => void
-}) {
+} & Pick<AssistantComposerProps, "onCaptureView">) {
   const [chat] = useState(() => chats.get(projectId))
   const onToolHighlight = useAssistantToolHighlight(projectId)
   const state = useSyncExternalStore(chat.subscribe, chat.getSnapshot, chat.getSnapshot)
@@ -94,6 +94,7 @@ function BrowserProjectChat({
       onUndoAgentChanges={chat.undoAgentChanges}
       onViewBefore={chat.viewBefore}
       onClose={onClose}
+      onCaptureView={onCaptureView}
       onSend={chat.send}
       onQueue={chat.enqueue}
       attachmentCapabilities={{ text: true, images: false }}
@@ -107,6 +108,8 @@ function BrowserProjectChat({
       onCancel={chat.cancel}
       onReset={chat.reset}
       storageFailed={state.storageFailed}
+      onRetryHistory={chat.retryHistory}
+      contextOmittedMessages={state.contextOmittedMessages}
       error={error}
       sessionControls={
         state.model ? (

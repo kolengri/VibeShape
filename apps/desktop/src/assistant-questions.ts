@@ -8,7 +8,11 @@ import {
 import {
   type AssistantEvent,
   type AssistantQuestion,
+  type AssistantQuestionInput,
+  type AssistantQuestionReply,
   type AssistantSnapshot,
+  assistantQuestionAnswersMatch,
+  assistantQuestionInputSchema,
   assistantQuestionSchema,
 } from "@vibeshape/automation-api/assistant"
 import { z } from "zod"
@@ -60,20 +64,6 @@ function question(params: CreateElicitationRequest, timeoutMs: number): Assistan
   return parsed.success ? parsed.data : null
 }
 
-function validAnswers(request: AssistantQuestion, answers: Record<string, string>) {
-  const fields = new Map(request.fields.map((field) => [field.id, field]))
-  if (Object.keys(answers).some((id) => !fields.has(id))) return false
-  return request.fields.every((field) => {
-    const value = answers[field.id]
-    if (value === undefined) return !field.required
-    return (
-      value.length >= (field.minLength ?? 0) &&
-      value.length <= (field.maxLength ?? 16_384) &&
-      (!field.options || field.options.some((option) => option.id === value))
-    )
-  })
-}
-
 export function createAssistantQuestions(
   snapshot: AssistantSnapshot,
   emit: (event: AssistantEvent) => void,
@@ -81,35 +71,73 @@ export function createAssistantQuestions(
 ) {
   const pending = new Map<
     string,
-    { question: AssistantQuestion; settle: (answers: Record<string, string> | null) => void }
+    {
+      question: AssistantQuestion
+      settle: (answers: Record<string, string> | null, reason?: "expired" | "cancelled") => void
+    }
   >()
   const scope = { projectId: snapshot.projectId, sessionToken: snapshot.sessionToken }
+  function enqueue(
+    request: AssistantQuestion | null,
+    signal: AbortSignal,
+  ): Promise<AssistantQuestionReply> {
+    if (!request || signal.aborted || pending.size >= 4)
+      return Promise.resolve({ action: "decline" })
+    return new Promise((resolve) => {
+      const abort = () => settle(null)
+      const settle = (
+        answers: Record<string, string> | null,
+        reason: "expired" | "cancelled" = "cancelled",
+      ) => {
+        if (!pending.delete(request.requestId)) return
+        clearTimeout(timer)
+        signal.removeEventListener("abort", abort)
+        resolve(answers === null ? { action: "cancel" } : { action: "accept", content: answers })
+        emit({
+          ...scope,
+          type: "question-resolved",
+          requestId: request.requestId,
+          reason: answers === null ? reason : "answered",
+        })
+      }
+      const timer = setTimeout(() => settle(null, "expired"), timeoutMs)
+      pending.set(request.requestId, { question: request, settle })
+      signal.addEventListener("abort", abort, { once: true })
+      emit({ ...scope, type: "question", question: request })
+      if (signal.aborted) abort()
+    })
+  }
   return {
     request(
       params: CreateElicitationRequest,
       signal: AbortSignal,
     ): Promise<CreateElicitationResponse> {
-      const request = question(params, timeoutMs)
-      if (!request || signal.aborted || pending.size >= 4)
-        return Promise.resolve({ action: "decline" })
-      return new Promise((resolve) => {
-        const abort = () => settle(null)
-        const settle = (answers: Record<string, string> | null) => {
-          if (!pending.delete(request.requestId)) return
-          clearTimeout(timer)
-          signal.removeEventListener("abort", abort)
-          resolve(answers === null ? { action: "cancel" } : { action: "accept", content: answers })
-          emit({ ...scope, type: "question-resolved", requestId: request.requestId })
-        }
-        const timer = setTimeout(abort, timeoutMs)
-        pending.set(request.requestId, { question: request, settle })
-        signal.addEventListener("abort", abort, { once: true })
-        emit({ ...scope, type: "question", question: request })
-      })
+      return enqueue(question(params, timeoutMs), signal)
+    },
+    requestInput(input: AssistantQuestionInput, signal: AbortSignal) {
+      const parsed = assistantQuestionInputSchema.safeParse(input)
+      return enqueue(
+        parsed.success
+          ? {
+              ...parsed.data,
+              requestId: randomUUID(),
+              expiresAt: Date.now() + timeoutMs,
+            }
+          : null,
+        signal,
+      )
+    },
+    hasPending() {
+      return pending.size > 0
     },
     respond(requestId: string, answers: Record<string, string> | null) {
       const entry = pending.get(requestId)
-      if (!entry || (answers !== null && !validAnswers(entry.question, answers))) return false
+      if (!entry) return false
+      if (Date.now() >= entry.question.expiresAt) {
+        entry.settle(null, "expired")
+        return false
+      }
+      if (answers !== null && !assistantQuestionAnswersMatch(entry.question, answers)) return false
       entry.settle(answers)
       return true
     },

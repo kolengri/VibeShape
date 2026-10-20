@@ -361,6 +361,12 @@ or ambiguous references, and duplicate native selections fail closed. Geometry p
 document protocol 18 carry disposable edge display polylines, limited to 1,025 points per edge and
 65,536 per feature. Exact reference geometry and modeling do not depend on these display points.
 
+[ADR-0118](../adr/0118-body-bound-directional-chamfer.md) adds body-bound Chamfer V3 with explicit
+side-face intent, measured asymmetric modes, direction overrides and native tangent-contour checks.
+Offset/Tangent are proven only on planar supports; curved V3 requests fail explicitly while legacy
+circular-rim V1/V2 execution remains unchanged. Named output roles are resolved against their exact
+native body snapshot. No native mode name is treated as proof of another CAD product's semantics.
+
 ## Sketch-point holes
 
 The Hole form now creates named body targets as v2 and recognizes both v1 and v2 for editing.
@@ -419,8 +425,8 @@ reverse-tree traversal and source-path intervals avoid repeated ancestor walks a
 sets. Draft targets remain distinct from committed sources even when their IDs match; model evidence
 is memoized only within that inspection by both owner sketch and reference-object identity.
 
-Body-bound Fillet/Chamfer execution still requires per-output native topology snapshots and explicit
-feature versions. Sketch supports, persistent repair, and a real native multi-copy producer remain
+Body-bound Chamfer V3 uses per-output native topology snapshots and explicit feature versions.
+Fillet retains its legacy single-solid whole-result contract. Sketch supports, persistent repair, and a real native multi-copy producer remain
 open gates; synthetic coincident-body tests are isolation evidence, not native pattern delivery.
 
 ## FDM feature family and export mesh quality
