@@ -1,6 +1,6 @@
 ---
 name: vibeshape-organization
-description: Rename or show/hide authored VibeShape parts, manage History folders, or inspect and navigate saved Undo/Redo checkpoints through reviewed MCP proposals. Use for model organization in the application; feature deletion and History reordering are outside this tool contract.
+description: List, create or open browser-local VibeShape projects, rename or show/hide parts, manage History folders, or inspect and navigate saved Undo/Redo checkpoints through MCP. Use for project and model organization; feature deletion and History reordering are outside this tool contract.
 ---
 
 # VibeShape organization

@@ -1,4 +1,4 @@
 interface:
   display_name: "VibeShape Organization"
-  short_description: "Manage authored part names, visibility, and History folders"
-  default_prompt: "Use $vibeshape-organization to organize my VibeShape parts and History through reviewed metadata changes."
+  short_description: "Manage projects, parts, History folders, and Undo/Redo"
+  default_prompt: "Use $vibeshape-organization to manage my VibeShape projects, parts, History folders, or saved Undo/Redo through the supported MCP workflow."
