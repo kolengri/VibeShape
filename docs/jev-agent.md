@@ -1,0 +1,148 @@
+# Experimental Jev ACP controller
+
+`apps/jev-agent` is a source-checkout ACP agent for the native VibeShape chat. It connects to
+the desktop host's injected project MCP server. It does not require a new browser connection,
+another editor profile, a new CAD API, or changes to document and geometry ownership.
+The browser-only chat cannot launch this local process. The adapter is not bundled in desktop releases.
+
+## Control loop
+
+1. Discover the injected MCP catalog and load the bundled `vibeshape-use` instructions.
+2. Read `model_info`, retaining the actual project identity and revision.
+3. Send the goal, a bounded observation history, operator instructions and optional images to Jev.
+   One request uses compact tool descriptions to select a tool and speculate on its closed argument values. Only the selected
+   branch's answers are consumed.
+4. If arguments need free text, numbers, identifiers or nested geometry, send only the selected
+   tool's full schema to the separately configured small language model and request a JSON argument
+   object. Preserve the values and omissions Jev selected.
+5. Recheck project identity and revision. Discard a stale decision without executing it. Validate
+   arguments against VibeShape's existing tool schemas and execute one MCP call.
+6. Record its result and repeat until Jev chooses `done` or `blocked`, confidence is below the
+   configured threshold, a tool fails, cancellation arrives, or the step budget is exhausted.
+
+Jev chooses actions rather than generating CAD code. Required closed parameters and optional closed
+parameters with an omission alternative can be selected in the same request as the tool. Open
+parameters use the helper model; arbitrary dimensions are not inferred from a probability score.
+This implementation does not yet generate numeric candidate grids or compile all nested JSON
+Schema alternatives into questions.
+
+The normal MCP draft, preview, command-budget, revision, persistence and checkpoint policies remain
+authoritative. The controller cannot switch or create projects. A rejected or uncertain action stops
+the turn and is never automatically replayed. After an uncertain write, the process permits only
+read-only inspection. Inspect saved state and reconnect before authoring again; an unchanged saved
+revision does not establish the outcome of an unsaved draft operation. Native **Stop AI** still revokes project authority.
+Jev's `done` is a stopping decision, not independent proof of geometric or manufacturing correctness.
+
+## Configure and connect
+
+Use the repository's pinned Bun version and install its locked dependencies. Keep credentials in
+the local agent process environment; do not put keys in arguments, project files or chat messages.
+The desktop process must inherit these variables. Finder launches do not inherit terminal exports;
+use your existing local environment/wrapper setup when launching the app from Finder.
+
+| Variable | Meaning |
+| --- | --- |
+| `TYPESAFE_API_KEY` | Required TypeSafe API key |
+| `TYPESAFE_MODEL` | Defaults to pinned `jev-1.14.0` |
+| `JEV_ARGUMENTS_ENDPOINT` | Full OpenAI-compatible chat-completions endpoint for open arguments |
+| `JEV_ARGUMENTS_MODEL` | Model served by that endpoint; required when the endpoint is set |
+| `JEV_ARGUMENTS_API_KEY` | Optional helper key; omit for a local endpoint without authentication |
+| `JEV_ENABLE_IMAGES` | `1` enables experimental PNG/JPEG input; default `0` |
+| `JEV_MIN_CONFIDENCE` | Minimum selected-branch confidence; default `0.5`, range `0`–`1` |
+| `JEV_MAX_STEPS` | Decisions per turn; default `24`, maximum `48` |
+| `JEV_TIMEOUT_MS` | Provider and ordinary MCP operation timeout; default `60000`, range `1000`–`120000`. Manual-review calls use the separate horizon below. |
+
+Manual-review calls (CAD/assembly commits, import commits, metadata/library changes, history,
+surface textures and lightweighting requests) bypass this short operation budget. Stop, disconnect,
+server liveness, authority and proposal expiry still apply. The pinned MCP SDK cannot disable its
+request timer, so these calls use the maximum safe platform timer, `2147483647` ms (about 24.8 days),
+in both client layers. This practical client ceiling does not extend any server-side review expiry.
+Local CAD draft review otherwise remains pending while the browser stays authorized; other review
+services retain their advertised limits.
+The native desktop host has no default whole-turn ACP deadline, including steering continuations;
+Stop still cancels a turn and terminates an unresponsive agent after its separate grace period.
+
+The helper endpoint must use HTTPS or loopback HTTP, without URL credentials, query parameters or
+a fragment. For an already configured local compatible model, an endpoint can be
+`http://localhost:11434/v1/chat/completions`; model availability is your local setup's responsibility.
+The helper receives the selected schema, text goal and observations. Image bytes are not embedded
+as text in its request. Jev sees images when enabled; the helper does not independently interpret them.
+
+In native chat, choose **Custom** and enter:
+
+- **Executable:** the absolute path to the pinned `bun` executable.
+- **Arguments:** a JSON array containing the absolute source entrypoint, for example
+  `["/absolute/path/to/VibeShape/apps/jev-agent/src/index.ts"]`.
+
+Connect in the intended project. The desktop supplies one project-bound stdio MCP server; do not
+configure a separate standalone VibeShape server. The agent discovers that server's actual tool
+names. API credentials are not forwarded to the MCP child process.
+
+`bun run agent:jev` starts the same ACP stdio endpoint from a checkout. Its stdout is reserved for
+ACP JSON-RPC, so it is intended for an ACP client rather than an interactive terminal conversation.
+
+## Limits and evidence
+
+- One project session and one prompt at a time. Session loading is not advertised. Within that
+  process, recent observations retain draft identifiers across turns; restarting the process does
+  not restore an interrupted draft or replay the previous turn.
+- Up to 256 catalog entries, a 128 KiB question catalog, 12 recent observations and a 64 KB text context. Large observations
+  are explicitly marked as truncated; earlier observations may leave the bounded window. Inspect
+  the model again when a required identity or parameter is absent.
+- Incoming prompt text is bounded to 48 KB. At most four PNG/JPEG inputs are accepted, with a
+  combined 512 KiB base64 budget. Fresh `render_preview` image blocks can join the next Jev request
+  when images are enabled. Unsupported images are rejected rather than silently ignored.
+- The default confidence threshold is provisional, not calibrated on CAD tasks. It controls
+  escalation, never permission to bypass CAD validation. Set it deliberately for your workload.
+- SDK transport retries are disabled. Provider failures do not produce replacement actions.
+- Chat display has its own budget: only the first tool update carries arguments, and only when
+  their JSON fits 8 KiB. Larger arguments are omitted, so that call has no argument-derived target
+  hints. Result text uses an 8 KiB JSON budget or a marked 1024-character prefix. Full arguments
+  still reach the tool; controller observations retain their separate bounds. Display updates for
+  the maximum 48 steps stay below the desktop's cumulative 2 MiB turn budget.
+- Local regression tests exercise batching, selected arguments, cancellation, ACP updates,
+  revision changes and schema rejection with fake providers. No paid API trial, live CAD authoring
+  session or performance benchmark is implied by those tests.
+- An offline serialization check of the same 159-tool native catalog reduced the empty-history
+  selector request from 770,468 to 146,855 bytes by sharing compact descriptions and keeping nested
+  schemas out of action selection. This measures request size, not provider latency or accuracy.
+
+## Why this architecture
+
+[Browser Use's `jev-ultrafast`](https://github.com/browser-use/jev-ultrafast) selects an operation
+and its observed DOM target together; it uses a small LLM only for text-field content. Its normal
+decision loop reads structured DOM state rather than screenshots. Its published performance
+comparisons concern a few runs of one browser task and do not establish CAD performance.
+[The author-owned Mario controller](https://github.com/fhshaik/typesafe-mario) similarly selects
+among seven actions from structured emulator state; code owns timing and execution.
+
+The VibeShape adapter applies that decomposition to its existing tool catalog. Compared with
+adapting the Python browser agent, a Bun/TypeScript ACP process reuses the installed protocol SDKs,
+project attachment and strict CAD schemas. Compared with adding a second provider to browser chat,
+it leaves the web bundle and connection UI unchanged and keeps API keys in the local process.
+Its costs are a separate process, helper configuration for open arguments and additional semantic
+decisions that still require real CAD evaluation before speed or quality claims.
+
+TypeSafe's current published input price is $0.042 per million tokens, with free output tokens;
+this excludes the argument model. Recheck the [model page](https://docs.typesafe.ai/models)
+before budgeting. Aliases can move, so the adapter pins its default model.
+
+## Primary references and skills
+
+Verified on 2026-10-20:
+
+- [TypeSafe skill source](https://github.com/typesafe-ai/skills/tree/main/skills/typesafe-ai) and
+  [installation guide](https://docs.typesafe.ai/agent-skill). Read it directly or use one installation
+  method; avoid duplicate global and project copies. No third-party skill is silently installed.
+- [Function calling](https://docs.typesafe.ai/cookbooks/function_calling) and
+  [speculative fan-out](https://docs.typesafe.ai/patterns/fan-out): select closed arguments together.
+- [JavaScript SDK](https://docs.typesafe.ai/sdk/javascript): `@typesafe-ai/sdk` 0.7.0, MIT;
+  [published source](https://github.com/typesafe-ai/typesafe-sdk-js/tree/v0.7.0).
+- [Images](https://docs.typesafe.ai/images): experimental, opt-in header
+  `TypeSafe-Danger-Zone-Images: true`; PNG/JPEG multipart assets. These contracts may change.
+- [Confidence](https://docs.typesafe.ai/confidence): distinct from option probability and task success.
+- [VibeShape operator skills](agent-skills.md): loaded through the existing `read_agent_skill`
+  tool. Installing the TypeSafe coding skill does not provide VibeShape modeling authority.
+
+Context7 lookup was unavailable because its monthly quota was exhausted; current official docs,
+published SDK types and author-owned source were used instead.

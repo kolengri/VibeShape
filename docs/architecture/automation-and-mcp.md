@@ -1,5 +1,10 @@
 # Automation and MCP architecture
 
+The optional source-checkout [Jev ACP controller](../jev-agent.md) is an external decision adapter
+over the native host's existing injected MCP attachment. It owns bounded action selection and
+optional argument completion, while the host retains project authority, schemas, exact previews,
+transactions and checkpoints. It adds no browser-side provider or document mutation path.
+
 The desktop host attaches external MCP clients to its already open project and runs installed ACP
 agents through a narrow native bridge. Static web chat calls the person's compatible model API
 directly and executes tools through the same browser-owned automation sessions. Neither path adds
@@ -16,6 +21,11 @@ separately copied external MCP configuration retains its existing single-client,
 scope. ACP readiness, MCP attachment and project authority remain distinct states. Connecting a built-in
 chat authorizes validated model writes under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md);
 external clients retain their separate approval policy.
+
+Native ACP prompts and steering-owned continuation turns have no default whole-turn deadline,
+so a pending manual review does not terminate the agent after ten minutes. Explicit host timeout
+overrides still apply. Connection/settings requests, permission/question expiry and the Stop
+escalation keep their separate bounds; a stalled turn remains cancellable by the person.
 
 A native completion/error event can belong to a predecessor request while a steering continuation
 is still active. Aggregate terminal/cancelling host snapshots own control and tool cleanup, so the
