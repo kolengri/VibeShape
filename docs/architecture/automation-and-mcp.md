@@ -1,5 +1,10 @@
 # Automation and MCP architecture
 
+The optional source-checkout [Jev ACP controller](../jev-agent.md) is an external decision adapter
+over the native host's existing injected MCP attachment. It owns bounded action selection and
+optional argument completion, while the host retains project authority, schemas, exact previews,
+transactions and checkpoints. It adds no browser-side provider or document mutation path.
+
 The desktop host attaches external MCP clients to its already open project and runs installed ACP
 agents through a narrow native bridge. Static web chat calls the person's compatible model API
 directly and executes tools through the same browser-owned automation sessions. Neither path adds

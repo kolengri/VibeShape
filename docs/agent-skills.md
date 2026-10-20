@@ -37,6 +37,10 @@ calibration before claiming a verified compliant fit.
 
 ## Optional local installation
 
+The optional source-checkout [Jev ACP controller](jev-agent.md) reads this existing operator pack
+through its injected MCP connection. Its TypeSafe coding skill supplies API implementation guidance;
+it does not replace these modeling workflows or grant CAD authority.
+
 In a checkout of this repository, the skills already live under `.agents/skills`. For another Codex project, copy just the five application-use folders into that project's `.agents/skills`. For personal Codex use, copy them into the active Codex home's `skills` directory (normally `~/.codex/skills`). Inspect same-name destinations first; do not overwrite a different pack or unrelated skill. For a clean destination, from the VibeShape repository root:
 
 ```sh

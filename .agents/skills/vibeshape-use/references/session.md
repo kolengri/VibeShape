@@ -58,6 +58,20 @@ revokes that project's access and keeps it disabled across reload or reopening u
 chooses **Enable AI session**. Reconnecting the ACP process does not undo Stop. No tool can change
 the approval mode or restore a stopped connection.
 
+## Experimental Jev ACP client
+
+The optional source-checkout Jev controller connects through the native app's custom ACP executable
+setting and the same injected project attachment described above. It does not add MCP tools or
+permissions. It selects actions and closed parameter values with Jev; a separately configured
+language model supplies open arguments. Images require an explicit experimental opt-in.
+The controller stops on uncertain writes, schema rejection, low selected-branch confidence or its
+step limit. Inspect the saved model before continuing; a `done` decision is not verification.
+After an uncertain dispatch, this process permits read-only inspection only. Inspect saved state
+and reconnect before authoring again; a saved revision alone cannot reconcile an unsaved draft.
+It does not support exact ACP session loading after process restart. Keep the native connection's
+actual recovery state distinct from its saved transcript. Source configuration is documented in
+the repository's `docs/jev-agent.md`; do not install another CAD runtime to bypass this boundary.
+
 ## Development HTTP
 
 When using a source checkout's running `bun run dev`, configure a Streamable HTTP client with the

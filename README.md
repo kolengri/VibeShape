@@ -199,6 +199,10 @@ VibeShape is distributed under the **GNU General Public License v3.0 or later**.
 
 ## Local MCP development preview
 
+For an optional native chat controller that selects CAD tools with TypeSafe Jev, see the
+[experimental Jev ACP adapter](docs/jev-agent.md). It runs from a source checkout through the
+existing custom-agent connection and requires separate API configuration.
+
 `bun run dev` starts the Vite editor and a loopback Streamable HTTP MCP endpoint in the same
 process. Connect an HTTP MCP client to the `Local MCP` URL printed in the terminal (normally
 `http://localhost:5173/mcp`), open that editor, and enable its AI session. Vite hot reload and
