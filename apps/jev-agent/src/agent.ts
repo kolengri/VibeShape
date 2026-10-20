@@ -1,4 +1,5 @@
 import * as acp from "@agentclientprotocol/sdk"
+import { assistantToolResultText } from "@vibeshape/automation-api/assistant-tool-targets"
 import { z } from "zod"
 import type { Configuration } from "./configuration"
 import type { CompleteArguments, Decide, Photo } from "./contracts"
@@ -52,7 +53,19 @@ type Session = {
   previous: string[]
 }
 
+function toolDisplayText(value: unknown) {
+  const text = assistantToolResultText(value)
+  if (!text || Buffer.byteLength(JSON.stringify(text)) <= 8192) return text
+  // A 1024-character prefix fits even when JSON escapes every character to six bytes.
+  return `${text.slice(0, 1024)}\n[Tool result truncated in chat display.]`
+}
+
 async function toolUpdate(client: acp.AgentContext, sessionId: string, event: ToolEvent) {
+  const rawInput =
+    event.status === "in_progress" && Buffer.byteLength(JSON.stringify(event.arguments)) <= 8192
+      ? { rawInput: event.arguments }
+      : {}
+  const text = toolDisplayText(event.result)
   await client.notify(acp.methods.client.session.update, {
     sessionId,
     update: {
@@ -62,8 +75,8 @@ async function toolUpdate(client: acp.AgentContext, sessionId: string, event: To
       title: event.name,
       kind: "other",
       status: event.status,
-      rawInput: event.arguments,
-      ...(event.result === undefined ? {} : { rawOutput: event.result }),
+      ...rawInput,
+      ...(text ? { content: [{ type: "content", content: { type: "text", text } }] } : {}),
     },
   })
 }

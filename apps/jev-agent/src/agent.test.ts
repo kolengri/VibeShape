@@ -62,7 +62,7 @@ function fixture(
     ...overrides,
   }
   const adapter = createJevAgent(
-    readConfiguration({ TYPESAFE_API_KEY: "test", JEV_TIMEOUT_MS: "120000" }),
+    readConfiguration({ TYPESAFE_API_KEY: "test", JEV_TIMEOUT_MS: "120000", JEV_MAX_STEPS: "48" }),
     {
       decide,
       connect: async (_server, _cwd, elicit, timeoutMs) => {
@@ -93,6 +93,7 @@ function fixture(
     client,
     updates,
     calls,
+    port,
     get connectionTimeout() {
       return connectionTimeout
     },
@@ -118,6 +119,103 @@ async function open(f: ReturnType<typeof fixture>) {
   return { ...created, initialization }
 }
 describe("Jev ACP adapter", () => {
+  it("keeps 48 near-limit operations within the desktop ACP display budget", async () => {
+    const upload: Tool = { name: "append_import_chunk", inputSchema: { type: "object" } }
+    const base64 = "A".repeat(122_880)
+    let calls = 0
+    const f = fixture(async () => ({
+      kind: "tool",
+      tool: upload,
+      arguments: {
+        uploadId: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
+        offset: calls * 92_160,
+        base64,
+      },
+      needsArguments: false,
+      confidence: 1,
+    }))
+    f.port.tools = [upload]
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name !== upload.name) return original(name, args, signal)
+      expect(args.base64).toBe(base64)
+      calls++
+      return {
+        value:
+          calls === 48
+            ? {
+                result: {
+                  ok: false,
+                  diagnostic: {
+                    code: "fixture-rejection",
+                    message: "CAD rejection remains visible",
+                    retryable: false,
+                  },
+                },
+              }
+            : { content: [{ type: "text", text: (calls % 2 ? "\0" : "界").repeat(32_000) }] },
+        photos: [],
+        failed: calls === 48,
+      }
+    }
+    const { sessionId } = await open(f)
+    expect(
+      await f.client.agent.request<acp.PromptResponse, acp.PromptRequest>(
+        acp.methods.agent.session.prompt,
+        { sessionId, prompt: [{ type: "text", text: "Continue the upload" }] },
+      ),
+    ).toEqual({ stopReason: "end_turn" })
+    expect(calls).toBe(48)
+    const tools = f.updates.filter(
+      (update) =>
+        update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update",
+    )
+    expect(tools).toHaveLength(96)
+    expect(
+      tools.every((update) => update.rawInput === undefined && update.rawOutput === undefined),
+    ).toBe(true)
+    expect(tools.at(-1)?.status).toBe("failed")
+    expect(JSON.stringify(tools.at(-1)?.content)).toContain("CAD rejection remains visible")
+    const bytes = f.updates.reduce(
+      (sum, update) => sum + Buffer.byteLength(JSON.stringify({ sessionId, update })),
+      0,
+    )
+    expect(bytes).toBeLessThan(2 * 1024 * 1024)
+    expect(JSON.stringify(tools)).toContain("Tool result truncated in chat display")
+  })
+  it("keeps complete bounded evidence in decision context when its chat display is truncated", async () => {
+    const evidence = { result: { ok: true, value: "x".repeat(12_000) } }
+    let decisions = 0
+    const f = fixture(async (state) => {
+      if (decisions++ === 0)
+        return {
+          kind: "tool",
+          tool,
+          arguments: { baseRevision: 0 },
+          needsArguments: false,
+          confidence: 1,
+        }
+      expect(state.history.find((entry) => entry.tool === tool.name)?.result).toEqual(evidence)
+      return { kind: "done", confidence: 1 }
+    })
+    const original = f.port.call
+    f.port.call = (name, args, signal) =>
+      name === tool.name
+        ? Promise.resolve({ value: evidence, photos: [], failed: false })
+        : original(name, args, signal)
+    const { sessionId } = await open(f)
+    await f.client.agent.request(acp.methods.agent.session.prompt, {
+      sessionId,
+      prompt: [{ type: "text", text: "Create" }],
+    })
+    expect(decisions).toBe(2)
+    const start = f.updates.find((update) => update.sessionUpdate === "tool_call")
+    const finish = f.updates.find((update) => update.sessionUpdate === "tool_call_update")
+    expect(start).toMatchObject({ rawInput: { baseRevision: 0 } })
+    expect(finish).not.toHaveProperty("rawInput")
+    expect(JSON.stringify(finish)).toContain("Tool result truncated in chat display")
+    expect(JSON.stringify(finish)).not.toContain("x".repeat(12_000))
+  })
   it("passes the configured operation timeout to the MCP connection", async () => {
     const f = fixture(async () => ({ kind: "done", confidence: 1 }))
     await open(f)

@@ -95,6 +95,11 @@ ACP JSON-RPC, so it is intended for an ACP client rather than an interactive ter
 - The default confidence threshold is provisional, not calibrated on CAD tasks. It controls
   escalation, never permission to bypass CAD validation. Set it deliberately for your workload.
 - SDK transport retries are disabled. Provider failures do not produce replacement actions.
+- Chat display has its own budget: only the first tool update carries arguments, and only when
+  their JSON fits 8 KiB. Larger arguments are omitted, so that call has no argument-derived target
+  hints. Result text uses an 8 KiB JSON budget or a marked 1024-character prefix. Full arguments
+  still reach the tool; controller observations retain their separate bounds. Display updates for
+  the maximum 48 steps stay below the desktop's cumulative 2 MiB turn budget.
 - Local regression tests exercise batching, selected arguments, cancellation, ACP updates,
   revision changes and schema rejection with fake providers. No paid API trial, live CAD authoring
   session or performance benchmark is implied by those tests.

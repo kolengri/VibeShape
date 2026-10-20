@@ -69,6 +69,8 @@ and ordinary-operation timeout. Stop and the server's authority, liveness and pr
 apply; this client horizon does not extend consent or guarantee that a review remains available.
 The native host has no default whole-turn ACP deadline, so waiting for review does not end the agent
 after ten minutes. Stop and its bounded process-termination grace period remain available.
+Large tool arguments can be omitted from chat and result text summarized; use tool inspection for
+complete current evidence. Omitted arguments have no argument-derived chat target hints.
 The controller stops on uncertain writes, schema rejection, low selected-branch confidence or its
 step limit. Inspect the saved model before continuing; a `done` decision is not verification.
 After an uncertain dispatch, this process permits read-only inspection only. Inspect saved state
