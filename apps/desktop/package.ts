@@ -122,7 +122,11 @@ async function createIcon(stage: string) {
 }
 
 async function platformOptions(stage: string, platform: "darwin" | "win32") {
-  if (platform === "win32") return { icon: join(root, "apps/desktop/packaging/app-icon.ico") }
+  if (platform === "win32")
+    return {
+      icon: join(root, "apps/desktop/packaging/app-icon.ico"),
+      win32metadata: { CompanyName: "VibeShape contributors" },
+    }
   return {
     icon: await createIcon(stage),
     appBundleId: "org.vibeshape.desktop",
