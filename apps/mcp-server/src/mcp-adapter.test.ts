@@ -1,7 +1,7 @@
 import { expect, it } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
-import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js"
+import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
 import { localOperationSchema, localToolOutputs } from "@vibeshape/automation-api/local-tools"
@@ -79,7 +79,10 @@ it("delivers client-valid native preview images and withholds them after revocat
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   try {
     await Promise.all([adapter.connect(serverTransport), client.connect(clientTransport)])
-    const tool = (await client.listTools()).tools.find(({ name }) => name === "render_preview")
+    // Compile the exercised schemas rather than every CAD output schema on this test loop.
+    const tool = (await client.request({ method: "tools/list" }, ListToolsResultSchema)).tools.find(
+      ({ name }) => name === "render_preview",
+    )
     expect(tool?.annotations).toMatchObject({
       readOnlyHint: true,
       idempotentHint: true,
@@ -96,17 +99,25 @@ it("delivers client-valid native preview images and withholds them after revocat
         .valid,
     ).toBe(true)
     expect(validate({ source: "draft", revision: 5 }).valid).toBe(false)
+    if (!tool.outputSchema) throw new Error("The render_preview output schema was not advertised.")
+    const validateOutput = new AjvJsonSchemaValidator().getValidator({
+      ...tool.outputSchema,
+      properties: tool.outputSchema.properties ?? {},
+      required: tool.outputSchema.required ?? [],
+    })
     const request = {
       name: "render_preview",
       arguments: { source: "model", revision: 4, views: ["front"] },
     }
     const rendered = CallToolResultSchema.parse(await client.callTool(request))
+    expect(validateOutput(rendered.structuredContent).valid).toBe(true)
     expect(rendered.content).toContainEqual({ type: "image", data: png, mimeType: "image/png" })
     const structured = rendered.structuredContent?.result as { ok: boolean; value: unknown }
     expect(renderPreviewMetadataSchema.safeParse(structured.value).success).toBe(true)
     expect(JSON.stringify(rendered.structuredContent)).not.toContain(png)
     paired.mockReturnValue(false)
     const revoked = CallToolResultSchema.parse(await client.callTool(request))
+    expect(validateOutput(revoked.structuredContent).valid).toBe(true)
     expect(revoked).toMatchObject({
       isError: true,
       structuredContent: { result: { diagnostic: { code: "session-revoked" } } },
