@@ -224,7 +224,13 @@ function MoreActions({ view }: { view: AssemblyWorkspaceView }) {
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             <ToolbarButton asChild>
-              <Button type="button" size="icon-sm" variant="ghost" aria-label={t("moreActions")}>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t("moreActions")}
+                dropdown
+              >
                 <Ellipsis aria-hidden="true" />
               </Button>
             </ToolbarButton>

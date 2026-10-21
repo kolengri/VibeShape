@@ -87,6 +87,10 @@ not identify the setting. These headings do not become selectable options.
 
 Shared interactive components require behavior tests, not snapshots alone.
 
+Icon-only menu and command-picker buttons use the shared Button `dropdown` variant to show a
+decorative lower-right chevron without changing the control size or accessible name. Labeled
+triggers and split-menu buttons retain their existing inline chevron.
+
 - Test native uncontrolled behavior before testing any form adapter.
 - Test pointer double-click, keyboard activation where custom handling exists, disabled behavior, and focus preservation.
 - Test async fulfillment and rejection, immediate repeat attempts, external loading, and unmount or cancellation behavior when relevant.
