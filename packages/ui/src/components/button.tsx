@@ -3,6 +3,7 @@ import { isAnyObject, isFunction, isPromise } from "is-what"
 import { Slot } from "radix-ui"
 import * as React from "react"
 import { useReportActivity } from "#components/activity"
+import { ChevronDownIcon } from "#components/icons"
 import { Spinner } from "#components/spinner"
 import { cn } from "#lib/cn"
 
@@ -21,6 +22,9 @@ const buttonVariants = cva(
   ],
   {
     variants: {
+      dropdown: {
+        true: "[&>svg[data-slot=button-dropdown-indicator]]:size-2.5",
+      },
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
@@ -78,10 +82,21 @@ function buttonPendingPresentation(
   }
 }
 
+function ButtonDropdownIndicator({ visible }: { visible: boolean }) {
+  return visible ? (
+    <ChevronDownIcon
+      data-slot="button-dropdown-indicator"
+      aria-hidden="true"
+      className="absolute right-0 bottom-0"
+    />
+  ) : null
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  dropdown = false,
   asChild = false,
   isLoading = false,
   disabled = false,
@@ -139,13 +154,14 @@ function Button({
       aria-busy={presentation.ariaBusy}
       aria-disabled={(asChild && isDisabled) || ariaDisabled || undefined}
       disabled={asChild ? undefined : isDisabled}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size, dropdown, className }))}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       {...props}
     >
       {showLoading && !centralized ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
       <Slot.Slottable>{children}</Slot.Slottable>
+      <ButtonDropdownIndicator visible={dropdown === true} />
     </Component>
   )
 }

@@ -60,6 +60,7 @@ export function ToolbarCommandPicker({
           aria-label={label}
           aria-current={active ? "true" : undefined}
           data-toolbar-menu={focusId}
+          dropdown={!showLabel}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {
               event.preventDefault()
