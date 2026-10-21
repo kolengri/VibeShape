@@ -135,8 +135,7 @@ function measuredToolbar(initialWidth: number) {
     } else if (this.hasAttribute("data-fit-icon")) measured = 32
     else if (this.hasAttribute("data-fit-leading")) measured = 104
     else if (this.hasAttribute("data-fit-separator")) measured = 9
-    else if (this.hasAttribute("data-fit-menu"))
-      measured = this.dataset.fitMenu === "primitives" ? 96 : 80
+    else if (this.hasAttribute("data-fit-menu")) measured = 32
     return measured === undefined ? original.call(this) : new DOMRect(0, 0, measured, 32)
   })
   return {
@@ -188,9 +187,9 @@ describe("CommandToolbar", () => {
     await user.click(direct)
     expect(actions.generativeDesign).toHaveBeenCalledTimes(1)
     act(() => direct.focus())
-    await size.resize(480)
+    await size.resize(320)
     const menu = screen.getByRole("button", { name: "Create" })
-    expect(document.activeElement).toBe(menu)
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Create")
     expect(screen.queryByRole("button", { name: "Generative Design" })).toBeNull()
     await user.click(menu)
     expect(screen.getAllByRole("menuitem", { name: "Generative Design" })).toHaveLength(1)
@@ -215,7 +214,7 @@ describe("CommandToolbar", () => {
     const sweep = screen.getByRole("button", { name: "Sweep" })
     act(() => sweep.focus())
     const before = size.measurements()
-    await size.resize(480)
+    await size.resize(320)
     expect(size.measurements() - before).toBe(1)
     expect(screen.queryByRole("button", { name: "Sweep" })).toBeNull()
     const create = screen.getByRole("button", { name: "Create" })
@@ -294,20 +293,50 @@ describe("CommandToolbar", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
-  it("shows tooltips only for icon-only command menu triggers", async () => {
+  it("names icon-only category triggers and shows their tooltips", async () => {
     const user = userEvent.setup()
     renderToolbar()
+    const icons = new Set<string>()
     for (const name of ["Primitives", "Modify", "Create"]) {
       const trigger = screen.getByRole("button", { name })
-      expect(trigger.textContent).toContain(name)
+      expect(trigger.textContent).toBe("")
+      const icon = trigger.querySelector("svg")
+      expect(icon?.getAttribute("aria-hidden")).toBe("true")
+      icons.add(icon?.innerHTML ?? "")
+      expect(trigger.getAttribute("aria-haspopup")).toMatch(/^(menu|dialog)$/)
       expect(trigger.getAttribute("title")).toBeNull()
       await user.hover(trigger)
-      expect(screen.queryByRole("tooltip")).toBeNull()
+      expect((await screen.findByRole("tooltip")).textContent).toBe(name)
       await user.unhover(trigger)
+      await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull())
     }
+    expect(icons.size).toBe(3)
     const icon = screen.getByRole("button", { name: "Create sketch" })
     await user.hover(icon)
     expect((await screen.findByRole("tooltip")).textContent).toContain("Create sketch")
+  })
+
+  it("opens icon category menus by keyboard and restores focus on Escape", async () => {
+    const user = userEvent.setup()
+    renderToolbar(
+      commands().map((command) => ({ ...command, eligibility: { enabled: true as const } })),
+    )
+    for (const [name, item] of [
+      ["Create", "Datum plane"],
+      ["Modify", "Fillet"],
+      ["Primitives", "Box"],
+    ] as const) {
+      const trigger = screen.getByRole("button", { name })
+      act(() => trigger.focus())
+      await user.keyboard("{ArrowDown}")
+      const role = trigger.getAttribute("aria-haspopup") === "dialog" ? "option" : "menuitem"
+      expect(screen.getByRole(role, { name: item })).toBeTruthy()
+      expect(trigger.getAttribute("aria-expanded")).toBe("true")
+      await user.keyboard("{Escape}")
+      await waitFor(() => expect(document.activeElement).toBe(trigger))
+    }
+    await user.keyboard("{ArrowDown}{Home}{Enter}")
+    expect(actions.createBox).toHaveBeenCalledTimes(1)
   })
 
   it("opens Lightweighting from Modify with distinct vector icons", async () => {
@@ -576,7 +605,7 @@ describe("CommandToolbar", () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 
-  it("keeps primary model actions direct and groups remaining commands in labeled menus", async () => {
+  it("keeps primary model actions direct and groups remaining commands in named icon menus", async () => {
     const user = userEvent.setup()
     renderToolbar()
     const modeling = screen.getByRole("group", { name: "Modeling actions" })
@@ -589,7 +618,7 @@ describe("CommandToolbar", () => {
         .map((button) => button.ariaLabel),
     ).toEqual(["Create sketch", "Extrude", "Revolve"])
     for (const label of ["Create", "Modify", "Primitives"]) {
-      expect(screen.getByRole("button", { name: label }).textContent).toBe(label)
+      expect(screen.getByRole("button", { name: label }).textContent).toBe("")
     }
     expect(screen.queryByRole("button", { name: "Inspect" })).toBeNull()
     expect(screen.getByRole("button", { name: "Measure" })).toBeTruthy()

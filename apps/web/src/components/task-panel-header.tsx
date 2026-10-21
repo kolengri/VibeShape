@@ -31,7 +31,7 @@ export function TaskPanelHeader({
     <header
       data-slot="task-panel-header"
       className={cn(
-        "sticky top-0 z-10 grid min-w-0 gap-2 bg-panel",
+        "sticky top-0 z-10 grid min-w-0 gap-2 bg-transparent max-lg:bg-panel",
         // Cover the compact scrollport's top padding without moving the header or its actions.
         "max-lg:before:pointer-events-none max-lg:before:absolute max-lg:before:inset-x-0 max-lg:before:-top-4 max-lg:before:h-4 max-lg:before:bg-panel max-lg:before:content-['']",
         className,

@@ -2,7 +2,9 @@ import { BufferAttribute, BufferGeometry } from "three"
 import type { ViewerMesh } from "./three-viewport"
 
 /** Returns the stable identity key for one feature body output. */
-export function viewerBodyKey(body: Readonly<{ featureId: string; outputRole?: string }>) {
+export function viewerBodyKey(
+  body: Readonly<{ featureId: string; outputRole?: string | undefined }>,
+) {
   return body.outputRole === undefined
     ? body.featureId
     : `${body.featureId}\u0000${body.outputRole}`

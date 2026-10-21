@@ -2,5 +2,5 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "@vibeshape/typescript-config/bun.json",
   "compilerOptions": { "allowImportingTsExtensions": true },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "project-create-cold-start.spec.ts"]
 }

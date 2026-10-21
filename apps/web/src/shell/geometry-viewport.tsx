@@ -84,6 +84,12 @@ import {
 import { useReportApplicationError } from "./application-notices"
 import { assistantCheckpointDisplayController } from "./assistant-checkpoint-display"
 import { authoredBodyKey, authoredBodyKeys, currentAuthoredSnapshot } from "./authored-tree-state"
+import {
+  ModelEdgeViewportChrome,
+  type ModelEdgeViewportSelection,
+  useModelEdgeSelectOther,
+  useModelEdgeViewport,
+} from "./model-edge-viewport"
 import { SectionViewControls } from "./section-view-controls"
 import {
   useSectionViewportFactory,
@@ -369,6 +375,7 @@ function orientationInsetOffsetElement(canvas: HTMLCanvasElement) {
 async function initializeViewport(
   canvas: HTMLCanvasElement,
   createViewport: ViewportFactory,
+  modelEdges: ReturnType<typeof useModelEdgeViewport>,
   onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void,
   onOriginPlaneSelectionChange: (plane: ViewerOriginPlane | null) => void,
   onSelectionChange: (selection: ViewerSelection | null) => void,
@@ -436,6 +443,15 @@ async function initializeViewport(
       onSketchProfileCandidateStackCommit,
       onSketchProfilePreselectionChange,
       onSketchProfileSelectionChange,
+      onEdgeSelectionChange: (candidate) => {
+        if (!mount.cancelled) modelEdges.onSelectionChange(candidate)
+      },
+      onEdgePreselectionChange: (candidate) => {
+        if (!mount.cancelled) modelEdges.onPreselectionChange(candidate)
+      },
+      onEdgeCandidateStackChange: (candidates) => {
+        if (!mount.cancelled) modelEdges.onCandidateStackChange(candidates)
+      },
       onTranslationGizmoPositionChange: (position) =>
         latestTranslationGizmoRef.current?.onPositionChange(position),
       onAxialGizmoDistanceChange: (distance) => latestAxialDistanceChangeRef.current?.(distance),
@@ -463,6 +479,7 @@ async function initializeViewport(
       translationGizmoRef: latestTranslationGizmoRef,
       sketchContextRef: latestSketchContextRef,
     })
+    modelEdges.synchronize(viewport)
     setRendererFailed(false)
   } catch {
     if (!mount.cancelled) setRendererFailed(true)
@@ -788,6 +805,55 @@ function useViewportRendererStatus() {
   return { rendererFailed, setRendererFailed, setEdgePreparationFailed }
 }
 
+function routeViewportSketchProfileSelection(
+  profile: ViewerSketchProfile | null,
+  intent: ViewerSketchProfileSelectionIntent,
+  selection: GeometryViewportProps["sketchProfileSelection"],
+  sketches: readonly ViewerSketch[],
+) {
+  if (!selection) return
+  if (!profile) {
+    selection.onSelect(null, [], "replace")
+    return
+  }
+  const source = sketches.find(({ sketchId }) => sketchId === profile.selector.sketchId)
+  selection.onSelect(
+    profile.selector as SketchProfileSelector,
+    source?.profiles?.map(({ selector }) => selector as SketchProfileSelector) ?? [],
+    intent,
+  )
+}
+
+function useViewportModelSynchronization(
+  viewportRef: RefObject<GeometryViewportPort | null>,
+  latest: ReturnType<typeof useLatestViewportInputs>,
+  modelEdges: ReturnType<typeof useModelEdgeViewport>,
+  dismissProfileSelectionRequest: () => void,
+) {
+  const meshes = latest.meshesRef.current
+  const sketches = latest.sketchesRef.current
+  useEffect(() => {
+    viewportRef.current?.setMeshes(meshes)
+    synchronizeViewportSelectedFaces(viewportRef.current, latest.sketchContextRef.current)
+  }, [meshes, latest.sketchContextRef, viewportRef])
+
+  useEffect(() => {
+    modelEdges.synchronize(viewportRef.current)
+  }, [modelEdges.candidates, modelEdges.synchronize, viewportRef])
+
+  useEffect(() => {
+    dismissProfileSelectionRequest()
+    viewportRef.current?.setSketches(sketches)
+  }, [dismissProfileSelectionRequest, sketches, viewportRef])
+
+  useViewportProfileSelectionSynchronization(
+    viewportRef,
+    sketches,
+    latest.sketchProfileSelectionRef.current,
+    latest.sketchProfilePreviewRef.current,
+  )
+}
+
 function useViewportRenderer(
   createViewport: ViewportFactory,
   controller: DocumentControllerState,
@@ -809,9 +875,11 @@ function useViewportRenderer(
   axialGizmo: GeometryViewportProps["axialGizmo"],
   translationGizmo: GeometryViewportProps["translationGizmo"],
   axialGizmoPending: boolean,
+  edgeSelection: ModelEdgeViewportSelection | undefined,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<GeometryViewportPort | null>(null)
+  const modelEdges = useModelEdgeViewport(edgeSelection, meshes)
   const latest = useLatestViewportInputs({
     controller,
     featurePreselection,
@@ -854,6 +922,7 @@ function useViewportRenderer(
     void initializeViewport(
       canvas,
       createViewport,
+      modelEdges,
       (plane) => latest.selectionCallbacksRef.current.onOriginPlanePreselectionChange(plane),
       (plane) => {
         profileInteraction.dismissSelectionRequest()
@@ -877,19 +946,11 @@ function useViewportRenderer(
       profileInteraction.setPreselection,
       (profile, intent) => {
         profileInteraction.dismissSelectionRequest()
-        const selection = latest.sketchProfileSelectionRef.current
-        if (!selection) return
-        if (!profile) {
-          selection.onSelect(null, [], "replace")
-          return
-        }
-        const source = latest.sketchesRef.current.find(
-          ({ sketchId }) => sketchId === profile.selector.sketchId,
-        )
-        selection.onSelect(
-          profile.selector as SketchProfileSelector,
-          source?.profiles?.map(({ selector }) => selector as SketchProfileSelector) ?? [],
+        routeViewportSketchProfileSelection(
+          profile,
           intent,
+          latest.sketchProfileSelectionRef.current,
+          latest.sketchesRef.current,
         )
       },
       mount,
@@ -915,6 +976,7 @@ function useViewportRenderer(
     return () => {
       mount.cancelled = true
       if (viewportRef.current === mount.viewport) viewportRef.current = null
+      modelEdges.disconnect(mount.viewport)
       mount.viewport?.dispose()
     }
   }, [
@@ -922,24 +984,19 @@ function useViewportRenderer(
     profileInteraction.dismissSelectionRequest,
     selectionCandidates.onChange,
     selectionCandidates.onCommit,
+    modelEdges.disconnect,
+    modelEdges.onCandidateStackChange,
+    modelEdges.onPreselectionChange,
+    modelEdges.onSelectionChange,
+    modelEdges.synchronize,
     shouldInitialize,
   ])
 
-  useEffect(() => {
-    viewportRef.current?.setMeshes(meshes)
-    synchronizeViewportSelectedFaces(viewportRef.current, latest.sketchContextRef.current)
-  }, [meshes, latest.sketchContextRef])
-
-  useEffect(() => {
-    profileInteraction.dismissSelectionRequest()
-    viewportRef.current?.setSketches(sketches)
-  }, [profileInteraction.dismissSelectionRequest, sketches])
-
-  useViewportProfileSelectionSynchronization(
+  useViewportModelSynchronization(
     viewportRef,
-    sketches,
-    sketchProfileSelection,
-    sketchProfilePreview,
+    latest,
+    modelEdges,
+    profileInteraction.dismissSelectionRequest,
   )
 
   useEffect(() => {
@@ -967,6 +1024,7 @@ function useViewportRenderer(
 
   return {
     canvasRef,
+    modelEdges,
     rendererFailed,
     selectionCandidateCommit: selectionCandidates.commit,
     selectionCandidateStack: selectionCandidates.stack,
@@ -1106,6 +1164,7 @@ function ViewportControls({
   fitLabel,
   selection,
   onBodyClear,
+  onEdgeClear,
   viewportRef,
 }: {
   viewControls?: ReactNode
@@ -1113,6 +1172,7 @@ function ViewportControls({
   clearLabel: string
   fitLabel: string
   onBodyClear?: (() => void) | undefined
+  onEdgeClear?: (() => void) | undefined
   selection: ViewerSelection | ModelBodySelection | null
   viewportRef: RefObject<GeometryViewportPort | null>
 }) {
@@ -1134,13 +1194,14 @@ function ViewportControls({
       )}
     >
       {viewControls}
-      {selection ? (
+      {selection || onEdgeClear ? (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               aria-label={clearLabel}
               onClick={() => {
-                viewportRef.current?.clearSelection()
+                if (onEdgeClear) onEdgeClear()
+                else viewportRef.current?.clearSelection()
                 onBodyClear?.()
               }}
               size="icon-sm"
@@ -1390,6 +1451,7 @@ type GeometryViewportProps = Readonly<{
   selectedFeatureId?: string | null
   onSelectionChange: (selection: ViewerSelection | null) => void
   selection: ViewerSelection | null
+  edgeSelection?: ModelEdgeViewportSelection | undefined
   sketchContext?: GeometryViewportSketchContext
   sketchProfileSelection?: Readonly<{
     keyboardPickerActive?: boolean
@@ -1930,6 +1992,28 @@ function useGeometryViewportDecorations(
   )
 }
 
+function hasActiveModelingTool(props: GeometryViewportProps) {
+  return Boolean(
+    props.toolPlane ||
+      props.angularGizmo ||
+      props.axialGizmo ||
+      props.translationGizmo ||
+      (props.featurePreview && props.featurePreview.status !== "idle"),
+  )
+}
+
+function ordinaryModelEdgeViewportSelection(props: GeometryViewportProps, taskPicking: boolean) {
+  if (
+    props.readOnlyPresentation ||
+    props.sketchContext ||
+    props.originPlaneSelection ||
+    taskPicking ||
+    hasActiveModelingTool(props)
+  )
+    return undefined
+  return props.edgeSelection
+}
+
 function useGeometryViewportInteraction(
   props: GeometryViewportProps,
   scene: ReturnType<typeof useGeometryViewportScene>,
@@ -1943,6 +2027,11 @@ function useGeometryViewportInteraction(
     sketchContext,
     sketchProfileSelection,
   } = props
+  const task = useWorkspaceTask()
+  const edgeSelection = ordinaryModelEdgeViewportSelection(
+    props,
+    Boolean(task?.interaction?.picking),
+  )
   const { printPresentation, sectionFactory } = useGeometryViewportPresentation(props, scene)
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
     null,
@@ -1954,6 +2043,7 @@ function useGeometryViewportInteraction(
   const t = useTranslations("app.shell.viewport")
   const {
     canvasRef,
+    modelEdges,
     rendererFailed,
     selectionCandidateCommit,
     selectionCandidateStack,
@@ -1985,6 +2075,7 @@ function useGeometryViewportInteraction(
     props.axialGizmo,
     props.translationGizmo,
     props.axialGizmoPending ?? false,
+    edgeSelection,
   )
   useGeometryViewportDecorations(viewportRef, props, printPresentation)
   const supportFaceSelection = useSupportFaceSelection(
@@ -1996,6 +2087,7 @@ function useGeometryViewportInteraction(
   return {
     printReport: printPresentation.report,
     canvasRef,
+    modelEdges,
     dismissSketchProfileSelectionRequest,
     originPlaneInteraction,
     originPlanePreselection,
@@ -2041,6 +2133,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     rendererFailed: interaction.rendererFailed,
     printReport: interaction.printReport,
     canvasRef: interaction.canvasRef,
+    modelEdges: interaction.modelEdges,
     meshes: scene.meshes,
     sketches: scene.sketches,
     message,
@@ -2070,6 +2163,7 @@ function ViewportControlsSlot({
   onOriginPlaneVisibilityChange,
   selection,
   onBodyClear,
+  onEdgeClear,
   viewportRef,
 }: Readonly<{
   viewControls?: ReactNode
@@ -2079,6 +2173,7 @@ function ViewportControlsSlot({
   originPlaneVisibility: ViewerOriginPlaneVisibility
   onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   onBodyClear?: (() => void) | undefined
+  onEdgeClear?: (() => void) | undefined
   selection: ViewerSelection | ModelBodySelection | null
   viewportRef: RefObject<GeometryViewportPort | null>
 }>) {
@@ -2098,6 +2193,7 @@ function ViewportControlsSlot({
           fitLabel={t("fit")}
           selection={selection}
           onBodyClear={onBodyClear}
+          onEdgeClear={onEdgeClear}
           viewportRef={viewportRef}
         />
       ) : null}
@@ -2787,6 +2883,7 @@ function ModelViewportChrome({
   profileChrome,
   selection,
   onBodyClear,
+  onEdgeClear,
   supportFacePreselectionLabel,
   supportFaceSelectOther,
   sketches,
@@ -2802,6 +2899,7 @@ function ModelViewportChrome({
   originPlaneVisibility: ViewerOriginPlaneVisibility
   profileChrome: ReactNode
   onBodyClear?: (() => void) | undefined
+  onEdgeClear?: (() => void) | undefined
   selection: ViewerSelection | ModelBodySelection | null
   supportFacePreselectionLabel: string | null
   supportFaceSelectOther: SupportFaceSelectOtherState
@@ -2822,6 +2920,7 @@ function ModelViewportChrome({
         onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
         selection={selection}
         onBodyClear={onBodyClear}
+        onEdgeClear={onEdgeClear}
         viewportRef={viewportRef}
       />
       <OriginPlaneSelectionOverlay
@@ -3098,8 +3197,7 @@ function GeometryViewportContextChrome({
   selectOther: SketchReferenceSelectOtherState
   supportFaceSelectOther: SupportFaceSelectOtherState
 }>) {
-  const t = useTranslations("app.shell.viewport")
-  const { featurePreview, originPlaneSelection, selection, sketchContext } = props
+  const { originPlaneSelection, sketchContext } = props
   if (sketchContext && !originPlaneSelection) {
     return (
       <SketchContextChrome
@@ -3111,6 +3209,32 @@ function GeometryViewportContextChrome({
       />
     )
   }
+  return (
+    <ModelViewportContextChrome
+      viewControls={viewControls}
+      model={model}
+      profileSelectOther={profileSelectOther}
+      props={props}
+      supportFaceSelectOther={supportFaceSelectOther}
+    />
+  )
+}
+
+function ModelViewportContextChrome({
+  viewControls,
+  model,
+  profileSelectOther,
+  props,
+  supportFaceSelectOther,
+}: Readonly<{
+  viewControls?: ReactNode
+  model: ReturnType<typeof useGeometryViewportModel>
+  profileSelectOther: SavedProfileSelectOtherState
+  props: GeometryViewportProps
+  supportFaceSelectOther: SupportFaceSelectOtherState
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  const { featurePreview, originPlaneSelection, selection } = props
   return (
     <ModelViewportChrome
       viewControls={viewControls}
@@ -3136,6 +3260,7 @@ function GeometryViewportContextChrome({
       }
       selection={props.selectedBody ?? selection}
       onBodyClear={props.selectedBody ? () => props.onBodySelectionChange?.(null) : undefined}
+      onEdgeClear={model.modelEdges.hasSelection ? model.modelEdges.clearSelection : undefined}
       sketches={model.sketches}
       supportFacePreselectionLabel={
         supportFaceSelectOther.activeCandidate?.label ??
@@ -3458,9 +3583,13 @@ function useGeometryViewportHost(props: GeometryViewportProps) {
     supportFaceSelectOther,
     selectOther,
   )
+  const modelEdgeSelectOther = useModelEdgeSelectOther(model.modelEdges, sketchReferenceRegionRef)
+  const regionInteraction = model.modelEdges.active
+    ? modelEdgeSelectOther.regionInteraction
+    : referenceInteraction
   const regionClassNames = viewportRegionClassNames(
     passive,
-    referenceInteraction,
+    regionInteraction,
     Boolean(props.viewControls),
   )
   return {
@@ -3475,7 +3604,8 @@ function useGeometryViewportHost(props: GeometryViewportProps) {
     selectOther,
     supportFaceSelectOther,
     profileSelectOther,
-    referenceInteraction,
+    modelEdgeSelectOther,
+    referenceInteraction: regionInteraction,
     regionClassNames,
   }
 }
@@ -3495,6 +3625,7 @@ function GeometryViewport(props: GeometryViewportProps) {
     selectOther,
     supportFaceSelectOther,
     profileSelectOther,
+    modelEdgeSelectOther,
     referenceInteraction,
     regionClassNames,
   } = useGeometryViewportHost(props)
@@ -3566,6 +3697,7 @@ function GeometryViewport(props: GeometryViewportProps) {
         supportFaceSelectOther={supportFaceSelectOther}
       />
       <ViewportAxialControls props={props} axial={axial} />
+      <ModelEdgeViewportChrome edges={model.modelEdges} selectOther={modelEdgeSelectOther} />
     </section>
   )
 }

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { canonicalJson } from "./canonical-json"
 import { featureIdSchema } from "./identifiers"
 
 const finiteNumberSchema = z.number().finite()
@@ -332,12 +333,54 @@ function scoreSignature(
   )
 }
 
+function exactSignatureKey(signature: TopoRef["signature"]) {
+  return canonicalJson({
+    ...signature,
+    direction: signature.direction ?? null,
+    directionMode: signature.directionMode ?? null,
+  })
+}
+
+function resolveExactEdgeSignature(
+  reference: TopoRef,
+  candidates: readonly TopologyCandidate[],
+  method: "history" | "signature",
+): TopologyResolution | null {
+  // A freshly picked edge must survive nearby, geometrically similar edges. Identical
+  // signatures still fail closed; semantic/history ownership and explicit intent win.
+  if (reference.kind !== "edge" || reference.intent) return null
+  const signature = exactSignatureKey(reference.signature)
+  const exact = candidates.filter(
+    (candidate) =>
+      candidate.kind === "edge" && exactSignatureKey(candidate.signature) === signature,
+  )
+  if (exact.length === 1)
+    return {
+      status: "resolved",
+      candidateId: (exact[0] as TopologyCandidate).candidateId,
+      method,
+      score: 0,
+      confidenceMargin: null,
+    }
+  if (exact.length > 1)
+    return {
+      status: "ambiguous",
+      candidateIds: exact.map(({ candidateId }) => candidateId).sort(),
+      method,
+      bestScore: 0,
+      confidenceMargin: 0,
+    }
+  return null
+}
+
 function rankCandidates(
   reference: TopoRef,
   candidates: readonly TopologyCandidate[],
   policy: TopologyResolutionPolicy,
   method: "history" | "signature",
 ): TopologyResolution {
+  const exact = resolveExactEdgeSignature(reference, candidates, method)
+  if (exact) return exact
   const ranked = candidates
     .map((candidate) => ({ candidate, score: scoreSignature(reference, candidate, policy) }))
     .filter((item): item is { candidate: TopologyCandidate; score: number } => item.score !== null)

@@ -42,6 +42,28 @@ async function reviewExportLayout(page: import("@playwright/test").Page) {
 }
 
 test.describe("document export", () => {
+  test("remembers the last format and mesh quality after export and reload", async ({ page }) => {
+    await page.goto("/")
+    await createBox(page)
+    await openApplicationMenuItem(page, "Export geometry…")
+    const dialog = page.getByRole("dialog", { name: "Export model" })
+    await dialog.getByRole("combobox", { name: "File format" }).selectOption("stl")
+    await dialog.getByRole("combobox", { name: "Mesh quality" }).click()
+    await page.getByRole("option", { name: "Fine", exact: true }).click()
+    const downloaded = page.waitForEvent("download")
+    await dialog.getByRole("button", { name: "Save STL file", exact: true }).click()
+    expect((await downloaded).suggestedFilename()).toBe("Untitled project.stl")
+    await expect(dialog).toHaveCount(0)
+    await openApplicationMenuItem(page, "Export geometry…")
+    await expect(dialog.getByRole("combobox", { name: "File format" })).toHaveValue("stl")
+    await expect(dialog.getByRole("combobox", { name: "Mesh quality" })).toHaveText("Fine")
+    await dialog.getByRole("button", { name: "Close", exact: true }).click()
+    await page.reload()
+    await openApplicationMenuItem(page, "Export geometry…")
+    await expect(dialog.getByRole("combobox", { name: "File format" })).toHaveValue("stl")
+    await expect(dialog.getByRole("combobox", { name: "Mesh quality" })).toHaveText("Fine")
+  })
+
   test("downloads 3MF, exact STEP, and binary STL from rebuilt terminal bodies", async ({
     page,
   }) => {

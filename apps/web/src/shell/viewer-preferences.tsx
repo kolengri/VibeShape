@@ -1,4 +1,8 @@
-import { type PrinterProfile, printerProfileSchema } from "@vibeshape/protocol"
+import {
+  geometryExportFormatSchema,
+  type PrinterProfile,
+  printerProfileSchema,
+} from "@vibeshape/protocol"
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react"
 import { z } from "zod"
 import { useStore } from "zustand"
@@ -10,7 +14,10 @@ const preferencesSchema = z
     version: z.literal(1),
     theme: z.enum(["dark", "light", "system"]),
     autoHideConsumedSketches: z.boolean(),
-    preferredExportFormat: z.enum(["3mf", "step", "stl"]),
+    preferredExportFormat: geometryExportFormatSchema,
+    lastExportFormat: geometryExportFormatSchema.nullable().catch(null).default(null),
+    exportMeshQuality: z.enum(["default", "coarse", "fine"]).catch("default").default("default"),
+    exportDestination: z.enum(["file", "slicer"]).catch("file").default("file"),
     printerProfile: printerProfileSchema.nullable().catch(null).default(null),
     printBedVisible: z.boolean().default(false),
     groundGridVisible: z.boolean().default(true),
@@ -26,6 +33,8 @@ export type ViewerPreferencesState = Preferences & {
     setTheme: (theme: Preferences["theme"]) => void
     setAutoHideConsumedSketches: (hidden: boolean) => void
     setPreferredExportFormat: (format: Preferences["preferredExportFormat"]) => void
+    setExportMeshQuality: (quality: Preferences["exportMeshQuality"]) => void
+    setExportDestination: (destination: Preferences["exportDestination"]) => void
   }
 }
 type StorageLike = Pick<Storage, "getItem" | "setItem">
@@ -36,6 +45,9 @@ const defaults: Preferences = {
   theme: "dark",
   autoHideConsumedSketches: true,
   preferredExportFormat: "3mf",
+  lastExportFormat: null,
+  exportMeshQuality: "default",
+  exportDestination: "file",
 }
 
 function browserStorage() {
@@ -76,7 +88,10 @@ export function createViewerPreferencesStore(storage: StorageLike | null = brows
       setGroundGridVisible: (groundGridVisible) => set({ groundGridVisible }),
       setTheme: (theme) => set({ theme }),
       setAutoHideConsumedSketches: (autoHideConsumedSketches) => set({ autoHideConsumedSketches }),
-      setPreferredExportFormat: (preferredExportFormat) => set({ preferredExportFormat }),
+      setPreferredExportFormat: (preferredExportFormat) =>
+        set({ preferredExportFormat, lastExportFormat: preferredExportFormat }),
+      setExportMeshQuality: (exportMeshQuality) => set({ exportMeshQuality }),
+      setExportDestination: (exportDestination) => set({ exportDestination }),
     },
   }))
   store.subscribe(
@@ -84,6 +99,9 @@ export function createViewerPreferencesStore(storage: StorageLike | null = brows
       theme,
       autoHideConsumedSketches,
       preferredExportFormat,
+      lastExportFormat,
+      exportMeshQuality,
+      exportDestination,
       printerProfile,
       printBedVisible,
       groundGridVisible,
@@ -96,6 +114,9 @@ export function createViewerPreferencesStore(storage: StorageLike | null = brows
             theme,
             autoHideConsumedSketches,
             preferredExportFormat,
+            lastExportFormat,
+            exportMeshQuality,
+            exportDestination,
             printerProfile,
             printBedVisible,
             groundGridVisible,

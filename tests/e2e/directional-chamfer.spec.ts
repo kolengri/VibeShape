@@ -54,7 +54,7 @@ test("creates an actual two-distance Chamfer with an explicitly picked side face
       .evaluate(
         (element) => element.ownerDocument.defaultView?.getComputedStyle(element).backgroundColor,
       )
-    expect(headerBackground).not.toMatch(/transparent|rgba\(0, 0, 0, 0\)/)
+    expect(headerBackground).toMatch(/transparent|rgba\(0, 0, 0, 0\)/)
   }
   await page.screenshot({ path: test.info().outputPath("two-distance-chamfer.png") })
   await form.getByRole("button", { name: "Create chamfer", exact: true }).click()

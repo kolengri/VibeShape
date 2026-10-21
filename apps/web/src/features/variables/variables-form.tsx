@@ -12,6 +12,7 @@ import { useFormatter } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Check, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
+import { TextField } from "@vibeshape/ui/components/text-field"
 import {
   Tooltip,
   TooltipContent,
@@ -38,6 +39,9 @@ type VariablesFormCopy = VariablesTableCopy &
   Readonly<{
     nameInput: string
     expressionInput: string
+    search: string
+    searchPlaceholder: string
+    clearSearch: string
     valid: string
     invalid: string
     pending: string
@@ -281,8 +285,9 @@ function invalidAttribute(error: string | undefined) {
   return error ? (true as const) : undefined
 }
 
-function useVariableNameFocus(formElementRef: RefObject<HTMLFormElement | null>) {
+function useVariableFieldFocus(formElementRef: RefObject<HTMLFormElement | null>) {
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null)
+  const [invalidFieldName, setInvalidFieldName] = useState<string | null>(null)
   useEffect(() => {
     if (!focusedRowId) return
     const input = formElementRef.current?.querySelector<HTMLInputElement>(
@@ -291,7 +296,12 @@ function useVariableNameFocus(formElementRef: RefObject<HTMLFormElement | null>)
     input?.focus()
     input?.select()
   }, [focusedRowId, formElementRef])
-  return { focusedRowId, setFocusedRowId }
+  useEffect(() => {
+    if (!invalidFieldName) return
+    formElementRef.current?.querySelector<HTMLElement>(`[name="${invalidFieldName}"]`)?.focus()
+    setInvalidFieldName(null)
+  }, [invalidFieldName, formElementRef])
+  return { focusedRowId, setFocusedRowId, setInvalidFieldName }
 }
 
 type RenameValidation =
@@ -392,6 +402,47 @@ function useVariableRename({
   return { cancel, confirm, pending, rowId, start, variablesById }
 }
 
+function VariablesSearchField({
+  copy,
+  onValueChange,
+  value,
+}: {
+  copy: Pick<VariablesFormCopy, "search" | "searchPlaceholder" | "clearSearch">
+  onValueChange: (value: string) => void
+  value: string
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  return (
+    <div className="flex items-center gap-2">
+      <TextField
+        ref={inputRef}
+        type="search"
+        label={copy.search}
+        placeholder={copy.searchPlaceholder}
+        className="min-w-0 max-w-sm flex-1"
+        value={value}
+        onChange={(event) => onValueChange(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.preventDefault()
+        }}
+      />
+      {value ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            onValueChange("")
+            inputRef.current?.focus()
+          }}
+        >
+          {copy.clearSearch}
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
 export function VariablesForm({
   baseRevision,
   copy,
@@ -421,7 +472,11 @@ export function VariablesForm({
   const formatter = useFormatter()
   const displayUnits = useDocumentDisplayUnits()
   const formElementRef = useRef<HTMLFormElement>(null)
-  const { focusedRowId, setFocusedRowId } = useVariableNameFocus(formElementRef)
+  const [searchQuery, setSearchQuery] = useState("")
+  const query = searchQuery.trim().toLowerCase()
+  const nameQuery = query.replace(/^#/, "")
+  const { focusedRowId, setFocusedRowId, setInvalidFieldName } =
+    useVariableFieldFocus(formElementRef)
   const [submitIssues, setSubmitIssues] = useState<ReadonlyMap<string, string>>(new Map())
   const [submitMessage, setSubmitMessage] = useState<string | null>(null)
   const form = useAppForm({
@@ -438,13 +493,12 @@ export function VariablesForm({
         })),
       )
       if (!parsed.success) {
+        setSearchQuery("")
         setSubmitIssues(issueMessages(parsed.error, copy))
         setSubmitMessage(copy.validationSummary)
         const [index, field] = parsed.error.issues[0]?.path ?? []
         if (isInteger(index) && isString(field)) {
-          formElementRef.current
-            ?.querySelector<HTMLElement>(`[name="variables[${index}].${field}"]`)
-            ?.focus()
+          setInvalidFieldName(`variables[${index}].${field}`)
         }
         return
       }
@@ -507,6 +561,13 @@ export function VariablesForm({
                   addDisabled={rows.length >= MAX_VARIABLES}
                   copy={copy}
                   disabled={disabled || rename.rowId !== null || rename.pending}
+                  searchField={
+                    <VariablesSearchField
+                      copy={copy}
+                      value={searchQuery}
+                      onValueChange={setSearchQuery}
+                    />
+                  }
                   footerAction={
                     <form.SubmitButton
                       disabled={disabled || rename.rowId !== null || rename.pending}
@@ -517,6 +578,7 @@ export function VariablesForm({
                   onAdd={() => {
                     const id = createVariableId()
                     clearSubmissionErrors()
+                    setSearchQuery("")
                     setFocusedRowId(id)
                     arrayField.pushValue({
                       schemaVersion: 0,
@@ -539,6 +601,9 @@ export function VariablesForm({
 
                     return {
                       id: row.id,
+                      hidden:
+                        !row.name.toLowerCase().includes(nameQuery) &&
+                        !row.expression.toLowerCase().includes(query),
                       nameField: (
                         <form.Field name={`variables[${index}].name`}>
                           {(field) => (
@@ -558,6 +623,7 @@ export function VariablesForm({
                               aria-invalid={invalidAttribute(errors.nameError)}
                               className="h-8 font-mono"
                               onBlur={field.handleBlur}
+                              onFocus={() => setSearchQuery("")}
                               onChange={(event) => {
                                 clearSubmissionErrors()
                                 field.handleChange(event.currentTarget.value)
@@ -604,6 +670,7 @@ export function VariablesForm({
                             ? { removeDisabledReason: removal.removeDisabledReason }
                             : {})}
                           onStartRename={() => {
+                            setSearchQuery("")
                             rename.start(row.id)
                           }}
                           onCancelRename={() => {

@@ -41,7 +41,7 @@
 .cad-shell {
   --application-bar-height: 5rem;
   --command-bar-height: 2.25rem;
-  --assistant-width: min(420px, calc(100vw - 16px));
+  --assistant-width: clamp(208px, 40vw, 420px);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows:
@@ -76,7 +76,7 @@
   z-index: 30;
   top: calc(var(--application-bar-height, 2.5rem) + var(--command-bar-height));
   right: 0;
-  bottom: 1.5rem;
+  bottom: calc(1.5rem + var(--workspace-history-height, 0px));
   width: min(var(--assistant-width), calc(100vw - 16px));
 }
 
@@ -127,29 +127,15 @@
   --workspace-chrome-right: 0px;
 }
 
-/* Move viewport controls around the chat overlay without resizing its canvas. */
-.cad-shell:has(.assistant-panel:not([hidden])) .workspace-viewport {
-  --workspace-chrome-right: max(
-    0px,
-    min(var(--assistant-width), calc(100vw - 16px)) -
-    var(--workspace-task-size) -
-    8px
-  );
+/* Keep the active task adjacent to chat while the shared History spans below both. */
+.cad-shell:has(.assistant-panel:not([hidden])) .cad-workspace-grid {
+  margin-right: var(--assistant-width);
 }
 
-.cad-shell:has(.assistant-panel:not([hidden]))
-  .cad-workspace-grid[data-transparent="true"]
-  .workspace-viewport {
-  --workspace-chrome-right: max(
-    calc(var(--workspace-task-size) + 8px),
-    min(var(--assistant-width), calc(100vw - 16px))
-  );
-}
-
-.cad-shell:has(.assistant-panel:not([hidden]))
-  .cad-workspace-grid[data-task-active="false"]
-  .workspace-viewport {
-  --workspace-chrome-right: min(var(--assistant-width), calc(100vw - 16px));
+@media (min-width: 64rem) {
+  .cad-shell {
+    --assistant-width: clamp(208px, calc(100vw - 816px), 420px);
+  }
 }
 
 .workspace-panel {

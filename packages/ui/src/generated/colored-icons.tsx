@@ -5027,6 +5027,70 @@ export const FavoriteIcon = /* @__PURE__ */ coloredIcon(
   </g>,
 )
 
+export const ModifyIcon = /* @__PURE__ */ coloredIcon(
+  "modify",
+  <g transform="scale(4)" strokeLinecap="round" strokeLinejoin="round">
+    <path
+      d="M7 23L25 13L43 23V44L25 54L7 44Z"
+      fill="var(--icon-geometry-fill, #bfd4ee)"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="3.6"
+    />
+    <path
+      d="M7 23L25 33L43 23M25 33V54"
+      fill="none"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="2.8"
+    />
+    <path
+      d="M50 9L45 15L47 21L53 23L59 17C61 26 55 33 47 32L33 49C30 53 24 48 27 45L41 28C38 20 42 12 50 9Z"
+      fill="var(--icon-action-highlight, #fae5c9)"
+      stroke="var(--icon-action-stroke, #cd7b24)"
+      strokeWidth="3.6"
+    />
+  </g>,
+)
+
+export const AssistantThinkingIcon = /* @__PURE__ */ coloredIcon(
+  "assistant-thinking",
+  <g transform="scale(4)" strokeLinecap="round" strokeLinejoin="round">
+    <path
+      d="M32 13C24 5 14 10 14 19C5 23 6 35 12 39C9 49 21 58 32 51C43 58 55 49 52 39C58 35 59 23 50 19C50 10 40 5 32 13Z"
+      fill="var(--icon-geometry-fill, #bfd4ee)"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="3.6"
+    />
+    <path
+      d="M32 13V51M14 19C14 25 19 29 24 27M12 39C17 35 24 38 24 44M50 19C50 25 45 29 40 27M52 39C47 35 40 38 40 44"
+      fill="none"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="2.8"
+    />
+    <path
+      d="M22 32H29L35 24H42"
+      fill="none"
+      stroke="var(--icon-action-stroke, #cd7b24)"
+      strokeWidth="4.2"
+    />
+  </g>,
+)
+
+export const AssistantSteerIcon = /* @__PURE__ */ coloredIcon(
+  "assistant-steer",
+  <g transform="scale(4)" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <path
+      d="M12 53V44C12 35 18 30 27 30H35C43 30 48 24 48 16V10M39 19L48 10L57 19"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="4.2"
+    />
+    <path
+      d="M12 11V17C12 25 19 30 27 30H35M28 23L35 30L28 37"
+      stroke="var(--icon-action-stroke, #cd7b24)"
+      strokeWidth="4.2"
+    />
+  </g>,
+)
+
 export const AssistantIcon = /* @__PURE__ */ coloredIcon(
   "assistant",
   <g transform="scale(4)">

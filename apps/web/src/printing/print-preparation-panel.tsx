@@ -44,6 +44,32 @@ type PrintPreparationPort = (
   meshQuality?: MeshExportQuality,
 ) => Promise<ActiveDocumentExportResult>
 
+function usePreparationAttempt(
+  meshQualityChoice: MeshExportQualityChoice,
+  onBusyChange: (busy: boolean) => void,
+) {
+  const [pending, setPending] = useState(false)
+  const mounted = useRef(true)
+  const preparation = useRef<AbortController | null>(null)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      preparation.current?.abort()
+      onBusyChange(false)
+    }
+  }, [onBusyChange])
+  useEffect(() => {
+    if (preparation.current) {
+      preparation.current.abort()
+      preparation.current = null
+      setPending(false)
+      onBusyChange(false)
+    }
+  }, [meshQualityChoice, onBusyChange])
+  return { pending, setPending, mounted, preparation }
+}
+
 function usePrintPreparation(onBusyChange: (busy: boolean) => void, prepare: PrintPreparationPort) {
   const t = useTranslations("app.printPreparation")
   const exportT = useTranslations("app.export")
@@ -58,21 +84,21 @@ function usePrintPreparation(onBusyChange: (busy: boolean) => void, prepare: Pri
     failure?.diagnostic?.sourceCode != null
       ? exportT("printPreparationFailedDetails", { details: failure.diagnostic.message })
       : t("failed")
-  const [pending, setPending] = useState(false)
   const [downloaded, setDownloaded] = useState(false)
   const [slicerMessage, setSlicerMessage] = useState<string | null>(null)
   const [slicerPending, setSlicerPending] = useState(false)
-  const mounted = useRef(true)
-  const preparation = useRef<AbortController | null>(null)
-  const [meshQualityChoice, setMeshQualityChoice] = useState<MeshExportQualityChoice>("default")
+  const meshQualityChoice = useViewerPreferences((state) => state.exportMeshQuality)
+  const setMeshQualityChoice = useViewerPreferences((state) => state.actions.setExportMeshQuality)
+  const { pending, setPending, mounted, preparation } = usePreparationAttempt(
+    meshQualityChoice,
+    onBusyChange,
+  )
   useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-      preparation.current?.abort()
-      onBusyChange(false)
-    }
-  }, [onBusyChange])
+    setPrepared(null)
+    setErrorMessage(null)
+    setDownloaded(false)
+    setSlicerMessage(null)
+  }, [meshQualityChoice])
   const defaults = printPreparationSettingsSchema.parse({})
   function applyPreparationResult(result: ActiveDocumentExportResult) {
     if (!result.ok || !result.printPreparation) {
@@ -199,13 +225,7 @@ export function PrintPreparationPanel({
       >
         <MeshExportQualityField
           value={state.meshQualityChoice}
-          onChange={(choice) => {
-            state.setMeshQualityChoice(choice)
-            setPrepared(null)
-            setError(null)
-            setDownloaded(false)
-            setSlicerMessage(null)
-          }}
+          onChange={state.setMeshQualityChoice}
           disabled={disabled || pending || slicerPending}
         />
         <fieldset

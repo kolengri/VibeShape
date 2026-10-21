@@ -129,6 +129,7 @@
 
 | [0118](0118-body-bound-directional-chamfer.md) | Accepted with bounded planar measurement support | Exact body/face-side Chamfer modes and native contour semantics |
 | [0119](0119-explicit-private-draft-recovery.md) | Accepted | Bounded private CAD intent retention and explicit current-actor restoration |
+| [0120](0120-exact-edge-signature-resolution.md) | Accepted | Unique identical edge signatures resolve before approximate ranking |
 
 Statuses:
 

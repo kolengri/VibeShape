@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  bodyTopoRefSchema,
   createEmptySketch,
   documentIdSchema,
   featureIdSchema,
@@ -19,6 +20,58 @@ const secondBoundaryEntityId = sketchEntityIdSchema.parse("0195b5ac-b221-7a2c-8c
 const constraintId = sketchConstraintIdSchema.parse("0195b5ac-b222-7a2c-8c33-67a36a7f3201")
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3202")
 const referenceId = sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3203")
+
+const edgeSelection = {
+  targetBody: { schemaVersion: 0 as const, featureId, outputRole: "result" },
+  edges: [
+    bodyTopoRefSchema.parse({
+      schemaVersion: 1,
+      outputRole: "result",
+      featureId,
+      kind: "edge",
+      semanticRole: "box.edge",
+      signature: {
+        kind: "edge",
+        geometryClass: "LINE",
+        measure: 20,
+        centroid: [10, 0, 0],
+        bounds: { min: [0, 0, 0], max: [20, 0, 0] },
+        boundaryCount: 0,
+        adjacentGeometryClasses: [],
+      },
+    }),
+  ],
+}
+
+describe("ordinary model-edge selection", () => {
+  it("keeps stable edge intent separate from face and tree selection", () => {
+    const store = createEditorSessionStore()
+    const { actions } = store.getState()
+    actions.setSelection({ featureId, faceId: 42, faceOrdinal: 1 })
+    actions.setModelEdgeSelection(edgeSelection)
+    expect(store.getState().selectedModelEdges).toEqual(edgeSelection)
+    expect(store.getState().selection).toBeNull()
+    expect(store.getState().selectedBody).toBeNull()
+    expect(store.getState().modelTreeSelection).toEqual([])
+  })
+
+  it.each(["face", "body", "plane", "tree", "hidden", "workspace", "clear"])(
+    "releases edge intent on %s selection changes",
+    (kind) => {
+      const store = createEditorSessionStore()
+      const { actions } = store.getState()
+      actions.setModelEdgeSelection(edgeSelection)
+      if (kind === "face") actions.setSelection({ featureId, faceId: 42, faceOrdinal: 1 })
+      if (kind === "body") actions.setSelectedBody({ featureId, outputRole: "result" })
+      if (kind === "plane") actions.setSelectedOriginPlane("xy")
+      if (kind === "tree") actions.setModelTreeSelection([{ kind: "feature", id: featureId }])
+      if (kind === "hidden") actions.setFeatureVisibility(featureId, false)
+      if (kind === "workspace") actions.switchWorkspace("variables")
+      if (kind === "clear") actions.setSelection(null)
+      expect(store.getState().selectedModelEdges).toBeNull()
+    },
+  )
+})
 
 function createSketch(label = "Sketch 1") {
   return createEmptySketch({ id: sketchId, label, plane: "xy" })

@@ -38,6 +38,9 @@ describe("browser viewer preferences", () => {
         theme: "dark",
         autoHideConsumedSketches: true,
         preferredExportFormat: "3mf",
+        lastExportFormat: null,
+        exportMeshQuality: "default",
+        exportDestination: "file",
       })
     }
     const store = createViewerPreferencesStore({
@@ -49,7 +52,16 @@ describe("browser viewer preferences", () => {
       },
     })
     store.getState().actions.setTheme("light")
-    expect(store.getState().theme).toBe("light")
+    store.getState().actions.setPreferredExportFormat("stl")
+    store.getState().actions.setExportMeshQuality("fine")
+    store.getState().actions.setExportDestination("slicer")
+    expect(store.getState()).toMatchObject({
+      theme: "light",
+      preferredExportFormat: "stl",
+      lastExportFormat: "stl",
+      exportMeshQuality: "fine",
+      exportDestination: "slicer",
+    })
   })
 
   it("persists and restores only browser preferences without authority or document data", () => {
@@ -64,6 +76,8 @@ describe("browser viewer preferences", () => {
     store.getState().actions.setTheme("system")
     store.getState().actions.setAutoHideConsumedSketches(false)
     store.getState().actions.setPreferredExportFormat("step")
+    store.getState().actions.setExportMeshQuality("fine")
+    store.getState().actions.setExportDestination("slicer")
     expect(JSON.parse(raw ?? "null")).toEqual({
       version: 1,
       printerProfile: null,
@@ -72,12 +86,46 @@ describe("browser viewer preferences", () => {
       theme: "system",
       autoHideConsumedSketches: false,
       preferredExportFormat: "step",
+      lastExportFormat: "step",
+      exportMeshQuality: "fine",
+      exportDestination: "slicer",
     })
     expect(createViewerPreferencesStore(storage).getState()).toMatchObject({
       theme: "system",
       autoHideConsumedSketches: false,
       preferredExportFormat: "step",
+      lastExportFormat: "step",
+      exportMeshQuality: "fine",
+      exportDestination: "slicer",
     })
+  })
+
+  it("defaults missing or corrupt export choices without losing older preferences", () => {
+    for (const choices of [
+      {},
+      { lastExportFormat: "obj", exportMeshQuality: { tolerance: 1 }, exportDestination: "cloud" },
+      { lastExportFormat: 1, exportMeshQuality: null, exportDestination: true },
+    ]) {
+      const store = createViewerPreferencesStore({
+        getItem: () =>
+          JSON.stringify({
+            version: 1,
+            theme: "light",
+            autoHideConsumedSketches: false,
+            preferredExportFormat: "step",
+            ...choices,
+          }),
+        setItem: vi.fn(),
+      })
+      expect(store.getState()).toMatchObject({
+        theme: "light",
+        autoHideConsumedSketches: false,
+        preferredExportFormat: "step",
+        lastExportFormat: null,
+        exportMeshQuality: "default",
+        exportDestination: "file",
+      })
+    }
   })
 
   it("preserves existing preferences while discarding an invalid printer profile", () => {

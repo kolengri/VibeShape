@@ -38,6 +38,9 @@ const { i18n } = await import("../i18n")
 const { createTestBrowserStorage } = await import("../test-support/browser-storage")
 const { DocumentExportDialog } = await import("./document-export-dialog")
 const { ApplicationNoticesProvider } = await import("../shell/application-notices")
+const { ViewerPreferencesProvider, createViewerPreferencesStore } = await import(
+  "../shell/viewer-preferences"
+)
 
 class ResizeObserverMock {
   observe() {}
@@ -55,6 +58,11 @@ beforeAll(() => {
 afterAll(() => vi.unstubAllGlobals())
 beforeEach(() => {
   vi.stubGlobal("localStorage", createTestBrowserStorage())
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
   mocks.exportActiveDocument.mockReset()
   mocks.downloadDocumentExport.mockReset()
 })
@@ -86,15 +94,17 @@ function dialog(
 ) {
   return (
     <I18nProvider i18n={i18n} initialLocale="en">
-      <TooltipProvider>
-        {applicationNotices ? (
-          <ApplicationNoticesProvider>
+      <ViewerPreferencesProvider>
+        <TooltipProvider>
+          {applicationNotices ? (
+            <ApplicationNoticesProvider>
+              <DocumentExportDialog controller={controller} preferredFormat={preferredFormat} />
+            </ApplicationNoticesProvider>
+          ) : (
             <DocumentExportDialog controller={controller} preferredFormat={preferredFormat} />
-          </ApplicationNoticesProvider>
-        ) : (
-          <DocumentExportDialog controller={controller} preferredFormat={preferredFormat} />
-        )}
-      </TooltipProvider>
+          )}
+        </TooltipProvider>
+      </ViewerPreferencesProvider>
     </I18nProvider>
   )
 }
@@ -122,6 +132,88 @@ function nativeSlicer(overrides: Partial<NativeSlicerApi> = {}): NativeSlicerApi
 }
 
 describe("document export availability", () => {
+  it("remembers format and mesh quality across close and provider remount", async () => {
+    const controller = { ...loading, status: "ready" as const, report: readyWithSolid }
+    const user = userEvent.setup()
+    const view = render(dialog(controller, "step"))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
+      "step",
+    )
+    await user.selectOptions(screen.getByRole("combobox", { name: "File format" }), "stl")
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Mesh quality" }), { key: "Enter" })
+    await user.click(screen.getByRole("option", { name: "Fine" }))
+    await user.click(screen.getByRole("button", { name: "Close" }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
+      "stl",
+    )
+    expect(screen.getByRole("combobox", { name: "Mesh quality" }).textContent).toContain("Fine")
+    view.unmount()
+    render(dialog(controller, "step"))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
+      "stl",
+    )
+    expect(screen.getByRole("combobox", { name: "Mesh quality" }).textContent).toContain("Fine")
+    expect(createViewerPreferencesStore().getState().preferredExportFormat).toBe("stl")
+    expect(mocks.exportActiveDocument).not.toHaveBeenCalled()
+  })
+
+  it("restores native destination and slicer format without initiating a handoff", async () => {
+    const send = vi.fn(nativeSlicer().send)
+    window.vibeshapeSlicer = nativeSlicer({ send })
+    const controller = { ...loading, status: "ready" as const, report: readyWithSolid }
+    const user = userEvent.setup()
+    const view = render(dialog(controller))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    await user.selectOptions(screen.getByRole("combobox", { name: "Destination" }), "slicer")
+    await user.selectOptions(screen.getByRole("combobox", { name: "File format" }), "stl")
+    await user.click(screen.getByRole("button", { name: "Close" }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    expect((screen.getByRole("combobox", { name: "Destination" }) as HTMLSelectElement).value).toBe(
+      "slicer",
+    )
+    expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
+      "stl",
+    )
+    view.unmount()
+    const restored = render(dialog(controller))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    expect((screen.getByRole("combobox", { name: "Destination" }) as HTMLSelectElement).value).toBe(
+      "slicer",
+    )
+    expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
+      "stl",
+    )
+    expect(createViewerPreferencesStore().getState().preferredExportFormat).toBe("stl")
+    expect(send).not.toHaveBeenCalled()
+    expect(mocks.exportActiveDocument).not.toHaveBeenCalled()
+    restored.unmount()
+    delete window.vibeshapeSlicer
+    render(dialog(controller))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    expect((screen.getByRole("combobox", { name: "Destination" }) as HTMLSelectElement).value).toBe(
+      "file",
+    )
+    expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
+      "stl",
+    )
+  })
+
+  it("keeps unsupported browser slicer destination transient", async () => {
+    const user = userEvent.setup()
+    render(dialog({ ...loading, status: "ready", report: readyWithSolid }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    await user.selectOptions(screen.getByRole("combobox", { name: "Destination" }), "slicer")
+    await user.click(screen.getByRole("button", { name: "Close" }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    expect((screen.getByRole("combobox", { name: "Destination" }) as HTMLSelectElement).value).toBe(
+      "file",
+    )
+    expect(createViewerPreferencesStore().getState().exportDestination).toBe("file")
+  })
+
   it("shows the surface relief export hint on V5 authority", async () => {
     const fixture = historyRepairFixture()
     const feature = fixture.features[3]
@@ -274,7 +366,7 @@ describe("document export availability", () => {
     await user.click(screen.getByRole("button", { name: "Close" }))
     await user.click(screen.getByRole("button", { name: "Export…" }))
     expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
-      "step",
+      "stl",
     )
   })
 

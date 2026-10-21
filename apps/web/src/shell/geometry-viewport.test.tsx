@@ -7,7 +7,7 @@ import type {
   GeometryViewport as GeometryViewportPort,
   ViewerSelection,
 } from "@vibeshape/viewer"
-import type { ViewerToolPlane } from "@vibeshape/viewer/three-viewport"
+import type { ViewerEdgeCandidate, ViewerToolPlane } from "@vibeshape/viewer/three-viewport"
 import { surfaceTextureProjectFixture } from "../../../../tests/fixtures/surface-texture-project"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
@@ -19,6 +19,7 @@ import {
   assistantCheckpointForController,
 } from "./assistant-checkpoint-display"
 import type { GeometryViewportSketchContext } from "./geometry-viewport"
+import type { ModelEdgeViewportSelection } from "./model-edge-viewport"
 
 type WorkspaceTask = Parameters<typeof WorkspaceTaskProvider>[0]["value"]
 
@@ -347,6 +348,9 @@ function renderViewport(
     onChange: (plane: "xy" | "xz" | "yz", visible: boolean) => void
   }>,
   featureHighlight?: Readonly<{
+    edgeSelection?: ModelEdgeViewportSelection | undefined
+    readOnlyPresentation?: boolean
+    pendingViewport?: Promise<GeometryViewportPort>
     partVisibilityOverrides?: PartVisibilityOverrides
     preselectedFeatureId?: string
     selectedFeatureId?: string
@@ -423,6 +427,8 @@ function renderViewport(
     setPrintBed: vi.fn(),
     setGroundGrid: vi.fn(),
     setSketchReferenceCandidates: vi.fn(),
+    setEdgeCandidates: vi.fn(),
+    setEdgePreselection: vi.fn(),
     setSketchReferencePreselection: vi.fn(),
     setSketchProfilePreselection: vi.fn(),
     setSketchProfileSelection: vi.fn(),
@@ -446,7 +452,8 @@ function renderViewport(
   }
   const onSelectionChange = vi.fn()
   const createViewport = vi.fn(
-    (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) => pendingViewport ?? port,
+    (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) =>
+      pendingViewport ?? featureHighlight?.pendingViewport ?? port,
   )
   const element = (
     nextController: DocumentControllerState,
@@ -459,6 +466,10 @@ function renderViewport(
     nextPartVisibility = featureHighlight?.partVisibilityOverrides,
     nextFeaturePreview = featurePreview,
     nextToolPlane = toolPlane,
+    edgeOptions: Readonly<{
+      edgeSelection?: ModelEdgeViewportSelection | undefined
+      readOnlyPresentation?: boolean
+    }> = {},
   ) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
@@ -471,6 +482,7 @@ function renderViewport(
               onSelectionChange={onSelectionChange}
               {...optionalProp("sketchContext", nextSketchContext)}
               {...featureHighlight}
+              {...edgeOptions}
               partVisibilityOverrides={nextPartVisibility}
               {...optionalProp("featurePreview", nextFeaturePreview)}
               {...optionalProp("originPlaneSelection", originPlaneSelection)}
@@ -496,6 +508,25 @@ function renderViewport(
     createViewport,
     onSelectionChange,
     port,
+    rerenderEdgeSelection: (
+      edgeSelection: ModelEdgeViewportSelection | undefined,
+      readOnlyPresentation = false,
+    ) =>
+      result.rerender(
+        element(
+          controller,
+          sketchContext,
+          sketchProfilePreview,
+          hiddenSketchIds,
+          axialGizmo,
+          axialGizmoPending,
+          workspaceTask,
+          featureHighlight?.partVisibilityOverrides,
+          featurePreview,
+          toolPlane,
+          { edgeSelection, readOnlyPresentation },
+        ),
+      ),
     rerenderToolPlane: (next: ViewerToolPlane | null) =>
       result.rerender(
         element(
@@ -3012,6 +3043,302 @@ function bodyController(roles = ["pattern.instance.0", "pattern.instance.1"]) {
     },
   }
 }
+
+function modelEdge(
+  candidateId: string,
+  outputRole?: string,
+  label = `Box · Edge ${candidateId}`,
+): ViewerEdgeCandidate {
+  return {
+    featureId: boxId,
+    outputRole,
+    candidateId,
+    label,
+    points: [
+      [0, 0, 0],
+      [1, 0, 0],
+    ],
+  }
+}
+
+function renderModelEdges(
+  selection: ModelEdgeViewportSelection,
+  controller = readyController(
+    [{ id: boxId, dependencies: [] }],
+    [{ featureId: boxId, geometry: { mesh } }],
+  ),
+  pendingViewport?: Promise<GeometryViewportPort>,
+) {
+  return renderViewport(controller, null, undefined, undefined, undefined, {
+    edgeSelection: selection,
+    ...(pendingViewport ? { pendingViewport } : {}),
+  })
+}
+
+describe("ordinary model-edge viewport bridge", () => {
+  it("initializes current edge inputs after meshes when the renderer resolves asynchronously", async () => {
+    const initial = modelEdge("1")
+    const current = modelEdge("2")
+    let resolveViewport: (viewport: GeometryViewportPort) => void = () => undefined
+    const pending = new Promise<GeometryViewportPort>((resolve) => {
+      resolveViewport = resolve
+    })
+    const firstSelect = vi.fn()
+    const rendered = renderModelEdges(
+      { candidates: [initial], onSelect: firstSelect },
+      undefined,
+      pending,
+    )
+    const secondSelect = vi.fn()
+    rendered.rerenderEdgeSelection({ candidates: [current], onSelect: secondSelect })
+    const initializationOrder: string[] = []
+    vi.mocked(rendered.port.setMeshes).mockImplementation(() => initializationOrder.push("meshes"))
+    vi.mocked(rendered.port.setEdgeCandidates).mockImplementation(() =>
+      initializationOrder.push("edges"),
+    )
+    await act(async () => resolveViewport(rendered.port))
+    expect(initializationOrder).toEqual(["meshes", "edges"])
+    expect(rendered.port.setEdgeCandidates).toHaveBeenLastCalledWith([current])
+    const callbacks = rendered.createViewport.mock.calls[0]?.[1]
+    act(() => callbacks?.onEdgeSelectionChange?.(current))
+    expect(secondSelect).toHaveBeenLastCalledWith(current)
+    expect(firstSelect).not.toHaveBeenCalled()
+    expect(rendered.createViewport).toHaveBeenCalledTimes(1)
+  })
+
+  it("updates candidates and selection without recreating the renderer and dispatches fresh callbacks", async () => {
+    const edge = modelEdge("1")
+    const firstSelect = vi.fn()
+    const rendered = renderModelEdges({ candidates: [edge], onSelect: firstSelect })
+    const { port, createViewport } = rendered
+    await waitFor(() => expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([edge]))
+    const callbacks = createViewport.mock.calls[0]?.[1]
+    act(() => callbacks?.onEdgeSelectionChange?.(edge))
+    expect(firstSelect).toHaveBeenLastCalledWith(edge)
+
+    const selected = { ...edge, label: "Updated edge", selected: true }
+    const secondSelect = vi.fn()
+    rendered.rerenderEdgeSelection({ candidates: [selected], onSelect: secondSelect })
+    expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([selected])
+    act(() => callbacks?.onEdgeSelectionChange?.(edge))
+    expect(secondSelect).toHaveBeenLastCalledWith(selected)
+    expect(firstSelect).toHaveBeenCalledTimes(1)
+    act(() => callbacks?.onEdgeSelectionChange?.(null))
+    expect(secondSelect).toHaveBeenLastCalledWith(null)
+    expect(createViewport).toHaveBeenCalledTimes(1)
+    expect(port.dispose).not.toHaveBeenCalled()
+
+    rendered.rerenderEdgeSelection(undefined)
+    expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([])
+    act(() => callbacks?.onEdgeSelectionChange?.(edge))
+    expect(secondSelect).toHaveBeenCalledTimes(2)
+    rendered.unmount()
+    expect(port.dispose).toHaveBeenCalledTimes(1)
+    act(() => callbacks?.onEdgeSelectionChange?.(edge))
+    expect(secondSelect).toHaveBeenCalledTimes(2)
+  })
+
+  it("matches exact output ownership and never widens an unscoped edge to a modern body", async () => {
+    const first = modelEdge("shared", "pattern.instance.0", "First body edge")
+    const second = modelEdge("shared", "pattern.instance.1", "Second body edge")
+    const unscoped = modelEdge("shared")
+    const missing = modelEdge("shared", "result")
+    const onSelect = vi.fn()
+    const { port } = renderModelEdges(
+      { candidates: [first, second, unscoped, missing], onSelect },
+      bodyController(),
+    )
+    await waitFor(() => expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([first, second]))
+    const picker = screen.getByRole("combobox", { name: "Model edge" })
+    const firstOption = screen.getByRole("option", { name: first.label }) as HTMLOptionElement
+    const secondOption = screen.getByRole("option", { name: second.label }) as HTMLOptionElement
+    expect(firstOption.value).not.toBe(secondOption.value)
+    expect(screen.queryByRole("option", { name: unscoped.label })).toBeNull()
+    fireEvent.change(picker, { target: { value: secondOption.value } })
+    expect(onSelect).toHaveBeenLastCalledWith(second)
+    expect(port.clearSelection).toHaveBeenCalledTimes(1)
+  })
+
+  it("limits ordinary picking to idle 3D and restores it without restarting the renderer", async () => {
+    const edge = modelEdge("1")
+    const onSelect = vi.fn()
+    const selection = { candidates: [edge], onSelect }
+    const rendered = renderModelEdges(selection)
+    const { port, createViewport } = rendered
+    await waitFor(() => expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([edge]))
+    const callbacks = createViewport.mock.calls[0]?.[1]
+    for (const context of [
+      { mode: "normal", frame: null },
+      { mode: "orbit", frame: null },
+      {
+        mode: "orbit",
+        frame: null,
+        referenceSelection: { candidates: [], onSelect: vi.fn() },
+      },
+    ] satisfies GeometryViewportSketchContext[]) {
+      rendered.rerenderSketchContext(context)
+      expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([])
+      expect(screen.queryByRole("combobox", { name: "Model edge" })).toBeNull()
+      act(() => callbacks?.onEdgeSelectionChange?.(edge))
+    }
+    expect(onSelect).not.toHaveBeenCalled()
+    rendered.rerenderEdgeSelection(selection, true)
+    expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([])
+    expect(screen.queryByRole("combobox", { name: "Model edge" })).toBeNull()
+    rendered.rerenderEdgeSelection(selection)
+    expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([edge])
+
+    rendered.rerenderToolPlane({ origin: [0, 0, 0], normal: [0, 0, 1], size: 20 })
+    expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([])
+    rendered.rerenderFeaturePreview({ status: "loading", meshes: [] })
+    expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([])
+    rendered.rerenderEdgeSelection(selection)
+    expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([edge])
+    expect(createViewport).toHaveBeenCalledTimes(1)
+  })
+
+  it("offers a keyboard picker and transient hover label without a permanent task banner", async () => {
+    const first = modelEdge("1")
+    const second = modelEdge("2")
+    const onSelect = vi.fn()
+    const { createViewport, port } = renderModelEdges({ candidates: [first, second], onSelect })
+    await waitFor(() => expect(port.setEdgeCandidates).toHaveBeenCalled())
+    expect(screen.queryByText(first.label)).toBeTruthy()
+    expect(screen.queryAllByRole("status").some((node) => node.textContent === first.label)).toBe(
+      false,
+    )
+    const picker = screen.getByRole("combobox", { name: "Model edge" })
+    const pickerContainer = picker.closest(".sr-only")
+    expect(pickerContainer).toBeTruthy()
+    expect(pickerContainer?.classList.contains("focus-within:not-sr-only")).toBe(true)
+    const option = screen.getByRole("option", { name: second.label }) as HTMLOptionElement
+    fireEvent.keyDown(picker, { code: "Backquote", key: "`" })
+    expect(screen.queryByRole("listbox")).toBeNull()
+    fireEvent.change(picker, { target: { value: option.value } })
+    expect(onSelect).toHaveBeenLastCalledWith(second)
+    expect(document.activeElement).toBe(screen.getByRole("region", { name: "3D viewport" }))
+
+    const callbacks = createViewport.mock.calls[0]?.[1]
+    act(() => callbacks?.onEdgePreselectionChange?.(first))
+    expect(screen.getAllByRole("status").some((node) => node.textContent === first.label)).toBe(
+      true,
+    )
+    act(() => callbacks?.onEdgePreselectionChange?.(null))
+    expect(screen.queryAllByRole("status").some((node) => node.textContent === first.label)).toBe(
+      false,
+    )
+  })
+
+  it("keeps ordinary model-edge picking available alongside the saved-profile keyboard picker", async () => {
+    const edge = modelEdge("1")
+    const onSelect = vi.fn()
+    const onProfileSelect = vi.fn()
+    const { port } = renderViewport(
+      readyController(
+        [{ id: boxId, dependencies: [] }],
+        [{ featureId: boxId, geometry: { mesh } }],
+        [profileSketchDisplay],
+      ),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      { edgeSelection: { candidates: [edge], onSelect } },
+      undefined,
+      undefined,
+      { keyboardPickerActive: true, selectedProfiles: [], onSelect: onProfileSelect },
+    )
+    await waitFor(() => expect(port.setEdgeCandidates).toHaveBeenLastCalledWith([edge]))
+    expect(screen.getByRole("combobox", { name: "Model edge" })).toBeTruthy()
+    const profilePicker = screen.getByRole("combobox", { name: "Select saved profile" })
+    const profileOption = screen.getByRole("option", {
+      name: "Sketch 1 · Profile 1",
+    }) as HTMLOptionElement
+    fireEvent.change(profilePicker, { target: { value: profileOption.value } })
+    expect(onProfileSelect).toHaveBeenLastCalledWith(profileSelector, [profileSelector], "toggle")
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it("clears an edge-only keyboard selection through Clear, Escape and background callbacks", async () => {
+    const edge = modelEdge("1")
+    const selected = { ...edge, selected: true }
+    const onSelect = vi.fn()
+    const rendered = renderModelEdges({ candidates: [edge], onSelect })
+    await waitFor(() => expect(rendered.port.setEdgeCandidates).toHaveBeenCalled())
+    const picker = screen.getByRole("combobox", { name: "Model edge" })
+    const option = screen.getByRole("option", { name: edge.label }) as HTMLOptionElement
+    fireEvent.change(picker, { target: { value: option.value } })
+    expect(onSelect).toHaveBeenLastCalledWith(edge)
+
+    rendered.rerenderEdgeSelection({ candidates: [selected], onSelect })
+    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }))
+    expect(onSelect).toHaveBeenLastCalledWith(null)
+    expect(rendered.port.clearSelection).toHaveBeenCalledTimes(2)
+    expect(rendered.onSelectionChange).not.toHaveBeenCalled()
+
+    rendered.rerenderEdgeSelection({ candidates: [selected], onSelect })
+    fireEvent.keyDown(screen.getByRole("region", { name: "3D viewport" }), { key: "Escape" })
+    expect(onSelect).toHaveBeenCalledTimes(3)
+    expect(onSelect).toHaveBeenLastCalledWith(null)
+    expect(rendered.port.clearSelection).toHaveBeenCalledTimes(3)
+
+    const callbacks = rendered.createViewport.mock.calls[0]?.[1]
+    act(() => callbacks?.onEdgeSelectionChange?.(null))
+    expect(onSelect).toHaveBeenCalledTimes(4)
+    expect(onSelect).toHaveBeenLastCalledWith(null)
+    rendered.rerenderEdgeSelection({ candidates: [edge], onSelect })
+    expect(screen.queryByRole("button", { name: "Clear selection" })).toBeNull()
+    expect(rendered.onSelectionChange).not.toHaveBeenCalled()
+  })
+
+  it("cycles a bounded overlap stack with Backquote, Shift+Backquote, Enter and Escape", async () => {
+    const first = modelEdge("shared", "pattern.instance.0", "First body edge")
+    const second = modelEdge("shared", "pattern.instance.1", "Second body edge")
+    const edges = [
+      first,
+      second,
+      ...Array.from({ length: 8 }, (_, index) => modelEdge(`${index + 2}`, "pattern.instance.0")),
+    ]
+    const onSelect = vi.fn()
+    const { createViewport, port } = renderModelEdges(
+      { candidates: edges, onSelect },
+      bodyController(),
+    )
+    await waitFor(() => expect(port.setEdgeCandidates).toHaveBeenLastCalledWith(edges))
+    const callbacks = createViewport.mock.calls[0]?.[1]
+    act(() => {
+      callbacks?.onEdgeCandidateStackChange?.([first, first, ...edges.slice(1)])
+      callbacks?.onEdgePreselectionChange?.(first)
+    })
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    let chooser = screen.getByRole("listbox", { name: "Select other reference" })
+    expect(document.activeElement).toBe(chooser)
+    expect(chooser.querySelectorAll('[role="option"]').length).toBe(8)
+    fireEvent.keyDown(chooser, { code: "Backquote", key: "`" })
+    expect(port.setEdgePreselection).toHaveBeenLastCalledWith(second)
+    fireEvent.keyDown(chooser, { code: "Backquote", key: "`", shiftKey: true })
+    expect(port.setEdgePreselection).toHaveBeenLastCalledWith(first)
+    fireEvent.keyDown(chooser, { code: "Backquote", key: "`", shiftKey: true })
+    expect(port.setEdgePreselection).toHaveBeenLastCalledWith(edges[7])
+    fireEvent.keyDown(chooser, { key: "Enter" })
+    expect(onSelect).toHaveBeenLastCalledWith(edges[7])
+    expect(screen.queryByRole("listbox")).toBeNull()
+    expect(document.activeElement).toBe(viewport)
+
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    chooser = screen.getByRole("listbox", { name: "Select other reference" })
+    fireEvent.keyDown(chooser, { key: "Escape" })
+    expect(screen.queryByRole("listbox")).toBeNull()
+    expect(document.activeElement).toBe(viewport)
+
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    act(() => callbacks?.onEdgeSelectionChange?.(second))
+    expect(onSelect).toHaveBeenLastCalledWith(second)
+    expect(screen.queryByRole("listbox")).toBeNull()
+    expect(document.activeElement).toBe(viewport)
+  })
+})
 
 describe("constituent viewport projection", () => {
   it("preselects every visible sketch linked to an assistant group without selecting them", async () => {

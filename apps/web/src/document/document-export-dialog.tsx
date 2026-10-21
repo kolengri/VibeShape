@@ -24,15 +24,12 @@ import {
   useReportApplicationError,
   useReportApplicationSuccess,
 } from "../shell/application-notices"
+import { useViewerPreferences } from "../shell/viewer-preferences"
 import type { DocumentControllerState } from "./document-controller"
 import { exportActiveDocument } from "./document-controller"
 import { downloadDocumentExport } from "./document-export"
 import { DocumentExportOptions, type ExportDestination } from "./document-export-options"
-import {
-  type MeshExportQualityChoice,
-  MeshExportQualityField,
-  meshExportQuality,
-} from "./mesh-export-quality-field"
+import { MeshExportQualityField, meshExportQuality } from "./mesh-export-quality-field"
 
 const formatCopy = {
   "3mf": {
@@ -294,7 +291,8 @@ function useExportSession({
   const t = useTranslations("app.export")
   const [showPreparation, setShowPreparation] = useState(false)
   const [exportPart, setExportPart] = useState("all")
-  const [meshQualityChoice, setMeshQualityChoice] = useState<MeshExportQualityChoice>("default")
+  const meshQualityChoice = useViewerPreferences((state) => state.exportMeshQuality)
+  const setMeshQualityChoice = useViewerPreferences((state) => state.actions.setExportMeshQuality)
   const [slicerPending, setSlicerPending] = useState(false)
   const [printPending, setPrintPending] = useState(false)
   const selectedPartId = exportPart === "all" ? undefined : exportPart
@@ -345,13 +343,25 @@ function useExportDestination(
   preferredFormat: GeometryExportFormat,
   handoff: ReturnType<typeof useSlicerHandoff>,
 ) {
-  const [destination, setDestination] = useState<ExportDestination>("file")
-  const [fileFormat, setFileFormat] = useState(preferredFormat)
+  const rememberedDestination = useViewerPreferences((state) => state.exportDestination)
+  const lastExportFormat = useViewerPreferences((state) => state.lastExportFormat)
+  const actions = useViewerPreferences((state) => state.actions)
+  const [destination, changeDestination] = useState<ExportDestination>(() =>
+    handoff.native ? rememberedDestination : "file",
+  )
+  const fileFormat = lastExportFormat ?? preferredFormat
+  const setDestination = (value: ExportDestination) => {
+    changeDestination(value)
+    if (handoff.native) actions.setExportDestination(value)
+  }
   const nativeDestination = destination === "slicer"
   const format = nativeDestination ? handoff.preference.format : fileFormat
   const changeFormat = (value: GeometryExportFormat) => {
-    if (!nativeDestination) setFileFormat(value)
-    else if (value !== "step") handoff.choosePreference(handoff.selected?.id ?? null, value)
+    if (nativeDestination) {
+      if (value === "step") return
+      handoff.choosePreference(handoff.selected?.id ?? null, value)
+    }
+    actions.setPreferredExportFormat(value)
   }
   return { destination, setDestination, format, changeFormat, nativeDestination }
 }
@@ -501,7 +511,7 @@ function ExportDialogContent(props: ExportContentProps) {
 
 export function DocumentExportDialog({
   controller,
-  preferredFormat = "3mf",
+  preferredFormat,
   showTrigger = true,
   open: controlledOpen,
   onOpenChange,
@@ -514,6 +524,7 @@ export function DocumentExportDialog({
   onOpenChange?: (open: boolean) => void
   onCloseAutoFocus?: ((event: Event) => void) | undefined
 }) {
+  const storedPreferredFormat = useViewerPreferences((state) => state.preferredExportFormat)
   const [open, setOpen] = useDialogOpen(controlledOpen, onOpenChange)
   const [success, setSuccess] = useState<{ message: string; attempt: number } | null>(null)
   const appOwnsSuccess = useReportApplicationSuccess(
@@ -537,8 +548,9 @@ export function DocumentExportDialog({
         <ExportDialogTrigger shown={showTrigger} controller={controller} />
         {open ? (
           <ExportDialogContent
+            key={controller.authoredSnapshot?.id ?? controller.report?.snapshot.id}
             controller={controller}
-            preferredFormat={preferredFormat}
+            preferredFormat={preferredFormat ?? storedPreferredFormat}
             onClose={() => setOpen(false)}
             onSlicerOpened={(message) => {
               reportSuccess(message)

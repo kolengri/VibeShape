@@ -11,7 +11,7 @@ import { Check, ChevronDown, Ellipsis } from "@vibeshape/ui/components/icons"
 import { Popover, PopoverContent, PopoverTrigger } from "@vibeshape/ui/components/popover"
 import { ToolbarButton } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { type RefObject, useId, useState } from "react"
+import { type ComponentType, type RefObject, type SVGProps, useId, useState } from "react"
 import type { ResolvedEditorCommand } from "../commands/editor-command"
 import {
   EditorCommandIconView,
@@ -25,6 +25,7 @@ export function ToolbarCommandPicker({
   getDisabledReason,
   label,
   showLabel,
+  icon: Icon = Ellipsis,
   focusId,
   triggerRef,
   onOpenChange,
@@ -34,6 +35,7 @@ export function ToolbarCommandPicker({
   getDisabledReason: (command: ResolvedEditorCommand) => string | null
   label: string
   showLabel?: boolean
+  icon?: ComponentType<SVGProps<SVGSVGElement>>
   focusId?: string
   triggerRef: RefObject<HTMLButtonElement | null>
   onOpenChange?: (open: boolean) => void
@@ -71,7 +73,7 @@ export function ToolbarCommandPicker({
               <ChevronDown aria-hidden="true" />
             </>
           ) : (
-            <Ellipsis aria-hidden="true" />
+            <Icon aria-hidden="true" />
           )}
         </Button>
       </PopoverTrigger>

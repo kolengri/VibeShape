@@ -29,7 +29,7 @@ function countRankings() {
   return { read: () => count, restore: () => spy.mockRestore() }
 }
 
-it("does no eager ranking, resolves only requested edges, and discards the cache with its evidence", () => {
+it("resolves exact edges without approximate ranking and refreshes status with new evidence", () => {
   const options = catalogue()
   const models = geometry(options)
   const rankings = countRankings()
@@ -44,18 +44,23 @@ it("does no eager ranking, resolves only requested edges, and discards the cache
     expect(edges.every(({ reference }) => reference.kind === "edge")).toBe(true)
     expect(rankings.read()).toBe(0)
     expect(edges[0]?.resolveStatus()).toBe("resolved")
-    expect(rankings.read()).toBe(1)
+    expect(rankings.read()).toBe(0)
     expect(edges[0]?.resolveStatus()).toBe("resolved")
-    expect(rankings.read()).toBe(1)
-    const replacement = edgeTreatmentCandidates(options, models, () => "edge", "edge")
-    expect(replacement[0]?.resolveStatus()).toBe("resolved")
-    expect(rankings.read()).toBe(2)
+    expect(rankings.read()).toBe(0)
+    const first = candidate("edge")
+    const updated = [
+      option(sourceId, "result", "Body", [first, { ...first, candidateId: "duplicate" }]),
+    ]
+    const replacement = edgeTreatmentCandidates(updated, geometry(updated), () => "edge", "edge")
+    expect(replacement[0]?.resolveStatus()).toBe("ambiguous")
+    expect(edges[0]?.resolveStatus()).toBe("resolved")
+    expect(rankings.read()).toBe(0)
   } finally {
     rankings.restore()
   }
 })
 
-it("ranks only the open keyboard page and reuses status when returning to it", async () => {
+it("shows only the open keyboard page and resolves exact choices without approximate ranking", async () => {
   const options = catalogue()
   const rankings = countRankings()
   try {
@@ -67,11 +72,16 @@ it("ranks only the open keyboard page and reuses status when returning to it", a
     expect(rankings.read()).toBe(0)
     await userEvent.click(screen.getByText("Keyboard choices", { selector: "summary" }))
     await screen.findByRole("button", { name: "Anonymous body · Edge 1" })
-    expect(rankings.read()).toBe(32)
+    expect(screen.queryByRole("button", { name: "Anonymous body · Edge 33" })).toBeNull()
+    expect(rankings.read()).toBe(0)
     await userEvent.click(screen.getByRole("button", { name: /^Next$/ }))
-    expect(rankings.read()).toBe(64)
+    expect(screen.queryByRole("button", { name: "Anonymous body · Edge 1" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Anonymous body · Edge 33" })).toBeTruthy()
+    expect(rankings.read()).toBe(0)
     await userEvent.click(screen.getByRole("button", { name: /^Previous$/ }))
-    expect(rankings.read()).toBe(64)
+    expect(screen.getByRole("button", { name: "Anonymous body · Edge 1" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Anonymous body · Edge 33" })).toBeNull()
+    expect(rankings.read()).toBe(0)
   } finally {
     rankings.restore()
   }

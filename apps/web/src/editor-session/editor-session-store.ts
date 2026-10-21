@@ -765,6 +765,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             const next = nextModelEdgeSelection(state.selectedModelEdges, selection)
             if (next === undefined) return
             state.selectedModelEdges = castDraft(next)
+            state.sketch.selectedProfile = null
             state.selection = null
             state.selectedBody = null
             state.selectedPartId = null
@@ -791,6 +792,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.selectedModelEdges = selection?.edges.length
               ? { ...selection, edges: [...selection.edges] }
               : null
+            state.sketch.selectedProfile = null
             state.selection = null
             state.selectedBody = null
             state.selectedPartId = null
@@ -936,6 +938,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             clearTreePreselection(state)
             state.workspace = workspace
             if (workspace !== "model") {
+              state.selectedModelEdges = null
               clearPartDesignTool(state)
               state.profileFeatureReturn = null
               state.selectedOriginPlane = null

@@ -11,6 +11,7 @@ import {
   type RefObject,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react"
@@ -178,6 +179,33 @@ function WorkspacePanelSurface({
   )
 }
 
+function WorkspaceHistory({ children }: { children: ReactNode }) {
+  const history = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const element = history.current
+    const shell = element?.closest<HTMLElement>(".cad-shell")
+    if (!element || !shell) return
+    const update = () => {
+      shell.style.setProperty(
+        "--workspace-history-height",
+        `${element.getBoundingClientRect().height}px`,
+      )
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    return () => {
+      observer.disconnect()
+      shell.style.removeProperty("--workspace-history-height")
+    }
+  }, [])
+  return (
+    <div ref={history} className="min-w-0 shrink-0">
+      {children}
+    </div>
+  )
+}
+
 /** Layout changes never replace the viewport or the mounted task form. */
 export function WorkspacePanels({
   allowTransparency,
@@ -323,7 +351,7 @@ export function WorkspacePanels({
             </ResizablePanel>
           </ResizablePanelGroup>
         </WorkspacePanelSurface>
-        {history}
+        <WorkspaceHistory>{history}</WorkspaceHistory>
       </div>
     </CompactModelTreeContext.Provider>
   )

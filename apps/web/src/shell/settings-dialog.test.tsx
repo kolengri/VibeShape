@@ -130,6 +130,9 @@ describe("coherent browser and project settings", () => {
       theme: "light",
       autoHideConsumedSketches: false,
       preferredExportFormat: "step",
+      lastExportFormat: "step",
+      exportMeshQuality: "default",
+      exportDestination: "file",
     })
     expect(applyUnits).not.toHaveBeenCalled()
     await userEvent.keyboard("{Escape}")

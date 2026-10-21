@@ -27,8 +27,10 @@ import { parsePrimitiveLengthExpression } from "../part-design/primitive-form"
 import {
   type EdgeTreatmentCandidate,
   legacyEdgeReference,
+  resolveTreatmentReference,
   sameTreatmentReference,
   toggleSelectedEdgeReference,
+  treatmentReferenceMatchesCandidate,
 } from "./edge-treatment-candidates"
 import type {
   EdgeTreatmentFormCopy,
@@ -130,19 +132,22 @@ function projectedEdgeTarget(
   optionId: string,
   candidates: readonly EdgeTreatmentCandidate[],
 ): ChamferTarget | null {
-  const matches = candidates.filter(
-    (candidate) =>
-      candidate.optionId === optionId && sameTreatmentReference(candidate.reference, reference),
+  const resolved = resolveTreatmentReference(
+    reference,
+    candidates.filter((candidate) => candidate.optionId === optionId),
   )
-  if (matches.length !== 1) return null
-  const candidate = matches[0]
+  if (resolved.status !== "resolved") return null
+  const candidate = resolved.candidate
   if (
     candidate?.resolveStatus() !== "resolved" ||
     candidate.reference.schemaVersion !== 1 ||
     candidate.reference.kind !== "edge"
   )
     return null
-  return { kind: "edge", edge: { ...candidate.reference, kind: "edge" } }
+  return {
+    kind: "edge",
+    edge: { ...reference, schemaVersion: 1, outputRole: candidate.reference.outputRole },
+  }
 }
 
 export function toggleTreatmentCandidate(
@@ -155,20 +160,21 @@ export function toggleTreatmentCandidate(
       ? values
       : clearTreatmentSelection(values, picked.optionId)
   const reference = picked.reference
-  const existing = next.targets.findIndex((target) =>
-    sameTreatmentReference(target.kind === "edge" ? target.edge : target.face, reference),
-  )
+  const matches = (stored: EdgeTopoRef | BodyTopoRef) =>
+    treatmentReferenceMatchesCandidate(stored, picked, candidates)
+  const selected =
+    next.targets.some((target) => matches(target.kind === "edge" ? target.edge : target.face)) ||
+    next.references.some(matches)
   let targets = next.targets
   if (reference.schemaVersion === 1) {
-    targets =
-      existing >= 0
-        ? targets.filter((_, index) => index !== existing)
-        : [
-            ...targets,
-            reference.kind === "face"
-              ? { kind: "face", face: { ...reference, kind: "face" } }
-              : { kind: "edge", edge: { ...reference, kind: "edge" } },
-          ]
+    targets = selected
+      ? targets.filter((target) => !matches(target.kind === "edge" ? target.edge : target.face))
+      : [
+          ...targets,
+          reference.kind === "face"
+            ? { kind: "face", face: { ...reference, kind: "face" } }
+            : { kind: "edge", edge: { ...reference, kind: "edge" } },
+        ]
   }
   const legacy = legacyEdgeReference(reference)
   const edges = candidates
@@ -178,17 +184,18 @@ export function toggleTreatmentCandidate(
       return reference ? [{ reference, candidate: entry.candidate }] : []
     })
   const references = legacy
-    ? toggleSelectedEdgeReference(next.references, legacy, edges)
+    ? selected
+      ? next.references.filter((ref) => !matches(ref))
+      : toggleSelectedEdgeReference(next.references, legacy, edges)
     : next.references
   return {
     ...next,
     scope: "selected",
     references,
     targets,
-    directionOverrides:
-      existing >= 0
-        ? next.directionOverrides.filter((ref) => !sameTreatmentReference(ref, reference))
-        : next.directionOverrides,
+    directionOverrides: selected
+      ? next.directionOverrides.filter((ref) => !matches(ref))
+      : next.directionOverrides,
   }
 }
 
@@ -197,9 +204,10 @@ function referenceIssue(
   candidates: readonly EdgeTreatmentCandidate[],
   copy: TreatmentValidationCopy,
 ) {
-  const matches = candidates.filter((entry) => sameTreatmentReference(entry.reference, reference))
-  if (matches.length !== 1) return matches.length ? copy.ambiguousEdge : copy.missingEdge
-  const match = matches[0]
+  const resolved = resolveTreatmentReference(reference, candidates)
+  if (resolved.status !== "resolved")
+    return resolved.status === "ambiguous" ? copy.ambiguousEdge : copy.missingEdge
+  const match = resolved.candidate
   if (match?.resolveStatus() === "ambiguous") return copy.ambiguousEdge
   return match?.resolveStatus() === "resolved" ? undefined : copy.missingEdge
 }

@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 
 export type VariablesTableRow = Readonly<{
   id: string
+  hidden?: boolean
   nameField: ReactNode
   expressionField: ReactNode
   result: ReactNode
@@ -21,6 +22,7 @@ export type VariablesTableCopy = Readonly<{
   status: string
   actions: string
   empty: string
+  noMatches: string
   add: string
 }>
 
@@ -31,6 +33,7 @@ export function VariablesTable({
   footerAction,
   onAdd,
   rows,
+  searchField,
 }: {
   addDisabled?: boolean
   copy: VariablesTableCopy
@@ -38,9 +41,11 @@ export function VariablesTable({
   footerAction?: ReactNode
   onAdd: () => void
   rows: readonly VariablesTableRow[]
+  searchField?: ReactNode
 }) {
   return (
     <div className="grid gap-3">
+      {searchField}
       <div className="max-h-80 overflow-auto rounded-md border bg-background">
         <table className="w-full min-w-[40rem] table-fixed border-collapse text-left text-xs">
           <caption className="sr-only">{copy.caption}</caption>
@@ -64,38 +69,37 @@ export function VariablesTable({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {!rows.some((row) => !row.hidden) ? (
               <tr>
                 <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
-                  {copy.empty}
+                  {rows.length === 0 ? copy.empty : copy.noMatches}
                 </td>
               </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.id} className="h-10 border-t align-middle">
-                  <td className="px-2 py-1">
-                    <div className="flex items-center gap-1">
-                      <span className="font-mono text-muted-foreground" aria-hidden="true">
-                        #
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        {row.nameField}
-                        <FieldError id={`${row.id}-name-error`}>{row.nameError}</FieldError>
-                      </div>
+            ) : null}
+            {rows.map((row) => (
+              <tr key={row.id} hidden={row.hidden} className="h-10 border-t align-middle">
+                <td className="px-2 py-1">
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-muted-foreground" aria-hidden="true">
+                      #
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      {row.nameField}
+                      <FieldError id={`${row.id}-name-error`}>{row.nameError}</FieldError>
                     </div>
-                  </td>
-                  <td className="px-2 py-1">
-                    {row.expressionField}
-                    <FieldError id={`${row.id}-expression-error`}>{row.expressionError}</FieldError>
-                  </td>
-                  <td className="break-words px-2 py-1 text-right font-mono tabular-nums">
-                    {row.result}
-                  </td>
-                  <td className="break-words px-2 py-1">{row.status}</td>
-                  <td className="px-2 py-1 text-right">{row.actions}</td>
-                </tr>
-              ))
-            )}
+                  </div>
+                </td>
+                <td className="px-2 py-1">
+                  {row.expressionField}
+                  <FieldError id={`${row.id}-expression-error`}>{row.expressionError}</FieldError>
+                </td>
+                <td className="break-words px-2 py-1 text-right font-mono tabular-nums">
+                  {row.result}
+                </td>
+                <td className="break-words px-2 py-1">{row.status}</td>
+                <td className="px-2 py-1 text-right">{row.actions}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

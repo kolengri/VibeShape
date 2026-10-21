@@ -973,7 +973,9 @@
         "selectionNone": "None",
         "selectionOriginPlane": "{plane, select, xy {XY plane} xz {XZ plane} yz {YZ plane} other {Origin plane}}",
         "unnamedFeature": "Unnamed feature",
-        "units": "Units: {length} · {angle}"
+        "units": "Units: {length} · {angle}",
+        "selectionEdge": "{feature} · Edge {edge}",
+        "selectionBodyEdge": "{feature} · Body {body} · Edge {edge}"
       },
       "taskPanel": {
         "legacyBodyLabel": "{label} · all bodies (legacy scope)",
@@ -1890,7 +1892,12 @@
         "assistantPreviewChanges": "Changes",
         "assistantPreviewResult": "Result",
         "assistantPreviewUnsaved": "Agent preview · not saved yet",
-        "referenceSelection": "Select {field} in 3D · Escape cancels selection"
+        "referenceSelection": "Select {field} in 3D · Escape cancels selection",
+        "modelEdgeKeyboardSelection": "Model edge",
+        "modelEdgeKeyboardPlaceholder": "Choose a visible edge",
+        "modelEdgeCandidate": "{label}",
+        "modelEdgeLabel": "{feature} · Edge {ordinal}",
+        "modelBodyEdgeLabel": "{feature} · Body {body} · Edge {ordinal}"
       },
       "faq": {
         "trigger": "FAQ",
@@ -2155,11 +2162,14 @@
         "result": "Result",
         "status": "Status",
         "actions": "Actions",
-        "empty": "No variables yet. Add one to make this model configurable."
+        "empty": "No variables yet. Add one to make this model configurable.",
+        "noMatches": "No variables match your search."
       },
       "fields": {
         "name": "Variable name",
-        "expression": "Variable expression"
+        "expression": "Variable expression",
+        "search": "Search variables",
+        "searchPlaceholder": "Name or expression"
       },
       "actions": {
         "add": "Add variable",
@@ -2168,6 +2178,7 @@
         "confirmRename": "Rename variable",
         "cancelRename": "Cancel",
         "apply": "Apply variables",
+        "clearSearch": "Clear search",
         "close": "Done"
       },
       "states": {
@@ -3701,6 +3712,7 @@
       "storageFailed": "Open project tabs could not be remembered on this device."
     },
     "assistant": {
+      "thinking": "Thinking",
       "reconnecting": "Reconnecting… attempt {attempt} of {limit}",
       "reconnectFailed": "Connection recovery stopped after {attempts, plural, =0 {a permanent error} one {# attempt} other {# attempts}}.",
       "retryConnection": "Retry connection",

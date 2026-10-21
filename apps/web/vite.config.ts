@@ -102,6 +102,8 @@ export default defineConfig(async (environment) => {
   const controlledOcct = mode === "controlled-occt"
 
   return {
+    // Worker-only imports escape the initial crawl; discovering them on New project reloads the page.
+    optimizeDeps: { include: ["replicad", "replicad-opencascadejs"] },
     plugins: [
       uiPluginRuntimeHeaders(),
       ...(await developmentPlugins(environment)),

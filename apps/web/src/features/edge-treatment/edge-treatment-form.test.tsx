@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
+  bodyTopoRefSchema,
   createLengthQuantity,
   featureIdSchema,
   featureRecordSchema,
@@ -14,6 +15,7 @@ import type React from "react"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { i18n } from "../../i18n"
+import { option as exactOption } from "./edge-treatment.test-fixtures"
 import { edgeTreatmentCreateTool } from "./edge-treatment-activation"
 import { selectedEdgeCandidates } from "./edge-treatment-candidates"
 import { EdgeTreatmentForm } from "./edge-treatment-form"
@@ -118,6 +120,49 @@ async function chooseEdge(
 }
 
 afterEach(cleanup)
+
+it.each(["fillet", "chamfer"] as const)(
+  "retains an ordinarily selected edge when starting %s and saves that exact reference",
+  async (operation) => {
+    const reference = selectedEdgeCandidates(topologyCandidates, secondTargetId, copy.edgeLabel)[0]
+      ?.reference
+    if (!reference) throw new Error("Missing selected edge fixture")
+    const options = [
+      exactOption(targetId, "result", "Box 1", [edgeCandidate]),
+      exactOption(secondTargetId, "result", "Box 2", [edgeCandidate]),
+    ]
+    const tool = edgeTreatmentCreateTool(
+      operation === "fillet" ? "create-fillet" : "create-chamfer",
+      { featureId: secondTargetId },
+      [{ id: targetId }, { id: secondTargetId }],
+      {
+        targetBody: { schemaVersion: 0, featureId: secondTargetId, outputRole: "result" },
+        edges: [bodyTopoRefSchema.parse({ ...reference, schemaVersion: 1, outputRole: "result" })],
+      },
+    )
+    const view = renderForm({
+      operation,
+      options,
+      topologyCandidates,
+      mode: {
+        kind: "create",
+        createFeatureId: () => featureId,
+        featureLabel: "Treatment",
+        targetFeatureId: tool.targetFeatureId,
+        edgeSelection: tool.edgeSelection,
+      },
+    })
+    expect(screen.getByRole("status").textContent).toBe("1 edges selected")
+    await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
+    expect(view.onSave).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({
+        dependencies: [secondTargetId],
+        references: [reference],
+      }),
+    )
+  },
+)
 
 describe("EdgeTreatmentForm", () => {
   it("keeps the connected graphical picker stable when parent renders recreate body options", async () => {

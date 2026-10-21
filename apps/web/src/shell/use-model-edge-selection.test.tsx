@@ -59,10 +59,10 @@ function setup() {
       ),
     },
   )
-  return { ...view, onToggle }
+  return { ...view, onToggle, onChange }
 }
 
-it("offers idle curves without ranking a whole catalogue before the first activation", () => {
+it("offers and selects exact idle curves without approximate catalogue ranking", () => {
   options = [
     option(
       sourceId,
@@ -90,7 +90,7 @@ it("offers idle curves without ranking a whole catalogue before the first activa
     if (!edge) throw new Error("The source edge must be visible.")
     act(() => selection?.onSelect(edge))
     expect(onToggle).toHaveBeenCalledTimes(1)
-    expect(rankings).toBe(1)
+    expect(rankings).toBe(0)
   } finally {
     sorted.mockRestore()
   }
@@ -109,4 +109,46 @@ it("refuses an ambiguous idle pick visibly and clears that feedback when edge mo
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull())
   rerender({ enabled: true })
   expect(screen.queryByRole("alert")).toBeNull()
+})
+
+it("uses the same exact body-bound owner for ordinary pointer and keyboard selections", () => {
+  options = [option(sourceId, "result", "Body")]
+  const { result, onToggle, onChange } = setup()
+  const pointer = result.current?.edgeSelection
+  const candidate = pointer?.candidates[0]
+  if (!candidate) throw new Error("The ordinary edge must have an exact polyline.")
+  act(() => pointer?.onSelect(candidate))
+  const selected = onToggle.mock.calls[0]?.[0]
+  expect(selected).toEqual({
+    targetBody: { schemaVersion: 0, featureId: sourceId, outputRole: "result" },
+    edges: [
+      expect.objectContaining({
+        schemaVersion: 1,
+        featureId: sourceId,
+        outputRole: "result",
+        kind: "edge",
+      }),
+    ],
+  })
+  const keyboard = result.current?.referenceSelection
+  const curve = keyboard?.candidates[0]
+  if (!curve) throw new Error("The same edge must remain keyboard selectable.")
+  act(() => keyboard?.onSelect(curve))
+  expect(onToggle.mock.calls[1]?.[0]).toEqual(selected)
+  act(() => pointer?.onSelect({ ...candidate, outputRole: "foreign" }))
+  expect(onToggle).toHaveBeenCalledTimes(2)
+  act(() => pointer?.onSelect(null))
+  expect(onChange).toHaveBeenCalledWith(null)
+})
+
+it("refuses ambiguous ordinary pointer picks through the same repair feedback", async () => {
+  const first = candidate("edge")
+  options = [option(sourceId, "result", "Body", [first, { ...first, candidateId: "duplicate" }])]
+  const { result, onToggle } = setup()
+  const pointer = result.current?.edgeSelection
+  const edge = pointer?.candidates[0]
+  if (!edge) throw new Error("The ambiguous edge must remain explicit.")
+  act(() => pointer?.onSelect(edge))
+  expect(onToggle).not.toHaveBeenCalled()
+  expect((await screen.findByRole("alert")).textContent).toContain("This edge is ambiguous.")
 })

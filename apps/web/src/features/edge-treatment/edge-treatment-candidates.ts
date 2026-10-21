@@ -1,10 +1,12 @@
 import {
+  canonicalJson,
   createTopologyReferenceResolver,
   type EdgeTopoRef,
   edgeTopoRefSchema,
   featureIdSchema,
   type TopologyCandidate,
   topologyCandidateSchema,
+  topoRefSchema,
 } from "@vibeshape/domain"
 import type { BodyTopoRef } from "@vibeshape/domain/body-topology-reference"
 import {
@@ -140,7 +142,11 @@ export function edgeTreatmentCandidates(
 }
 
 export function legacyEdgeReference(reference: EdgeTopoRef | BodyTopoRef): EdgeTopoRef | null {
-  if (reference.kind !== "edge") return null
+  if (
+    reference.kind !== "edge" ||
+    (reference.schemaVersion === 1 && reference.outputRole !== "result")
+  )
+    return null
   const { schemaVersion: _version, ...value } = reference
   const { outputRole: _role, ...legacy } = { outputRole: "result", ...value }
   return edgeTopoRefSchema.parse({ ...legacy, schemaVersion: 0 })
@@ -153,17 +159,47 @@ export function sameTreatmentReference(
   if (left.featureId !== right.featureId || left.kind !== right.kind) return false
   if (left.schemaVersion === 1 && right.schemaVersion === 1 && left.outputRole !== right.outputRole)
     return false
-  const resolve = createTopologyReferenceResolver([
-    {
-      candidateId: "current",
-      kind: right.kind,
-      signature: right.signature,
-      ...(right.semanticRole ? { semanticRole: right.semanticRole } : {}),
-      lineageTokens: right.lineageToken ? [right.lineageToken] : [],
-    },
-  ])
-  const { outputRole: _role, ...legacy } = { outputRole: "result", ...left }
-  return resolve({ ...legacy, schemaVersion: 0 }).status === "resolved"
+  if (
+    (left.schemaVersion === 0 && right.schemaVersion === 1 && right.outputRole !== "result") ||
+    (right.schemaVersion === 0 && left.schemaVersion === 1 && left.outputRole !== "result")
+  )
+    return false
+  if (left.semanticRole || right.semanticRole)
+    return Boolean(left.semanticRole && left.semanticRole === right.semanticRole)
+  if (left.lineageToken || right.lineageToken)
+    return Boolean(left.lineageToken && left.lineageToken === right.lineageToken)
+  return canonicalJson(left.signature) === canonicalJson(right.signature)
+}
+
+/** Resolve against the whole exact body, so neighboring anonymous edges retain their margin. */
+export function resolveTreatmentReference(
+  reference: EdgeTopoRef | BodyTopoRef,
+  candidates: readonly EdgeTreatmentCandidate[],
+): { status: "resolved"; candidate: EdgeTreatmentCandidate } | { status: "missing" | "ambiguous" } {
+  const role = reference.schemaVersion === 1 ? reference.outputRole : "result"
+  const scoped = candidates.filter(
+    ({ reference: candidate }) =>
+      candidate.featureId === reference.featureId &&
+      candidate.kind === reference.kind &&
+      (candidate.schemaVersion === 1 ? candidate.outputRole : "result") === role,
+  )
+  const resolve = createTopologyReferenceResolver(scoped.map(({ candidate }) => candidate))
+  const { outputRole: _role, ...legacy } = { outputRole: "result", ...reference }
+  const result = resolve(topoRefSchema.parse({ ...legacy, schemaVersion: 0 }))
+  if (result.status !== "resolved") return { status: result.status }
+  const candidate = scoped.find(({ candidateId }) => candidateId === result.candidateId)
+  return candidate ? { status: "resolved", candidate } : { status: "missing" }
+}
+
+/** Compare stored intent with a current candidate only after resolving its complete catalogue. */
+export function treatmentReferenceMatchesCandidate(
+  reference: EdgeTopoRef | BodyTopoRef,
+  candidate: EdgeTreatmentCandidate,
+  candidates: readonly EdgeTreatmentCandidate[],
+) {
+  if (reference.kind !== candidate.reference.kind) return false
+  const resolved = resolveTreatmentReference(reference, candidates)
+  return resolved.status === "resolved" && resolved.candidate.id === candidate.id
 }
 
 /** Toggle the resolved current edge, preserving other unresolved authored references for repair. */

@@ -6,7 +6,14 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
-import { ArrowUpRight, Image, Paperclip, Send, StopIcon, X } from "@vibeshape/ui/components/icons"
+import {
+  AssistantSteerIcon,
+  Image,
+  Paperclip,
+  Send,
+  StopIcon,
+  X,
+} from "@vibeshape/ui/components/icons"
 import { Textarea } from "@vibeshape/ui/components/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
@@ -129,7 +136,7 @@ function AssistantQueue({
                   isLoading={steeringQueuedId === message.id}
                   onClick={() => onSteerQueued?.(message.id)}
                 >
-                  <ArrowUpRight aria-hidden="true" />
+                  <AssistantSteerIcon aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{t("steerQueuedMessage")}</TooltipContent>

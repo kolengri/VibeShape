@@ -215,3 +215,35 @@ it("invalidates requests on visibility, revision, and rebuild changes while allo
   expect(result.current.viewportContext).toBeUndefined()
   expect(result.current.request).toBeNull()
 })
+
+it("highlights only the exact picked circular rim within a nearby anonymous pair", () => {
+  const lower = candidate("edge", 1, true)
+  const upper = {
+    ...lower,
+    candidateId: "upper",
+    signature: {
+      ...lower.signature,
+      centroid: [10, 0, 0.5] as [number, number, number],
+      bounds: {
+        min: [10, 0, 0.5] as [number, number, number],
+        max: [20, 0, 0.5] as [number, number, number],
+      },
+    },
+  }
+  const options = [option(sourceId, "result", "Thin cylinder", [lower, upper])]
+  const { result, context, models } = setup(options)
+  const reference = edgeTreatmentCandidates(options, models, (kind) => kind, "edge")[1]?.reference
+  if (reference?.schemaVersion !== 1 || reference.kind !== "edge")
+    throw new Error("The upper rim must be an exact body edge.")
+  act(() =>
+    result.current.onContextChange({
+      ...context,
+      targets: [{ kind: "edge", edge: { ...reference, kind: "edge" } }],
+    }),
+  )
+  expect(
+    result.current.viewportContext?.referenceSelection?.candidates.map(
+      (entry) => entry.kind === "model-curve" && entry.selected,
+    ),
+  ).toEqual([false, true])
+})

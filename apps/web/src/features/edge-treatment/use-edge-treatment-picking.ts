@@ -12,7 +12,7 @@ import type { ActivePartDesignTool } from "../part-design/part-design-tool"
 import {
   type EdgeTreatmentCandidate,
   edgeTreatmentCandidates,
-  sameTreatmentReference,
+  resolveTreatmentReference,
 } from "./edge-treatment-candidates"
 import type {
   EdgeTreatmentPick,
@@ -38,40 +38,37 @@ function taskKey(
   ])
 }
 
-function candidateSelected(
-  candidate: EdgeTreatmentCandidate,
+function selectedCandidateIds(
   context: EdgeTreatmentPickingContext,
+  candidates: readonly EdgeTreatmentCandidate[],
 ) {
-  const target = context.targets?.some((target) =>
-    sameTreatmentReference(candidate.reference, target.kind === "edge" ? target.edge : target.face),
-  )
-  const side = context.targets?.some(
-    (target) =>
-      target.kind === "edge" &&
-      target.sideFace &&
-      sameTreatmentReference(candidate.reference, target.sideFace),
-  )
-  const override = context.directionOverrides?.some((reference) =>
-    sameTreatmentReference(candidate.reference, reference),
-  )
-  return (
-    target ||
-    side ||
-    override ||
-    context.references.some((reference) => sameTreatmentReference(candidate.reference, reference))
+  const references = [
+    ...(context.targets ?? []).flatMap((target) =>
+      target.kind === "edge"
+        ? [target.edge, ...(target.sideFace ? [target.sideFace] : [])]
+        : [target.face],
+    ),
+    ...(context.directionOverrides ?? []),
+    ...context.references,
+  ]
+  return new Set(
+    references.flatMap((reference) => {
+      const resolved = resolveTreatmentReference(reference, candidates)
+      return resolved.status === "resolved" ? [resolved.candidate.id] : []
+    }),
   )
 }
 
 function selectedFaces(
   candidates: readonly EdgeTreatmentCandidate[],
-  context: EdgeTreatmentPickingContext,
+  selected: ReadonlySet<string>,
 ): readonly ViewerSelection[] {
   return candidates.flatMap((candidate) => {
     const ref = candidate.reference
     return ref.kind === "face" &&
       ref.schemaVersion === 1 &&
       candidate.candidate.meshFaceId !== undefined &&
-      candidateSelected(candidate, context)
+      selected.has(candidate.id)
       ? [
           {
             featureId: ref.featureId,
@@ -124,6 +121,7 @@ function treatmentViewport(
       !hidden.includes(candidate.reference.featureId) &&
       (!restricted || candidate.optionId === context.targetOptionId),
   )
+  const selected = selectedCandidateIds(context, eligible)
   const select = (matches: readonly EdgeTreatmentCandidate[], intent: EdgeTreatmentPick) => {
     const candidate = matches[0]
     if (matches.length !== 1 || !candidate) {
@@ -150,7 +148,7 @@ function treatmentViewport(
       faceIntersectionSelection: {
         consumeBackground: true,
         selectionMeshes: treatmentMeshes(controller, context, hidden, restricted),
-        selectedFaces: selectedFaces(eligible, context),
+        selectedFaces: selectedFaces(eligible, selected),
         isCandidateEligible: (selection) =>
           eligible.some((candidate) => faceMatches(candidate, selection)),
         onSelect: (selection) => {
@@ -177,7 +175,7 @@ function treatmentViewport(
             candidateId: candidate.id,
             label: labels.get(candidate.id) ?? candidate.label,
             points: candidate.edgePolyline,
-            selected: Boolean(candidateSelected(candidate, context)),
+            selected: Boolean(selected.has(candidate.id)),
           },
         ]
       : [],

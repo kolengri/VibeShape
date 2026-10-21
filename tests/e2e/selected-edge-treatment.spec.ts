@@ -33,6 +33,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await expect(
       form.getByRole("button", { name: `Create ${operation}`, exact: true }),
     ).toBeDisabled()
+    await form.getByText("Keyboard choices", { exact: true }).focus()
     await form.getByText("Keyboard choices", { exact: true }).click()
     await form.getByRole("button", { name: "Box 1 · Edge 1", exact: true }).click()
     await expect(form.getByRole("button", { name: /^Remove Edge \d+$/ })).toHaveCount(1)

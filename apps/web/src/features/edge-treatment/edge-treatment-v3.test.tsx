@@ -378,3 +378,44 @@ it("seeds exact idle edge preselection through activation and rejects a foreign 
     }).edgeSelection,
   ).toBeUndefined()
 })
+
+it.each(["fillet", "chamfer"] as const)(
+  "keeps a picked thin circular rim distinct from its nearby partner for %s",
+  async (operation) => {
+    const lower = candidate("edge", 1, true)
+    const upper = {
+      ...lower,
+      candidateId: "upper",
+      signature: {
+        ...lower.signature,
+        centroid: [10, 0, 0.5] as [number, number, number],
+        bounds: {
+          min: [10, 0, 0.5] as [number, number, number],
+          max: [20, 0, 0.5] as [number, number, number],
+        },
+      },
+    }
+    const options = [option(sourceId, "result", "Thin cylinder", [lower, upper])]
+    const models = geometry(options)
+    const picked = edgeTreatmentCandidates(options, models, (kind) => kind, "edge")[1]
+    if (!picked) throw new Error("The upper exact rim must be available.")
+    const { onSave } = setup({
+      operation,
+      options,
+      topologyCandidates: models,
+      pickingRequest: {
+        featureId: treatmentId,
+        sequence: 1,
+        reference: picked.reference,
+        optionId: picked.optionId,
+      },
+    })
+    expect(await screen.findByRole("button", { name: "Remove Edge 2" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Remove Edge 1" })).toBeNull()
+    expect(screen.getByText("1 targets selected")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+    const feature = saved(onSave)
+    expect(feature.references).toHaveLength(1)
+    expect(feature.references[0]?.signature).toEqual(upper.signature)
+  },
+)

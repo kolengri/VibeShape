@@ -1,6 +1,10 @@
 import type { EdgeTopoRef, FeatureId } from "@vibeshape/domain"
 import type { BodyTopoRef } from "@vibeshape/domain/body-topology-reference"
-import { type EdgeTreatmentCandidate, sameTreatmentReference } from "./edge-treatment-candidates"
+import {
+  type EdgeTreatmentCandidate,
+  resolveTreatmentReference,
+  treatmentReferenceMatchesCandidate,
+} from "./edge-treatment-candidates"
 import { type TreatmentValues, toggleTreatmentCandidate } from "./edge-treatment-model"
 import type { EdgeTreatmentTargetOption } from "./edge-treatment-options"
 
@@ -41,14 +45,14 @@ function resolvePickedCandidate(
   if (request.issue) return { issue: request.issue }
   const reference = request.reference
   if (!reference) return { issue: "missing" as const }
-  const matches = candidates.filter(
-    (candidate) =>
-      (request.optionId === undefined || request.optionId === candidate.optionId) &&
-      sameTreatmentReference(candidate.reference, reference),
+  const resolved = resolveTreatmentReference(
+    reference,
+    candidates.filter(
+      (candidate) => request.optionId === undefined || request.optionId === candidate.optionId,
+    ),
   )
-  if (matches.length !== 1)
-    return { issue: matches.length ? ("ambiguous" as const) : ("missing" as const) }
-  const candidate = matches[0]
+  if (resolved.status !== "resolved") return { issue: resolved.status }
+  const candidate = resolved.candidate
   if (!candidate || !options.some(({ id }) => id === candidate.optionId))
     return { issue: "missing" as const }
   const status = candidate.resolveStatus()
@@ -76,15 +80,21 @@ function pickSideFace(
   }
 }
 
-function pickOverride(values: TreatmentValues, candidate: EdgeTreatmentCandidate): PickResult {
+function pickOverride(
+  values: TreatmentValues,
+  candidate: EdgeTreatmentCandidate,
+  candidates: readonly EdgeTreatmentCandidate[],
+): PickResult {
   if (candidate.optionId !== values.targetFeatureId) return { issue: "wrong-body" }
   const reference = candidate.reference
   if (reference.schemaVersion !== 1 || reference.kind !== "edge") return { issue: "missing" }
   const edge = { ...reference, kind: "edge" as const }
-  const existing = values.directionOverrides.some((entry) => sameTreatmentReference(entry, edge))
+  const matches = (entry: BodyTopoRef) =>
+    treatmentReferenceMatchesCandidate(entry, candidate, candidates)
+  const existing = values.directionOverrides.some(matches)
   if (!existing && values.directionOverrides.length >= 256) return { issue: "limit" }
   const directionOverrides = existing
-    ? values.directionOverrides.filter((entry) => !sameTreatmentReference(entry, edge))
+    ? values.directionOverrides.filter((entry) => !matches(entry))
     : [...values.directionOverrides, edge]
   return { values: { ...values, directionOverrides } }
 }
@@ -100,7 +110,7 @@ export function applyTreatmentPick(
   const { candidate } = resolved
   const pick = request.pick ?? { kind: "edges" }
   if (pick.kind === "side-face") return pickSideFace(values, candidate, pick.index)
-  if (pick.kind === "overrides") return pickOverride(values, candidate)
+  if (pick.kind === "overrides") return pickOverride(values, candidate, candidates)
   const kind = pick.kind === "faces" ? "face" : "edge"
   if (candidate.reference.kind !== kind) return { issue: "missing" }
   const next = toggleTreatmentCandidate(values, candidate, candidates)

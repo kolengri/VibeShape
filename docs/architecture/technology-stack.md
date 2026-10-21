@@ -71,7 +71,8 @@ Verified against the npm registry on **2026-08-07**, with `is-what` and `fflate`
 | `jsdom` | 30.0.1 | MIT |
 | `fallow` | 3.14.0 | MIT |
 
-The exact Bun toolchain version is pinned in `packageManager`. CI and Cloudflare Pages workflows
+The current Bun toolchain and TypeScript definitions are pinned to 1.4.3. The exact runtime version
+is recorded in `packageManager`. CI and Cloudflare Pages workflows
 read that pin through `oven-sh/setup-bun` with `bun-version-file: package.json`, so runtime setup and
 the install-time version check share one source. Bun upgrades include the corresponding `bun.lock`
 changes.

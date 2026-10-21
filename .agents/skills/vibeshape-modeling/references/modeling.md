@@ -135,6 +135,16 @@ profiles to come from one sketch.
 
 ## Fillet and Chamfer
 
+A unique identical complete edge signature resolves before approximate matching, including nearby
+circular rims. Coincident identical candidates remain ambiguous and require explicit repair. This
+rule preserves semantic, lineage and exact output-body restrictions.
+
+In the visible editor, current exact edges can be selected directly in the idle 3D viewport or
+through its focus-revealed keyboard selector. Starting Fillet or Chamfer captures eligible edge intent
+before clearing idle selection. Hidden, occluded, clipped and preview-only edges do not intercept
+ordinary pointer picking. This is UI preselection, not an MCP session-selection API; named tools
+still require their explicit durable selections.
+
 Legacy Fillet/Chamfer V1/V2 obtain durable resolved selections from `model_edges` or
 `draft_edges`. Omitting `edges` means all edges (V1); supplying it retains selected-edge intent
 (V2). Body topology references are not accepted by those legacy contracts. Radius/distance fields

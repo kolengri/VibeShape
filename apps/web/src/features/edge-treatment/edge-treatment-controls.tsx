@@ -8,7 +8,12 @@ import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ReferencePickField } from "../part-design/reference-pick-field"
 import { VariableExpressionField } from "../variables/variable-expression-field"
-import { type EdgeTreatmentCandidate, sameTreatmentReference } from "./edge-treatment-candidates"
+import {
+  type EdgeTreatmentCandidate,
+  resolveTreatmentReference,
+  sameTreatmentReference,
+  treatmentReferenceMatchesCandidate,
+} from "./edge-treatment-candidates"
 import type { EdgeTreatmentFormCopy, EdgeTreatmentOperation } from "./edge-treatment-form"
 import {
   clearTreatmentSelection,
@@ -110,7 +115,7 @@ function CandidateFallback({ props }: { props: TreatmentControlsProps }) {
   const currentPage = Math.min(page, lastPage)
   return (
     <details
-      className="rounded-md border p-2"
+      className="sr-only rounded-md border p-2 focus-within:not-sr-only"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="cursor-pointer text-xs">{t("keyboardChoices")}</summary>
@@ -156,6 +161,7 @@ function CandidateFallback({ props }: { props: TreatmentControlsProps }) {
 function removeReference(
   props: TreatmentControlsProps,
   reference: ReturnType<typeof treatmentReferences>[number],
+  candidate: EdgeTreatmentCandidate | undefined,
 ) {
   props.onChange({
     ...props.values,
@@ -165,7 +171,9 @@ function removeReference(
         !sameTreatmentReference(target.kind === "edge" ? target.edge : target.face, reference),
     ),
     directionOverrides: props.values.directionOverrides.filter(
-      (ref) => !sameTreatmentReference(ref, reference),
+      (ref) =>
+        !sameTreatmentReference(ref, reference) &&
+        !(candidate && treatmentReferenceMatchesCandidate(ref, candidate, props.candidates)),
     ),
   })
 }
@@ -182,9 +190,13 @@ function SideFaceField({
   side: Extract<TreatmentValues["targets"][number], { kind: "edge" }>["sideFace"]
 }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
-  const sideLabel = side
-    ? props.candidates.find((entry) => sameTreatmentReference(entry.reference, side))?.label
+  const resolvedSide = side
+    ? resolveTreatmentReference(
+        side,
+        props.candidates.filter(({ optionId }) => optionId === props.values.targetFeatureId),
+      )
     : null
+  const sideLabel = resolvedSide?.status === "resolved" ? resolvedSide.candidate.label : null
   return (
     <>
       <Button
@@ -227,12 +239,10 @@ function EdgeOverrideCheckbox({
   props,
   label,
   candidate,
-  edge,
 }: {
   props: TreatmentControlsProps
   label: string
   candidate: EdgeTreatmentCandidate | undefined
-  edge: Extract<TreatmentValues["targets"][number], { kind: "edge" }>["edge"]
 }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   return (
@@ -241,7 +251,10 @@ function EdgeOverrideCheckbox({
         type="checkbox"
         disabled={props.disabled || candidate?.resolveStatus() !== "resolved"}
         aria-label={t("reverseNamedEdge", { edge: label })}
-        checked={props.values.directionOverrides.some((ref) => sameTreatmentReference(ref, edge))}
+        checked={props.values.directionOverrides.some(
+          (ref) =>
+            candidate && treatmentReferenceMatchesCandidate(ref, candidate, props.candidates),
+        )}
         onChange={() => {
           if (candidate) props.onPick(candidate, { kind: "overrides" })
         }}
@@ -267,7 +280,7 @@ function SelectedEdgeDirection({
   return (
     <>
       <SideFaceField props={props} index={index} label={label} side={target.sideFace} />
-      <EdgeOverrideCheckbox props={props} label={label} candidate={candidate} edge={target.edge} />
+      <EdgeOverrideCheckbox props={props} label={label} candidate={candidate} />
     </>
   )
 }
@@ -283,11 +296,11 @@ function SelectedRow({
 }) {
   const reference = treatmentReferences(props.values, v3)[index]
   if (!reference) return null
-  const candidate = props.candidates.find(
-    (entry) =>
-      entry.optionId === props.values.targetFeatureId &&
-      sameTreatmentReference(entry.reference, reference),
+  const resolved = resolveTreatmentReference(
+    reference,
+    props.candidates.filter((entry) => entry.optionId === props.values.targetFeatureId),
   )
+  const candidate = resolved.status === "resolved" ? resolved.candidate : undefined
   const label = candidate?.label ?? props.copy.missingEdge
   return (
     <div className="grid gap-1 rounded-md border bg-accent px-2 py-1 text-sm">
@@ -303,7 +316,7 @@ function SelectedRow({
           size="icon-sm"
           aria-label={props.copy.removeEdgeLabel(label)}
           disabled={props.disabled}
-          onClick={() => removeReference(props, reference)}
+          onClick={() => removeReference(props, reference, candidate)}
         >
           <X aria-hidden="true" />
         </Button>
