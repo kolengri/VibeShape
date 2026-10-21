@@ -1,0 +1,138 @@
+name: macOS release validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Draft desktop release containing the Apple Silicon DMG and build receipt
+        required: true
+        type: string
+      source_commit:
+        description: Full source commit recorded by the packager
+        required: true
+        type: string
+      dmg_sha256:
+        description: Independently verified Apple Silicon DMG SHA-256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-validation
+  cancel-in-progress: false
+
+jobs:
+  packaged-macos:
+    name: macOS packaged release acceptance
+    runs-on: macos-15
+    timeout-minutes: 20
+    permissions:
+      # GitHub exposes draft releases only to callers with push access.
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      DMG_SHA256: ${{ inputs.dmg_sha256 }}
+    steps:
+      - name: Validate release coordinates and runner architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^desktop-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$DMG_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 1
+          [[ "$(uname -m)" == arm64 ]] || exit 1
+
+      - name: Checkout the acceptance harness
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install acceptance dependencies
+        run: bun ci
+
+      - name: Download and verify the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#desktop-v}"
+          image="VibeShape-$version-mac-arm64.dmg"
+          destination="$RUNNER_TEMP/macos-release"
+          mkdir "$destination"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$destination" \
+            --pattern "$image" --pattern desktop-build.json --pattern SHA256SUMS
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["RELEASE_TAG"].removeprefix("desktop-v")
+          name = f"VibeShape-{version}-mac-arm64.dmg"
+          destination = Path(os.environ["RUNNER_TEMP"]) / "macos-release"
+          image = destination / name
+          digest = hashlib.sha256()
+          with image.open("rb") as stream:
+              for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                  digest.update(chunk)
+          sha256 = digest.hexdigest()
+          receipt = json.loads((destination / "desktop-build.json").read_text())
+          expected = {
+              "schemaVersion": 1,
+              "sourceCommit": os.environ["SOURCE_COMMIT"],
+              "version": version,
+              "platform": "darwin",
+              "arch": "arm64",
+              "dmgSha256": sha256,
+          }
+          if (sha256 != os.environ["DMG_SHA256"]
+                  or (destination / "SHA256SUMS").read_text().strip() != f"{sha256}  {name}"
+                  or any(receipt.get(key) != value for key, value in expected.items())):
+              raise SystemExit("Release receipt, manifest or independent digest mismatch.")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write(f"Release: {os.environ['RELEASE_TAG']}\n\n"
+                            f"Artifact source: {os.environ['SOURCE_COMMIT']}\n\n"
+                            f"Acceptance harness: {os.environ['GITHUB_SHA']}\n\n"
+                            f"DMG SHA-256: {sha256}\n")
+          PY
+          hdiutil verify "$destination/$image"
+
+      - name: Extract and verify the actual application
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#desktop-v}"
+          image="$RUNNER_TEMP/macos-release/VibeShape-$version-mac-arm64.dmg"
+          volume="$RUNNER_TEMP/vibeshape-release-volume"
+          extracted="$RUNNER_TEMP/macos-extracted"
+          mkdir "$volume" "$extracted"
+          hdiutil attach -readonly -nobrowse -mountpoint "$volume" "$image"
+          trap 'hdiutil detach "$volume"' EXIT
+          application="$extracted/VibeShape.app"
+          ditto "$volume/VibeShape.app" "$application"
+          codesign --verify --deep --strict "$application"
+          lipo -verify_arch arm64 "$application/Contents/MacOS/VibeShape"
+          echo "VIBESHAPE_PACKAGED_APP=$application" >> "$GITHUB_ENV"
+
+      - name: Exercise the actual DMG application with an isolated profile
+        env:
+          DEBUG: pw:browser,pw:api
+        run: bun run test:desktop:packaged
+
+      - name: Preserve packaged failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-packaged-failure
+          path: artifacts/desktop-macos/
+          if-no-files-found: ignore
+          retention-days: 7

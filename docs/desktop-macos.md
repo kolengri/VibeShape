@@ -309,6 +309,16 @@ signature verification alone cannot establish. It also checks the packaged licen
 Packaged-app verification must also check its code signature and controlled assets. These local checks do not prove
 Gatekeeper acceptance of a downloaded public binary or notarization.
 
+The manual `macOS release validation` workflow runs packaged acceptance on a separate Apple Silicon
+`macos-15` runner. Upload the DMG, `desktop-build.json` and `SHA256SUMS` to a draft release, then
+supply its `desktop-vX.Y.Z` tag, exact artifact source commit and independently verified DMG SHA-256.
+The workflow verifies the receipt and digest, checks the disk image, mounts it read-only, copies the
+actual application, verifies its code signature and architecture, and runs `test:desktop:packaged`
+with an isolated profile. It records the artifact source separately from the acceptance harness
+commit. This avoids the installed application's fixed-port conflict on the developer's Mac.
+Publish the same draft only after both platform acceptance workflows succeed; do not replace their
+validated assets. The check does not establish notarization or Gatekeeper acceptance.
+
 `test:desktop` rebuilds the native host but serves the existing `apps/web/dist` renderer. Run the
 current web build before integrated UI acceptance; an old renderer directory cannot establish the
 freshness of icons or frontend behavior. The background-session regression uses a temporary profile
