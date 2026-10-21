@@ -581,6 +581,65 @@ describe("assistant connection settings", () => {
     expect(chat.disconnect).not.toHaveBeenCalled()
   })
 
+  it.each(["Codex", "Claude Code", "OpenCode"])(
+    "selects %s as a local argument helper without API fields",
+    async (name) => {
+      const chat = {
+        connect: vi.fn().mockResolvedValue(true),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      }
+      show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+      await choose("Agent", "Jev (TypeSafe)")
+      await choose("Argument model", name)
+      expect(screen.queryByLabelText("Argument model endpoint", { exact: true })).toBeNull()
+      expect(screen.queryByLabelText("Argument model API key", { exact: true })).toBeNull()
+      await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+      const commands: Record<string, string> = {
+        Codex: "codex-acp",
+        "Claude Code": "claude-agent-acp",
+        OpenCode: "opencode",
+      }
+      expect(chat.connect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          settings: expect.objectContaining({
+            argumentsAgent: { command: commands[name], args: name === "OpenCode" ? ["acp"] : [] },
+          }),
+        }),
+        {},
+      )
+      expect(readAssistantPreferences()?.agent).toEqual(chat.connect.mock.calls[0]?.[0])
+    },
+  )
+
+  it("reuses the saved custom agent as a helper and retains it when testing a connected form", async () => {
+    const original = { command: "/private/custom-acp", args: ["--acp", "literal argument"] }
+    saveAssistantPreferences({ version: 1, agent: original })
+    const chat = {
+      connect: vi.fn().mockResolvedValue(true),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      testConnection: vi
+        .fn()
+        .mockResolvedValue({ ok: true, checks: ["agent", "jev", "arguments"] }),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    expect(screen.getByRole("combobox", { name: "Argument model" }).textContent).toContain(
+      "Saved custom ACP agent",
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+    expect(chat.connect).toHaveBeenCalledWith(
+      expect.objectContaining({ settings: expect.objectContaining({ argumentsAgent: original }) }),
+      {},
+    )
+    cleanup()
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={true} />)
+    await userEvent.click(screen.getByRole("button", { name: "Test connection" }))
+    expect(chat.testConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ settings: expect.objectContaining({ argumentsAgent: original }) }),
+      {},
+    )
+  })
+
   it("retains both Jev keys after a reported connection failure and resends them on retry", async () => {
     let connected = false
     const chat = {
@@ -589,6 +648,7 @@ describe("assistant connection settings", () => {
     }
     show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
     await choose("Agent", "Jev (TypeSafe)")
+    await choose("Argument model", "API connection (advanced)")
     for (const [label, value] of [
       ["TypeSafe API key", "test-typesafe-key"],
       ["Argument model endpoint", "https://helper.test/v1/chat/completions"],
@@ -625,6 +685,7 @@ describe("assistant connection settings", () => {
     }
     show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
     await choose("Agent", "Jev (TypeSafe)")
+    await choose("Argument model", "API connection (advanced)")
     fireEvent.change(screen.getByLabelText("Argument model endpoint", { exact: true }), {
       target: { value: "https://helper.test/v1/chat/completions" },
     })

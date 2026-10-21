@@ -45,10 +45,22 @@ Select **Agent → Jev (TypeSafe)**. Enter the TypeSafe API key and
 Jev model. The default model is the adapter's pinned `jev-1.14.0`; selecting it does not establish
 that the provider account has access to that model.
 
-Expand **Argument model** to configure an OpenAI-compatible endpoint, model name and optional key.
+Choose **Argument model → Codex / Claude Code / OpenCode** to reuse the installed ACP agent's
+existing sign-in. A previously saved custom ACP command is also available and selected when switching
+from that agent to Jev. The choices are launch presets, not a claim that an executable is installed
+or authenticated; use **Test connection** to check access. No helper API key is needed.
 Most CAD edits need this helper for dimensions and references. Jev selects the action; the helper
-fills only that action's open arguments. Configure endpoint and model together. The helper endpoint
-must use HTTPS or loopback HTTP and must not contain URL credentials, a query or fragment.
+fills only that action's open arguments. Each completion starts a fresh ACP process in a temporary
+empty working directory, without the project MCP attachment or client filesystem/terminal
+capabilities. Permission requests are declined. The helper inherits OS/configuration paths for its
+existing sign-in, but no TypeSafe or argument-provider keys. It retains the local agent's ordinary
+OS privileges; these restrictions are not an OS sandbox. Stop, timeout and normal host shutdown
+terminate the helper process. Starting a process per completion adds unmeasured startup overhead.
+The agent uses its own default model; Jev does not select or change that agent's model settings.
+
+**API connection (advanced)** retains the compatible endpoint, model name and optional key option.
+Configure endpoint and model together. The endpoint must use HTTPS or loopback HTTP and must not
+contain URL credentials, a query or fragment. Local-agent and API helper configurations are mutually exclusive.
 
 PNG/JPEG input is enabled when connecting Jev, without a separate image permission. The composer
 accepts at most four images within a combined 512 KiB base64 envelope (up to approximately 384 KiB
@@ -88,6 +100,7 @@ use your existing local environment/wrapper setup when launching the app from Fi
 | --- | --- |
 | `TYPESAFE_API_KEY` | Required TypeSafe API key |
 | `TYPESAFE_MODEL` | Defaults to pinned `jev-1.14.0` |
+| `JEV_ARGUMENTS_AGENT` | JSON ACP launch descriptor, e.g. `{"command":"codex-acp","args":[]}`; mutually exclusive with the API helper |
 | `JEV_ARGUMENTS_ENDPOINT` | Full OpenAI-compatible chat-completions endpoint for open arguments |
 | `JEV_ARGUMENTS_MODEL` | Model served by that endpoint; required when the endpoint is set |
 | `JEV_ARGUMENTS_API_KEY` | Optional helper key; omit for a local endpoint without authentication |

@@ -17,7 +17,7 @@ if (process.argv.includes("--test-connection")) {
   else if (scenario === "overflow") process.stdout.write("x".repeat(70*1024));
   else if (scenario === "malformed") console.log(JSON.stringify({ok:false,stage:"jev",code:"request-failed",message:"private secret"}));
   else if (scenario === "weak-success") console.log(JSON.stringify({ok:true,checks:["agent"]}));
-  else console.log(JSON.stringify(scenario === "failure" ? {ok:false,stage:"arguments",code:"request-failed",httpStatus:401} : {ok:true,checks:["agent","jev"]}));
+  else console.log(JSON.stringify(scenario === "failure" ? {ok:false,stage:"arguments",code:"request-failed",httpStatus:401} : {ok:true,checks:process.env.JEV_ARGUMENTS_AGENT ? ["agent","jev","arguments"] : ["agent","jev"]}));
 } else {
  require("node:readline").createInterface({input:process.stdin}).on("line",line=>{
    const {id,method,params} = JSON.parse(line);
@@ -218,39 +218,53 @@ describe("isolated desktop connection tests", () => {
     expect(f.events).toEqual([])
   })
 
-  test.each(["success", "failure", "malformed", "weak-success", "overflow", "hang"])(
-    "validates built-in process output (%s) without a CAD connection",
-    async (scenario) => {
-      const f = await host({ connectionTestTimeoutMs: scenario === "hang" ? 60 : 2000 })
-      const resolver = createAssistantLaunchResolver({
-        executable: process.execPath,
-        runtimeDirectory: f.cwd,
-        env: { TYPESAFE_API_KEY: "test-key" },
-      })
-      const service = createAssistantService({
-        cwd: f.cwd,
-        applicationVersion: "1",
-        getMcpSetup: async () => {
-          throw new Error("Probe must not attach CAD.")
-        },
-        onEvent: () => {
-          throw new Error("Probe must not emit events.")
-        },
-        connectionTestTimeoutMs: scenario === "hang" ? 60 : 2000,
-        resolveLaunch: (...args) => {
-          const result = resolver(...args)
-          if (result.ok) result.launch.env = { ...result.launch.env, PROBE_SCENARIO: scenario }
-          return result
-        },
-      })
-      cleanup.push(() => service.close())
-      expect(
-        await service.testConnection({
-          projectId: "project",
-          agent: assistantJevAgentSchema.parse({ kind: "jev", settings: {} }),
+  test.each([
+    "success",
+    "local-helper",
+    "failure",
+    "malformed",
+    "weak-success",
+    "overflow",
+    "hang",
+  ])("validates built-in process output (%s) without a CAD connection", async (scenario) => {
+    const f = await host({ connectionTestTimeoutMs: scenario === "hang" ? 60 : 2000 })
+    const resolver = createAssistantLaunchResolver({
+      executable: process.execPath,
+      runtimeDirectory: f.cwd,
+      env: { TYPESAFE_API_KEY: "test-key" },
+    })
+    const service = createAssistantService({
+      cwd: f.cwd,
+      applicationVersion: "1",
+      getMcpSetup: async () => {
+        throw new Error("Probe must not attach CAD.")
+      },
+      onEvent: () => {
+        throw new Error("Probe must not emit events.")
+      },
+      connectionTestTimeoutMs: scenario === "hang" ? 60 : 2000,
+      resolveLaunch: (...args) => {
+        const result = resolver(...args)
+        if (result.ok) result.launch.env = { ...result.launch.env, PROBE_SCENARIO: scenario }
+        return result
+      },
+    })
+    cleanup.push(() => service.close())
+    expect(
+      await service.testConnection({
+        projectId: "project",
+        agent: assistantJevAgentSchema.parse({
+          kind: "jev",
+          settings:
+            scenario === "local-helper"
+              ? { argumentsAgent: { command: "codex-acp", args: [] } }
+              : {},
         }),
-      ).toEqual(
-        scenario === "success"
+      }),
+    ).toEqual(
+      scenario === "local-helper"
+        ? { ok: true, checks: ["agent", "jev", "arguments"] }
+        : scenario === "success"
           ? { ok: true, checks: ["agent", "jev"] }
           : scenario === "failure"
             ? { ok: false, stage: "arguments", code: "request-failed", httpStatus: 401 }
@@ -259,7 +273,6 @@ describe("isolated desktop connection tests", () => {
                 stage: "agent",
                 code: scenario === "hang" ? "timeout" : "protocol-error",
               },
-      )
-    },
-  )
+    )
+  })
 })

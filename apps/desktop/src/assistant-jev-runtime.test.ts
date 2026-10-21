@@ -96,6 +96,23 @@ describe("built-in Jev runtime authority", () => {
     expect(launch(resolve("project-a", agent())).env?.PATH).toBe("/usr/bin:/bin")
   })
 
+  it("forwards a local argument descriptor without API credentials and preserves sign-in locations", () => {
+    const resolve = createAssistantLaunchResolver({
+      executable,
+      runtimeDirectory,
+      env: {
+        TYPESAFE_API_KEY: "host-key",
+        JEV_ARGUMENTS_API_KEY: "must-not-leak",
+        CODEX_HOME: "/private/codex-config",
+      },
+    })
+    const argumentsAgent = { command: "codex-acp", args: [] }
+    const result = launch(resolve("project", agent({ argumentsAgent })))
+    expect(JSON.parse(result.env?.JEV_ARGUMENTS_AGENT ?? "null")).toEqual(argumentsAgent)
+    expect(result.env?.JEV_ARGUMENTS_API_KEY).toBeUndefined()
+    expect(result.env?.CODEX_HOME).toBe("/private/codex-config")
+  })
+
   it("preserves legacy executable configuration without attaching built-in credentials or flags", () => {
     const resolve = createAssistantLaunchResolver({ executable, runtimeDirectory, env: {} })
     const external = { command: "custom-acp", args: ["literal argument; $(exit 9)"] }

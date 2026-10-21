@@ -3,7 +3,11 @@
 The bundled native [Jev ACP controller](../jev-agent.md) is a distinct decision adapter
 over the native host's existing injected MCP attachment. It owns bounded action selection and
 optional argument completion, while the host retains project authority, schemas, exact previews,
-transactions and checkpoints. It adds no browser-side provider or document mutation path.
+transactions and checkpoints. Its optional argument helper can reuse an installed ACP agent's
+existing sign-in through a fresh process without the project MCP attachment, client filesystem or
+terminal capabilities. Helper descriptors use the existing external-agent schema; TypeSafe/helper
+API keys are excluded from the child environment. These are protocol restrictions, not OS sandboxing.
+It adds no browser-side provider or document mutation path.
 
 The desktop host attaches external MCP clients to its already open project and runs installed ACP
 agents through a narrow native bridge. Static web chat calls the person's compatible model API

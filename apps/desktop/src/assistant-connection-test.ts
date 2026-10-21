@@ -143,7 +143,9 @@ export function createAssistantConnectionTests(options: AssistantServiceOptions)
         await waitForAssistantSpawn(processChild)
         if (finished) throw new ProbeFailure("stale-session")
         if ("kind" in input.agent) {
-          return providerResult(Boolean(input.agent.settings.argumentsEndpoint))
+          return providerResult(
+            Boolean(input.agent.settings.argumentsEndpoint || input.agent.settings.argumentsAgent),
+          )
         }
         const external = initializeProbeAgent(processChild, options.applicationVersion, fail)
         connection = external.connection

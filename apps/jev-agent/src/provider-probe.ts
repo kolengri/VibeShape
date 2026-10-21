@@ -2,6 +2,7 @@ import { choice, type Fetch, TypeSafeClient } from "@typesafe-ai/sdk"
 import type { AssistantConnectionTestResult } from "@vibeshape/automation-api/assistant"
 import { z } from "zod"
 import type { Configuration } from "./configuration"
+import { requestLocalArguments } from "./local-arguments"
 
 const probeAnswer = z.object({
   answers: z.object({
@@ -110,7 +111,16 @@ export async function probeProviders(
     probeAnswer.parse(result)
     controller.signal.throwIfAborted()
     const checks: Array<"agent" | "jev" | "arguments"> = ["agent", "jev"]
-    if (configuration.argumentsEndpoint && configuration.argumentsModel) {
+    if (configuration.argumentsAgent) {
+      stage = "arguments"
+      const response = await requestLocalArguments(
+        configuration.argumentsAgent,
+        'Return only {"ok":true} as JSON. Do not use tools.',
+        controller.signal,
+      )
+      confirmation.parse(JSON.parse(response))
+      checks.push("arguments")
+    } else if (configuration.argumentsEndpoint && configuration.argumentsModel) {
       stage = "arguments"
       const response = await request(configuration.argumentsEndpoint, {
         method: "POST",

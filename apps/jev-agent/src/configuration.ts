@@ -30,6 +30,7 @@ export function readConfiguration(env: Record<string, string | undefined>): Conf
     maxSteps: numberSetting(env.JEV_MAX_STEPS),
     minConfidence: numberSetting(env.JEV_MIN_CONFIDENCE),
     timeoutMs: numberSetting(env.JEV_TIMEOUT_MS),
+    argumentsAgent: agentSetting(env.JEV_ARGUMENTS_AGENT),
     argumentsEndpoint: env.JEV_ARGUMENTS_ENDPOINT,
     argumentsModel: env.JEV_ARGUMENTS_MODEL,
     argumentsApiKey: env.JEV_ARGUMENTS_API_KEY,
@@ -37,4 +38,13 @@ export function readConfiguration(env: Record<string, string | undefined>): Conf
   if (!result.success)
     throw new Error("Invalid Jev environment. Set TYPESAFE_API_KEY and check docs/jev-agent.md.")
   return result.data
+}
+
+function agentSetting(value: string | undefined): unknown {
+  if (value === undefined) return undefined
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
 }

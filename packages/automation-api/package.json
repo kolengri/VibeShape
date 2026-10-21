@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     "./assistant": "./src/assistant.ts",
+    "./assistant-agents": "./src/assistant-agents.ts",
     "./assistant-jev": "./src/assistant-jev.ts",
     "./assistant-tool-targets": "./src/assistant-tool-targets.ts",
     "./project-tools": "./src/project-tools.ts",
