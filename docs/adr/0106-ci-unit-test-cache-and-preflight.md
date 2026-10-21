@@ -2,6 +2,9 @@
 
 Status: Accepted
 
+CI scheduling and selected input-policy details are superseded by
+[ADR-0123](0123-parallel-ci-and-reusable-test-inputs.md).
+
 Date: 2026-10-08
 
 ## Context

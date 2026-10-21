@@ -39,12 +39,29 @@ function changedReference(argument: string, next: string | undefined, root: stri
   )
 }
 
+function selectedGroup(value: string | undefined, previous: "node" | "dom" | undefined) {
+  if (value !== "node" && value !== "dom") throw new Error("--group must select node or dom.")
+  if (previous && previous !== value) throw new Error("Select only one unit-test group.")
+  return value
+}
+
+function completeOptions(forwarded: string[], filters: string[]) {
+  // Unknown future selection flags must never seed complete-result receipts.
+  return (
+    !filters.length &&
+    forwarded.every((flag) =>
+      /^--(?:timeout|parallel|parallel-delay|max-concurrency|seed|timings)(?:=|$)/.test(flag),
+    )
+  )
+}
+
 /** Launcher options are consumed here; all other options retain Bun's existing semantics. */
 export function unitTestOptions(input: string[], root: string) {
   const forwarded: string[] = []
   const filters: string[] = []
   let requested = false
   let force = false
+  let group: "node" | "dom" | undefined
   for (let index = 0; index < input.length; index++) {
     const argument = input[index]
     if (!argument || argument === "--") continue
@@ -56,6 +73,11 @@ export function unitTestOptions(input: string[], root: string) {
       force = true
       continue
     }
+    const selection = /^--group(?:=(.*))?$/.exec(argument)
+    if (selection) {
+      group = selectedGroup(selection[1] ?? input[++index], group)
+      continue
+    }
     if (!argument.startsWith("-")) {
       filters.push(argument.replace(/^\.\//, ""))
       continue
@@ -64,11 +86,6 @@ export function unitTestOptions(input: string[], root: string) {
     forwarded.push(option.argument)
     index += Number(option.consumesNext)
   }
-  // A whitelist prevents future Bun flags that select a partial corpus from creating receipts.
-  const complete =
-    !filters.length &&
-    forwarded.every((flag) =>
-      /^--(?:timeout|parallel|parallel-delay|max-concurrency|seed|timings)(?:=|$)/.test(flag),
-    )
-  return { forwarded, filters, cache: requested && !force && complete, requested, force }
+  const complete = completeOptions(forwarded, filters)
+  return { forwarded, filters, cache: requested && !force && complete, requested, force, group }
 }

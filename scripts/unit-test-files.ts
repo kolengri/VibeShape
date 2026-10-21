@@ -12,6 +12,7 @@ const excludedDirectories = new Set([
   "test-results",
   "playwright-report",
   "__pycache__",
+  "artifacts",
 ])
 const sourceExtensions = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"])
 const runtimeDirectories = [".artifacts/structural-runtime", ".artifacts/occt-build/package"]

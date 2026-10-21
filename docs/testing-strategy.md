@@ -61,6 +61,15 @@ changed-file selection, coverage, reporters, name/shard filters, bail thresholds
 and other partial/output-producing options bypass the cache. Reporter filenames
 and DOM preloads retain the native launcher contract.
 
+CI runs static/integration checks and the complete `--group=node` and `--group=dom`
+corpora in independent jobs. Both execute `bun test`; `node` names the DOM-free
+environment and does not select a Node.js runtime. Group selection preserves complete per-group receipts;
+combining it with a path/name/shard filter still disables caching. Omitting `--group`
+retains the local Node-then-DOM run. Each CI test job uses its available CPUs and
+publishes the worker count and elapsed duration. The `Fast PR checks` aggregate
+fails when any required job fails, is canceled, or is skipped. Typecheck results
+and their incremental outputs travel in one Turbo archive.
+
 The cache hashes workspace dependency closure, undeclared relative imports and
 literal assets, actual ignored/untracked fixtures and WASM, installed dependency
 contents, shared inputs, Bun/platform/architecture, execution options, and every
@@ -80,6 +89,17 @@ coupled source pins; edited producers bypass reuse until reviewed. This policy
 trusts installed runtime behavior and is not a third-party execution sandbox. See
 [ADR-0106](adr/0106-ci-unit-test-cache-and-preflight.md) for the input boundary,
 archive location, deployment preflight, and runner-resource decisions.
+
+Erased TypeScript annotations do not introduce executable external dependencies;
+class heritage expressions still do. Documentation is hashed when reached by an
+actual import or file read, rather than invalidating every workspace after an
+unrelated documentation edit. Generated `artifacts/` logs are excluded; a test
+that reads an excluded output cannot issue receipts. Diagnostics distinguish an
+uncacheable scope (with bounded source/dependency reasons) from a missing receipt.
+The reviewed chamfer loader is cacheable only with the installed, hashed OCCT
+package and no external-kernel override. See
+[ADR-0123](adr/0123-parallel-ci-and-reusable-test-inputs.md) for the superseding
+scheduling, cache transport, and input-policy decisions.
 
 The workerd suite remains separate and always executes. Cache hits, local/native
 runs, workerd evidence, browser evidence, and live deployment are different claims.
