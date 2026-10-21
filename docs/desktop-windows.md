@@ -75,6 +75,12 @@ the absolute `node.exe` command and put the adapter's JavaScript entrypoint in i
 Shell `.cmd`/`.bat` wrappers are not executed by enabling a shell. External ACP adapters and their
 authentication remain separately installed; CAD itself does not require them.
 
+Jev's local argument helper uses the system Windows PowerShell/.NET runtime to own a
+kill-on-close Job Object before starting the selected agent. This contains backend descendants
+even when the ACP leader exits or the Jev host is terminated. Policy restrictions on PowerShell
+or `Add-Type` cause a launch failure; there is no unsupervised fallback. See the
+[Jev connection guide](jev-agent.md#configure-and-connect) for settings and limits.
+
 Installed-slicer discovery receives Windows installation roots and PATH. Custom slicers are selected
 as `.exe` files, remembered in the private profile and launched with argument arrays. Mesh retention,
 failed-launch recovery and the absence of slicing or printer traffic match the Mac workflow.

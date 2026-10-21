@@ -6,6 +6,7 @@ import { Readable, Writable } from "node:stream"
 import * as acp from "@agentclientprotocol/sdk"
 import type { AssistantExternalAgent } from "@vibeshape/automation-api/assistant"
 import { JevFailure } from "./failure"
+import { windowsArgumentLaunch } from "./windows-argument-process"
 
 function localEnvironment() {
   const env: NodeJS.ProcessEnv = {}
@@ -63,6 +64,7 @@ export async function requestLocalArguments(
     if (!child?.pid) return
     try {
       if (process.platform !== "win32") process.kill(-child.pid, kind)
+      // On Windows this is the job-owning supervisor, not the ACP leader.
       else child.kill(kind)
     } catch {
       /* The process may already have exited. */
@@ -79,9 +81,12 @@ export async function requestLocalArguments(
   }
   try {
     signal.throwIfAborted()
-    child = spawn(agent.command, agent.args, {
+    const env = localEnvironment()
+    const launch =
+      process.platform === "win32" ? windowsArgumentLaunch(agent, env, cwd) : { ...agent, env }
+    child = spawn(launch.command, launch.args, {
       cwd,
-      env: localEnvironment(),
+      env: launch.env,
       shell: false,
       detached: process.platform !== "win32",
       windowsHide: true,
@@ -198,6 +203,6 @@ export async function requestLocalArguments(
     process.removeListener("exit", onExit)
     process.removeListener("SIGTERM", onTerminate)
     process.removeListener("SIGINT", onInterrupt)
-    await rm(cwd, { recursive: true, force: true })
+    await rm(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }

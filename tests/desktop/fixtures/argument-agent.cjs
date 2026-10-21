@@ -7,7 +7,7 @@ const record = (data) => appendFileSync(receipt, `${JSON.stringify(data)}\n`)
 const text = (value, sessionId = "helper") => send({ method: "session/update", params: {
   sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: value } },
 } })
-record({ pid: process.pid, cwd: process.cwd(), secret: process.env.TYPESAFE_API_KEY, helperKey: process.env.JEV_ARGUMENTS_API_KEY, electron: process.env.ELECTRON_RUN_AS_NODE })
+record({ pid: process.pid, parentPid: process.ppid, args: process.argv.slice(4), cwd: process.cwd(), secret: process.env.TYPESAFE_API_KEY, helperKey: process.env.JEV_ARGUMENTS_API_KEY, electron: process.env.ELECTRON_RUN_AS_NODE })
 let promptId
 if (mode === "hang") process.on("SIGTERM", () => {})
 const backendReady = mode.startsWith("descendant-") ? new Promise((resolve) => {
@@ -22,20 +22,26 @@ function answer() {
   else { text('{"plane":"XZ",'); text('"geometry":{"width":20}}') }
   send({ id: promptId, result: { stopReason: mode === "cancelled" ? "cancelled" : "end_turn" } })
 }
+function prompt(message) {
+  promptId = message.id
+  void backendReady.then(() => {
+    record({ ready: true })
+    if (["hang", "descendant-cancel"].includes(mode)) return
+    if (mode === "descendant-exit") return process.exit(3)
+    if (mode === "permission") {
+      send({ id: "permission", method: "session/request_permission", params: { sessionId: "helper", toolCall: { toolCallId: "write", title: "Write a file" }, options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }] } })
+      return
+    }
+    answer()
+  })
+}
 createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line)
   record(message)
   if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1, agentCapabilities: {} } })
   else if (message.method === "session/new") send({ id: message.id, result: { sessionId: "helper" } })
-  else if (message.method === "session/prompt") {
-    promptId = message.id
-    if (mode === "hang" || mode === "descendant-cancel") return
-    if (mode === "permission") {
-      send({ id: "permission", method: "session/request_permission", params: { sessionId: "helper", toolCall: { toolCallId: "write", title: "Write a file" }, options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }] } })
-      return
-    }
-    void backendReady.then(answer)
-  } else if (message.id === "permission" && message.result) {
+  else if (message.method === "session/prompt") prompt(message)
+  else if (message.id === "permission" && message.result) {
     text('{"geometry":{}}')
     send({ id: promptId, result: { stopReason: "end_turn" } })
   }

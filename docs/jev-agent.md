@@ -56,6 +56,14 @@ capabilities. Permission requests are declined. The helper inherits OS/configura
 existing sign-in, but no TypeSafe or argument-provider keys. It retains the local agent's ordinary
 OS privileges; these restrictions are not an OS sandbox. Stop, timeout and normal host shutdown
 terminate the helper process. Starting a process per completion adds unmeasured startup overhead.
+On Windows, the helper runs beneath an inbox PowerShell/.NET supervisor assigned to a
+kill-on-close Job Object before launching the agent. Its descendants inherit job membership;
+leader exit, cancellation and host termination close the owning process and terminate the job.
+The supervisor also waits on the host process handle, because forced Windows process termination
+cannot run JavaScript signal handlers. Arguments are passed as data and stdout/stdin are inherited
+directly; no shell command evaluates the agent arguments. A blocked PowerShell or `Add-Type` policy
+fails the launch without an unsupervised fallback. Temporary-directory removal has bounded retries
+for asynchronous Windows handle release. Job termination is not a promise of synchronous OS reaping.
 The agent uses its own default model; Jev does not select or change that agent's model settings.
 
 **API connection (advanced)** retains the compatible endpoint, model name and optional key option.

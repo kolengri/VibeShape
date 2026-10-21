@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { createArgumentCompleter } from "./arguments"
 
@@ -10,6 +10,16 @@ const script = fileURLToPath(
 )
 const tool = { name: "create_sketch", inputSchema: { type: "object" as const } }
 const state = { goal: "A 20 mm square", instructions: "Use XY", history: [], photos: [] }
+const literalArgs = [
+  "",
+  "two words",
+  'quote"inside',
+  "trailing\\",
+  'slash\\"quote',
+  "λ漢字",
+  "$(exit 9); & |",
+]
+const budget = () => AbortSignal.timeout(20_000)
 
 async function fixture(
   mode: string,
@@ -20,12 +30,12 @@ async function fixture(
   try {
     await run(
       createArgumentCompleter({
-        agent: { command: process.execPath, args: [script, mode, receipt] },
+        agent: { command: process.execPath, args: [script, mode, receipt, ...literalArgs] },
       }),
       receipt,
     )
   } finally {
-    await rm(directory, { recursive: true, force: true })
+    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
 async function events(receipt: string) {
@@ -35,13 +45,36 @@ async function events(receipt: string) {
     .map((line) => JSON.parse(line))
 }
 
+async function ready(receipt: string) {
+  const deadline = Date.now() + 20_000
+  while (Date.now() < deadline) {
+    const log = await events(receipt).catch(() => [])
+    if (log.some((event) => event.ready)) return log
+    await Bun.sleep(25)
+  }
+  throw new Error("Argument fixture did not reach its ready prompt.")
+}
+
+async function expectExited(pid: number) {
+  let running = true
+  for (let attempt = 0; attempt < 100 && running; attempt++) {
+    try {
+      process.kill(pid, 0)
+    } catch {
+      running = false
+    }
+    if (running) await Bun.sleep(10)
+  }
+  expect(running).toBe(false)
+}
+
 describe("local ACP argument helper", () => {
   it("uses a fresh isolated session, streams JSON, preserves selected values and cleans up", async () => {
     await fixture("success", async (complete, receipt) => {
       const before = process.env.TYPESAFE_API_KEY
       process.env.TYPESAFE_API_KEY = "must-not-reach-helper"
       try {
-        expect(await complete(tool, state, { plane: "XY" }, AbortSignal.timeout(5000))).toEqual({
+        expect(await complete(tool, state, { plane: "XY" }, budget())).toEqual({
           plane: "XY",
           geometry: { width: 20 },
         })
@@ -53,6 +86,7 @@ describe("local ACP argument helper", () => {
       expect(log[0]).not.toHaveProperty("secret")
       expect(log[0]).not.toHaveProperty("helperKey")
       expect(log[0]).not.toHaveProperty("electron")
+      expect(log[0].args).toEqual(literalArgs)
       expect(log.find((e) => e.method === "initialize").params.clientCapabilities).toEqual({})
       expect(log.find((e) => e.method === "session/new").params.mcpServers).toEqual([])
       expect(log.find((e) => e.method === "session/prompt").params.prompt[0].text).toContain(
@@ -61,15 +95,15 @@ describe("local ACP argument helper", () => {
       await expect(stat(log[0].cwd)).rejects.toThrow()
       expect(() => process.kill(log[0].pid, 0)).toThrow()
     })
-  })
+  }, 30_000)
   it("denies permission requests without granting tool authority", async () => {
     await fixture("permission", async (complete, receipt) => {
-      await complete(tool, state, {}, AbortSignal.timeout(5000))
+      await complete(tool, state, {}, budget())
       expect((await events(receipt)).find((e) => e.id === "permission").result).toEqual({
         outcome: { outcome: "cancelled" },
       })
     })
-  })
+  }, 30_000)
   for (const [mode, error] of [
     ["large", "256 KiB"],
     ["invalid", "invalid argument JSON"],
@@ -77,59 +111,123 @@ describe("local ACP argument helper", () => {
   ] as const) {
     it(`rejects ${mode} output without returning arguments`, async () => {
       await fixture(mode, async (complete) => {
-        await expect(complete(tool, state, {}, AbortSignal.timeout(5000))).rejects.toThrow(error)
+        await expect(complete(tool, state, {}, budget())).rejects.toThrow(error)
       })
-    })
+    }, 30_000)
   }
   it("cancels a hung agent and kills its process even when SIGTERM is ignored", async () => {
     await fixture("hang", async (complete, receipt) => {
-      await expect(complete(tool, state, {}, AbortSignal.timeout(300))).rejects.toThrow("cancelled")
+      const abort = new AbortController()
+      const pending = complete(tool, state, {}, AbortSignal.any([abort.signal, budget()]))
+      try {
+        await Promise.race([ready(receipt), pending])
+        abort.abort()
+        await expect(pending).rejects.toThrow("cancelled")
+      } finally {
+        abort.abort()
+      }
       const log = await events(receipt)
       expect(() => process.kill(log[0].pid, 0)).toThrow()
       await expect(stat(log[0].cwd)).rejects.toThrow()
     })
-  })
+  }, 30_000)
   it("reports missing executables without exposing command text", async () => {
     const complete = createArgumentCompleter({
       agent: { command: "/missing/private-agent", args: [] },
     })
-    await expect(complete(tool, state, {}, AbortSignal.timeout(5000))).rejects.toThrow(
-      "could not start",
-    )
-  })
+    const pending = complete(tool, state, {}, budget())
+    await expect(pending).rejects.toThrow("Local argument agent")
+    await expect(pending).rejects.not.toThrow("/missing/private-agent")
+  }, 30_000)
   for (const mode of ["descendant-success", "descendant-cancel"]) {
-    it.skipIf(process.platform === "win32")(
-      `kills backend descendants after leader closure (${mode})`,
-      async () => {
-        await fixture(mode, async (complete, receipt) => {
-          const pending = complete(tool, state, {}, AbortSignal.timeout(500))
-          if (mode === "descendant-cancel") await expect(pending).rejects.toThrow("cancelled")
-          else await pending
-          const log = await events(receipt)
-          const pid = log.find((event) => event.backendPid)?.backendPid
-          expect(pid).toBeNumber()
+    it(`kills backend descendants after leader closure (${mode})`, async () => {
+      await fixture(mode, async (complete, receipt) => {
+        const abort = new AbortController()
+        const pending = complete(tool, state, {}, AbortSignal.any([abort.signal, budget()]))
+        try {
+          if (mode === "descendant-cancel") {
+            await Promise.race([ready(receipt), pending])
+            abort.abort()
+            await expect(pending).rejects.toThrow("cancelled")
+          } else await pending
+        } finally {
+          abort.abort()
+        }
+        const log = await events(receipt)
+        const pid = log.find((event) => event.backendPid)?.backendPid
+        expect(pid).toBeNumber()
+        try {
+          await expectExited(pid)
+          await expectExited(log[0].pid)
+        } finally {
           try {
-            // SIGKILL delivery precedes process-table removal on some hosts.
-            let running = true
-            for (let attempt = 0; attempt < 100 && running; attempt++) {
-              try {
-                process.kill(pid, 0)
-              } catch {
-                running = false
-              }
-              if (running) await Bun.sleep(10)
-            }
-            expect(running).toBe(false)
-            expect(() => process.kill(log[0].pid, 0)).toThrow()
-          } finally {
-            try {
-              process.kill(pid, "SIGKILL")
-            } catch {
-              /* Already terminated. */
-            }
+            process.kill(pid, "SIGKILL")
+          } catch {
+            /* Already terminated. */
           }
-        })
-      },
-    )
+        }
+      })
+    }, 30_000)
   }
+  it("terminates a backend when its ACP leader exits before cleanup", async () => {
+    await fixture("descendant-exit", async (complete, receipt) => {
+      await expect(complete(tool, state, {}, budget())).rejects.toThrow("Local argument agent")
+      const log = await events(receipt)
+      const pid = log.find((event) => event.backendPid)?.backendPid
+      expect(pid).toBeNumber()
+      await expectExited(pid)
+      await expect(stat(log[0].cwd)).rejects.toThrow()
+    })
+  }, 30_000)
+
+  it.skipIf(process.platform !== "win32")(
+    "terminates the job when its host is killed",
+    async () => {
+      await fixture("unused", async (_complete, receipt) => {
+        const hostFile = join(dirname(receipt), "host.ts")
+        const modulePath = fileURLToPath(new URL("./arguments.ts", import.meta.url)).replaceAll(
+          "\\",
+          "/",
+        )
+        await writeFile(
+          hostFile,
+          `import { createArgumentCompleter } from ${JSON.stringify(modulePath)};\nvoid createArgumentCompleter({agent:${JSON.stringify({ command: process.execPath, args: [script, "descendant-cancel", receipt] })}})(${JSON.stringify(tool)},${JSON.stringify(state)},{},AbortSignal.timeout(60000)).catch(() => { process.exitCode = 1 });`,
+        )
+        const bundle = await Bun.build({
+          entrypoints: [hostFile],
+          target: "node",
+          format: "cjs",
+          packages: "bundle",
+        })
+        expect(bundle.success).toBe(true)
+        const output = bundle.outputs[0]
+        if (!output) throw new Error("Missing bundled argument host.")
+        const bundleFile = join(dirname(receipt), "host.cjs")
+        await Bun.write(bundleFile, output)
+        const { nativeElectronExecutable } = await import("../../../tests/desktop/native-fixture")
+        const host = Bun.spawn([nativeElectronExecutable, bundleFile], {
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+          stdout: "ignore",
+          stderr: "ignore",
+        })
+        try {
+          const log = await Promise.race([
+            ready(receipt),
+            host.exited.then(() => {
+              throw new Error("Fixture host exited before readiness.")
+            }),
+          ])
+          const backend = log.find((event) => event.backendPid)?.backendPid
+          expect(backend).toBeNumber()
+          host.kill("SIGKILL")
+          await host.exited
+          await expectExited(log[0].pid)
+          await expectExited(backend)
+        } finally {
+          if (host.exitCode === null) host.kill("SIGKILL")
+        }
+      })
+    },
+    30_000,
+  )
 })
