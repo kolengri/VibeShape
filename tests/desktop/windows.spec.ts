@@ -10,6 +10,7 @@ import {
 } from "../../apps/desktop/test-support/mcp-client"
 import { invokeModelCommand } from "../e2e/model-command-support"
 import { createNativeFixture, openNativeEditor } from "./native-fixture"
+import { diagnoseWindowsCompilation } from "./windows-compile-diagnostics"
 
 test.skip(process.platform !== "win32", "Windows native acceptance requires Windows.")
 
@@ -75,6 +76,10 @@ test("Windows launches with standard chrome and retains projects after restart",
           structuredContent: { result: { diagnostic: { code: "not-paired" } } },
         })
       } catch (error) {
+        console.error(
+          "Windows compile probes:",
+          await diagnoseWindowsCompilation(setup.mcpServers.vibeshape).catch(() => "unavailable"),
+        )
         throw new Error(`Windows MCP acceptance failed. Forwarder stderr: ${stderr}`, {
           cause: error,
         })
