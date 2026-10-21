@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { createHash, randomUUID } from "node:crypto"
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import { strFromU8, unzipSync } from "fflate"
 import { STRUCTURAL_RUNTIME_FILES, STRUCTURAL_RUNTIME_VERSION } from "./structural-runtime-inputs"
@@ -9,6 +9,17 @@ const destination = resolve(root, ".artifacts/structural-runtime")
 await mkdir(destination, { recursive: true })
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
 type RuntimeInput = (typeof STRUCTURAL_RUNTIME_FILES)[number]
+async function publishAsset(name: string, bytes: Uint8Array | string) {
+  const target = resolve(destination, name)
+  const temporary = resolve(root, ".artifacts", `structural-runtime-${randomUUID()}.tmp`)
+  try {
+    await writeFile(temporary, bytes, { flag: "wx" })
+    // Parallel test processes must never observe a truncated runtime or provenance file.
+    await rename(temporary, target)
+  } finally {
+    await rm(temporary, { force: true })
+  }
+}
 async function cachedAsset(input: RuntimeInput) {
   try {
     const cached = await readFile(resolve(destination, input.name))
@@ -36,7 +47,7 @@ async function prepareAsset(input: RuntimeInput) {
   const bytes = await upstreamAsset(input)
   if (digest(bytes) !== input.sha256)
     throw new Error(`Structural runtime checksum mismatch: ${input.name}.`)
-  await writeFile(resolve(destination, input.name), bytes)
+  await publishAsset(input.name, bytes)
   return { name: input.name, bytes }
 }
 const files = await Promise.all(STRUCTURAL_RUNTIME_FILES.map(prepareAsset))
@@ -51,9 +62,9 @@ for (const file of files) {
   for (const [name, bytes] of Object.entries(licenses))
     notices.push(`${file.name}: ${name}\n\n${strFromU8(bytes)}`)
 }
-await writeFile(resolve(destination, "THIRD-PARTY-NOTICES.txt"), notices.join("\n\n---\n\n"))
-await writeFile(
-  resolve(destination, "provenance.json"),
+await publishAsset("THIRD-PARTY-NOTICES.txt", notices.join("\n\n---\n\n"))
+await publishAsset(
+  "provenance.json",
   JSON.stringify(
     {
       runtimeVersion: STRUCTURAL_RUNTIME_VERSION,

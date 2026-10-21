@@ -26,7 +26,7 @@ const reflectedGlobals = new Map([
 const preparation = new Map([
   [
     "scripts/prepare-structural-runtime.ts",
-    "e0acfba773d02b17a66cd773c11b4b7b8921559d82f6cde377e5cba91e6cfe7c",
+    "dfbb952f4c108315890e92eb882ada59998766bf18ce943b740a8d32c582bc77",
   ],
   [
     "scripts/structural-runtime-inputs.ts",
@@ -70,7 +70,15 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/quick-wasm.test.ts",
-    "b9dee0174264cd04eea6fd73ef780bb0b9958db0e1f5a6983936b7245347edbd",
+    "48566b96c7106915f095dc621c40b319e8f08a708586b3acbe198d4b2471f9cc",
+  ],
+  [
+    "packages/structural-optimization/tests/quick-wasm-curved.test.ts",
+    "cfe0b0d97192b59dfac5a5a4ad2daf69c534ec8808eb5bf94e6f5ab787ff4c57",
+  ],
+  [
+    "packages/structural-optimization/tests/quick-wasm-helpers.ts",
+    "8291201866097696e88d6aee156fcbe9bc300de9c62aade25e0ce49d24c1b8fc",
   ],
   [
     "packages/structural-optimization/tests/wasm-solver.test.ts",

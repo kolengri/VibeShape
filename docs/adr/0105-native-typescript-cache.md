@@ -2,6 +2,8 @@
 
 Status: Accepted
 
+CI archive distribution is superseded by [ADR-0123](0123-parallel-ci-and-reusable-test-inputs.md).
+
 ## Context
 
 The repository already pins TypeScript 7.0.2 and uses its native compiler.
