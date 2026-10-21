@@ -133,6 +133,7 @@
 | [0121](0121-circular-offset-chamfer.md) | Accepted with bounded circular-rim support | Equal-distance Offset on exact closed circular plane/cylinder rims; partially supersedes 0118 |
 | [0122](0122-density-topology-and-adaptive-lattices.md) | Accepted with reduced scope | Filtered SIMP and FEM-graded lattice snapshots |
 | [0123](0123-parallel-ci-and-reusable-test-inputs.md) | Accepted | Parallel CI and reusable test inputs |
+| [0124](0124-bun-project-typechecking.md) | Accepted | Bun project typechecking with cached workspace results |
 
 Statuses:
 

@@ -14,7 +14,7 @@
     "./quick-client": "./src/quick-client.ts"
   },
   "scripts": {
-    "typecheck": "bun run --bun tsc -p tsconfig.json && bun run --bun tsc -p tsconfig.worker.json && bun run --bun tsc -p tsconfig.test.json"
+    "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.worker.json tsconfig.test.json"
   },
   "dependencies": {
     "@vibeshape/formats": "workspace:*",

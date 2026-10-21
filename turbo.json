@@ -38,10 +38,10 @@
   ],
   "tasks": {
     "typecheck": {
-      "outputs": ["*.tsbuildinfo"]
+      "outputs": []
     },
     "//#typecheck:scripts": {
-      "outputs": ["*.tsbuildinfo"]
+      "outputs": []
     }
   }
 }

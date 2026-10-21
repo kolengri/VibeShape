@@ -14,7 +14,7 @@
     "dev:e2e": "bun run ../../scripts/prepare-structural-runtime.ts && bun node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173",
     "build": "bun run ../../scripts/prepare-structural-runtime.ts && bun run --bun vite build",
     "preview": "bun run --bun vite preview",
-    "typecheck": "bun run --bun tsc -p tsconfig.json && bun run --bun tsc -p tsconfig.test.json && bun run --bun tsc -p tsconfig.vite.json"
+    "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json tsconfig.vite.json"
   },
   "dependencies": {
     "@dnd-kit/dom": "catalog:",

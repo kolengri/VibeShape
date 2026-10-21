@@ -55,14 +55,24 @@ function parseOption(argument: string, following: string | undefined) {
   return { argument: validatedSwitch(argument), consumesNext: false }
 }
 
-function turboArguments(input: string[]) {
+function validatedArguments(input: string[]) {
   const output: string[] = []
   for (let index = 0; index < input.length; index++) {
     const option = parseOption(input[index] ?? "", input[index + 1])
     if (option.argument) output.push(option.argument)
     index += Number(option.consumesNext)
   }
-  return [...output, "--cache=local:rw", "--env-mode=strict"]
+  return output
+}
+
+function turboArguments(input: string[]) {
+  const output = validatedArguments(input)
+  const forced = output.includes("--force")
+  return [
+    ...output.filter((argument) => argument !== "--force"),
+    forced ? "--cache=local:w" : "--cache=local:rw",
+    "--env-mode=strict",
+  ]
 }
 
 const input = process.argv.slice(2)
@@ -122,7 +132,7 @@ const child = Bun.spawn(
     env: {
       ...process.env,
       TURBO_TELEMETRY_DISABLED: "1",
-      VIBESHAPE_TYPECHECK_RUNTIME: `${Bun.version}:${process.platform}:${process.arch}`,
+      VIBESHAPE_TYPECHECK_RUNTIME: `${Bun.version}:${Bun.revision}:${process.platform}:${process.arch}`,
     },
   },
 )
