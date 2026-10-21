@@ -70,6 +70,10 @@ remain authoritative. Browser-only chat cannot spawn this process.
 ## Assistant transcript
 
 Human messages use a compact, right-aligned bubble distinct from assistant prose and tool rows.
+Assistant prose renders CommonMark and GitHub Flavored Markdown, including emphasis, headings,
+lists, links, fenced code and tables. Human text and tool details remain literal. Raw HTML is ignored,
+unsafe URL schemes are blocked, and model-authored images display their alt text without fetching
+remote content. Code blocks and tables scroll within the message rather than widening the panel.
 The full display transcript is retained per project in IndexedDB rather than a truncated local
 storage tail. Existing version-1 chat records are removed only after a successful transactional
 migration. Persistence failures keep live messages, expose Retry chat storage and preserve the
@@ -105,18 +109,19 @@ without structured identities remain readable without inferred links. Consumed c
 are collapsed separately from the main Parts count; unavailable terminal Parts remain visible for
 repair.
 
-After a batch finishes, its available inspection controls appear after the messages inside the chat,
-not in the viewport toolbar or chat header. An unsaved agent preview defaults to **Result**, using
+After a batch finishes, its available change controls stay above the chat composer, outside the
+scrolling transcript, so they remain reachable while reading earlier messages. Buttons use icons
+with tooltips and accessible names. An unsaved agent preview defaults to **Result**, using
 normal model materials; **Changes** uses the blue preview material. Both remain disposable previews
 without topology-picking authority. The caption explicitly distinguishes unsaved preview from saved
-changes. A ready, owner-bound unsaved draft offers **Apply changes** in the chat; it uses the existing
-commit and approval policy, stays pending through persistence, and reports failures without asking
+changes. A ready, owner-bound unsaved draft offers **Confirm changes** (the checkmark) in the chat;
+it uses the existing commit and approval policy, stays pending through persistence, and reports failures without asking
 the model to send another command. Saved batches expose **View before** / **View current** and **Undo agent changes** through
 the existing internal checkpoint. These controls remain hidden while the agent is busy and do not
 move the transcript when the person is reading earlier messages. Inspection locks do not open
-connection settings, and footer/display changes do not trigger transcript following without new
-message content. The chat header contains the chat title, project name, and actions without a working-status label.
-Hiding chat preserves its mounted transcript, draft,
+connection settings, and control/display changes do not trigger transcript following without new
+message content. The chat header contains the chat title, project name, and actions without a
+working-status label. Hiding chat preserves its mounted transcript, draft,
 attachment reads, scroll position, settings and active connection. The header AI chat toggle reopens
 the same panel; show/hide and message updates do not resize or remount the viewport canvas.
 

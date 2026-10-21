@@ -3712,6 +3712,8 @@
       "storageFailed": "Open project tabs could not be remembered on this device."
     },
     "assistant": {
+      "footnoteLabel": "Footnotes",
+      "footnoteBackLabel": "Back to reference {reference}{occurrence, plural, one {} other {, occurrence #}}",
       "thinking": "Thinking",
       "reconnecting": "Reconnecting… attempt {attempt} of {limit}",
       "reconnectFailed": "Connection recovery stopped after {attempts, plural, =0 {a permanent error} one {# attempt} other {# attempts}}.",
@@ -3727,7 +3729,7 @@
       "toolFailureUnavailable": "The agent did not provide an error message for this call.",
       "changeReview": "Agent changes",
       "changesSaved": "Changes saved to this project",
-      "applyChanges": "Apply changes",
+      "applyChanges": "Confirm changes",
       "applyingChanges": "Applying changes…",
       "applyChangesFailed": "Changes could not be applied ({code}). Review the current model and preview again.",
       "toolAction": "{action, select, create_cylinder {Create cylinder} draft_body_measurements {Measure draft body} create_union {Union bodies} preview_draft {Preview draft} create_draft {Create draft} commit_draft {Apply draft changes} discard_draft {Discard draft} create_variable {Create draft variable} set_variable_expression {Edit draft variable} replace_variable_table {Replace draft variables} draft_variables {Inspect draft variables} render_preview {Render preview} create_box {Create box} create_boolean {Create Boolean operation} create_body_subtract {Subtract bodies} other {{name}}}",

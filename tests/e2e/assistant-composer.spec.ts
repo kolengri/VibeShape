@@ -655,7 +655,7 @@ test("compares and atomically undoes a connected assistant turn spanning saved s
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
 })
 
-test("applies a retained assistant preview from chat without another model request", async ({
+test("confirms a retained assistant preview above scrolled chat without another model request", async ({
   page,
 }) => {
   test.setTimeout(180_000)
@@ -691,18 +691,67 @@ test("applies a retained assistant preview from chat without another model reque
           heightMm: 30,
         }),
       )
-    } else if (requests === 4) await fulfill(route, answer("The draft is ready for inspection."))
+    } else if (requests === 4)
+      await fulfill(
+        route,
+        answer(
+          [
+            "## Model changes",
+            "Wall thickness is **2.0 mm** instead of *2.4 mm*.[^1]",
+            "- Preserve the lid\n- Preserve the neck",
+            "| Dimension | Value |\n| --- | --- |\n| Wall | 2.0 mm |",
+            "```ts\nconst wallThickness = 2.0\n```",
+            ...Array.from(
+              { length: 30 },
+              (_, index) => `Draft note ${index + 1}: Review the box dimensions before confirming.`,
+            ),
+            "[^1]: Confirm print strength with a physical test.",
+          ].join("\n\n"),
+        ),
+      )
     else throw new Error("Applying the preview must not send another model request.")
   })
+  await page.setViewportSize({ width: 1024, height: 768 })
   await page.goto("/")
   await saved(page)
   const panel = await connect(page)
   await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Prepare a box preview")
   await panel.getByRole("button", { name: "Send", exact: true }).click()
-  const apply = panel.getByRole("button", { name: "Apply changes", exact: true })
+  const apply = panel.getByRole("button", { name: "Confirm changes", exact: true })
   await expect(apply).toBeEnabled({ timeout: 30_000 })
+  const log = panel.getByRole("log")
+  await expect(log.getByRole("heading", { name: "Model changes", level: 2 })).toBeVisible()
+  await expect(log.locator("strong")).toHaveText("2.0 mm")
+  await expect(log.getByRole("table")).toContainText("Wall")
+  await expect(log.locator("pre > code")).toHaveText("const wallThickness = 2.0\n")
+  await log.evaluate((node) => {
+    node.scrollTop = 0
+    node.dispatchEvent(new Event("scroll"))
+  })
+  await expect(log.getByRole("button", { name: "Confirm changes", exact: true })).toHaveCount(0)
+  await expect(apply).toBeInViewport({ ratio: 1 })
+  await expect(apply).toHaveText("")
+  await log.getByRole("heading", { name: "Model changes", level: 2 }).evaluate((node) => {
+    node.scrollIntoView({ block: "start" })
+  })
+  await page.screenshot({ path: test.info().outputPath("assistant-markdown-dark.png") })
+  await openApplicationMenuItem(page, "Settings…")
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true })
+  await settings.getByRole("combobox", { name: "Theme", exact: true }).click()
+  await page.getByRole("option", { name: "Light", exact: true }).click()
+  await settings.getByRole("button", { name: "Done", exact: true }).click()
+  await expect(apply).toBeInViewport({ ratio: 1 })
+  await page.screenshot({ path: test.info().outputPath("assistant-markdown-light.png") })
+  const reference = log.locator("a[data-footnote-ref]")
+  const pageCount = page.context().pages().length
+  await reference.click()
+  await expect(log.locator("[data-footnotes]")).toBeInViewport()
+  await log.locator("a[data-footnote-backref]").click()
+  await expect(reference).toBeInViewport()
+  expect(page.context().pages()).toHaveLength(pageCount)
   expect((await saveProject(page)).project.snapshot.features).toHaveLength(0)
-  await apply.click()
+  await apply.focus()
+  await page.keyboard.press("Enter")
   await expect(apply).toHaveCount(0)
   await saved(page)
   expect((await saveProject(page)).project.snapshot.features).toHaveLength(1)
