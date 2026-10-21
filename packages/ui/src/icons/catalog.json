@@ -410,6 +410,21 @@
     "legacy": ["SectionViewIcon"]
   },
   {
+    "id": "section-plane-xy",
+    "label": "Section plane XY",
+    "legacy": []
+  },
+  {
+    "id": "section-plane-xz",
+    "label": "Section plane XZ",
+    "legacy": []
+  },
+  {
+    "id": "section-plane-yz",
+    "label": "Section plane YZ",
+    "legacy": []
+  },
+  {
     "id": "print",
     "label": "Prepare for printing",
     "legacy": []

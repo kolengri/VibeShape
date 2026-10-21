@@ -9,11 +9,13 @@ import {
   Mesh,
   MeshBasicMaterial,
   type OrthographicCamera,
+  ShaderMaterial,
   SphereGeometry,
   Vector2,
   Vector3,
 } from "three"
 import { sectionCapPositions } from "./section-cap"
+import { sectionCapMaterial } from "./section-cap-material"
 import { sameViewerSection, type ViewerSection } from "./section-view"
 import type { ViewerMesh } from "./three-viewport"
 import { viewerBodyColor } from "./viewer-appearance"
@@ -182,16 +184,12 @@ export class SectionViewDecoration {
         "position",
         new BufferAttribute(positions, 3),
       )
-      const material = new MeshBasicMaterial({
-        color:
-          source.appearance === "preview"
-            ? "#e4b064"
-            : (viewerBodyColor(source.featureId) ?? "#9aaec1"),
-        side: DoubleSide,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
-      })
+      const material = sectionCapMaterial(
+        source.appearance === "preview"
+          ? "#e4b064"
+          : (viewerBodyColor(source.featureId) ?? "#9aaec1"),
+        this.#section.axis,
+      )
       const cap = new Mesh(geometry, material)
       cap.name = `section-cap:${source.featureId}:${source.outputRole ?? "result"}`
       this.#caps.add(cap)
@@ -209,6 +207,14 @@ export class SectionViewDecoration {
     }
     const worldPerPixel =
       (camera.top - camera.bottom) / (camera.zoom * Math.max(canvas.clientHeight, 1))
+    for (const cap of this.#caps.children) {
+      if (
+        cap instanceof Mesh &&
+        cap.material instanceof ShaderMaterial &&
+        cap.material.uniforms.spacing
+      )
+        cap.material.uniforms.spacing.value = Math.max(worldPerPixel * 10, 1e-6)
+    }
     if (!this.#worldGeometryMatches(this.#section, worldPerPixel))
       this.#updateWorldGeometry(this.#section, worldPerPixel)
     const projected = this.#handle.position.clone().project(camera)
