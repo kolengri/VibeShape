@@ -8,13 +8,25 @@ signed and not notarized; Windows is unsigned. It does not add Developer ID or A
 
 ## Run a release
 
-1. Merge the desired changes into `main`, including a new stable SemVer in
-   `apps/desktop/package.json`. An already published version cannot be overwritten.
+1. Merge the desired application changes into `main`.
 2. Open **Actions → Desktop release → Run workflow**, select `main`, and run it.
 3. Wait for the full workflow to succeed. The run summary links the published release and website.
 
-The tag is `desktop-vVERSION`. The workflow does not change source versions or push commits to
-`main`; all packages, receipts and bundled application sources use the exact dispatched commit.
+No version edit or release PR is required. The workflow chooses the next patch after the highest
+existing stable `desktop-vMAJOR.MINOR.PATCH` tag or release, including drafts without a tag.
+The version in `apps/desktop/package.json` is a
+minimum: a deliberately prepared newer minor or major version is used if it is not already taken.
+For example, source version `0.1.13` with tag `desktop-v0.1.13` produces `0.1.14`; another run produces
+`0.1.15` even if the version on `main` still reads `0.1.13`.
+
+The workflow creates a release commit containing only the selected desktop version in
+`apps/desktop/package.json` and `bun.lock`, with the dispatched commit as its sole parent. It pushes
+an annotated `desktop-vVERSION` tag recording the workflow run ID and both source SHAs. It never
+pushes commits to `main`. CI, the website build and desktop packaging check out the generated
+release commit; receipts and bundled application sources identify that exact commit. The native
+acceptance harness remains the dispatched source, while its expected artifact SHA is the release
+commit. The tag and its source are reserved before CI and packaging; public downloads appear only
+after both native acceptance jobs and publication succeed.
 Only `kolengri/VibeShape` on `main` can execute this workflow. Its initial preflight rejects a
 dispatch whose source has already been superseded on `main`.
 
@@ -57,17 +69,29 @@ desktop applications does not redeploy those services.
 
 `VIBESHAPE_OCCT_RELEASE_ASSET_ID` must identify the verified OCCT archive in this repository.
 The existing repository variable is reused. GitHub's built-in `GITHUB_TOKEN` supplies job-scoped
-release access; no personal access token or new signing secret is required. Hosted macOS and
+tag and release access; no personal access token or new signing secret is required. Repository
+rules must allow this token to create `desktop-v*` tags; it does not require permission to push
+`main`. Hosted macOS and
 Windows runner availability and the repository's Actions budget remain prerequisites.
 
-If acceptance fails, the release stays a draft and does not become a website download or update.
+If verification or packaging fails, the reserved tag remains; a draft exists only if packaging
+reached the upload stage. If native acceptance fails, the release stays a draft. Neither case
+becomes a website download or update. A new dispatch chooses the next available patch, so failed
+runs can leave gaps in version numbers. Tags and published releases are never overwritten.
+
 Use **Re-run failed jobs** for transient failures: completed build outputs and the draft remain the
-acceptance inputs. A full rerun can rebuild and replace assets only in a draft belonging to the
-same commit, then repeats both acceptance workflows. Do not manually publish a failed draft or
-replace its assets after acceptance. For a source fix, merge a new commit and use a new version;
-a draft or tag belonging to another commit is deliberately rejected.
+acceptance inputs. A full rerun of the same workflow run reuses its annotated tag, version and
+source commit instead of allocating another version, provided its dispatched source is still
+current `main`. It can rebuild and replace assets only in a draft belonging to that release commit,
+then repeats both acceptance workflows. Do not manually publish a failed draft or replace its
+assets after acceptance. For a source fix, merge the change and start a new dispatch; version
+selection is automatic. A reservation belonging to another source or run is never reused.
 Rerunning only the build after publication also refuses to replace the public assets: staging
 rechecks draft status, source and any existing tag immediately before upload.
+Draft notes contain a hidden run/source marker; staging refuses foreign or manually created drafts
+and notes with that marker removed, even when their tag names match.
+Publication also refuses a late retry when a newer stable desktop version is already public,
+preserving the website and update channel's release order.
 
 The standalone validation workflows remain available for inspecting an existing draft. They do
 not publish it. This workflow has a single serialized release lane and never cancels an active
