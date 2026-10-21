@@ -37,6 +37,7 @@ import {
   createPersistenceDiagnostic,
   persistenceInvariantError,
 } from "./diagnostics"
+import { nextDocumentNavigation } from "./document-navigation"
 import type { CommitReport, DraftCommitReport, PersistenceResult } from "./repository"
 import type { WriterLeaseClaim } from "./schemas"
 import { publishSourceAssetBytes, verifySourceAssetBlobs } from "./source-asset-store"
@@ -50,11 +51,24 @@ type AuthorityWrite = Readonly<{
   baseSnapshot: DocumentAuthoritySnapshot
   snapshot: AuthoredDocumentSnapshot
   events: readonly DocumentAuthorityEvent[]
+  historyTransaction?: true
+  checkpointRestore?: true | undefined
   assetBlobs: readonly SourceAssetBlob[]
 }>
 
+function nextHistoryBase(
+  base: AuthoredDocumentSnapshot | null,
+  next: DocumentAuthoritySnapshot,
+  transaction?: true,
+) {
+  if (!transaction || !base) return base
+  if (base.schemaVersion === next.schemaVersion || next.schemaVersion === 5) return base
+  return next.schemaVersion === 1 ? null : next
+}
+
 async function validateSequence(database: VibeShapeDatabase, input: AuthorityWrite) {
   let snapshot: DocumentAuthoritySnapshot = input.baseSnapshot
+  let historyBase = input.baseSnapshot.schemaVersion === 1 ? null : input.baseSnapshot
   for (const event of input.events) {
     const target =
       event.type === "org.vibeshape.document.restored"
@@ -67,12 +81,14 @@ async function validateSequence(database: VibeShapeDatabase, input: AuthorityWri
         "The authority event does not extend its supplied base.",
       )
     snapshot = reduced.snapshot
+    historyBase = nextHistoryBase(historyBase, snapshot, input.historyTransaction)
   }
   if (canonicalJson(snapshot) !== canonicalJson(input.snapshot))
     throw persistenceInvariantError(
       "invalid-input",
       "The authority snapshot does not match its event sequence.",
     )
+  return historyBase
 }
 
 async function verifyStoredBase(database: VibeShapeDatabase, input: AuthorityWrite) {
@@ -155,7 +171,7 @@ async function publicationClosure(database: VibeShapeDatabase, input: AuthorityW
 }
 
 async function writeAuthorityRecords(database: VibeShapeDatabase, input: AuthorityWrite) {
-  await validateSequence(database, input)
+  const historyBase = await validateSequence(database, input)
   await verifyStoredBase(database, input)
   const prepared = await verifySourceAssetBlobs(input.assetBlobs)
   const assets = await publicationClosure(database, input)
@@ -173,7 +189,17 @@ async function writeAuthorityRecords(database: VibeShapeDatabase, input: Authori
     )
       throw persistenceInvariantError("stale-revision", "The authority head changed before commit.")
     requireWriterLease(true, await database.leases.get(input.snapshot.id), input)
-    const project = nextProject(current, input)
+    const project = {
+      ...nextProject(current, input),
+      navigation: nextDocumentNavigation(
+        current.navigation,
+        input.baseSnapshot,
+        input.snapshot,
+        input.events,
+        input.checkpointRestore,
+        historyBase,
+      ),
+    }
     const marker = await database.recoveryV1.get(input.snapshot.id)
     requireSupportedAuthorityVersion(marker)
     const recovery = recoveryAuthorityRecordSchema.safeParse(marker)
@@ -285,6 +311,7 @@ export async function commitDocumentAuthorityDraft(
     const records = await writeAuthorityRecords(database, {
       ...parsed.data,
       snapshot: parsed.data.snapshot,
+      historyTransaction: true,
     })
     return {
       ok: true,

@@ -60,7 +60,7 @@ export type PreparedMetadataProposal = PreparedMetadataInput & {
   value: MetadataCommitView
 }
 
-function pairedMetadataActor(
+export function pairedAuthoredProposalActor(
   ownerInput: unknown,
   actorInput: unknown,
 ): AutomationHostResult<CommandActor> {
@@ -74,12 +74,12 @@ function pairedMetadataActor(
   )
     return metadataProposalFailure(
       "invalid-automation-actor",
-      "Metadata requires a validated paired MCP actor.",
+      "Authored proposals require a validated paired MCP actor.",
     )
   if (!commandActorsEqual(owner.data, supplied.data))
     return metadataProposalFailure(
       "draft-owner-mismatch",
-      "The metadata actor does not own this paired session.",
+      "The proposal actor does not own this paired session.",
     )
   return { ok: true, value: owner.data }
 }
@@ -90,7 +90,7 @@ export function parseMetadataProposalInput(
   input: unknown,
   time: number,
 ): AutomationHostResult<PreparedMetadataInput> {
-  const actor = pairedMetadataActor(configuration.actor, actorInput)
+  const actor = pairedAuthoredProposalActor(configuration.actor, actorInput)
   if (!actor.ok) return actor
   const request = metadataChangeArgumentsSchema.safeParse(input)
   if (!request.success || serializedQueryBytes(request.data, 192 * 1024) > 192 * 1024)
@@ -223,6 +223,18 @@ export async function previewMetadataProposal(
   configuration: MetadataProposalConfiguration,
   proposal: PreparedMetadataProposal,
 ): Promise<AutomationHostResult<DraftReviewInput>> {
+  const preview = await previewAuthoredProposal(configuration, proposal)
+  return preview.ok
+    ? { ok: true, value: { ...preview.value, metadata: metadataReviewDetails(proposal) } }
+    : preview
+}
+
+export async function previewAuthoredProposal(
+  configuration: Pick<MetadataProposalConfiguration, "geometry" | "queries">,
+  proposal: Omit<PreparedMetadataProposal, "command" | "value"> & {
+    command: Pick<MetadataCommand, "actor" | "documentId" | "baseRevision">
+  },
+): Promise<AutomationHostResult<DraftReviewInput>> {
   const projected = projectDocumentSnapshotV1ToV0(
     projectAuthoredDocumentSnapshotToV1(proposal.snapshot),
   )
@@ -237,7 +249,7 @@ export async function previewMetadataProposal(
   if (exact.geometry.status !== "valid")
     return metadataProposalFailure(
       "draft-geometry-invalid",
-      "The metadata preview has invalid exact geometry.",
+      "The authored proposal preview has invalid exact geometry.",
     )
   const summary = configuration.queries.dispatch(projected.snapshot, {
     kind: "org.vibeshape.document.summary",
@@ -247,7 +259,10 @@ export async function previewMetadataProposal(
   })
   if (!summary.ok) return summary
   if (summary.view.kind !== "org.vibeshape.document.summary")
-    return metadataProposalFailure("invalid-review-result", "The metadata summary is invalid.")
+    return metadataProposalFailure(
+      "invalid-review-result",
+      "The authored proposal summary is invalid.",
+    )
   const preview = automationDraftPreviewSchema.parse({
     schemaVersion: 2,
     draft: {
@@ -268,7 +283,6 @@ export async function previewMetadataProposal(
       actor: commandActorSchema.parse(proposal.command.actor),
       preview,
       commands: [],
-      metadata: metadataReviewDetails(proposal),
     },
   }
 }
@@ -278,25 +292,28 @@ export function metadataReviewDecision(input: unknown) {
   if (!decision.success)
     return metadataProposalFailure(
       "invalid-review-result",
-      "The metadata review decision is invalid.",
+      "The authored proposal review decision is invalid.",
     )
   if (decision.data !== "approved")
     return metadataProposalFailure(
       decision.data === "rejected" ? "draft-review-rejected" : "draft-review-cancelled",
-      "The metadata proposal was not approved.",
+      "The authored proposal was not approved.",
     )
   return null
 }
 
 export async function recheckMetadataProposal(
-  configuration: MetadataProposalConfiguration,
-  proposal: PreparedMetadataProposal,
+  configuration: Pick<MetadataProposalConfiguration, "readSnapshot" | "hasCommandId">,
+  proposal: {
+    base: AuthoredDocumentSnapshot
+    command: Pick<MetadataCommand, "commandId">
+  },
 ) {
   const current = authoredDocumentSnapshotSchema.safeParse(await configuration.readSnapshot())
   if (!current.success || canonicalJson(current.data) !== canonicalJson(proposal.base))
     return metadataProposalFailure(
       "stale-revision",
-      "The authored document changed during metadata review.",
+      "The authored document changed during review.",
       true,
     )
   if (await configuration.hasCommandId(proposal.command.commandId))

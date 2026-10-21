@@ -1,7 +1,9 @@
 import type { AutomationDraftPreview } from "@vibeshape/automation-api/drafts"
 import type { CommandActor, DocumentCommand } from "@vibeshape/domain/commands"
 import type { HistoryItemRef } from "@vibeshape/domain/document-node"
+import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import type { DocumentV2MetadataChange } from "@vibeshape/domain/document-v2-command-schemas"
+import type { MoveHistoryItemCommand } from "@vibeshape/domain/history-document-commands"
 
 export type DraftReviewDecision = "approved" | "rejected" | "cancelled"
 
@@ -9,6 +11,12 @@ export type DraftReviewInput = Readonly<{
   actor: CommandActor
   preview: AutomationDraftPreview
   commands: readonly DocumentCommand[]
+  historyMove?: Readonly<{
+    command: MoveHistoryItemCommand
+    target: AuthoredDocumentSnapshot
+    itemLabel: string
+    historyAfterLabel: string | null
+  }>
   metadata?: Readonly<{
     change: DocumentV2MetadataChange
     targetName: string | null

@@ -573,6 +573,7 @@ export function createLocalAutomationConnection(
       "request_lightweighting",
       "request_quick_lightweighting",
       "change_metadata",
+      "move_history_item",
       "commit_assembly_draft",
       "undo_model",
       "redo_model",

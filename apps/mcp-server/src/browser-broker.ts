@@ -17,6 +17,7 @@ import {
   automationDraftPreviewSchema,
   automationDraftStateSchema,
 } from "@vibeshape/automation-api/drafts"
+import { historyMoveResultContextMatches } from "@vibeshape/automation-api/history-move-tools"
 import { historyResultContextMatches } from "@vibeshape/automation-api/history-tools"
 import {
   importResultMatches,
@@ -55,6 +56,7 @@ import {
   localOperationSchema,
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
+import { measurementResultContextMatches } from "@vibeshape/automation-api/measurement-tools"
 import {
   isLocalPlanarImport,
   type LocalPlanarImportOperation,
@@ -367,6 +369,8 @@ function resultContextMatches(
     recoveryResultContextMatches(operation, result, documentId, actor),
     renderPreviewResultContextMatches(operation, result, documentId),
     historyResultContextMatches(operation, result, documentId),
+    historyMoveResultContextMatches(operation, result, documentId),
+    measurementResultContextMatches(operation, result, documentId),
     assemblyResultContextMatches(operation, result, documentId),
     surfaceTextureResultContextMatches(operation, result, documentId),
     lightweightingResultContextMatches(operation, result, documentId),

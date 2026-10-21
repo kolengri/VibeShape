@@ -186,6 +186,7 @@ export const persistenceAuthorityCommitInputSchema = z
     storedAt: timestampSchema,
     baseSnapshot: documentAuthoritySnapshotSchema.nullable(),
     event: documentAuthorityEventSchema,
+    checkpointRestore: z.literal(true).optional(),
     snapshot: documentAuthoritySnapshotSchema,
     assetBlobs: z.array(sourceAssetBlobSchema).max(1024).default([]),
   })

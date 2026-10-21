@@ -4,6 +4,7 @@ import {
   type DocumentEvent,
   type DocumentId,
   type DocumentSnapshotV1,
+  documentAuthoritySnapshotSchema,
   documentIdSchema,
   documentSnapshotV1Schema,
   migrateDocumentSnapshot,
@@ -12,14 +13,17 @@ import {
   replayVersionedDocumentEvents,
   sessionIdSchema,
   type VersionedDocumentEvent,
-  VersionedReplayTargets,
   versionedDocumentEventSchema,
 } from "@vibeshape/domain"
 import { z } from "zod"
 import { commitDocumentAuthority, commitDocumentAuthorityDraft } from "./authority-commit"
 import { closeDocumentAuthority } from "./authority-lifecycle"
 import { exportDocumentAuthority, publishPortableAuthority } from "./authority-portable"
-import { recoverDocumentAuthority } from "./authority-recovery"
+import {
+  loadAuthorityRestoreTarget,
+  recoverAuthoritySnapshot,
+  recoverDocumentAuthority,
+} from "./authority-recovery"
 import type {
   EventAuthorityRecord,
   RecoveryAuthorityRecord,
@@ -40,6 +44,7 @@ import {
   createPersistenceDiagnostic,
   persistenceInvariantError,
 } from "./diagnostics"
+import { nextDocumentNavigation } from "./document-navigation"
 import { importedLegacyProject, storedLegacyPortableRecords } from "./portable-legacy-records"
 import {
   authoritativeProjectCatalog,
@@ -99,6 +104,7 @@ export interface VersionedRecoveryReport {
   recoveredRevision: number
   lostRevisionCount: number
   corruptRecords: string[]
+  navigation?: ProjectRecordV1["navigation"]
   migration: Pick<
     ProjectRecordV1,
     "migrationProvenance" | "migrationDiagnostic" | "unavailableRecords"
@@ -368,150 +374,13 @@ async function validStoredEvent(record: EventAuthorityRecord) {
     : null
 }
 
-type StoredRestoreTargetResolver = (
-  documentId: DocumentId,
-  targetRevision: number,
-) => Promise<DocumentSnapshotV1 | null>
-
-function createStoredRestoreTargetResolver(
-  database: VibeShapeDatabase,
-): StoredRestoreTargetResolver {
-  const cache = new Map<string, { snapshot: DocumentSnapshotV1; bytes: number }>()
-  let bytes = 0
-  return async (documentId, targetRevision) => {
-    const key = `${documentId}:${targetRevision}`
-    const cached = cache.get(key)
-    if (cached) return cached.snapshot
-    const snapshot = await loadStoredRestoreTarget(database, documentId, targetRevision)
-    if (!snapshot) return null
-    const size = canonicalJson(snapshot).length * 2
-    if (size <= 32 * 1024 * 1024) {
-      cache.set(key, { snapshot, bytes: size })
-      bytes += size
-      while (cache.size > 100 || bytes > 32 * 1024 * 1024) {
-        const oldest = cache.entries().next().value
-        if (!oldest) break
-        cache.delete(oldest[0])
-        bytes -= oldest[1].bytes
-      }
-    }
-    return snapshot
-  }
-}
-
 async function loadStoredRestoreTarget(
   database: VibeShapeDatabase,
   documentId: DocumentId,
   targetRevision: number,
 ): Promise<DocumentSnapshotV1 | null> {
-  const exactSnapshot = await storedSnapshotAt(database, documentId, targetRevision)
-  if (exactSnapshot) return exactSnapshot
-
-  // Imported native histories may have only a head snapshot. Their verified journal
-  // must still recover historical targets when that snapshot is unavailable.
-  const records = await database.eventsV1
-    .where("[documentId+revision]")
-    .between([documentId, 1], [documentId, targetRevision], true, true)
-    .sortBy("revision")
-  const resolvedSeed = await findRestoreReplaySeed(database, documentId, targetRevision, records)
-  if (!resolvedSeed.ok) return null
-  const seed = resolvedSeed.seed
-  const baseRevision = seed?.revision ?? 0
-  const corrupt: string[] = []
-  const events = await readContiguousEvents(
-    records.filter((record) => record.revision > baseRevision),
-    baseRevision,
-    corrupt,
-  )
-  if (corrupt.length || events.at(-1)?.revision !== targetRevision) return null
-  const replayed = replayVersionedDocumentEvents(seed, events)
-  return replayed.ok ? replayed.snapshot : null
-}
-
-async function findRestoreReplaySeed(
-  database: VibeShapeDatabase,
-  documentId: DocumentId,
-  targetRevision: number,
-  records: readonly EventAuthorityRecord[],
-): Promise<{ ok: true; seed: DocumentSnapshotV1 | null } | { ok: false }> {
-  const first = records[0] ? await validStoredEvent(records[0]) : null
-  if (first?.type === "org.vibeshape.document.created" && first.revision === 1)
-    return { ok: true, seed: null }
-  const seeds = await database.snapshotsV1
-    .where("[documentId+revision]")
-    .between([documentId, 1], [documentId, targetRevision], true, true)
-    .sortBy("revision")
-  for (const record of seeds) {
-    const seed = await validStoredSnapshot(record)
-    if (seed) return { ok: true, seed }
-  }
-  return { ok: false }
-}
-
-async function latestValidSnapshot(records: readonly SnapshotAuthorityRecord[]) {
-  const corruptRecords: string[] = []
-  for (const record of records) {
-    const snapshot = await validStoredSnapshot(record)
-    if (snapshot) return { snapshot, corruptRecords }
-    corruptRecords.push(`snapshot-v1:${record.revision}`)
-  }
-  return { snapshot: null, corruptRecords }
-}
-
-async function readContiguousEvents(
-  records: readonly EventAuthorityRecord[],
-  baseRevision: number,
-  corruptRecords: string[],
-) {
-  const events: VersionedDocumentEvent[] = []
-  let expectedRevision = baseRevision + 1
-  for (const record of records) {
-    const event = record.revision === expectedRevision ? await validStoredEvent(record) : null
-    if (!event) {
-      corruptRecords.push(`event-v1:${expectedRevision}`)
-      break
-    }
-    events.push(event)
-    expectedRevision += 1
-  }
-  return events
-}
-
-async function resolveHistoricalEventTarget(
-  event: VersionedDocumentEvent,
-  resolve: StoredRestoreTargetResolver,
-) {
-  return event.type === "org.vibeshape.document.restored" &&
-    event.targetRevision < event.baseRevision
-    ? ((await resolve(event.documentId, event.targetRevision)) ?? undefined)
-    : undefined
-}
-
-async function replayStoredSuffix(
-  snapshot: DocumentSnapshotV1 | null,
-  records: readonly EventAuthorityRecord[],
-  corruptRecords: string[],
-  headRevision: number,
-  resolveRestoreTarget: StoredRestoreTargetResolver,
-) {
-  const events = await readContiguousEvents(records, snapshot?.revision ?? 0, corruptRecords)
-  let current = snapshot
-  // Imported journals reuse earlier revisions from this pass instead of replaying each prefix.
-  const targets = new VersionedReplayTargets(snapshot, events)
-  for (const event of events) {
-    const target =
-      targets.target(event) ?? (await resolveHistoricalEventTarget(event, resolveRestoreTarget))
-    const result = reduceVersionedDocumentEvent(current, event, target)
-    if (!result.ok) {
-      corruptRecords.push(`event-v1:${event.revision}`)
-      break
-    }
-    current = result.snapshot
-    targets.accept(current, event)
-  }
-  if (current && current.revision < headRevision && corruptRecords.length === 0)
-    corruptRecords.push(`event-v1:${current.revision + 1}`)
-  return current
+  const snapshot = await loadAuthorityRestoreTarget(database, documentId, targetRevision)
+  return snapshot?.schemaVersion === 1 ? snapshot : null
 }
 
 function recoveryStatus(lostRevisionCount: number, markerPresent: boolean) {
@@ -530,41 +399,17 @@ async function requireStoredVersionedProject(database: VibeShapeDatabase, docume
 }
 
 async function recoverVersionedSnapshot(database: VibeShapeDatabase, project: ProjectRecordV1) {
-  const snapshots = (
-    await database.snapshotsV1
-      .where("[documentId+revision]")
-      .between(
-        [project.documentId, 0],
-        [project.documentId, project.latestSnapshotRevision],
-        true,
-        true,
-      )
-      .toArray()
-  ).sort((left, right) => right.revision - left.revision)
-  const valid = await latestValidSnapshot(snapshots)
-  const baseRevision = valid.snapshot?.revision ?? 0
-  const events = await database.eventsV1
-    .where("[documentId+revision]")
-    .between(
-      [project.documentId, baseRevision + 1],
-      [project.documentId, project.headRevision],
-      true,
-      true,
-    )
-    .sortBy("revision")
-  const snapshot = await replayStoredSuffix(
-    valid.snapshot,
-    events,
-    valid.corruptRecords,
-    project.headRevision,
-    createStoredRestoreTargetResolver(database),
-  )
-  if (!snapshot)
-    throw persistenceInvariantError(
-      "corrupt-history",
-      "No valid versioned document revision remains.",
-    )
-  return { snapshot, corruptRecords: valid.corruptRecords }
+  const recovered = await recoverAuthoritySnapshot(database, project)
+  if (recovered.snapshot.schemaVersion !== 1)
+    throw persistenceInvariantError("corrupt-history", "Recovery cannot cross versioned authority.")
+  return {
+    snapshot: recovered.snapshot,
+    corruptRecords: recovered.corruptRecords.map((record) =>
+      record
+        .replace("snapshot-authority:", "snapshot-v1:")
+        .replace("event-authority:", "event-v1:"),
+    ),
+  }
 }
 
 async function recoveryMarkerPresent(
@@ -892,6 +737,47 @@ async function deleteProjectSemanticRecords(database: VibeShapeDatabase, documen
 export class VersionedLocalDocumentRepository {
   constructor(readonly database: VibeShapeDatabase) {}
 
+  /** Historical targets are loaded only when selected; the stored payload/replay is verified. */
+  async loadHistoryTarget(documentIdInput: unknown, revisionInput: unknown) {
+    const input = z
+      .object({ documentId: documentIdSchema, revision: z.number().int().positive().safe() })
+      .safeParse({ documentId: documentIdInput, revision: revisionInput })
+    if (!input.success)
+      return {
+        ok: false as const,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The historical target is invalid.",
+        ),
+      }
+    try {
+      const project = await requireAuthoritativeProject(this.database, input.data.documentId)
+      if (project.schemaVersion === 0 || input.data.revision > project.headRevision)
+        throw persistenceInvariantError(
+          "invalid-input",
+          "The historical target is outside versioned authority.",
+        )
+      const snapshot = await loadAuthorityRestoreTarget(
+        this.database,
+        input.data.documentId,
+        input.data.revision,
+      )
+      const parsed = documentAuthoritySnapshotSchema.safeParse(snapshot)
+      if (
+        !parsed.success ||
+        parsed.data.id !== input.data.documentId ||
+        parsed.data.revision !== input.data.revision
+      )
+        throw persistenceInvariantError(
+          "corrupt-history",
+          "The historical target is missing or corrupt.",
+        )
+      return { ok: true as const, value: parsed.data }
+    } catch (error) {
+      return { ok: false as const, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
   commitAuthority(input: unknown) {
     return commitDocumentAuthority(this.database, input)
   }
@@ -1145,7 +1031,8 @@ export class VersionedLocalDocumentRepository {
     try {
       const restoreTarget =
         input.data.event.type === "org.vibeshape.document.restored"
-          ? await createStoredRestoreTargetResolver(this.database)(
+          ? await loadStoredRestoreTarget(
+              this.database,
               input.data.event.documentId,
               input.data.event.targetRevision,
             )
@@ -1172,7 +1059,16 @@ export class VersionedLocalDocumentRepository {
         if (input.data.event.baseRevision === 0) requireNewDocument(current, legacy)
         else requireCurrentRevision(current, input.data.event.baseRevision)
         requireWriterLease(current !== undefined, lease, input.data)
-        const project = projectForCommit(current, input.data.snapshot, input.data.storedAt)
+        const project = {
+          ...projectForCommit(current, input.data.snapshot, input.data.storedAt),
+          navigation: nextDocumentNavigation(
+            current?.navigation,
+            input.data.baseSnapshot,
+            input.data.snapshot,
+            [input.data.event],
+            input.data.checkpointRestore,
+          ),
+        }
         const recovery = await this.database.recoveryV1.get(input.data.snapshot.id)
         await this.database.eventsV1.add(event)
         await this.database.snapshotsV1.add(snapshot)
@@ -1218,7 +1114,15 @@ export class VersionedLocalDocumentRepository {
         const lease = await this.database.leases.get(input.data.snapshot.id)
         requireCurrentRevision(current, input.data.baseSnapshot.revision)
         requireWriterLease(true, lease, input.data)
-        const project = projectForCommit(current, input.data.snapshot, input.data.storedAt)
+        const project = {
+          ...projectForCommit(current, input.data.snapshot, input.data.storedAt),
+          navigation: nextDocumentNavigation(
+            current?.navigation,
+            input.data.baseSnapshot,
+            input.data.snapshot,
+            input.data.events,
+          ),
+        }
         const recovery = await this.database.recoveryV1.get(input.data.snapshot.id)
         await this.database.eventsV1.bulkAdd(records.events)
         await this.database.snapshotsV1.add(records.snapshot)
@@ -1239,7 +1143,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Called through VersionedDocumentRepositoryPort by application sessions.
   async recover(documentIdInput: unknown): Promise<PersistenceResult<VersionedRecoveryReport>> {
     const documentId = documentIdSchema.safeParse(documentIdInput)
     if (!documentId.success)
@@ -1264,6 +1167,7 @@ export class VersionedLocalDocumentRepository {
           headRevision: project.headRevision,
           recoveredRevision: recovered.snapshot.revision,
           lostRevisionCount,
+          navigation: lostRevisionCount === 0 ? project.navigation : undefined,
           corruptRecords: recovered.corruptRecords,
           migration: {
             migrationProvenance: project.migrationProvenance,
@@ -1294,7 +1198,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Invoked through the dynamic browser import in document-history-recovery.spec.ts.
   async importPortableProjectV2(
     inputValue: unknown,
   ): Promise<PersistenceResult<PortableProjectImportReport>> {

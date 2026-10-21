@@ -119,6 +119,21 @@ export function createAuthorityPersistenceAdapter(
       : null
   }
 
+  async function loadTarget(direction: "undo" | "redo", targetRevision?: number) {
+    const documentId = authority?.id
+    if (!documentId) return null
+    try {
+      return await history.loadTarget(direction, targetRevision, async (revision) => {
+        const result = await repository.loadHistoryTarget?.(documentId, revision)
+        if (!result?.ok) return null
+        const parsed = authoredDocumentSnapshotSchema.safeParse(result.value)
+        return parsed.success && parsed.data.id === documentId ? parsed.data : null
+      })
+    } catch {
+      return null
+    }
+  }
+
   function prepareDraft(base: AuthoredAuthoritySnapshot, input: PersistenceDraftValidationInput) {
     const match = matchRuntimeProjection(base, input.baseSnapshot)
     if (match) return match
@@ -184,6 +199,7 @@ export function createAuthorityPersistenceAdapter(
         baseSnapshot: input.baseSnapshot,
         event: input.event,
         snapshot: input.snapshot,
+        ...(checkpoint ? { checkpointRestore: true as const } : {}),
       })
     } catch {
       return authorityFailure("persistence-failed", "The authored document change was not saved.")
@@ -324,9 +340,9 @@ export function createAuthorityPersistenceAdapter(
           ? history.availability
           : (legacy.history?.availability ?? { canUndo: false, canRedo: false })
       },
-      preview(direction) {
-        if (!authority) return legacy.history?.preview?.(direction) ?? null
-        return historyPreview(history.target(direction))
+      async preview(direction, targetRevision) {
+        if (!authority) return legacy.history?.preview?.(direction, targetRevision) ?? null
+        return historyPreview(await loadTarget(direction, targetRevision))
       },
       async navigate(input) {
         if (!authority)
@@ -342,7 +358,7 @@ export function createAuthorityPersistenceAdapter(
         const result = prepareAuthorityRestore(
           base,
           parsed.data,
-          history.target(parsed.data.direction),
+          await loadTarget(parsed.data.direction, parsed.data.targetRevision),
         )
         if (!result.ok) return result
         const saved = await persist(
@@ -356,7 +372,7 @@ export function createAuthorityPersistenceAdapter(
           result.snapshot,
           false,
         )
-        if (saved.ok) history.accept(parsed.data.direction)
+        if (saved.ok) history.accept(parsed.data.direction, parsed.data.targetRevision)
         return saved
       },
       checkpoints: {
@@ -519,8 +535,9 @@ export function createAuthorityPersistenceAdapter(
       legacy = createVersionedPersistenceAdapter(
         repository,
         parsed.data.schemaVersion === 1 ? parsed.data : null,
+        result.value.lostRevisionCount === 0 ? result.value.navigation : undefined,
       )
-      history.clear()
+      history.restore(result.value.lostRevisionCount === 0 ? result.value.navigation : undefined)
       return {
         ok: true,
         value: {

@@ -117,6 +117,7 @@ Alpha uses a hybrid model:
 - A current snapshot opens the project quickly.
 - An append-only command/event journal supports autosave, undo, and crash recovery.
 - Periodic snapshots bound replay time.
+- Browser-local project records also persist compact Undo/Redo publication references atomically with the head. Exact target authority loads on demand from verified saved history; cache eviction does not remove navigation steps. See [durable navigation](local-first-storage.md) and [ADR-0125](../adr/0125-durable-saved-change-navigation.md).
 - Geometry caches never enter the semantic event stream.
 
 V5 authority adds typed disconnected History repair intent and suspended part identities. Its active

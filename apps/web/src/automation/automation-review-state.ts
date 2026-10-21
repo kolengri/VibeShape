@@ -32,7 +32,7 @@ function expiresAt(input: AutomationReviewInput) {
   return "kind" in input ? input.draft.expiresAt : input.preview.draft.expiresAt
 }
 function hasReviewDeadline(input: AutomationReviewInput) {
-  return "kind" in input || input.metadata !== undefined
+  return "kind" in input || input.metadata !== undefined || input.historyMove !== undefined
 }
 
 type Decision = "approved" | "rejected" | "cancelled"
@@ -95,7 +95,8 @@ function retainDraftViewportDisplay(
 function reviewDraftViewport(state: AutomationReviewState | null) {
   if (!state || state.status === "error") return null
   const { input, draftViewport } = state
-  if ("kind" in input || input.metadata || !draftViewport) return null
+  if ("kind" in input) return null
+  if (hasReviewDeadline(input) || !draftViewport) return null
   const { draft, geometry } = input.preview
   if (!sameDraftViewportSource(draft, draftViewport.draft)) return null
   if (draft.revision !== draftViewport.draft.revision) return null

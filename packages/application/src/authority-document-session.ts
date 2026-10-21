@@ -33,7 +33,9 @@ function cachedAuthorityRepository(
   legacy: VersionedDocumentRepositoryPort = repository,
 ): AuthorityDocumentRepositoryPort {
   let first = true
+  const loadHistoryTarget = repository.loadHistoryTarget?.bind(repository)
   return {
+    ...(loadHistoryTarget ? { loadHistoryTarget } : {}),
     commit: (input) => legacy.commit(input),
     commitDraft: (input) => legacy.commitDraft(input),
     recover: (documentId) => legacy.recover(documentId),

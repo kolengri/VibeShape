@@ -46,6 +46,10 @@ import {
   type RenderPreviewResult,
   renderDraftPreviewRequestSchema,
 } from "@vibeshape/automation-api/render-preview"
+import {
+  isLocalSketchCornerOperation,
+  type LocalSketchCornerOperation,
+} from "@vibeshape/automation-api/sketch-corner-tools"
 import { isSurfaceTextureToolName } from "@vibeshape/automation-api/surface-texture-tools"
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
 import type { CommandActor } from "@vibeshape/domain"
@@ -56,13 +60,23 @@ import type { createBrowserAssemblyAutomationSession } from "./assembly-automati
 import type { createBinaryExportSession } from "./binary-export-session"
 import type { DraftRecoveryPort } from "./draft-recovery-owner"
 import type { createBrowserHistoryAutomationSession } from "./history-automation-session"
+import type { createHistoryMoveAutomationSession } from "./history-move-automation-session"
 import type { createImportAutomationSession } from "./import-automation-session"
 import type { createBrowserLightweightingAutomationSession } from "./lightweighting-automation-session"
 import { createLocalBasicFeatureCommand } from "./local-basic-feature-command"
 import { createLocalCadCommand } from "./local-cad-command"
+import {
+  executeFaceAlignedPlacementCommand,
+  type FaceAlignmentPreparationPort,
+} from "./local-face-alignment-command"
 import { createLocalInspectionQuery } from "./local-inspection-query"
 import { createLocalLifecycleCommand } from "./local-lifecycle-command"
+import {
+  executeModelMeasurementQuery,
+  type MeasurementPreparationPort,
+} from "./local-measurement-query"
 import { createLocalPrimitiveCommand } from "./local-primitive-command"
+import { executeSketchCornerCommand } from "./local-sketch-corner-command"
 import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
@@ -79,6 +93,8 @@ type LocalSessionPort = Readonly<{
   documentId: string
   revision: number
   host: AutomationHost
+  measurements?: MeasurementPreparationPort
+  faceAlignment?: FaceAlignmentPreparationPort
   metadata?: ReturnType<typeof createMetadataAutomationSession>
   readSketchSolution?: (query: SketchSolutionQuery) => Promise<QueryResult>
   readRenderPreview?: (
@@ -86,6 +102,7 @@ type LocalSessionPort = Readonly<{
     request: RenderPreviewArguments,
     signal?: AbortSignal,
   ) => Promise<AutomationHostResult<Extract<RenderPreviewResult, { source: "model" }>>>
+  historyMoves?: ReturnType<typeof createHistoryMoveAutomationSession>
   history?: ReturnType<typeof createBrowserHistoryAutomationSession>
   assembly?: ReturnType<typeof createBrowserAssemblyAutomationSession>
   surfaceTextures?: ReturnType<typeof createBrowserSurfaceTextureAutomationSession>
@@ -226,7 +243,9 @@ function isVariableCommand(operation: LocalOperation): operation is Extract<
 function draftCommandRequest(
   operation: Exclude<
     Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
-    LocalSketchTextOperation
+    | LocalSketchTextOperation
+    | LocalSketchCornerOperation
+    | Extract<LocalOperation, { tool: "create_face_aligned_placement" }>
   >,
   actor: CommandActor,
   documentId: string,
@@ -254,6 +273,22 @@ async function dispatchDraftCommand(
   operation: Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
   signal?: AbortSignal,
 ) {
+  if (operation.tool === "create_face_aligned_placement")
+    return session.faceAlignment
+      ? executeFaceAlignedPlacementCommand(
+          session.host,
+          actor,
+          session.documentId,
+          operation,
+          session.faceAlignment,
+          signal,
+        )
+      : localFailure(
+          "face-alignment-unavailable",
+          "The paired session cannot prepare face alignment.",
+        )
+  if (isLocalSketchCornerOperation(operation))
+    return executeSketchCornerCommand(session.host, actor, session.documentId, operation, signal)
   if (isLocalSketchTextOperation(operation))
     return executeSketchTextCommand(session.host, actor, session.documentId, operation, signal)
   const request = draftCommandRequest(operation, actor, session.documentId)
@@ -384,6 +419,7 @@ export function createLocalToolExecutor(
       : importFile(operation, signal)
   }
   function reviewedProposal(operation: LocalOperation, signal?: AbortSignal) {
+    if (operation.tool === "move_history_item") return moveHistoryItem(operation, signal)
     const { projectId: _projectId, ...untargeted } = operation
     const quickLightweighting = quickLightweightingOperationSchema.safeParse(untargeted)
     if (quickLightweighting.success)
@@ -408,6 +444,28 @@ export function createLocalToolExecutor(
         : localFailure("history-unavailable", "The paired session cannot navigate saved changes.")
     return null
   }
+  function measureModel(
+    operation: Extract<LocalOperation, { tool: "measure_model" }>,
+    signal?: AbortSignal,
+  ) {
+    return session.measurements
+      ? executeModelMeasurementQuery(
+          session.measurements,
+          actor,
+          session.documentId,
+          operation,
+          signal,
+        )
+      : localFailure("geometry-unavailable", "The paired session cannot measure exact topology.")
+  }
+  function moveHistoryItem(
+    operation: Extract<LocalOperation, { tool: "move_history_item" }>,
+    signal?: AbortSignal,
+  ) {
+    return session.historyMoves
+      ? session.historyMoves.change(actor, operation.arguments, signal)
+      : localFailure("history-unavailable", "The paired session cannot reorder History items.")
+  }
   function ownedOperation(operation: LocalOperation, signal?: AbortSignal) {
     const proposal = reviewedProposal(operation, signal)
     if (proposal !== null) return proposal
@@ -416,6 +474,7 @@ export function createLocalToolExecutor(
     if (isSurfaceTextureToolName(operation.tool)) return surfaceTexture(operation, signal)
     if (isLocalBinaryExport(operation)) return transfer(operation, signal)
     if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
+    if (operation.tool === "measure_model") return measureModel(operation, signal)
     if (operation.tool === "change_metadata")
       return changeMetadata(session, actor, operation, signal)
     return null

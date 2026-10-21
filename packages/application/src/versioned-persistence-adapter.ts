@@ -11,10 +11,15 @@ import {
   reduceVersionedDocumentEvent,
   type VersionedDocumentEvent,
 } from "@vibeshape/domain"
-import { type DocumentHistoryCheckpoint, DocumentUndoHistory } from "./document-undo-history"
+import {
+  type DocumentHistoryCheckpoint,
+  type DocumentHistoryNavigationState,
+  DocumentUndoHistory,
+} from "./document-undo-history"
 import { draftCommandFailure, draftDiagnosticCause } from "./draft-validation-diagnostics"
 import { matchesHistoryOperation } from "./history-mutation"
 import type {
+  DocumentHistoryPort,
   DocumentHistoryRequest,
   DocumentSemanticHistoryPort,
   PersistedRecoveryMigration,
@@ -33,6 +38,7 @@ export type VersionedCommitInput = Readonly<{
   baseSnapshot: DocumentSnapshotV1 | null
   event: VersionedDocumentEvent
   snapshot: DocumentSnapshotV1
+  checkpointRestore?: true
 }>
 export type VersionedDraftInput = Readonly<{
   sessionId: string
@@ -56,6 +62,7 @@ export type VersionedRecoveryReport = Readonly<{
   recoveredRevision: number
   lostRevisionCount: number
   corruptRecords: readonly string[]
+  navigation?: DocumentHistoryNavigationState | undefined
   migration: Readonly<{
     migrationProvenance: PersistedRecoveryMigration["provenance"]
     migrationDiagnostic: PersistedRecoveryMigration["diagnostic"]
@@ -63,6 +70,10 @@ export type VersionedRecoveryReport = Readonly<{
   }>
 }>
 export type VersionedDocumentRepositoryPort = Readonly<{
+  loadHistoryTarget?: (
+    documentId: DocumentId,
+    revision: number,
+  ) => Promise<VersionedPortResult<import("@vibeshape/domain").DocumentAuthoritySnapshot>>
   commit: (input: VersionedCommitInput) => Promise<VersionedPortResult<unknown>>
   commitDraft: (input: VersionedDraftInput) => Promise<VersionedPortResult<unknown>>
   recover: (documentId: DocumentId) => Promise<VersionedPortResult<VersionedRecoveryReport>>
@@ -197,13 +208,30 @@ function buildHistoryRestore(
 export function createVersionedPersistenceAdapter(
   repository: VersionedDocumentRepositoryPort,
   initialSnapshot: DocumentSnapshotV1 | null = null,
+  initialNavigation?: DocumentHistoryNavigationState,
 ): PersistentDocumentRepositoryPort &
   Readonly<{
+    history: DocumentHistoryPort & { preview: NonNullable<DocumentHistoryPort["preview"]> }
     readonly currentV1Snapshot: DocumentSnapshotV1 | null
     validateDraft: NonNullable<PersistentDocumentRepositoryPort["validateDraft"]>
   }> {
   let authority = initialSnapshot
   const history = new DocumentUndoHistory()
+  history.restore(initialNavigation)
+  async function loadTarget(direction: "undo" | "redo", targetRevision?: number) {
+    const documentId = authority?.id
+    if (!documentId) return null
+    try {
+      return await history.loadTarget(direction, targetRevision, async (revision) => {
+        const result = await repository.loadHistoryTarget?.(documentId, revision)
+        if (!result?.ok) return null
+        const parsed = documentSnapshotV1Schema.safeParse(result.value)
+        return parsed.success && parsed.data.id === documentId ? parsed.data : null
+      })
+    } catch {
+      return null
+    }
+  }
   function historyPreview(target: DocumentSnapshotV1 | null) {
     if (!target) return null
     const ownedTarget = documentSnapshotV1Schema.parse(JSON.parse(canonicalJson(target)))
@@ -231,7 +259,7 @@ export function createVersionedPersistenceAdapter(
       return failed("invalid-input", "Internal checkpoints restore only an owned baseline.")
     const target = checkpoint
       ? history.checkpointTarget(checkpoint, parsed.authority)
-      : history.target(parsed.request.direction)
+      : await loadTarget(parsed.request.direction, parsed.request.targetRevision)
     const restored = buildHistoryRestore(parsed.authority, parsed.request, target)
     if (!restored.ok) return restored
     if (!history.permitsPublication(parsed.authority, restored.restored, [parsed.request.actor]))
@@ -247,17 +275,27 @@ export function createVersionedPersistenceAdapter(
         baseSnapshot: authority,
         event: restored.event,
         snapshot: restored.restored,
+        ...(checkpoint ? { checkpointRestore: true as const } : {}),
       },
       "The history change was not saved.",
     )
     if (!persisted.ok) return persisted
-    if (checkpoint) history.acceptCheckpoint(checkpoint, parsed.authority)
-    else {
-      history.observe(parsed.authority, restored.restored, [parsed.request.actor])
-      history.accept(parsed.request.direction)
-    }
+    acceptNavigation(parsed.authority, restored.restored, parsed.request, checkpoint)
     authority = restored.restored
     return { ok: true as const, value: restored.projected }
+  }
+
+  function acceptNavigation(
+    before: DocumentSnapshotV1,
+    after: DocumentSnapshotV1,
+    request: DocumentHistoryRequest,
+    checkpoint?: DocumentHistoryCheckpoint,
+  ) {
+    if (checkpoint) history.acceptCheckpoint(checkpoint, before)
+    else {
+      history.observe(before, after, [request.actor])
+      history.accept(request.direction, request.targetRevision)
+    }
   }
 
   const projectInput = (
@@ -342,8 +380,8 @@ export function createVersionedPersistenceAdapter(
       get availability() {
         return history.availability
       },
-      preview(direction) {
-        return historyPreview(history.target(direction))
+      async preview(direction, targetRevision) {
+        return historyPreview(await loadTarget(direction, targetRevision))
       },
       navigate,
       checkpoints: {
@@ -457,7 +495,9 @@ export function createVersionedPersistenceAdapter(
       const projected = projectDocumentSnapshotV1ToV0(parsed.data)
       if (!projected.ok) return failed("invalid-recovered-document", projected.diagnostic.message)
       authority = parsed.data
-      history.clear()
+      history.restore(
+        recovered.value.lostRevisionCount === 0 ? recovered.value.navigation : undefined,
+      )
       const value: PersistedRecoveryReport = {
         ...recovered.value,
         snapshot: projected.snapshot,

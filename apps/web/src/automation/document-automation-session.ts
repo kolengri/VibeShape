@@ -21,6 +21,7 @@ import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
 import { createAutomationDraftViewport } from "./automation-draft-viewport"
 import { automationReviews } from "./automation-review-controller"
 import { createCommittedSketchInspection } from "./committed-sketch-inspection"
+import type { FaceAlignmentPreparationPort } from "./local-face-alignment-command"
 import { createModelPreviewSession } from "./model-preview-session"
 import { mayAutoApplyCadReview } from "./session-auto-apply"
 
@@ -231,6 +232,25 @@ export function createDocumentAutomationSession(
     return factory
   }
   const host = factory.host
+  const faceAlignment: FaceAlignmentPreparationPort = {
+    readOwnedDraftSnapshot: host.readOwnedDraftSnapshot,
+    async rebuild(snapshot, signal) {
+      const epoch = previewEpoch
+      const interrupted = () => closed || epoch !== previewEpoch || signal?.aborted
+      if (interrupted()) return { ok: false, code: "preview-cancelled" }
+      const abort = () => preview.cancel()
+      signal?.addEventListener("abort", abort, { once: true })
+      try {
+        const result = await preview.preview(snapshot)
+        if (interrupted()) return { ok: false, code: "preview-cancelled" }
+        return result.ok && result.rebuild
+          ? { ok: true, response: result.rebuild }
+          : { ok: false, code: result.ok ? "geometry-unavailable" : result.code }
+      } finally {
+        signal?.removeEventListener("abort", abort)
+      }
+    },
+  }
   async function commitDraft(actor: unknown, request: unknown) {
     if (commitActive)
       return {
@@ -318,6 +338,7 @@ export function createDocumentAutomationSession(
       autoApplyActor = null
       return true
     },
+    faceAlignment,
     host: {
       ...host,
       async restoreDraft(actor: unknown, journal: unknown) {

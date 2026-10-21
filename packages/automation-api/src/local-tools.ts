@@ -53,6 +53,13 @@ import {
   automationDraftPreviewSchema,
   automationDraftStateSchema,
 } from "./drafts"
+import { faceAlignmentOperations, faceAlignmentToolInputs } from "./face-alignment-tools"
+import {
+  historyMoveCommitViewSchema,
+  historyMoveOperationSchema,
+  historyMoveToolInputs,
+} from "./history-move-tools"
+
 import {
   historyCommitViewSchema,
   historyOperations,
@@ -98,6 +105,11 @@ import {
 import { localSketchTextInputs, localSketchTextOperations } from "./local-sketch-text-tools"
 import { localVariableInputs, localVariableOperations } from "./local-variable-tools"
 import {
+  measurementOperations,
+  measurementToolInputs,
+  measurementViewSchema,
+} from "./measurement-tools"
+import {
   localPlanarImportInputs,
   localPlanarImportOperations,
   planarUploadCommitSchema,
@@ -136,6 +148,7 @@ import {
   quickLightweightingToolNames,
 } from "./quick-lightweighting-tools"
 import { renderPreviewArgumentsSchema, renderPreviewResultSchema } from "./render-preview"
+import { localSketchCornerInputs, localSketchCornerOperations } from "./sketch-corner-tools"
 import { sketchSolutionArgumentsSchema, sketchSolutionViewSchema } from "./sketch-solution-queries"
 import {
   surfaceTextureCommitViewSchema,
@@ -206,6 +219,8 @@ export const localToolInputs = {
   ...quickLightweightingToolInputs,
   render_preview: renderPreviewArgumentsSchema,
   ...historyToolInputs,
+  ...historyMoveToolInputs,
+  ...measurementToolInputs,
   ...localPlanarImportInputs,
   ...localImportInputs,
   model_sketch_solution: sketchSolutionArgumentsSchema,
@@ -230,6 +245,8 @@ export const localToolInputs = {
   ...localPrimitiveInputs,
   ...localLifecycleInputs,
   ...localSketchTextInputs,
+  ...localSketchCornerInputs,
+  ...faceAlignmentToolInputs,
   ...localVariableInputs,
   model_variables: variableListQuerySchema.omit({
     kind: true,
@@ -313,6 +330,8 @@ export const localToolOutputs = {
   model_history_state: resultOf(historyStateViewSchema),
   undo_model: resultOf(historyCommitViewSchema),
   redo_model: resultOf(historyCommitViewSchema),
+  move_history_item: resultOf(historyMoveCommitViewSchema),
+  measure_model: resultOf(measurementViewSchema),
   model_surface_textures: resultOf(surfaceTexturesViewSchema),
   create_surface_texture: resultOf(surfaceTextureCommitViewSchema),
   update_surface_texture: resultOf(surfaceTextureCommitViewSchema),
@@ -338,8 +357,10 @@ export const localToolOutputs = {
   set_feature_suppressed: resultOf(automationDraftStateSchema),
   rename_project: resultOf(automationDraftStateSchema),
   create_placement: resultOf(automationDraftStateSchema),
+  create_face_aligned_placement: resultOf(automationDraftStateSchema),
   update_placement: resultOf(automationDraftStateSchema),
   create_sketch_text: resultOf(automationDraftStateSchema),
+  treat_sketch_corner: resultOf(automationDraftStateSchema),
   update_sketch_text: resultOf(automationDraftStateSchema),
   detach_sketch_text: resultOf(automationDraftStateSchema),
   begin_import_upload: resultOf(importUploadDescriptorSchema),
@@ -473,6 +494,8 @@ export const localToolNameSchema = z.enum([
   "model_history_state",
   "undo_model",
   "redo_model",
+  "move_history_item",
+  "measure_model",
   "begin_planar_import_upload",
   "append_planar_import_chunk",
   "inspect_planar_import_upload",
@@ -481,8 +504,10 @@ export const localToolNameSchema = z.enum([
   ...primitiveToolNames,
   ...lifecycleToolNames,
   "create_placement",
+  "create_face_aligned_placement",
   "update_placement",
   "create_sketch_text",
+  "treat_sketch_corner",
   "update_sketch_text",
   "detach_sketch_text",
   "begin_import_upload",
@@ -613,6 +638,8 @@ const untargetedOperationSchema = z.discriminatedUnion("tool", [
     })
     .strict(),
   ...historyOperations,
+  historyMoveOperationSchema,
+  ...measurementOperations,
   ...assemblyOperations,
   ...libraryOperations,
   ...surfaceTextureOperations,
@@ -640,6 +667,8 @@ const untargetedOperationSchema = z.discriminatedUnion("tool", [
   ...localPrimitiveOperations,
   ...localLifecycleOperations,
   ...localSketchTextOperations,
+  ...localSketchCornerOperations,
+  ...faceAlignmentOperations,
   ...localVariableOperations,
   z
     .object({ tool: z.literal("model_variables"), arguments: localToolInputs.model_variables })
@@ -697,6 +726,15 @@ export function mcpToolInputSchema(name: LocalToolName) {
     return z.union([
       chamfer.options[0].extend({ projectId: documentIdSchema.optional() }),
       chamfer.options[1].extend({ projectId: documentIdSchema.optional() }),
+    ])
+  if (name === "create_face_aligned_placement")
+    return localToolInputs.create_face_aligned_placement.safeExtend({
+      projectId: documentIdSchema.optional(),
+    })
+  if (name === "measure_model")
+    return z.discriminatedUnion("source", [
+      localToolInputs.measure_model.options[0].extend({ projectId: documentIdSchema.optional() }),
+      localToolInputs.measure_model.options[1].extend({ projectId: documentIdSchema.optional() }),
     ])
   if (name === "render_preview")
     return z.discriminatedUnion("source", [

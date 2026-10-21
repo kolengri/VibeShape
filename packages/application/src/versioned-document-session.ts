@@ -79,7 +79,9 @@ function cachedVersionedRepository(
   recovery: VersionedRecoveryReport,
 ): VersionedDocumentRepositoryPort {
   let first = true
+  const loadHistoryTarget = repository.loadHistoryTarget?.bind(repository)
   return {
+    ...(loadHistoryTarget ? { loadHistoryTarget } : {}),
     commit: (input) => repository.commit(input),
     commitDraft: (input) => repository.commitDraft(input),
     closeCleanly: (input) => repository.closeCleanly(input),

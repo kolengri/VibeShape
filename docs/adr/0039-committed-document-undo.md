@@ -6,6 +6,8 @@
   [ADR-0026](0026-document-dependency-graph-and-interleaved-history.md), and
   [ADR-0035](0035-versioned-portable-history.md)
 
+- Navigation retention/reopen policy superseded by [ADR-0125](0125-durable-saved-change-navigation.md).
+
 ## Decision
 
 Committed Undo and Redo are serialized application actions over the versioned document authority.

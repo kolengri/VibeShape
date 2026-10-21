@@ -191,6 +191,8 @@ function selectedDecision(
 }
 
 function decisionContent(state: DecisionState, catalog: Record<string, string>) {
+  if (Buffer.byteLength(JSON.stringify(catalog)) > 128_000)
+    throw new JevFailure("The Jev tool description catalog exceeds its text budget.")
   const content = {
     goal: state.goal,
     instructions: state.instructions,
@@ -200,12 +202,12 @@ function decisionContent(state: DecisionState, catalog: Record<string, string>) 
   }
   // Reserve space for the controller's entire 64 KB context alongside the compact catalog.
   let serialized = JSON.stringify(content)
-  while (content.history.length > 1 && Buffer.byteLength(serialized) > 128_000) {
+  while (content.history.length > 1 && Buffer.byteLength(serialized) > 192_000) {
     content.history.shift()
     serialized = JSON.stringify(content)
   }
   const bytes = Buffer.byteLength(serialized)
-  if (bytes > 128_000)
+  if (bytes > 192_000)
     throw new JevFailure("The Jev state and tool catalog exceed their text budget.")
   return { content: z.record(z.string(), z.json()).parse(JSON.parse(serialized)), bytes }
 }

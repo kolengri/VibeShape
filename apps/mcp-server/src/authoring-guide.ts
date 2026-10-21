@@ -202,18 +202,59 @@ Callers cannot provide frozen pins, raw bytes, document authority or an approval
 
 Read model_history_state with documentId and revision from model_info. This availability is distinct
 from model_history authored item ordering. undo_model/redo_model accept documentId, current
-baseRevision and a fresh UUIDv7 commandId. They always require manual browser Apply/Discard,
+baseRevision and a fresh UUIDv7 commandId. Optional targetRevision selects an existing checkpoint
+in the requested direction, restoring multiple saves with one preview and publication. Capture
+model_info.revision before a batch and use it as the Undo target; omission retains single-step behavior.
+This restores every intervening save, including human/other-agent changes. Unavailable targets
+fail without navigation; Redo targets use original saved revisions retained on that stack.
+External MCP clients require manual browser Apply/Discard,
 including auto-apply sessions, and preview the exact saved target without navigating. Apply publishes
 one new revision rather than moving the revision backward. A new authored change clears Redo;
-reopening preserves the saved state/events but resets transient Undo/Redo stacks. Never supply
+reopening restores explicitly saved Undo/Redo navigation references from IndexedDB. Older projects
+without navigation metadata start with empty stacks. The bounded full-snapshot cache loads verified
+targets on demand and does not impose a step-count limit. Never supply
 raw checkpoints, scripts or approval flags. For stale or unconfirmed results inspect the saved
 project before proposing again. The organization operator skill owns the detailed recovery workflow.
+
+## Exact topology measurement
+
+measure_model reads one or two stable body-bound edge/face references from model_body_topology or
+its draft counterpart. Use source=model plus exact revision, or source=draft plus draftId/revision.
+Targets select optional pointKind centroid/start/middle/end/center when analytically available.
+Results report edge length or face area, available circular radius/diameter and exact selected points.
+A pair adds selected-point distance, acute unoriented LINE-direction/PLANE-normal angle in radians,
+and separation of infinite parallel supporting planes when available. Null is unavailable, not zero.
+These are not minimum bounded-face/body clearance or general line-to-surface angle measurements.
+The operation is read-only and does not renew draft expiry. See the inspection operator skill.
+
+## Sketch corner treatment
+
+Use treat_sketch_corner with draftId, exact baseRevision, a fresh commandId, sketchId and a typed
+fillet/chamfer treatment selecting two existing non-construction line IDs. The host uses exact solved
+points, generates entities/constraints and preserves the virtual construction corner and supported
+constraints. Quantity expressions resolve against draft variables. Unsupported or oversized corners
+fail atomically. Inspect draft_sketch_solution and preview_draft, then commit_draft normally.
+This is sketch geometry; body-edge create_fillet/create_chamfer use their existing contracts.
+
+## History item ordering
+
+move_history_item accepts documentId, exact committed baseRevision, a fresh commandId, an existing
+{kind,id} item and an existing historyAfter anchor or null for the beginning. Read model_history first.
+Dependency/folder violations, no-ops and missing/self anchors fail without saving. Exact full authored
+preview precedes one ordinary semantic save and one Undo entry. External MCP clients require manual
+Apply/Discard even with CAD auto-apply. Do not delete and recreate features to bypass a rejection.
 
 ## Placement and editable sketch text
 
 \`create_placement\`/\`update_placement\` use typed translation/rotation parameters, an exact
 \`targetBody\`, exactly its producer dependency and empty references. Preview exact bounds
 and volume, then use ordinary manual review. Placement remains numeric rather than associative.
+
+create_face_aligned_placement uses current draft_body_topology sourceFace/targetFace references,
+orientation same|opposed and signed offsetMm along the target normal. Both faces must resolve uniquely
+to oriented planes on distinct valid solid bodies in the same exact draft rebuild. It creates a
+numeric Placement of the source body with no associative target dependency. Inspect preview bounds
+and use ordinary commit_draft; stale, ambiguous or curved targets fail without staging a change.
 
 \`create_sketch_text\`/\`update_sketch_text\` use a stable UUIDv7 groupId, sketchId, origin
 and supported text intent (text, heightMm, trackingMm, alignment, kerning). The browser uses the

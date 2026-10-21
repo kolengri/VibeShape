@@ -17,14 +17,14 @@ type Checkpoint<Snapshot> = {
   size: number
 }
 
-type HistoryEntry<Snapshot> = Readonly<{
-  before: Snapshot
-  after: Snapshot
-  size: number
+export type DocumentHistoryNavigationState = Readonly<{
+  schemaVersion: 1
+  undo: readonly Readonly<{ before: number; after: number }>[]
+  redo: readonly Readonly<{ before: number; after: number }>[]
 }>
+type HistoryEntry = Readonly<{ before: number; after: number }>
 
 // Bound retained semantic checkpoints independently of the durable event journal.
-const MAX_ENTRIES = 100
 const MAX_CHECKPOINT_BYTES = 32 * 1024 * 1024
 const MAX_PINNED_CHECKPOINTS = 8
 
@@ -47,8 +47,10 @@ function accepts(checkpoint: Checkpoint<unknown>, actor: CommandActor) {
 export class DocumentUndoHistory<
   Snapshot extends { revision: number; updatedAt: string } = DocumentSnapshotV1,
 > {
-  #undo: HistoryEntry<Snapshot>[] = []
-  #redo: HistoryEntry<Snapshot>[] = []
+  #undo: HistoryEntry[] = []
+  #redo: HistoryEntry[] = []
+  #cache = new Map<number, { snapshot: Snapshot; size: number }>()
+  #cacheBytes = 0
   #checkpoints = new Map<DocumentHistoryCheckpoint, Checkpoint<Snapshot>>()
 
   constructor(private readonly checkpointContent: (snapshot: Snapshot) => string = content) {}
@@ -65,6 +67,8 @@ export class DocumentUndoHistory<
   clearUndoRedo() {
     this.#undo = []
     this.#redo = []
+    this.#cache.clear()
+    this.#cacheBytes = 0
   }
 
   captureCheckpoint(snapshot: Snapshot, acceptsActor: (actor: CommandActor) => boolean) {
@@ -162,14 +166,15 @@ export class DocumentUndoHistory<
   acceptCheckpoint(handle: DocumentHistoryCheckpoint, current: Snapshot) {
     const target = this.checkpointTarget(handle, current)
     if (!target) return
-    this.#undo = this.#undo.filter((entry) => entry.after.revision <= target.revision)
+    this.#undo = this.#undo.filter((entry) => entry.after <= target.revision)
     this.#redo = [
       {
-        before: target,
-        after: current,
-        size: (canonicalJson(target).length + canonicalJson(current).length) * 2,
+        before: target.revision,
+        after: current.revision,
       },
     ]
+    this.#retain(target)
+    this.#retain(current)
     this.#checkpoints.clear()
   }
 
@@ -186,24 +191,87 @@ export class DocumentUndoHistory<
     const { revision: _afterRevision, updatedAt: _afterTime, ...afterContent } = after
     if (canonicalJson(beforeContent) === canonicalJson(afterContent)) return
     this.#redo = []
-    const size = (canonicalJson(before).length + canonicalJson(after).length) * 2
-    this.#undo.push({ before, after, size })
-    let total = this.#undo.reduce((sum, entry) => sum + entry.size, 0)
-    while (this.#undo.length > MAX_ENTRIES || total > MAX_CHECKPOINT_BYTES) {
-      const removed = this.#undo.shift()
-      if (removed) total -= removed.size
+    this.#undo.push({ before: before.revision, after: after.revision })
+    this.#retain(before)
+    this.#retain(after)
+  }
+
+  restore(state?: DocumentHistoryNavigationState) {
+    this.clear()
+    this.#undo = state?.undo.map((entry) => ({ ...entry })) ?? []
+    this.#redo = state?.redo.map((entry) => ({ ...entry })) ?? []
+  }
+
+  #retain(snapshot: Snapshot) {
+    const previous = this.#cache.get(snapshot.revision)
+    if (previous) {
+      this.#cache.delete(snapshot.revision)
+      this.#cacheBytes -= previous.size
+    }
+    const size = canonicalJson(snapshot).length * 2
+    if (size > MAX_CHECKPOINT_BYTES) return
+    this.#cache.set(snapshot.revision, { snapshot, size })
+    this.#cacheBytes += size
+    while (this.#cacheBytes > MAX_CHECKPOINT_BYTES) {
+      const oldest = this.#cache.entries().next().value
+      if (!oldest) break
+      this.#cache.delete(oldest[0])
+      this.#cacheBytes -= oldest[1].size
     }
   }
 
-  target(direction: "undo" | "redo") {
-    const entry = (direction === "undo" ? this.#undo : this.#redo).at(-1)
-    return entry ? (direction === "undo" ? entry.before : entry.after) : null
+  async loadTarget(
+    direction: "undo" | "redo",
+    targetRevision: number | undefined,
+    load: (revision: number) => Promise<Snapshot | null>,
+  ) {
+    const revision = this.#targetRevision(direction, targetRevision)
+    if (revision === undefined) return null
+    const cached = this.#cache.get(revision)
+    if (cached) {
+      this.#cache.delete(revision)
+      this.#cache.set(revision, cached)
+      return cached.snapshot
+    }
+    const snapshot = await load(revision)
+    if (
+      !snapshot ||
+      snapshot.revision !== revision ||
+      this.#targetRevision(direction, targetRevision) !== revision
+    )
+      return null
+    this.#retain(snapshot)
+    return snapshot
   }
 
-  accept(direction: "undo" | "redo") {
+  #targetRevision(direction: "undo" | "redo", targetRevision?: number) {
+    const source = direction === "undo" ? this.#undo : this.#redo
+    const entry = source[this.#targetIndex(direction, targetRevision)]
+    return entry ? (direction === "undo" ? entry.before : entry.after) : undefined
+  }
+
+  #targetIndex(direction: "undo" | "redo", targetRevision?: number) {
+    const source = direction === "undo" ? this.#undo : this.#redo
+    if (targetRevision === undefined) return source.length - 1
+    for (let index = source.length - 1; index >= 0; index -= 1) {
+      const entry = source[index]
+      if (entry && (direction === "undo" ? entry.before : entry.after) === targetRevision)
+        return index
+    }
+    return -1
+  }
+
+  target(direction: "undo" | "redo", targetRevision?: number) {
+    const revision = this.#targetRevision(direction, targetRevision)
+    return revision === undefined ? null : (this.#cache.get(revision)?.snapshot ?? null)
+  }
+
+  accept(direction: "undo" | "redo", targetRevision?: number) {
     const source = direction === "undo" ? this.#undo : this.#redo
     const destination = direction === "undo" ? this.#redo : this.#undo
-    const entry = source.pop()
-    if (entry) destination.push(entry)
+    const index = this.#targetIndex(direction, targetRevision)
+    if (index < 0) return
+    // Move the crossed entries only after one successful target publication.
+    for (const entry of source.splice(index).reverse()) destination.push(entry)
   }
 }

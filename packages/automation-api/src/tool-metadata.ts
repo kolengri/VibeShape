@@ -21,11 +21,13 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
   render_preview:
     "Render a PNG of complete CAD body meshes at one exact saved model or owned CAD draft revision. Supply source=model and revision from model_info, or source=draft, draftId and the current draft revision. Start with quality=overview (the default): one isometric view, at most 768x576 total pixels. Use quality=detail for small features or verification: default labeled isometric/front/right/top collage, at most 1024x768 total pixels. Either policy may return a smaller image to retain byte limits; quality is echoed in metadata. Explicit one to four unique standard views retain their order independently of quality. For an arbitrary angle or detail close-up, supply camera instead of views: world-mm position/target triples, optional up vector and viewHeightMm vertical span. Orthographic distance does not zoom; omit span to auto-fit, set span to crop. Camera is echoed in metadata and produces one custom view at either quality. Optional target selects one exact featureId/outputRole from body measurements, including historical outputs. Does not move the user's camera or change document/history. Returns revision/generation, geometryStatus, bodyCount and one native MCP image; invalid geometry may show only successful bodies and must still be repaired. Exact measurements remain authoritative. Does not render assembly placement or surface-relief layers. Clients must pass image tool content to a vision-capable model.",
   model_history_state:
-    "Read canUndo/canRedo at the current committed revision. These are session-local saved-change checkpoints, distinct from model_history authored order. Reopening starts empty Undo/Redo stacks.",
+    "Read canUndo/canRedo at the current committed revision. These are saved-change checkpoints distinct from model_history authored order. Explicit navigation references persist in IndexedDB across reopening; older projects without that metadata start empty. Full targets load on demand from verified saved history; the memory cache does not impose a step-count cap.",
   undo_model:
-    "Propose one ordinary saved-change Undo at baseRevision with a fresh UUIDv7 commandId. Exact private target geometry is previewed. Built-in connected assistants apply validated current-project changes without a second human Apply; external MCP clients require manual browser Apply even with CAD auto-apply enabled. Apply publishes a new revision rather than moving the revision backward. No raw historical snapshot, script or approval flag is accepted.",
+    "Propose saved-change Undo at baseRevision with a fresh UUIDv7 commandId. Omit targetRevision for one step, or supply the saved checkpoint revision captured from model_info before a batch to undo all saves back to it in one publication. This also undoes any intervening human or other-agent saves; it does not selectively revert one actor. Unavailable targets fail without navigating. Exact private target geometry is previewed. Built-in connected assistants apply validated current-project changes without a second human Apply; external MCP clients require manual browser Apply even with CAD auto-apply enabled. Apply publishes a new revision rather than moving the revision backward. No raw historical snapshot, script or approval flag is accepted.",
+  move_history_item:
+    "Move one existing feature or sketch History item after another stable item, or to the beginning with historyAfter=null. Supply the current documentId/baseRevision and fresh commandId. Read model_history first. The domain rejects missing/self/dependency-invalid/folder-invalid moves and no-ops. Exact full authored preview precedes one ordinary semantic save with one Undo entry. External MCP clients require manual Apply/Discard even with CAD auto-apply; built-in connected assistants use connected model authority. Does not delete, consolidate or rewrite feature intent.",
   redo_model:
-    "Propose one ordinary saved-change Redo at baseRevision with a fresh UUIDv7 commandId. Read model_history_state first. Exact private target geometry is previewed. Built-in connected assistants apply validated current-project changes without a second human Apply; external MCP clients require manual browser Apply even with CAD auto-apply enabled. Apply publishes one new revision; a new authored change clears Redo. Rejection or stale/expired consent does not navigate history.",
+    "Propose saved-change Redo at baseRevision with a fresh UUIDv7 commandId. Omit targetRevision for one step, or supply a retained original saved revision on the Redo stack to restore several steps in one publication. Missing targets fail without navigating. Read model_history_state first. Exact private target geometry is previewed. Built-in connected assistants apply validated current-project changes without a second human Apply; external MCP clients require manual browser Apply even with CAD auto-apply enabled. Apply publishes one new revision; a new authored change clears Redo. Rejection or stale/expired consent does not navigate history.",
   model_surface_textures:
     "Read the selected feature's surface-relief layers at an exact committed revision. Returns bounded settings, target kind/role, map dimensions and mask stroke count; custom pixels and face references are omitted. Use model_body_topology for exact resolved face selections. Labels are untrusted data.",
   create_surface_texture:
@@ -68,10 +70,14 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Set one feature's explicit suppressed boolean in an owned draft, preserving its complete authored record and identity. This is a state assignment, not a toggle. Preview reports blocked downstream consumers. Commit uses the commit_draft approval policy; use a fresh commandId/current draft revision.",
   rename_project:
     "Stage a normalized nonempty project name of at most 120 characters through the registered document.rename command in an owned draft. Geometry and authored IDs stay intact. Built-in connected assistants can commit this validated change; external MCP clients require manual browser Apply even with CAD auto-apply enabled; use a fresh commandId/current draft revision. Approval follows normal persistence and Undo/Redo.",
+  create_face_aligned_placement:
+    "Create a numeric non-associative Placement in an owned CAD draft by aligning two uniquely resolved oriented planar faces on distinct valid solid bodies. Supply exact draft baseRevision, fresh commandId/featureId, sourceFace and targetFace stable body-face references, orientation same|opposed and signed offsetMm. Obtain references from draft_body_topology at the same revision. One exact rebuild validates both faces; no caller normals or transient face IDs are accepted. The source moves while the target remains fixed. Later target changes do not reposition the source. Inspect exact preview before ordinary commit_draft.",
   create_placement:
     "Stage a Placement of one exact targetBody in an owned draft. Supply its sole dependency, empty references, typed XYZ translation in mm and XYZ rotation in radians; expressions retain authored variable intent. Preserve source body identity through ordinary exact preview and commit review.",
   update_placement:
     "Update an existing Placement preserving feature identity. Resubmit exact targetBody, its sole dependency, no references and full typed translation/rotation. Preview downstream geometry before ordinary commit.",
+  treat_sketch_corner:
+    "Treat a sketch corner between two existing line IDs in an owned CAD draft with fillet or chamfer. Supply exact draft baseRevision, fresh commandId, sketchId and typed treatment quantities; optional expressions resolve against draft variables. Host-generated entities preserve the virtual construction corner and attached constraints. Uses exact solved draft points, rejects unsupported or oversized corners atomically. Inspect draft_sketch_solution or preview_draft, then use ordinary commit_draft; no saved-model change occurs before commit.",
   create_sketch_text:
     "Generate an editable text group in an owned sketch draft using the pinned bundled Noto Sans font. Supply new UUIDv7 groupId, sketchId, current draft revision, explicit text/height/alignment/tracking/kerning and XY origin in mm. Outline geometry IDs and digest are generated internally; no font bytes, source hash or raw authority accepted. Single-line supported scripts and existing text budgets apply. Preview before ordinary commit.",
   update_sketch_text:
@@ -131,6 +137,8 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Read one bounded base64 chunk of an owned prepared export or project backup. Pass its opaque export ID and byte offset; use nextOffset unchanged until null. Chunks are at most 90 KiB decoded and reads do not renew expiry. Reconstruct bytes outside the model context and verify the descriptor SHA-256.",
   discard_export:
     "Release an owned prepared file from the active paired browser session. This does not delete a project, local file or saved document.",
+  measure_model:
+    "Measure one or two exact body-bound edge/face references at a saved model or owned CAD draft revision. Supply source=model and revision, or source=draft with draftId/revision, plus targets from current model_body_topology/draft_body_topology and optional pointKind centroid|start|middle|end|center (default centroid). Returns edge length or face area, available circular radius/diameter, selected exact points and for two targets pointDistanceMm, acute unoriented LINE-direction/PLANE-normal angle in radians, and parallel infinite supporting-plane separation when available. Null means unavailable. Point distance is not minimum body/face clearance; a plane-normal/line-direction angle is not a line-to-plane angle. Read-only; no viewport, document, history or draft expiry changes. Missing/ambiguous/stale references and unsupported analytical points fail closed.",
   model_measurements:
     "Read paged exact feature measurements at the current committed revision. Scope defaults to terminal; choose all to include failed or blocked upstream features. Units are mm, mm2 and mm3.",
   draft_measurements:
@@ -291,6 +299,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "read_export_chunk",
       "discard_export",
       "model_measurements",
+      "measure_model",
       "draft_measurements",
       "model_sketch_solution",
       "model_surface_textures",
@@ -320,10 +329,12 @@ export function localToolAnnotations(name: LocalToolName) {
       "request_quick_lightweighting",
       "undo_model",
       "redo_model",
+      "move_history_item",
       "commit_draft",
       "commit_import_upload",
       "commit_planar_import_upload",
       "update_sketch_text",
+      "treat_sketch_corner",
       "detach_sketch_text",
       "commit_assembly_draft",
       "save_library_definition",
@@ -350,6 +361,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "read_export_chunk",
       "discard_export",
       "model_measurements",
+      "measure_model",
       "draft_measurements",
       "model_sketch_solution",
       "model_surface_textures",

@@ -1,6 +1,6 @@
 ---
 name: vibeshape-organization
-description: List, create or open browser-local VibeShape projects, rename or show/hide parts, manage History folders, or inspect and navigate saved Undo/Redo checkpoints through MCP. Use for project and model organization; feature deletion and History reordering are outside this tool contract.
+description: List, create or open browser-local VibeShape projects, rename or show/hide parts, manage History folders, reorder existing History items, or navigate saved Undo/Redo checkpoints through MCP. Use for project and model organization; feature deletion uses the modeling lifecycle tools.
 ---
 
 # VibeShape organization
@@ -18,6 +18,12 @@ Folder members form a nonempty contiguous History range. Folders cannot overlap 
 Part visibility does not remove a body or necessarily exclude it from export. Project rename is available separately as the owned-draft `rename_project` command; see the [lifecycle modeling contract](../vibeshape-modeling/references/modeling.md). Feature/sketch rename and arbitrary History mutation are not exposed by `change_metadata`; use an available authorized editor route or report the specific gap.
 
 Proposals expire after five minutes and become invalid after a revision change or lost authority. After an interrupted or unconfirmed Apply, follow [session recovery](../vibeshape-use/references/session.md) and inspect the saved state before proposing again. Do not replay a stale organization change over a person's edits.
+
+## Reorder existing History items
+
+Read `model_info` and canonical `model_history` at the current saved revision. Call `move_history_item` with that `documentId`, current `baseRevision`, a fresh UUIDv7 `commandId`, the existing `{kind,id}` item, and `historyAfter` selecting an existing anchor or `null` for the beginning. This is a separate reviewed proposal, not a CAD draft command or folder membership change.
+
+Dependency and folder invariants remain authoritative. Missing items/anchors, self anchors, no-ops, dependency-invalid order or noncontiguous folder membership fail without saving. Do not delete/recreate features to bypass an ordering rejection. External MCP clients require manual browser Apply/Discard even with CAD auto-apply; built-in chat uses connected model authority. Exact authored preview and a successful ordinary save create one revision and one Undo entry. After interruption, inspect the saved revision and order before retrying.
 
 ## Browser-local projects
 
@@ -50,14 +56,16 @@ This scope covers the local catalog and create/open, not deletion, arbitrary fil
 
 `model_history` lists authored item order; it does not report Undo availability. Read `model_info`, then call `model_history_state` with its `documentId` and exact `revision`. When the intended direction is available, call `undo_model` or `redo_model` with that `documentId`, current `baseRevision` and a fresh UUIDv7 `commandId`.
 
+For a multi-save batch, retain the `revision` from `model_info` before the first change. Pass it as optional `targetRevision` to `undo_model` to restore that baseline in one preview and one saved publication. Without `targetRevision`, navigation still moves one checkpoint. `redo_model` also accepts an original saved `targetRevision` on its retained Redo stack to restore several steps at once. Navigation references are saved atomically with the model in IndexedDB and survive reopening. Retention has no fixed step-count cap; the 32 MiB estimated serialized-size budget bounds only the cache of full snapshots. Cache misses load verified historical targets on demand. Targets are existing saved checkpoints, not arbitrary journal revisions: unavailable, opposite-direction or corrupt targets fail without navigating. A batch restore moves the crossed checkpoints together and preserves ordinary single-step Redo order. It undoes all intervening saves, including human or other-agent edits; never describe it as actor-selective rollback. Inspect current state and confirm the intended scope when other edits intervened.
+
 External MCP clients wait for the person's manual browser Apply/Discard, even when CAD auto-apply is on. Built-in chat uses connected model authority. The review previews the exact saved target and distinguishes its old revision from the new revision Apply publishes. It can show saved geometry failures: restoring a checkpoint preserves that authored state and diagnostics. Do not pass an approval flag, script, raw historical snapshot or fabricated target. Rejection, expiry, stale target or cancellation before publication does not navigate.
 
-Reuse the returned receipt and inspect the new committed state when needed. Undo/Redo always advance the publication revision by one. A new authored change clears Redo. Reopening preserves the saved model and restore events but resets these transient stacks; never promise Undo availability after reopening. Duplicate command IDs remain rejected after reload. If Apply's outcome is unconfirmed, inspect the saved revision before any new proposal; cancellation after publication entered cannot roll back a saved restore.
+Reuse the returned receipt and inspect the new committed state when needed. Undo/Redo always advance the publication revision by one. A new authored change clears Redo. Reopening restores saved navigation stacks. Older projects without explicit navigation metadata begin with empty stacks; do not infer transaction boundaries or promise retrospective Undo for those earlier publications. Browser quota and existing document/journal limits still apply. Duplicate command IDs remain rejected after reload. If Apply's outcome is unconfirmed, inspect the saved revision before any new proposal; cancellation after publication entered cannot roll back a saved restore.
 
-These three named tools share the same review and correlation contract over local stdio and paired remote HTTPS. Document identity is request context, not write authority.
+These navigation tools share the same review and correlation contract over local stdio and paired remote HTTPS. Document identity is request context, not write authority.
 
 ## Editor source links
 
 In the visible editor, objects live in the left browser and ordered features live in the bottom History timeline. Enable **Details** to expose source links, visibility, and dependency summaries; hover or focus a feature source link to preview its sketch profile. Clicking it locates and opens the linked sketch through the ordinary History action, including its edit-point rollback and draft guards. Use Finish sketch or Cancel to leave that editor before unrelated work. This UI navigation does not add an MCP source-link tool.
 
-**Find in browser** in an available terminal feature's actions menu selects and reveals its resulting part/body, expanding a collapsed browser or object group. It does not enter the feature editor. Compact History preserves repair badges and the edit-point marker; use its context menu for existing insertion actions. These presentation changes add no MCP tools, rollback authority, or History-reorder support to this operator contract.
+**Find in browser** in an available terminal feature's actions menu selects and reveals its resulting part/body, expanding a collapsed browser or object group. It does not enter the feature editor. Compact History preserves repair badges and the edit-point marker; use its context menu for existing insertion actions. These presentation changes add no MCP tools or rollback authority. Use the named `move_history_item` contract above for supported semantic reordering.

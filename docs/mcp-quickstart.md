@@ -106,7 +106,9 @@ project backups. See [ADR-0100](adr/0100-remembered-local-mcp-preferences.md). R
 their existing reload/consent boundaries. An edit already saving may finish after Stop; inspect the
 result and use Undo if needed.
 
-`model_history_state` reads saved-change Undo/Redo availability using `documentId` and `revision` from `model_info`. `undo_model` and `redo_model` take that document ID, current `baseRevision` and a fresh UUIDv7 `commandId`. They preview a private saved target and always require manual browser Apply/Discard, including when auto-apply is enabled. Apply publishes one new revision. A new authored change clears Redo; reopening preserves saved state/events but resets transient stacks. See the [organization workflow](../.agents/skills/vibeshape-organization/SKILL.md#saved-change-undo-and-redo).
+`model_history_state` reads saved-change Undo/Redo availability using `documentId` and `revision` from `model_info`. `undo_model` and `redo_model` take that document ID, current `baseRevision` and a fresh UUIDv7 `commandId`. Optional `targetRevision` restores several checkpoints in one publication; capture `model_info.revision` before a batch for its Undo baseline. This restores every intervening save, regardless of actor. External MCP clients require manual browser Apply/Discard, including when CAD auto-apply is enabled; built-in connected assistants use connected model authority. Apply publishes one new revision. A new authored change clears Redo. Explicit navigation metadata persists in IndexedDB across reopening, with old targets loaded on demand and no fixed step-count cap; older projects without this metadata begin with empty stacks. See the [organization workflow](../.agents/skills/vibeshape-organization/SKILL.md#saved-change-undo-and-redo).
+
+`measure_model` measures one or two current stable body-face/edge references in a saved model or owned draft. It reports edge length, face area, available circular diameter/radius, selected-point distance, acute direction/normal angle and parallel infinite-plane separation. It does not compute minimum bounded-shape clearance. See the [inspection workflow](../.agents/skills/vibeshape-inspection/SKILL.md#measure-selected-topology).
 
 `model_parts`, `model_folders`, and `model_history` provide bounded, exact-revision views of authored metadata and canonical History order. `change_metadata` proposes one typed part/folder change through exact preview and browser Apply/Discard. Metadata proposals always require manual review, including when CAD auto-apply is on. The accepted command keeps the paired agent actor and supplied command identity in the native history. Reuse neither a stale revision nor an already committed command ID.
 
@@ -127,9 +129,9 @@ through schema v2. Read the
 before selecting inputs. An explicit session auto-apply grant covers Union v2 and Loft v1/v2/v3 creation
 and same-version edits; Compound and version-upgrade edits still require review.
 
-The current MCP surface is a supported subset of the editor, not full CAD parity. Arbitrary snapshot restoration and
-History item reordering are not exposed. Registered primitives and lifecycle commands follow the
-typed draft contracts above.
+The current MCP surface is a supported subset of the editor, not full CAD parity. Arbitrary snapshot restoration is not exposed.
+`move_history_item` supports reviewed reordering of one existing History item using stable item/anchor references and enforcing dependency/folder invariants. Registered primitives and lifecycle commands follow the
+typed draft contracts above. `treat_sketch_corner` provides sketch fillet/chamfer; `create_face_aligned_placement` calculates a numeric Placement from two exact planar body faces. See the [modeling contract](../.agents/skills/vibeshape-modeling/references/modeling.md).
 The AI can inspect their saved records and must preserve them during supported upstream edits.
 There is no arbitrary script or direct storage tool. Production printability analysis remains open.
 See the served guide for the complete current scope and

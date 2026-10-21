@@ -42,6 +42,7 @@ import {
   modelMeasurementViewSchema,
 } from "@vibeshape/automation-api/queries"
 import type { AssemblySessionConfiguration } from "@vibeshape/automation-host/assembly-session-contract"
+import { prepareAuthoredHistoryMove } from "@vibeshape/automation-host/history-move-proposal"
 import {
   type HistoryCommitInput,
   type HistoryRequest,
@@ -123,6 +124,7 @@ import {
 } from "@vibeshape/domain/document-v5-command-schemas"
 import { applyDocumentV5AuthoredCommand } from "@vibeshape/domain/document-v5-commands"
 import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
+import type { MoveHistoryItemCommand } from "@vibeshape/domain/history-document-commands"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
@@ -158,6 +160,10 @@ import { createBinaryExportSession } from "../automation/binary-export-session"
 import { createConnectedAssistantReviews } from "../automation/connected-assistant-reviews"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { createBrowserHistoryAutomationSession } from "../automation/history-automation-session"
+import {
+  createHistoryMoveAutomationSession,
+  historyMoveReviewedInputMatches,
+} from "../automation/history-move-automation-session"
 import { createImportAutomationSession } from "../automation/import-automation-session"
 import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
 import { createBrowserLightweightingAutomationSession } from "../automation/lightweighting-automation-session"
@@ -1126,6 +1132,20 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       },
       reviews,
     )
+    const historyMoves = createHistoryMoveAutomationSession(
+      {
+        materializeSourceAssets: materializeAutomationSourceAssets,
+        documentId: capturedDocumentId,
+        queries: queryDispatcher.dispatcher,
+        createDraftId: browserUuidV7,
+        readSnapshot: () => (currentReport() ? active.authoredSnapshot : null),
+        hasCommandId: (commandId) => repository.hasCommandId(commandId),
+        isActive: sourceSessionAvailable,
+        commit: (command, expected) =>
+          commitReviewedHistoryMove(active, command, expected, reviews),
+      },
+      reviews,
+    )
     function readSourceContext() {
       const snapshot = currentReport() ? active?.authoredSnapshot : null
       return snapshot && snapshot.schemaVersion !== 1
@@ -1270,8 +1290,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         isActive: sourceSessionAvailable,
         readSnapshot: () => (sourceSessionAvailable() ? active.snapshot : null),
         availability: () => active.history,
-        readTarget: (direction) =>
-          sourceSessionAvailable() ? active.previewHistory(direction) : null,
+        readTarget: (direction, targetRevision) =>
+          sourceSessionAvailable() ? active.previewHistory(direction, targetRevision) : null,
         hasCommandId: (commandId) => repository.hasCommandId(commandId),
         createId: browserUuidV7,
         async materializeSourceAssets(target, baseRevision) {
@@ -1418,6 +1438,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         revision = active.snapshot.revision
         factory.cancel("stale-revision")
         metadata.cancel("stale-revision")
+        historyMoves.cancel("stale-revision")
         imports.cancel("stale-revision")
         planarImports.cancel("stale-revision")
         assembly.cancel("stale-revision")
@@ -1436,6 +1457,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       for (const release of [
         closeAutomation,
         () => metadata.dispose(),
+        () => historyMoves.dispose(),
         () => imports.dispose(),
         () => planarImports.dispose(),
         () => assembly.dispose(),
@@ -1461,7 +1483,16 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         return active.snapshot.revision
       },
       host: factory.host,
+      faceAlignment: factory.faceAlignment,
+      measurements: {
+        ...factory.faceAlignment,
+        readCommittedContext: () => {
+          const report = currentReport()
+          return report ? { snapshot: active.snapshot, rebuild: report.rebuild } : null
+        },
+      },
       metadata,
+      historyMoves,
       imports,
       planarImports,
       assembly,
@@ -1482,6 +1513,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       cancel: (reason?: Parameters<typeof factory.cancel>[0]) => {
         factory.cancel(reason)
         metadata.cancel(reason)
+        historyMoves.cancel(reason)
         imports.cancel(reason)
         planarImports.cancel(reason)
         assembly.cancel(reason)
@@ -1963,6 +1995,48 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       : localFailure(result.diagnostic.code, result.diagnostic.message, result.diagnostic.retryable)
   }
 
+  async function commitReviewedHistoryMove(
+    active: PersistentDocumentSession,
+    command: MoveHistoryItemCommand,
+    expected: AuthoredDocumentSnapshot,
+    reviews = automationReviews,
+  ) {
+    const base = reviewedMetadataBase(active, command.baseRevision)
+    if (
+      !base ||
+      command.documentId !== base.id ||
+      projectActionGuard.read((block) => block !== "automation-busy") ||
+      !historyMoveReviewedInputMatches(reviews.getSnapshot(), command, expected)
+    )
+      return localFailure(
+        "stale-revision",
+        "The exact History move review or writable base is no longer current.",
+        true,
+      )
+    const replayed = prepareAuthoredHistoryMove(base, command)
+    if (!replayed.ok || canonicalJson(replayed.snapshot) !== canonicalJson(expected))
+      return localFailure(
+        "draft-commit-intent-mismatch",
+        "The reviewed History move does not match its authored target.",
+      )
+    publish({ ...state, saveStatus: "saving", diagnostic: null })
+    const result = await active.moveHistoryItem(command)
+    publishAuthoredResult(active, result)
+    return result.ok
+      ? {
+          documentId: command.documentId,
+          commandId: command.commandId,
+          baseRevision: command.baseRevision,
+          revision: result.snapshot.revision,
+          ...command.payload,
+        }
+      : localFailure(
+          result.diagnostic.sourceCode ?? result.diagnostic.code,
+          result.diagnostic.message,
+          result.diagnostic.retryable,
+        )
+  }
+
   async function commitReviewedMetadata(
     active: PersistentDocumentSession,
     command: Extract<DocumentV2Command, { kind: "org.vibeshape.document.metadata-command" }>,
@@ -2282,17 +2356,27 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       request.documentId === active.snapshot.id
     )
   }
-  function historyReviewMatches(input: HistoryCommitInput, reviews = automationReviews) {
+  function applyingHistoryReview(input: HistoryCommitInput, reviews: typeof automationReviews) {
     const visible = reviews.getSnapshot()
-    if (
-      visible?.status !== "applying" ||
-      !("kind" in visible.input) ||
-      visible.input.kind !== "history"
+    return (
+      visible?.status === "applying" &&
+      "kind" in visible.input &&
+      visible.input.kind === "history" &&
+      canonicalJson(visible.input) === canonicalJson(input.review) &&
+      Date.now() < Date.parse(input.review.draft.expiresAt)
     )
-      return false
-    if (canonicalJson(visible.input) !== canonicalJson(input.review)) return false
-    const target = session?.previewHistory(input.review.request.direction)
-    return !!target && canonicalJson(target) === canonicalJson(input.target)
+  }
+  async function historyReviewMatches(input: HistoryCommitInput, reviews = automationReviews) {
+    if (!applyingHistoryReview(input, reviews)) return false
+    const target = await session?.previewHistory(
+      input.review.request.direction,
+      input.review.request.targetRevision,
+    )
+    return (
+      applyingHistoryReview(input, reviews) &&
+      !!target &&
+      canonicalJson(target) === canonicalJson(input.target)
+    )
   }
 
   async function commitReviewedHistory(
@@ -2301,7 +2385,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     reviews = automationReviews,
   ) {
     const request = input.review.request
-    if (!historyBaseWritable(active, request) || !historyReviewMatches(input, reviews))
+    if (!historyBaseWritable(active, request) || !(await historyReviewMatches(input, reviews)))
       return {
         ok: false as const,
         diagnostic: {

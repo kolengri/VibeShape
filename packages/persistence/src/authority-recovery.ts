@@ -5,7 +5,6 @@ import {
   type DocumentId,
   documentIdSchema,
   reduceDocumentAuthorityEvent,
-  replayDocumentAuthorityEvents,
 } from "@vibeshape/domain"
 import {
   requireAuthorityProject,
@@ -30,6 +29,7 @@ export interface AuthorityRecoveryReport {
   recoveredRevision: number
   lostRevisionCount: number
   corruptRecords: string[]
+  navigation?: ProjectAuthorityRecord["navigation"]
   migration: Pick<
     ProjectAuthorityRecord,
     "migrationProvenance" | "migrationDiagnostic" | "unavailableRecords"
@@ -37,22 +37,24 @@ export interface AuthorityRecoveryReport {
 }
 const MAX_RECORDS = 100_000
 
-async function snapshotsThrough(
-  database: VibeShapeDatabase,
-  documentId: DocumentId,
-  revision: number,
-) {
-  const records = await database.snapshotsV1
-    .where("[documentId+revision]")
-    .between([documentId, 0], [documentId, revision], true, true)
-    .limit(MAX_RECORDS + 1)
-    .sortBy("revision")
-  if (records.length > MAX_RECORDS)
+function requireSnapshotRecordBudget(inspected: number) {
+  if (inspected > MAX_RECORDS)
     throw persistenceInvariantError(
       "corrupt-history",
       "The snapshot history exceeds its record budget.",
     )
-  return records
+}
+
+async function latestSnapshotThrough(
+  database: VibeShapeDatabase,
+  documentId: DocumentId,
+  revision: number,
+) {
+  return database.snapshotsV1
+    .where("[documentId+revision]")
+    .between([documentId, 0], [documentId, revision], true, true)
+    .reverse()
+    .first()
 }
 
 export async function authorityEventsThrough(
@@ -88,19 +90,313 @@ export async function authorityEventsThrough(
   return events
 }
 
-async function findReplaySeed(
+async function latestValidAuthoritySnapshot(
   database: VibeShapeDatabase,
   documentId: DocumentId,
   revision: number,
-): Promise<DocumentAuthoritySnapshot | null> {
-  const first = await database.eventsV1.get([documentId, 1])
-  if (first && (await validAuthorityEvent(first))?.type === "org.vibeshape.document.created")
-    return null
-  for (const record of await snapshotsThrough(database, documentId, revision)) {
+  corrupt: string[],
+) {
+  let inspected = 0
+  let record = await latestSnapshotThrough(database, documentId, revision)
+  while (record) {
+    requireSnapshotRecordBudget(++inspected)
     const snapshot = await validAuthoritySnapshot(record)
     if (snapshot) return snapshot
+    corrupt.push(`snapshot-authority:${record.revision}`)
+    record = await latestSnapshotThrough(database, documentId, record.revision - 1)
   }
-  throw persistenceInvariantError("corrupt-history", "No historical replay seed remains.")
+  return null
+}
+
+type StoredReplayEvent = Readonly<{ event: DocumentAuthorityEvent; checksum: string }>
+type ReplayReceipt = Readonly<{
+  schemaVersion: DocumentAuthoritySnapshot["schemaVersion"]
+  updatedAt: string
+  sourceRevision: number
+  baseRevision: number | null
+  eventChecksum: string | null
+}>
+
+async function eventAt(
+  database: VibeShapeDatabase,
+  documentId: DocumentId,
+  revision: number,
+): Promise<StoredReplayEvent | null> {
+  const record = await database.eventsV1.get([documentId, revision])
+  const event = record ? await validAuthorityEvent(record) : null
+  return event?.revision === revision && event.documentId === documentId && record
+    ? { event, checksum: record.checksum }
+    : null
+}
+
+async function earliestValidAuthoritySnapshot(
+  database: VibeShapeDatabase,
+  documentId: DocumentId,
+  first: number,
+  last: number,
+) {
+  let inspected = 0
+  while (first <= last) {
+    const record = await database.snapshotsV1
+      .where("[documentId+revision]")
+      .between([documentId, first], [documentId, last], true, true)
+      .first()
+    if (!record) return null
+    requireSnapshotRecordBudget(++inspected)
+    const snapshot = await validAuthoritySnapshot(record)
+    if (snapshot) return snapshot
+    first = record.revision + 1
+  }
+  return null
+}
+
+/** One request shares bounded full states and compact receipts for already validated reductions. */
+class AuthorityReplayContext {
+  #eventReads = 0
+  #creation: StoredReplayEvent | null = null
+  #cache = new Map<number, { snapshot: DocumentAuthoritySnapshot; bytes: number }>()
+  #bytes = 0
+  #receipts = new Map<number, ReplayReceipt>()
+  #checkedAssets = new Set<number>()
+  #unavailable: { first: number; last: number }[] = []
+
+  constructor(
+    private readonly database: VibeShapeDatabase,
+    private readonly documentId: DocumentId,
+  ) {}
+
+  async #eventAt(revision: number): Promise<StoredReplayEvent | null> {
+    if (revision === 1 && this.#creation) return this.#creation
+    if (this.#eventReads >= MAX_RECORDS)
+      throw persistenceInvariantError(
+        "corrupt-history",
+        "The event history exceeds its record budget.",
+      )
+    this.#eventReads++
+    const stored = await eventAt(this.database, this.documentId, revision)
+    // The seed peek and replay share this small validated record. Other events may
+    // contain oversized payloads, so they are reread within the same request budget.
+    if (revision === 1 && stored?.event.type === "org.vibeshape.document.created")
+      this.#creation = stored
+    return stored
+  }
+
+  async #historicalReplaySeed(revision: number) {
+    const creation = await this.#eventAt(1)
+    return creation?.event.type === "org.vibeshape.document.created"
+      ? null
+      : earliestValidAuthoritySnapshot(this.database, this.documentId, 0, revision)
+  }
+
+  #cached(revision: number) {
+    const cached = this.#cache.get(revision)
+    if (!cached) return null
+    this.#cache.delete(revision)
+    this.#cache.set(revision, cached)
+    return cached.snapshot
+  }
+
+  #retain(snapshot: DocumentAuthoritySnapshot) {
+    const previous = this.#cache.get(snapshot.revision)
+    if (previous) {
+      this.#bytes -= previous.bytes
+      this.#cache.delete(snapshot.revision)
+    }
+    const bytes = canonicalJson(snapshot).length * 2
+    if (bytes > 32 * 1024 * 1024) return
+    this.#cache.set(snapshot.revision, { snapshot, bytes })
+    this.#bytes += bytes
+    while (this.#cache.size > 100 || this.#bytes > 32 * 1024 * 1024) {
+      const oldest = this.#cache.entries().next().value
+      if (!oldest) break
+      this.#cache.delete(oldest[0])
+      this.#bytes -= oldest[1].bytes
+    }
+  }
+
+  #remember(
+    snapshot: DocumentAuthoritySnapshot,
+    stored?: StoredReplayEvent,
+    target?: DocumentAuthoritySnapshot | null,
+  ) {
+    // Same-schema restores copy target content exactly; only revision/time change. Flatten
+    // those aliases so evicted or oversized restore baselines never replay nested prefixes.
+    const sourceRevision = this.#sourceRevision(snapshot, stored, target)
+    if (stored || !this.#receipts.has(snapshot.revision))
+      this.#receipts.set(snapshot.revision, {
+        schemaVersion: snapshot.schemaVersion,
+        updatedAt: snapshot.updatedAt,
+        sourceRevision,
+        baseRevision: stored?.event.baseRevision ?? null,
+        eventChecksum: stored?.checksum ?? null,
+      })
+    this.#retain(snapshot)
+  }
+
+  #sourceRevision(
+    snapshot: DocumentAuthoritySnapshot,
+    stored?: StoredReplayEvent,
+    target?: DocumentAuthoritySnapshot | null,
+  ) {
+    if (
+      stored?.event.type !== "org.vibeshape.document.restored" ||
+      target?.schemaVersion !== snapshot.schemaVersion
+    )
+      return snapshot.revision
+    return this.#receipts.get(target.revision)?.sourceRevision ?? target.revision
+  }
+
+  async #checkpoint(revision: number) {
+    const record = await this.database.snapshotsV1.get([this.documentId, revision])
+    const snapshot = record ? await validAuthoritySnapshot(record) : null
+    return snapshot?.id === this.documentId && snapshot.revision === revision ? snapshot : null
+  }
+
+  async #target(event: DocumentAuthorityEvent) {
+    if (
+      event.type !== "org.vibeshape.document.restored" ||
+      event.targetRevision >= event.baseRevision
+    )
+      return null
+    return this.resolve(event.targetRevision)
+  }
+
+  async resolve(revision: number): Promise<DocumentAuthoritySnapshot | null> {
+    const snapshot = await this.#state(revision)
+    if (!snapshot || snapshot.id !== this.documentId || snapshot.revision !== revision) return null
+    const source = this.#receipts.get(revision)?.sourceRevision ?? revision
+    await this.#verifyAssets(snapshot, source)
+    return snapshot
+  }
+
+  async #state(revision: number) {
+    const cached = this.#cached(revision)
+    if (cached) return cached
+    if (this.#receipts.has(revision)) return this.#reconstruct(revision)
+    if (this.#unavailable.some(({ first, last }) => revision >= first && revision <= last))
+      return null
+    return this.#load(revision)
+  }
+
+  async #verifyAssets(snapshot: DocumentAuthoritySnapshot, source: number) {
+    if (this.#checkedAssets.has(source)) return
+    if (snapshot.schemaVersion === 4 || snapshot.schemaVersion === 5) {
+      await requireSourceAssetBytes(this.database, snapshot.assets)
+      this.#checkedAssets.add(source)
+    }
+  }
+
+  async #load(revision: number) {
+    const exact = await this.#checkpoint(revision)
+    if (exact) {
+      this.#remember(exact)
+      return exact
+    }
+    // Start an uncached historical prefix at creation or its earliest verified seed.
+    // Every resolvable target is then encountered in the same forward context.
+    let seed = await this.#historicalReplaySeed(revision)
+    this.#markUnavailable(1, (seed?.revision ?? 1) - 1)
+    let snapshot = await this.replay(seed, revision, [])
+    while (snapshot?.revision !== revision) {
+      seed = await this.#nextSeed(snapshot, revision)
+      if (!seed) return null
+      // A verified later checkpoint can bridge corrupt/missing journal segments, as
+      // nearest-checkpoint loading did. Gaps cannot trigger nested prefix attempts.
+      snapshot = await this.replay(seed, revision, [])
+    }
+    return snapshot
+  }
+
+  async #nextSeed(snapshot: DocumentAuthoritySnapshot | null, revision: number) {
+    const first = (snapshot?.revision ?? 0) + 1
+    const seed = await earliestValidAuthoritySnapshot(
+      this.database,
+      this.documentId,
+      first,
+      revision,
+    )
+    this.#markUnavailable(first, (seed?.revision ?? revision + 1) - 1)
+    return seed
+  }
+
+  #markUnavailable(first: number, last: number) {
+    if (first <= last) this.#unavailable.push({ first, last })
+  }
+
+  async #lineage(
+    revision: number,
+  ): Promise<{ snapshot: DocumentAuthoritySnapshot | null; steps: number[] }> {
+    const steps: number[] = []
+    let cursor = revision
+    let snapshot: DocumentAuthoritySnapshot | null = null
+    while (cursor > 0) {
+      snapshot = this.#cached(cursor)
+      if (snapshot) break
+      const receipt = this.#receipts.get(cursor)
+      if (!receipt) {
+        snapshot = await this.#load(cursor)
+        break
+      }
+      if (receipt.baseRevision === null) {
+        snapshot = (await this.#checkpoint(cursor)) ?? (await this.#load(cursor))
+        break
+      }
+      steps.push(cursor)
+      cursor = receipt.sourceRevision === cursor ? receipt.baseRevision : receipt.sourceRevision
+    }
+    return { snapshot, steps }
+  }
+
+  async #reconstruct(revision: number): Promise<DocumentAuthoritySnapshot | null> {
+    const lineage = await this.#lineage(revision)
+    let snapshot = lineage.snapshot
+    const steps = lineage.steps
+    if (snapshot) this.#retain(snapshot)
+    for (const step of steps.reverse()) {
+      snapshot = await this.#reconstructStep(snapshot, step)
+      if (!snapshot) return null
+      this.#retain(snapshot)
+    }
+    return snapshot
+  }
+
+  async #reconstructStep(snapshot: DocumentAuthoritySnapshot | null, revision: number) {
+    const receipt = this.#receipts.get(revision)
+    if (!receipt) return null
+    if (receipt.sourceRevision !== revision)
+      return snapshot?.schemaVersion === receipt.schemaVersion
+        ? { ...snapshot, revision, updatedAt: receipt.updatedAt }
+        : null
+    const stored = await this.#eventAt(revision)
+    if (!stored || stored.checksum !== receipt.eventChecksum) return null
+    // A restore reaches this path only across schemas. Its target has a lower authority
+    // version, so reconstruction holds a bounded number of working states, not a
+    // recursive stack of full historical prefixes. Promotion stays in the domain reducer.
+    const target = await this.#target(stored.event)
+    const reduced = reduceDocumentAuthorityEvent(snapshot, stored.event, target ?? undefined)
+    return reduced.ok ? reduced.snapshot : null
+  }
+
+  async replay(seed: DocumentAuthoritySnapshot | null, headRevision: number, corrupt: string[]) {
+    let snapshot = seed
+    if (seed) this.#remember(seed)
+    for (let revision = (seed?.revision ?? 0) + 1; revision <= headRevision; revision += 1) {
+      const stored = await this.#eventAt(revision)
+      if (!stored) {
+        corrupt.push(`event-authority:${revision}`)
+        break
+      }
+      const target = await this.#target(stored.event)
+      const reduced = reduceDocumentAuthorityEvent(snapshot, stored.event, target ?? undefined)
+      if (!reduced.ok) {
+        corrupt.push(`event-authority:${revision}`)
+        break
+      }
+      snapshot = reduced.snapshot
+      this.#remember(snapshot, stored, target)
+    }
+    return snapshot
+  }
 }
 
 export async function loadAuthorityRestoreTarget(
@@ -108,90 +404,25 @@ export async function loadAuthorityRestoreTarget(
   documentId: DocumentId,
   revision: number,
 ): Promise<DocumentAuthoritySnapshot | null> {
-  const exact = await database.snapshotsV1.get([documentId, revision])
-  const snapshot = exact ? await validAuthoritySnapshot(exact) : null
-  if (snapshot) return snapshot
-  const seed = await findReplaySeed(database, documentId, revision)
-  const corrupt: string[] = []
-  const events = await authorityEventsThrough(
-    database,
-    documentId,
-    (seed?.revision ?? 0) + 1,
-    revision,
-    corrupt,
-  )
-  if (corrupt.length) return null
-  const replayed = replayDocumentAuthorityEvents(seed, events)
-  return replayed.ok && replayed.snapshot.revision === revision ? replayed.snapshot : null
-}
-
-function restoreResolver(database: VibeShapeDatabase, documentId: DocumentId) {
-  const cache = new Map<number, { snapshot: DocumentAuthoritySnapshot; bytes: number }>()
-  let bytes = 0
-  return async (revision: number) => {
-    const cached = cache.get(revision)
-    if (cached) return cached.snapshot
-    const snapshot = await loadAuthorityRestoreTarget(database, documentId, revision)
-    if (!snapshot) return null
-    const size = canonicalJson(snapshot).length * 2
-    if (size > 32 * 1024 * 1024) return snapshot
-    cache.set(revision, { snapshot, bytes: size })
-    bytes += size
-    while (cache.size > 100 || bytes > 32 * 1024 * 1024) {
-      const oldest = cache.entries().next().value
-      if (!oldest) break
-      cache.delete(oldest[0])
-      bytes -= oldest[1].bytes
-    }
-    return snapshot
-  }
-}
-
-async function replayRecoverySuffix(
-  database: VibeShapeDatabase,
-  project: ProjectAuthorityRecord,
-  seed: DocumentAuthoritySnapshot | null,
-  corrupt: string[],
-) {
-  const events = await authorityEventsThrough(
-    database,
-    project.documentId,
-    (seed?.revision ?? 0) + 1,
-    project.headRevision,
-    corrupt,
-  )
-  const resolve = restoreResolver(database, project.documentId)
-  let snapshot = seed
-  for (const event of events) {
-    const target =
-      event.type === "org.vibeshape.document.restored" ? await resolve(event.targetRevision) : null
-    const reduced = reduceDocumentAuthorityEvent(snapshot, event, target ?? undefined)
-    if (!reduced.ok) {
-      corrupt.push(`event-authority:${event.revision}`)
-      break
-    }
-    snapshot = reduced.snapshot
-  }
-  return snapshot
+  return new AuthorityReplayContext(database, documentId).resolve(revision)
 }
 
 export async function recoverAuthoritySnapshot(
   database: VibeShapeDatabase,
   project: ProjectAuthorityRecord,
 ) {
-  const records = await snapshotsThrough(
+  const corruptRecords: string[] = []
+  const seed = await latestValidAuthoritySnapshot(
     database,
     project.documentId,
     project.latestSnapshotRevision,
+    corruptRecords,
   )
-  const corruptRecords: string[] = []
-  let seed: DocumentAuthoritySnapshot | null = null
-  for (const record of records.reverse()) {
-    seed = await validAuthoritySnapshot(record)
-    if (seed) break
-    corruptRecords.push(`snapshot-authority:${record.revision}`)
-  }
-  const snapshot = await replayRecoverySuffix(database, project, seed, corruptRecords)
+  const snapshot = await new AuthorityReplayContext(database, project.documentId).replay(
+    seed,
+    project.headRevision,
+    corruptRecords,
+  )
   if (!snapshot || snapshot.schemaVersion !== project.schemaVersion)
     throw persistenceInvariantError(
       "corrupt-history",
@@ -256,6 +487,7 @@ export async function recoverDocumentAuthority(
         headRevision: project.headRevision,
         recoveredRevision: recovered.snapshot.revision,
         lostRevisionCount,
+        navigation: lostRevisionCount === 0 ? project.navigation : undefined,
         migration: {
           migrationProvenance: project.migrationProvenance,
           migrationDiagnostic: project.migrationDiagnostic,

@@ -205,7 +205,7 @@ describe("automation draft host", () => {
     const store = documentStore(null)
     let now = startedAt
     const host = automationHost(store.port, { now: () => now, draftTtlMs: 100 })
-    if (!host.readOwnedSketch)
+    if (!host.readOwnedSketch || !host.readOwnedDraftSnapshot)
       throw new Error("Expected the trusted owned-sketch preparation port.")
     await host.createDraft(actor, createRequest(0))
     await host.applyCommand(
@@ -230,6 +230,25 @@ describe("automation draft host", () => {
         }),
       ),
     )
+    const snapshotRequest = { schemaVersion: 1, draftId: draftIdA, revision: 2 }
+    const snapshotRead = await host.readOwnedDraftSnapshot(actor, snapshotRequest)
+    expect(snapshotRead).toMatchObject({ ok: true, value: { revision: 2, sketches: [sketch] } })
+    if (!snapshotRead.ok) throw new Error("Expected owned draft snapshot.")
+    Object.assign(snapshotRead.value, { name: "Caller mutation" })
+    expect(await host.readOwnedDraftSnapshot(actor, snapshotRequest)).toMatchObject({
+      ok: true,
+      value: { name: "Text" },
+    })
+    expect(await host.readOwnedDraftSnapshot(otherActor, snapshotRequest)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "draft-owner-mismatch" },
+    })
+    expect(
+      await host.readOwnedDraftSnapshot(actor, { ...snapshotRequest, revision: 1 }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "stale-query-revision" } })
+    expect(
+      await host.readOwnedDraftSnapshot(actor, { ...snapshotRequest, approved: true }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-draft-request" } })
     const request = { schemaVersion: 1, draftId: draftIdA, revision: 2, sketchId: sketch.id }
     now += 99
     const read = await host.readOwnedSketch(actor, request)

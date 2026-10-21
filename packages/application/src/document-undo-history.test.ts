@@ -100,3 +100,65 @@ it("rejects capture before evicting an existing active or completed rollback tar
     expect(history.checkpointState(handle, baseline)).toEqual({ revision: 1, changed: false })
   }
 })
+
+it("evicts cached snapshots by bytes while retaining every navigation reference", async () => {
+  const history = new DocumentUndoHistory<Snapshot>()
+  let before = snapshot(limit / 16, 1)
+  for (let revision = 2; revision <= 10; revision++) {
+    const after = snapshot(limit / 16, revision, revision % 2 ? "a" : "b")
+    history.record(before, after)
+    before = after
+  }
+  expect(history.target("undo", 1) === null).toBe(true)
+  expect(
+    await history.loadTarget("undo", 1, async (revision) => snapshot(limit / 16, revision)),
+  ).toMatchObject({ revision: 1 })
+  history.accept("undo", 1)
+  expect(history.availability).toEqual({ canUndo: false, canRedo: true })
+  expect(history.target("redo", 10)?.revision).toBe(10)
+})
+
+it("retains steps larger than the cache and rejects stale async targets without moving references", async () => {
+  const history = new DocumentUndoHistory<Snapshot>()
+  history.restore({ schemaVersion: 1, undo: [{ before: 1, after: 2 }], redo: [] })
+  let resolve!: (snapshot: Snapshot) => void
+  const pending = history.loadTarget(
+    "undo",
+    undefined,
+    () =>
+      new Promise((done) => {
+        resolve = done
+      }),
+  )
+  history.clear()
+  resolve(snapshot(100, 1))
+  expect(await pending).toBeNull()
+  history.record(snapshot(100, 1), snapshot(limit / 2 + 1, 2, "b"))
+  expect(history.availability.canUndo).toBe(true)
+  history.accept("undo")
+  expect(history.availability.canRedo).toBe(true)
+  expect(history.target("redo") === null).toBe(true)
+  let loads = 0
+  expect(
+    (
+      await history.loadTarget("redo", undefined, async (revision) => {
+        loads++
+        return snapshot(100, revision)
+      })
+    )?.revision,
+  ).toBe(2)
+  expect(loads).toBe(1)
+})
+
+it("moves very large durable ranges without spreading them into call arguments", () => {
+  const history = new DocumentUndoHistory<Snapshot>()
+  history.restore({
+    schemaVersion: 1,
+    undo: Array.from({ length: 150000 }, (_, index) => ({ before: index + 1, after: index + 2 })),
+    redo: [],
+  })
+  history.accept("undo", 1)
+  expect(history.availability).toEqual({ canUndo: false, canRedo: true })
+  history.accept("redo", 150001)
+  expect(history.availability).toEqual({ canUndo: true, canRedo: false })
+})
