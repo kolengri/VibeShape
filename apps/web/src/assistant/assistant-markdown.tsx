@@ -1,6 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useId, useMemo } from "react"
+import { memo, useId, useMemo } from "react"
 import Markdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 
@@ -14,7 +14,7 @@ const components: Components = {
   ),
 }
 
-export function AssistantMarkdown({ text }: { text: string }) {
+export const AssistantMarkdown = memo(function AssistantMarkdown({ text }: { text: string }) {
   const t = useTranslations("app.assistant")
   const prefix = `assistant-${useId()}-`
   const scopedComponents = useMemo<Components>(
@@ -72,4 +72,4 @@ export function AssistantMarkdown({ text }: { text: string }) {
       </Markdown>
     </div>
   )
-}
+})

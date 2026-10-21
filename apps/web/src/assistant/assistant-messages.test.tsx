@@ -6,6 +6,7 @@ import { documentIdSchema, featureIdSchema, sketchIdSchema } from "@vibeshape/do
 import { createI18n, defaultFormats } from "@vibeshape/i18n"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ReactNode } from "react"
+import * as markdown from "react-markdown"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n, messages } from "../i18n"
 import { AssistantMessages } from "./assistant-messages"
@@ -43,6 +44,37 @@ function toolMessage(
 }
 
 describe("assistant Markdown", () => {
+  it("parses only the changed reply when a retained transcript receives a stream update", () => {
+    const parse = vi.spyOn(markdown, "default")
+    try {
+      const history: ChatMessage[] = [
+        { id: "first", role: "assistant", text: "Saved **first** answer." },
+        { id: "second", role: "assistant", text: "Saved **second** answer." },
+        { id: "stream", role: "assistant", text: "New **answer" },
+      ]
+      const rendered = transcript(history)
+      expect(parse).toHaveBeenCalledTimes(3)
+      parse.mockClear()
+      rendered.rerender(
+        view(
+          history.map((message) => ({
+            ...message,
+            ...(message.id === "stream" ? { text: "New **answer**." } : {}),
+          })),
+        ),
+      )
+      expect(parse).toHaveBeenCalledTimes(1)
+      expect(screen.getByText("answer", { selector: "strong" })).toBeTruthy()
+      parse.mockClear()
+      rendered.rerender(
+        view(history.map((message) => ({ ...message, text: `${message.text} Updated.` }))),
+      )
+      expect(parse).toHaveBeenCalledTimes(3)
+    } finally {
+      parse.mockRestore()
+    }
+  })
+
   it("renders model prose, code, lists, and tables while keeping user text literal", () => {
     transcript([
       { id: "user", role: "user", text: "Keep **these markers** in my message." },
@@ -154,17 +186,16 @@ describe("assistant Markdown", () => {
         },
       },
     })
-    render(
+    const entries: ChatMessage[] = [
+      {
+        id: "reply",
+        role: "assistant",
+        text: "Answer[^note], repeated[^note], and another[^other].\n\n[^note]: Explanation.\n\n[^other]: More detail.",
+      },
+    ]
+    const rendered = render(
       <I18nProvider i18n={catalog} initialLocale="en">
-        <AssistantMessages
-          messages={[
-            {
-              id: "reply",
-              role: "assistant",
-              text: "Answer[^note], repeated[^note], and another[^other].\n\n[^note]: Explanation.\n\n[^other]: More detail.",
-            },
-          ]}
-        />
+        <AssistantMessages messages={entries} />
       </I18nProvider>,
     )
     expect(screen.getByRole("heading", { name: "Model notes" })).toBeTruthy()
@@ -175,6 +206,10 @@ describe("assistant Markdown", () => {
     ])
       expect(screen.getByRole("link", { name })).toBeTruthy()
     expect(screen.queryByRole("heading", { name: "Footnotes" })).toBeNull()
+    rendered.rerender(view(entries))
+    expect(screen.getByRole("heading", { name: "Footnotes" })).toBeTruthy()
+    expect(screen.getByRole("link", { name: /^Back to reference 1$/ })).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: "Model notes" })).toBeNull()
   })
 })
 
