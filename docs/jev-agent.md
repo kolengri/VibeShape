@@ -50,8 +50,9 @@ provider timeout. Images remain disabled by default. Connecting starts the bundl
 only after these settings pass validation. Existing project, question, Stop and CAD authority
 boundaries remain in force.
 
-Only the non-secret Jev settings persist as assistant preferences. Keys entered here stay in
-host memory, scoped to the project, for the application session. They do not enter chat, localStorage,
+Only the non-secret Jev settings persist as assistant preferences. After a successful connection,
+keys stay in host memory, scoped to the project, for the application session. A failed connection
+keeps both password fields in the form for retry; only an accepted current connection clears them. They do not enter chat, localStorage,
 command arguments or files. Leaving a key blank reuses that project's cached key or the explicitly
 configured app environment key; keys entered in another project are never borrowed. Helper keys are
 scoped to both the project and exact endpoint, so another project or endpoint cannot replace them.

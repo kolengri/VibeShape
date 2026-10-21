@@ -37,9 +37,9 @@ async function choose(label: string, option: string) {
   fireEvent.keyDown(screen.getByRole("combobox", { name: label }), { key: "Enter" })
   await userEvent.click(screen.getByRole("option", { name: option }))
 }
-function deferred() {
-  let resolve = () => {}
-  const promise = new Promise<void>((done) => {
+function deferred<T = void>() {
+  let resolve: (value: T) => void = () => {}
+  const promise = new Promise<T>((done) => {
     resolve = done
   })
   return { promise, resolve }
@@ -203,7 +203,7 @@ describe("assistant connection settings", () => {
   })
 
   it("connects the bundled Jev descriptor without paths and keeps credentials out of preferences", async () => {
-    const pending = deferred()
+    const pending = deferred<boolean>()
     const chat = {
       connect: vi.fn().mockReturnValue(pending.promise),
       disconnect: vi.fn().mockResolvedValue(undefined),
@@ -233,8 +233,43 @@ describe("assistant connection settings", () => {
     )
     expect(readAssistantPreferences()?.agent).toMatchObject({ kind: "jev" })
     expect(JSON.stringify(readAssistantPreferences())).not.toContain("private-typesafe-key")
-    await act(async () => pending.resolve())
+    await act(async () => pending.resolve(true))
     expect(new window.FormData(form as HTMLFormElement).get("apiKey")).toBe("")
+  })
+
+  it("retains both Jev keys after a reported connection failure and resends them on retry", async () => {
+    let connected = false
+    const chat = {
+      connect: vi.fn(async () => connected),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    for (const [label, value] of [
+      ["TypeSafe API key", "test-typesafe-key"],
+      ["Argument model endpoint", "https://helper.test/v1/chat/completions"],
+      ["Argument model name", "helper"],
+      ["Argument model API key", "test-helper-key"],
+    ] as const)
+      fireEvent.change(screen.getByLabelText(label, { exact: true }), { target: { value } })
+    const form = screen.getByRole("form", { name: "Jev settings" }) as HTMLFormElement
+    const connect = screen.getByRole("button", { name: "Connect agent" })
+    await userEvent.click(connect)
+    await waitFor(() => expect(connect.hasAttribute("disabled")).toBe(false))
+    expect(chat.connect).toHaveBeenCalledTimes(1)
+    expect(new window.FormData(form).get("apiKey")).toBe("test-typesafe-key")
+    expect(new window.FormData(form).get("argumentsApiKey")).toBe("test-helper-key")
+    expect(JSON.stringify(readAssistantPreferences())).not.toContain("test-typesafe-key")
+    expect(JSON.stringify(readAssistantPreferences())).not.toContain("test-helper-key")
+    connected = true
+    await userEvent.click(connect)
+    expect(chat.connect).toHaveBeenCalledTimes(2)
+    expect(chat.connect).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "jev" }), {
+      apiKey: "test-typesafe-key",
+      argumentsApiKey: "test-helper-key",
+    })
+    await waitFor(() => expect(new window.FormData(form).get("apiKey")).toBe(""))
+    expect(new window.FormData(form).get("argumentsApiKey")).toBe("")
   })
 
   it("requires a complete argument model and preserves custom configuration across Jev selection", async () => {

@@ -671,6 +671,53 @@ describe("queued native steering", () => {
 })
 
 describe("project-scoped agent chat", () => {
+  it("reports a successful explicit connection and rejects attempts after disposal", async () => {
+    const f = fixture()
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
+    chat.start()
+    expect(await chat.connect(agent)).toBe(true)
+    chat.dispose()
+    expect(await chat.connect(agent)).toBe(false)
+  })
+
+  it.each(["host-rejection", "transport-failure"] as const)(
+    "reports an unsuccessful connection on %s without throwing",
+    async (failure) => {
+      const f = fixture()
+      const bridge: AssistantBridge = {
+        ...f.bridge,
+        async connect() {
+          if (failure === "transport-failure") throw new Error("Fixture transport unavailable")
+          return { ok: false, code: "mcp-client-conflict" }
+        },
+      }
+      const chat = createNativeChatController({ projectId, bridge, storage: storage() })
+      chat.start()
+      try {
+        expect(await chat.connect(agent)).toBe(false)
+        if (failure === "host-rejection")
+          expect(chat.getSnapshot().error).toBe("mcp-client-conflict")
+      } finally {
+        chat.dispose()
+      }
+    },
+  )
+
+  it("reports pending attempts as blocked and a disconnected late result as unsuccessful", async () => {
+    const f = fixture()
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
+    chat.start()
+    const connection = f.deferConnect()
+    const pending = chat.connect(agent)
+    await connection.started
+    expect(await chat.connect(agent)).toBe(false)
+    await chat.disconnect()
+    connection.release()
+    expect(await pending).toBe(false)
+    expect(chat.getSnapshot().snapshot).toBeNull()
+    chat.dispose()
+  })
+
   it("queues Send until an in-flight configuration change completes without showing inference busy", async () => {
     const f = fixture(),
       chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })

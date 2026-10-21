@@ -511,8 +511,12 @@ export function createNativeChatController({
     if (result.ok) await bridge.disconnect({ projectId, sessionToken: result.value.sessionToken })
   }
   async function receiveConnection(at: number, result: AssistantResult) {
-    if (isCurrent(at)) acceptResult(result)
-    else await discardConnection(result)
+    if (!isCurrent(at)) {
+      await discardConnection(result)
+      return false
+    }
+    acceptResult(result)
+    return isCurrent(at) && result.ok && result.value.status === "ready"
   }
   function finishConnecting(at: number) {
     if (connecting === at) connecting = null
@@ -521,15 +525,18 @@ export function createNativeChatController({
   function connectionBlocked() {
     return disposed || resettingHistory || connecting !== null || state.busy
   }
-  async function connect(configuration: AssistantAgent, jevCredentials?: AssistantJevCredentials) {
-    if (connectionBlocked()) return
+  async function connect(
+    configuration: AssistantAgent,
+    jevCredentials?: AssistantJevCredentials,
+  ): Promise<boolean> {
+    if (connectionBlocked()) return false
     const { at, done } = beginDisconnect()
-    if (!isCurrent(at)) return
+    if (!isCurrent(at)) return false
     connecting = at
     publish({ connecting: true, error: null })
     try {
       await Promise.all([done, history.ready])
-      if (!isCurrent(at)) return
+      if (!isCurrent(at)) return false
       agent = configuration
       automaticRecoveryAllowed = true
       recoveryAttempt = 0
@@ -541,10 +548,12 @@ export function createNativeChatController({
         ...(jevCredentials ? { jevCredentials } : {}),
         ...(resume ? { resumeSessionId: resume } : {}),
       })
-      await receiveConnection(at, result)
+      const connected = await receiveConnection(at, result)
       recoverConnectFailure(at, result)
+      return connected
     } catch {
       if (isCurrent(at)) beginRecovery("request-failed")
+      return false
     } finally {
       finishConnecting(at)
     }

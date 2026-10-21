@@ -72,9 +72,9 @@ export function JevAgentConfiguration({
     setFailed(false)
     setStorageFailed(!saveAssistantPreferences({ version: 1, agent: parsed.agent }))
     try {
-      await chat.connect(parsed.agent, parsed.credentials)
-      for (const input of form.querySelectorAll<HTMLInputElement>('input[type="password"]'))
-        input.value = ""
+      if (await chat.connect(parsed.agent, parsed.credentials))
+        for (const input of form.querySelectorAll<HTMLInputElement>('input[type="password"]'))
+          input.value = ""
     } catch {
       setFailed(true)
     } finally {

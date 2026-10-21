@@ -50,10 +50,10 @@ export function createNativeProjectChatRegistry(
         }
       },
       async connect(agent: AssistantAgent, credentials?: AssistantJevCredentials) {
-        if (closed) return
+        if (closed) return false
         attempted = true
         explicitlyDisconnected = false
-        await controller.connect(agent, credentials)
+        return controller.connect(agent, credentials)
       },
       async disconnect() {
         explicitlyDisconnected = true

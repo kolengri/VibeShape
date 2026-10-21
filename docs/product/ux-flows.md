@@ -62,7 +62,9 @@ session; only non-secret settings persist. Recovery reuses the same project's ca
 keys entered in another project. The form explains the difference between selecting CAD actions
 and completing their open parameters. Image input is opt-in. Invalid or incomplete settings do
 not start a process, repeated connection activation is blocked, and connection failure releases
-the form for correction. Existing native chat Stop, questions, transcript and project authority
+the form for correction. Password fields clear only after the current connection is accepted as
+ready; rejected, blocked or superseded attempts retain both keys for retry. Existing native chat
+Stop, questions, transcript and project authority
 remain authoritative. Browser-only chat cannot spawn this process.
 
 ## Assistant transcript
