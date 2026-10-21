@@ -21,6 +21,7 @@ import {
   automationDraftOperationRequestSchema,
   automationDraftPreviewSchema,
   automationDraftSketchReadRequestSchema,
+  automationDraftSnapshotReadRequestSchema,
   automationDraftStateSchema,
   createAutomationDraftRequestSchema,
 } from "@vibeshape/automation-api/drafts"
@@ -176,6 +177,10 @@ export type AutomationHost = Readonly<{
     input: unknown,
     signal?: Readonly<{ aborted: boolean }>,
   ) => Promise<AutomationHostResult<Extract<RenderPreviewResult, { source: "draft" }>>>
+  readOwnedDraftSnapshot?: (
+    actor: unknown,
+    input: unknown,
+  ) => Promise<AutomationHostResult<DocumentSnapshot>>
   readOwnedSketch?: (actor: unknown, input: unknown) => Promise<AutomationHostResult<SketchRecord>>
   createDraft: (
     actor: unknown,
@@ -958,11 +963,11 @@ export function createAutomationHost(
       : refreshed
   }
 
-  async function readOwnedSketch(
+  async function readOwnedDraftSnapshot(
     actorInput: unknown,
     input: unknown,
-  ): Promise<AutomationHostResult<SketchRecord>> {
-    const operation = parseOperation(actorInput, input, automationDraftSketchReadRequestSchema)
+  ): Promise<AutomationHostResult<DocumentSnapshot>> {
+    const operation = parseOperation(actorInput, input, automationDraftSnapshotReadRequestSchema)
     if (!operation.ok) return operation
     const owned = ownedDraft(
       operation.value.actor,
@@ -973,15 +978,24 @@ export function createAutomationHost(
     const snapshot = owned.value.draft.snapshot
     if (!snapshot || snapshot.revision !== operation.value.request.revision)
       return failure(
-        hostDiagnostic(
-          "stale-query-revision",
-          "The draft sketch read does not match its revision.",
-          true,
-        ),
+        hostDiagnostic("stale-query-revision", "The draft read does not match its revision.", true),
       )
     const current = await revalidateAfterGeometry(owned.value)
     if (!current.ok) return current
-    const sketch = snapshot.sketches.find(({ id }) => id === operation.value.request.sketchId)
+    return { ok: true, value: documentSnapshotSchema.parse(snapshot) }
+  }
+
+  async function readOwnedSketch(
+    actorInput: unknown,
+    input: unknown,
+  ): Promise<AutomationHostResult<SketchRecord>> {
+    const operation = parseOperation(actorInput, input, automationDraftSketchReadRequestSchema)
+    if (!operation.ok) return operation
+    const { sketchId, ...snapshotRequest } = operation.value.request
+    const owned = await readOwnedDraftSnapshot(operation.value.actor, snapshotRequest)
+    if (!owned.ok) return owned
+    const snapshot = owned.value
+    const sketch = snapshot.sketches.find(({ id }) => id === sketchId)
     return sketch
       ? { ok: true, value: sketchRecordSchema.parse(sketch) }
       : failure(
@@ -1384,6 +1398,7 @@ export function createAutomationHost(
       discardDraft: (actor, input) => enqueue(() => discardDraft(actor, input)),
       inspectDraft: (actor, input) => enqueue(() => inspectDraft(actor, input)),
       renderDraft: (actor, input, signal) => enqueue(() => renderDraft(actor, input, signal)),
+      readOwnedDraftSnapshot: (actor, input) => enqueue(() => readOwnedDraftSnapshot(actor, input)),
       readOwnedSketch: (actor, input) => enqueue(() => readOwnedSketch(actor, input)),
     },
   }

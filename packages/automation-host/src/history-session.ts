@@ -30,6 +30,7 @@ export const HISTORY_REVIEW_TTL_MS = 5 * 60_000
 export const historyRequestSchema = z
   .object({
     direction: z.enum(["undo", "redo"]),
+    targetRevision: revisionSchema.optional(),
     commandId: commandIdSchema,
     documentId: documentIdSchema,
     baseRevision: revisionSchema,
@@ -95,7 +96,7 @@ export type HistorySessionConfiguration = Readonly<{
   isActive: () => boolean
   readSnapshot: () => unknown
   availability: () => { canUndo: boolean; canRedo: boolean }
-  readTarget: (direction: "undo" | "redo") => unknown
+  readTarget: (direction: "undo" | "redo", targetRevision?: number) => unknown
   hasCommandId: (commandId: string) => Promise<boolean>
   createId: () => unknown
   now?: () => number
@@ -124,11 +125,14 @@ export function createHistoryAutomationSession(configuration: HistorySessionConf
       return localFailure("stale-revision", "Read the current history state before retrying.", true)
     return { ok: true as const, value: snapshot.data }
   }
-  function captureTarget(direction: "undo" | "redo", base: number) {
-    const target = historyTargetSchema.safeParse(configuration.readTarget(direction))
+  async function captureTarget(direction: "undo" | "redo", base: number, targetRevision?: number) {
+    const target = historyTargetSchema.safeParse(
+      await configuration.readTarget(direction, targetRevision),
+    )
     return target.success &&
       target.data.snapshot.id === configuration.documentId &&
-      target.data.targetRevision <= base
+      target.data.targetRevision <= base &&
+      (targetRevision === undefined || target.data.targetRevision === targetRevision)
       ? target.data
       : null
   }
@@ -144,18 +148,21 @@ export function createHistoryAutomationSession(configuration: HistorySessionConf
     operation: Exclude<HistoryOperation, { tool: "model_history_state" }>,
     signal?: Readonly<{ aborted: boolean }>,
   ) {
-    const { baseRevision, commandId } = operation.arguments
-    const clock = z
-      .number()
-      .int()
-      .nonnegative()
-      .max(8_640_000_000_000_000 - HISTORY_REVIEW_TTL_MS)
-      .safeParse(now())
-    const draftId = draftIdSchema.safeParse(configuration.createId())
-    if (!clock.success || !draftId.success)
+    const { baseRevision, commandId, targetRevision } = operation.arguments
+    const metadata = z
+      .object({
+        at: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(8_640_000_000_000_000 - HISTORY_REVIEW_TTL_MS),
+        draftId: draftIdSchema,
+      })
+      .safeParse({ at: now(), draftId: configuration.createId() })
+    if (!metadata.success)
       return localFailure("invalid-host-configuration", "History review metadata is invalid.")
     const direction = operation.tool === "undo_model" ? "undo" : "redo"
-    const expiresAt = clock.data + HISTORY_REVIEW_TTL_MS
+    const expiresAt = metadata.data.at + HISTORY_REVIEW_TTL_MS
     const capturedGeneration = generation
     const guard = () => {
       if (capturedGeneration !== generation || signal?.aborted)
@@ -171,19 +178,23 @@ export function createHistoryAutomationSession(configuration: HistorySessionConf
     const afterRead = guard()
     if (afterRead) return afterRead
 
-    const target = captureTarget(direction, baseRevision)
+    const target = await captureTarget(direction, baseRevision, targetRevision)
     if (!target)
-      return localFailure("history-unavailable", "There is no saved change in this direction.")
+      return localFailure(
+        "history-unavailable",
+        "The requested saved checkpoint is unavailable in this direction.",
+      )
     seen.add(commandId)
     const request = historyRequestSchema.parse({
       direction,
+      ...(targetRevision === undefined ? {} : { targetRevision }),
       commandId,
       documentId: configuration.documentId,
       baseRevision,
-      issuedAt: new Date(clock.data).toISOString(),
+      issuedAt: new Date(metadata.data.at).toISOString(),
       actor,
     })
-    const approved = await reviewTarget(request, draftId.data, expiresAt, target, guard)
+    const approved = await reviewTarget(request, metadata.data.draftId, expiresAt, target, guard)
     if (!approved.ok) return approved
     return publishReviewed(approved.value, guard)
   }
@@ -250,7 +261,7 @@ export function createHistoryAutomationSession(configuration: HistorySessionConf
     const { request } = input.review
     const { direction, baseRevision, commandId } = request
     const { target, review } = input
-    const freshTarget = captureTarget(direction, baseRevision)
+    const freshTarget = await captureTarget(direction, baseRevision, request.targetRevision)
     if (!freshTarget || canonicalJson(freshTarget) !== canonicalJson(target))
       return localFailure(
         "stale-history-target",

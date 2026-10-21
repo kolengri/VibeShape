@@ -18,6 +18,7 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 | Which authored parts/folders or canonical History order? | `model_parts`, `model_folders`, `model_history` |
 | Which exact body is available, with which output role? | `model_body_measurements` or `draft_body_measurements` |
 | Which exact body faces/edges can be measured or selected by supported features? | `model_body_topology` or `draft_body_topology` |
+| What are exact edge lengths, face areas, circular diameters or selected-point distances/angles? | `measure_model` using one or two current body-bound topology references |
 | Which edge references can a treatment select? | `model_edges` or `draft_edges` |
 | What unsaved intent is in the draft? | `draft_tree`, `draft_entity` at the current draft revision |
 | Which assembly instances/mates, frozen frames, local DOF or exact interference? | `model_assembly`, `inspect_assembly`; explicit pairs and occurrence/source topology page |
@@ -28,6 +29,14 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 Use the exact committed revision from `model_info` for model reads; draft reads use the draft's current revision and host-returned draft ID. Follow `nextCursor` until null for a complete requested collection, or stop when a targeted question is answered. Start with `cursor: null` where required. Reduce page size when a response exceeds budget. Do not mix pages across revisions.
 
 Tree dependency summaries include authored sketch inputs for Hole, Loft and Sweep, profile inputs and Revolve axis inputs as well as producer dependencies. Read complete entity records before changing those inputs; a summary does not include all parameters or establish current geometry availability.
+
+## Measure selected topology
+
+Use `measure_model` with `source: "model"` and the current saved `revision`, or `source: "draft"`, owned `draftId` and current draft `revision`. Supply one or two `targets`, each with a stable body-bound edge/face `reference` from the corresponding `model_body_topology` or `draft_body_topology` query. Optional `pointKind` selects `centroid` (default), `start`, `middle`, `end`, or `center`; only analytical points actually available on that element are valid.
+
+The host resolves both selections uniquely against the same exact rebuild. It reports edge `lengthMm` or face `areaMm2`, available circular `radiusMm`/`diameterMm`, analytical direction and selected `pointMm`. Two selections additionally report `pointDistanceMm`, `directionAngleRad` and `parallelPlaneSeparationMm`. Null means the metric is unavailable, not zero. Directions are LINE directions or PLANE normals; the angle is the acute unoriented angle between those vectors, not a general line-to-surface angle. Plane separation measures infinite parallel supporting planes. Selected-point distance is not minimum bounded-face or body clearance. Use assembly interference inspection for its separately supported interference workflow.
+
+Measurement is read-only and does not move the camera, change selection, save the document, modify a draft or renew its expiry. Missing/ambiguous references, an unsupported selected point or stale geometry fail explicitly. Keep the returned revision and units with the reported result; do not replace an unavailable exact result with a pixel estimate.
 
 ## Visual inspection
 

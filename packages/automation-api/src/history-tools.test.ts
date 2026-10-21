@@ -22,12 +22,7 @@ const value = {
 describe("closed-world history contracts", () => {
   it("requires document/base/command context and rejects caller authority", () => {
     expect(historyOperationSchema.safeParse(operation).success).toBe(true)
-    for (const extra of [
-      { approved: true },
-      { targetRevision: 2 },
-      { snapshot: {} },
-      { script: "undo()" },
-    ]) {
+    for (const extra of [{ approved: true }, { snapshot: {} }, { script: "undo()" }]) {
       expect(
         historyOperationSchema.safeParse({
           ...operation,
@@ -43,6 +38,22 @@ describe("closed-world history contracts", () => {
     ).toBe(false)
     expect(historyCommitViewSchema.safeParse({ ...value, revision: 4 }).success).toBe(false)
     expect(historyCommitViewSchema.safeParse({ ...value, targetRevision: 6 }).success).toBe(false)
+  })
+  it("accepts retained target revisions and binds receipts to the requested target", () => {
+    const batch = { ...operation, arguments: { ...operation.arguments, targetRevision: 2 } }
+    expect(historyOperationSchema.safeParse(batch).success).toBe(true)
+    expect(historyResultContextMatches(batch, { ok: true, value })).toBe(true)
+    expect(
+      historyResultContextMatches(batch, { ok: true, value: { ...value, targetRevision: 1 } }),
+    ).toBe(false)
+    for (const targetRevision of [-1, 1.5, "2"]) {
+      expect(
+        historyOperationSchema.safeParse({
+          ...batch,
+          arguments: { ...batch.arguments, targetRevision },
+        }).success,
+      ).toBe(false)
+    }
   })
   it("correlates state and save results against requested identity on both transports", () => {
     expect(historyResultContextMatches(operation, { ok: true, value })).toBe(true)

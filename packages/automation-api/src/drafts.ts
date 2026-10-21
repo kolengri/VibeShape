@@ -28,13 +28,15 @@ export const automationDraftOperationRequestSchema = z
   .strict()
 
 /** Trusted browser preparation reads; never advertised as a raw MCP snapshot tool. */
-export const automationDraftSketchReadRequestSchema = z
+export const automationDraftSnapshotReadRequestSchema = z
   .object({
     schemaVersion: z.literal(1),
     draftId: draftIdSchema,
     revision: revisionSchema,
-    sketchId: sketchIdSchema,
   })
+  .strict()
+export const automationDraftSketchReadRequestSchema = automationDraftSnapshotReadRequestSchema
+  .extend({ sketchId: sketchIdSchema })
   .strict()
 
 export const automationCommandEnvelopeSchema = z

@@ -30,7 +30,12 @@ test("navigates exact saved geometry through named MCP manual history review eve
   const review = page.getByRole("region", { name: "Review AI changes", exact: true })
   const apply = async (name: string, args: Record<string, unknown>) => {
     const pending = call(name, args)
-    await expect(review).toBeVisible({ timeout: 60_000 })
+    await Promise.race([
+      pending.then((result) => {
+        throw new Error(`${name} completed before manual review: ${JSON.stringify(result)}`)
+      }),
+      expect(review).toBeVisible({ timeout: 60_000 }),
+    ])
     await review.getByRole("button", { name: "Apply", exact: true }).click()
     const receipt = await pending
     await expect(review).toHaveCount(0)
@@ -96,13 +101,18 @@ test("navigates exact saved geometry through named MCP manual history review eve
     await openAiConnections(page)
     await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
     const rejected = call("undo_model", {
       documentId,
       baseRevision: second.revision,
       commandId: id(30),
     })
-    await expect(review.getByText("Undo saved change", { exact: true })).toBeVisible()
+    await Promise.race([
+      rejected.then((result) => {
+        throw new Error(`Undo completed before manual review: ${JSON.stringify(result)}`)
+      }),
+      expect(review.getByText("Undo saved change", { exact: true })).toBeVisible(),
+    ])
     await expect(review.getByText("Features: 1", { exact: true })).toBeVisible()
     await expect(review.getByText("Exact saved-target preview", { exact: true })).toBeVisible()
     await review.getByRole("button", { name: "Discard", exact: true }).click()
@@ -133,7 +143,7 @@ test("navigates exact saved geometry through named MCP manual history review eve
       shape: { valid: true, volume: 6000 },
     })
     expect(await state(undone.revision)).toMatchObject({ canUndo: true, canRedo: true })
-    const redone = success(
+    let redone = success(
       localToolOutputs.redo_model.parse(
         await apply("redo_model", { documentId, baseRevision: undone.revision, commandId: id(32) }),
       ),
@@ -149,6 +159,37 @@ test("navigates exact saved geometry through named MCP manual history review eve
     expect(
       restored.measurements?.data.features.find(({ featureId }) => featureId === id(21)),
     ).toMatchObject({ status: "succeeded", shape: { valid: true, volume: 120 } })
+    // Cross both saved changes with one review and one publication in each direction.
+    const batchUndo = success(
+      localToolOutputs.undo_model.parse(
+        await apply("undo_model", {
+          documentId,
+          baseRevision: redone.revision,
+          commandId: id(34),
+          targetRevision: initial.revision,
+        }),
+      ),
+    )
+    expect(batchUndo).toMatchObject({
+      targetRevision: initial.revision,
+      revision: redone.revision + 1,
+    })
+    expect((await info()).measurements?.data.features ?? []).toHaveLength(0)
+    redone = success(
+      localToolOutputs.redo_model.parse(
+        await apply("redo_model", {
+          documentId,
+          baseRevision: batchUndo.revision,
+          commandId: id(35),
+          targetRevision: second.revision,
+        }),
+      ),
+    )
+    expect(redone).toMatchObject({
+      targetRevision: second.revision,
+      revision: batchUndo.revision + 1,
+    })
+    expect((await info()).measurements?.data.features).toHaveLength(2)
     // Redo previews a complete v4 checkpoint, including its frozen exact assembly source.
     const parts = success(
       localToolOutputs.model_parts.parse(await call("model_parts", { revision: redone.revision })),
@@ -250,9 +291,14 @@ test("navigates exact saved geometry through named MCP manual history review eve
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
       timeout: 20_000,
     })
+    await expect
+      .poll(async () => localToolOutputs.model_info.parse(await call("model_info", {})).ok, {
+        timeout: 20_000,
+      })
+      .toBe(true)
     expect((await info()).summary.revision).toBe(reassembled.revision)
     expect((await info()).measurements?.data.features).toHaveLength(2)
-    expect(await state(reassembled.revision)).toMatchObject({ canUndo: false, canRedo: false })
+    expect(await state(reassembled.revision)).toMatchObject({ canUndo: true, canRedo: false })
     expect(
       await call("undo_model", {
         documentId,
@@ -268,6 +314,45 @@ test("navigates exact saved geometry through named MCP manual history review eve
       }),
     ).toMatchObject({ ok: false, diagnostic: { code: "document-mismatch" } })
     await expect(review).toHaveCount(0)
+    const durableUndo = success(
+      localToolOutputs.undo_model.parse(
+        await apply("undo_model", {
+          documentId,
+          baseRevision: reassembled.revision,
+          commandId: id(36),
+        }),
+      ),
+    )
+    expect(
+      success(
+        localToolOutputs.model_assembly.parse(
+          await call("model_assembly", { revision: durableUndo.revision }),
+        ),
+      ).instances,
+    ).toHaveLength(0)
+    await page.reload()
+    await expect
+      .poll(async () => localToolOutputs.model_info.parse(await call("model_info", {})).ok, {
+        timeout: 20_000,
+      })
+      .toBe(true)
+    expect(await state(durableUndo.revision)).toMatchObject({ canRedo: true })
+    const durableRedo = success(
+      localToolOutputs.redo_model.parse(
+        await apply("redo_model", {
+          documentId,
+          baseRevision: durableUndo.revision,
+          commandId: id(37),
+        }),
+      ),
+    )
+    expect(
+      success(
+        localToolOutputs.inspect_assembly.parse(
+          await call("inspect_assembly", { revision: durableRedo.revision }),
+        ),
+      ).occurrences,
+    ).toHaveLength(1)
   } finally {
     if (failures.length)
       await testInfo.attach("automation-http-failures", {

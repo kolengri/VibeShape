@@ -91,8 +91,9 @@ OPFS cache writes are independent of semantic atomicity. Publish a cache-index e
 Committed Undo/Redo follows this same protocol. Its event references an earlier revision resolved
 from repository-owned verified history; it never decrements the head or deletes newer events.
 Recovery and portable replay retain referenced targets, including when stored historical snapshots
-are missing or corrupt. Navigation stacks are session-local; saved navigation results remain durable.
-See [ADR-0039](../adr/0039-committed-document-undo.md) for the bounds and replay contract.
+are missing or corrupt. Navigation stacks persist compact before/after publication-revision references in the project record, atomically with the model publication. Reopening restores those references, and exact full targets load asynchronously through the verified historical journal/snapshot resolver. The 32 MiB estimated serialized-size budget bounds the full-snapshot cache rather than durable history retention; there is no fixed step-count cap. Older projects without explicit navigation metadata start with empty stacks. Internal assistant turn checkpoints retain their separate actor-owned lifetime and pinned budgets.
+
+See [ADR-0125](../adr/0125-durable-saved-change-navigation.md) for durable navigation and [ADR-0039](../adr/0039-committed-document-undo.md) for the original restore/replay contract.
 
 ## Assistant transcripts
 

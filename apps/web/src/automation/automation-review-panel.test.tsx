@@ -14,7 +14,9 @@ import {
 } from "@vibeshape/automation-host/surface-texture-proposal-contract"
 import { commandActorSchema, documentCommandSchema } from "@vibeshape/domain/commands"
 import { historyItemRefSchema } from "@vibeshape/domain/document-node"
+import { documentSnapshotV2Schema } from "@vibeshape/domain/document-v2"
 import { documentV2MetadataChangeSchema } from "@vibeshape/domain/document-v2-command-schemas"
+import { moveHistoryItemCommandSchema } from "@vibeshape/domain/history-document-commands"
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import {
@@ -303,6 +305,61 @@ it("shows the exact folder range and feature-preserving removal in manual review
   ).toBeTruthy()
   expect(screen.getByRole("button", { name: /^Apply$/ })).toBeTruthy()
 })
+
+it.each([null, "Base sketch"])(
+  "shows the exact History move target and anchor %s",
+  async (anchor) => {
+    const proposal = review()
+    const item = historyItemRefSchema.parse({
+      kind: "feature",
+      id: "0195b5ac-b250-7a2c-8c33-000000000007",
+    })
+    const historyAfter = anchor
+      ? historyItemRefSchema.parse({ kind: "sketch", id: "0195b5ac-b250-7a2c-8c33-000000000008" })
+      : null
+    const decide = vi.spyOn(automationReviews, "decide").mockResolvedValue()
+    renderPanel({
+      ...proposal,
+      input: {
+        ...proposal.input,
+        commands: [],
+        historyMove: {
+          command: moveHistoryItemCommandSchema.parse({
+            ...proposal.input.commands[0],
+            kind: "org.vibeshape.history.move-item",
+            payload: { item, historyAfter },
+          }),
+          target: documentSnapshotV2Schema.parse({
+            schemaVersion: 2,
+            id: proposal.input.preview.draft.documentId,
+            revision: 3,
+            name: "Reviewed document",
+            displayUnits: { length: "mm", angle: "deg" },
+            createdAt: "2026-09-07T00:00:00Z",
+            updatedAt: "2026-09-07T00:00:00Z",
+            sketches: [],
+            features: [],
+            history: [],
+            variables: [],
+            parts: [],
+            folders: [],
+          }),
+          itemLabel: "Housing extrusion",
+          historyAfterLabel: anchor,
+        },
+      },
+    })
+    expect(screen.getByText("Move History item")).toBeTruthy()
+    expect(screen.getByText("Target: Housing extrusion")).toBeTruthy()
+    expect(
+      screen.getByText(anchor ? "Place after Base sketch" : "Place at the start of History"),
+    ).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }))
+    expect(decide).toHaveBeenCalledWith("review-1", "rejected")
+    await userEvent.click(screen.getByRole("button", { name: "Apply" }))
+    expect(decide).toHaveBeenCalledWith("review-1", "approved")
+  },
+)
 
 it.each(["undo", "redo"] as const)(
   "shows saved and publication revisions and retains manual %s Apply/Discard",

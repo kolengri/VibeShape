@@ -2,12 +2,14 @@ import { expect, it } from "bun:test"
 import {
   applyVersionedDocumentCommand,
   boxFeatureType,
+  commandIdSchema,
   createEmptySketch,
   createLengthQuantity,
   type DocumentEvent,
   draftIdSchema,
   featureRecordSchema,
   projectDocumentSnapshotV1ToV0,
+  sessionIdSchema,
   type VersionedDocumentEvent,
 } from "@vibeshape/domain"
 import {
@@ -491,4 +493,139 @@ it("rejects canonical base mismatches before repository access", async () => {
   })
   expect(result.ok).toBe(false)
   expect(called).toBe(false)
+})
+
+it("recovers compact Undo/Redo stacks and loads only the selected historical target", async () => {
+  const created = createSnapshot().snapshot
+  const previous = { ...created, revision: 2, name: "Second" }
+  const historical = { ...created, revision: 3, name: "Third" }
+  const head = { ...previous, revision: 4 }
+  const loaded: number[] = []
+  let rejectSave = false
+  let saved = head
+  const writes: number[] = []
+  const repository: VersionedDocumentRepositoryPort = {
+    async recover() {
+      return {
+        ok: true,
+        value: {
+          status: "clean",
+          snapshot: head,
+          headRevision: 4,
+          recoveredRevision: 4,
+          lostRevisionCount: 0,
+          corruptRecords: [],
+          migration: currentMigration,
+          navigation: {
+            schemaVersion: 1,
+            undo: [{ before: 1, after: 2 }],
+            redo: [{ before: 2, after: 3 }],
+          },
+        },
+      }
+    },
+    async loadHistoryTarget(_documentId, revision) {
+      loaded.push(revision)
+      return { ok: true, value: revision === 1 ? created : historical }
+    },
+    async commit(input) {
+      if (rejectSave)
+        return {
+          ok: false,
+          diagnostic: { code: "quota-exceeded", message: "Full", retryable: true },
+        }
+      saved = input.snapshot
+      writes.push(input.event.revision)
+      return { ok: true, value: undefined }
+    },
+    async commitDraft() {
+      throw new Error("Unused")
+    },
+    async closeCleanly() {
+      return { ok: true, value: undefined }
+    },
+  }
+  const adapter = createVersionedPersistenceAdapter(repository)
+  expect((await adapter.recover(created.id)).ok).toBe(true)
+  expect(adapter.history.availability).toEqual({ canUndo: true, canRedo: true })
+  expect(loaded).toEqual([])
+  const preview = await adapter.history.preview("redo")
+  expect(preview?.authority).toEqual(historical)
+  expect(loaded).toEqual([3])
+  if (preview) Object.assign(preview.authority, { name: "Caller mutation" })
+  expect((await adapter.history.preview("redo"))?.authority.name).toBe("Third")
+  const navigate = (direction: "undo" | "redo", targetRevision?: number) => {
+    const projection = projectDocumentSnapshotV1ToV0(saved)
+    if (!projection.ok) throw new Error(projection.diagnostic.message)
+    return adapter.history.navigate({
+      sessionId: sessionIdSchema.parse(created.id),
+      lease: { epoch: 1, nowMs: 1 },
+      baseSnapshot: projection.snapshot,
+      request: {
+        commandId: commandIdSchema.parse(
+          `0195b5ac-b250-7a2c-8c33-0000000000${saved.revision + 40}`,
+        ),
+        documentId: created.id,
+        baseRevision: saved.revision,
+        issuedAt: created.updatedAt,
+        actor,
+        direction,
+        ...(targetRevision === undefined ? {} : { targetRevision }),
+      },
+    })
+  }
+  expect((await navigate("redo")).ok).toBe(true)
+  expect(saved).toMatchObject({ revision: 5, name: "Third" })
+  expect(writes).toEqual([5])
+  expect(adapter.history.availability).toEqual({ canUndo: true, canRedo: false })
+  rejectSave = true
+  expect((await navigate("undo", 1)).ok).toBe(false)
+  expect(saved.revision).toBe(5)
+  expect(adapter.history.availability).toEqual({ canUndo: true, canRedo: false })
+  rejectSave = false
+  expect((await navigate("undo", 1)).ok).toBe(true)
+  expect(saved).toMatchObject({ revision: 6, name: created.name })
+  expect(loaded).toEqual([3, 1])
+  expect(adapter.history.availability).toEqual({ canUndo: false, canRedo: true })
+})
+
+it("keeps recovered navigation available after a failed historical load without saving caller state", async () => {
+  const seed = createSnapshot().snapshot
+  const head = { ...seed, revision: 2, name: "Saved" }
+  let loads = 0
+  const adapter = createVersionedPersistenceAdapter({
+    async recover() {
+      return {
+        ok: true,
+        value: {
+          status: "clean",
+          snapshot: head,
+          headRevision: 2,
+          recoveredRevision: 2,
+          lostRevisionCount: 0,
+          corruptRecords: [],
+          migration: currentMigration,
+          navigation: { schemaVersion: 1, undo: [{ before: 1, after: 2 }], redo: [] },
+        },
+      }
+    },
+    async loadHistoryTarget() {
+      loads++
+      return { ok: true, value: { ...seed, revision: 7 } }
+    },
+    async commit() {
+      throw new Error("Corrupt historical state must not be published")
+    },
+    async commitDraft() {
+      throw new Error("Unused")
+    },
+    async closeCleanly() {
+      return { ok: true, value: undefined }
+    },
+  })
+  await adapter.recover(seed.id)
+  expect(await adapter.history.preview("undo")).toBeNull()
+  expect(loads).toBe(1)
+  expect(adapter.history.availability).toEqual({ canUndo: true, canRedo: false })
+  expect(adapter.currentV1Snapshot).toEqual(head)
 })

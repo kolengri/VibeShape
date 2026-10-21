@@ -55,6 +55,7 @@ const DEFAULT_LEASE_DURATION_MS = 30_000
 export const documentHistoryRequestSchema = z
   .object({
     direction: z.enum(["undo", "redo"]),
+    targetRevision: revisionSchema.optional(),
     commandId: commandIdSchema,
     documentId: documentIdSchema,
     baseRevision: revisionSchema,
@@ -73,7 +74,10 @@ export type DocumentHistoryPreview = Readonly<{
 
 export type DocumentHistoryPort = Readonly<{
   readonly availability: DocumentHistoryAvailability
-  preview?: (direction: DocumentHistoryRequest["direction"]) => DocumentHistoryPreview | null
+  preview?: (
+    direction: DocumentHistoryRequest["direction"],
+    targetRevision?: number,
+  ) => DocumentHistoryPreview | null | Promise<DocumentHistoryPreview | null>
   navigate: (
     input: Readonly<{
       request: DocumentHistoryRequest
@@ -658,9 +662,16 @@ export class PersistentDocumentSession {
     return this.#dependencies.repository.semanticHistory?.items ?? null
   }
 
-  previewHistory(direction: DocumentHistoryRequest["direction"]): DocumentHistoryPreview | null {
+  async previewHistory(
+    direction: DocumentHistoryRequest["direction"],
+    targetRevision?: number,
+  ): Promise<DocumentHistoryPreview | null> {
     if (this.#closed || !this.#lease) return null
-    return this.#dependencies.repository.history?.preview?.(direction) ?? null
+    const revision = this.snapshot.revision
+    const target = await this.#dependencies.repository.history?.preview?.(direction, targetRevision)
+    return !this.#closed && this.#lease && this.snapshot.revision === revision
+      ? (target ?? null)
+      : null
   }
 
   navigateHistory(input: unknown): Promise<PersistentDocumentHistoryResult> {

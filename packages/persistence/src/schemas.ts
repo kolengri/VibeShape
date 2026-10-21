@@ -222,6 +222,24 @@ const v1MigrationMetadataSchema = z
   })
   .strict()
 
+const entrySchema = z
+  .object({
+    before: z.number().int().positive().safe(),
+    after: z.number().int().positive().safe(),
+  })
+  .strict()
+  .refine(({ before, after }) => before < after)
+
+/** Publication boundaries are explicit; legacy event transaction IDs are not inferred. */
+export const documentNavigationSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    undo: z.array(entrySchema),
+    redo: z.array(entrySchema),
+  })
+  .strict()
+export type DocumentNavigation = z.infer<typeof documentNavigationSchema>
+
 export const projectRecordV1Schema = z
   .object({
     schemaVersion: z.literal(1),
@@ -234,9 +252,21 @@ export const projectRecordV1Schema = z
     updatedAt: timestampSchema,
     lastExternalBackupAt: timestampSchema.nullable(),
     ...v1MigrationMetadataSchema.shape,
+    navigation: documentNavigationSchema.optional(),
   })
   .strict()
   .superRefine((project, context) => {
+    if (
+      project.navigation &&
+      [...project.navigation.undo, ...project.navigation.redo].some(
+        (entry) => entry.after > project.headRevision,
+      )
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["navigation"],
+        message: "Navigation cannot reference a future revision.",
+      })
     if (project.latestSnapshotRevision > project.headRevision)
       context.addIssue({
         code: "custom",
@@ -294,6 +324,7 @@ export const persistenceV1CommitInputSchema = z
     baseSnapshot: documentSnapshotV1Schema.nullable(),
     event: versionedDocumentEventSchema,
     snapshot: documentSnapshotV1Schema,
+    checkpointRestore: z.literal(true).optional(),
   })
   .strict()
 

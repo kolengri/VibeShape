@@ -4,6 +4,8 @@
 - Date: 2026-10-04
 - Related: [ADR-0016](0016-persisted-document-session-and-rebuild-sequencing.md), [ADR-0089](0089-owned-assembly-and-library-mcp-drafts.md)
 
+- Navigation retention/reopen policy superseded by [ADR-0125](0125-durable-saved-change-navigation.md).
+
 ## Context
 
 The editor already owns bounded Undo/Redo checkpoints and persists a restore event through its session queue, write lease and revision CAS. MCP exposed authored History ordering but could not inspect or navigate these saved-change checkpoints. A headless restore or caller-supplied historical snapshot would bypass the existing document authority and human review.

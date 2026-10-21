@@ -6,6 +6,7 @@ import {
 } from "@vibeshape/automation-api/binary-exports"
 import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/draft-inspection"
 import { draftInspectionMatches } from "@vibeshape/automation-api/draft-inspection-result"
+import { historyMoveResultContextMatches } from "@vibeshape/automation-api/history-move-tools"
 import { historyResultContextMatches } from "@vibeshape/automation-api/history-tools"
 import { importResultMatches, isLocalImport } from "@vibeshape/automation-api/imports"
 import {
@@ -19,6 +20,7 @@ import {
   localFailure,
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
+import { measurementResultContextMatches } from "@vibeshape/automation-api/measurement-tools"
 import {
   isLocalPlanarImport,
   planarImportResultMatches,
@@ -82,6 +84,8 @@ function authoredResultContextMatches(
   return (
     renderPreviewResultContextMatches(operation, result) !== false &&
     historyResultContextMatches(operation, result) !== false &&
+    historyMoveResultContextMatches(operation, result) !== false &&
+    measurementResultContextMatches(operation, result) !== false &&
     assemblyResultContextMatches(operation, result) !== false &&
     surfaceTextureResultContextMatches(operation, result) !== false &&
     lightweightingResultContextMatches(operation, result) !== false &&

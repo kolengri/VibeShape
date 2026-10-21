@@ -7,6 +7,7 @@ const navigationArguments = z
     documentId: documentIdSchema,
     baseRevision: revisionSchema,
     commandId: commandIdSchema,
+    targetRevision: revisionSchema.optional(),
   })
   .strict()
 export const historyToolInputs = {
@@ -78,6 +79,8 @@ export function historyResultContextMatches(
     value.data.documentId === operation.data.arguments.documentId &&
     value.data.baseRevision === operation.data.arguments.baseRevision &&
     value.data.commandId === operation.data.arguments.commandId &&
-    value.data.direction === (operation.data.tool === "undo_model" ? "undo" : "redo")
+    value.data.direction === (operation.data.tool === "undo_model" ? "undo" : "redo") &&
+    (operation.data.arguments.targetRevision === undefined ||
+      value.data.targetRevision === operation.data.arguments.targetRevision)
   )
 }

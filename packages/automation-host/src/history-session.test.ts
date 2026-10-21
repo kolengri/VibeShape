@@ -80,12 +80,15 @@ function setup() {
       targetRevision: 1,
     },
   }))
+  const readTarget = vi.fn(
+    (_direction: "undo" | "redo", _targetRevision?: number): unknown => target,
+  )
   const session = createHistoryAutomationSession({
     documentId: authority.id,
     isActive: () => active,
     readSnapshot: () => snapshot,
     availability: () => ({ canUndo: true, canRedo: false }),
-    readTarget: () => target,
+    readTarget,
     hasCommandId,
     createId: () => id(10),
     now: () => at,
@@ -108,6 +111,8 @@ function setup() {
     review,
     commit,
     hasCommandId,
+    readTarget,
+    target: () => target,
     setTime: (time: number) => {
       at = time
     },
@@ -131,6 +136,27 @@ function deferred<T>() {
 }
 
 describe("owned history navigation", () => {
+  it("captures and revalidates the requested batch baseline and rejects a different target", async () => {
+    const f = setup()
+    f.readTarget.mockImplementation(async () => f.target())
+    const operation = { ...f.operation, arguments: { ...f.operation.arguments, targetRevision: 1 } }
+    expect((await f.session.execute(actor, operation)).ok).toBe(true)
+    expect(f.readTarget).toHaveBeenCalledTimes(2)
+    expect(f.readTarget).toHaveBeenLastCalledWith("undo", 1)
+    expect(f.commit).toHaveBeenCalledTimes(1)
+    expect(f.review.mock.calls[0]?.[0].request.targetRevision).toBe(1)
+    const other = setup()
+    const missing = {
+      ...other.operation,
+      arguments: { ...other.operation.arguments, targetRevision: 2 },
+    }
+    expect(await other.session.execute(actor, missing)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "history-unavailable" },
+    })
+    expect(other.preview).not.toHaveBeenCalled()
+    expect(other.commit).not.toHaveBeenCalled()
+  })
   it("reads only availability and proposes one exact actor-bound restore through manual consent", async () => {
     const f = setup()
     expect(

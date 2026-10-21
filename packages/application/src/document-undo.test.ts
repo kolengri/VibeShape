@@ -145,9 +145,14 @@ async function harness() {
   })
   if (!opened.ok) throw new Error(opened.diagnostic.message)
   const session = opened.session
-  const navigate = (direction: "undo" | "redo", baseRevision = session.snapshot.revision) =>
+  const navigate = (
+    direction: "undo" | "redo",
+    baseRevision = session.snapshot.revision,
+    targetRevision?: number,
+  ) =>
     session.navigateHistory({
       direction,
+      ...(targetRevision === undefined ? {} : { targetRevision }),
       commandId: id(sequence++),
       documentId,
       baseRevision,
@@ -179,6 +184,49 @@ async function harness() {
 }
 
 describe("committed document undo", () => {
+  it("restores a multi-save batch with one publication and rebuild, preserving redo order", async () => {
+    const h = await harness()
+    await h.rename("Before batch")
+    const baseline = h.session.snapshot.revision
+    await h.rename("First batch change")
+    await h.rename("Second batch change")
+    const head = h.session.snapshot.revision
+    expect((await h.session.previewHistory("undo", baseline))?.snapshot.name).toBe("Before batch")
+    const writes = h.journal.length,
+      rebuilds = h.rebuilds.length
+    expect((await h.navigate("undo", head, baseline)).ok).toBe(true)
+    expect(h.session.snapshot).toMatchObject({ name: "Before batch", revision: head + 1 })
+    expect(h.journal).toHaveLength(writes + 1)
+    expect(h.rebuilds).toHaveLength(rebuilds + 1)
+    expect((await h.navigate("redo")).ok).toBe(true)
+    expect(h.session.snapshot.name).toBe("First batch change")
+    expect((await h.navigate("redo")).ok).toBe(true)
+    expect(h.session.snapshot.name).toBe("Second batch change")
+    expect((await h.navigate("undo", h.session.snapshot.revision, baseline)).ok).toBe(true)
+    expect((await h.navigate("redo", h.session.snapshot.revision, head)).ok).toBe(true)
+    expect(h.session.snapshot.name).toBe("Second batch change")
+  })
+
+  it("leaves all batch checkpoints unchanged on a missing target or failed save", async () => {
+    const h = await harness()
+    await h.rename("One")
+    await h.rename("Two")
+    const head = h.session.snapshot.revision,
+      writes = h.journal.length
+    expect((await h.navigate("undo", head, head)).ok).toBe(false)
+    expect((await h.navigate("redo", head, 1)).ok).toBe(false)
+    h.control.failSave = true
+    expect((await h.navigate("undo", head, 1)).ok).toBe(false)
+    expect(h.journal).toHaveLength(writes)
+    expect(h.session.snapshot).toMatchObject({ revision: head, name: "Two" })
+    expect(h.session.history).toEqual({ canUndo: true, canRedo: false })
+    expect((await h.session.previewHistory("undo", 1))?.snapshot.name).toBe("Original")
+    h.control.failSave = false
+    expect((await h.navigate("undo", head, 1)).ok).toBe(true)
+    await h.rename("Replacement")
+    expect((await h.navigate("redo", h.session.snapshot.revision, head)).ok).toBe(false)
+  })
+
   it("does not add an unusable undo step for a transaction with no net semantic change", async () => {
     const h = await harness()
     await h.rename("Saved")
@@ -299,12 +347,12 @@ describe("committed document undo", () => {
     expect((await h.navigate("redo")).ok).toBe(true)
   })
 
-  it("bounds retained checkpoints while keeping all durable events replayable", async () => {
+  it("retains more than 100 small checkpoints while keeping all durable events replayable", async () => {
     const h = await harness()
     for (let i = 0; i < 102; i++) await h.rename(`Name ${i}`)
-    for (let i = 0; i < 100; i++) expect((await h.navigate("undo")).ok).toBe(true)
+    for (let i = 0; i < 102; i++) expect((await h.navigate("undo")).ok).toBe(true)
     expect(h.session.history.canUndo).toBe(false)
-    expect(h.session.snapshot.name).toBe("Name 1")
+    expect(h.session.snapshot.name).toBe("Original")
     const replayed = replayVersionedDocumentEvents(h.journal)
     if (!replayed.ok) throw new Error(replayed.diagnostic.message)
     expect(projectDocumentSnapshotV1ToV0(replayed.snapshot)).toEqual({

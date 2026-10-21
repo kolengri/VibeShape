@@ -81,6 +81,8 @@ Edits are revision-checked and require browser Apply. The bridge exposes named s
 filesystem, network or arbitrary code execution. Existing hostile-origin and resource-bound tests
 cover those protocol boundaries; this is not a claim that every possible CAD input is inexpensive.
 The MCP subset does not expose every manual editor feature, assemblies or production printability
-analysis. Session Undo/Redo does not survive a process restart; committed browser-local models do.
+analysis. At this acceptance date, session Undo/Redo did not survive a process restart; committed
+browser-local models did. Durable navigation supersedes that limitation under
+[ADR-0125](adr/0125-durable-saved-change-navigation.md); it does not retroactively extend this report's evidence.
 Public distribution, an installed/offline update lifecycle and full enterprise CAD parity remain
 outside this verified local delivery. See [deployment and rollback](deployment.md).

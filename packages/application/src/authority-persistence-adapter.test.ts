@@ -210,7 +210,7 @@ function fixture(seed: DocumentAuthoritySnapshot = initial().v2) {
       baseSnapshot: runtime(),
       command: { ...envelope(n), kind: "org.vibeshape.document.metadata-command", payload },
     })
-  const navigate = (n: number, direction: "undo" | "redo") =>
+  const navigate = (n: number, direction: "undo" | "redo", targetRevision?: number) =>
     adapter.history.navigate({
       sessionId,
       lease,
@@ -222,6 +222,7 @@ function fixture(seed: DocumentAuthoritySnapshot = initial().v2) {
         issuedAt,
         actor,
         direction,
+        ...(targetRevision === undefined ? {} : { targetRevision }),
       },
     })
   return {
@@ -1051,12 +1052,12 @@ describe("authored authority persistence adapter", () => {
         }),
       )
       const availability = { ...f.adapter.history.availability }
-      const target = f.adapter.history.preview?.("undo")
+      const target = await f.adapter.history.preview?.("undo")
       if (!target) throw new Error("Missing read-only undo target")
       expect(target.targetRevision).toBe(seed.revision)
       expect(target.authority).toEqual(seed)
       mutatePreviewTarget(target)
-      expect(f.adapter.history.preview?.("undo")?.authority).toEqual(seed)
+      expect((await f.adapter.history.preview?.("undo"))?.authority).toEqual(seed)
       expect(f.adapter.history.availability).toEqual(availability)
       expect(f.runtime().features[0]?.parameters.height).toEqual(createLengthQuantity(12))
       const mcpActor = { type: "mcp", clientId: "org.example.history", sessionId } as const
@@ -1082,9 +1083,9 @@ describe("authored authority persistence adapter", () => {
           actor: mcpActor,
           targetRevision: seed.revision,
         })
-      expect(f.adapter.history.preview?.("redo")?.snapshot.features[0]?.parameters.height).toEqual(
-        createLengthQuantity(12),
-      )
+      expect(
+        (await f.adapter.history.preview?.("redo"))?.snapshot.features[0]?.parameters.height,
+      ).toEqual(createLengthQuantity(12))
     },
   )
 
@@ -1779,3 +1780,100 @@ describe("History insertion persistence", () => {
     expect(f.writes).toHaveLength(3)
   })
 })
+
+it("publishes a multi-save authored batch restore once and keeps checkpoints after failed persistence", async () => {
+  const f = fixture()
+  const baseline = f.current()
+  const partId = part(baseline).id
+  success(await f.metadata(800, { kind: "part.rename", partId, name: "First" }))
+  success(await f.metadata(801, { kind: "part.rename", partId, name: "Second" }))
+  const head = f.current().revision,
+    writes = f.writes.length
+  expect((await f.adapter.history.preview?.("undo", baseline.revision))?.targetRevision).toBe(
+    baseline.revision,
+  )
+  f.fail(true)
+  expect((await f.navigate(802, "undo", baseline.revision)).ok).toBe(false)
+  expect(f.current().revision).toBe(head)
+  expect(f.adapter.history.availability).toEqual({ canUndo: true, canRedo: false })
+  f.fail(false)
+  success(await f.navigate(803, "undo", baseline.revision))
+  expect(f.current().revision).toBe(head + 1)
+  expect(part(f.current()).name).toBe(part(baseline).name)
+  expect(f.writes).toHaveLength(writes + 2)
+  expect(f.writes.at(-1)?.event).toMatchObject({
+    type: "org.vibeshape.document.restored",
+    targetRevision: baseline.revision,
+  })
+  success(await f.navigate(804, "redo", head))
+  expect(part(f.current()).name).toBe("Second")
+  expect(f.current().revision).toBe(head + 2)
+})
+
+it.each([null, "texture", "import", "repair"] as const)(
+  "recovers durable authored references and loads complete %s authority only on demand",
+  async (upgrade) => {
+    const f = fixture()
+    if (upgrade) success(await checkpointUpgrade(f, upgrade))
+    const target = f.current()
+    await checkpointRename(f, 1910, "After durable target")
+    const saved = f.current()
+    const loaded: number[] = []
+    const repository: AuthorityDocumentRepositoryPort = {
+      ...f.repository,
+      async recoverAuthority(documentId) {
+        const recovered = await f.repository.recoverAuthority(documentId)
+        if (!recovered.ok) return recovered
+        return {
+          ok: true,
+          value: {
+            ...recovered.value,
+            navigation: {
+              schemaVersion: 1,
+              undo: [{ before: target.revision, after: saved.revision }],
+              redo: [],
+            },
+          },
+        }
+      },
+      async loadHistoryTarget(_documentId, revision) {
+        loaded.push(revision)
+        return { ok: true, value: target }
+      },
+    }
+    const reopened = createAuthorityPersistenceAdapter(repository, () => {
+      throw new Error("Restore must preserve captured Part identities")
+    })
+    success(await reopened.recover(saved.id))
+    expect(reopened.history.availability).toEqual({ canUndo: true, canRedo: false })
+    expect(loaded).toEqual([])
+    expect((await reopened.history.preview?.("undo"))?.authority).toEqual(target)
+    expect(loaded).toEqual([target.revision])
+    const input = {
+      sessionId,
+      lease,
+      baseSnapshot: success(runtimeProjection(saved)).snapshot,
+      request: {
+        commandId: commandIdSchema.parse(id(1911)),
+        documentId: saved.id,
+        baseRevision: saved.revision,
+        issuedAt,
+        actor,
+        direction: "undo" as const,
+      },
+    }
+    f.fail(true)
+    expect((await reopened.history.navigate(input)).ok).toBe(false)
+    expect(reopened.currentAuthoritySnapshot).toEqual(saved)
+    expect(reopened.history.availability).toEqual({ canUndo: true, canRedo: false })
+    f.fail(false)
+    success(await reopened.history.navigate(input))
+    expect(reopened.currentAuthoritySnapshot).toEqual({
+      ...target,
+      revision: saved.revision + 1,
+      updatedAt: issuedAt,
+    })
+    expect(reopened.history.availability).toEqual({ canUndo: false, canRedo: true })
+    expect(loaded).toEqual([target.revision])
+  },
+)

@@ -245,6 +245,23 @@ function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput[
   )
 }
 
+function HistoryMoveDetails({ move }: { move: NonNullable<DraftReviewInput["historyMove"]> }) {
+  const t = useTranslations("app.shell.taskPanel.automationReview")
+  return (
+    <li className="break-words rounded border p-2">
+      <div className="font-medium">{t("moveHistoryItem")}</div>
+      <div>{t("target", { target: move.itemLabel })}</div>
+      <div>
+        {move.command.payload.historyAfter
+          ? t("historyMoveAfter", {
+              target: move.historyAfterLabel ?? move.command.payload.historyAfter.id,
+            })
+          : t("historyMoveToStart")}
+      </div>
+    </li>
+  )
+}
+
 export function AutomationReviewPanel({ review }: { review: AutomationReviewState }) {
   if (isPlanarImportReview(review.input))
     return <PlanarImportReviewPanel key={review.id} review={{ ...review, input: review.input }} />
@@ -368,6 +385,7 @@ function CadReviewPanel({
           <h3 className="text-xs font-medium">{t("changes")}</h3>
           <ul className="mt-2 grid gap-2 text-xs">
             {input.metadata ? <MetadataDetails metadata={input.metadata} /> : null}
+            {input.historyMove ? <HistoryMoveDetails move={input.historyMove} /> : null}
             {commands.map((command) => (
               <li key={command.commandId} className="break-words rounded border p-2">
                 <div className="font-medium">
