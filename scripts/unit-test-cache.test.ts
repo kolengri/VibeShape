@@ -126,6 +126,70 @@ function runtimeFixture() {
 }
 
 describe("native unit-test result inputs", () => {
+  it("invalidates documentation consumers without invalidating unrelated workspaces or hashing output logs", async () => {
+    const repo = fixture()
+    repo.write("docs/fixture.md", "original")
+    repo.write("README.md", "original overview")
+    repo.write(
+      "packages/app/src/documentation.ts",
+      'import {readFileSync} from "node:fs"; export const content = readFileSync("docs/fixture.md", "utf8")',
+    )
+    const before = await repo.snapshot()
+    expect(before.scopes.get("app")?.cacheable).toBe(true)
+    repo.write("docs/fixture.md", "changed")
+    repo.write("artifacts/pipeline-optimization/check.log", "changing output")
+    const after = await repo.snapshot()
+    expect(scopeHash(after, "app")).not.toBe(scopeHash(before, "app"))
+    expect(scopeHash(after, "unrelated")).toBe(scopeHash(before, "unrelated"))
+    repo.write("docs/unread.md", "unrelated documentation")
+    repo.write("README.md", "updated overview")
+    repo.write("artifacts/pipeline-optimization/check.log", "more changing output")
+    const outputsChanged = await repo.snapshot()
+    expect(scopeHash(outputsChanged, "app")).toBe(scopeHash(after, "app"))
+    expect(scopeHash(outputsChanged, "unrelated")).toBe(scopeHash(after, "unrelated"))
+    repo.write(
+      "packages/app/src/documentation.ts",
+      'import {readFileSync} from "node:fs"; export const content = readFileSync("artifacts/pipeline-optimization/check.log", "utf8")',
+    )
+    expect((await repo.snapshot()).scopes.get("app")?.cacheable).toBe(false)
+  })
+  it("ignores erased worker and loader annotations while retaining executable class heritage", async () => {
+    const repo = fixture()
+    repo.write(
+      "packages/app/src/worker-types.ts",
+      "export let worker: Worker; export type Loader = typeof fetch; export interface Context extends Worker { load: typeof fetch }; export const value = 1",
+    )
+    expect((await repo.snapshot()).scopes.get("app")?.cacheable).toBe(true)
+    repo.write("packages/app/src/worker-types.ts", "export class ExternalWorker extends Worker {}")
+    expect((await repo.snapshot()).scopes.get("app")?.cacheable).toBe(false)
+  })
+  it("reuses only the reviewed bundled chamfer loader and refuses external OCCT overrides or edits", async () => {
+    const root = join(import.meta.dir, "..")
+    const path = "packages/geometry-worker/src/occt-chamfer-v3-kernel.test.ts"
+    const source = readFileSync(join(root, path), "utf8")
+    const input = { path, source, hash: digest(source) }
+    const parser = await unitTestParser(root, [input])
+    try {
+      const parsed = await parser.parse(input)
+      expect(sourceAnalysis(root, input, parsed, new Map(), {}).unsafe).toBe(false)
+      expect(
+        sourceAnalysis(root, input, parsed, new Map(), {
+          VIBESHAPE_CHAMFER_OCCT_DIRECTORY: "/external",
+        }).unsafe,
+      ).toBe(true)
+      expect(
+        sourceAnalysis(
+          root,
+          { ...input, hash: digest(`${source}\n// changed loader`) },
+          parsed,
+          new Map(),
+          {},
+        ).unsafe,
+      ).toBe(true)
+    } finally {
+      await parser.close()
+    }
+  })
   it.each([
     'import {execFileSync} from "node:child_process"; export const value=execFileSync("cat",["/tmp/external.wasm"],{encoding:"utf8"})',
     'import cp from "child_process"; const {execFileSync:read}=cp; export const value=read("cat",["/tmp/external.wasm"])',
@@ -285,10 +349,15 @@ describe("native unit-test result inputs", () => {
   })
   it("couples finite runtime calls to their exact caller, preparation and Python producers and executable", async () => {
     const root = join(import.meta.dir, "..")
-    const paths = [
+    const callers = [
       "packages/geometry-worker/src/engine.ts",
       "packages/structural-optimization/tests/quick-wasm.test.ts",
+      "packages/structural-optimization/tests/quick-wasm-curved.test.ts",
+      "packages/structural-optimization/tests/quick-wasm-helpers.ts",
       "packages/structural-optimization/tests/wasm-solver.test.ts",
+    ]
+    const paths = [
+      ...callers,
       "scripts/prepare-structural-runtime.ts",
       "scripts/structural-runtime-inputs.ts",
       "packages/structural-optimization/src/solver.py",
@@ -305,7 +374,7 @@ describe("native unit-test result inputs", () => {
     const hashes = new Map(inputs.map((input) => [input.path, input.hash]))
     const parser = await unitTestParser(root, inputs)
     try {
-      for (const input of inputs.slice(0, 3)) {
+      for (const input of inputs.slice(0, callers.length)) {
         const parsed = await parser.parse(input)
         expect(sourceAnalysis(root, input, parsed, hashes, process.env).unsafe).toBe(false)
         expect(
@@ -318,10 +387,14 @@ describe("native unit-test result inputs", () => {
           ).unsafe,
         ).toBe(true)
         if (input.path.includes("structural-optimization")) {
-          expect(
-            sourceAnalysis(root, input, parsed, hashes, { PATH: "/missing-bun-runtime" }).unsafe,
-          ).toBe(true)
-          for (const producer of inputs.slice(3)) {
+          if (
+            input.path.endsWith("quick-wasm-helpers.ts") ||
+            input.path.endsWith("wasm-solver.test.ts")
+          )
+            expect(
+              sourceAnalysis(root, input, parsed, hashes, { PATH: "/missing-bun-runtime" }).unsafe,
+            ).toBe(true)
+          for (const producer of inputs.slice(callers.length)) {
             const changed = new Map(hashes).set(
               producer.path,
               digest("changed external input boundary"),
@@ -379,7 +452,7 @@ describe("native unit-test result inputs", () => {
     )
     expect((await repo.snapshot()).scopes.get("app")?.cacheable).toBe(true)
   })
-  it.each(["test-results", "coverage", "dist"])(
+  it.each(["test-results", "coverage", "dist", "artifacts"])(
     "runs selected tests in an excluded %s tree without receipts",
     async (directory) => {
       const repo = fixture()
@@ -747,6 +820,24 @@ describe("native unit-test receipts", () => {
       expect(unitTestOptions(["--cache", ...options], root).cache).toBe(false)
     expect(unitTestOptions(["--cache", "--force"], root).forwarded).toEqual([])
     expect(() => unitTestOptions(["--cache", "--timeout"], root)).toThrow("Missing value")
+    for (const group of ["node", "dom"]) {
+      for (const options of [["--group", group], [`--group=${group}`]])
+        expect(unitTestOptions(["--cache", ...options], root)).toMatchObject({
+          group,
+          cache: true,
+          forwarded: [],
+        })
+      expect(unitTestOptions(["--cache", `--group=${group}`, "packages/app"], root).cache).toBe(
+        false,
+      )
+    }
+    for (const options of [
+      ["--group"],
+      ["--group="],
+      ["--group=other"],
+      ["--group=node", "--group=dom"],
+    ])
+      expect(() => unitTestOptions(options, root)).toThrow()
   })
 })
 
@@ -848,6 +939,25 @@ it("the native launcher executes all local tests, skips only complete successful
   expect(calls("root")).toBe(6)
   expect(calls("metadata")).toBe(6)
   repo.write("packages/app/src/value.ts", "export const value = 1")
+  const beforeNode = calls("app")
+  const beforeDOM = calls("dom")
+  pass("--group", "node")
+  expect(calls("app")).toBe(beforeNode + 1)
+  expect(calls("dom")).toBe(beforeDOM)
+  pass("--group=dom")
+  expect(calls("app")).toBe(beforeNode + 1)
+  expect(calls("dom")).toBe(beforeDOM + 1)
+  pass("--cache", "--group=node")
+  const cachedNode = calls("app")
+  expect(pass("--cache", "--group=node").stdout.toString()).toContain("Unit cache hit: app/node")
+  expect(calls("app")).toBe(cachedNode)
+  pass("--cache", "--group=dom")
+  const cachedDOM = calls("dom")
+  expect(pass("--cache", "--group=dom").stdout.toString()).toContain(
+    "Unit cache hit: unrelated/dom",
+  )
+  expect(calls("dom")).toBe(cachedDOM)
+  expect(run("--group=other").exitCode).not.toBe(0)
   pass("--cache", "--reporter=junit", "--reporter-outfile=report.xml")
   expect(readFileSync(join(repo.root, "report.node.xml"), "utf8")).toContain("testsuite")
   expect(readFileSync(join(repo.root, "report.dom.xml"), "utf8")).toContain("testsuite")
