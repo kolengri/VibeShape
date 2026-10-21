@@ -397,8 +397,11 @@ describe("History rollback divider", () => {
     await expectSettledCursor(0)
     fireEvent.keyDown(cursor(), { key: "End" })
     expect(ports.end).toHaveBeenCalledTimes(1)
-    expect(cursor().getAttribute("aria-valuenow")).toBe("4")
-    expect(cursor().hasAttribute("data-history-cursor-draft")).toBe(true)
+    await waitFor(() => {
+      expect(cursor().getAttribute("aria-valuenow")).toBe("4")
+      expect(cursor().getAttribute("aria-busy")).toBe("true")
+      expect(cursor().hasAttribute("data-history-cursor-draft")).toBe(true)
+    })
     expect(track.scrollLeft).toBe(0)
     await act(async () => completeNavigation(true))
     await expectSettledCursor(4)
