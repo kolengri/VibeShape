@@ -218,6 +218,67 @@ describe("model preview", () => {
     expect(camera.position.toArray()).toEqual([0, 0, 4])
   })
 
+  it("renders an overview at lower resolution with every triangle and preserves explicit detail", async () => {
+    const { encodedWidths } = browserStub()
+    const overview = await renderModelPreview([triangle], { quality: "overview" })
+    expect(overview).toMatchObject({ width: 768, height: 576, views: ["isometric"] })
+    expect(rendererState.draws).toHaveLength(1)
+    expect(rendererState.draws[0]?.indexLengths).toEqual([3])
+    const detail = await renderModelPreview([triangle], { quality: "detail" })
+    expect(detail).toMatchObject({
+      width: 1_024,
+      height: 768,
+      views: ["isometric", "front", "right", "top"],
+    })
+    expect(encodedWidths).toEqual([768, 1_024])
+    expect(rendererState.draws).toHaveLength(5)
+    for (const draw of rendererState.draws) {
+      expect(draw.indexLengths).toEqual([3])
+      expect(draw.positions).toEqual(rendererState.draws[0]?.positions ?? [])
+    }
+  })
+
+  it("honors explicit views and custom crop cameras independently of overview quality", async () => {
+    browserStub()
+    const views = await renderModelPreview([triangle], {
+      quality: "overview",
+      views: ["back", "left"],
+    })
+    expect(views).toMatchObject({ width: 768, height: 288, views: ["back", "left"] })
+    const camera: ModelPreviewCamera = {
+      position: [18, 10, 50],
+      target: [18, 10, 8],
+      viewHeightMm: 2,
+    }
+    const crop = await renderModelPreview([triangle], { quality: "overview", camera })
+    expect(crop).toMatchObject({ width: 768, height: 576, views: ["custom"] })
+    const rendered = rendererState.draws[2]?.camera as OrthographicCamera
+    expect(rendered.top - rendered.bottom).toBeCloseTo(0.1)
+  })
+
+  it("snapshots quality before queued rendering and rejects unknown runtime policies", async () => {
+    browserStub()
+    const options: { quality: "overview" | "detail" } = { quality: "overview" }
+    const pending = renderModelPreview([triangle], options)
+    options.quality = "detail"
+    await expect(pending).resolves.toMatchObject({ width: 768, views: ["isometric"] })
+    for (const quality of [null, "low", 1]) {
+      await expect(
+        renderModelPreview([triangle], { quality: quality as "overview" }),
+      ).rejects.toThrow("quality must be overview or detail")
+    }
+  })
+
+  it("starts overview fallback at 768 and retains the existing byte budget", async () => {
+    const { encodedWidths } = browserStub([100_000, 95_000, 80_000])
+    const result = await renderModelPreview([triangle], { quality: "overview" })
+    expect(encodedWidths).toEqual([768, 576, 432])
+    expect(result).toMatchObject({ width: 432, height: 324, views: ["isometric"] })
+    expect(atob(result.base64).length).toBe(80_000)
+    expect(rendererState.draws).toHaveLength(3)
+    for (const draw of rendererState.draws) expect(draw.indexLengths).toEqual([3])
+  })
+
   it("reduces image resolution deterministically without reducing geometry", async () => {
     const { encodedWidths } = browserStub([100_000, 95_000, 80_000])
     const result = await renderModelPreview([triangle], { views: ["front", "top"] })

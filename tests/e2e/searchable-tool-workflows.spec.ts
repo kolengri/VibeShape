@@ -62,6 +62,40 @@ test("finds a model by name and type, preserves hidden selection, and restores t
   ).toHaveAttribute("aria-selected", "true")
 })
 
+test("deletes a filtered model result after confirmation while preserving query editing", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await saved(page)
+  await createSolids(page)
+  const tree = page.getByRole("complementary", { name: "Model tree", exact: true })
+  const search = tree.getByRole("searchbox", { name: "Search model" })
+  await search.fill("Cylinderx")
+  await search.press("Backspace")
+  await search.press("Delete")
+  await expect(search).toHaveValue("Cylinder")
+  await expect(page.getByRole("alertdialog")).toHaveCount(0)
+  await tree.getByRole("button", { name: "Parts", exact: true }).click()
+  const result = tree.getByRole("tree", { name: "Model search results" }).getByRole("treeitem", {
+    name: "Cylinder 1",
+    exact: true,
+  })
+  await result.click()
+  await result.press("Delete")
+  const confirmation = page.getByRole("alertdialog")
+  await expect(confirmation).toBeVisible()
+  await confirmation.getByRole("button", { name: "Keep selection", exact: true }).click()
+  await expect(result).toBeFocused()
+  await result.press("Backspace")
+  await confirmation.getByRole("button", { name: "Delete selection", exact: true }).click()
+  await expect(confirmation).toHaveCount(0)
+  await saved(page)
+  await expect(result).toHaveCount(0)
+  await tree.getByRole("button", { name: "Clear model search", exact: true }).click()
+  await expect(tree.getByRole("treeitem", { name: "Part Box 1", exact: true })).toBeVisible()
+  await expect(tree.getByRole("treeitem", { name: "Part Cylinder 1", exact: true })).toHaveCount(0)
+})
+
 for (const theme of ["light", "dark"] as const) {
   test(`searches compact tools with the keyboard in ${theme} theme`, async ({ page }) => {
     await page.setViewportSize({ width: 512, height: 384 })

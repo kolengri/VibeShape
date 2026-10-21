@@ -176,6 +176,13 @@ function Harness({
 function cursor() {
   return screen.getByRole("separator", { name: "History rollback divider" })
 }
+async function expectSettledCursor(position: number) {
+  await waitFor(() => {
+    expect(cursor().getAttribute("aria-valuenow")).toBe(String(position))
+    expect(cursor().getAttribute("aria-busy")).toBe("false")
+    expect(cursor().hasAttribute("data-history-cursor-draft")).toBe(false)
+  })
+}
 function pointer(type: string, clientX: number, pointerType = "mouse") {
   const event = new Event(type, { bubbles: true, cancelable: true })
   Object.defineProperties(event, {
@@ -287,16 +294,16 @@ describe("History rollback divider", () => {
   it("uses Left/Right/Home/End through the same insertion and full-model actions", async () => {
     render(<Harness />)
     fireEvent.keyDown(cursor(), { key: "ArrowLeft" })
-    await waitFor(() => expect(cursor().getAttribute("aria-valuenow")).toBe("3"))
+    await expectSettledCursor(3)
     expect(ports.insert.mock.calls[0]).toEqual([items[2], "below"])
     fireEvent.keyDown(cursor(), { key: "Home" })
-    await waitFor(() => expect(cursor().getAttribute("aria-valuenow")).toBe("0"))
+    await expectSettledCursor(0)
     expect(ports.insert.mock.calls[1]).toEqual([items[0], "above"])
     fireEvent.keyDown(cursor(), { key: "ArrowRight" })
-    await waitFor(() => expect(cursor().getAttribute("aria-valuenow")).toBe("1"))
+    await expectSettledCursor(1)
     fireEvent.keyDown(cursor(), { key: "End" })
-    await waitFor(() => expect(ports.end).toHaveBeenCalledTimes(1))
-    expect(cursor().getAttribute("aria-valuenow")).toBe("4")
+    await expectSettledCursor(4)
+    expect(ports.end).toHaveBeenCalledTimes(1)
   })
   it.each(["Escape", "pointercancel", "lostpointercapture"])(
     "cancels a touch draft with %s without navigation",
@@ -381,9 +388,10 @@ describe("History rollback divider", () => {
     })
     expect(track.scrollLeft).toBe(0)
     fireEvent.keyDown(cursor(), { key: "Home" })
-    await waitFor(() => expect(cursor().getAttribute("aria-valuenow")).toBe("0"))
+    await expectSettledCursor(0)
     fireEvent.keyDown(cursor(), { key: "End" })
-    await waitFor(() => expect(cursor().getAttribute("aria-valuenow")).toBe("4"))
+    await expectSettledCursor(4)
+    expect(ports.end).toHaveBeenCalledTimes(1)
     expect(track.scrollLeft).toBeGreaterThan(0)
   })
   it("disposes an active drag without navigation or an idle animation frame", () => {

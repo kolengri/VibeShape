@@ -34,8 +34,12 @@ describe("project MCP contracts", () => {
         .success,
     ).toBe(false)
     expect(
-      mcpToolInputSchema("render_preview").safeParse({ source: "model", revision: 4, projectId: a })
-        .success,
+      mcpToolInputSchema("render_preview").safeParse({
+        source: "model",
+        revision: 4,
+        projectId: a,
+        quality: "overview",
+      }).success,
     ).toBe(true)
     expect(
       localOperationSchema.safeParse({

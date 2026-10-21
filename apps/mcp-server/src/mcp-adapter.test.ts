@@ -69,6 +69,7 @@ it("delivers client-valid native preview images and withholds them after revocat
         generation: 1,
         geometryStatus: "valid",
         bodyCount: 1,
+        quality: "detail",
         image: { mimeType: "image/png", base64: png, width: 1, height: 1, views: ["front"] },
       },
     }),
@@ -96,14 +97,20 @@ it("delivers client-valid native preview images and withholds them after revocat
         .valid,
     ).toBe(true)
     expect(validate({ source: "draft", revision: 5 }).valid).toBe(false)
+    for (const quality of ["overview", "detail"])
+      expect(validate({ source: "model", revision: 4, quality }).valid).toBe(true)
+    expect(validate({ source: "model", revision: 4, quality: "high" }).valid).toBe(false)
+    expect(validate({ source: "model", revision: 4, quality: null }).valid).toBe(false)
     const request = {
       name: "render_preview",
-      arguments: { source: "model", revision: 4, views: ["front"] },
+      arguments: { source: "model", revision: 4, quality: "detail", views: ["front"] },
     }
     const rendered = CallToolResultSchema.parse(await client.callTool(request))
     expect(rendered.content).toContainEqual({ type: "image", data: png, mimeType: "image/png" })
     const structured = rendered.structuredContent?.result as { ok: boolean; value: unknown }
     expect(renderPreviewMetadataSchema.safeParse(structured.value).success).toBe(true)
+    expect(structured.value).toMatchObject({ quality: "detail" })
+    expect(rendered.content.filter(({ type }) => type === "image")).toHaveLength(1)
     expect(JSON.stringify(rendered.structuredContent)).not.toContain(png)
     paired.mockReturnValue(false)
     const revoked = CallToolResultSchema.parse(await client.callTool(request))

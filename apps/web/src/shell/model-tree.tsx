@@ -2836,6 +2836,7 @@ export function ModelTree(props: ModelTreeProps) {
       ref={browser}
       aria-label={t("ariaLabel")}
       className="min-h-0 overflow-auto border-r bg-panel p-2"
+      onKeyDown={deletion.onKeyDown}
     >
       <div className="mb-1 flex items-center gap-2 border-b px-2 pb-3 pt-1">
         <div className="min-w-0">
@@ -2864,7 +2865,6 @@ export function ModelTree(props: ModelTreeProps) {
           aria-label={t("projectFeatures")}
           onFocusCapture={updateTreeTabStop}
           onKeyDown={(event) => {
-            deletion.onKeyDown(event)
             if (event.key === "Escape") {
               props.onFeaturePreselectionChange(null)
               props.onModelTreeSelectionChange?.([])

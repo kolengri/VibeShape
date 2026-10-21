@@ -569,6 +569,41 @@ function timeline() {
 }
 
 describe("ModelTree browser search", () => {
+  for (const key of ["Delete", "Backspace"]) {
+    it(`routes ${key} from filtered results to selection confirmation and restores focus`, async () => {
+      const user = userEvent.setup()
+      const fixture = authoredInsertionController()
+      const onModelTreeSelectionChange = vi.fn()
+      const { rerenderTree } = renderTree({
+        controller: { ...fixture.controller, historyInsertion: null },
+        activeFeatureId: null,
+        modelTreeSelection: [
+          { kind: "feature", id: fixture.sourceId },
+          { kind: "feature", id: fixture.transformerId },
+        ],
+        onModelTreeSelectionChange,
+      })
+      const input = browser().getByRole("searchbox")
+      await user.type(input, "filletx")
+      await user.keyboard("{Backspace}{Delete}")
+      expect((input as HTMLInputElement).value).toBe("fillet")
+      expect(screen.queryByRole("alertdialog")).toBeNull()
+      expect(browser().getByText("1 selected item is outside these results.")).toBeTruthy()
+      await user.keyboard("{ArrowDown}")
+      const result = browser().getByRole("treeitem", { name: "Later fillet" })
+      expect(document.activeElement).toBe(result)
+      await user.keyboard(`{${key}}`)
+      const dialog = screen.getByRole("alertdialog", { name: "Delete 2 selected items?" })
+      expect(within(dialog).getByText("Later fillet")).toBeTruthy()
+      await user.click(within(dialog).getByRole("button", { name: "Keep selection" }))
+      expect(document.activeElement).toBe(result)
+      expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
+      rerenderTree({ activeFeatureId: fixture.sourceId })
+      await user.keyboard(`{${key}}`)
+      expect(screen.queryByRole("alertdialog")).toBeNull()
+    })
+  }
+
   it("disambiguates same-name History results with folders and preserves exact activation and modifier selection", async () => {
     const user = userEvent.setup()
     const fixture = authoredInsertionController()

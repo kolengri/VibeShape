@@ -7,9 +7,16 @@ The shared `model_history_state`, `undo_model` and `redo_model` tools use explic
 See [ADR-0058](adr/0058-remote-mcp-paired-browser-transport.md).
 
 `render_preview` is available on both transports. Request an exact saved model or owned CAD draft
-revision to receive a native PNG image and metadata. The default isometric/front/right/top collage
-does not alter the user's viewport. Forward image tool content to a vision-capable model; structured
-metadata alone cannot establish appearance. Read [visual inspection](../.agents/skills/vibeshape-inspection/SKILL.md#visual-inspection)
+revision to receive one native PNG image and metadata with required resolved `quality`. Start with
+`quality: "overview"` (the default): one isometric view within 768 × 576 total pixels. For small
+features or verification, use `quality: "detail"` with an exact body target and relevant views or a
+close-up. Detail defaults to the legacy isometric/front/right/top collage within 1024 × 768 total
+pixels. Either policy may produce a smaller raster under unchanged byte budgets; explicit views,
+their order, targets and cameras remain independent of quality. Rendering does not alter the user's
+viewport. The automation default intentionally changes from four views to one; old strict clients
+or servers may reject the new result field or request option, so mixed-version compatibility is not
+guaranteed. Exact measurements remain authoritative. Forward image tool content to a vision-capable
+model; structured metadata alone cannot establish appearance. Read [visual inspection](../.agents/skills/vibeshape-inspection/SKILL.md#visual-inspection)
 for exact body targeting, focused views, representation limits and complementary numeric checks.
 
 The shared tool catalog includes `create_datum_plane`/`update_datum_plane`,

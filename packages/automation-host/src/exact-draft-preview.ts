@@ -17,7 +17,7 @@ import type { AutomationHostResult } from "./host"
 export type DraftGeometryPort = Readonly<{
   renderPreview?: (
     snapshot: DocumentSnapshot,
-    options: Pick<RenderPreviewArguments, "views" | "target" | "camera">,
+    options: Pick<RenderPreviewArguments, "quality" | "views" | "target" | "camera">,
     signal?: Readonly<{ aborted: boolean }>,
   ) =>
     | PromiseLike<AutomationHostResult<Extract<RenderPreviewResult, { source: "model" }>>>
@@ -55,10 +55,11 @@ export async function renderDraftGeometry(
         issues: [],
       },
     }
-  const { views, target, camera } = renderDraftPreviewRequestSchema.parse(request)
+  const { quality, views, target, camera } = renderDraftPreviewRequestSchema.parse(request)
   return render(
     documentSnapshotSchema.parse(snapshot),
     {
+      quality: quality ?? "overview",
       ...(views ? { views } : {}),
       ...(target ? { target } : {}),
       ...(camera ? { camera } : {}),
