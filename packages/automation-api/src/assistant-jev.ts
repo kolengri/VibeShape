@@ -1,5 +1,11 @@
 import { z } from "zod"
 
+export const JEV_IMAGE_CONSTRAINTS = {
+  mimeTypes: ["image/png", "image/jpeg"],
+  maxCount: 4,
+  maxTotalBase64Bytes: 512 * 1024,
+} as const
+
 // Describe only the host URL API used here without importing DOM or Node globals.
 declare const URL: {
   new (

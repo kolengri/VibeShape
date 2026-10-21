@@ -2,6 +2,8 @@ import {
   ASSISTANT_MAX_ATTACHMENT_TOTAL_BYTES,
   ASSISTANT_MAX_ATTACHMENTS,
   type AssistantAttachment,
+  type AssistantAttachmentCapabilities,
+  assistantAttachmentsSupported,
 } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
@@ -32,7 +34,9 @@ import {
 import {
   type AssistantAttachmentDraft,
   AssistantAttachments,
+  AssistantImageAttachmentFeedback,
   readAssistantAttachment,
+  readyAssistantAttachments,
 } from "./assistant-attachments"
 import { AssistantIconAction } from "./assistant-icon-action"
 
@@ -50,7 +54,7 @@ export type AssistantComposerProps = {
   canSend: boolean
   sessionControls?: ReactNode
   feedback?: ReactNode
-  attachmentCapabilities?: { text: boolean; images: boolean }
+  attachmentCapabilities?: AssistantAttachmentCapabilities
   onCaptureView?: (() => Promise<File | null>) | undefined
   queuedMessages?: readonly AssistantQueuedMessage[]
   queuePaused?: boolean
@@ -163,7 +167,10 @@ function AssistantQueue({
 }
 
 function useAssistantSubmission(
-  props: Pick<AssistantComposerProps, "busy" | "canSend" | "onSend" | "onQueue">,
+  props: Pick<
+    AssistantComposerProps,
+    "busy" | "canSend" | "onSend" | "onQueue" | "attachmentCapabilities"
+  >,
   draft: AssistantComposerDraft,
   onAccepted: () => void,
   lock: RefObject<boolean>,
@@ -174,7 +181,7 @@ function useAssistantSubmission(
   const action = props.busy ? props.onQueue : props.onSend
   const canSubmit =
     props.canSend &&
-    assistantDraftReady(draft.text, draft.attachments) &&
+    assistantDraftReady(draft.text, draft.attachments, props.attachmentCapabilities) &&
     !pending &&
     !capture.pending &&
     Boolean(action)
@@ -185,15 +192,13 @@ function useAssistantSubmission(
       lock.current ||
       capture.lock.current ||
       !canSubmit ||
-      !assistantDraftReady(draft.text, currentFiles)
+      !assistantDraftReady(draft.text, currentFiles, props.attachmentCapabilities)
     )
       return
     if (!action) return
     lock.current = true
     setPending(true)
-    const readyAttachments = currentFiles.flatMap((file) =>
-      file.attachment ? [file.attachment] : [],
-    )
+    const readyAttachments = readyAssistantAttachments(currentFiles)
     try {
       const accepted = readyAttachments.length
         ? await action(draft.text.trim(), readyAttachments)
@@ -209,8 +214,16 @@ function useAssistantSubmission(
   return { pending, canSubmit, submit }
 }
 
-function assistantDraftReady(text: string, files: readonly AssistantAttachmentDraft[]) {
-  return Boolean(text.trim() || files.length) && files.every((file) => file.status === "ready")
+function assistantDraftReady(
+  text: string,
+  files: readonly AssistantAttachmentDraft[],
+  capabilities?: AssistantAttachmentCapabilities,
+) {
+  return (
+    Boolean(text.trim() || files.length) &&
+    files.every((file) => file.status === "ready") &&
+    (!capabilities || assistantAttachmentsSupported(readyAssistantAttachments(files), capabilities))
+  )
 }
 
 type ComposerActionsProps = Pick<
@@ -605,6 +618,10 @@ export function AssistantComposer({
           attachments={draft.attachments}
           disabled={submission.pending}
           onRemove={admissions.remove}
+        />
+        <AssistantImageAttachmentFeedback
+          capabilities={props.attachmentCapabilities}
+          attachments={draft.attachments}
         />
         <AssistantComposerFeedback
           dropActive={drop.active}

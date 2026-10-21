@@ -1,4 +1,5 @@
 import * as acp from "@agentclientprotocol/sdk"
+import { JEV_IMAGE_CONSTRAINTS } from "@vibeshape/automation-api/assistant-jev"
 import { assistantToolResultText } from "@vibeshape/automation-api/assistant-tool-targets"
 import { z } from "zod"
 import type { Configuration } from "./configuration"
@@ -8,11 +9,11 @@ import { JevFailure } from "./failure"
 import { connectMcp } from "./mcp"
 
 const photoSchema = z.object({
-  mimeType: z.enum(["image/png", "image/jpeg"]),
+  mimeType: z.enum(JEV_IMAGE_CONSTRAINTS.mimeTypes),
   data: z
     .string()
     .min(4)
-    .max(512 * 1024)
+    .max(JEV_IMAGE_CONSTRAINTS.maxTotalBase64Bytes)
     .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
 })
 export function promptContent(blocks: acp.ContentBlock[], images: boolean) {
@@ -34,8 +35,9 @@ export function promptContent(blocks: acp.ContentBlock[], images: boolean) {
   if (
     !goal.trim() ||
     Buffer.byteLength(goal) > 48_000 ||
-    photos.length > 4 ||
-    photos.reduce((sum, photo) => sum + photo.data.length, 0) > 512 * 1024
+    photos.length > JEV_IMAGE_CONSTRAINTS.maxCount ||
+    photos.reduce((sum, photo) => sum + photo.data.length, 0) >
+      JEV_IMAGE_CONSTRAINTS.maxTotalBase64Bytes
   )
     throw new Error("The prompt exceeds the Jev text or image budget.")
   return { goal, photos }

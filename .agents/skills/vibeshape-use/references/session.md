@@ -76,7 +76,10 @@ The bundled **Jev (TypeSafe)** agent and the compatible source-checkout Custom A
 same injected project attachment described above. They do not add MCP tools or permissions. Jev
 selects actions and closed parameter values; a separately configured language model supplies open
 arguments. Native Jev connections enable PNG/JPEG input without a separate opt-in. Custom CLI
-launches may disable images with `JEV_ENABLE_IMAGES=0`. The AI settings modal offers a connection
+launches may disable images with `JEV_ENABLE_IMAGES=0`. Image input is limited to four PNG/JPEG
+images and 512 KiB of base64 combined. Native chat checks this envelope before sending or queueing,
+including captured views; other ACP agents retain their advertised attachment support.
+The AI settings modal offers a connection
 test: it checks the selected Jev and configured argument providers without sending project data,
 images or CAD requests. Other ACP agents receive an initialization-only check. A successful provider
 test does not establish project MCP readiness or verify a CAD result.

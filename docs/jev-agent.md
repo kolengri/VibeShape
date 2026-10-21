@@ -46,7 +46,10 @@ Most CAD edits need this helper for dimensions and references. Jev selects the a
 fills only that action's open arguments. Configure endpoint and model together. The helper endpoint
 must use HTTPS or loopback HTTP and must not contain URL credentials, a query or fragment.
 
-PNG/JPEG input is enabled when connecting Jev, without a separate image permission.
+PNG/JPEG input is enabled when connecting Jev, without a separate image permission. The composer
+accepts at most four images within a combined 512 KiB base64 envelope (up to approximately 384 KiB
+of image files). It rejects WebP/GIF and oversize files before submission, including captured views.
+The native controller and host enforce the same limits for sent and queued turns.
 **Jev advanced settings** expose the decision budget, confidence threshold and
 provider timeout. Connecting starts the bundled ACP adapter
 only after these settings pass validation. Existing project, question, Stop and CAD authority

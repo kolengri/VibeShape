@@ -3762,6 +3762,8 @@
       "attachmentReading": "Reading {name}",
       "attachmentUnsupported": "{name}: this file type is not supported by this agent.",
       "attachmentTooLarge": "{name} exceeds the {limit} MB attachment limit.",
+      "attachmentImageLimits": "Images: {formats}. Up to {count} images, approximately {limit, number} KiB combined.",
+      "attachmentImageEnvelopeExceeded": "These images exceed the agent's limits: {formats}, up to {count} images and approximately {limit, number} KiB combined. Remove or resize an image.",
       "attachmentTooMany": "Attach up to {count} files per message.",
       "attachmentTotalTooLarge": "Attachments exceed the {limit} MB total limit.",
       "attachmentReadFailed": "Could not read {name}. Remove it and try again.",

@@ -11,6 +11,7 @@ import type {
 } from "@vibeshape/automation-api/assistant"
 import {
   assistantAgentSchema,
+  assistantAttachmentsSupported,
   assistantConnectionTestResultSchema,
   assistantConnectionTestSchema,
   assistantPromptSchema,
@@ -872,9 +873,8 @@ export function createNativeChatController({
     }
     const capabilities = state.snapshot?.attachmentCapabilities
     if (
-      attachments.some((attachment) =>
-        attachment.type === "image" ? !capabilities?.images : !capabilities?.text,
-      )
+      attachments.length &&
+      (!capabilities || !assistantAttachmentsSupported(attachments, capabilities))
     ) {
       publish({ error: "unsupported" })
       return null
@@ -932,6 +932,10 @@ export function createNativeChatController({
     const next = queued[0]
     if (!next || !promptReady()) return
     if (state.busy || state.settlingCheckpoint || state.queuePaused) return
+    if (!validPrompt(next.text, next.attachments)) {
+      publish({ queuePaused: true })
+      return
+    }
     launchPrompt(next.text, next.attachments, next)
   }
   function restoreQueued(item: QueuedPrompt | undefined, transcript = activePrompt?.transcript) {

@@ -81,7 +81,42 @@ export const assistantAttachmentsSchema = z
         0,
       ) <= ASSISTANT_MAX_ATTACHMENT_TOTAL_BYTES,
   )
-const attachmentCapabilities = z.strictObject({ text: z.boolean(), images: z.boolean() })
+const attachmentCapabilities = z.strictObject({
+  text: z.boolean(),
+  images: z.boolean(),
+  imageConstraints: z
+    .strictObject({
+      mimeTypes: z
+        .array(z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]))
+        .min(1)
+        .max(4),
+      maxCount: z.number().int().min(1).max(ASSISTANT_MAX_ATTACHMENTS),
+      maxTotalBase64Bytes: z
+        .number()
+        .int()
+        .min(4)
+        .max(16 * 1024 * 1024),
+    })
+    .optional(),
+})
+export type AssistantAttachmentCapabilities = z.infer<typeof attachmentCapabilities>
+
+export function assistantAttachmentsSupported(
+  attachments: readonly AssistantAttachment[],
+  capabilities: AssistantAttachmentCapabilities,
+) {
+  const images = attachments.filter((attachment) => attachment.type === "image")
+  if (images.length && !capabilities.images) return false
+  if (attachments.some((attachment) => attachment.type === "text") && !capabilities.text)
+    return false
+  const limits = capabilities.imageConstraints
+  return (
+    !limits ||
+    (images.length <= limits.maxCount &&
+      images.every((image) => limits.mimeTypes.includes(image.mimeType)) &&
+      images.reduce((bytes, image) => bytes + image.data.length, 0) <= limits.maxTotalBase64Bytes)
+  )
+}
 const questionField = z
   .strictObject({
     id,
