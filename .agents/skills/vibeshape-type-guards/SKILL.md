@@ -19,7 +19,7 @@ Do not create a generic `utils` package as a default destination. Domain semanti
 ## Guard Rules
 
 - Accept `unknown` unless narrowing a deliberately smaller union.
-- Return an honest predicate: every `true` result must satisfy the target at runtime.
+- Return an honest predicate in both branches: `true` must establish the target type, and `false` must safely exclude it from the declared input union. A type check combined with a narrower value condition (such as a number being positive) cannot assert the broader type. Use a boolean for value-only eligibility or a genuinely narrower type when its two-way contract holds.
 - Avoid assertions used only to force TypeScript narrowing.
 - Distinguish finite numbers from `number`; CAD parameters must reject `NaN` and infinities at boundaries.
 - Distinguish an object-shaped value from a valid ID, entity reference, topology reference, vector, or command.

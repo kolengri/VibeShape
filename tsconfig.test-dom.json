@@ -8,6 +8,9 @@
   "include": [
     "tests/unit/support/dom.ts",
     "scripts/testing/bun-test-dom.test.ts",
+    "scripts/agent-skill-links.ts",
+    "scripts/agent-skill-links.test.ts",
+    "scripts/validate-agent-skills.ts",
     "tests/site/**/*.ts"
   ],
   "exclude": []

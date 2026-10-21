@@ -48,6 +48,6 @@ installed plugins gain no project/session authority.
 
 ## Browser and completion
 
-In T3 Code, use `preview_status`, then `preview_open` if needed, and the native preview tools. Use snapshot-provided locators. Use another browser only if these tools are absent, the user selected it, or `preview_open` explicitly reports unsupported/unavailable. Elsewhere, use the host's available browser contracts. Browser tooling is optional for a pure MCP read; the person can perform consent and review in their own tab.
+In T3 Code, use `preview_status`, then `preview_open` if needed, and the native preview tools. Use snapshot-provided locators. Follow the current host's browser ownership, retry and fallback rules; a closed preview alone is not a reason to switch browsers. Elsewhere, use the host's available browser contracts. Browser tooling is optional for a pure MCP read; the person can perform consent and review in their own tab.
 
 Report the actual outcome: inspected revision, private draft, saved model, or delivered file. A successful preview is unsaved. A successful save is browser-local and is not an editable backup. Stop when the requested result is accepted or a concrete missing capability prevents it.

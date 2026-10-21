@@ -62,7 +62,7 @@ Use current library documentation through Context7 before changing shadcn, Radix
 
 - Use semantic theme tokens for foundational surfaces and CAD state; do not add ad hoc hex colors.
 - Express reusable variants with `cva`.
-- Use the single `cn` export from `@vibeshape/ui` for conditionals, variants, or caller `className` overrides.
+- Import the shared `cn` from `@vibeshape/ui/lib/cn` (`#lib/cn` inside shared UI) for conditionals, variants, or caller `className` overrides.
 - Do not concatenate Tailwind class strings or add another `cn` implementation.
 - Use static classes that Tailwind can discover; arbitrary values are reserved for computed viewport geometry.
 - Keep primitive styles colocated with the owning TSX component and theme tokens in shared CSS. Do not move ordinary component utilities into ad hoc CSS selectors.

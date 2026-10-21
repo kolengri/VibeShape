@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { validateAgentSkillLinks } from "./agent-skill-links"
 import { agentSkillBundlePath, renderAgentSkillBundle } from "./bundle-agent-skills"
 
 const repositoryRoot = join(import.meta.dir, "..")
@@ -139,6 +140,7 @@ if (!existsSync(skillsDirectory)) {
     .sort()
 
   for (const skillName of skillNames) validateSkill(skillName)
+  violations.push(...validateAgentSkillLinks(repositoryRoot))
 }
 
 try {
