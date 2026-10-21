@@ -50,6 +50,25 @@ function deferred<T = void>() {
   })
   return { promise, resolve }
 }
+async function openSettings(configuration: ReactNode) {
+  show(
+    <AssistantPanel
+      open
+      projectName="Bracket"
+      messages={[]}
+      busy={false}
+      canSend={false}
+      configuration={configuration}
+      error={null}
+      storageFailed={false}
+      onClose={() => {}}
+      onSend={async () => {}}
+      onCancel={async () => {}}
+      onReset={async () => {}}
+    />,
+  )
+  await userEvent.click(screen.getByRole("button", { name: "AI settings" }))
+}
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false)
@@ -68,6 +87,77 @@ afterEach(() => {
 })
 
 describe("assistant connection settings", () => {
+  it.each(["Jev (TypeSafe)", "Codex"])(
+    "closes settings after %s connects successfully and restores trigger focus",
+    async (agent) => {
+      const pending = deferred<boolean>()
+      const chat = {
+        connect: vi.fn().mockReturnValue(pending.promise),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      }
+      await openSettings(
+        <NativeAgentConfiguration chat={chat} connecting={false} connected={false} />,
+      )
+      await choose("Agent", agent)
+      const form = screen.getByRole("button", { name: "Connect agent" }).closest("form")
+      expect(form).toBeTruthy()
+      fireEvent.submit(form as HTMLFormElement)
+      fireEvent.submit(form as HTMLFormElement)
+      expect(chat.connect).toHaveBeenCalledTimes(1)
+      expect(screen.getByRole("dialog", { name: "AI settings" })).toBeTruthy()
+      expect(screen.getByRole("button", { name: "Connect agent" }).hasAttribute("disabled")).toBe(
+        true,
+      )
+      await act(async () => pending.resolve(true))
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "AI settings" }))
+    },
+  )
+
+  it("keeps settings and credentials after a failed connection, then closes on retry", async () => {
+    const chat = {
+      connect: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }
+    await openSettings(
+      <NativeAgentConfiguration chat={chat} connecting={false} connected={false} />,
+    )
+    await choose("Agent", "Jev (TypeSafe)")
+    fireEvent.change(screen.getByLabelText("TypeSafe API key", { exact: true }), {
+      target: { value: "retry-key" },
+    })
+    await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    expect(
+      (screen.getByLabelText("TypeSafe API key", { exact: true }) as HTMLInputElement).value,
+    ).toBe("retry-key")
+    await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(chat.connect).toHaveBeenCalledTimes(2)
+  })
+
+  it("closes API settings only after the pending connection is accepted", async () => {
+    saveApiPreferences({
+      endpoint: "https://api.example.test/v1/chat/completions",
+      model: "configured-model",
+      apiKey: "",
+      stream: true,
+    })
+    const pending = deferred<boolean>()
+    const chat = {
+      connect: vi.fn().mockReturnValue(pending.promise),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }
+    await openSettings(<ApiConfigurationForm chat={chat} busy={false} connected={false} />)
+    const connect = screen.getByRole("button", { name: "Connect and enable project access" })
+    await userEvent.click(connect)
+    fireEvent.submit(connect.closest("form") as HTMLFormElement)
+    expect(chat.connect).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    await act(async () => pending.resolve(true))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+
   it("renders each advertised configuration once and keeps the confirmed reasoning value while a change is pending", async () => {
     const pending = deferred()
     const chat = {

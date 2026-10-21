@@ -39,7 +39,9 @@ Jev's `done` is a stopping decision, not independent proof of geometric or manuf
 ## Configure and connect
 
 Open **AI settings** from the chat header. Settings open in a modal dialog; closing it preserves
-the current form and connection. Select **Agent → Jev (TypeSafe)**. Enter the TypeSafe API key and
+the current form and connection. Successfully saving and connecting closes the modal; pending or
+failed connections and settings-storage failures leave it open for correction.
+Select **Agent → Jev (TypeSafe)**. Enter the TypeSafe API key and
 Jev model. The default model is the adapter's pinned `jev-1.14.0`; selecting it does not establish
 that the provider account has access to that model.
 

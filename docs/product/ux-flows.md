@@ -61,8 +61,10 @@ or source path. Provider keys are connection-only and kept in host memory per pr
 session; only non-secret settings persist. Recovery reuses the same project's cached keys, never
 keys entered in another project. The form explains the difference between selecting CAD actions
 and completing their open parameters. Connection configuration and credentials open in an **AI settings**
-modal; closing it preserves the current form and connection. Agent-advertised mode, model, reasoning,
-collaboration and speed choices live in compact composer menus. Their chips show the confirmed selected
+modal; closing it preserves the current form and connection. Successful saving and connection close
+the modal and restore focus to its trigger. Rejected or pending connections and settings-storage
+failures keep it open for correction. Agent-advertised mode, model, reasoning, collaboration and speed
+choices live in compact composer menus. Their chips show the confirmed selected
 value; hover or keyboard focus reveals the setting name and full value. A shared pending lock prevents
 concurrent changes, and only currently advertised choices are offered. PNG/JPEG images are enabled on native
 Jev connections, including previously saved configurations, without a separate opt-in. The composer

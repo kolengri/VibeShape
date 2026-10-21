@@ -4,12 +4,13 @@ import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { type FormEvent, useId, useState } from "react"
+import { type FormEvent, useId, useRef, useState } from "react"
 import {
   AssistantConnectionTestFeedback,
   useAssistantConnectionTest,
 } from "./assistant-connection-test"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
+import { useAssistantSettingsSaved } from "./assistant-settings-dialog"
 import { agentPresetId, agentPresets } from "./connection-presets"
 import { JevAgentConfiguration } from "./jev-agent-configuration"
 import { NativeAgentActions } from "./native-agent-actions"
@@ -31,6 +32,10 @@ function parseConfiguration(command: string, args: string) {
   }
 }
 function useAgentConfiguration(chat: Connection, connected: boolean) {
+  const onSaved = useAssistantSettingsSaved()
+  const active = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [failed, setFailed] = useState(false)
   const [initial] = useState(initialConfiguration)
   const [draft, setDraft] = useState({ command: initial.command, args: initial.args })
   const [custom, setCustom] = useState(draft)
@@ -39,7 +44,7 @@ function useAgentConfiguration(chat: Connection, connected: boolean) {
   const [invalid, setInvalid] = useState(false)
   const [storageFailed, setStorageFailed] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
-  useReportActivity(disconnecting)
+  useReportActivity(disconnecting || submitting)
   const disconnect = async () => {
     setDisconnecting(true)
     try {
@@ -67,13 +72,24 @@ function useAgentConfiguration(chat: Connection, connected: boolean) {
     setInvalid(!parsed?.success)
     return parsed?.success ? parsed.data : null
   }
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (disconnecting) return
+    if (disconnecting || active.current) return
     const agent = validate()
     if (!agent) return
-    setStorageFailed(!saveAssistantPreferences({ version: 1, agent }))
-    void chat.connect(agent)
+    const saved = saveAssistantPreferences({ version: 1, agent })
+    setStorageFailed(!saved)
+    active.current = true
+    setSubmitting(true)
+    setFailed(false)
+    try {
+      if ((await chat.connect(agent)) && saved) onSaved?.()
+    } catch {
+      setFailed(true)
+    } finally {
+      active.current = false
+      setSubmitting(false)
+    }
   }
   return {
     draft,
@@ -81,6 +97,8 @@ function useAgentConfiguration(chat: Connection, connected: boolean) {
     advanced,
     invalid,
     storageFailed,
+    submitting,
+    failed,
     disconnecting,
     choose,
     edit,
@@ -104,7 +122,7 @@ export function NativeAgentConfiguration({
   const id = useId()
   const form = useAgentConfiguration(chat, connected)
   const test = useAssistantConnectionTest(chat.testConnection)
-  const pending = connecting || form.disconnecting || test.pending
+  const pending = connecting || form.disconnecting || form.submitting || test.pending
   const locked = pending || connected
   return (
     <div className="grid gap-3">
@@ -179,6 +197,11 @@ export function NativeAgentConfiguration({
           {form.invalid && (
             <p role="alert" className="text-xs text-destructive">
               {t("invalidAgent")}
+            </p>
+          )}
+          {form.failed && (
+            <p role="alert" className="text-xs text-destructive">
+              {t("errors.request-failed")}
             </p>
           )}
           {form.storageFailed && (

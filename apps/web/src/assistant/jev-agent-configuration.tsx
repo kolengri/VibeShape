@@ -7,6 +7,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { type FormEvent, useRef, useState } from "react"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
+import { useAssistantSettingsSaved } from "./assistant-settings-dialog"
 import { NativeAgentActions } from "./native-agent-actions"
 import type { createNativeChatController } from "./native-chat-controller"
 
@@ -55,6 +56,7 @@ type JevConfigurationProps = {
 }
 
 function useJevConnectionForm({ chat, connected, pending, testConnection }: JevConfigurationProps) {
+  const onSaved = useAssistantSettingsSaved()
   const [initial] = useState(initialSettings)
   const active = useRef(false)
   const formRef = useRef<HTMLFormElement>(null)
@@ -73,11 +75,14 @@ function useJevConnectionForm({ chat, connected, pending, testConnection }: JevC
     active.current = true
     setSubmitting(true)
     setFailed(false)
-    setStorageFailed(!saveAssistantPreferences({ version: 1, agent: parsed.agent }))
+    const saved = saveAssistantPreferences({ version: 1, agent: parsed.agent })
+    setStorageFailed(!saved)
     try {
-      if (await chat.connect(parsed.agent, parsed.credentials))
+      if (await chat.connect(parsed.agent, parsed.credentials)) {
         for (const input of form.querySelectorAll<HTMLInputElement>('input[type="password"]'))
           input.value = ""
+        if (saved) onSaved?.()
+      }
     } catch {
       setFailed(true)
     } finally {

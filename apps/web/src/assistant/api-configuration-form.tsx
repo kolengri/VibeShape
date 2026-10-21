@@ -2,16 +2,20 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { type FormEvent, useId, useState } from "react"
+import { type FormEvent, useId, useRef, useState } from "react"
 import { apiConfigurationSchema } from "./api-assistant-preferences"
 import { useApiAssistantSettings } from "./api-assistant-provider"
 import type { createApiChatController } from "./api-chat-controller"
+import { useAssistantSettingsSaved } from "./assistant-settings-dialog"
 import { apiPresetId, apiPresets } from "./connection-presets"
 
 type Connection = Pick<ReturnType<typeof createApiChatController>, "connect" | "disconnect">
 
 function useApiConnectionForm(chat: Connection, connected: boolean) {
   const settings = useApiAssistantSettings()
+  const onSaved = useAssistantSettingsSaved()
+  const active = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
   const [endpoint, setEndpoint] = useState(settings.configuration.endpoint)
   const [model, setModel] = useState(settings.configuration.model)
   const [apiKey, setApiKey] = useState(settings.configuration.apiKey)
@@ -20,6 +24,7 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
   const [advanced, setAdvanced] = useState(choice === "custom")
   const [custom, setCustom] = useState({ endpoint, model, stream })
   const [invalid, setInvalid] = useState(false)
+  const [failed, setFailed] = useState(false)
   const [storageFailed, setStorageFailed] = useState(false)
   const changeEndpoint = (value: string) => {
     if (value.trim() !== endpoint) setApiKey("")
@@ -42,16 +47,28 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
     setChoice("custom")
     changeEndpoint(value)
   }
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (active.current) return
     const parsed = apiConfigurationSchema.safeParse({ endpoint, model, apiKey, stream })
     if (!parsed.success) {
       setInvalid(true)
       return
     }
     setInvalid(false)
-    setStorageFailed(!settings.configure(parsed.data))
-    chat.connect(parsed.data)
+    const saved = settings.configure(parsed.data)
+    setStorageFailed(!saved)
+    active.current = true
+    setSubmitting(true)
+    setFailed(false)
+    try {
+      if ((await chat.connect(parsed.data)) && saved) onSaved?.()
+    } catch {
+      setFailed(true)
+    } finally {
+      active.current = false
+      setSubmitting(false)
+    }
   }
   return {
     endpoint,
@@ -61,7 +78,9 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
     choice,
     advanced,
     invalid,
+    failed,
     storageFailed,
+    submitting,
     submit,
     choose,
     editEndpoint,
@@ -84,13 +103,13 @@ export function ApiConfigurationForm({
   const t = useTranslations("app.assistant.api")
   const id = useId()
   const form = useApiConnectionForm(chat, connected)
-  const locked = busy || connected
+  const locked = busy || connected || form.submitting
   return (
-    <form className="grid gap-3" onSubmit={form.submit}>
+    <form className="grid gap-3" onSubmit={form.submit} aria-busy={form.submitting || undefined}>
       <SelectField
         label={t("provider")}
         value={form.choice}
-        disabled={busy}
+        disabled={busy || form.submitting}
         onValueChange={form.choose}
       >
         <SelectOption value="choose" disabled>
@@ -170,6 +189,11 @@ export function ApiConfigurationForm({
           {t("settingsNotSaved")}
         </p>
       )}
+      {form.failed && (
+        <p role="alert" className="text-sm text-destructive">
+          {t("errors.tools-unavailable")}
+        </p>
+      )}
       {connected ? (
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={chat.disconnect}>
           {t("disconnect")}
@@ -178,7 +202,8 @@ export function ApiConfigurationForm({
         <Button
           type="submit"
           size="sm"
-          disabled={busy || !form.endpoint.trim() || !form.model.trim()}
+          disabled={locked || !form.endpoint.trim() || !form.model.trim()}
+          isLoading={form.submitting}
         >
           {t("connect")}
         </Button>
