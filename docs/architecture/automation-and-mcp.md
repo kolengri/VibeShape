@@ -414,7 +414,7 @@ owned draft. Expiry, a changed document, or session closure cancels a pending re
 bounded message that can be dismissed. A request-specific UI identity prevents an old button from
 approving a later review. Only one session can own the confirmation surface at a time.
 
-Chat can initiate **Apply changes** for the exact valid disposable draft retained by its current
+Chat can initiate **Confirm changes** (the checkmark above the chat composer) for the exact valid disposable draft retained by its current
 session owner. The callback captures the displayed document, committed base, draft ID, private
 revision, and command count; replacement or changed authority rejects stale activation. It calls the
 ordinary session `commitDraft`, retaining the same manual, destructive, or connected-assistant

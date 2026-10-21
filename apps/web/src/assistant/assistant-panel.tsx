@@ -3,8 +3,10 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   AssistantThinkingIcon,
+  Box,
   Eye,
   EyeOff,
+  Layers3,
   MessageSquarePlus,
   Settings,
   Undo2,
@@ -14,6 +16,7 @@ import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useId, useState } from "react"
 import { ReviewActions } from "../automation/automation-review-actions"
+import { TaskPanelLifecycleButton } from "../components/task-panel-lifecycle-button"
 import { useReportApplicationError } from "../shell/application-notices"
 import {
   AssistantComposer,
@@ -81,22 +84,23 @@ function AssistantCheckpointActions({ checkpoint }: { checkpoint: AssistantCheck
   return (
     <>
       {onViewBefore && (
-        <Button
-          size="sm"
-          variant={checkpoint.viewingBefore ? "secondary" : "ghost"}
-          aria-pressed={Boolean(checkpoint.viewingBefore)}
+        <AssistantIconAction
+          label={t(checkpoint.viewingBefore ? "viewCurrent" : "viewBefore")}
+          pressed={Boolean(checkpoint.viewingBefore)}
           disabled={disabled}
-          onClick={onViewBefore}
+          onAction={onViewBefore}
         >
           {checkpoint.viewingBefore ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
-          {t(checkpoint.viewingBefore ? "viewCurrent" : "viewBefore")}
-        </Button>
+        </AssistantIconAction>
       )}
       {onUndoAgentChanges && (
-        <Button size="sm" variant="ghost" disabled={disabled} onClick={onUndoAgentChanges}>
+        <AssistantIconAction
+          label={t("undoAgentChanges")}
+          disabled={disabled}
+          onAction={onUndoAgentChanges}
+        >
           <Undo2 aria-hidden="true" />
-          {t("undoAgentChanges")}
-        </Button>
+        </AssistantIconAction>
       )}
     </>
   )
@@ -108,22 +112,20 @@ function AssistantDraftModes({ display }: { display: AssistantPanelProps["draftD
   return (
     <fieldset className="flex items-center gap-1">
       <legend className="sr-only">{t("assistantPreviewDisplay")}</legend>
-      <Button
-        size="sm"
-        variant={display.mode === "changes" ? "secondary" : "ghost"}
-        aria-pressed={display.mode === "changes"}
-        onClick={() => display.onChange("changes")}
+      <AssistantIconAction
+        label={t("assistantPreviewChanges")}
+        pressed={display.mode === "changes"}
+        onAction={() => display.onChange("changes")}
       >
-        {t("assistantPreviewChanges")}
-      </Button>
-      <Button
-        size="sm"
-        variant={display.mode === "result" ? "secondary" : "ghost"}
-        aria-pressed={display.mode === "result"}
-        onClick={() => display.onChange("result")}
+        <Layers3 aria-hidden="true" />
+      </AssistantIconAction>
+      <AssistantIconAction
+        label={t("assistantPreviewResult")}
+        pressed={display.mode === "result"}
+        onAction={() => display.onChange("result")}
       >
-        {t("assistantPreviewResult")}
-      </Button>
+        <Box aria-hidden="true" />
+      </AssistantIconAction>
     </fieldset>
   )
 }
@@ -152,14 +154,13 @@ function AssistantDraftActions({
     )
   if (!application || application.status === "error" || !onApplyDraft) return null
   return (
-    <Button
-      size="sm"
+    <TaskPanelLifecycleButton
+      kind="accept"
+      label={t("applyChanges")}
       disabled={busy || application.status === "applying"}
       isLoading={application.status === "applying"}
       onClick={() => onApplyDraft(application.onApply)}
-    >
-      {t("applyChanges")}
-    </Button>
+    />
   )
 }
 
@@ -189,7 +190,7 @@ function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
   return (
     <section
       aria-label={t("changeReview")}
-      className="mb-3 space-y-2 rounded-md border bg-panel-muted p-2"
+      className="shrink-0 space-y-1 border-t bg-panel-muted px-3 py-2"
     >
       <AssistantDraftCaption display={display} />
       <div className="flex flex-wrap items-center gap-1">
@@ -354,18 +355,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
             {props.configuration}
           </section>
         )}
-        <AssistantMessages
-          messages={props.messages}
-          onHighlight={props.onToolHighlight}
-          footer={
-            (!props.busy ||
-              props.draftDisplay?.review ||
-              props.draftDisplay?.application?.status === "applying") &&
-            (props.draftDisplay || hasAssistantCheckpoint(props)) ? (
-              <AssistantChangeReview props={props} />
-            ) : null
-          }
-        />
+        <AssistantMessages messages={props.messages} onHighlight={props.onToolHighlight} />
         {props.busy && (
           <div
             role="status"
@@ -376,6 +366,12 @@ export function AssistantPanel(props: AssistantPanelProps) {
             <span className="application-wordmark-ink">{t("thinking")}</span>
           </div>
         )}
+        {(!props.busy ||
+          props.draftDisplay?.review ||
+          props.draftDisplay?.application?.status === "applying") &&
+        (props.draftDisplay || hasAssistantCheckpoint(props)) ? (
+          <AssistantChangeReview props={props} />
+        ) : null}
         <AssistantComposer
           {...props}
           draft={draft}
