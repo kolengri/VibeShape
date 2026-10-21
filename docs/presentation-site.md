@@ -23,27 +23,37 @@ The site needs no API keys, hosted database, or model provider.
 
 ## Downloads and release maintenance
 
-The downloads section links to the Apple Silicon macOS DMG and to the GitHub release index for
-release notes, checksums, and source provenance. The package is ad-hoc signed and is not notarized
-by Apple; the site states this beside the download. Intel Mac, Windows, and Linux installers are
-not published. The separate OCCT source archive is not an application installer.
+The downloads section offers separate Apple Silicon macOS DMG and Windows x64 ZIP cards,
+plus the GitHub release index for release notes, checksums, and source provenance. The Mac package
+is ad-hoc signed and is not notarized by Apple. The Windows ZIP is unsigned; extract the entire
+archive into a writable local folder, keep all bundled files together, and open `VibeShape.exe`.
+Windows may show an unknown-publisher or SmartScreen warning. These disclosures appear beside
+the relevant downloads. Intel Mac and Linux installers are not published. The separate OCCT source
+archive is not an application installer.
 
-The downloads section fetches the public GitHub Releases API when mounted, independently of the
-site build. It checks the first 100 releases and selects the most recently published non-draft,
-non-prerelease `desktop-vX.Y.Z` release with an uploaded `VibeShape-X.Y.Z-mac-arm64.dmg` asset.
-Technical releases and incomplete uploads are skipped. The displayed version and download URL
-come from the same validated release; neither is pinned in the site bundle. Reloading the page
+The downloads section fetches the public GitHub Releases API once when mounted, independently of
+the site build. It validates the first 100 releases and independently selects the most recently
+published non-draft, non-prerelease `desktop-vX.Y.Z` release with each uploaded asset:
+
+- macOS: `VibeShape-X.Y.Z-mac-arm64.dmg`;
+- Windows: `VibeShape-X.Y.Z-win-x64.zip`.
+
+Each asset must have its exact expected name and GitHub download URL in this repository and tag.
+Technical releases, incomplete uploads, foreign URLs, and other architectures are skipped. Each
+platform's displayed version and URL come from the same validated release. A Windows-only
+`desktop-v0.1.10` can coexist with the Mac download from `desktop-v0.1.9`; neither platform falls
+back to the other's asset. Versions are not pinned in the site bundle. Reloading the page
 revalidates the API response, so publishing a new desktop release needs no site rebuild.
 
-Until a release resolves, the action opens the GitHub release listing and shows no version.
-That fallback remains available on network errors, API rate limits, an invalid response, an
-eight-second timeout, or no matching installer within the first 100 releases. The browser calls
+Until a platform's release resolves, its action opens the GitHub release listing and shows no
+version. Each fallback remains available on network errors, API rate limits, an invalid response,
+an eight-second timeout, or no matching asset within the first 100 releases. The browser calls
 GitHub without credentials or API tokens; there is no proxy, polling, or persistent release cache.
 The bundled Zod MIT notice is shipped at `third-party/zod-MIT.txt`.
 
-To publish a desktop update, publish a stable `desktop-vX.Y.Z` GitHub release and upload its
-`VibeShape-X.Y.Z-mac-arm64.dmg` asset. Verify the published asset and reload the site's downloads
-section to check that its version and link match. Routine releases need no edits to site links,
+To publish a desktop update, publish a stable `desktop-vX.Y.Z` GitHub release and upload one or both
+platform assets using the names above. Verify the published assets and reload the site's downloads
+section to check each platform's version and link. Routine releases need no edits to site links,
 catalogs, or browser-test fixtures and no site deployment. Changes to the tag or asset naming
 contract, supported platforms, or signing status require the corresponding site code, copy,
 tests, and deployment to be updated.

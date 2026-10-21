@@ -23,6 +23,6 @@ export async function createWindowsArchive(input: {
   if (result.status !== 0)
     throw new Error(`Windows ZIP creation failed: ${result.error ?? result.stderr}`)
   const digest = distributionHash(await readFile(zip))
-  await writeFile(join(input.output, "SHA256SUMS"), `${digest}  ${fileName}\n`)
+  await writeFile(join(input.output, "SHA256SUMS-win-x64"), `${digest}  ${fileName}\n`)
   return { zip, digest }
 }

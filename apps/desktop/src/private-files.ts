@@ -3,16 +3,55 @@ import { closeSync, constants, fchmodSync, fstatSync, mkdirSync, openSync } from
 import { open } from "node:fs/promises"
 import { join } from "node:path"
 import { promisify } from "node:util"
+import { z } from "zod"
 
 const privateFileError = "Native workflows require a private file owned by this user."
 const execute = promisify(execFile)
+
+const windowsFailureSchema = z.object({
+  code: z
+    .union([
+      z.number().int(),
+      z.enum([
+        "unknown",
+        "ENOENT",
+        "EACCES",
+        "EPERM",
+        "ETIMEDOUT",
+        "EPIPE",
+        "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+      ]),
+    ])
+    .catch("unknown")
+    .optional(),
+  killed: z.boolean().optional(),
+  stderr: z.string().max(131072).optional(),
+})
+
+/** Only fixed process metadata may cross the credential-reader diagnostic boundary. */
+export class WindowsPrivateFileReadError extends Error {
+  constructor(error: unknown) {
+    const failure = windowsFailureSchema.safeParse(error)
+    const detail = failure.success ? failure.data : null
+    const markers = [
+      ...(detail?.stderr?.matchAll(/VIBESHAPE_PRIVATE:(compile|resolved|operation|complete)/g) ??
+        []),
+    ]
+    const stage = markers.at(-1)?.[1] ?? "not-started"
+    const status = detail?.killed ? "terminated" : (detail?.code ?? "unknown")
+    super(`${privateFileError} Windows reader status=${status}, stage=${stage}.`)
+  }
+}
 
 // Keep paths and file contents out of executable text. Windows PowerShell 5.1 is OS-provided.
 // Native handles bind ACL inspection and reading to the same non-reparse filesystem object.
 const windowsScript = `
 $ErrorActionPreference = 'Stop'
 try {
-  Add-Type -TypeDefinition @'
+  [Console]::Error.WriteLine('VIBESHAPE_PRIVATE:compile')
+  $addType = Get-Command 'Microsoft.PowerShell.Utility\\Add-Type' -ErrorAction Stop
+  [Console]::Error.WriteLine('VIBESHAPE_PRIVATE:resolved')
+  & $addType -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.IO;
@@ -165,6 +204,7 @@ public static class VibeShapePrivateFiles {
   }
 }
 '@
+  [Console]::Error.WriteLine('VIBESHAPE_PRIVATE:operation')
   $path = [Environment]::GetEnvironmentVariable('VIBESHAPE_PRIVATE_PATH')
   if ($env:VIBESHAPE_PRIVATE_OPERATION -eq 'prepare') {
     [VibeShapePrivateFiles]::Prepare($path)
@@ -173,6 +213,7 @@ public static class VibeShapePrivateFiles {
   } elseif ($env:VIBESHAPE_PRIVATE_OPERATION -eq 'write') {
     [VibeShapePrivateFiles]::Write($path, [Console]::OpenStandardInput(), [int]$env:VIBESHAPE_PRIVATE_LIMIT)
   } else { throw 'Unsupported private-file operation.' }
+  [Console]::Error.WriteLine('VIBESHAPE_PRIVATE:complete')
 } catch {
   [Console]::Error.WriteLine('Windows private-file protection failed.')
   exit 1
@@ -262,10 +303,14 @@ export async function readPrivateFile(path: string, maximum: number): Promise<Bu
   if (process.platform === "win32") {
     const { executable, options } = windowsOperation("read", path, maximum)
     try {
-      const { stdout } = await execute(executable, windowsArguments, options)
+      const pending = execute(executable, windowsArguments, options)
+      // Reads consume no input, including when launched by a long-lived stdio MCP client.
+      pending.child.stdin?.on("error", () => {})
+      pending.child.stdin?.end()
+      const { stdout } = await pending
       return Buffer.from(stdout, "base64")
-    } catch {
-      throw new Error(privateFileError)
+    } catch (error) {
+      throw new WindowsPrivateFileReadError(error)
     }
   }
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
