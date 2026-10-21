@@ -221,6 +221,20 @@ function planarReference(reference: EdgeTopoRef | BodyTopoRef) {
   )
 }
 
+function circularOffsetReference(reference: EdgeTopoRef | BodyTopoRef, values: TreatmentValues) {
+  const signature = reference.signature
+  return (
+    values.mode === "equal-distance" &&
+    values.measurement === "offset" &&
+    reference.kind === "edge" &&
+    signature.geometryClass === "CIRCLE" &&
+    signature.boundaryCount === 0 &&
+    signature.adjacentGeometryClasses.length === 2 &&
+    signature.adjacentGeometryClasses.includes("PLANE") &&
+    signature.adjacentGeometryClasses.includes("CYLINDRE")
+  )
+}
+
 function selectionIssue(
   values: TreatmentValues,
   v3: boolean,
@@ -231,7 +245,7 @@ function selectionIssue(
   const references = treatmentReferences(values, v3)
   if (!references.length || references.length > 256) return copy.missingEdge
   for (const reference of references) {
-    const issue = selectedReferenceIssue(reference, v3, candidates, copy)
+    const issue = selectedReferenceIssue(reference, v3, candidates, copy, values)
     if (issue) return issue
   }
   return undefined
@@ -242,12 +256,15 @@ function selectedReferenceIssue(
   v3: boolean,
   candidates: readonly EdgeTreatmentCandidate[],
   copy: TreatmentValidationCopy,
+  values: TreatmentValues,
 ) {
   const issue = referenceIssue(reference, candidates, copy)
   if (issue) return issue
   if (!v3) return undefined
   if (reference.schemaVersion !== 1) return copy.missingCatalogue
-  return planarReference(reference) ? undefined : copy.planarOnly
+  return planarReference(reference) || circularOffsetReference(reference, values)
+    ? undefined
+    : copy.planarOnly
 }
 
 function planarCandidateIssue(
