@@ -23,6 +23,30 @@ const sessionId = sessionIdSchema.parse(uuid(2))
 const issuedAt = "2026-10-21T00:00:00Z"
 const actor = { type: "user", userId: null } as const
 
+async function rejectUnorderedNavigation(
+  database: VibeShapeDatabase,
+  repository: VersionedLocalDocumentRepository,
+) {
+  const project = await database.projectsV1.get(documentId)
+  if (!project?.navigation) throw new Error("Missing saved navigation fixture.")
+  await database.projectsV1.put({
+    ...project,
+    navigation: { ...project.navigation, undo: project.navigation.undo.slice().reverse() },
+  })
+  database.close()
+  await database.open()
+  const rejected = await repository.recoverAuthority(documentId)
+  requireEvidence(
+    !rejected.ok && rejected.diagnostic.code === "corrupt-history",
+    "Reopen exposed unordered saved navigation.",
+  )
+  await database.projectsV1.put(project)
+  requireEvidence(
+    value(await repository.recoverAuthority(documentId)).snapshot.revision === project.headRevision,
+    "Navigation validation changed the saved model head.",
+  )
+}
+
 /** Real IndexedDB evidence; the browser runner imports this fixture through Vite. */
 export async function durableNavigationEvidence(name: string, preserveForRestart = false) {
   let database = new VibeShapeDatabase(name)
@@ -95,6 +119,7 @@ export async function durableNavigationEvidence(name: string, preserveForRestart
       recovered.navigation?.undo.length === 125 && recovered.navigation.redo.length === 0,
       "Reopen lost durable Undo boundaries.",
     )
+    await rejectUnorderedNavigation(database, repository)
     // Historical cache loss and checksum damage are repaired from the verified journal.
     await database.snapshotsV1.delete([documentId, 1])
     const second = await database.snapshotsV1.get([documentId, 2])

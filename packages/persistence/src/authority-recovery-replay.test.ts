@@ -409,7 +409,9 @@ it("resolves nested baselines larger than the entire snapshot-cache budget witho
       snapshotReads: fixture.reads.snapshots,
     }),
   )
-}, 30000)
+  // The real >32 MiB fixture exceeded 30 seconds alongside native suites in CI.
+  // Read-count assertions above enforce replay work independently of this timeout.
+}, 90000)
 
 it("bridges a corrupt older journal segment with a later verified checkpoint without losing target availability", async () => {
   const journal = nestedJournal(false, 12)

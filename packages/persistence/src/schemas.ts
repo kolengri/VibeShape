@@ -230,6 +230,19 @@ const entrySchema = z
   .strict()
   .refine(({ before, after }) => before < after)
 
+function orderedNavigationEntries(
+  entries: readonly z.infer<typeof entrySchema>[],
+  direction: "undo" | "redo",
+) {
+  return entries.every((entry, index) => {
+    const previous = entries[index - 1]
+    return (
+      previous === undefined ||
+      (direction === "undo" ? previous.after <= entry.before : entry.after <= previous.before)
+    )
+  })
+}
+
 /** Publication boundaries are explicit; legacy event transaction IDs are not inferred. */
 export const documentNavigationSchema = z
   .object({
@@ -238,6 +251,13 @@ export const documentNavigationSchema = z
     redo: z.array(entrySchema),
   })
   .strict()
+  .refine(
+    ({ undo, redo }) =>
+      orderedNavigationEntries(undo, "undo") &&
+      orderedNavigationEntries(redo, "redo") &&
+      (undo.at(-1)?.after ?? 0) <= (redo.at(-1)?.before ?? Number.MAX_SAFE_INTEGER),
+    "Navigation boundaries must be ordered and non-overlapping.",
+  )
 export type DocumentNavigation = z.infer<typeof documentNavigationSchema>
 
 export const projectRecordV1Schema = z
