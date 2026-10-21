@@ -5,6 +5,7 @@ import { Readable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import { gt, parse, valid } from "semver"
 import { z } from "zod"
+import { desktopArtifactName } from "./desktop-platform"
 import { publishVerifiedUpdate } from "./update-publication"
 
 const repositoryUrl = "https://github.com/kolengri/VibeShape"
@@ -52,8 +53,9 @@ const releaseSchema = z
   .superRefine((release, context) => {
     const tag = `desktop-v${release.version}`
     const names = [
-      `VibeShape-${release.version}-mac-arm64.dmg`,
-      `VibeShape-${release.version}-mac-x64.dmg`,
+      desktopArtifactName(release.version, "arm64", "darwin"),
+      desktopArtifactName(release.version, "x64", "darwin"),
+      desktopArtifactName(release.version, "x64", "win32"),
     ]
     if (
       !names.includes(release.fileName) ||
@@ -226,13 +228,17 @@ async function readMetadata(response: Response, signal: AbortSignal): Promise<un
   }
 }
 
-function desktopReleaseCandidate(candidate: unknown, arch: "arm64" | "x64"): DesktopRelease | null {
+function desktopReleaseCandidate(
+  candidate: unknown,
+  arch: "arm64" | "x64",
+  platform: NodeJS.Platform,
+): DesktopRelease | null {
   const parsed = githubReleaseSchema.safeParse(candidate)
   if (!parsed.success || parsed.data.draft || parsed.data.prerelease) return null
   const release = parsed.data
   const version = stableVersionSchema.safeParse(release.tag_name.slice("desktop-v".length))
   if (!version.success) return null
-  const expectedName = `VibeShape-${version.data}-mac-${arch}.dmg`
+  const expectedName = desktopArtifactName(version.data, arch, platform)
   for (const candidateAsset of release.assets) {
     const asset = githubAssetSchema.safeParse(candidateAsset)
     if (!asset.success || asset.data.name !== expectedName) continue
@@ -249,7 +255,12 @@ function desktopReleaseCandidate(candidate: unknown, arch: "arm64" | "x64"): Des
   return null
 }
 
-function selectRelease(metadata: unknown, currentVersion: string, arch: "arm64" | "x64") {
+function selectRelease(
+  metadata: unknown,
+  currentVersion: string,
+  arch: "arm64" | "x64",
+  platform: NodeJS.Platform,
+) {
   const releases = githubReleasesSchema.safeParse(metadata)
   if (!releases.success)
     throw new DesktopUpdateError(
@@ -258,7 +269,7 @@ function selectRelease(metadata: unknown, currentVersion: string, arch: "arm64" 
     )
   let selected: DesktopRelease | null = null
   for (const candidate of releases.data) {
-    const release = desktopReleaseCandidate(candidate, arch)
+    const release = desktopReleaseCandidate(candidate, arch, platform)
     if (
       release !== null &&
       gt(release.version, currentVersion) &&
@@ -402,7 +413,10 @@ async function writeVerifiedDownload(
 }
 
 /** Creates the update service at its HTTP transport boundary; policies never depend on adapter URLs. */
-export function createDesktopUpdateClient(transport: DesktopUpdateTransport) {
+export function createDesktopUpdateClient(
+  transport: DesktopUpdateTransport,
+  platform: NodeJS.Platform = process.platform,
+) {
   return {
     async findDesktopUpdate(
       currentVersion: string,
@@ -415,6 +429,7 @@ export function createDesktopUpdateClient(transport: DesktopUpdateTransport) {
       if (arch !== "arm64" && arch !== "x64") {
         throw new Error("The desktop architecture is unsupported.")
       }
+      desktopArtifactName(currentVersion, arch, platform)
       const boundedSignal = operationSignal(signal, 15_000)
       boundedSignal.throwIfAborted()
       const response = await requestUpdate(transport, releasesUrl, {
@@ -434,7 +449,12 @@ export function createDesktopUpdateClient(transport: DesktopUpdateTransport) {
           `Desktop update check failed (HTTP ${response.status}).`,
         )
       }
-      return selectRelease(await readMetadata(response, boundedSignal), currentVersion, arch)
+      return selectRelease(
+        await readMetadata(response, boundedSignal),
+        currentVersion,
+        arch,
+        platform,
+      )
     },
     async downloadDesktopUpdate(
       release: DesktopRelease,

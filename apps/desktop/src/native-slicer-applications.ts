@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
-import { constants, type Stats } from "node:fs"
-import { access, mkdir, open, realpath, rename, rm, stat } from "node:fs/promises"
-import { basename, dirname, isAbsolute, join } from "node:path"
+import { constants } from "node:fs"
+import { access, realpath, rename, rm, stat } from "node:fs/promises"
+import { basename, dirname, extname, isAbsolute, join } from "node:path"
 import { resolveSlicerExecutable, slicerNames } from "@vibeshape/slicer-bridge/native"
 import {
   nativeCustomSlicerIdSchema,
@@ -10,6 +10,7 @@ import {
 import { slicerIdSchema } from "@vibeshape/slicer-handoff/protocol"
 import { z } from "zod"
 import type { NativeSlicerApplication } from "./native-slicer-launcher"
+import { preparePrivateDirectory, readPrivateFile, writePrivateFile } from "./private-files"
 
 const customApplicationSchema = z.strictObject({
   id: nativeCustomSlicerIdSchema,
@@ -35,6 +36,8 @@ async function inspectSlicerApplication(path: string) {
   if (!isAbsolute(path)) return null
   const canonical = await realpath(path).catch(() => null)
   if (!canonical) return null
+  // Windows X_OK checks existence; shell-free launches require an executable target.
+  if (process.platform === "win32" && extname(canonical).toLowerCase() !== ".exe") return null
   const metadata = await stat(canonical)
   if (canonical.endsWith(".app") && metadata.isDirectory()) {
     if (!(await stat(join(canonical, "Contents/Info.plist")).catch(() => null))?.isFile())
@@ -43,41 +46,19 @@ async function inspectSlicerApplication(path: string) {
   }
   return (await isExecutable(canonical)) ? { path: canonical, kind: "executable" as const } : null
 }
-function isOwnedRegistryFile(details: Stats) {
-  return (
-    details.isFile() &&
-    details.size <= 65536 &&
-    (details.mode & 0o077) === 0 &&
-    (!process.getuid || details.uid === process.getuid())
-  )
-}
 async function readRegistry(path: string) {
-  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => null)
-  if (!file) return []
   try {
-    const details = await file.stat()
-    if (!isOwnedRegistryFile(details)) return []
-    const buffer = Buffer.alloc(65537)
-    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0)
-    if (bytesRead !== details.size || bytesRead > 65536) return []
-    return registrySchema.parse(JSON.parse(buffer.subarray(0, bytesRead).toString("utf8")))
+    const buffer = await readPrivateFile(path, 65536)
+    return registrySchema.parse(JSON.parse(buffer.toString("utf8")))
   } catch {
     return []
-  } finally {
-    await file.close()
   }
 }
 async function writeRegistry(path: string, applications: z.infer<typeof registrySchema>) {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 })
+  preparePrivateDirectory(dirname(path))
   const temporary = `${path}.${randomUUID()}.tmp`
   try {
-    const file = await open(temporary, "wx", 0o600)
-    try {
-      await file.writeFile(JSON.stringify(registrySchema.parse(applications)))
-      await file.sync()
-    } finally {
-      await file.close()
-    }
+    await writePrivateFile(temporary, JSON.stringify(registrySchema.parse(applications)))
     await rename(temporary, path)
   } finally {
     await rm(temporary, { force: true })
@@ -108,7 +89,7 @@ export function createNativeSlicerApplications(options: {
       slicerIdSchema.options.map(async (id) => {
         const executable = await (options.resolve ?? resolveSlicerExecutable)({
           slicerId: id,
-          environment: { PATH: (options.env ?? process.env).PATH ?? "" },
+          environment: options.env ?? process.env,
           pathIsExecutable: isExecutable,
         })
         if (!executable) return null
@@ -135,7 +116,7 @@ export function createNativeSlicerApplications(options: {
         ...application,
         id: `custom-${randomUUID()}`,
         name: basename(application.path)
-          .replace(/\.app$/, "")
+          .replace(/\.(app|exe)$/i, "")
           .slice(0, 120),
       }
       const validated = customApplicationSchema.parse(added)

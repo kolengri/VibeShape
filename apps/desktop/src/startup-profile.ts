@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs"
 import { reportDesktopStartupFailure } from "./editor-load-error"
+import { preparePrivateDirectory } from "./private-files"
 
 /** Configure userData before Electron readiness, or report the failure before any host starts. */
 export function initializeDesktopProfile(
@@ -11,7 +12,8 @@ export function initializeDesktopProfile(
   },
 ) {
   try {
-    mkdirSync(path, { recursive: true })
+    if (process.platform === "win32") preparePrivateDirectory(path)
+    else mkdirSync(path, { recursive: true })
     options.setUserDataPath(path)
     return true
   } catch (error) {

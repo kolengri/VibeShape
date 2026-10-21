@@ -93,7 +93,7 @@ async function fixture(handler: (url: string, response: ServerResponse) => void)
     await rm(directory, { recursive: true, force: true })
   })
   return {
-    client: createDesktopUpdateClient(transport),
+    client: createDesktopUpdateClient(transport, "darwin"),
     directory,
     destination: join(directory, "update.dmg"),
     requests,
@@ -113,7 +113,7 @@ describe("desktop release selection", () => {
     const cause = new TypeError("Private transport diagnostic")
     const client = createDesktopUpdateClient(async () => {
       throw cause
-    })
+    }, "darwin")
     await expect(client.findDesktopUpdate("1.0.0", "arm64")).rejects.toMatchObject({
       name: "DesktopUpdateError",
       failure: { kind: "network" },
@@ -124,7 +124,7 @@ describe("desktop release selection", () => {
     const cancelled = createDesktopUpdateClient(async () => {
       controller.abort(abort)
       throw abort
-    })
+    }, "darwin")
     await expect(cancelled.findDesktopUpdate("1.0.0", "arm64", controller.signal)).rejects.toBe(
       abort,
     )

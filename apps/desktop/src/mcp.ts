@@ -24,7 +24,7 @@ async function attach() {
   })
   const relay = createMcpRelay(remote, stdio, () => {
     process.stderr.write(
-      "VibeShape MCP disconnected. Keep the Mac app open and reconnect using its Settings configuration.\n",
+      "VibeShape MCP disconnected. Keep the desktop app open and reconnect using its Settings configuration.\n",
     )
     process.exitCode = 1
   })
@@ -37,7 +37,7 @@ async function attach() {
 
 void attach().catch(() => {
   process.stderr.write(
-    "VibeShape MCP could not attach. Open the Mac app and copy its MCP configuration from Settings.\n",
+    "VibeShape MCP could not attach. Open the desktop app and copy its MCP configuration from Settings.\n",
   )
   process.exitCode = 1
 })
