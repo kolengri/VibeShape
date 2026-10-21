@@ -403,6 +403,7 @@ function ToolbarCommandDropdown({
                 aria-label={label}
                 aria-current={hasActiveCommand ? "true" : undefined}
                 data-toolbar-menu={focusId}
+                dropdown
               >
                 <Icon aria-hidden="true" />
               </Button>
