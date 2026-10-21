@@ -145,7 +145,6 @@ export function createAssistantSessionPreferences(path?: string) {
     }
     const destination = path
     const pending = writing
-      .catch(() => undefined)
       .then(async () => {
         preparePrivateDirectory(dirname(destination))
         const temporary = `${destination}.${crypto.randomUUID()}.tmp`
@@ -156,6 +155,8 @@ export function createAssistantSessionPreferences(path?: string) {
           await rm(temporary, { force: true })
         }
       })
+      // Disk persistence cannot invalidate an accepted provider setting or its in-memory choice.
+      .catch(() => undefined)
     writing = pending
     return pending
   }

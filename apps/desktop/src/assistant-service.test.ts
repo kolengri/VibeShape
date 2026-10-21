@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type {
@@ -587,6 +587,29 @@ describe("native accepted settings reconnect", () => {
         .slice(start)
         .filter((event) => event.type === "snapshot" && event.snapshot.status === "ready"),
     ).toHaveLength(1)
+  })
+
+  it("keeps applied runtime choices when profile writes fail and retries persistence", async () => {
+    const context = await host()
+    await mkdir(context.preferencesPath, { mode: 0o700 })
+    const session = ready(await context.connect("reconnect"))
+    expect(sessionValues(await chooseSessionSettings(context, session))).toEqual(selected)
+    const project = ready(await context.connect("reconnect", "other-project"))
+    expect(sessionValues(project)).toEqual(selected)
+
+    await rm(context.preferencesPath, { recursive: true })
+    const updated = ready(
+      await context.service.handle({
+        operation: "setConfigOption",
+        input: { ...scope(project), configId: "detail", value: "terse" },
+      }),
+    )
+    expect(sessionValues(updated)).toEqual({ ...selected, detail: "terse" })
+    await context.restart()
+    expect(sessionValues(ready(await context.connect("reconnect", "third-project")))).toEqual({
+      ...selected,
+      detail: "terse",
+    })
   })
 
   it("rejects an unsupported persisted runtime choice before another project becomes ready", async () => {

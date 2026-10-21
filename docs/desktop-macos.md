@@ -129,6 +129,9 @@ The desktop profile stores only validated accepted runtime choices in a private,
 bounded to 64 KiB and 128 agent configurations. Missing, unreadable or malformed preference files
 restore no choices. Stale responses cannot overwrite a replacement session, and reconnecting does
 not replay modeling commands.
+Preference writes are best-effort: a disk failure does not turn an already-applied agent setting
+into a failed request. Accepted choices remain available across projects in the running host;
+they survive restart only after a successful save. A later settings change retries persistence.
 Temporary failures of the embedded ACP or its project automation connection trigger up to five
 automatic recovery attempts with backoff. The chat shows recovery progress; after exhaustion it
 offers an explicit retry. Stop, Disconnect, revoked access, authentication requirements and permanent
