@@ -760,6 +760,41 @@ describe("assistant draft preview display", () => {
 })
 
 describe("GeometryViewport", () => {
+  it("selects section planes with labeled radio tiles and recenters the cut on the model", async () => {
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const rendered = renderViewport(controller)
+    await userEvent.click(screen.getByRole("button", { name: "Section view" }))
+    const xy = screen.getByRole("radio", { name: "XY plane, normal Z" }) as HTMLInputElement
+    expect(xy.checked).toBe(true)
+    // Plane choice is available before enabling sectioning.
+    await userEvent.click(screen.getByRole("radio", { name: "YZ plane, normal X" }))
+    expect(rendered.port.setSection).toHaveBeenLastCalledWith(null)
+    await userEvent.click(screen.getByRole("checkbox", { name: "Enable section view" }))
+    expect(rendered.port.setSection).toHaveBeenLastCalledWith({
+      axis: "x",
+      offset: 10,
+      flipped: false,
+    })
+    await userEvent.click(screen.getByRole("checkbox", { name: "Keep the opposite side" }))
+    await userEvent.click(screen.getByRole("radio", { name: "XZ plane, normal Y" }))
+    expect(rendered.port.setSection).toHaveBeenLastCalledWith({
+      axis: "y",
+      offset: 10,
+      flipped: true,
+    })
+    await userEvent.click(xy)
+    expect(rendered.port.setSection).toHaveBeenLastCalledWith({
+      axis: "z",
+      offset: 0,
+      flipped: true,
+    })
+    await userEvent.keyboard("{Escape}")
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Section view" }))
+  })
+
   it("retains Section clipping through orbit reference picking and feature previews", async () => {
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],

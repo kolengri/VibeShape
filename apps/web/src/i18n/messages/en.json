@@ -2485,11 +2485,12 @@
     "sectionView": {
       "title": "Section view",
       "enabled": "Enable section view",
-      "axis": "Section normal axis",
+      "axis": "Section plane",
+      "planeLabel": "{plane} plane, normal {axis}",
       "offset": "Section offset (mm)",
       "invalid": "Enter a finite offset between −100,000 and 100,000 mm.",
       "flip": "Keep the opposite side",
-      "description": "View only. Cut surfaces are open; modeling history and exported geometry stay unchanged.",
+      "description": "View only. The grid marks cut material; cavities stay open. History and exports are unchanged.",
       "dragHint": "Drag the plane handle to move the section."
     },
     "mirror": {

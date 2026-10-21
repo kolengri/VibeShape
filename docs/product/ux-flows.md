@@ -650,11 +650,14 @@ ticks. Their label offsets follow current geometry, including an in-flight drag 
 projection; moving the text does not change the driving value or authored expression.
 
 The **Section view** icon beside the standard-view selector opens enable, plane, offset, and flip
-controls. Its accessible name and tooltip identify the icon, and its active state remains visible.
+controls. XY, XZ, and YZ icon tiles select the plane with native radio keyboard behavior; changing
+planes recenters the offset on the model. Its accessible name and tooltip identify the icon, and
+its active state remains visible.
 Drag the plane's viewport handle along its projected normal to change the same offset; numeric input
 is the keyboard equivalent. Pointer capture prevents accidental orbiting, and Escape or pointer
 cancellation restores the starting offset. Closed render meshes receive derived solid cut caps with
-hole preservation. Open, nonmanifold, intersecting, or over-budget contours conservatively omit caps.
+a zoom-adaptive diagonal grid and hole preservation. Open, nonmanifold, intersecting, or over-budget
+contours conservatively omit caps.
 Sectioning changes no authored geometry, revision, or export. Closing the control panel returns focus
 to its trigger. Starting Fillet, Chamfer, Shell, Hole or another orbitable reference-picking task
 retains the active section. Reference points, curves and face candidates respect the same clipping
