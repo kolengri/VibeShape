@@ -3793,7 +3793,8 @@
         "permission-expired": "The permission request expired. Ask the agent to try again.",
         "request-failed": "The agent request failed. Reconnect and try again.",
         "timeout": "The agent did not respond in time. Stop it or reconnect.",
-        "mcp-client-conflict": "Another MCP client is attached to VibeShape. Disconnect it before connecting this agent."
+        "mcp-client-conflict": "Another MCP client is attached to VibeShape. Disconnect it before connecting this agent.",
+        "jev-configuration-required": "Enter a TypeSafe API key in the Jev settings, then connect again."
       },
       "api": {
         "label": "Direct user API",
@@ -3848,7 +3849,26 @@
         "claude": "Claude Code",
         "codex": "Codex",
         "opencode": "OpenCode",
-        "custom": "Custom ACP agent"
+        "custom": "Custom ACP agent",
+        "jev": "Jev (TypeSafe)"
+      },
+      "jev": {
+        "settings": "Jev settings",
+        "description": "Jev selects CAD actions through TypeSafe. Its bundled adapter runs locally and uses the current project connection.",
+        "model": "Jev model",
+        "apiKey": "TypeSafe API key",
+        "keyNotice": "Keys stay in memory for this app session. Leave blank to reuse a key from this session or the app environment. They are not saved with chat or settings.",
+        "argumentModel": "Argument model",
+        "argumentNotice": "Most CAD edits need a separate model to fill dimensions and references. Configure an OpenAI-compatible endpoint and model together.",
+        "endpoint": "Argument model endpoint",
+        "helperModel": "Argument model name",
+        "helperKey": "Argument model API key",
+        "advanced": "Jev advanced settings",
+        "images": "Allow PNG and JPEG images to be sent to Jev",
+        "maxSteps": "Decisions per turn",
+        "minConfidence": "Minimum decision confidence",
+        "timeoutMs": "Provider timeout (ms)",
+        "invalid": "Check the model and limits. Set both the argument endpoint and model, using HTTPS or local HTTP without embedded credentials."
       }
     }
   }

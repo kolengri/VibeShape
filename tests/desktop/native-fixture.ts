@@ -45,7 +45,7 @@ export async function createNativeFixture(
       .object({ version: z.string() })
       .parse(JSON.parse(await readFile(join(nativeTestRoot, "apps/desktop/package.json"), "utf8")))
     await mkdir(join(directory, "dist"), { recursive: true })
-    for (const name of ["preload.cjs", "mcp.cjs"])
+    for (const name of ["preload.cjs", "mcp.cjs", "jev.cjs"])
       await cp(join(nativeTestRoot, "apps/desktop/dist", name), join(directory, "dist", name))
     await writeFile(
       join(directory, "package.json"),

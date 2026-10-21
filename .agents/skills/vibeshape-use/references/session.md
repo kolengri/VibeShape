@@ -8,6 +8,12 @@ List tools and resources. Read `vibeshape://session` for the actual `editorUrl` 
 
 ## Native desktop application
 
+The native chat offers **Jev (TypeSafe)** as a separate bundled agent. Its settings distinguish the
+TypeSafe decision model from an optional OpenAI-compatible argument model. No external Bun or
+custom executable path is required for this choice. API keys are entered in native settings and
+kept only for the app session; never request them in chat or add them to project files. It uses the
+same project-bound MCP attachment and authority rules as other embedded agents.
+
 For an already open macOS or Windows app, use **Settings → Connections → Connect an MCP client** and copy its
 configuration. The bundled Electron stdio forwarder attaches to the app's existing editor and storage
 origin; no external Bun or Node runtime is needed. Keep absolute Windows executable, runtime and
@@ -63,12 +69,12 @@ revokes that project's access and keeps it disabled across reload or reopening u
 chooses **Enable AI session**. Reconnecting the ACP process does not undo Stop. No tool can change
 the approval mode or restore a stopped connection.
 
-## Experimental Jev ACP client
+## Jev ACP client
 
-The optional source-checkout Jev controller connects through the native app's custom ACP executable
-setting and the same injected project attachment described above. It does not add MCP tools or
-permissions. It selects actions and closed parameter values with Jev; a separately configured
-language model supplies open arguments. Images require an explicit experimental opt-in.
+The bundled **Jev (TypeSafe)** agent and the compatible source-checkout Custom ACP launch use the
+same injected project attachment described above. They do not add MCP tools or permissions. Jev
+selects actions and closed parameter values; a separately configured language model supplies open
+arguments. Images require an explicit experimental opt-in.
 Manual-review calls use a separate client horizon of about 24.8 days, bypassing the short provider
 and ordinary-operation timeout. Stop and the server's authority, liveness and proposal expiry still
 apply; this client horizon does not extend consent or guarantee that a review remains available.

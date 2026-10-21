@@ -37,7 +37,7 @@ calibration before claiming a verified compliant fit.
 
 ## Optional local installation
 
-The optional source-checkout [Jev ACP controller](jev-agent.md) reads this existing operator pack
+The built-in native [Jev ACP controller](jev-agent.md) reads this existing operator pack
 through its injected MCP connection. Its TypeSafe coding skill supplies API implementation guidance;
 it does not replace these modeling workflows or grant CAD authority.
 

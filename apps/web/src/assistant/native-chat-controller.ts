@@ -9,10 +9,12 @@ import type {
   AssistantSnapshot,
 } from "@vibeshape/automation-api/assistant"
 import {
+  assistantAgentSchema,
   assistantPromptSchema,
   assistantQuestionAnswersMatch,
   assistantQuestionResponseSchema,
 } from "@vibeshape/automation-api/assistant"
+import type { AssistantJevCredentials } from "@vibeshape/automation-api/assistant-jev"
 import {
   type AssistantCheckpointHost,
   type AssistantCheckpointState,
@@ -519,7 +521,7 @@ export function createNativeChatController({
   function connectionBlocked() {
     return disposed || resettingHistory || connecting !== null || state.busy
   }
-  async function connect(configuration: AssistantAgent) {
+  async function connect(configuration: AssistantAgent, jevCredentials?: AssistantJevCredentials) {
     if (connectionBlocked()) return
     const { at, done } = beginDisconnect()
     if (!isCurrent(at)) return
@@ -536,6 +538,7 @@ export function createNativeChatController({
       const result = await bridge.connect({
         projectId,
         agent: configuration,
+        ...(jevCredentials ? { jevCredentials } : {}),
         ...(resume ? { resumeSessionId: resume } : {}),
       })
       await receiveConnection(at, result)
@@ -659,7 +662,7 @@ export function createNativeChatController({
     if (current) ignoredTokens.add(current.sessionToken)
     return {
       at,
-      agent: { command: configuration.command, args: [...configuration.args] },
+      agent: assistantAgentSchema.parse(configuration),
       interrupted,
       queuePaused: state.queuePaused || unanswered,
       resumeSessionId,

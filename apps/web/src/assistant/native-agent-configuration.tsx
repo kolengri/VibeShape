@@ -1,18 +1,20 @@
 import { assistantAgentSchema } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
-import { Button } from "@vibeshape/ui/components/button"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { type FormEvent, useId, useState } from "react"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
 import { agentPresetId, agentPresets } from "./connection-presets"
+import { JevAgentConfiguration } from "./jev-agent-configuration"
+import { NativeAgentActions } from "./native-agent-actions"
 import type { createNativeChatController } from "./native-chat-controller"
 
 type Connection = Pick<ReturnType<typeof createNativeChatController>, "connect" | "disconnect">
 
 function initialConfiguration() {
   const agent = readAssistantPreferences()?.agent ?? { command: "", args: [] }
+  if ("kind" in agent) return { command: "", args: "[]", choice: "jev" }
   return { command: agent.command, args: JSON.stringify(agent.args), choice: agentPresetId(agent) }
 }
 function parseConfiguration(command: string, args: string) {
@@ -42,11 +44,11 @@ function useAgentConfiguration(chat: Connection, connected: boolean) {
   }
   const choose = (value: string) => {
     const preset = agentPresets.find((entry) => entry.id === value)
-    if (!preset && value !== "custom") return
+    if (!preset && value !== "custom" && value !== "jev") return
     if (choice === "custom") setCustom(draft)
-    setChoice(preset?.id ?? "custom")
+    setChoice(preset?.id ?? value)
     setDraft(preset ? { command: preset.command, args: JSON.stringify(preset.args) } : custom)
-    setAdvanced(!preset)
+    setAdvanced(value === "custom")
     setInvalid(false)
     if (connected) void disconnect()
   }
@@ -96,7 +98,7 @@ export function NativeAgentConfiguration({
   const pending = connecting || form.disconnecting
   const locked = pending || connected
   return (
-    <form className="grid gap-3" onSubmit={form.submit} aria-busy={pending || undefined}>
+    <div className="grid gap-3">
       <SelectField
         label={t("agent")}
         value={form.choice}
@@ -111,67 +113,65 @@ export function NativeAgentConfiguration({
             {t(`agents.${preset.id}`)}
           </SelectOption>
         ))}
+        <SelectOption value="jev">{t("agents.jev")}</SelectOption>
         <SelectOption value="custom">{t("agents.custom")}</SelectOption>
       </SelectField>
-      <p className="text-xs text-muted-foreground">{t("presetNotice")}</p>
-      <details
-        open={form.advanced}
-        onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
-      >
-        <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-        <div className="mt-3 grid gap-2">
-          <label htmlFor={`${id}-command`} className="text-xs font-medium">
-            {t("executable")}
-          </label>
-          <Input
-            id={`${id}-command`}
-            value={form.draft.command}
-            disabled={locked}
-            onChange={(event) => form.edit("command", event.currentTarget.value)}
-            placeholder={t("executablePlaceholder")}
-          />
-          <label htmlFor={`${id}-args`} className="text-xs font-medium">
-            {t("arguments")}
-          </label>
-          <Input
-            id={`${id}-args`}
-            value={form.draft.args}
-            disabled={locked}
-            onChange={(event) => form.edit("args", event.currentTarget.value)}
-          />
-        </div>
-      </details>
-      {form.invalid && (
-        <p role="alert" className="text-xs text-destructive">
-          {t("invalidAgent")}
-        </p>
-      )}
-      {form.storageFailed && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {t("settingsNotSaved")}
-        </p>
-      )}
-      {connected ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={form.disconnect}
-        >
-          {t("disconnect")}
-        </Button>
+      {form.choice === "jev" ? (
+        <JevAgentConfiguration
+          chat={chat}
+          connected={connected}
+          pending={pending}
+          disconnect={form.disconnect}
+        />
       ) : (
-        <Button
-          type="submit"
-          size="sm"
-          aria-busy={pending || undefined}
-          disabled={pending || !form.draft.command.trim()}
-        >
-          {t("connect")}
-        </Button>
+        <form className="grid gap-3" onSubmit={form.submit} aria-busy={pending || undefined}>
+          <p className="text-xs text-muted-foreground">{t("presetNotice")}</p>
+          <details
+            open={form.advanced}
+            onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
+          >
+            <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
+            <div className="mt-3 grid gap-2">
+              <label htmlFor={`${id}-command`} className="text-xs font-medium">
+                {t("executable")}
+              </label>
+              <Input
+                id={`${id}-command`}
+                value={form.draft.command}
+                disabled={locked}
+                onChange={(event) => form.edit("command", event.currentTarget.value)}
+                placeholder={t("executablePlaceholder")}
+              />
+              <label htmlFor={`${id}-args`} className="text-xs font-medium">
+                {t("arguments")}
+              </label>
+              <Input
+                id={`${id}-args`}
+                value={form.draft.args}
+                disabled={locked}
+                onChange={(event) => form.edit("args", event.currentTarget.value)}
+              />
+            </div>
+          </details>
+          {form.invalid && (
+            <p role="alert" className="text-xs text-destructive">
+              {t("invalidAgent")}
+            </p>
+          )}
+          {form.storageFailed && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {t("settingsNotSaved")}
+            </p>
+          )}
+          <NativeAgentActions
+            connected={connected}
+            pending={pending}
+            disabled={!form.draft.command.trim()}
+            disconnect={form.disconnect}
+          />
+          <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
+        </form>
       )}
-      <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
-    </form>
+    </div>
   )
 }

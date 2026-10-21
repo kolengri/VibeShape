@@ -16,6 +16,7 @@ import {
 } from "@vibeshape/automation-api/assistant"
 import { type DesktopMcpSetup, desktopMcpSetupSchema } from "@vibeshape/automation-api/desktop-host"
 import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
+import type { createAssistantLaunchResolver } from "./assistant-jev-runtime"
 import { createAssistantPermissions } from "./assistant-permissions"
 import { assistantPromptContent } from "./assistant-prompt-content"
 import { createAssistantQuestions } from "./assistant-questions"
@@ -32,6 +33,7 @@ import {
   supportsAssistantSteering,
 } from "./assistant-steering"
 import {
+  type AssistantProcessLaunch,
   assistantConnectionFailure,
   killAssistantProcess,
   spawnAssistantProcess,
@@ -86,6 +88,7 @@ export type AssistantServiceOptions = {
   whenMcpClientReleased?: (projectId: string) => Promise<void>
   spawn?: typeof nodeSpawn
   env?: NodeJS.ProcessEnv
+  resolveLaunch?: ReturnType<typeof createAssistantLaunchResolver>
   requestTimeoutMs?: number
   promptTimeoutMs?: number
   permissionTimeoutMs?: number
@@ -355,11 +358,22 @@ export function createAssistantService(options: AssistantServiceOptions) {
     owner.acceptingUpdates = true
     return snapshot(owner)
   }
+  function resolveLaunch(
+    input: Extract<AssistantRequest, { operation: "connect" }>["input"],
+  ): AssistantProcessLaunch {
+    if (options.resolveLaunch) {
+      const resolved = options.resolveLaunch(input.agent, input.jevCredentials)
+      if (!resolved.ok) throw new AssistantFailure(resolved.code)
+      return resolved.launch
+    }
+    if ("command" in input.agent) return { agent: input.agent }
+    throw new AssistantFailure("jev-configuration-required")
+  }
   async function initialize(
     owner: Owner,
-    agent: Extract<AssistantRequest, { operation: "connect" }>["input"]["agent"],
+    input: Extract<AssistantRequest, { operation: "connect" }>["input"],
   ) {
-    const child = spawnAssistantProcess({ ...options, agent: agent }, (code) => {
+    const child = spawnAssistantProcess({ ...options, ...resolveLaunch(input) }, (code) => {
       if (owner.process) stop(owner, code)
     })
     owner.process = child
@@ -499,7 +513,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     snapshot(owner)
     try {
       await prepareConnection(owner, input.projectId)
-      await initialize(owner, input.agent)
+      await initialize(owner, input)
       return { ok: true, value: await openSession(owner) }
     } catch (error) {
       return connectFailure(owner, error)

@@ -6,7 +6,16 @@ import {
 import { homedir } from "node:os"
 import { delimiter, join } from "node:path"
 import * as acp from "@agentclientprotocol/sdk"
-import type { AssistantAgent, AssistantErrorCode } from "@vibeshape/automation-api/assistant"
+import type {
+  AssistantErrorCode,
+  AssistantExternalAgent,
+} from "@vibeshape/automation-api/assistant"
+
+export type AssistantProcessLaunch = {
+  agent: AssistantExternalAgent
+  env?: NodeJS.ProcessEnv
+  runAsNode?: boolean
+}
 
 const closedChildren = new WeakSet<ChildProcess>()
 
@@ -36,18 +45,17 @@ export function killAssistantProcess(child: ChildProcess) {
 }
 
 export function spawnAssistantProcess(
-  options: {
-    agent: AssistantAgent
+  options: AssistantProcessLaunch & {
     cwd: string
-    env?: NodeJS.ProcessEnv
     spawn?: typeof nodeSpawn
   },
   onFailure: (code: AssistantErrorCode) => void,
 ) {
   const env = { ...(options.env ?? process.env) }
   delete env.ELECTRON_RUN_AS_NODE
+  if (options.runAsNode) env.ELECTRON_RUN_AS_NODE = "1"
   // Finder launches do not inherit the shell's local executable directories.
-  if (process.platform === "darwin") {
+  if (process.platform === "darwin" && !options.runAsNode) {
     const home = env.HOME || homedir()
     env.PATH = [
       ...new Set([
@@ -64,6 +72,7 @@ export function spawnAssistantProcess(
     env,
     shell: false,
     detached: process.platform !== "win32",
+    ...(options.runAsNode ? { windowsHide: true } : {}),
     stdio: ["pipe", "pipe", "pipe"],
   })
   child.stderr.resume()

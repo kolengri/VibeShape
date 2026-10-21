@@ -202,6 +202,82 @@ describe("assistant connection settings", () => {
     expect(chat.connect).toHaveBeenCalledWith(original)
   })
 
+  it("connects the bundled Jev descriptor without paths and keeps credentials out of preferences", async () => {
+    const pending = deferred()
+    const chat = {
+      connect: vi.fn().mockReturnValue(pending.promise),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    expect(screen.queryByRole("textbox", { name: "ACP agent executable" })).toBeNull()
+    fireEvent.change(screen.getByLabelText("TypeSafe API key", { exact: true }), {
+      target: { value: "private-typesafe-key" },
+    })
+    const form = screen.getByRole("form", { name: "Jev settings" })
+    await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+    fireEvent.submit(form)
+    expect(chat.connect).toHaveBeenCalledTimes(1)
+    expect(chat.connect).toHaveBeenCalledWith(
+      {
+        kind: "jev",
+        settings: {
+          model: "jev-1.14.0",
+          images: false,
+          maxSteps: 24,
+          minConfidence: 0.5,
+          timeoutMs: 60000,
+        },
+      },
+      { apiKey: "private-typesafe-key" },
+    )
+    expect(readAssistantPreferences()?.agent).toMatchObject({ kind: "jev" })
+    expect(JSON.stringify(readAssistantPreferences())).not.toContain("private-typesafe-key")
+    await act(async () => pending.resolve())
+    expect(new window.FormData(form as HTMLFormElement).get("apiKey")).toBe("")
+  })
+
+  it("requires a complete argument model and preserves custom configuration across Jev selection", async () => {
+    const original = { command: "/private/custom-acp", args: ["--acp"] }
+    saveAssistantPreferences({ version: 1, agent: original })
+    const chat = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    fireEvent.change(screen.getByLabelText("Argument model endpoint", { exact: true }), {
+      target: { value: "https://helper.test/v1/chat/completions" },
+    })
+    fireEvent.submit(screen.getByRole("form", { name: "Jev settings" }))
+    expect(chat.connect).not.toHaveBeenCalled()
+    expect(screen.getByRole("alert").textContent).toContain("both the argument endpoint and model")
+    expect(readAssistantPreferences()?.agent).toEqual(original)
+    await choose("Agent", "Custom ACP agent")
+    expect(
+      (screen.getByRole("textbox", { name: "ACP agent executable" }) as HTMLInputElement).value,
+    ).toBe(original.command)
+  })
+
+  it("releases the Jev connection lock after rejection and retains the entered key for correction", async () => {
+    const chat = {
+      connect: vi.fn().mockRejectedValue(new Error("fixture failure")),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    fireEvent.change(screen.getByLabelText("TypeSafe API key", { exact: true }), {
+      target: { value: "test-key" },
+    })
+    await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+    await waitFor(() => expect(screen.getByRole("alert")).toBeDefined())
+    expect(screen.getByRole("button", { name: "Connect agent" }).hasAttribute("disabled")).toBe(
+      false,
+    )
+    const form = screen.getByRole("form", { name: "Jev settings" })
+    expect(new window.FormData(form as HTMLFormElement).get("apiKey")).toBe("test-key")
+  })
+
   it("disconnects a changed agent and reports awaited cleanup through global activity", async () => {
     saveAssistantPreferences({ version: 1, agent: { command: "codex-acp", args: [] } })
     const cleanup = deferred()

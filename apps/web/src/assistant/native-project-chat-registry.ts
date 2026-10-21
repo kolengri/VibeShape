@@ -1,4 +1,5 @@
 import type { AssistantAgent, AssistantBridge } from "@vibeshape/automation-api/assistant"
+import type { AssistantJevCredentials } from "@vibeshape/automation-api/assistant-jev"
 import { getNativeProjectAutomationConnection } from "../automation/native-project-automation"
 import { getProjectRuntime } from "../document/document-controller"
 import { registerProjectRuntimeResource } from "../document/project-runtime-resources"
@@ -48,11 +49,11 @@ export function createNativeProjectChatRegistry(
           void controller.connect(configured)
         }
       },
-      async connect(agent: AssistantAgent) {
+      async connect(agent: AssistantAgent, credentials?: AssistantJevCredentials) {
         if (closed) return
         attempted = true
         explicitlyDisconnected = false
-        await controller.connect(agent)
+        await controller.connect(agent, credentials)
       },
       async disconnect() {
         explicitlyDisconnected = true

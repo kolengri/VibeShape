@@ -1,6 +1,6 @@
 # Automation and MCP architecture
 
-The optional source-checkout [Jev ACP controller](../jev-agent.md) is an external decision adapter
+The bundled native [Jev ACP controller](../jev-agent.md) is a distinct decision adapter
 over the native host's existing injected MCP attachment. It owns bounded action selection and
 optional argument completion, while the host retains project authority, schemas, exact previews,
 transactions and checkpoints. It adds no browser-side provider or document mutation path.
@@ -8,7 +8,10 @@ transactions and checkpoints. It adds no browser-side provider or document mutat
 The desktop host attaches external MCP clients to its already open project and runs installed ACP
 agents through a narrow native bridge. Static web chat calls the person's compatible model API
 directly and executes tools through the same browser-owned automation sessions. Neither path adds
-a hosted AI worker or bypasses reviewed commands. See [ADR-0111](../adr/0111-native-project-assistant-and-handoffs.md)
+a hosted AI worker or bypasses reviewed commands. The Jev descriptor contains validated provider
+settings, while credentials enter through connection-only input and remain in the trusted host
+for the app session. The host resolves the bundled executable and runtime; renderer settings do not
+choose a path for that built-in adapter. See [ADR-0111](../adr/0111-native-project-assistant-and-handoffs.md)
 and the [desktop connection workflow](../desktop-macos.md#ai-connections).
 
 Desktop embedded chat retains one document-controller runtime and ACP owner per project. The visible

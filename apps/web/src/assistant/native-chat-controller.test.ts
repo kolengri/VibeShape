@@ -6,6 +6,7 @@ import type {
   AssistantSnapshot,
 } from "@vibeshape/automation-api/assistant"
 import { assistantToolTargetsSchema } from "@vibeshape/automation-api/assistant"
+import { assistantJevAgentSchema } from "@vibeshape/automation-api/assistant-jev"
 import { checkpointFixture } from "./assistant-checkpoints.test-fixture"
 import {
   historyStoreFor,
@@ -278,6 +279,30 @@ function queuedId(chat: ReturnType<typeof createNativeChatController>, index = 0
 }
 
 describe("queued native steering", () => {
+  it("keeps Jev credentials connection-only while recovery retains the exact built-in descriptor", async () => {
+    const f = fixture(),
+      disk = storage()
+    const jev = assistantJevAgentSchema.parse({ kind: "jev", settings: { model: "jev-test" } })
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+    chat.start()
+    await chat.connect(jev, { apiKey: "test-private-key" })
+    expect(f.connects[0]).toMatchObject({
+      agent: jev,
+      jevCredentials: { apiKey: "test-private-key" },
+    })
+    await chat.flushHistory()
+    expect(JSON.stringify(await readChatHistory(projectId, disk))).not.toContain("test-private-key")
+    f.emit({
+      projectId,
+      sessionToken: f.snapshot().sessionToken,
+      type: "error",
+      code: "agent-exited",
+    })
+    await until(() => f.connects.length === 2 && !chat.getSnapshot().connecting)
+    expect(f.connects[1]?.agent).toEqual(jev)
+    expect(f.connects[1]).not.toHaveProperty("jevCredentials")
+    chat.dispose()
+  })
   it("applies an idle draft without prompting the native agent and retains checkpoint inspection and Undo", async () => {
     const f = fixture()
     const model = checkpointFixture()
