@@ -159,10 +159,13 @@ export function FdmForm(props: FdmFormProps) {
                 form.setFieldValue("lineIds", [])
               }}
               placeholder={t("chooseSketch")}
-              options={props.sketches.map((sketch) => ({
-                value: sketch.id,
-                label: sketch.label ?? sketch.id,
-              }))}
+              options={[
+                { value: "", label: t("chooseSketch") },
+                ...props.sketches.map((sketch) => ({
+                  value: sketch.id,
+                  label: sketch.label ?? sketch.id,
+                })),
+              ]}
             />
           )}
         </form.Field>
