@@ -21,6 +21,8 @@ immediately and skips deployment verification and publication. On preflight fail
 `warm-caches` job runs the same full CI gates to seed dependency-aware typecheck and unit-test
 receipts on the default branch for later PRs. The first cold seed still runs the tests; subsequent
 unchanged scopes can reuse successful receipts. Full CI, current-head and artifact checks remain required.
+Successful unit-test scopes are saved even if another scope fails. Only validated successful
+receipts are reusable; a failed scope runs again. Cancelled runs do not save the receipt archive.
 Destination settings remain in the publication environment where they are available.
 
 The owner approved deployment from verified current `main` without mandatory GitHub branch

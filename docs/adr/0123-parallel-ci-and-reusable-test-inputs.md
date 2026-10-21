@@ -36,6 +36,9 @@ corpus; omitted selection retains the local sequential run. Partial filters,
 reporters, and unknown options still bypass caching. Each group snapshots and
 validates its actual test entries and uses a separate immutable CI archive key.
 Group selection does not permit one group's receipt to skip another group.
+Each group restores and saves its archive explicitly, preserving successful
+receipts even when another scope fails. Cancelled jobs do not save archives;
+failed scopes still execute on the next run.
 
 Split the quick-WASM corpus into cohesive files with isolated mutable Pyodide
 runtimes. Preserve every scenario, parameter, assertion, timeout, and resource
