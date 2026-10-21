@@ -5,10 +5,10 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5180 --strictPort",
-    "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4180 --strictPort",
-    "typecheck": "bun run --bun tsc -p tsconfig.json"
+    "dev": "bun run --bun vite --host 127.0.0.1 --port 5180 --strictPort",
+    "build": "bun run --bun vite build",
+    "preview": "bun run --bun vite preview --host 127.0.0.1 --port 4180 --strictPort",
+    "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json"
   },
   "dependencies": {
     "@vibeshape/i18n": "workspace:*",

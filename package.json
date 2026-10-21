@@ -74,7 +74,7 @@
     "lint:fix": "biome check --write .",
     "icons:generate": "bun run scripts/generate-ui-icons.ts",
     "icons:check": "bun run scripts/generate-ui-icons.ts --check",
-    "typecheck:scripts": "bun run --bun tsc -p tsconfig.scripts.json && bun run --bun tsc -p tsconfig.test-dom.json",
+    "typecheck:scripts": "bun run scripts/check-types.ts tsconfig.scripts.json tsconfig.test-dom.json",
     "typecheck": "bun run scripts/run-typechecks.ts",
     "test": "bun run scripts/run-unit-tests.ts",
     "test:remote-mcp": "bun run --cwd apps/remote-mcp test",

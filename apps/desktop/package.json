@@ -8,7 +8,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "start": "bun run start.ts",
-    "typecheck": "bun run --bun tsc -p tsconfig.json && bun run --bun tsc -p tsconfig.test.json && bun run --bun tsc -p tsconfig.tools.json",
+    "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json tsconfig.tools.json",
     "package": "bun run package.ts",
     "package:windows": "bun run package.ts --windows"
   },

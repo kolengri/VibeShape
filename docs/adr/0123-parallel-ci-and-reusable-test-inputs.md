@@ -4,6 +4,9 @@ Status: Accepted
 
 Date: 2026-10-21
 
+Typecheck compiler and output declarations are superseded by
+[ADR-0124](0124-bun-project-typechecking.md). Parallel scheduling and archive isolation remain.
+
 Supersedes the CI scheduling/archive decisions in [ADR-0105](0105-native-typescript-cache.md)
 and the scheduling and selected shared-input decisions in
 [ADR-0106](0106-ci-unit-test-cache-and-preflight.md). Their other guarantees remain.

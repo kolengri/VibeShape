@@ -20,7 +20,7 @@
     "./globals.css": "./src/styles/globals.css"
   },
   "scripts": {
-    "typecheck": "bun run --bun tsc -p tsconfig.json && bun run --bun tsc -p tsconfig.test.json"
+    "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json"
   },
   "dependencies": {
     "@tanstack/react-form": "catalog:",

@@ -3,6 +3,8 @@
 Status: Accepted
 
 CI archive distribution is superseded by [ADR-0123](0123-parallel-ci-and-reusable-test-inputs.md).
+Compiler and incremental-output decisions are superseded by
+[ADR-0124](0124-bun-project-typechecking.md); the dependency-aware cache guarantees remain.
 
 ## Context
 
