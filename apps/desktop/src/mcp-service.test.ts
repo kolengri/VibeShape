@@ -10,7 +10,9 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 import { LATEST_PROTOCOL_VERSION, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js"
 import type { AssistantQuestionReply } from "@vibeshape/automation-api/assistant"
 import { DESKTOP_MCP_DESCRIPTOR_NAME } from "@vibeshape/automation-api/desktop-host"
+import { localFailureSchema } from "@vibeshape/automation-api/local-tools"
 import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
+import { z } from "zod"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { startEditorServer } from "./editor-server"
 import { publishMcpDescriptor, readMcpDescriptor } from "./mcp-descriptor"
@@ -141,9 +143,10 @@ describe("app-owned native MCP attachment", () => {
       },
     }
     const native = await project(context, projectId, questions)
-    expect((await native.client.listTools()).tools).toContainEqual(
-      expect.objectContaining({ name: "ask_user_question" }),
-    )
+    // Discover over HTTP without compiling every CAD output schema on the server's test loop.
+    expect(
+      (await native.client.request({ method: "tools/list" }, ListToolsResultSchema)).tools,
+    ).toContainEqual(expect.objectContaining({ name: "ask_user_question" }))
     const input = {
       message: "Choose a size",
       fields: [{ id: "size", label: "Size", required: true }],
@@ -157,10 +160,16 @@ describe("app-owned native MCP attachment", () => {
       })
     await began
     expect(completed).toBe(false)
-    expect(await native.client.callTool({ name: "model_info", arguments: {} })).toMatchObject({
+    const blocked = await native.client.callTool({ name: "model_info", arguments: {} })
+    expect(blocked).toMatchObject({
       isError: true,
       structuredContent: { result: { diagnostic: { code: "assistant-question-blocked" } } },
     })
+    const failure = z
+      .object({ result: localFailureSchema })
+      .strict()
+      .parse(blocked.structuredContent)
+    expect(failure.result.diagnostic.code).toBe("assistant-question-blocked")
     const replacement: AssistantQuestionHost = {
       canInvoke: () => true,
       request: async () => ({ action: "accept", content: { size: "20 mm" } }),
@@ -187,7 +196,9 @@ describe("app-owned native MCP attachment", () => {
     })
     const external = await connect(context)
     expect(
-      (await external.client.listTools()).tools.some((tool) => tool.name === "ask_user_question"),
+      (await external.client.request({ method: "tools/list" }, ListToolsResultSchema)).tools.some(
+        (tool) => tool.name === "ask_user_question",
+      ),
     ).toBe(false)
   })
 
