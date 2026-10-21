@@ -61,6 +61,7 @@ export async function requestLocalArguments(
   let child: ReturnType<typeof spawn> | undefined
   let connection: acp.ClientConnection | undefined
   let abort: (() => void) | undefined
+  let startupData: ((chunk: Buffer) => void) | undefined
   let rejectFailure: (reason: Error) => void = () => {}
   const kill = (kind: NodeJS.Signals) => {
     if (!child?.pid) return
@@ -111,12 +112,32 @@ export async function requestLocalArguments(
       signal.addEventListener("abort", abort, { once: true })
       if (signal.aborted) abort()
     })
+    const token = "ready" in launch ? launch.ready : undefined
+    const startup = token
+      ? new Promise<void>((resolve) => {
+          let tail = ""
+          const receive = (chunk: Buffer) => {
+            const text = tail + chunk.toString("utf8")
+            if (text.includes(token)) {
+              processHandle.stderr?.removeListener("data", receive)
+              resolve()
+            }
+            tail = text.slice(-token.length)
+          }
+          startupData = receive
+          processHandle.stderr?.on("data", receive)
+        })
+      : Promise.resolve()
     await Promise.race([
       new Promise<void>((resolve) => processHandle.once("spawn", resolve)),
       failed,
     ])
     child.stderr?.resume()
-    if (!child.stdin || !child.stdout) throw new JevFailure("Local argument agent has no stdio.")
+    if (!child.stdin || !child.stdout || (token && !child.stderr))
+      throw new JevFailure("Local argument agent has no stdio.")
+    // The Windows wrapper must finish setup before it can hand raw stdin to the ACP agent.
+    await Promise.race([startup, failed])
+    signal.throwIfAborted()
     child.stdin.on("error", () => connection?.close())
     let sessionId: string | undefined
     let text = ""
@@ -184,6 +205,7 @@ export async function requestLocalArguments(
         : "Local argument agent failed. Check its installation and existing sign-in.",
     )
   } finally {
+    if (startupData) child?.stderr?.removeListener("data", startupData)
     if (abort) signal.removeEventListener("abort", abort)
     connection?.close()
     if (child?.pid) {

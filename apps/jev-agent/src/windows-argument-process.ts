@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { join } from "node:path"
 import type { AssistantExternalAgent } from "@vibeshape/automation-api/assistant"
 import { windowsAgentCommand } from "./windows-agent-command"
@@ -10,8 +11,8 @@ $trace = $env:VIBESHAPE_ARGUMENT_TRACE
 function Trace($stage) {
   if ($trace) {
     try {
-      $entry = @{ time = [DateTime]::UtcNow.ToString('o'); stage = $stage; entryPoint = 'windows-argument-supervisor' }
-      [IO.File]::AppendAllText($trace, ($entry | ConvertTo-Json -Compress) + [Environment]::NewLine)
+      $entry = '{"time":"' + [DateTime]::UtcNow.ToString('o') + '","stage":"' + $stage + '","entryPoint":"windows-argument-supervisor"}'
+      [IO.File]::AppendAllText($trace, $entry + [Environment]::NewLine)
     } catch {}
   }
 }
@@ -82,7 +83,7 @@ public static class VibeShapeArgumentJob {
     // Keep the raw handle open until process exit, even when the ACP leader exits first.
   }
 
-  public static int Run(string command, string arguments, string directory, int parentPid) {
+  public static int Run(string command, string arguments, string directory, int parentPid, string ready) {
     Trace("job-start");
     using (Process parent = Process.GetProcessById(parentPid)) {
       IntPtr parentHandle = parent.Handle;
@@ -106,6 +107,9 @@ public static class VibeShapeArgumentJob {
       Trace("child-start");
       using (Process child = Process.Start(start)) {
         Trace("child-ready:" + child.Id);
+        Console.Error.WriteLine(ready);
+        Console.Error.Flush();
+        Trace("protocol-ready");
         uint stopped = WaitForMultipleObjects(2, new IntPtr[] { parentHandle, child.Handle }, false, UInt32.MaxValue);
         Trace("wait:" + stopped);
         if (stopped == 0) return 1;
@@ -118,7 +122,7 @@ public static class VibeShapeArgumentJob {
 '@
   Trace 'compile-ready'
   $launch = ConvertFrom-Json $env:VIBESHAPE_ARGUMENT_LAUNCH
-  $result = [VibeShapeArgumentJob]::Run($launch.command, $launch.arguments, $launch.cwd, $launch.parentPid)
+  $result = [VibeShapeArgumentJob]::Run($launch.command, $launch.arguments, $launch.cwd, $launch.parentPid, $launch.ready)
   exit $result
 } catch {
   Trace ('failure:' + $_.Exception.HResult)
@@ -140,7 +144,9 @@ export async function windowsArgumentLaunch(
   const root = env.SystemRoot ?? env.SYSTEMROOT
   if (!root) throw new Error("Windows system directory is unavailable.")
   const executable = await windowsAgentCommand(agent, env, cwd)
+  const ready = `vibeshape-arguments-ready:${randomUUID()}`
   return {
+    ready,
     command: join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
     args: ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", supervisor],
     env: {
@@ -150,6 +156,7 @@ export async function windowsArgumentLaunch(
         arguments: executable.args.map(quoteArgument).join(" "),
         cwd,
         parentPid: process.pid,
+        ready,
       }),
     },
   }

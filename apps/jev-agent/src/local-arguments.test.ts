@@ -42,16 +42,18 @@ async function fixture(
     const log = await events(receipt).catch(() => [])
     console.error(
       "Argument fixture failure:",
-      log.map(({ pid, backendPid, cwd, method, ready, sent, at, stdio }) => ({
-        pid,
-        backendPid,
-        cwd,
-        method,
-        ready,
-        sent,
-        at,
-        stdio,
-      })),
+      JSON.stringify(
+        log.map(({ pid, backendPid, cwd, method, ready, sent, at, stdio }) => ({
+          pid,
+          backendPid,
+          cwd,
+          method,
+          ready,
+          sent,
+          at,
+          stdio,
+        })),
+      ),
     )
     throw error
   } finally {

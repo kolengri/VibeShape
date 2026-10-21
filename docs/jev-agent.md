@@ -59,6 +59,8 @@ terminate the helper process. Starting a process per completion adds unmeasured 
 On Windows, the helper runs beneath an inbox PowerShell/.NET supervisor assigned to a
 kill-on-close Job Object before launching the agent. Its descendants inherit job membership;
 leader exit, cancellation and host termination close the owning process and terminate the job.
+Jev waits for a private per-launch readiness receipt on stderr before sending ACP initialization;
+supervisor setup remains within the request's existing deadline.
 The supervisor also waits on the host process handle, because forced Windows process termination
 cannot run JavaScript signal handlers. Arguments are passed as data and stdout/stdin are inherited
 directly; no shell command evaluates the agent arguments. A blocked PowerShell or `Add-Type` policy
