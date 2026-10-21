@@ -69,7 +69,7 @@ test("previews real assembly drives without saving, pauses and resets, applies o
 
   await panel(page).getByRole("spinbutton", { name: "Sweep start (deg)", exact: true }).fill("-10")
   await panel(page).getByRole("spinbutton", { name: "Sweep end (deg)", exact: true }).fill("10")
-  await panel(page).getByRole("button", { name: "Play one sweep", exact: true }).click()
+  await panel(page).getByRole("button", { name: "Play animation", exact: true }).click()
   await expect(panel(page).getByText("Preview: -10 deg", { exact: true })).toBeVisible({
     timeout: 60_000,
   })
@@ -80,7 +80,7 @@ test("previews real assembly drives without saving, pauses and resets, applies o
   await expect(page.getByText("Unsaved motion preview", { exact: true })).toHaveCount(0)
   await expect(panel(page).getByRole("button", { name: "Apply", exact: true })).toBeDisabled()
   await panel(page).getByRole("spinbutton", { name: "Sweep start (deg)", exact: true }).fill("46")
-  await panel(page).getByRole("button", { name: "Play one sweep", exact: true }).click()
+  await panel(page).getByRole("button", { name: "Play animation", exact: true }).click()
   await expect(panel(page).getByRole("alert")).toContainText("Check track coordinates")
   await expect(panel(page).getByRole("button", { name: "Apply", exact: true })).toBeDisabled()
 

@@ -5,11 +5,12 @@ import {
 import type { AssemblyJointRecord } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { X } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
-import { useEffect, useId, useRef, useState } from "react"
+import { type ReactNode, useEffect, useId, useRef, useState } from "react"
+import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { browserAuthoredUuid as browserUuidV7 } from "../../document/authored-document-session"
-import { assemblyMotionCoordinates } from "./assembly-motion"
+import { assemblyMotionCoordinates, retimeAssemblyMotionStudy } from "./assembly-motion"
 import {
   assemblyMotionExportData,
   assemblyMotionExportFailureKey,
@@ -18,12 +19,19 @@ import {
   prepareAssemblyMotionExport,
 } from "./assembly-motion-export"
 import { assemblyMotionFailureKey } from "./assembly-motion-runner"
+import { AssemblyMotionTrackEditor, AssemblyStudyNumber } from "./assembly-motion-track-editor"
 import { type AssemblyPlaybackOptions, useAssemblyMotion } from "./use-assembly-motion"
 import type { AssemblyWorkspaceView } from "./use-assembly-workspace"
 
 function newStudy(joints: readonly AssemblyJointRecord[]): AssemblyMotionStudy | null {
   const joint = joints.find((joint) => assemblyMotionCoordinates(joint).length)
   const coordinate = joint && assemblyMotionCoordinates(joint)[0]
+  const span = coordinate?.kind === "angle" ? Math.PI / 2 : 10
+  const end =
+    coordinate &&
+    (coordinate.max > coordinate.value
+      ? Math.min(coordinate.max, coordinate.value + span)
+      : Math.max(coordinate.min, coordinate.value - span))
   return joint && coordinate
     ? assemblyMotionStudySchema.parse({
         schemaVersion: 1,
@@ -37,7 +45,7 @@ function newStudy(joints: readonly AssemblyJointRecord[]): AssemblyMotionStudy |
             coordinate: coordinate.kind,
             keys: [
               { time: 0, value: coordinate.value },
-              { time: 2, value: coordinate.value },
+              { time: 2, value: end },
             ],
           },
         ],
@@ -140,180 +148,6 @@ export function useAssemblyMotionStudySession(view: AssemblyWorkspaceView) {
 }
 export type AssemblyMotionStudySession = ReturnType<typeof useAssemblyMotionStudySession>
 
-function TrackEditor({
-  study,
-  view,
-  edit,
-  disabled,
-}: {
-  study: AssemblyMotionStudy
-  view: AssemblyWorkspaceView
-  edit: (study: AssemblyMotionStudy) => void
-  disabled: boolean
-}) {
-  const t = useTranslations("app.assembly")
-  const options = view.assembly.joints.flatMap((joint) =>
-    assemblyMotionCoordinates(joint).map((coordinate) => ({
-      joint,
-      coordinate,
-      key: `${joint.id}:${coordinate.kind}`,
-    })),
-  )
-  const update = (index: number, track: AssemblyMotionStudy["tracks"][number]) =>
-    edit({
-      ...study,
-      tracks: study.tracks.map((old, current) => (current === index ? track : old)),
-    })
-  return (
-    <fieldset disabled={disabled} className="grid gap-3">
-      <legend>{t("motionTracks")}</legend>
-      {study.tracks.map((track, index) => (
-        <fieldset key={track.id} className="grid gap-2 rounded-md border p-2">
-          <select
-            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-            aria-label={t("motionCoordinate")}
-            value={`${track.jointId}:${track.coordinate}`}
-            onChange={(event) => {
-              const option = options.find(({ key }) => key === event.currentTarget.value)
-              if (option)
-                update(index, {
-                  ...track,
-                  jointId: option.joint.id,
-                  coordinate: option.coordinate.kind,
-                })
-            }}
-          >
-            {options.map(({ key, joint, coordinate }) => (
-              <option key={key} value={key}>
-                {joint.id} · {t(coordinate.kind === "angle" ? "motionAngle" : "motionTranslation")}
-              </option>
-            ))}
-          </select>
-          {track.keys.map((key, keyIndex) => (
-            <div key={`${track.id}:${keyIndex}`} className="grid grid-cols-[1fr_1fr_auto] gap-1">
-              <Input
-                type="number"
-                aria-label={t("motionKeyTime")}
-                min={0}
-                max={study.duration}
-                step="any"
-                value={key.time}
-                onChange={(event) =>
-                  update(index, {
-                    ...track,
-                    keys: track.keys.map((old, at) =>
-                      at === keyIndex ? { ...old, time: Number(event.currentTarget.value) } : old,
-                    ),
-                  })
-                }
-              />
-              <Input
-                type="number"
-                aria-label={t("motionKeyValue", {
-                  unit: track.coordinate === "angle" ? "rad" : "mm",
-                })}
-                step="any"
-                value={key.value}
-                onChange={(event) =>
-                  update(index, {
-                    ...track,
-                    keys: track.keys.map((old, at) =>
-                      at === keyIndex ? { ...old, value: Number(event.currentTarget.value) } : old,
-                    ),
-                  })
-                }
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                aria-label={t("motionRemoveKey")}
-                disabled={track.keys.length <= 2}
-                onClick={() =>
-                  update(index, { ...track, keys: track.keys.filter((_, at) => at !== keyIndex) })
-                }
-              >
-                <X aria-hidden="true" />
-              </Button>
-            </div>
-          ))}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={track.keys.length >= 256}
-            onClick={() => {
-              const intervals = track.keys
-                .slice(1)
-                .map((right, index) => ({ right, left: track.keys[index], index }))
-              intervals.sort(
-                (a, b) => b.right.time - (b.left?.time ?? 0) - (a.right.time - (a.left?.time ?? 0)),
-              )
-              const interval = intervals[0]
-              if (interval?.left)
-                update(index, {
-                  ...track,
-                  keys: [
-                    ...track.keys.slice(0, interval.index + 1),
-                    {
-                      time: (interval.left.time + interval.right.time) / 2,
-                      value: (interval.left.value + interval.right.value) / 2,
-                    },
-                    ...track.keys.slice(interval.index + 1),
-                  ],
-                })
-            }}
-          >
-            {t("motionAddKey")}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => edit({ ...study, tracks: study.tracks.filter((_, at) => at !== index) })}
-          >
-            {t("motionRemoveTrack")}
-          </Button>
-        </fieldset>
-      ))}
-      <Button
-        type="button"
-        variant="outline"
-        disabled={
-          study.tracks.length >= 64 ||
-          options.every(({ key }) =>
-            study.tracks.some((track) => `${track.jointId}:${track.coordinate}` === key),
-          )
-        }
-        onClick={() => {
-          const option = options.find(
-            ({ key }) =>
-              !study.tracks.some((track) => `${track.jointId}:${track.coordinate}` === key),
-          )
-          if (option)
-            edit({
-              ...study,
-              tracks: [
-                ...study.tracks,
-                {
-                  id: browserUuidV7(),
-                  jointId: option.joint.id,
-                  coordinate: option.coordinate.kind,
-                  keys: [
-                    { time: 0, value: option.coordinate.value },
-                    { time: study.duration, value: option.coordinate.value },
-                  ],
-                },
-              ],
-            })
-        }}
-      >
-        {t("motionAddTrack")}
-      </Button>
-    </fieldset>
-  )
-}
-
 function StudyExport({
   session,
   revision,
@@ -414,9 +248,20 @@ function StudyExport({
   )
 }
 
+function canRetimeStudy(study: AssemblyMotionStudy, duration: number) {
+  return retimeAssemblyMotionStudy(study, duration).tracks.every((track) =>
+    track.keys.every(
+      (key, index) =>
+        Number.isFinite(key.time) &&
+        key.time >= 0 &&
+        key.time <= duration &&
+        (index === 0 || key.time > (track.keys[index - 1]?.time ?? 0)),
+    ),
+  )
+}
+
 type StudyPanelProps = { view: AssemblyWorkspaceView; session: AssemblyMotionStudySession }
 function StudyFields({
-  view,
   session,
   draft,
   disabled,
@@ -433,21 +278,16 @@ function StudyFields({
           onChange={(event) => session.edit({ ...draft, name: event.currentTarget.value })}
         />
       </label>
-      <label htmlFor={`${inputId}-duration`}>
-        {t("motionDuration")}
-        <Input
-          id={`${inputId}-duration`}
-          type="number"
-          min={0.001}
-          max={3600}
-          step="any"
-          value={draft.duration}
-          onChange={(event) =>
-            session.edit({ ...draft, duration: Number(event.currentTarget.value) })
-          }
-        />
-      </label>
-      <TrackEditor study={draft} view={view} edit={session.edit} disabled={disabled} />
+      <AssemblyStudyNumber
+        label={t("motionDuration")}
+        value={draft.duration}
+        min={0.001}
+        max={3600}
+        onDirty={() => session.motion.reset()}
+        validate={(duration) => canRetimeStudy(draft, duration)}
+        errorMessage={t("motionRetimeInvalid")}
+        onCommit={(duration) => session.edit(retimeAssemblyMotionStudy(draft, duration))}
+      />
     </fieldset>
   )
 }
@@ -477,22 +317,31 @@ function StudyPlayback({
           step="any"
           value={motion.value ?? 0}
           disabled={disabled}
-          onChange={(event) => void motion.preview(Number(event.currentTarget.value))}
+          onChange={(event) => {
+            if (event.currentTarget.form?.reportValidity())
+              void motion.preview(Number(event.currentTarget.value))
+          }}
         />
         <output>{motion.value ?? 0}</output>
       </label>
-      <AssemblyPlaybackSettings
-        value={options}
-        onChange={setOptions}
-        disabled={disabled || motion.playing}
-      />
+      <details>
+        <summary className="cursor-pointer py-1 text-sm">{t("motionPlaybackOptions")}</summary>
+        <AssemblyPlaybackSettings
+          value={options}
+          onChange={setOptions}
+          disabled={disabled || motion.playing}
+        />
+      </details>
       <div className="flex flex-wrap gap-2">
         <Button
+          key={motion.playing ? "pause" : "play"}
           type="button"
           disabled={disabled}
-          onClick={() =>
-            motion.playing ? motion.pause() : void motion.play(0, draft.duration, options)
-          }
+          onClick={(event) => {
+            if (motion.playing) motion.pause()
+            else if (event.currentTarget.form?.reportValidity())
+              void motion.play(0, draft.duration, options)
+          }}
         >
           {t(motion.playing ? "motionPause" : "motionPlay")}
         </Button>
@@ -533,7 +382,9 @@ function StudyLifecycle({
   draft,
   revision,
   setError,
+  children,
 }: StudyPanelProps & {
+  children: ReactNode
   draft: AssemblyMotionStudy
   revision: number
   setError: (error: string) => void
@@ -565,31 +416,30 @@ function StudyLifecycle({
     )
       view.closeStudy()
   }
-  const remove = async () => {
-    motion.reset()
-    if (await view.mutations.apply([{ kind: "motion-study.remove", studyId: draft.id }], revision))
-      view.closeStudy()
-  }
   return (
-    <div className="grid gap-2">
-      <Button
-        type="button"
-        disabled={busy || motion.pending || motion.playing}
-        onClick={() => void save()}
-      >
-        {t("motionSaveStudy")}
-      </Button>
-      {session.existing && (
-        <Button type="button" variant="outline" disabled={busy} onClick={() => void remove()}>
-          {t("motionDeleteStudy")}
-        </Button>
-      )}
-      <Button type="button" variant="outline" disabled={busy} onClick={close}>
-        {t("cancel")}
-      </Button>
-    </div>
+    <TaskPanelHeader
+      title={t(session.existing ? "motionEditStudy" : "motionNewStudy")}
+      description={t("motionStudyDescription")}
+      className="bg-panel py-2"
+      actions={
+        <TaskPanelLifecycleActions
+          ariaLabel={t("motionStudies")}
+          acceptLabel={t("motionSaveStudy")}
+          acceptDisabled={busy || motion.pending || motion.playing}
+          onAccept={(event) => {
+            if (event.currentTarget.form?.reportValidity()) return save()
+          }}
+          cancelLabel={t("cancel")}
+          cancelDisabled={busy}
+          onCancel={close}
+        />
+      }
+    >
+      {children}
+    </TaskPanelHeader>
   )
 }
+
 export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
   const t = useTranslations("app.assembly"),
     [options, setOptions] = useState<AssemblyPlaybackOptions>({ count: 13, speed: 1 }),
@@ -601,28 +451,64 @@ export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
   const busy = view.disabled || motion.applying,
     solving = motion.pending || motion.playing
   return (
-    <section className="grid gap-3" aria-label={t("motionStudies")}>
-      <h2 className="font-semibold">
-        {t(session.existing ? "motionEditStudy" : "motionNewStudy")}
-      </h2>
-      <p className="text-xs text-muted-foreground">{t("motionStudyDescription")}</p>
-      <StudyFields view={view} session={session} draft={draft} disabled={busy || solving} />
-      <StudyPlayback
-        draft={draft}
-        motion={motion}
-        options={options}
-        setOptions={setOptions}
-        disabled={busy}
-      />
-      <StudyExport session={session} revision={task.revision} disabled={busy || solving} />
-      <StudyFailure view={view} session={session} error={error} />
+    <form
+      className="grid min-w-0 gap-3"
+      aria-label={t("motionStudies")}
+      onSubmit={(event) => event.preventDefault()}
+      onInvalidCapture={(event) => {
+        let ancestor = event.target instanceof HTMLElement ? event.target.parentElement : null
+        while (ancestor && ancestor !== event.currentTarget) {
+          if (ancestor instanceof HTMLDetailsElement) ancestor.open = true
+          ancestor = ancestor.parentElement
+        }
+      }}
+    >
       <StudyLifecycle
         view={view}
         session={session}
         draft={draft}
         revision={task.revision}
         setError={setError}
+      >
+        <StudyPlayback
+          draft={draft}
+          motion={motion}
+          options={options}
+          setOptions={setOptions}
+          disabled={busy}
+        />
+      </StudyLifecycle>
+      <StudyFields view={view} session={session} draft={draft} disabled={busy || solving} />
+      <AssemblyMotionTrackEditor
+        study={draft}
+        view={view}
+        edit={session.edit}
+        disabled={busy || solving}
       />
-    </section>
+      <details>
+        <summary className="cursor-pointer py-1 text-sm">{t("motionExportOptions")}</summary>
+        <StudyExport session={session} revision={task.revision} disabled={busy || solving} />
+      </details>
+      <StudyFailure view={view} session={session} error={error} />
+      {session.existing && (
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={busy}
+          onClick={async () => {
+            motion.reset()
+            if (
+              await view.mutations.apply(
+                [{ kind: "motion-study.remove", studyId: draft.id }],
+                task.revision,
+              )
+            )
+              view.closeStudy()
+          }}
+        >
+          {t("motionDeleteStudy")}
+        </Button>
+      )}
+    </form>
   )
 }

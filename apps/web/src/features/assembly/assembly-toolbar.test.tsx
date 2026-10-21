@@ -94,7 +94,7 @@ describe("Assembly command presentation", () => {
   it("keeps frequent commands as named icon controls and the selected-item actions in a labelled menu", async () => {
     const view = setup()
     const toolbar = screen.getByRole("toolbar", { name: "Assembly actions" })
-    expect(toolbar.querySelectorAll("button")).toHaveLength(5)
+    expect(toolbar.querySelectorAll("button")).toHaveLength(6)
     const add = screen.getByRole("button", { name: "Add instance" })
     expect(add.textContent).toBe("")
     expect(add.getAttribute("title")).toBeNull()
@@ -109,6 +109,18 @@ describe("Assembly command presentation", () => {
     await userEvent.click(rename)
     expect(view.openTask).toHaveBeenLastCalledWith("editInstance", view.selected.instance?.id)
   })
+  it("shows the animation entry label and explains why a jointless assembly cannot animate", async () => {
+    const view = setup()
+    const motion = screen.getByRole("button", { name: "Motion studies" })
+    expect(motion.textContent).toContain("Motion studies")
+    await userEvent.click(motion)
+    expect(screen.getByRole("menuitem", { name: "New study" }).getAttribute("aria-disabled")).toBe(
+      "true",
+    )
+    expect(screen.getByText("Add a movable joint before creating a study.")).toBeTruthy()
+    expect(view.openStudy).not.toHaveBeenCalled()
+  })
+
   it("exposes pose-preserving authoring and existing upgrade handlers without applying automatically", async () => {
     const view = setup()
     await openMenu()

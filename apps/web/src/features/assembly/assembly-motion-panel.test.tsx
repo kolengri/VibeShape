@@ -113,7 +113,7 @@ describe("Assembly motion controls", () => {
         solve = () => resolve({ ok: true, inspection: { occurrences: [], interference: [] } })
       }),
     )
-    fireEvent.click(screen.getByRole("button", { name: "Play one sweep" }))
+    fireEvent.click(screen.getByRole("button", { name: "Play animation" }))
     expect(value.value).toBe("0.75")
     expect(screen.getByText("Solving motion preview…")).toBeTruthy()
     await act(async () => solve())
@@ -138,6 +138,17 @@ describe("Assembly motion controls", () => {
     expect((screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement).disabled).toBe(true)
     expect(ports.apply).not.toHaveBeenCalled()
   })
+  it("makes Pause an independent enabled action while a sweep is running", async () => {
+    render(<Harness />)
+    const play = screen.getByRole("button", { name: "Play animation" })
+    fireEvent.click(play)
+    const pause = await screen.findByRole("button", { name: "Pause" })
+    expect(pause).not.toBe(play)
+    expect((pause as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(pause)
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull()
+  })
+
   it("uses project units, preserves passive cylinder rotation, resets and applies only the solved coordinate", async () => {
     render(<Harness />)
     const value = screen.getByRole("spinbutton", { name: "Coordinate (in)" })
