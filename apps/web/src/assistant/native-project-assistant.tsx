@@ -156,7 +156,7 @@ function NativeRecoveryControls({ chat, state }: { chat: NativeChat; state: Nati
   if (!state.recovery) return null
   const retrying = state.recovery.status === "retrying"
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="flex min-w-0 flex-col items-start gap-2 px-1 text-xs text-muted-foreground">
       <NativeRecoveryStatus recovery={state.recovery} />
       <Button size="sm" variant="outline" onClick={retrying ? chat.disconnect : chat.retryRecovery}>
         {t(retrying ? "cancelReconnect" : "retryConnection")}
