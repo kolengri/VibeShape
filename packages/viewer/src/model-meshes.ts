@@ -2,6 +2,8 @@ import {
   type BufferAttribute,
   type BufferGeometry,
   Color,
+  DoubleSide,
+  FrontSide,
   Group,
   LineBasicMaterial,
   LineSegments,
@@ -218,6 +220,7 @@ export class ModelMeshPresentation {
       color: new Color(viewerBodyColor(source.featureId)),
       roughness: 0.72,
       metalness: 0.04,
+      side: source.appearance === "preview" ? DoubleSide : FrontSide,
       ...(source.appearance === "selection-source"
         ? { transparent: true, opacity: 0.12, depthWrite: false }
         : {}),

@@ -250,6 +250,36 @@ describe("current model mesh resource ownership", () => {
     dispose()
   })
 
+  it("keeps reversed open import triangles opaque and visible from both sides in preview", () => {
+    const { presentation, dispose } = fixture()
+    const source: ViewerMesh = {
+      ...mesh,
+      appearance: "preview",
+      indices: new Uint32Array([0, 2, 1]),
+    }
+    const front = new Raycaster(new Vector3(0.5, 0.5, 10), new Vector3(0, 0, -1))
+    const back = new Raycaster(new Vector3(0.5, 0.5, -10), new Vector3(0, 0, 1))
+    try {
+      for (const preview of [source, { ...source, previewMaterial: "model" as const }]) {
+        const [entry] = presentation.setMeshes([preview])
+        if (!entry || !(entry.surface.material instanceof MeshStandardMaterial))
+          throw new Error("Expected a shaded preview material.")
+        expect(entry.surface.material.transparent).toBe(false)
+        expect(entry.surface.material.opacity).toBe(1)
+        presentation.group.updateMatrixWorld(true)
+        expect(front.intersectObject(entry.surface)).toHaveLength(1)
+        expect(back.intersectObject(entry.surface)).toHaveLength(1)
+      }
+      const [committed] = presentation.setMeshes([mesh])
+      if (!committed) throw new Error("Expected a committed body.")
+      presentation.group.updateMatrixWorld(true)
+      expect(front.intersectObject(committed.surface)).toHaveLength(1)
+      expect(back.intersectObject(committed.surface)).toHaveLength(0)
+    } finally {
+      dispose()
+    }
+  })
+
   it("keeps datum preview material separate from solid and highlighted draft bodies", () => {
     const { presentation, materials, dispose } = fixture()
     const preview: ViewerMesh = { ...mesh, appearance: "preview", previewMaterial: "datum" }
