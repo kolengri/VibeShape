@@ -1,9 +1,8 @@
 # Quick load-free lightweighting
 
-Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
-The built-in chat commits validated changes to its current project without another Apply action;
-manual review requirements below describe external MCP clients. Publishing or updating the reusable
-local library remains separately reviewed for every connection.
+Use the [model-write approval policy](../../vibeshape-use/references/session.md#model-write-approval)
+for the current connection. Manual review instructions below apply to external MCP clients;
+library publication remains separately reviewed for every connection.
 
 Use this workflow when `analyze_quick_lightweighting` and `request_quick_lightweighting` are
 advertised and the user authorized load-free material removal. Both paired local and remote MCP
@@ -55,8 +54,7 @@ requested target. A candidate with less than 0.5% measured removal fails with
 
 When creating the result is authorized, call `request_quick_lightweighting` with the same complete
 inputs and an English `label`. It computes against the captured source and privately stages an
-immutable STL SourceAsset for the ordinary browser mesh preview. Manual Apply/Discard is always
-required, including Auto-apply sessions. Keep the request open while the person reviews it.
+immutable STL SourceAsset for the ordinary browser mesh preview. External clients require manual Apply/Discard, including CAD auto-apply sessions. Keep the request open while the person reviews it.
 
 Apply retains the original Part, commits one ordinary atomic import transaction and creates one
 Undo entry. The result contains bounded `summary` and the committed `snapshot` identity:
