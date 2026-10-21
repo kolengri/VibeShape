@@ -121,7 +121,7 @@ export function createNativeChatController({
       recoveryAttempt?: number
     }
     subscribe: (listener: () => void) => () => void
-    retryRecovery: () => Promise<boolean>
+    retryRecovery: (options?: { automatic?: boolean }) => Promise<boolean>
   }
 }) {
   let agentSession: AgentChatSession | undefined
@@ -762,7 +762,10 @@ export function createNativeChatController({
       failRecovery(error)
       return
     }
-    const reconciled = !owner.interrupted || (await reconcileRecovery(owner.at))
+    // Model retries can expire while ACP is still loading its session and MCP client.
+    const reconciled =
+      (await retryAutomationRecovery(true)) &&
+      (!owner.interrupted || (await reconcileRecovery(owner.at)))
     if (!canRecover(owner.at) || recovery !== owner) return
     if (owner.failure) {
       retryBrokenRecovery(owner, owner.failure)
@@ -833,8 +836,11 @@ export function createNativeChatController({
       return "stale-session"
     return null
   }
-  async function retryAutomationRecovery() {
-    return automation?.getSnapshot().recoveryFailed ? automation.retryRecovery() : true
+  async function retryAutomationRecovery(automatic = false) {
+    return automation?.getSnapshot().recoveryFailed ? automation.retryRecovery({ automatic }) : true
+  }
+  function failAutomationRecovery() {
+    if (recovery && connecting === null && !recoveryTimer) failRecovery("request-failed")
   }
   function manualRecoveryCurrent(owner: NonNullable<typeof recovery>) {
     return recovery === owner && isCurrent(owner.at) && state.recovery?.status === "failed"
@@ -1181,7 +1187,7 @@ export function createNativeChatController({
       unsubscribeAutomation = automation?.subscribe(() => {
         const value = automation.getSnapshot()
         if (value.recoveryBlocked && automaticRecoveryAllowed) void disconnect()
-        else if (value.recoveryFailed && recovery) failRecovery("request-failed")
+        else if (value.recoveryFailed) failAutomationRecovery()
         else if (value.recovering && !recovery && hostTurnActive() && automaticRecoveryAllowed)
           beginRecovery("request-failed")
         refreshRecoveryFeedback()

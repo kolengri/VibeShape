@@ -30,7 +30,7 @@ bundle; omitting it uses the same default bundle directory as `prepare:local`.
 The first Electron invocation downloads the pinned runtime and checks its upstream checksums.
 Packaging also uses macOS `sips`, `iconutil`, `codesign`, `hdiutil`, Swift/AppKit and
 `osascript`/Finder. It emits a runnable
-`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.13-mac-arm64.dmg`, `SHA256SUMS`, and a
+`VibeShape-darwin-arm64/VibeShape.app`, a `VibeShape-0.1.14-mac-arm64.dmg`, `SHA256SUMS`, and a
 `desktop-build.json` recording the source commit, editor inventory, main/preload/MCP bundles and image digest.
 The same script accepts `x64`; that target requires its own actual Mac acceptance evidence before
 release. The local Apple Silicon artifact does not establish Intel compatibility.
@@ -260,6 +260,9 @@ correct printer settings, slicing, or printing.
 
 ## Release checks and downloads
 
+For a single manual build, native acceptance and publication run, see
+[automated desktop releases](desktop-release.md).
+
 **VibeShape → Check for Updates…** checks public GitHub Releases. Startup also checks quietly;
 network failures and an empty desktop release channel do not interrupt launch. An available update
 offers an explicit download. The native Save dialog chooses its destination, progress belongs to the
@@ -271,9 +274,9 @@ checks, and disclose its actual signing/notarization status before publishing a 
 The current Apple Silicon channel is ad-hoc signed and not notarized; it must not claim Developer ID
 authentication. A Developer ID release additionally requires its signing and notarization checks:
 
-- Tag: `desktop-v0.1.13` for desktop package version `0.1.13`.
-- Apple Silicon asset: `VibeShape-0.1.13-mac-arm64.dmg`.
-- Intel asset, only after target verification: `VibeShape-0.1.13-mac-x64.dmg`.
+- Tag: `desktop-v0.1.14` for desktop package version `0.1.14`.
+- Apple Silicon asset: `VibeShape-0.1.14-mac-arm64.dmg`.
+- Intel asset, only after target verification: `VibeShape-0.1.14-mac-x64.dmg`.
 - Upload the image as a GitHub release asset with an advertised `sha256:` digest and matching size.
 - Include checksums and corresponding-source provenance with the release.
 

@@ -114,9 +114,11 @@ function fixture(resumable = true) {
         automationListeners.delete(callback)
       }
     },
-    async retryRecovery() {
+    retryRecovery: vi.fn(async () => {
+      automationState = { ...automationState, recovering: true, recoveryFailed: false }
+      for (const notify of automationListeners) notify()
       return true
-    },
+    }),
   }
   const chat = createNativeChatController({
     projectId,
@@ -142,6 +144,7 @@ function fixture(resumable = true) {
     connections,
     prompts,
     disconnected,
+    retryModel: automation.retryRecovery,
     fail(code?: AssistantErrorCode) {
       failure = code
     },
@@ -171,6 +174,42 @@ function fixture(resumable = true) {
 }
 
 describe("internal native connection recovery", () => {
+  it.each(["transient exhaustion", "permanent client change"] as const)(
+    "handles %s after a slow ACP resume",
+    async (failure) => {
+      const f = fixture()
+      await f.chat.connect(agent)
+      await f.chat.send("Do work")
+      let release = () => {}
+      f.gate(
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+      )
+      f.automate({ connected: false, recovering: true, recoveryAttempt: 1 })
+      await vi.advanceTimersByTimeAsync(1000)
+      f.automate({ recovering: false, recoveryFailed: true, recoveryAttempt: 5, error: true })
+      expect(f.chat.getSnapshot().recovery?.status).toBe("retrying")
+      if (failure === "permanent client change") f.retryModel.mockResolvedValue(false)
+      release()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(f.retryModel).toHaveBeenCalledTimes(1)
+      expect(f.retryModel).toHaveBeenCalledWith({ automatic: true })
+      expect(f.prompts).toHaveLength(1)
+      if (failure === "permanent client change") {
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(f.chat.getSnapshot().recovery?.status).toBe("failed")
+        expect(f.connections).toHaveLength(2)
+        return
+      }
+      f.automate({ connected: true, recovering: false, recoveryFailed: false, error: false })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(f.chat.getSnapshot().recovery).toBeNull()
+      expect(f.prompts).toHaveLength(2)
+      expect(f.connections).toHaveLength(2)
+      expect(f.disconnected).not.toContain("connection-2")
+    },
+  )
   it("bounds an initial configured transport failure", async () => {
     const f = fixture()
     f.fail("launch-failed")
