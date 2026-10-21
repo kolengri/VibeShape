@@ -120,6 +120,7 @@ function summaryMatchesSettings(
       settings.cellSizeMm,
       summary.initialCellCount,
       summary.finalCellCount,
+      summary.iterations,
     ),
     constraintsMatch(summary, settings),
     objectiveMatches(summary, settings),

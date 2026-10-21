@@ -184,7 +184,9 @@ candidate, including an unchanged baseline when no lighter valid solid is found.
 Every candidate must satisfy all supplied stress, safety, displacement, keep-out, connectivity, and
 optional FDM constraints. Repeated final FEM uses the full-solid exported cells, never relaxed SIMP
 stiffness or baseline-field estimates. Results and downloaded reports include algorithm settings and
-evidence; settings/source changes invalidate the result. Apply uses the existing inspected mesh
+evidence; settings/source changes invalidate the result. Algorithm iteration counters must equal the
+summary iteration count and remain within the request budget in both browser and MCP validation.
+Apply uses the existing inspected mesh
 snapshot, atomic transaction, and Undo workflow. Results remain mesh Parts, without CAD reconstruction
 or STEP export. Computational and small-strain limits remain unchanged.
 

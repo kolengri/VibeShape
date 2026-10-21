@@ -84,6 +84,9 @@ Both paired transports accept optional `settings.algorithm`. Omission keeps feas
   conservative occupied-cube feature bound, and projection evidence. Do not call requested wall
   thickness a measured smooth-surface minimum.
 
+Browser and MCP validation require `densityIterations` or `thresholdPasses` to equal
+`summary.iterations`, which must not exceed the requested `maxIterations`.
+
 Every accepted result is reanalyzed as full-solid cells for every load case. Relaxed SIMP metrics
 or the source field cannot substitute for final feasibility. Underresolved walls and incompatible
 protected geometry fail explicitly; never weaken user constraints to obtain success. Ordinary

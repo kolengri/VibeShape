@@ -345,6 +345,7 @@ export function structuralAlgorithmSummaryMatches(
   cellSizeMm: number,
   initialCellCount: number,
   finalCellCount: number,
+  iterations: number,
 ): boolean {
   if (!settings) return summary === undefined
   if (
@@ -353,7 +354,8 @@ export function structuralAlgorithmSummaryMatches(
     summary.settings.kind !== settings.kind ||
     !Number.isFinite(cellSizeMm) ||
     cellSizeMm < 0.01 ||
-    initialCellCount < finalCellCount
+    initialCellCount < finalCellCount ||
+    (summary.kind === "simp" ? summary.densityIterations : summary.thresholdPasses) !== iterations
   )
     return false
   if (

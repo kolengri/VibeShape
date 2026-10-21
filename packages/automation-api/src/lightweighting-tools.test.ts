@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import type { StructuralAlgorithmSummary } from "@vibeshape/domain/lightweighting"
 import { structuralMaterialCatalog } from "@vibeshape/domain/lightweighting-materials"
 import {
   lightweightingId,
@@ -23,6 +24,80 @@ import { remoteOperationSchema } from "./remote-session"
 import { localToolAnnotations } from "./tool-metadata"
 
 describe("bounded paired-browser lightweighting contracts", () => {
+  it.each(["simp", "adaptive-lattice"] as const)(
+    "binds %s iteration evidence to the summary and request budget",
+    (kind) => {
+      for (const request of [false, true]) {
+        const operation = lightweightingOperation(request)
+        const evidence: StructuralAlgorithmSummary =
+          kind === "simp"
+            ? {
+                kind,
+                settings: { kind, volumeFraction: 0.8, filterRadiusMm: 1.5, penalty: 3 },
+                densityIterations: 4,
+                converged: false,
+                maxDensityChange: 0.1,
+                targetCellCount: 32,
+                achievedCellCount: 32,
+                targetStatus: "reached",
+                projectionEvaluations: 2,
+              }
+            : {
+                kind,
+                settings: {
+                  kind,
+                  lattice: "gyroid",
+                  cellPeriodMm: 8,
+                  minWallThicknessMm: 2,
+                  maxWallThicknessMm: 3,
+                  skinThicknessMm: 0,
+                  field: "strain-energy",
+                  gamma: 1,
+                },
+                fieldMin: 0.1,
+                fieldMax: 1,
+                requestedWallMinMm: 2,
+                requestedWallMaxMm: 3,
+                minimumFeatureSizeBoundMm: 2,
+                projectionEvaluations: 2,
+                thresholdPasses: 4,
+              }
+        const withAlgorithm = {
+          ...operation,
+          arguments: {
+            ...operation.arguments,
+            settings: { ...operation.arguments.settings, algorithm: evidence.settings },
+          },
+        }
+        for (const [iterations, counter, accepted] of [
+          [0, 0, true],
+          [4, 4, true],
+          [1, 0, false],
+          [1, 4, false],
+          [1, 40, false],
+          [4, 1, false],
+          [5, 5, false],
+        ] as const) {
+          const algorithm =
+            evidence.kind === "simp"
+              ? { ...evidence, densityIterations: counter }
+              : { ...evidence, thresholdPasses: counter }
+          const value = {
+            documentId: lightweightingId(3),
+            baseRevision: 4,
+            source: operation.arguments.source,
+            summary: { ...lightweightingSummary(), iterations, algorithm },
+            ...(request ? { snapshot: lightweightingSnapshot() } : {}),
+          }
+          const schema = request ? lightweightingRequestSchema : lightweightingAnalysisSchema
+          expect(schema.safeParse(value).success).toBe(true)
+          expect(lightweightingResultContextMatches(withAlgorithm, { ok: true, value })).toBe(
+            accepted,
+          )
+        }
+      }
+    },
+  )
   it("binds algorithm evidence to the requested settings on local and remote transports", () => {
     for (const request of [false, true]) {
       const operation = lightweightingOperation(request)
