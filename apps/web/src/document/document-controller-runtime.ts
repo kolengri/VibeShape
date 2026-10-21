@@ -127,14 +127,7 @@ import type { FeatureId } from "@vibeshape/domain/identifiers"
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import type { SurfaceTextureLayer } from "@vibeshape/domain/surface-textures"
-import {
-  readAuthoredVShape,
-  writeVShapeV2,
-  writeVShapeV3,
-  writeVShapeV4,
-  writeVShapeV5,
-  writeVShapeV6,
-} from "@vibeshape/formats/vshape"
+import { readAuthoredVShape } from "@vibeshape/formats/vshape"
 import {
   acquireDocumentLease,
   type LocalProjectSummary,
@@ -194,6 +187,7 @@ import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { reconcileHistoryInsertion } from "./history-insertion"
 import { captureLibrarySource } from "./library-source"
 import { createProjectActionGuard } from "./project-action-guard"
+import { exportProjectBackup } from "./project-backup-client"
 import { type ProjectNavigationError, readProjectUrl } from "./project-navigation"
 import { materializeDocumentSourceAssets } from "./source-assets-rebuild"
 import { formatProjectCopyName } from "./versioned-project-file"
@@ -3170,43 +3164,15 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   async function exportCapturedProjectBackup(
     action: NonNullable<ReturnType<typeof captureProjectAction>>,
   ): Promise<ActiveProjectBackupResult> {
-    if (!action.current()) return projectActionUnavailable()
-    const portable = await action.repository.exportPortableProject(action.id)
-    if (!portable.ok) return portable
-    if (!action.current() || portable.value.project.snapshot.revision !== action.revision)
-      return projectActionUnavailable()
-    const write = projectBackupWriter(portable.value.version)
-    const archived = await write({
-      ...portable.value.project,
-      exportedAt: new Date().toISOString(),
-      createdBy: { application: "VibeShape", version: "0.0.0", build: null },
-      engine: null,
+    const database = activeDatabase
+    if (!database || !action.current()) return projectActionUnavailable()
+    const archived = await exportProjectBackup({
+      databaseName: database.name,
+      documentId: action.id,
+      revision: action.revision,
     })
     if (!action.current()) return projectActionUnavailable()
-    return archived.ok
-      ? {
-          ok: true,
-          file: archived.value,
-          documentName: action.active.snapshot.name,
-          documentId: action.id,
-          revision: action.revision,
-        }
-      : archived
-  }
-
-  function projectBackupWriter(version: 2 | 3 | 4 | 5 | 6) {
-    switch (version) {
-      case 6:
-        return writeVShapeV6
-      case 5:
-        return writeVShapeV5
-      case 4:
-        return writeVShapeV4
-      case 3:
-        return writeVShapeV3
-      default:
-        return writeVShapeV2
-    }
+    return archived
   }
 
   async function importProjectBackup(

@@ -376,7 +376,7 @@ it("reports ambiguity from a duplicated exact topology catalogue without constru
   expect((await evaluate(input)).shape.volume).toBeCloseTo(2400, 8)
 })
 
-it("rejects unproved curved V3 measurement and periodic seams after exact reference resolution", async () => {
+it("measures body-bound circular Offset and rejects unproved curved modes and periodic seams", async () => {
   const input = request("cylinder", 1, {
     radius: 10,
     height: 20,
@@ -394,28 +394,69 @@ it("rejects unproved curved V3 measurement and periodic seams after exact refere
     "edge",
     ({ signature: s }) => s.geometryClass === "LINE",
   )
-  for (const measurement of ["offset", "tangent"] as const) {
+  const top = candidate(
+    result.topologyCandidates,
+    "face",
+    ({ signature: s }) => s.geometryClass === "PLANE" && Math.abs(s.centroid[2] - 20) < 1e-6,
+  )
+  const parameters: ChamferFeatureContentParametersV3 = {
+    mode: "equal-distance",
+    distance: 1,
+    measurement: "offset",
+    flip: false,
+    tangentPropagation: false,
+    targets: [{ kind: "edge", edge: edgeRef(rim) }],
+    directionOverrides: [],
+  }
+  for (const distance of [0.25, 1, 3]) {
+    const built = await evaluate(request("chamfer", 3, { ...parameters, distance }, input))
+    expect(built.shape.valid).toBe(true)
+    expect(built.shape.solidCount).toBe(1)
+    expect(built.shape.volume).toBeCloseTo(
+      Math.PI * (2000 - 10 * distance ** 2 + distance ** 3 / 3),
+      6,
+    )
+    for (const [radius, height] of [
+      [10 - distance, 20],
+      [10, 20 - distance],
+    ])
+      expect(
+        built.topologyCandidates.some(
+          ({ referenceGeometry: g }) =>
+            g?.kind === "circle-edge" &&
+            Math.abs(g.radius - (radius ?? Infinity)) < 1e-6 &&
+            Math.abs(g.center[2] - (height ?? Infinity)) < 1e-6,
+        ),
+      ).toBe(true)
+  }
+  const face = await evaluate(
+    request(
+      "chamfer",
+      3,
+      {
+        ...parameters,
+        targets: [{ kind: "face", face: faceRef(top) }],
+      },
+      input,
+    ),
+  )
+  expect(face.shape.volume).toBeCloseTo(Math.PI * (2000 - 10 + 1 / 3), 6)
+  const directed = [{ kind: "edge", edge: edgeRef(rim), sideFace: faceRef(top) }]
+  for (const patch of [
+    { measurement: "tangent" },
+    { mode: "two-distances", secondDistance: 2, targets: directed },
+    { mode: "distance-angle", angle: Math.PI / 6, targets: directed },
+  ]) {
+    const ownedBefore = engine.getHealth().ownedShapeCount
     const failed = await engine.evaluateFeature(
-      request(
-        "chamfer",
-        3,
-        {
-          mode: "equal-distance",
-          distance: 1,
-          measurement,
-          flip: false,
-          tangentPropagation: true,
-          targets: [{ kind: "edge", edge: edgeRef(rim) }],
-          directionOverrides: [],
-        },
-        input,
-      ),
+      request("chamfer", 3, { ...parameters, ...patch }, input),
       vi.fn(),
     )
     expect(failed).toMatchObject({
       ok: false,
       diagnostic: { message: expect.stringContaining("non-planar adjacent faces is unsupported") },
     })
+    expect(engine.getHealth().ownedShapeCount).toBe(ownedBefore)
   }
   const failed = await engine.evaluateFeature(
     request(
