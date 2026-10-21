@@ -36,6 +36,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | scikit-fem 12.0.2 and trimesh 4.12.2 | BSD-3-Clause; MIT, respectively | Retain exact wheel notices and upstream version links |
 | React | MIT | Include a third-party notice |
 | React DOM | MIT | Include a third-party notice |
+| react-markdown 10.1.0 / remark-gfm 4.0.1 | MIT | Browser-shipped assistant Markdown renderer and GFM extension; preserve their notices and exact locked transitive licenses in the generated third-party bundle |
 | Three.js | MIT | Include a third-party notice |
 | three-mesh-bvh 0.9.15 | MIT | Browser-shipped bounded shell-containment and intersection queries for valid cavity-aware 3MF export; preserve its upstream notice |
 | Vite | MIT | Include a build-time notice according to release policy |

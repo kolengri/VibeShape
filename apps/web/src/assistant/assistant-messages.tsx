@@ -3,6 +3,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { ChevronDown } from "@vibeshape/ui/components/icons"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type FocusEvent, type ReactNode, useEffect, useId, useMemo, useRef } from "react"
+import { AssistantMarkdown } from "./assistant-markdown"
 import { AssistantToolDetails, hasToolDetails } from "./assistant-tool-details"
 import type { AssistantToolHighlight } from "./assistant-tool-highlight"
 import type { ChatMessage } from "./chat-history"
@@ -376,7 +377,11 @@ export function AssistantMessages({
             <h3 className="mb-1 text-xs font-medium text-muted-foreground">
               {t(`role.${message.role}`)}
             </h3>
-            <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
+            {message.role === "assistant" ? (
+              <AssistantMarkdown text={message.text} />
+            ) : (
+              <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
+            )}
             {message.attachments && message.attachments.length > 0 && (
               <ul aria-label={t("attachments")} className="mt-1 flex flex-wrap gap-1">
                 {message.attachments.map((attachment) => (

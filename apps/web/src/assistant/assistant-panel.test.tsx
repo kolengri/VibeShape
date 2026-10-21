@@ -22,7 +22,7 @@ const i18n = createI18n({
         ...messages.en.app,
         assistant: {
           ...messages.en.app.assistant,
-          applyChanges: "Apply changes",
+          applyChanges: "Confirm changes",
           applyingChanges: "Applying changes…",
           applyChangesFailed:
             "Changes could not be applied ({code}). Review the current model and preview again.",
@@ -101,7 +101,9 @@ describe("assistant transcript and composer", () => {
     const pending = deferred<boolean>()
     const apply = vi.fn(() => pending.promise)
     const withCheckpoint = vi.fn((operation: () => Promise<boolean>) => operation())
+    const send = vi.fn(async () => true)
     const props: Partial<PanelProps> = {
+      onSend: send,
       draftDisplay: {
         mode: "result",
         onChange: () => {},
@@ -109,10 +111,16 @@ describe("assistant transcript and composer", () => {
       },
       onApplyDraft: withCheckpoint,
     }
-    const rendered = render(panel(props))
+    const rendered = render(panel({ ...props, busy: true }))
+    expect(screen.queryByRole("button", { name: "Confirm changes" })).toBeNull()
+    rendered.rerender(panel(props))
     expect(apply).not.toHaveBeenCalled()
-    const button = screen.getByRole("button", { name: "Apply changes" })
+    const button = screen.getByRole("button", { name: "Confirm changes" })
+    expect(button.textContent).toBe("")
+    expect(button.querySelector("svg")).not.toBeNull()
+    expect(screen.getByRole("log").contains(button)).toBe(false)
     await userEvent.dblClick(button)
+    expect(send).not.toHaveBeenCalled()
     expect(apply).toHaveBeenCalledTimes(1)
     expect(withCheckpoint).toHaveBeenCalledTimes(1)
     expect(button.getAttribute("aria-busy")).toBe("true")
@@ -128,21 +136,21 @@ describe("assistant transcript and composer", () => {
         },
       }),
     )
-    expect(screen.getByRole("button", { name: "Apply changes" }).getAttribute("aria-busy")).toBe(
+    expect(screen.getByRole("button", { name: "Confirm changes" }).getAttribute("aria-busy")).toBe(
       "true",
     )
     expect(screen.getByText("Applying changes…").getAttribute("role")).toBe("status")
     await act(async () => pending.resolve(true))
     rendered.rerender(panel({ canUndoAgentChanges: true, onViewBefore: async () => true }))
-    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Confirm changes" })).toBeNull()
     expect(screen.getByText("Changes saved to this project")).toBeTruthy()
   })
 
   it("keeps saved checkpoints and display-only previews free of Apply and reports an unconfirmed apply failure", () => {
     const rendered = render(panel({ canUndoAgentChanges: true }))
-    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Confirm changes" })).toBeNull()
     rendered.rerender(panel({ draftDisplay: { mode: "result", onChange: () => {} } }))
-    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Confirm changes" })).toBeNull()
     rendered.rerender(
       panel({
         draftDisplay: {
@@ -159,12 +167,12 @@ describe("assistant transcript and composer", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "Changes could not be applied (document-commit-failed)",
     )
-    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Confirm changes" })).toBeNull()
     expect(screen.queryByText("Agent preview · not saved yet")).toBeNull()
     expect(screen.queryByText("Changes saved to this project")).toBeNull()
   })
 
-  it("places change inspection after the finished batch inside the transcript", async () => {
+  it("keeps icon-only change controls above the composer after a batch finishes", async () => {
     const changeDisplay = vi.fn()
     const before = vi.fn().mockResolvedValue(true)
     const undo = vi.fn().mockResolvedValue(true)
@@ -179,7 +187,12 @@ describe("assistant transcript and composer", () => {
     expect(screen.queryByRole("region", { name: "Agent changes" })).toBeNull()
     rendered.rerender(panel(props))
     const review = screen.getByRole("region", { name: "Agent changes" })
-    expect(screen.getByRole("log").contains(review)).toBe(true)
+    expect(screen.getByRole("log").contains(review)).toBe(false)
+    expect(review.compareDocumentPosition(draft()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    for (const button of within(review).getAllByRole("button")) {
+      expect(button.textContent).toBe("")
+      expect(button.querySelector("svg")).not.toBeNull()
+    }
     expect(
       review.compareDocumentPosition(screen.getByText("The container is ready.")) &
         Node.DOCUMENT_POSITION_PRECEDING,
