@@ -26,8 +26,8 @@ import {
 } from "@vibeshape/domain"
 import type { BodyReference } from "@vibeshape/domain/body-reference"
 import { Button } from "@vibeshape/ui/components/button"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Scan } from "@vibeshape/ui/components/icons"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
@@ -622,7 +622,7 @@ function RevolveOperationField({ controller }: { controller: RevolveFormControll
   return (
     <form.Field name="operation">
       {(field) => (
-        <SelectField
+        <ChoiceField
           name={field.name}
           value={field.state.value}
           label={controller.copy.operation}
@@ -632,12 +632,13 @@ function RevolveOperationField({ controller }: { controller: RevolveFormControll
             controller.clearSubmissionErrors()
             field.handleChange(value)
           }}
-        >
-          <SelectOption value="new">{controller.copy.operationNew}</SelectOption>
-          <SelectOption value="add">{controller.copy.operationAdd}</SelectOption>
-          <SelectOption value="remove">{controller.copy.operationRemove}</SelectOption>
-          <SelectOption value="intersect">{controller.copy.operationIntersect}</SelectOption>
-        </SelectField>
+          options={[
+            { value: "new", label: controller.copy.operationNew },
+            { value: "add", label: controller.copy.operationAdd },
+            { value: "remove", label: controller.copy.operationRemove },
+            { value: "intersect", label: controller.copy.operationIntersect },
+          ]}
+        />
       )}
     </form.Field>
   )

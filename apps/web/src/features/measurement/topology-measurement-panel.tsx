@@ -8,8 +8,9 @@ import {
 } from "@vibeshape/application/model-topology-measurements"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
-import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { useMemo, useState } from "react"
+import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import type { DocumentControllerState } from "../../document/document-controller"
 import {
   formatDisplayAngle,
@@ -35,38 +36,36 @@ function ElementSelection({
   const t = useTranslations("app.topologyMeasurements")
   return (
     <div className="grid gap-2">
-      <NativeSelectField
+      <LocalizedSearchableSelectField
         label={label}
+        placeholder={label}
         value={value.element.id}
-        onChange={(event) => {
-          const element = elements.find(({ id }) => id === event.currentTarget.value)
+        onValueChange={(id) => {
+          const element = elements.find((element) => element.id === id)
           const point = element?.points[0]
           if (element && point) onChange({ element, point })
         }}
-      >
-        {elements.map((element, index) => (
-          <option key={element.id} value={element.id}>
-            {t(element.kind === "edge" ? "edgeElement" : "faceElement", {
-              number: index + 1,
-              geometry: element.geometryClass,
-            })}
-          </option>
-        ))}
-      </NativeSelectField>
-      <NativeSelectField
+        options={elements.map((element, index) => ({
+          value: element.id,
+          label: t(element.kind === "edge" ? "edgeElement" : "faceElement", {
+            number: index + 1,
+            geometry: element.geometryClass,
+          }),
+          keywords: [element.kind, element.geometryClass],
+        }))}
+      />
+      <ChoiceField
         label={t("point")}
         value={value.point.kind}
-        onChange={(event) => {
-          const point = value.element.points.find(({ kind }) => kind === event.currentTarget.value)
+        onValueChange={(kind) => {
+          const point = value.element.points.find((point) => point.kind === kind)
           if (point) onChange({ ...value, point })
         }}
-      >
-        {value.element.points.map(({ kind }) => (
-          <option key={kind} value={kind}>
-            {t(`points.${kind}`)}
-          </option>
-        ))}
-      </NativeSelectField>
+        options={value.element.points.map(({ kind }) => ({
+          value: kind,
+          label: t(`points.${kind}`),
+        }))}
+      />
     </div>
   )
 }

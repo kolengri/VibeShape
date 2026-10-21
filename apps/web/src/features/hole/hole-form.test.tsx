@@ -1,5 +1,5 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -104,7 +104,21 @@ const copy: HoleFormCopy = {
   noPoints: "No points",
 }
 
-afterEach(cleanup)
+beforeEach(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 function renderForm(overrides: Partial<React.ComponentProps<typeof HoleForm>> = {}) {
   const onSave = overrides.onSave ?? vi.fn(async () => ({ ok: true as const }))
@@ -264,9 +278,10 @@ describe("HoleForm", () => {
         { featureId: target, outputRole: "pattern.instance.1", label: "Named body" },
       ],
     })
-    await userEvent
-      .setup()
-      .selectOptions(screen.getByRole("combobox", { name: copy.target }), `${target}\u0000`)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("combobox", { name: copy.target }))
+    await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Whole result")
+    await user.click(screen.getByRole("option", { name: "Whole result" }))
     await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
     expect(onSave).toHaveBeenCalledWith(
       1,
@@ -310,7 +325,9 @@ describe("HoleForm", () => {
       previewStatus: "ready",
       onPreviewChange,
     })
-    expect(screen.getByRole("option", { name: "Missing body output" })).toBeTruthy()
+    expect(screen.getByRole("combobox", { name: copy.target }).textContent).toContain(
+      "Missing body output",
+    )
     expect(screen.getByText(copy.missingTargetRole ?? "")).toBeTruthy()
     await vi.waitFor(() => expect(onPreviewChange).toHaveBeenCalledWith(null))
     await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))

@@ -310,6 +310,33 @@ it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
   },
 )
 
+function previewOptions(
+  quality: "overview" | "detail" | undefined,
+  framing: "default" | "camera" | "views",
+) {
+  const resolved = quality ?? "overview"
+  const requestedQuality = quality ? { quality } : {}
+  if (framing === "camera") {
+    const camera = { position: [30, -30, 20], target: [0, 0, 5], viewHeightMm: 12 }
+    return {
+      resolved,
+      options: { ...requestedQuality, camera },
+      evidence: { camera },
+      views: ["custom"],
+    }
+  }
+  if (framing === "views") {
+    const views = ["top", "front"]
+    return { resolved, options: { ...requestedQuality, views }, evidence: {}, views }
+  }
+  return {
+    resolved,
+    options: requestedQuality,
+    evidence: {},
+    views: resolved === "detail" ? ["isometric", "front", "right", "top"] : ["isometric"],
+  }
+}
+
 describe("remote MCP in workerd", () => {
   it.each(["document", "base", "direction", "command"] as const)(
     "revokes a well-shaped forged history %s result",
@@ -529,50 +556,91 @@ describe("remote MCP in workerd", () => {
       ).toBe(false)
     },
   )
-  it("returns native PNG preview content through the paired remote transport", async () => {
-    const tab = await pair()
-    const authenticated = await authorizeTab(tab)
-    const png =
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
-    const camera = { position: [30, -30, 20], target: [0, 0, 5], viewHeightMm: 12 }
-    const work = nextMessage(tab.socket)
-    const pending = mcp(authenticated.token, 1, "tools/call", {
-      name: "render_preview",
-      arguments: { source: "model", revision: 4, camera },
-    })
-    const operation = await work
-    if (operation.type !== "work") throw new Error("Expected owned browser work.")
-    tab.socket.send(
-      JSON.stringify({
-        type: "result",
-        protocolVersion: 1,
-        requestId: operation.requestId,
-        tool: "render_preview",
-        result: {
-          ok: true,
-          value: {
-            source: "model",
-            documentId: "0195b5ac-b250-7a2c-8c33-000000000001",
-            revision: 4,
-            generation: 1,
-            geometryStatus: "valid",
-            bodyCount: 1,
-            camera,
-            image: { mimeType: "image/png", base64: png, width: 1, height: 1, views: ["custom"] },
-          },
+  it.each([
+    ["model", undefined, "default", null],
+    ["model", "detail", "default", null],
+    ["model", "overview", "camera", null],
+    ["draft", "detail", "camera", null],
+    ["draft", "overview", "views", null],
+    ["model", "detail", "views", null],
+    ["model", undefined, "default", "quality"],
+    ["model", undefined, "default", "missing"],
+    ["model", undefined, "default", "views"],
+  ] as const)(
+    "correlates remote %s preview quality=%s framing=%s change=%s",
+    async (source, quality, framing, change) => {
+      const tab = await pair()
+      const authenticated = await authorizeTab(tab)
+      const png =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
+      const { resolved, options, evidence, views } = previewOptions(quality, framing)
+      const draftId = "0195b5ac-b250-7a2c-8c33-000000000002"
+      const args = {
+        source,
+        revision: 4,
+        ...(source === "draft" ? { draftId } : {}),
+        ...options,
+      }
+      const work = nextMessage(tab.socket)
+      const pending = mcp(authenticated.token, 1, "tools/call", {
+        name: "render_preview",
+        arguments: args,
+      })
+      const operation = await work
+      if (operation.type !== "work") throw new Error("Expected owned browser work.")
+      expect(operation.operation).toMatchObject({ tool: "render_preview", arguments: args })
+      const value = {
+        source,
+        documentId: "0195b5ac-b250-7a2c-8c33-000000000001",
+        revision: 4,
+        generation: 1,
+        geometryStatus: "valid",
+        bodyCount: 1,
+        quality: change === "quality" ? "detail" : resolved,
+        ...(source === "draft" ? { draftId, baseRevision: 3 } : {}),
+        ...evidence,
+        image: {
+          mimeType: "image/png",
+          base64: png,
+          width: 1,
+          height: 1,
+          views: change === "views" ? ["isometric", "front", "right", "top"] : views,
         },
-      }),
-    )
-    const response = (await (await pending).json()) as {
-      result: { content: unknown[]; structuredContent: unknown }
-    }
-    expect(response.result.content).toContainEqual({
-      type: "image",
-      data: png,
-      mimeType: "image/png",
-    })
-    expect(JSON.stringify(response.result.structuredContent)).not.toContain(png)
-  })
+      }
+      if (change === "missing") Reflect.deleteProperty(value, "quality")
+      const revoked = change ? nextMessage(tab.socket) : null
+      tab.socket.send(
+        JSON.stringify({
+          type: "result",
+          protocolVersion: 1,
+          requestId: operation.requestId,
+          tool: "render_preview",
+          result: { ok: true, value },
+        }),
+      )
+      const response = (await (await pending).json()) as {
+        result: { content: unknown[]; structuredContent: unknown }
+      }
+      if (revoked) {
+        expect(response.result).toMatchObject({ structuredContent: { result: { ok: false } } })
+        expect(response.result.content).not.toContainEqual(
+          expect.objectContaining({ type: "image" }),
+        )
+        expect((await revoked).type).toBe("revoked")
+        return
+      }
+      expect(response.result.content).toContainEqual({
+        type: "image",
+        data: png,
+        mimeType: "image/png",
+      })
+      expect(response.result.content).toHaveLength(2)
+      expect(response.result.structuredContent).toMatchObject({
+        result: { ok: true, value: { quality: resolved, image: { views } } },
+      })
+      expect(JSON.stringify(response.result.structuredContent)).not.toContain(png)
+    },
+  )
   it.each([false, true])(
     "keeps quick work alive beyond ten minutes and honors revocation (request=%s)",
     async (request) => {

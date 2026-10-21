@@ -1,7 +1,11 @@
 import { expect, it } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
-import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js"
+import {
+  CallToolResultSchema,
+  ListToolsResultSchema,
+  type Tool,
+} from "@modelcontextprotocol/sdk/types.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
 import { localOperationSchema, localToolOutputs } from "@vibeshape/automation-api/local-tools"
@@ -55,6 +59,23 @@ it.each(["manual", "native-project"] as const)(
   },
 )
 
+function expectPreviewInputSchema(schema: Tool["inputSchema"]) {
+  const validate = new AjvJsonSchemaValidator().getValidator({
+    ...schema,
+    properties: schema.properties ?? {},
+    required: schema.required ?? [],
+  })
+  expect(
+    validate({ source: "draft", draftId: "0195b5ac-b250-7a2c-8c33-000000000001", revision: 5 })
+      .valid,
+  ).toBe(true)
+  expect(validate({ source: "draft", revision: 5 }).valid).toBe(false)
+  for (const quality of ["overview", "detail"])
+    expect(validate({ source: "model", revision: 4, quality }).valid).toBe(true)
+  expect(validate({ source: "model", revision: 4, quality: "high" }).valid).toBe(false)
+  expect(validate({ source: "model", revision: 4, quality: null }).valid).toBe(false)
+}
+
 it("delivers client-valid native preview images and withholds them after revocation", async () => {
   const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
   const png =
@@ -69,6 +90,7 @@ it("delivers client-valid native preview images and withholds them after revocat
         generation: 1,
         geometryStatus: "valid",
         bodyCount: 1,
+        quality: "detail",
         image: { mimeType: "image/png", base64: png, width: 1, height: 1, views: ["front"] },
       },
     }),
@@ -89,16 +111,7 @@ it("delivers client-valid native preview images and withholds them after revocat
       destructiveHint: false,
     })
     if (!tool) throw new Error("The render_preview tool was not advertised.")
-    const validate = new AjvJsonSchemaValidator().getValidator({
-      ...tool.inputSchema,
-      properties: tool.inputSchema.properties ?? {},
-      required: tool.inputSchema.required ?? [],
-    })
-    expect(
-      validate({ source: "draft", draftId: "0195b5ac-b250-7a2c-8c33-000000000001", revision: 5 })
-        .valid,
-    ).toBe(true)
-    expect(validate({ source: "draft", revision: 5 }).valid).toBe(false)
+    expectPreviewInputSchema(tool.inputSchema)
     if (!tool.outputSchema) throw new Error("The render_preview output schema was not advertised.")
     const validateOutput = new AjvJsonSchemaValidator().getValidator({
       ...tool.outputSchema,
@@ -107,13 +120,15 @@ it("delivers client-valid native preview images and withholds them after revocat
     })
     const request = {
       name: "render_preview",
-      arguments: { source: "model", revision: 4, views: ["front"] },
+      arguments: { source: "model", revision: 4, quality: "detail", views: ["front"] },
     }
     const rendered = CallToolResultSchema.parse(await client.callTool(request))
     expect(validateOutput(rendered.structuredContent).valid).toBe(true)
     expect(rendered.content).toContainEqual({ type: "image", data: png, mimeType: "image/png" })
     const structured = rendered.structuredContent?.result as { ok: boolean; value: unknown }
     expect(renderPreviewMetadataSchema.safeParse(structured.value).success).toBe(true)
+    expect(structured.value).toMatchObject({ quality: "detail" })
+    expect(rendered.content.filter(({ type }) => type === "image")).toHaveLength(1)
     expect(JSON.stringify(rendered.structuredContent)).not.toContain(png)
     paired.mockReturnValue(false)
     const revoked = CallToolResultSchema.parse(await client.callTool(request))

@@ -76,7 +76,11 @@ test("isolated model preview emits bounded multi-view PNGs and preserves the liv
     const preview: {
       renderModelPreview: (
         meshes: readonly EvidenceMesh[],
-        options?: { views?: readonly string[]; camera?: EvidenceCamera },
+        options?: {
+          quality?: "overview" | "detail"
+          views?: readonly string[]
+          camera?: EvidenceCamera
+        },
       ) => Promise<EvidenceImage>
     } = await import(modules.preview)
     const viewer: {
@@ -216,6 +220,8 @@ test("isolated model preview emits bounded multi-view PNGs and preserves the liv
       const collage = await preview.renderModelPreview([source])
       const decoded = await pixels(collage.base64)
       const panels = collage.views.map((_, index) => surfacePixels(decoded, 2, 2, index))
+      const overview = await preview.renderModelPreview([source], { quality: "overview" })
+      const overviewPixels = await pixels(overview.base64)
       const detail = { ...box(4, 4, 4), featureId: "zoom-detail" }
       for (let index = 0; index < detail.positions.length; index += 3) {
         detail.positions[index] = (detail.positions[index] ?? 0) + 10
@@ -256,6 +262,13 @@ test("isolated model preview emits bounded multi-view PNGs and preserves the liv
       })
       return {
         sample: collage.base64,
+        overviewSample: overview.base64,
+        overview: {
+          width: overview.width,
+          height: overview.height,
+          views: overview.views,
+          panel: surfacePixels(overviewPixels, 1, 1, 0),
+        },
         zoomSample: zoomDetail.base64,
         mimeType: collage.mimeType,
         views: collage.views,
@@ -289,11 +302,23 @@ test("isolated model preview emits bounded multi-view PNGs and preserves the liv
   }, modules)
   await writeFile(test.info().outputPath("model-preview.png"), Buffer.from(report.sample, "base64"))
   await writeFile(
+    test.info().outputPath("model-preview-overview.png"),
+    Buffer.from(report.overviewSample, "base64"),
+  )
+  await writeFile(
     test.info().outputPath("model-preview-detail.png"),
     Buffer.from(report.zoomSample, "base64"),
   )
   expect(report.mimeType).toBe("image/png")
   expect(report.views).toEqual(["isometric", "front", "right", "top"])
+  expect(report.overview.views).toEqual(["isometric"])
+  expect(report.overview.width).toBe(768)
+  expect(report.overview.height).toBe(576)
+  expect(report.overview.panel.count).toBeGreaterThan(1_000)
+  expect(report.overview.panel.minX).toBeGreaterThan(2)
+  expect(report.overview.panel.minY).toBeGreaterThan(2)
+  expect(report.overview.panel.maxX).toBeLessThan(report.overview.panel.width - 2)
+  expect(report.overview.panel.maxY).toBeLessThan(report.overview.panel.height - 2)
   expect(report.width).toBeLessThanOrEqual(1_024)
   expect(report.height).toBeLessThanOrEqual(768)
   expect(report.bytes).toBeLessThanOrEqual(88 * 1_024)

@@ -34,6 +34,9 @@ measurement candidates, not confirmed bottlenecks in this audit.
 
 The subsequent [viewport mesh update investigation](viewport-mesh-performance.md) measures
 complete mesh replacement separately and adds per-body render-resource reuse.
+Its October 21 follow-up also records face-extraction, section-culling, and superseded-thumbnail
+CPU measurements. Ordinary hover coalescing, worker edge preparation, and borrowed feature
+highlight geometry are already present in current source.
 
 A parallel browser run additionally encountered a WebKit multisample allocation failure followed by
 context loss, and Firefox document-startup assertion timeouts. These do not establish a memory leak.
@@ -61,12 +64,14 @@ before attributing them to canvas size, multisampling, concurrent browser load, 
    copying, with no implicit overwrite.
 2. Make print orientation graphical and inspectable before broadening fin coverage. Current support
    output still requires slicer and physical-print validation.
-3. Audit toolbar keyboard traversal separately from command-palette access; horizontal overflow
-   alone is not proof that a command is unreachable.
+3. Preserve the current searchable toolbar and model-browser keyboard behavior in the
+   [design contract](design-and-ux-guidelines.md); compact tool search, focus restoration, hidden
+   selection, and clearing the model search now have browser regression coverage.
 4. Add a reviewed backing-buffer budget and explicit context-loss/restoration feedback and repaint.
    Test DPR/resize limits, preserved camera/document state, restored rendering and recovery without
    hiding real renderer errors. Include a controlled low-memory/context-loss browser fixture.
-5. Profile dense pointer picking and large-model thumbnails on a reproducible model/device before
-   changing scheduling or geometry ownership.
+5. Profile dense pointer picking and active thumbnail rendering/encoding on a reproducible
+   model/device. Superseded thumbnail preparation is now debounced and cancellable; its CPU evidence
+   does not establish GPU or application-wide latency gains.
 6. Extend exact sketch curves and references only with solver, identity, persistence and profile
    contracts; a toolbar icon or a sampled visual curve is not a completed CAD capability.

@@ -4,8 +4,8 @@ import {
   assemblyInstanceRecordSchema as assemblyInstanceSchema,
 } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useState } from "react"
+import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import { AssemblyNameField, AssemblyPoseFields, formPose } from "./assembly-fields"
 import { type AssemblyFormActions, AssemblyTaskForm } from "./assembly-forms"
 import { newAssemblyInstance } from "./assembly-model"
@@ -92,18 +92,23 @@ function NewInstanceForm({
       <AssemblyNameField
         value={t("defaultInstance", { name: definition?.name ?? t("defaultDefinition") })}
       />
-      <SelectField
+      <LocalizedSearchableSelectField
         label={t("definition")}
+        placeholder={t("definition")}
         value={definitionId}
         onValueChange={setDefinitionId}
         required
-      >
-        {assembly.definitions.map(({ id, name }) => (
-          <SelectOption key={id} value={id}>
-            {name}
-          </SelectOption>
-        ))}
-      </SelectField>
+        options={assembly.definitions.map(({ id, name, pinnedModels }, index) => ({
+          value: id,
+          label: name,
+          description: t("choiceSource", {
+            number: index + 1,
+            source:
+              [...new Set(pinnedModels.map(({ snapshot }) => snapshot.name))].join(", ") || name,
+          }),
+          keywords: [id],
+        }))}
+      />
       <AssemblyPoseFields prefix="world" label={t("worldFrame")} />
     </AssemblyTaskForm>
   )

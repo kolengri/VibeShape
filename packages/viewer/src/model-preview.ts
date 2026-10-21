@@ -41,6 +41,7 @@ export type ModelPreviewCamera = Readonly<{
 }>
 
 export type ModelPreviewOptions = Readonly<{
+  quality?: "overview" | "detail"
   views?: readonly ViewerStandardView[]
   camera?: ModelPreviewCamera
 }>
@@ -68,6 +69,7 @@ type PreviewCamera = Readonly<{
 }>
 
 type PreviewRequest = Readonly<{
+  quality: "overview" | "detail"
   meshes: readonly ViewerMesh[]
   corners: readonly Vector3[]
   views: readonly ModelPreviewView[]
@@ -78,11 +80,13 @@ function previewError(message: string) {
   return new Error(`Cannot render model preview: ${message}`)
 }
 
-function validatedViews(options: ModelPreviewOptions) {
+function validatedViews(options: ModelPreviewOptions, quality: PreviewRequest["quality"]) {
   if (options.views !== undefined && !Array.isArray(options.views)) {
     throw previewError("choose one to four unique standard views.")
   }
-  const views = [...(options.views ?? DEFAULT_VIEWS)]
+  const views: ViewerStandardView[] = [
+    ...(options.views ?? (quality === "overview" ? ["isometric"] : DEFAULT_VIEWS)),
+  ]
   if (
     views.length < 1 ||
     views.length > 4 ||
@@ -244,15 +248,24 @@ function normalizeCamera(custom: PreviewCamera, center: Vector3, scale: number):
   return { ...custom, target, viewHeight: height }
 }
 
+function validatedQuality(value: ModelPreviewOptions["quality"]) {
+  const quality = value === undefined ? "detail" : value
+  if (quality !== "overview" && quality !== "detail") {
+    throw previewError("quality must be overview or detail.")
+  }
+  return quality
+}
+
 function snapshotRequest(
   meshes: readonly ViewerMesh[],
   options: ModelPreviewOptions,
 ): PreviewRequest {
+  const quality = validatedQuality(options.quality)
   if (options.camera !== undefined && options.views !== undefined) {
     throw previewError("camera and views are mutually exclusive.")
   }
   const custom = options.camera === undefined ? undefined : validatedCamera(options.camera)
-  const views: ModelPreviewView[] = custom ? ["custom"] : validatedViews(options)
+  const views: ModelPreviewView[] = custom ? ["custom"] : validatedViews(options, quality)
   if (!meshes.length) throw previewError("the model has no meshes.")
   const snapshots = meshes.map(validatedMesh)
   if (!snapshots.some(hasSurfaceTriangle)) {
@@ -268,6 +281,7 @@ function snapshotRequest(
     max.sub(center).divideScalar(scale),
   )
   return {
+    quality,
     meshes: snapshots,
     corners,
     views,
@@ -474,6 +488,7 @@ async function boundedImage(
   assertContext: () => void,
 ): Promise<ModelPreview> {
   for (const width of OUTPUT_WIDTHS) {
+    if (request.quality === "overview" && width > 768) continue
     assertContext()
     renderPanels(renderer, scene, output, context, request, width)
     assertContext()
@@ -572,11 +587,17 @@ export async function renderModelPreview(
 /** Keeps every surface triangle; image size is bounded by resolution rather than missing geometry. */
 export async function renderProjectThumbnail(
   meshes: readonly ViewerMesh[],
+  options: Readonly<{ signal?: AbortSignal }> = {},
 ): Promise<ProjectThumbnail | null> {
-  if (meshes.length === 0) return null
-  const request = snapshotRequest(meshes, { views: ["isometric"] })
-  return enqueuePreview(() =>
-    withPreviewRenderer(request, async (renderer, scene, output, context, assertContext) => {
+  const { signal } = options
+  if (meshes.length === 0 || signal?.aborted) return null
+  // Cancellable background jobs borrow immutable display snapshots until the queue accepts them.
+  // Explicit calls keep their eager snapshot semantics.
+  const prepared = signal ? undefined : snapshotRequest(meshes, { views: ["isometric"] })
+  return enqueuePreview(async () => {
+    if (signal?.aborted) return null
+    const request = prepared ?? snapshotRequest(meshes, { views: ["isometric"] })
+    return withPreviewRenderer(request, async (renderer, scene, output, context, assertContext) => {
       output.width = 240
       output.height = 160
       renderer.setSize(output.width, output.height, false)
@@ -586,10 +607,12 @@ export async function renderProjectThumbnail(
       context.drawImage(renderer.domElement, 0, 0)
       const png = await encodePng(output)
       assertContext()
+      if (signal?.aborted) return null
       if (png.size > 128 * 1_024) throw previewError("the project thumbnail exceeds 128 KiB.")
       const bytes = new Uint8Array(await png.arrayBuffer())
       assertContext()
+      if (signal?.aborted) return null
       return { mediaType: "image/png", bytes }
-    }),
-  )
+    })
+  })
 }

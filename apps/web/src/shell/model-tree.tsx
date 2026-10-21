@@ -28,9 +28,10 @@ import {
 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import type {
-  ViewerOriginPlane,
-  ViewerOriginPlaneVisibility,
+import {
+  type ViewerOriginPlane,
+  type ViewerOriginPlaneVisibility,
+  viewerOriginPlanes,
 } from "@vibeshape/viewer/origin-planes"
 import {
   createContext,
@@ -82,6 +83,7 @@ import {
 } from "./history-selection-delete"
 import { HistoryTimelineCursor } from "./history-timeline-cursor"
 import { ModelBrowserPlanes } from "./model-browser-planes"
+import { ModelBrowserSearch, type ModelBrowserSearchEntry } from "./model-browser-search"
 import {
   modelBrowserChildRow,
   modelBrowserCount,
@@ -2583,7 +2585,7 @@ function useModelTreeSelection(
     bodyController === props.controller ? view : modelBrowserBodyView(bodyController, view)
   const items: readonly ModelTreeSelection[] = [
     ...view.rows
-      .filter((row) => row.datum)
+      .filter((row) => row.kind === "feature")
       .map((row) => ({ kind: "feature" as const, id: row.ref.id as FeatureRecord["id"] })),
     ...parts.map(({ part }) => ({ kind: "part" as const, id: part.id })),
     ...bodyView.modelBodies.map(({ geometry }) => ({
@@ -2615,6 +2617,183 @@ function useModelTreeSelection(
       event.stopPropagation()
     }
   }
+}
+
+function modelSearchSelectedFeature(props: ModelTreeHistoryBranchProps) {
+  const id = props.activeFeatureId ?? props.selectedResultFeatureId
+  const row = props.view.rows.find(({ ref }) => ref.kind === "feature" && ref.id === id)
+  return row?.ref.kind === "feature" ? row.ref.id : null
+}
+
+function modelSearchSelectionKeys(props: ModelTreeHistoryBranchProps) {
+  const originKeys = props.origin?.selected ? [`origin-plane:${props.origin.selected}`] : []
+  if (props.modelTreeSelection?.length)
+    return new Set([...originKeys, ...props.modelTreeSelection.map(modelTreeSelectionKey)])
+  const selected: ModelTreeSelection[] = []
+  const featureId = modelSearchSelectedFeature(props)
+  if (props.selectedPartId) selected.push({ kind: "part", id: props.selectedPartId })
+  else if (props.activeBody) selected.push({ kind: "body", ...props.activeBody })
+  else if (props.activeSketchId) selected.push({ kind: "sketch", id: props.activeSketchId })
+  else if (featureId) selected.push({ kind: "feature", id: featureId })
+  return new Set([...originKeys, ...selected.map(modelTreeSelectionKey)])
+}
+
+function modelSearchOriginEntries(props: ModelTreeHistoryBranchProps): ModelBrowserSearchEntry[] {
+  const { origin, controller, t } = props
+  if (!origin) return []
+  const unavailable =
+    origin.disabled || controller.status !== "ready" || controller.saveStatus === "saving"
+  return viewerOriginPlanes.map((plane) => ({
+    key: `origin-plane:${plane}`,
+    type: "plane",
+    label: plane.toUpperCase(),
+    path: t("items.planes"),
+    searchText: "",
+    unavailable,
+    onActivate: () => origin.onSelect(plane),
+  }))
+}
+
+function modelSearchHistoryPaths(props: ModelTreeHistoryBranchProps) {
+  const { t, view } = props
+  const authority = currentAuthoredSnapshot(props.controller)
+  const folderNames = new Map(
+    authority?.folders.flatMap((folder) =>
+      folder.items.map((item) => [historyRefKey(item), folder.name] as const),
+    ),
+  )
+  return new Map(
+    view.rows.map((row, index) => {
+      const type = row.kind === "sketch" ? "sketch" : row.datum ? "plane" : "operation"
+      const label =
+        row.record.label || t(row.kind === "sketch" ? "unnamedSketch" : "unnamedFeature")
+      const folder = folderNames.get(historyRefKey(row.ref))
+      const source = folder ? t("search.folderPath", { folder, name: label }) : label
+      return [
+        historyRefKey(row.ref),
+        t("search.historyPath", { source, type: t(`search.types.${type}`), number: index + 1 }),
+      ] as const
+    }),
+  )
+}
+
+function modelSearchRowLabel(row: HistoryViewRow, t: ModelTreeHistoryBranchProps["t"]) {
+  return row.record.label || t(row.kind === "sketch" ? "unnamedSketch" : "unnamedFeature")
+}
+
+function modelSearchHistoryEntries(props: ModelTreeHistoryBranchProps): ModelBrowserSearchEntry[] {
+  const { t, view } = props
+  const paths = modelSearchHistoryPaths(props)
+  const boundary = rollbackHistoryIndex(view, props)
+  const busy = props.controller.status !== "ready" || props.controller.saveStatus === "saving"
+  return view.rows.map((row, index) => {
+    const type = row.kind === "sketch" ? "sketch" : row.datum ? "plane" : "operation"
+    const label = modelSearchRowLabel(row, t)
+    const selection: ModelTreeSelection =
+      row.kind === "sketch"
+        ? { kind: "sketch", id: row.ref.id as SketchId }
+        : { kind: "feature", id: row.ref.id as FeatureRecord["id"] }
+    return {
+      key: modelTreeSelectionKey(selection),
+      type,
+      label,
+      path: paths.get(historyRefKey(row.ref)) ?? label,
+      searchText: row.kind === "feature" ? (row.record as FeatureRecord).type.typeId : "",
+      // Datum browser rows share the existing insertion eligibility. History editing remains
+      // owned by the ordinary feature/sketch activation handlers.
+      unavailable: row.datum && (busy || index > boundary),
+      onActivate: () => {
+        if (row.kind === "sketch") void props.onSketchActivate(row.ref.id as SketchId)
+        else props.onFeatureActivate(row.ref.id as FeatureRecord["id"])
+      },
+      onPreselect: (active) => {
+        if (row.kind === "sketch")
+          props.onSketchPreselectionChange?.(active ? (row.ref.id as SketchId) : null)
+        else props.onFeaturePreselectionChange(active ? (row.ref.id as FeatureRecord["id"]) : null)
+      },
+    }
+  })
+}
+
+function modelSearchBodySource(
+  t: ModelTreeHistoryBranchProps["t"],
+  paths: ReadonlyMap<string, string>,
+  binding: ModelBodySelection | undefined,
+) {
+  const source = binding
+    ? paths.get(historyRefKey({ kind: "feature", id: binding.featureId }))
+    : undefined
+  return t("search.sourceRole", {
+    source: source || t("unnamedFeature"),
+    role: binding?.outputRole ?? t("search.resultRole"),
+  })
+}
+
+function modelSearchBodyEntries(props: ModelTreeHistoryBranchProps): ModelBrowserSearchEntry[] {
+  const { t, view } = props
+  const bodyController = historyInsertionContext(props.controller)
+  const parts = currentAuthoredParts(bodyController)
+  const bodyView =
+    bodyController === props.controller ? view : modelBrowserBodyView(bodyController, view)
+  const authority = currentAuthoredSnapshot(props.controller)
+  const owned = authority ? authoredBodyKeys(authority) : new Set<string>()
+  const paths = modelSearchHistoryPaths(props)
+  const features = new Map(
+    view.rows
+      .filter((row) => row.kind === "feature")
+      .map((row) => [row.ref.id, row.record as FeatureRecord]),
+  )
+  const entries: ModelBrowserSearchEntry[] = parts.map(({ part, body: resolvedBody }) => {
+    const body = selectedAuthoredBody(parts, part.id, props.partVisibility?.overrides)
+    const binding = resolvedBody ?? part.bodyHistory.at(-1)
+    return {
+      key: modelTreeSelectionKey({ kind: "part", id: part.id }),
+      type: "part",
+      label: part.name,
+      path: t("search.partPath", {
+        source: modelSearchBodySource(t, paths, binding),
+      }),
+      searchText: binding ? (features.get(binding.featureId)?.type.typeId ?? "") : "",
+      unavailable: !props.onPartSelect || (bodyController !== props.controller && !body),
+      onActivate: () =>
+        selectAuthoredTreePart(props, parts, bodyController !== props.controller, part.id),
+      onPreselect: (active) => props.onBodyPreselectionChange?.(active ? body : null),
+    }
+  })
+  const bodies = bodyView.modelBodies.filter(
+    ({ geometry }) => !owned.has(authoredBodyKey(geometry)),
+  )
+  bodies.forEach(({ feature, geometry }, index) => {
+    const selection: ModelBodySelection = {
+      featureId: geometry.featureId,
+      ...(geometry.outputRole === undefined ? {} : { outputRole: geometry.outputRole }),
+    }
+    entries.push({
+      key: modelTreeSelectionKey({ kind: "body", ...selection }),
+      type: "body",
+      label: t("bodyLabel", { number: index + 1 }),
+      path: t("search.bodyPath", {
+        group: t("items.bodies"),
+        source:
+          paths.get(historyRefKey({ kind: "feature", id: feature.id })) ??
+          feature.label ??
+          t("unnamedFeature"),
+        role: geometry.outputRole ?? t("search.resultRole"),
+      }),
+      searchText: feature.type.typeId,
+      unavailable: false,
+      onActivate: () =>
+        props.onBodyActivate
+          ? props.onBodyActivate(selection)
+          : props.onFeatureActivate(feature.id),
+      onPreselect: (active) => {
+        if (props.onBodyPreselectionChange)
+          props.onBodyPreselectionChange(active ? selection : null)
+        else props.onFeaturePreselectionChange(active ? feature.id : null)
+      },
+    })
+  })
+  return entries
 }
 
 export function ModelTree(props: ModelTreeProps) {
@@ -2675,6 +2854,7 @@ export function ModelTree(props: ModelTreeProps) {
       ref={browser}
       aria-label={t("ariaLabel")}
       className="min-h-0 overflow-auto border-r bg-panel p-2"
+      onKeyDown={deletion.onKeyDown}
     >
       <div className="mb-1 flex items-center gap-2 border-b px-2 pb-3 pt-1">
         <div className="min-w-0">
@@ -2687,26 +2867,35 @@ export function ModelTree(props: ModelTreeProps) {
           )}
         </div>
       </div>
-      <div
-        className="grid grid-cols-1"
-        role="tree"
-        aria-multiselectable="true"
-        onClickCapture={selectTreeItem}
-        aria-label={t("projectFeatures")}
-        onFocusCapture={updateTreeTabStop}
-        onKeyDown={(event) => {
-          deletion.onKeyDown(event)
-          if (event.key === "Escape") {
-            props.onFeaturePreselectionChange(null)
-            props.onModelTreeSelectionChange?.([])
-          }
-          moveTreeFocus(event)
-        }}
+      <ModelBrowserSearch
+        entries={[
+          ...modelSearchBodyEntries({ ...props, t, view: historyView }),
+          ...modelSearchOriginEntries({ ...props, t, view: historyView }),
+          ...modelSearchHistoryEntries({ ...props, t, view: historyView }),
+        ]}
+        selectedKeys={modelSearchSelectionKeys({ ...props, t, view: historyView })}
+        onSelectionClick={selectTreeItem}
       >
-        <ModelTreeWorkspaceItems {...props} t={t} />
-        <ModelTreePlanes {...props} t={t} view={historyView} />
-        <ModelTreeHistoryBranch {...props} t={t} view={historyView} />
-      </div>
+        <div
+          className="grid grid-cols-1"
+          role="tree"
+          aria-multiselectable="true"
+          onClickCapture={selectTreeItem}
+          aria-label={t("projectFeatures")}
+          onFocusCapture={updateTreeTabStop}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              props.onFeaturePreselectionChange(null)
+              props.onModelTreeSelectionChange?.([])
+            }
+            moveTreeFocus(event)
+          }}
+        >
+          <ModelTreeWorkspaceItems {...props} t={t} />
+          <ModelTreePlanes {...props} t={t} view={historyView} />
+          <ModelTreeHistoryBranch {...props} t={t} view={historyView} />
+        </div>
+      </ModelBrowserSearch>
       {deletion.confirmation}
     </aside>
   )

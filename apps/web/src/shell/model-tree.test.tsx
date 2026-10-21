@@ -46,6 +46,7 @@ const {
   featureIdSchema,
   featureRecordSchema,
   filletFeatureType,
+  historyFolderSchema,
   legacyExtrusionFeatureType,
   multiProfileExtrusionFeatureType,
   projectDocumentSnapshotV1ToV0,
@@ -351,6 +352,7 @@ type RenderTreeOptions = Partial<
     | "origin"
     | "activeSketchId"
     | "activeFeatureId"
+    | "selectedResultFeatureId"
     | "modelTreeSelection"
     | "onModelTreeSelectionChange"
     | "onSketchPreselectionChange"
@@ -565,6 +567,427 @@ function browser() {
 function timeline() {
   return within(screen.getByRole("region", { name: "Feature history" }))
 }
+
+describe("ModelTree browser search", () => {
+  it.each(["xy", "xz", "yz"] as const)(
+    "finds the hidden %s origin plane and activates it with the keyboard",
+    async (plane) => {
+      const user = userEvent.setup()
+      const onSelect = vi.fn()
+      const onModelTreeSelectionChange = vi.fn()
+      const origin = {
+        selected: null,
+        visibility: { xy: false, xz: false, yz: false },
+        onSelect,
+        onVisibilityChange: vi.fn(),
+        disabled: false,
+      }
+      const { rerenderTree } = renderTree({ origin, onModelTreeSelectionChange })
+      await user.type(browser().getByRole("searchbox"), plane)
+      const results = browser().getByRole("tree", { name: "Model search results" })
+      const result = within(results).getByRole("treeitem", { name: plane.toUpperCase() })
+      expect(within(results).getAllByRole("treeitem")).toHaveLength(1)
+      expect(result.getAttribute("aria-selected")).toBe("false")
+      await user.keyboard("{ArrowDown}{Enter}")
+      expect(document.activeElement).toBe(result)
+      expect(onSelect.mock.calls).toEqual([[plane]])
+      expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
+      expect(origin.onVisibilityChange).not.toHaveBeenCalled()
+      rerenderTree({ origin: { ...origin, selected: plane } })
+      expect(result.getAttribute("aria-selected")).toBe("true")
+    },
+  )
+
+  it("lists all origin planes in the Planes filter and preserves disabled and saving guards", async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    const origin = {
+      selected: null,
+      visibility: { xy: true, xz: false, yz: true },
+      onSelect,
+      onVisibilityChange: vi.fn(),
+      disabled: false,
+    }
+    const { rerenderTree } = renderTree({ origin })
+    await user.click(browser().getByRole("button", { name: /^Planes$/ }))
+    const results = browser().getByRole("tree", { name: "Model search results" })
+    const planes = within(results).getByRole("group", { name: "Planes" })
+    expect(
+      within(planes)
+        .getAllByRole("treeitem")
+        .map((item) => item.getAttribute("aria-label")),
+    ).toEqual(["XY", "XZ", "YZ"])
+    const result = within(planes).getByRole("treeitem", { name: "XZ" }) as HTMLButtonElement
+    await user.click(result)
+    expect(onSelect.mock.calls).toEqual([["xz"]])
+    rerenderTree({ origin: { ...origin, disabled: true } })
+    expect(result.disabled).toBe(true)
+    await user.click(result)
+    rerenderTree({ origin, controller: { ...controller, saveStatus: "saving" } })
+    expect(result.disabled).toBe(true)
+    await user.click(result)
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not invent origin-plane results when origin controls are unavailable", async () => {
+    const user = userEvent.setup()
+    renderTree()
+    await user.type(browser().getByRole("searchbox"), "xy")
+    const results = browser().getByRole("tree", { name: "Model search results" })
+    expect(within(results).queryByRole("treeitem")).toBeNull()
+  })
+
+  for (const key of ["Delete", "Backspace"]) {
+    it(`routes ${key} from filtered results to selection confirmation and restores focus`, async () => {
+      const user = userEvent.setup()
+      const fixture = authoredInsertionController()
+      const onModelTreeSelectionChange = vi.fn()
+      const { rerenderTree } = renderTree({
+        controller: { ...fixture.controller, historyInsertion: null },
+        activeFeatureId: null,
+        modelTreeSelection: [
+          { kind: "feature", id: fixture.sourceId },
+          { kind: "feature", id: fixture.transformerId },
+        ],
+        onModelTreeSelectionChange,
+      })
+      const input = browser().getByRole("searchbox")
+      await user.type(input, "filletx")
+      await user.keyboard("{Backspace}{Delete}")
+      expect((input as HTMLInputElement).value).toBe("fillet")
+      expect(screen.queryByRole("alertdialog")).toBeNull()
+      expect(browser().getByText("1 selected item is outside these results.")).toBeTruthy()
+      await user.keyboard("{ArrowDown}")
+      const result = browser().getByRole("treeitem", { name: "Later fillet" })
+      expect(document.activeElement).toBe(result)
+      await user.keyboard(`{${key}}`)
+      const dialog = screen.getByRole("alertdialog", { name: "Delete 2 selected items?" })
+      expect(within(dialog).getByText("Later fillet")).toBeTruthy()
+      await user.click(within(dialog).getByRole("button", { name: "Keep selection" }))
+      expect(document.activeElement).toBe(result)
+      expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
+      rerenderTree({ activeFeatureId: fixture.sourceId })
+      await user.keyboard(`{${key}}`)
+      expect(screen.queryByRole("alertdialog")).toBeNull()
+    })
+  }
+
+  it("disambiguates same-name History results with folders and preserves exact activation and modifier selection", async () => {
+    const user = userEvent.setup()
+    const fixture = authoredInsertionController()
+    const authority = fixture.controller.authoredSnapshot
+    const report = fixture.controller.report
+    if (!authority || authority.schemaVersion === 1 || !report)
+      throw new Error("Authored search evidence is required.")
+    const renamed = new Set([fixture.sourceId, fixture.transformerId])
+    const features = authority.features.map((item) =>
+      renamed.has(item.id) ? { ...item, label: "Shared bracket" } : item,
+    )
+    const folders = [
+      { id: authoredTestId(920), name: "Left housing", itemId: fixture.sourceId },
+      { id: authoredTestId(921), name: "Right housing", itemId: fixture.transformerId },
+    ].map(({ id, name, itemId }) =>
+      historyFolderSchema.parse({
+        schemaVersion: 0,
+        id,
+        name,
+        items: [{ kind: "feature", id: itemId }],
+      }),
+    )
+    const onFeatureActivate = vi.fn()
+    const onFeaturePreselectionChange = vi.fn()
+    const onModelTreeSelectionChange = vi.fn()
+    renderTree({
+      controller: {
+        ...fixture.controller,
+        historyInsertion: null,
+        authoredSnapshot: { ...authority, features, folders },
+        report: {
+          ...report,
+          snapshot: {
+            ...report.snapshot,
+            features: report.snapshot.features.map((item) =>
+              renamed.has(item.id) ? { ...item, label: "Shared bracket" } : item,
+            ),
+          },
+        },
+      },
+      activeFeatureId: null,
+      onFeatureActivate,
+      onFeaturePreselectionChange,
+      onModelTreeSelectionChange,
+    })
+    await user.type(browser().getByRole("searchbox", { name: "Search model" }), "shared bracket")
+    await user.click(browser().getByRole("button", { name: "Operations" }))
+    const first = browser().getByRole("treeitem", {
+      name: "Shared bracket",
+      description: "History / Left housing / Shared bracket / Operations 1",
+    })
+    const second = browser().getByRole("treeitem", {
+      name: "Shared bracket",
+      description: "History / Right housing / Shared bracket / Operations 2",
+    })
+    expect(browser().getAllByRole("treeitem")).toHaveLength(2)
+    await user.hover(second)
+    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(fixture.transformerId)
+    await user.unhover(second)
+    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(null)
+    await user.click(first)
+    expect(onFeatureActivate).toHaveBeenLastCalledWith(fixture.sourceId)
+    expect(onModelTreeSelectionChange).toHaveBeenLastCalledWith([
+      { kind: "feature", id: fixture.sourceId },
+    ])
+    fireEvent.click(second, { ctrlKey: true })
+    expect(onFeatureActivate).toHaveBeenCalledTimes(1)
+    expect(onModelTreeSelectionChange).toHaveBeenLastCalledWith([
+      { kind: "feature", id: fixture.transformerId },
+    ])
+    await user.clear(browser().getByRole("searchbox"))
+    await user.type(browser().getByRole("searchbox"), "fillet")
+    expect(browser().getByRole("treeitem", { name: "Shared bracket" })).toBeTruthy()
+  })
+
+  it("keeps the normal tree mounted and restores independent collapsed branches when Escape clears search", async () => {
+    const user = userEvent.setup()
+    renderTree()
+    const normalTree = browser().getByRole("tree")
+    const bodies = browser().getByRole("treeitem", { name: "Bodies" })
+    const sketches = browser().getByRole("treeitem", { name: "Sketches" })
+    await user.click(bodies)
+    await user.click(sketches)
+    const input = browser().getByRole("searchbox")
+    await user.type(input, "profile")
+    expect(browser().getByRole("treeitem", { name: "Profile" })).toBeTruthy()
+    expect(normalTree.isConnected).toBe(true)
+    expect(browser().queryByRole("treeitem", { name: "Bodies" })).toBeNull()
+    await user.keyboard("{Escape}")
+    expect(browser().getByRole("tree")).toBe(normalTree)
+    expect(browser().getByRole("treeitem", { name: "Bodies" })).toBe(bodies)
+    expect(bodies.getAttribute("aria-expanded")).toBe("false")
+    expect(sketches.getAttribute("aria-expanded")).toBe("false")
+    expect(browser().queryByRole("treeitem", { name: "Body 1" })).toBeNull()
+    expect(browser().queryByRole("treeitem", { name: "Profile" })).toBeNull()
+    expect(document.activeElement).toBe(input)
+  })
+
+  it("announces a selection outside filtered results and preserves it through clear and an empty result set", async () => {
+    const user = userEvent.setup()
+    const onModelTreeSelectionChange = vi.fn()
+    renderTree({
+      activeFeatureId: null,
+      modelTreeSelection: [{ kind: "body", featureId }],
+      onModelTreeSelectionChange,
+    })
+    const body = browser().getByRole("treeitem", { name: "Body 1" })
+    await user.type(browser().getByRole("searchbox"), "no matching item")
+    expect(browser().getByText("No results")).toBeTruthy()
+    expect(browser().getByText("1 selected item is outside these results.")).toBeTruthy()
+    await user.click(browser().getByRole("button", { name: "Clear model search" }))
+    expect(browser().getByRole("treeitem", { name: "Body 1" })).toBe(body)
+    expect(body.getAttribute("aria-selected")).toBe("true")
+    expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
+  })
+
+  it("moves from the input through results with arrows and clears with Escape without clearing selection", async () => {
+    const user = userEvent.setup()
+    const onBodyPreselectionChange = vi.fn()
+    const onFeaturePreselectionChange = vi.fn()
+    const onFeatureActivate = vi.fn()
+    const onModelTreeSelectionChange = vi.fn()
+    renderTree({
+      onBodyPreselectionChange,
+      onFeaturePreselectionChange,
+      onFeatureActivate,
+      onModelTreeSelectionChange,
+    })
+    const input = browser().getByRole("searchbox")
+    await user.type(input, "box")
+    const body = browser().getByRole("treeitem", { name: "Body 1" })
+    const operation = browser().getByRole("treeitem", { name: "Box 1" })
+    await user.keyboard("{ArrowDown}")
+    expect(document.activeElement).toBe(body)
+    expect(onBodyPreselectionChange).toHaveBeenLastCalledWith({ featureId })
+    await user.keyboard("{ArrowUp}")
+    expect(document.activeElement).toBe(input)
+    await user.keyboard("{ArrowUp}")
+    expect(document.activeElement).toBe(operation)
+    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(featureId)
+    await user.keyboard("{Home}")
+    expect(document.activeElement).toBe(body)
+    await user.keyboard("{End}{Enter}")
+    expect(onFeatureActivate).toHaveBeenLastCalledWith(featureId)
+    onModelTreeSelectionChange.mockClear()
+    await user.keyboard("{Escape}")
+    expect(document.activeElement).toBe(input)
+    expect((input as HTMLInputElement).value).toBe("")
+    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(null)
+    expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
+  })
+
+  it("keeps a viewport feature selection explicit when a different sketch matches the query", async () => {
+    const user = userEvent.setup()
+    const onModelTreeSelectionChange = vi.fn()
+    renderTree({
+      activeFeatureId: null,
+      selectedResultFeatureId: featureId,
+      onModelTreeSelectionChange,
+    })
+    await user.type(browser().getByRole("searchbox"), "profile")
+    expect(browser().getByText("1 selected item is outside these results.")).toBeTruthy()
+    await user.keyboard("{Escape}")
+    expect(timeline().getByRole("treeitem", { name: "Box 1" }).getAttribute("aria-selected")).toBe(
+      "true",
+    )
+    expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
+  })
+
+  it("offers compact type buttons and keeps later Parts unavailable at the History insertion point", async () => {
+    const user = userEvent.setup()
+    const fixture = authoredInsertionController()
+    const onPartSelect = vi.fn()
+    const onBodyPreselectionChange = vi.fn()
+    const onAuthoredMetadata = vi.fn().mockResolvedValue({ ok: true })
+    renderTree({
+      controller: fixture.controller,
+      activeFeatureId: null,
+      onPartSelect,
+      onBodyPreselectionChange,
+      onAuthoredMetadata,
+    })
+    await user.click(browser().getByRole("searchbox"))
+    const filters = browser().getByRole("group", { name: "Filter model results by type" })
+    expect(within(filters).getAllByRole("button")).toHaveLength(6)
+    expect(browser().queryByRole("combobox")).toBeNull()
+    await user.click(within(filters).getByRole("button", { name: "Parts" }))
+    const current = browser().getByRole("treeitem", { name: "Part 1" })
+    const later = browser().getByRole("treeitem", { name: "Part 2" }) as HTMLButtonElement
+    expect(later.disabled).toBe(true)
+    expect(later.getAttribute("aria-describedby")).toBeTruthy()
+    await user.click(later)
+    expect(onPartSelect).not.toHaveBeenCalled()
+    await user.hover(current)
+    expect(onBodyPreselectionChange).toHaveBeenLastCalledWith({ featureId: fixture.sourceId })
+    await user.click(current)
+    expect(onPartSelect).toHaveBeenLastCalledWith(fixture.part.id)
+    expect(onAuthoredMetadata).not.toHaveBeenCalled()
+  })
+
+  it("searches full History while limiting unmanaged body picking to the insertion prefix", async () => {
+    const user = userEvent.setup()
+    const fixture = authoredInsertionController()
+    const onBodyActivate = vi.fn()
+    const onFeatureActivate = vi.fn()
+    renderTree({
+      controller: { ...fixture.controller, authoredSnapshot: null },
+      activeFeatureId: null,
+      onBodyActivate,
+      onFeatureActivate,
+    })
+    const input = browser().getByRole("searchbox")
+    await user.type(input, "bodies")
+    expect(browser().getAllByRole("treeitem")).toHaveLength(1)
+    await user.click(browser().getByRole("treeitem", { name: "Body 1" }))
+    expect(onBodyActivate).toHaveBeenLastCalledWith({ featureId: fixture.sourceId })
+    await user.clear(input)
+    await user.type(input, "later fillet")
+    await user.click(browser().getByRole("treeitem", { name: "Later fillet" }))
+    expect(onFeatureActivate).toHaveBeenLastCalledWith(fixture.transformerId)
+    expect(onBodyActivate).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps exact named-body roles and long sketch labels accessible through search activation", async () => {
+    const user = userEvent.setup()
+    if (!controllerReport.rebuild.ok) throw new Error("Expected successful body search evidence.")
+    const longLabel =
+      "Mounting profile with a deliberately long and descriptive name for the upper enclosure"
+    const onBodyActivate = vi.fn()
+    const onSketchActivate = vi.fn()
+    const onSketchPreselectionChange = vi.fn()
+    renderTree({
+      controller: {
+        ...controller,
+        report: {
+          ...controllerReport,
+          snapshot: { ...controllerReport.snapshot, sketches: [{ ...sketch, label: longLabel }] },
+          rebuild: {
+            ...controllerReport.rebuild,
+            response: {
+              ...controllerReport.rebuild.response,
+              geometry: controllerReport.rebuild.response.geometry.map((geometry) => ({
+                ...geometry,
+                geometry: {
+                  ...geometry.geometry,
+                  bodies: [
+                    {
+                      outputRole: "left-shell",
+                      shape: geometry.geometry.shape,
+                      mesh: geometry.geometry.mesh,
+                      topologyCandidates: [],
+                    },
+                  ],
+                },
+              })),
+            },
+          },
+        },
+      },
+      onBodyActivate,
+      onSketchActivate,
+      onSketchPreselectionChange,
+    })
+    const input = browser().getByRole("searchbox")
+    await user.type(input, "left-shell")
+    await user.click(browser().getByRole("treeitem", { name: "Body 1" }))
+    expect(onBodyActivate).toHaveBeenLastCalledWith({ featureId, outputRole: "left-shell" })
+    await user.clear(input)
+    await user.type(input, "mounting")
+    const result = browser().getByRole("treeitem", { name: longLabel })
+    expect(result.textContent).toContain(longLabel)
+    await user.hover(result)
+    expect(onSketchPreselectionChange).toHaveBeenLastCalledWith(sketchId)
+    await user.click(result)
+    expect(onSketchActivate).toHaveBeenLastCalledWith(sketchId)
+  })
+
+  it("includes authored datum planes while retaining their insertion eligibility", async () => {
+    const user = userEvent.setup()
+    if (!controllerReport.rebuild.ok) throw new Error("Expected successful datum search evidence.")
+    const onFeatureActivate = vi.fn()
+    renderTree({
+      controller: {
+        ...controller,
+        report: {
+          ...controllerReport,
+          snapshot: {
+            ...controllerReport.snapshot,
+            id: "search-plane-document",
+            features: [feature, datumFeature],
+            sketches: [],
+          },
+          historyItems: [
+            { kind: "feature", id: featureId },
+            { kind: "feature", id: datumFeature.id },
+          ],
+          rebuild: {
+            ...controllerReport.rebuild,
+            response: { ...controllerReport.rebuild.response, sketches: [] },
+          },
+        },
+        historyInsertion: {
+          documentId: "search-plane-document",
+          baseRevision: 7,
+          historyAfter: { kind: "feature", id: featureId },
+        },
+      } as unknown as DocumentControllerState,
+      onFeatureActivate,
+    })
+    await user.type(browser().getByRole("searchbox"), "plane")
+    const plane = browser().getByRole("treeitem", { name: "Offset plane" }) as HTMLButtonElement
+    expect(plane.disabled).toBe(true)
+    await user.click(plane)
+    expect(onFeatureActivate).not.toHaveBeenCalled()
+  })
+})
 
 describe("ModelTree insertion body boundary", () => {
   it("keeps full History while disabling later Parts and resolving an upstream body before its transformer", async () => {

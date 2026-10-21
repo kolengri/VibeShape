@@ -29,12 +29,16 @@ test("selects an exact planar extrusion endpoint and saves its captured body rev
   await form
     .getByRole("combobox", { name: "End condition", exact: true })
     .selectOption("up-to-face")
-  await form
-    .getByRole("combobox", { name: "End support body", exact: true })
-    .selectOption({ label: "Box 1 · result" })
-  await form
-    .getByRole("combobox", { name: "End face", exact: true })
-    .selectOption({ label: "Box 1 · result · primitive.box.cap.end" })
+  await form.getByRole("combobox", { name: "End support body", exact: true }).click()
+  await page.getByRole("combobox", { name: "Search options…", exact: true }).fill("Box 1 · result")
+  await page.getByRole("option", { name: "Box 1 · result", exact: true }).click()
+  await form.getByRole("combobox", { name: "End face", exact: true }).click()
+  await page
+    .getByRole("combobox", { name: "Search options…", exact: true })
+    .fill("primitive.box.cap.end")
+  await page
+    .getByRole("option", { name: "Box 1 · result · primitive.box.cap.end", exact: true })
+    .click()
   await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
   await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
   await saved(page)

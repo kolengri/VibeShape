@@ -18,11 +18,18 @@ Read `vibeshape://agent-skills` for the bundled [application-use skill pack](age
 
 For visual checks, call `render_preview` with `source: "model"` and the saved `revision`, or
 `source: "draft"`, `draftId` and the current draft `revision`. It returns a native PNG image plus
-revision-tagged metadata; the default collage contains isometric/front/right/top views. Clients must
-forward image content to a vision-capable model. See [visual inspection](../.agents/skills/vibeshape-inspection/SKILL.md#visual-inspection)
+revision-tagged metadata including resolved `quality`. Start with `quality: "overview"` (the default):
+one isometric view within 768 × 576 total pixels. For small features or verification, use
+`quality: "detail"` with an exact target and relevant views or a close-up. Detail defaults to the
+legacy isometric/front/right/top collage within 1024 × 768 total pixels; either policy may fall back
+to a smaller raster under the unchanged byte budget. Explicit views and cameras work independently
+of quality. Clients must forward image content to a vision-capable model. See [visual inspection](../.agents/skills/vibeshape-inspection/SKILL.md#visual-inspection)
 for focused views, exact body targets, representation limits and numerical checks.
 For a custom close-up, replace `views` with `camera: { position: [40, -40, 30], target: [0, 0, 5], viewHeightMm: 20 }`.
 Position, target and vertical view span use millimeters; the projection is orthographic.
+Exact measurements remain authoritative. This intentionally changes the automation default from
+four views to one. Old strict clients/servers may reject the added result field/request option;
+mixed-version compatibility is not guaranteed.
 
 ## Development server
 
