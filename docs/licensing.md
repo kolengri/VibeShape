@@ -72,7 +72,8 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Biome | MIT OR Apache-2.0 | Record the selected license path in build-tool notices |
 | Vitest | MIT | Include a build-time notice according to release policy |
 | Playwright | Apache-2.0 | Record the test tool; browser distributions are development downloads and are not shipped with the app |
-| Testing Library and jsdom | MIT | Record as test tools; they are not shipped with the production browser bundle |
+| Testing Library and jsdom | MIT | Record as test/development tools; they are not shipped with the production browser bundle |
+| github-slugger 2.0.0 | ISC | Development-only Markdown anchor validation; preserve its notice in distributions containing development dependencies |
 | Fallow static analyzer and GitHub Action | MIT | Pin the development tool and action revision; include its license in build-tool notices according to release policy |
 | 3MF specification | Royalty-free specification terms | Follow specification attribution and terms; the VibeShape writer remains GPL-licensed |
 | PrusaSlicer / CuraEngine | AGPL-3.0 | Do not bundle in the MVP; record any future integration in a separate ADR |

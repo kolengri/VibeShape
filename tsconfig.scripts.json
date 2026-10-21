@@ -23,5 +23,11 @@
     "packages/geometry-worker/src/vite-modules.d.ts",
     "playwright.site.config.ts"
   ],
-  "exclude": ["tests/unit/support/dom.ts", "scripts/testing/bun-test-dom.test.ts"]
+  "exclude": [
+    "tests/unit/support/dom.ts",
+    "scripts/testing/bun-test-dom.test.ts",
+    "scripts/agent-skill-links.ts",
+    "scripts/agent-skill-links.test.ts",
+    "scripts/validate-agent-skills.ts"
+  ]
 }
