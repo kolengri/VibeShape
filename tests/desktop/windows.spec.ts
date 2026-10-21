@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
 import { invokeModelCommand } from "../e2e/model-command-support"
 import { createNativeFixture, openNativeEditor } from "./native-fixture"
@@ -8,6 +9,8 @@ test("Windows launches with standard chrome and retains projects after restart",
   const fixture = await createNativeFixture()
   try {
     let native = await test.step("Launch the Windows host", () => fixture.launch())
+    const profile = await native.evaluate(({ app }) => app.getPath("userData"))
+    expect(await realpath(profile)).toBe(await realpath(fixture.profile))
     let page = await test.step("Open the editor", () => openNativeEditor(native))
     await expect(page.locator(".application-bar")).not.toHaveAttribute(
       "data-unified-chrome",

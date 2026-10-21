@@ -7,6 +7,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { _electron, type ElectronApplication, expect } from "@playwright/test"
 import { z } from "zod"
+import { preparePrivateDirectory } from "../../apps/desktop/src/private-files"
 
 export const nativeTestRoot = resolve(import.meta.dirname, "../..")
 const require = createRequire(join(nativeTestRoot, "apps/desktop/package.json"))
@@ -75,6 +76,8 @@ export async function createNativeFixture(
         environment.VIBESHAPE_DESKTOP_EDITOR = join(nativeTestRoot, "apps/web/dist")
       }
       const application = options.bootstrap ? directory : join(nativeTestRoot, "apps/desktop")
+      // Chromium creates --user-data-dir before app JavaScript can establish its owner and ACL.
+      if (process.platform === "win32") preparePrivateDirectory(profile)
       const native = await _electron.launch({
         executablePath,
         args: [...(packagedApp ? [] : [application]), `--user-data-dir=${profile}`],
