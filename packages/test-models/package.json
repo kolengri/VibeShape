@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "bun run --bun tsc -p tsconfig.json"
+    "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json"
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*"

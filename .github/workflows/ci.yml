@@ -57,9 +57,9 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: .turbo/cache
-          key: ${{ runner.os }}-${{ runner.arch }}-typecheck-v2-${{ hashFiles('bun.lock', 'package.json', 'turbo.json', '**/tsconfig*.json', 'packages/typescript-config/*.json') }}-${{ github.sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-typecheck-v3-${{ hashFiles('bun.lock', 'package.json', 'turbo.json', '**/tsconfig*.json', 'packages/typescript-config/*.json') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-typecheck-v2-${{ hashFiles('bun.lock', 'package.json', 'turbo.json', '**/tsconfig*.json', 'packages/typescript-config/*.json') }}-
+            ${{ runner.os }}-${{ runner.arch }}-typecheck-v3-${{ hashFiles('bun.lock', 'package.json', 'turbo.json', '**/tsconfig*.json', 'packages/typescript-config/*.json') }}-
 
       - name: Typecheck
         run: |
@@ -67,7 +67,7 @@ jobs:
           bun run typecheck
           {
             echo "### Typecheck"
-            echo "- Compiler: $(bun run --bun tsc --version)"
+            echo "- Compiler: Bun $(bun --version) built-in checker"
             echo "- Duration: $((SECONDS - start))s"
           } >> "$GITHUB_STEP_SUMMARY"
 

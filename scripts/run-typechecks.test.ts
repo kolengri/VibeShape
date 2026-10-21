@@ -199,6 +199,16 @@ describe("dependency-aware native Turbo typechecks", () => {
     expect(repo.calls("peer")).toBe(3)
   }, 15_000)
 
+  it("forces execution through a write-only local cache and retains successful results", () => {
+    const repo = fixture()
+    repo.pass()
+    repo.pass("--force")
+    repo.pass()
+    expect(repo.calls("app")).toBe(2)
+    expect(repo.calls("unrelated")).toBe(2)
+    expect(repo.calls("root")).toBe(2)
+  }, 15_000)
+
   it("allows a validated concurrency override and rejects cache, environment and configuration bypasses", () => {
     const repo = fixture()
     repo.pass("--concurrency", "1", "--dry=json")
