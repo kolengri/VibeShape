@@ -240,7 +240,7 @@ the queue rather than returning a successful empty answer.
 **Export model → Send to slicer** sends STL or 3MF directly to a detected installed application or
 one selected through the native application chooser. Mesh quality and authored export scope retain
 their ordinary meaning. The app prepares a private temporary file and opens the slicer without a
-separate bridge or pairing token. If launch fails, **Show mesh in Finder** reveals the retained file.
+separate bridge or pairing token. If launch fails, **Show mesh in folder** reveals the retained file.
 Before accepting another mesh, the desktop counts files and logical bytes still present in its owned
 handoff directories, including files from earlier app processes. It refuses an addition that would
 exceed 32 files or 512 MiB; an expired reveal ID does not free storage capacity while its file remains.

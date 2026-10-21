@@ -55,7 +55,8 @@ open the new executable. Updates do not replace running binaries or the project 
 
 ## Native connections
 
-Settings → Connections provides the existing MCP launch configuration with absolute Windows paths.
+Settings → Connections provides the existing MCP launch configuration with absolute Windows paths,
+including UNC paths and the extended `\\?\` drive and UNC forms.
 The bundled Electron runtime runs its stdio forwarder; keep the desktop app open. Document consent,
 project identity and revocation follow the [native integration policy](desktop-macos.md#ai-connections).
 The native workflow directory and its credential descriptor use Windows ACLs rather than POSIX

@@ -1,5 +1,8 @@
 # Structural lightweighting
 
+Use the [model-write approval policy](../../vibeshape-use/references/session.md#model-write-approval)
+for the current connection. Manual review instructions below apply to external MCP clients.
+
 Use this workflow only when `analyze_lightweighting` and `request_lightweighting` are advertised
 and the user authorized preliminary structural analysis or material removal on the paired project.
 Both tools run the same browser-owned worker as the editor. They are available on the local and
@@ -97,7 +100,7 @@ When the user authorized creating the result, call `request_lightweighting` with
 inputs and an English `label`. It computes again against the captured committed body. An improved
 candidate is encoded as a private immutable STL SourceAsset, inspected and shown in the ordinary
 browser mesh preview together with the material, constraints, regions and analysis evidence.
-Manual Apply/Reject is always required, including Auto-apply sessions. Keep the tool call open
+External clients require manual Apply/Reject, including CAD auto-apply sessions. Keep the tool call open
 while the user reviews it; no caller approval substitutes for browser Apply.
 
 Apply performs one ordinary atomic import transaction and creates one Undo entry, retaining the

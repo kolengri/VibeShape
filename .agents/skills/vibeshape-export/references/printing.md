@@ -12,10 +12,10 @@ Prepared-copy controls are not exposed as MCP tools. Exported 3MF records millim
 
 ## Native desktop handoff
 
-The Mac app's export dialog sends a generated STL or 3MF directly to an installed slicer, with
-remembered mesh format and target. Use the detected target or the native application chooser. This
+The Mac and Windows desktop export dialogs send a generated STL or 3MF directly to an installed
+slicer, with remembered mesh format and target. Use the detected target or the native application chooser. This
 workflow requires no separate bridge process or pairing token. A launch failure preserves the mesh;
-use **Show mesh in Finder** for manual recovery. The static browser downloads the same mesh for
+use **Show mesh in folder** for manual recovery. The static browser downloads the same mesh for
 manual opening. Discovery, a successful spawn, import, and physical printing are different outcomes.
 
 The legacy authenticated loopback bridge remains an explicit source CLI compatibility workflow,

@@ -34,7 +34,7 @@ Keep one canonical explanation and link to it elsewhere. Do not duplicate the sa
 3. Verify unstable library facts through Context7 and other claims through primary sources.
 4. Update the minimum coherent document set, including risks, tests, licensing, and known limitations when affected.
 5. Keep documentation, comments, identifiers, examples, commit text, and project skills in English.
-6. Check local Markdown links, Cyrillic, trailing whitespace, and `git diff --check`.
+6. Check local Markdown links, Cyrillic, trailing whitespace, and `git diff --check`. For project skills, `bun run skills:validate` checks local file and Markdown anchor targets across all skill entrypoints and references; external URLs remain a separate evidence check.
 7. Use `vibeshape-verify-scope`; docs-only work does not require typecheck unless generated or linted code also changed.
 
 Never rewrite an accepted ADR retroactively. Create a superseding ADR and link both records.

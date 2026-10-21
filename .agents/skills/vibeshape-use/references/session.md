@@ -116,11 +116,22 @@ Remote exposes the shared named tools except legacy `export_model`, plus the bun
 
 Remote uses stateless Streamable HTTP with JSON POST responses. `405 Method Not Allowed` for an authenticated GET to `/mcp` means the optional standalone SSE stream is unavailable; continue through POST rather than restarting OAuth. The consent page accepts one valid **Request tab approval** submission while waiting for approval in the editor. A consumed consent handle requires fresh OAuth authorization.
 
-## Verify and retain the session
+## Verify the session
 
 After tool discovery and pairing, call `model_info` with `{}`. Check the actual project and `summary.revision`, and retain any measurement diagnostic. A failed invocation is a connectivity/access failure, not an empty model. Distinguish configuration, protocol initialization, tool discovery, pairing, and a successful invocation when reporting setup.
 
-For external MCP clients, manual browser Apply is the default. Clicking the status bar's **AI connection and approval mode** opens **Approve each change** and **Apply automatically**. The automatic option opens **Set up auto-apply**, which requires a separate explicit human opt-in for supported first-party CAD edits. Local access and approval mode are remembered for that client and browser origin across projects and browser sessions; remote consent remains session-bound. It covers current feature versions, supported same-type upgrades, feature/sketch/variable lifecycle edits, suppression and removal. An existing grant applies a valid coherent CAD draft without repeated confirmation. Unknown, extension and import feature targets remain outside this grant. Metadata and separate import, assembly, history and texture reviews remain manual. No MCP tool enables it. An idle person can choose **Approve each change** to disable auto-apply without ending pairing; already running operations must finish first. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
+## Model-write approval
+
+The built-in native and browser API chats use connected-assistant authority for validated changes
+inside their current project. CAD drafts, metadata, imports (including structural and quick
+lightweighting results), assembly changes, saved Undo/Redo and surface textures do not require a
+second human Apply action there. Publishing or updating the reusable local library remains manually
+reviewed for every connection. Validation, revision checks, cancellation and atomic persistence still
+apply; connected-assistant authority does not grant external publication or project-management access.
+
+For external MCP clients, manual browser Apply is the default. Clicking the status bar's **AI connection and approval mode** opens **Approve each change** and **Apply automatically**. The automatic option opens **Set up auto-apply**, which requires a separate explicit human opt-in for supported first-party CAD edits. Local access and approval mode are remembered for that client and browser origin across projects and browser sessions; remote consent remains session-bound. It covers registered first-party CAD feature versions, including Compound and Placement, supported same-type schema upgrades, feature/sketch/variable lifecycle edits, suppression and removal. An existing grant applies a valid coherent CAD draft without repeated confirmation. Unknown, extension and import feature targets remain outside this grant. Project rename, metadata and separate import, assembly, history, texture and library reviews remain manual for external clients, including those with a CAD auto-apply grant. No MCP tool enables it. An idle person can choose **Approve each change** to disable auto-apply without ending pairing; already running operations must finish first. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
+
+## Retain and recover the session
 
 Keep the paired tab open. Local stdio automatically restores the same approved client and project
 following transient transport errors, reload, background pauses or bridge restart. External connections retain the latest explicitly chosen approval mode, including manual mode. Built-in chat retains connected model authority. Recovery
