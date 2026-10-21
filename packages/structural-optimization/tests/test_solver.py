@@ -2,8 +2,13 @@
 
 import copy
 import importlib.util
+import itertools
 import json
+import time
 from pathlib import Path
+
+from implicit_fixtures import (implicit_request, verify_simp_search, verify_penalized_fem_and_sensitivity,
+                               verify_lattice_search, verify_implicit_failures, verify_implicit_constraints)
 
 import numpy as np
 import pytest
@@ -376,3 +381,79 @@ def test_invalid_surface_regions_fail_at_the_python_boundary(region):
     with pytest.raises(solver.SolverError) as error:
         solver.solve(request)
     assert error.value.code == "invalid-input"
+
+
+def test_simp_optimization_and_unreachable_target():
+    verify_simp_search(solver)
+
+
+def test_simp_true_penalized_fem_derivative_filter_and_oc_bounds():
+    verify_penalized_fem_and_sensitivity(solver)
+
+
+@pytest.mark.parametrize("lattice,field,skin", [("gyroid", "strain-energy", 0), ("schwarz-p", "von-mises", 0), ("schwarz-d", "strain-energy", 0), ("gyroid", "von-mises", 1)])
+def test_fem_graded_tpms_solid(lattice, field, skin):
+    verify_lattice_search(solver, lattice, field, skin)
+
+
+def test_implicit_algorithm_failures():
+    verify_implicit_failures(solver)
+
+
+@pytest.mark.parametrize("kind", ["simp", "adaptive-lattice"])
+def test_implicit_deadline_during_search(kind, monkeypatch):
+    original = solver._algorithm_search
+    def expired(*args, **kwargs):
+        # Expire after voxelization and baseline analysis, inside the search.
+        values = list(args); values[-1] = time.monotonic() - 1
+        return original(*values, **kwargs)
+    monkeypatch.setattr(solver, "_algorithm_search", expired)
+    with pytest.raises(solver.SolverError) as failure:
+        solver.solve(implicit_request(solver, kind))
+    assert failure.value.code == "resource-limit"
+
+
+def test_cavity_shells_accept_one_material_solid_and_reject_separate_or_nested_material():
+    outer = trimesh.creation.box(extents=[10, 8, 8])
+    cavity = trimesh.creation.box(extents=[2, 2, 2]); cavity.invert()
+    hollow = trimesh.util.concatenate([outer, cavity])
+    solver._check_surface(hollow, "Hollow fixture", time.monotonic() + 60)
+    cavity.apply_translation([20, 0, 0])
+    with pytest.raises(solver.SolverError):
+        solver._check_surface(trimesh.util.concatenate([outer, cavity]), "External cavity")
+    inner = trimesh.creation.box(extents=[1, 1, 1])
+    with pytest.raises(solver.SolverError) as failure:
+        solver._check_surface(trimesh.util.concatenate([outer, inner]), "Separate material")
+    assert failure.value.code == "disconnected-mesh"
+    cavity = trimesh.creation.box(extents=[4, 4, 4]); cavity.invert()
+    inner.invert()
+    with pytest.raises(solver.SolverError):
+        solver._check_surface(trimesh.util.concatenate([outer, cavity, inner]), "Nested cavities")
+
+
+@pytest.mark.parametrize("kind", ["simp", "adaptive-lattice"])
+def test_implicit_keepout_fdm_and_all_case_constraints(kind):
+    verify_implicit_constraints(solver, kind)
+
+
+def test_simp_filter_resource_budget():
+    cells = np.array(list(itertools.product(range(10), repeat=3)))
+    with pytest.raises(solver.SolverError) as failure:
+        solver._sensitivity_filter(cells, 100000, time.monotonic() + 60)
+    assert failure.value.code == "resource-limit"
+
+
+@pytest.mark.parametrize("budget", [1, 3])
+def test_lattice_baseline_fallback_respects_search_budget(budget):
+    from implicit_fixtures import verify_lattice_baseline_fallback
+    verify_lattice_baseline_fallback(solver, budget)
+
+
+def test_shell_intersection_directions_subcell_notches_and_coplanar_contacts():
+    from implicit_fixtures import verify_shell_intersections
+    verify_shell_intersections(solver)
+
+
+def test_skinny_disjoint_cavities_and_unresolved_barycentrics():
+    from implicit_fixtures import verify_skinny_cavity_separation
+    verify_skinny_cavity_separation(solver)

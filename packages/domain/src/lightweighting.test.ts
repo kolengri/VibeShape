@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import {
+  type StructuralAlgorithmSettings,
+  type StructuralAlgorithmSummary,
   type StructuralFdmSummary,
+  structuralAlgorithmSettingsSchema,
+  structuralAlgorithmSummaryMatches,
+  structuralAlgorithmSummarySchema,
   structuralFdmSettingsSchema,
   structuralFdmSummaryMatches,
   structuralFdmSummarySchema,
@@ -268,6 +273,181 @@ describe("structural regions", () => {
         triangleIndices: [...triangleIndices, 0],
         depthMm: 1,
       }).success,
+    ).toBe(false)
+  })
+})
+
+const simpSettings = { kind: "simp" as const, volumeFraction: 0.8, filterRadiusMm: 1.5, penalty: 3 }
+const latticeSettings = {
+  kind: "adaptive-lattice" as const,
+  lattice: "gyroid" as const,
+  cellPeriodMm: 12,
+  minWallThicknessMm: 2,
+  maxWallThicknessMm: 3,
+  skinThicknessMm: 0,
+  field: "strain-energy" as const,
+  gamma: 1,
+}
+function algorithmInput(algorithm: StructuralAlgorithmSettings) {
+  return {
+    algorithm,
+    material: {
+      youngModulusMpa: 1000,
+      poissonRatio: 0.3,
+      yieldStrengthMpa: 100,
+      densityKgM3: 1000,
+    },
+    safetyFactor: 2,
+    maxDisplacementMm: 1,
+    cellSizeMm: 1,
+    supports: [{ min: [0, 0, 0], max: [0, 2, 2] }],
+    loadCases: [{ name: "load", region: { min: [10, 0, 0], max: [10, 2, 2] }, forceN: [1, 0, 0] }],
+    preserveRegions: [],
+    maxIterations: 8,
+  }
+}
+function simpEvidence(): StructuralAlgorithmSummary {
+  return {
+    kind: "simp",
+    settings: { ...simpSettings },
+    densityIterations: 8,
+    converged: false,
+    maxDensityChange: 0.1,
+    targetCellCount: 32,
+    achievedCellCount: 36,
+    targetStatus: "not-reached",
+    projectionEvaluations: 5,
+  }
+}
+function latticeEvidence(): StructuralAlgorithmSummary {
+  return {
+    kind: "adaptive-lattice",
+    settings: { ...latticeSettings },
+    fieldMin: 0.1,
+    fieldMax: 1,
+    requestedWallMinMm: 2.1,
+    requestedWallMaxMm: 3,
+    minimumFeatureSizeBoundMm: 2,
+    projectionEvaluations: 2,
+    thresholdPasses: 2,
+  }
+}
+const simpExecution = { iterations: 8, evaluations: 15, maxIterations: 8 }
+const latticeExecution = { iterations: 2, evaluations: 4, maxIterations: 8 }
+describe("structural algorithm settings and solid evidence", () => {
+  it("preserves omission and rejects evidence without an algorithm request", () => {
+    expect(structuralOptimizationSettingsSchema.shape.algorithm.parse(undefined)).toBeUndefined()
+    expect(
+      structuralAlgorithmSummaryMatches(undefined, undefined, 1, 40, 40, {
+        iterations: 0,
+        evaluations: 2,
+        maxIterations: 0,
+      }),
+    ).toBe(true)
+    expect(
+      structuralAlgorithmSummaryMatches(simpEvidence(), undefined, 1, 40, 36, simpExecution),
+    ).toBe(false)
+    expect(
+      structuralAlgorithmSummaryMatches(undefined, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(false)
+  })
+  it.each([
+    { ...simpSettings, filterRadiusMm: 0.9 },
+    { ...simpSettings, penalty: 0.9 },
+    { ...simpSettings, volumeFraction: 0.09 },
+    { ...simpSettings, volumeFraction: NaN },
+    { ...latticeSettings, cellPeriodMm: 7 },
+    { ...latticeSettings, minWallThicknessMm: 1.9 },
+    { ...latticeSettings, maxWallThicknessMm: 1.9 },
+    { ...latticeSettings, maxWallThicknessMm: 7 },
+    { ...latticeSettings, skinThicknessMm: 0.5 },
+    { ...latticeSettings, gamma: Infinity },
+  ])("rejects unsupported algorithm parameters %#", (algorithm) => {
+    expect(structuralOptimizationSettingsSchema.safeParse(algorithmInput(algorithm)).success).toBe(
+      false,
+    )
+  })
+  it("rejects conflicting SIMP objective targets and unknown algorithm properties", () => {
+    const input = algorithmInput(simpSettings)
+    expect(
+      structuralOptimizationSettingsSchema.safeParse({
+        ...input,
+        objective: { kind: "maximize-stiffness", retainedMassFraction: 0.7 },
+      }).success,
+    ).toBe(false)
+    expect(
+      structuralOptimizationSettingsSchema.safeParse({
+        ...input,
+        objective: { kind: "maximize-stiffness", retainedMassFraction: 0.8 },
+      }).success,
+    ).toBe(true)
+    expect(
+      structuralAlgorithmSettingsSchema.safeParse({ ...simpSettings, replacement: true }).success,
+    ).toBe(false)
+    expect(
+      structuralAlgorithmSettingsSchema.safeParse({ ...latticeSettings, lattice: "random" })
+        .success,
+    ).toBe(false)
+  })
+  it("requires both algorithm counters to match the reported iteration count", () => {
+    for (const evidence of [simpEvidence(), latticeEvidence()]) {
+      const expected =
+        evidence.kind === "simp" ? evidence.densityIterations : evidence.thresholdPasses
+      for (const iterations of [0, 1, expected, 40])
+        expect(
+          structuralAlgorithmSummaryMatches(evidence, evidence.settings, 1, 40, 36, {
+            ...(evidence.kind === "simp" ? simpExecution : latticeExecution),
+            iterations,
+          }),
+        ).toBe(iterations === expected)
+    }
+  })
+  it("distinguishes relaxed convergence from binary target achievement", () => {
+    const evidence = simpEvidence()
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(true)
+    if (evidence.kind !== "simp") throw new Error("Expected SIMP fixture")
+    evidence.converged = true
+    evidence.maxDensityChange = 0.005
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(true)
+    evidence.targetStatus = "reached"
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(false)
+    evidence.targetStatus = "not-reached"
+    evidence.achievedCellCount = 32
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(false)
+  })
+  it("binds lattice grading, skin and measured voxel coverage to the request", () => {
+    const evidence = latticeEvidence()
+    expect(structuralAlgorithmSummarySchema.safeParse(evidence).success).toBe(true)
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, latticeExecution),
+    ).toBe(true)
+    expect(
+      structuralAlgorithmSummaryMatches(
+        evidence,
+        { ...latticeSettings, skinThicknessMm: 1 },
+        1,
+        640,
+        500,
+        latticeExecution,
+      ),
+    ).toBe(false)
+    if (evidence.kind !== "adaptive-lattice") throw new Error("Expected lattice fixture")
+    evidence.minimumFeatureSizeBoundMm = 1.9
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, latticeExecution),
+    ).toBe(false)
+    evidence.minimumFeatureSizeBoundMm = 2
+    evidence.requestedWallMaxMm = 3.1
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, latticeExecution),
     ).toBe(false)
   })
 })

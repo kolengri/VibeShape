@@ -3,54 +3,20 @@ import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { LightweightingAlgorithmControls } from "./lightweighting-algorithm-controls"
 import { LightweightingMaterialSelector } from "./lightweighting-material-selector"
 import type {
   LightweightingFields,
   LoadCaseFields,
   SurfaceForceFields,
 } from "./lightweighting-model"
+import { LightweightingNumberField as NumberField } from "./lightweighting-number-field"
 import { LightweightingSettingsDetails } from "./lightweighting-settings-details"
 
 export type LightweightingPickTarget =
   | { kind: "support" }
   | { kind: "load"; caseId: number }
   | { kind: "preserve" }
-
-function NumberField({
-  id,
-  label,
-  value,
-  onChange,
-  min,
-  max,
-  step = "any",
-}: {
-  id: string
-  label: string
-  value: string
-  onChange: (value: string) => void
-  min?: number
-  max?: number
-  step?: string
-}) {
-  return (
-    <Field>
-      <FieldLabel htmlFor={id} className="max-w-full">
-        {label}
-      </FieldLabel>
-      <Input
-        id={id}
-        type="number"
-        required
-        step={step}
-        min={min}
-        max={max}
-        value={value}
-        onChange={(event) => onChange(event.currentTarget.value)}
-      />
-    </Field>
-  )
-}
 
 function FacePicker({
   id,
@@ -334,7 +300,10 @@ export function LightweightingParameters({
   )
   return (
     <>
-      {showObjective && <ObjectiveControls fields={fields} onChange={onChange} />}
+      <LightweightingAlgorithmControls fields={fields} onChange={onChange} study={!showObjective} />
+      {showObjective && fields.optimization.kind === "greedy" && (
+        <ObjectiveControls fields={fields} onChange={onChange} />
+      )}
       <fieldset className="grid min-w-0 grid-cols-1 gap-3">
         <legend className="mb-2 font-medium">{t("material")}</legend>
         <LightweightingMaterialSelector fields={fields} onChange={onChange} compact={compact}>

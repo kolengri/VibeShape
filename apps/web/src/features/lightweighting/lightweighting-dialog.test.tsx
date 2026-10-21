@@ -842,6 +842,64 @@ describe("Lightweighting workflow", () => {
       retainedMassFraction: 0.6,
     })
   })
+  it("switches to SIMP, invalidates the previous mesh and forwards its target and filter", async () => {
+    setup()
+    await fill()
+    await analyze()
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Optimization method" }), {
+      key: "Enter",
+    })
+    await userEvent.click(screen.getByRole("option", { name: "Topology optimization (SIMP)" }))
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Apply as new mesh Part" }).disabled,
+    ).toBe(true)
+    expect(screen.queryByRole("combobox", { name: "Optimization objective" })).toBeNull()
+    change("Target retained volume (%)", "60")
+    change("Density filter radius (mm)", "8")
+    await analyze()
+    expect(ports.optimize.mock.calls[1]?.[0].algorithm).toEqual({
+      kind: "simp",
+      volumeFraction: 0.6,
+      filterRadiusMm: 8,
+      penalty: 3,
+    })
+    change("Target retained volume (%)", "")
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Analyze and optimize" }).disabled,
+    ).toBe(true)
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Apply as new mesh Part" }).disabled,
+    ).toBe(true)
+  })
+  it("rejects underresolved adaptive walls and passes resolved lattice settings through the same workflow", async () => {
+    setup()
+    await fill()
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Optimization method" }), {
+      key: "Enter",
+    })
+    await userEvent.click(screen.getByRole("option", { name: "Adaptive lattice (FEM)" }))
+    change("Minimum requested wall thickness (mm)", "1")
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Analyze and optimize" }).disabled,
+    ).toBe(true)
+    change("Minimum requested wall thickness (mm)", "8")
+    change("Exterior skin thickness (mm; 0 for open)", "4")
+    await analyze()
+    expect(ports.optimize.mock.calls[0]?.[0].algorithm).toEqual({
+      kind: "adaptive-lattice",
+      lattice: "gyroid",
+      cellPeriodMm: 40,
+      minWallThicknessMm: 8,
+      maxWallThicknessMm: 16,
+      skinThicknessMm: 4,
+      field: "strain-energy",
+      gamma: 1,
+    })
+    change("Field exponent", "2")
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Apply as new mesh Part" }).disabled,
+    ).toBe(true)
+  })
   it("cancels a single-flight solve on Close and ignores a late response after reopening", async () => {
     const work = deferred<StructuralOptimizationResult>()
     ports.optimize.mockReturnValueOnce(work.promise)

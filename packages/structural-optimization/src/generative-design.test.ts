@@ -112,6 +112,24 @@ function result(current: FakeWorker, compliance = [1, 1]): StructuralOptimizatio
       targetStatus: reached ? "reached" : "not-reached",
     },
     warnings: [],
+    ...(input.algorithm?.kind === "simp"
+      ? {
+          algorithm: {
+            kind: "simp" as const,
+            settings: input.algorithm,
+            densityIterations: 0,
+            converged: false,
+            maxDensityChange: 1,
+            targetCellCount: Math.ceil(40 * input.algorithm.volumeFraction),
+            achievedCellCount: 40,
+            targetStatus:
+              input.algorithm.volumeFraction === 1
+                ? ("reached" as const)
+                : ("not-reached" as const),
+            projectionEvaluations: 0,
+          },
+        }
+      : {}),
   }
 }
 async function complete(current: FakeWorker, output = result(current)) {
@@ -127,6 +145,34 @@ describe("local bounded structural design studies", () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
+  it("synchronizes SIMP volume fraction for every study target without mutating the source", async () => {
+    const input = study()
+    input.materials = input.materials.slice(0, 1)
+    input.analysis.algorithm = {
+      kind: "simp",
+      volumeFraction: 0.8,
+      filterRadiusMm: 1.5,
+      penalty: 3,
+    }
+    input.analysis.objective = { kind: "maximize-stiffness", retainedMassFraction: 0.8 }
+    const pending = generateStructuralDesigns(input, options)
+    for (const [i, fraction] of input.retainedMassFractions.entries()) {
+      const current = worker(i)
+      expect(current.input?.algorithm).toEqual({
+        ...input.analysis.algorithm,
+        volumeFraction: fraction,
+      })
+      expect(current.input?.objective).toEqual({
+        kind: "maximize-stiffness",
+        retainedMassFraction: fraction,
+      })
+      await complete(current)
+    }
+    const output = await pending
+    expect(output.failures).toEqual([])
+    expect(output.candidates).toHaveLength(input.retainedMassFractions.length)
+    expect(input.analysis.algorithm.volumeFraction).toBe(0.8)
+  })
   it("runs sequential variants, preserves source inputs, ranks worst-case compliance, and flags same-material duplicates", async () => {
     const input = study()
     const original = structuredClone(input)

@@ -113,6 +113,116 @@ describe("bounded structural worker client", () => {
       },
     }
   }
+  const algorithms = [
+    { kind: "simp", volumeFraction: 0.8, filterRadiusMm: 1.5, penalty: 3 },
+    {
+      kind: "adaptive-lattice",
+      lattice: "gyroid",
+      cellPeriodMm: 12,
+      minWallThicknessMm: 2,
+      maxWallThicknessMm: 3,
+      skinThicknessMm: 0,
+      field: "strain-energy",
+      gamma: 1,
+    },
+  ] as const
+  function algorithmResult(algorithm: (typeof algorithms)[number]): StructuralOptimizationResult {
+    const algorithmEvidence =
+      algorithm.kind === "simp"
+        ? {
+            kind: "simp" as const,
+            settings: algorithm,
+            densityIterations: 0,
+            converged: false,
+            maxDensityChange: 1,
+            targetCellCount: 32,
+            achievedCellCount: 40,
+            targetStatus: "not-reached" as const,
+            projectionEvaluations: 0,
+          }
+        : {
+            kind: "adaptive-lattice" as const,
+            settings: algorithm,
+            fieldMin: 1,
+            fieldMax: 2,
+            requestedWallMinMm: 2.5,
+            requestedWallMaxMm: 3,
+            minimumFeatureSizeBoundMm: 2,
+            projectionEvaluations: 0,
+            thresholdPasses: 0,
+          }
+    return { ...result(), algorithm: algorithmEvidence }
+  }
+  it.each(algorithms)(
+    "binds %s projection evidence to the request and FEM counts",
+    async (algorithm) => {
+      for (const [budget, iterations, projections, evaluationDelta, accepted] of [
+        [0, 0, 0, 0, true],
+        [0, 0, 80, -80, false],
+        [0, 0, 1, 0, false],
+        [1, 1, 1, 0, true],
+        [1, 1, 2, 0, algorithm.kind === "simp"],
+        [1, 1, 3, 0, false],
+        [40, 40, 80, 0, false],
+        [40, 40, 2, 0, true],
+        [4, 4, 1, -1, false],
+        [4, 4, 1, 1, false],
+      ] as const) {
+        const output = algorithmResult(algorithm)
+        const evidence = output.algorithm
+        if (!evidence) throw new Error("Expected algorithm evidence.")
+        output.algorithm =
+          evidence.kind === "simp"
+            ? { ...evidence, densityIterations: iterations, projectionEvaluations: projections }
+            : { ...evidence, thresholdPasses: iterations, projectionEvaluations: projections }
+        output.iterations = iterations
+        output.evaluations =
+          2 + (algorithm.kind === "simp" ? iterations : 0) + projections + evaluationDelta
+        const pending = optimizeStructuralModel(
+          { ...input, algorithm, maxIterations: budget },
+          options,
+        )
+        FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+        if (accepted) await expect(pending).resolves.toEqual(output)
+        else await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
+      }
+    },
+  )
+  it.each(algorithms)("accepts exact %s request evidence", async (algorithm) => {
+    const output = algorithmResult(algorithm)
+    const pending = optimizeStructuralModel({ ...input, algorithm }, options)
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+    await expect(pending).resolves.toEqual(output)
+  })
+  it.each(algorithms)("rejects missing or forged %s algorithm evidence", async (algorithm) => {
+    for (const evidence of [
+      undefined,
+      { ...algorithmResult(algorithm).algorithm, settings: { ...algorithm, kind: "forged" } },
+    ]) {
+      const output = { ...result(), ...(evidence ? { algorithm: evidence } : {}) }
+      const pending = optimizeStructuralModel({ ...input, algorithm }, options)
+      FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+      await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
+    }
+  })
+  it.each(algorithms)(
+    "terminates canceled %s searches and ignores late output",
+    async (algorithm) => {
+      const controller = new AbortController()
+      const pending = optimizeStructuralModel(
+        { ...input, algorithm },
+        { ...options, signal: controller.signal },
+      )
+      controller.abort()
+      FakeWorker.instance.emit({
+        type: "complete",
+        response: { ok: true, result: algorithmResult(algorithm) },
+      })
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" })
+      expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
+      expect(vi.getTimerCount()).toBe(0)
+    },
+  )
   it("accepts request-bound FDM metrics and releases the worker", async () => {
     const fdm = fdmOutput()
     const output = { ...result(), fdm }

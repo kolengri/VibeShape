@@ -24,6 +24,14 @@ pinned runtime. Client and MCP tests bind settings to manufacturing evidence and
 or mismatched results. UI checks cover policy changes, invalid parameters, study invalidation,
 and support-demand comparison. These establish geometric contracts, not physical print success.
 
+SIMP fixtures additionally check penalized stiffness, finite-difference compliance sensitivities,
+filtered updates, protected cells, and unattainable binary targets. Adaptive fixtures cover all
+three TPMS families, both FEM fields, exterior skin, resolved occupied-cube bounds, and final
+full-solid feasibility. Cavity tests distinguish inward void shells from disconnected or nested
+material. These run natively and in the pinned WASM corpus. The browser smoke in
+`tests/e2e/structural-optimization.spec.ts` exercises real worker loading, both methods,
+cancellation/restart, task controls, and compact layout.
+
 | Level | Coverage | Tool or approach |
 |---|---|---|
 | Pure unit | Units, expressions, DAG, commands, migrations | Native Bun test runner through `bun run test` |

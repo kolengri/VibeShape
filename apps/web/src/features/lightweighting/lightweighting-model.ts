@@ -12,6 +12,11 @@ import type { DocumentControllerState } from "../../document/document-controller
 import { historyCreationAfter } from "../../document/history-insertion"
 import { historyInsertionContext } from "../../shell/history-insertion-context"
 import type { ImportDocumentContext } from "../import/import-model"
+import {
+  algorithmInput,
+  initialAlgorithmFields,
+  type LightweightingAlgorithmFields,
+} from "./lightweighting-algorithm-model"
 import { faceForce, faceTriangleIndices } from "./lightweighting-surface-selection"
 
 export type RegionFields = { min: [string, string, string]; max: [string, string, string] }
@@ -35,6 +40,7 @@ export type LoadCaseFields = {
   surfaceForce?: SurfaceForceFields
 }
 export type LightweightingFields = {
+  optimization: LightweightingAlgorithmFields
   objective: "minimize-mass" | "maximize-stiffness"
   retainedMassPercent: string
   materialPresetId: StructuralMaterialPresetId | "custom"
@@ -176,9 +182,12 @@ export function initialLightweightingFields(
 ): LightweightingFields {
   const bounds = source?.body.shape.bounds ?? { min: [0, 0, 0], max: [10, 10, 10] }
   const { min, max } = bounds
-  const cell = Math.max(...max.map((value, index) => value - (min[index] ?? 0))) / 10
+  const cell = Number(
+    (Math.max(...max.map((value, index) => value - (min[index] ?? 0))) / 10).toPrecision(4),
+  )
   const slab = Math.max(cell / 2, 0.000001)
   return {
+    optimization: initialAlgorithmFields(cell),
     objective: "minimize-mass",
     retainedMassPercent: "50",
     materialPresetId: "custom",
@@ -188,7 +197,7 @@ export function initialLightweightingFields(
     densityKgM3: "",
     safetyFactor: "2",
     maxDisplacementMm: "1",
-    cellSizeMm: String(Number(cell.toPrecision(4))),
+    cellSizeMm: String(cell),
     maxIterations: "12",
     support: regionFields(min, [min[0] + slab, max[1], max[2]]),
     loadCases: [
@@ -265,8 +274,11 @@ export function lightweightingInput(
     maxDisplacementMm: number(fields.maxDisplacementMm),
     cellSizeMm: number(fields.cellSizeMm),
     maxIterations: number(fields.maxIterations),
+    ...(fields.optimization.kind === "greedy"
+      ? {}
+      : { algorithm: algorithmInput(fields.optimization) }),
     objective:
-      fields.objective === "maximize-stiffness"
+      fields.optimization.kind === "greedy" && fields.objective === "maximize-stiffness"
         ? {
             kind: "maximize-stiffness",
             retainedMassFraction: number(fields.retainedMassPercent) / 100,

@@ -1,4 +1,7 @@
-import { structuralFdmSummaryMatches } from "@vibeshape/domain/lightweighting"
+import {
+  structuralAlgorithmSummaryMatches,
+  structuralFdmSummaryMatches,
+} from "@vibeshape/domain/lightweighting"
 import { z } from "zod"
 import {
   type StructuralOptimizationInput,
@@ -106,6 +109,29 @@ function modelMetricsMatch(
     (result.status === "improved") === result.finalCellCount < result.initialCellCount
   )
 }
+function resultMatchesRequest(
+  input: StructuralOptimizationInput,
+  result: StructuralOptimizationResult,
+) {
+  return [
+    modelMetricsMatch(input, result),
+    cellMetricsMatch(input, result),
+    objectiveMatches(input, result),
+    structuralFdmSummaryMatches(result.fdm, input.fdm, input.cellSizeMm),
+    structuralAlgorithmSummaryMatches(
+      result.algorithm,
+      input.algorithm,
+      input.cellSizeMm,
+      result.initialCellCount,
+      result.finalCellCount,
+      {
+        iterations: result.iterations,
+        evaluations: result.evaluations,
+        maxIterations: input.maxIterations,
+      },
+    ),
+  ].every(Boolean)
+}
 function validateFeasibility(
   input: StructuralOptimizationInput,
   result: StructuralOptimizationResult,
@@ -117,12 +143,7 @@ function validateFeasibility(
         "The solver returned an infeasible result.",
       )
   }
-  if (
-    !modelMetricsMatch(input, result) ||
-    !cellMetricsMatch(input, result) ||
-    !objectiveMatches(input, result) ||
-    !structuralFdmSummaryMatches(result.fdm, input.fdm, input.cellSizeMm)
-  )
+  if (!resultMatchesRequest(input, result))
     throw new StructuralOptimizationError(
       "invalid-result",
       "The solver returned inconsistent model metrics.",

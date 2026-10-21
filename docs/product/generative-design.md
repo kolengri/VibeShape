@@ -68,8 +68,8 @@ cells fails explicitly; geometry is never silently moved or a constraint weakene
 The retained-mass target is relative to the feasible voxel baseline **after** keep-out removal.
 The source-volume loss includes both conservative voxelization and excluded cells. Keep-out
 regions can disconnect a source or make it infeasible, in which case no accepted candidate is
-returned for that scenario. Fully enclosed cavities remain unsupported by the structural solver's
-single connected surface contract; they fail with `disconnected-mesh` rather than being repaired.
+returned for that scenario. Fully enclosed inward-oriented cavities are supported when the boundary still represents one
+connected material solid. Separate solids and nested material islands fail rather than being repaired.
 Ordinary single-analysis MCP settings also accept these boxes through
 optional `obstacleRegions`; the editor currently exposes their controls in Generative Design.
 
@@ -132,7 +132,9 @@ one separate Part, hides the editable source, and creates one atomic Undo entry.
 report exports the selected candidate's actual input material, objective, regions, FDM settings, numerical
 metrics, and source identity. Changing the source does not regenerate applied results.
 
-This is a bounded multi-scenario search using a greedy voxel-removal heuristic. It does not explore
+This is a bounded multi-scenario search using the selected feasible-removal, SIMP, or adaptive-lattice method.
+SIMP scenarios synchronize their density volume target to each scenario retained fraction.
+The [algorithm contract](lightweighting.md#topology-optimization-and-adaptive-lattices) applies to each candidate. It does not explore
 alternative manufacturing methods, optimize over arbitrary starting topologies, prove a global optimum, or
 certify structural strength or printability. The isotropic linear FEM limitations in the structural
 contract apply to every candidate. There is no smoothing, CAD/B-Rep reconstruction, or STEP output;
