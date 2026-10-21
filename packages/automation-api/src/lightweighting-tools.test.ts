@@ -23,45 +23,125 @@ import {
 import { remoteOperationSchema } from "./remote-session"
 import { localToolAnnotations } from "./tool-metadata"
 
+function algorithmEvidence(kind: "simp" | "adaptive-lattice"): StructuralAlgorithmSummary {
+  return kind === "simp"
+    ? {
+        kind,
+        settings: { kind, volumeFraction: 0.8, filterRadiusMm: 1.5, penalty: 3 },
+        densityIterations: 4,
+        converged: false,
+        maxDensityChange: 0.1,
+        targetCellCount: 32,
+        achievedCellCount: 32,
+        targetStatus: "reached",
+        projectionEvaluations: 2,
+      }
+    : {
+        kind,
+        settings: {
+          kind,
+          lattice: "gyroid",
+          cellPeriodMm: 8,
+          minWallThicknessMm: 2,
+          maxWallThicknessMm: 3,
+          skinThicknessMm: 0,
+          field: "strain-energy",
+          gamma: 1,
+        },
+        fieldMin: 0.1,
+        fieldMax: 1,
+        requestedWallMinMm: 2,
+        requestedWallMaxMm: 3,
+        minimumFeatureSizeBoundMm: 2,
+        projectionEvaluations: 2,
+        thresholdPasses: 4,
+      }
+}
+
+function evidenceWithCounters(
+  evidence: StructuralAlgorithmSummary,
+  iterations: number,
+  projections: number,
+  improved = true,
+): StructuralAlgorithmSummary {
+  if (evidence.kind === "adaptive-lattice")
+    return { ...evidence, thresholdPasses: iterations, projectionEvaluations: projections }
+  return {
+    ...evidence,
+    densityIterations: iterations,
+    projectionEvaluations: projections,
+    achievedCellCount: improved ? 32 : 40,
+    targetStatus: improved ? "reached" : "not-reached",
+  }
+}
+function algorithmResponse(
+  request: boolean,
+  algorithm: StructuralAlgorithmSummary,
+  iterations: number,
+  evaluations: number,
+  improved = true,
+) {
+  return {
+    documentId: lightweightingId(3),
+    baseRevision: 4,
+    source: lightweightingOperation(request).arguments.source,
+    summary: { ...lightweightingSummary(improved), iterations, algorithm, evaluations },
+    ...(request ? { snapshot: improved ? lightweightingSnapshot() : null } : {}),
+  }
+}
+
 describe("bounded paired-browser lightweighting contracts", () => {
+  it.each(["simp", "adaptive-lattice"] as const)(
+    "binds %s projection evidence to its budget and total FEM evaluations",
+    (kind) => {
+      for (const request of [false, true]) {
+        const base = lightweightingOperation(request)
+        const evidence = algorithmEvidence(kind)
+        for (const [budget, iterations, projections, evaluationDelta, accepted] of [
+          [0, 0, 0, 0, true],
+          [0, 0, 80, -80, false],
+          [0, 0, 1, 0, false],
+          [1, 1, 1, 0, true],
+          [1, 1, 2, 0, kind === "simp"],
+          [1, 1, 3, 0, false],
+          [40, 40, 80, 0, false],
+          [40, 40, 2, 0, true],
+          [4, 4, 1, -1, false],
+          [4, 4, 1, 1, false],
+        ] as const) {
+          const operation = {
+            ...base,
+            arguments: {
+              ...base.arguments,
+              settings: {
+                ...base.arguments.settings,
+                algorithm: evidence.settings,
+                maxIterations: budget,
+              },
+            },
+          }
+          const algorithm = evidenceWithCounters(evidence, iterations, projections, budget > 0)
+          const value = algorithmResponse(
+            request,
+            algorithm,
+            iterations,
+            2 + (kind === "simp" ? iterations : 0) + projections + evaluationDelta,
+            budget > 0,
+          )
+          const schema = request ? lightweightingRequestSchema : lightweightingAnalysisSchema
+          expect(schema.safeParse(value).success).toBe(true)
+          expect(lightweightingResultContextMatches(operation, { ok: true, value })).toBe(accepted)
+        }
+      }
+    },
+  )
+
   it.each(["simp", "adaptive-lattice"] as const)(
     "binds %s iteration evidence to the summary and request budget",
     (kind) => {
       for (const request of [false, true]) {
         const operation = lightweightingOperation(request)
-        const evidence: StructuralAlgorithmSummary =
-          kind === "simp"
-            ? {
-                kind,
-                settings: { kind, volumeFraction: 0.8, filterRadiusMm: 1.5, penalty: 3 },
-                densityIterations: 4,
-                converged: false,
-                maxDensityChange: 0.1,
-                targetCellCount: 32,
-                achievedCellCount: 32,
-                targetStatus: "reached",
-                projectionEvaluations: 2,
-              }
-            : {
-                kind,
-                settings: {
-                  kind,
-                  lattice: "gyroid",
-                  cellPeriodMm: 8,
-                  minWallThicknessMm: 2,
-                  maxWallThicknessMm: 3,
-                  skinThicknessMm: 0,
-                  field: "strain-energy",
-                  gamma: 1,
-                },
-                fieldMin: 0.1,
-                fieldMax: 1,
-                requestedWallMinMm: 2,
-                requestedWallMaxMm: 3,
-                minimumFeatureSizeBoundMm: 2,
-                projectionEvaluations: 2,
-                thresholdPasses: 4,
-              }
+        const evidence = algorithmEvidence(kind)
         const withAlgorithm = {
           ...operation,
           arguments: {
@@ -78,17 +158,13 @@ describe("bounded paired-browser lightweighting contracts", () => {
           [4, 1, false],
           [5, 5, false],
         ] as const) {
-          const algorithm =
-            evidence.kind === "simp"
-              ? { ...evidence, densityIterations: counter }
-              : { ...evidence, thresholdPasses: counter }
-          const value = {
-            documentId: lightweightingId(3),
-            baseRevision: 4,
-            source: operation.arguments.source,
-            summary: { ...lightweightingSummary(), iterations, algorithm },
-            ...(request ? { snapshot: lightweightingSnapshot() } : {}),
-          }
+          const algorithm = evidenceWithCounters(evidence, counter, iterations === 0 ? 0 : 2)
+          const value = algorithmResponse(
+            request,
+            algorithm,
+            iterations,
+            2 + algorithm.projectionEvaluations + (kind === "simp" ? iterations : 0),
+          )
           const schema = request ? lightweightingRequestSchema : lightweightingAnalysisSchema
           expect(schema.safeParse(value).success).toBe(true)
           expect(lightweightingResultContextMatches(withAlgorithm, { ok: true, value })).toBe(
@@ -131,7 +207,7 @@ describe("bounded paired-browser lightweighting contracts", () => {
         documentId: lightweightingId(3),
         baseRevision: 4,
         source: operation.arguments.source,
-        summary: { ...lightweightingSummary(), algorithm: evidence },
+        summary: { ...lightweightingSummary(), evaluations: 8, algorithm: evidence },
         ...(request ? { snapshot: lightweightingSnapshot() } : {}),
       }
       expect(lightweightingResultContextMatches(withAlgorithm, { ok: true, value })).toBe(true)

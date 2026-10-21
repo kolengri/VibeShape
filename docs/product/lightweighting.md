@@ -186,7 +186,9 @@ optional FDM constraints. Repeated final FEM uses the full-solid exported cells,
 stiffness or baseline-field estimates. Results and downloaded reports include algorithm settings and
 evidence; settings/source changes invalidate the result. Algorithm iteration counters must equal the
 summary iteration count and remain within the request budget in both browser and MCP validation.
-Apply uses the existing inspected mesh
+Projection evaluations must fit the algorithm budget and account for the reported total FEM solves,
+including baseline, density iterations where applicable, and final validation. Zero search budget
+permits no projections. Apply uses the existing inspected mesh
 snapshot, atomic transaction, and Undo workflow. Results remain mesh Parts, without CAD reconstruction
 or STEP export. Computational and small-strain limits remain unchanged.
 

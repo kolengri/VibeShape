@@ -332,12 +332,24 @@ function latticeEvidence(): StructuralAlgorithmSummary {
     thresholdPasses: 2,
   }
 }
+const simpExecution = { iterations: 8, evaluations: 15, maxIterations: 8 }
+const latticeExecution = { iterations: 2, evaluations: 4, maxIterations: 8 }
 describe("structural algorithm settings and solid evidence", () => {
   it("preserves omission and rejects evidence without an algorithm request", () => {
     expect(structuralOptimizationSettingsSchema.shape.algorithm.parse(undefined)).toBeUndefined()
-    expect(structuralAlgorithmSummaryMatches(undefined, undefined, 1, 40, 40, 0)).toBe(true)
-    expect(structuralAlgorithmSummaryMatches(simpEvidence(), undefined, 1, 40, 36, 8)).toBe(false)
-    expect(structuralAlgorithmSummaryMatches(undefined, simpSettings, 1, 40, 36, 8)).toBe(false)
+    expect(
+      structuralAlgorithmSummaryMatches(undefined, undefined, 1, 40, 40, {
+        iterations: 0,
+        evaluations: 2,
+        maxIterations: 0,
+      }),
+    ).toBe(true)
+    expect(
+      structuralAlgorithmSummaryMatches(simpEvidence(), undefined, 1, 40, 36, simpExecution),
+    ).toBe(false)
+    expect(
+      structuralAlgorithmSummaryMatches(undefined, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(false)
   })
   it.each([
     { ...simpSettings, filterRadiusMm: 0.9 },
@@ -383,27 +395,40 @@ describe("structural algorithm settings and solid evidence", () => {
         evidence.kind === "simp" ? evidence.densityIterations : evidence.thresholdPasses
       for (const iterations of [0, 1, expected, 40])
         expect(
-          structuralAlgorithmSummaryMatches(evidence, evidence.settings, 1, 40, 36, iterations),
+          structuralAlgorithmSummaryMatches(evidence, evidence.settings, 1, 40, 36, {
+            ...(evidence.kind === "simp" ? simpExecution : latticeExecution),
+            iterations,
+          }),
         ).toBe(iterations === expected)
     }
   })
   it("distinguishes relaxed convergence from binary target achievement", () => {
     const evidence = simpEvidence()
-    expect(structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, 8)).toBe(true)
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(true)
     if (evidence.kind !== "simp") throw new Error("Expected SIMP fixture")
     evidence.converged = true
     evidence.maxDensityChange = 0.005
-    expect(structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, 8)).toBe(true)
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(true)
     evidence.targetStatus = "reached"
-    expect(structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, 8)).toBe(false)
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(false)
     evidence.targetStatus = "not-reached"
     evidence.achievedCellCount = 32
-    expect(structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, 8)).toBe(false)
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, simpSettings, 1, 40, 36, simpExecution),
+    ).toBe(false)
   })
   it("binds lattice grading, skin and measured voxel coverage to the request", () => {
     const evidence = latticeEvidence()
     expect(structuralAlgorithmSummarySchema.safeParse(evidence).success).toBe(true)
-    expect(structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, 2)).toBe(true)
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, latticeExecution),
+    ).toBe(true)
     expect(
       structuralAlgorithmSummaryMatches(
         evidence,
@@ -411,14 +436,18 @@ describe("structural algorithm settings and solid evidence", () => {
         1,
         640,
         500,
-        2,
+        latticeExecution,
       ),
     ).toBe(false)
     if (evidence.kind !== "adaptive-lattice") throw new Error("Expected lattice fixture")
     evidence.minimumFeatureSizeBoundMm = 1.9
-    expect(structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, 2)).toBe(false)
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, latticeExecution),
+    ).toBe(false)
     evidence.minimumFeatureSizeBoundMm = 2
     evidence.requestedWallMaxMm = 3.1
-    expect(structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, 2)).toBe(false)
+    expect(
+      structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, latticeExecution),
+    ).toBe(false)
   })
 })

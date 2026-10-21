@@ -338,6 +338,24 @@ function latticeEvidenceMatches(
   ].every(Boolean)
 }
 
+function algorithmExecutionMatches(
+  summary: StructuralAlgorithmSummary,
+  execution: { iterations: number; evaluations: number; maxIterations: number },
+) {
+  const { iterations, evaluations, maxIterations } = execution
+  const algorithmIterations =
+    summary.kind === "simp" ? summary.densityIterations : summary.thresholdPasses
+  const projectionBudget =
+    maxIterations === 0 ? 0 : summary.kind === "simp" ? maxIterations + 1 : iterations
+  const densityEvaluations = summary.kind === "simp" ? iterations : 0
+  return (
+    algorithmIterations === iterations &&
+    iterations <= maxIterations &&
+    summary.projectionEvaluations <= projectionBudget &&
+    evaluations === 2 + densityEvaluations + summary.projectionEvaluations
+  )
+}
+
 /** Associate already validated numerical evidence with the exact request and solid. */
 export function structuralAlgorithmSummaryMatches(
   summary: StructuralAlgorithmSummary | undefined,
@@ -345,7 +363,7 @@ export function structuralAlgorithmSummaryMatches(
   cellSizeMm: number,
   initialCellCount: number,
   finalCellCount: number,
-  iterations: number,
+  execution: { iterations: number; evaluations: number; maxIterations: number },
 ): boolean {
   if (!settings) return summary === undefined
   if (
@@ -355,7 +373,7 @@ export function structuralAlgorithmSummaryMatches(
     !Number.isFinite(cellSizeMm) ||
     cellSizeMm < 0.01 ||
     initialCellCount < finalCellCount ||
-    (summary.kind === "simp" ? summary.densityIterations : summary.thresholdPasses) !== iterations
+    !algorithmExecutionMatches(summary, execution)
   )
     return false
   if (

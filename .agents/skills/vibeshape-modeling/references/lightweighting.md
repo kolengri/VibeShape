@@ -86,6 +86,9 @@ Both paired transports accept optional `settings.algorithm`. Omission keeps feas
 
 Browser and MCP validation require `densityIterations` or `thresholdPasses` to equal
 `summary.iterations`, which must not exceed the requested `maxIterations`.
+Projection evaluations must fit that search budget (SIMP permits one additional restoration
+projection) and match total FEM evaluations after baseline, density solves, and final validation.
+A zero search budget permits no projection.
 
 Every accepted result is reanalyzed as full-solid cells for every load case. Relaxed SIMP metrics
 or the source field cannot substitute for final feasibility. Underresolved walls and incompatible

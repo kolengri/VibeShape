@@ -153,6 +153,41 @@ describe("bounded structural worker client", () => {
           }
     return { ...result(), algorithm: algorithmEvidence }
   }
+  it.each(algorithms)(
+    "binds %s projection evidence to the request and FEM counts",
+    async (algorithm) => {
+      for (const [budget, iterations, projections, evaluationDelta, accepted] of [
+        [0, 0, 0, 0, true],
+        [0, 0, 80, -80, false],
+        [0, 0, 1, 0, false],
+        [1, 1, 1, 0, true],
+        [1, 1, 2, 0, algorithm.kind === "simp"],
+        [1, 1, 3, 0, false],
+        [40, 40, 80, 0, false],
+        [40, 40, 2, 0, true],
+        [4, 4, 1, -1, false],
+        [4, 4, 1, 1, false],
+      ] as const) {
+        const output = algorithmResult(algorithm)
+        const evidence = output.algorithm
+        if (!evidence) throw new Error("Expected algorithm evidence.")
+        output.algorithm =
+          evidence.kind === "simp"
+            ? { ...evidence, densityIterations: iterations, projectionEvaluations: projections }
+            : { ...evidence, thresholdPasses: iterations, projectionEvaluations: projections }
+        output.iterations = iterations
+        output.evaluations =
+          2 + (algorithm.kind === "simp" ? iterations : 0) + projections + evaluationDelta
+        const pending = optimizeStructuralModel(
+          { ...input, algorithm, maxIterations: budget },
+          options,
+        )
+        FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+        if (accepted) await expect(pending).resolves.toEqual(output)
+        else await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
+      }
+    },
+  )
   it.each(algorithms)("accepts exact %s request evidence", async (algorithm) => {
     const output = algorithmResult(algorithm)
     const pending = optimizeStructuralModel({ ...input, algorithm }, options)

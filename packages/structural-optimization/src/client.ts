@@ -124,7 +124,11 @@ function resultMatchesRequest(
       input.cellSizeMm,
       result.initialCellCount,
       result.finalCellCount,
-      result.iterations,
+      {
+        iterations: result.iterations,
+        evaluations: result.evaluations,
+        maxIterations: input.maxIterations,
+      },
     ),
   ].every(Boolean)
 }
