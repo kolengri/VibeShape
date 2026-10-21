@@ -250,6 +250,9 @@ not authorize a new scroll to it.
 **Section view** opens its existing enable, plane, offset, and flip controls from the same viewport
 control group beside the standard-view selector. Its button highlights an active section; the panel
 closes with Escape and returns focus to its trigger.
+Three labeled XY, XZ, and YZ radio tiles show medium plane-orientation icons and support arrow-key
+selection. Cut material uses a subtle diagonal grid; holes remain unfilled. The grid follows the
+section plane and adapts to zoom without exposing display-triangle edges.
 
 The alpha default is:
 

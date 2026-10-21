@@ -6,6 +6,7 @@ import {
   LineSegments,
   Mesh,
   OrthographicCamera,
+  ShaderMaterial,
   Vector3,
 } from "three"
 import { vi } from "../../../tests/unit/support/bun-test"
@@ -123,6 +124,34 @@ function expectPlaneCoordinate(attribute: BufferAttribute, coordinate: number, v
 describe("retained section decoration geometry", () => {
   beforeEach(() => vi.stubGlobal("window", new EventTarget()))
   afterEach(() => vi.unstubAllGlobals())
+
+  it("keeps the cut grid in the section plane and adapts its spacing without rebuilding caps", () => {
+    const { decoration, camera } = decorationFixture()
+    try {
+      for (const [axis, u, v] of [
+        ["x", [0, 1, 0], [0, 0, 1]],
+        ["y", [1, 0, 0], [0, 0, 1]],
+        ["z", [1, 0, 0], [0, 1, 0]],
+      ] as const) {
+        camera.zoom = 1
+        decoration.setSection({ axis, offset: 0, flipped: false })
+        const cap = decoration.group.children[0]?.children[0]
+        if (!(cap instanceof Mesh) || !(cap.material instanceof ShaderMaterial))
+          throw new Error("A closed section must have a grid material.")
+        const material = cap.material
+        expect(material.uniforms.sectionU?.value.toArray()).toEqual([...u])
+        expect(material.uniforms.sectionV?.value.toArray()).toEqual([...v])
+        expect(material.uniforms.spacing?.value).toBeCloseTo(1)
+        camera.zoom = 2
+        decoration.update()
+        expect(material.uniforms.spacing?.value).toBeCloseTo(0.5)
+        expect(decoration.group.children[0]?.children[0]).toBe(cap)
+        expect(cap.material).toBe(material)
+      }
+    } finally {
+      decoration.dispose()
+    }
+  })
 
   it("accepts retained model bounds without reading vertices when the section is inactive", () => {
     const { decoration } = decorationFixture()

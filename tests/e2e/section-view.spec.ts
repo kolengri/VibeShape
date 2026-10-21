@@ -22,6 +22,26 @@ test("clips the viewport with reversible sections while preserving saved solids"
     viewControls.getByRole("button", { name: "Section view", exact: true }),
   ).toBeVisible()
   await section.getByLabel("Enable section view", { exact: true }).check()
+  await expect(section.getByRole("radio", { name: "XY plane, normal Z" })).toBeChecked()
+  await section.getByRole("radio", { name: "XY plane, normal Z" }).focus()
+  await page.keyboard.press("ArrowRight")
+  await expect(section.getByRole("radio", { name: "XZ plane, normal Y" })).toBeChecked()
+  await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
+    "data-section-axis",
+    "y",
+  )
+  await section.getByRole("radio", { name: "XY plane, normal Z" }).check()
+  // A 512 x 384 CSS viewport represents 200% reflow on a 1024 x 768 display.
+  await page.setViewportSize({ width: 512, height: 384 })
+  await expect
+    .poll(async () => {
+      const bounds = await section.boundingBox()
+      return bounds !== null && bounds.y >= 0 && bounds.y + bounds.height <= 384
+    })
+    .toBe(true)
+  await section.getByLabel("Keep the opposite side").check()
+  await section.getByLabel("Keep the opposite side").uncheck()
+  await page.setViewportSize({ width: 1440, height: 900 })
   const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
   await expect(viewport).toHaveAttribute("data-section-axis", "z")
   await section.getByLabel("Section offset (mm)").fill("10")
@@ -33,7 +53,7 @@ test("clips the viewport with reversible sections while preserving saved solids"
   await expect(section.getByText(/finite offset/)).toBeVisible()
   await expect(viewport).toHaveAttribute("data-section-offset", "10")
   await section.getByLabel("Section offset (mm)").fill("5")
-  await section.getByLabel("Section normal axis").selectOption("x")
+  await section.getByRole("radio", { name: "YZ plane, normal X" }).check()
   await expect(viewport).toHaveAttribute("data-section-axis", "x")
   await page.keyboard.press("Escape")
   await expect(sectionButton).toBeFocused()
@@ -50,9 +70,9 @@ test("clips the viewport with reversible sections while preserving saved solids"
     .click()
   await page.getByRole("button", { name: "Cancel", exact: true }).click()
   await sectionButton.click()
-  await expect(section.getByLabel("Section normal axis")).toHaveValue("x")
+  await expect(section.getByRole("radio", { name: "YZ plane, normal X" })).toBeChecked()
   await expect(section.getByLabel("Keep the opposite side")).toBeChecked()
-  await section.getByLabel("Section normal axis").selectOption("z")
+  await section.getByRole("radio", { name: "XY plane, normal Z" }).check()
   await section.getByLabel("Keep the opposite side").uncheck()
   await section.getByLabel("Section offset (mm)").fill("-100")
   await page.keyboard.press("Escape")

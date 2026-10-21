@@ -1,12 +1,23 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { SectionViewIcon } from "@vibeshape/ui/components/icons"
-import { NativeSelect } from "@vibeshape/ui/components/native-select"
+import {
+  SectionPlaneXyIcon,
+  SectionPlaneXzIcon,
+  SectionPlaneYzIcon,
+  SectionViewIcon,
+} from "@vibeshape/ui/components/icons"
 import { Popover, PopoverContent, PopoverTrigger } from "@vibeshape/ui/components/popover"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import { cn } from "@vibeshape/ui/lib/cn"
 import type { ViewerMesh, ViewerSection } from "@vibeshape/viewer/three-viewport"
 import { useId, useState } from "react"
+
+const sectionPlanes = [
+  { axis: "z", plane: "XY", icon: SectionPlaneXyIcon },
+  { axis: "y", plane: "XZ", icon: SectionPlaneXzIcon },
+  { axis: "x", plane: "YZ", icon: SectionPlaneYzIcon },
+] as const
 
 function modelMidpoint(meshes: readonly ViewerMesh[], axis: ViewerSection["axis"]) {
   const coordinate = { x: 0, y: 1, z: 2 }[axis]
@@ -80,7 +91,12 @@ export function SectionViewControls({
         </TooltipTrigger>
         <TooltipContent>{t("title")}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" className="grid w-56 gap-2 p-3 text-xs" aria-label={t("title")}>
+      <PopoverContent
+        align="end"
+        collisionPadding={8}
+        className="grid max-h-[var(--radix-popover-content-available-height)] w-64 gap-3 overflow-y-auto p-3 text-xs"
+        aria-label={t("title")}
+      >
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -98,23 +114,39 @@ export function SectionViewControls({
           />
           {t("enabled")}
         </label>
-        <label htmlFor={axisId}>{t("axis")}</label>
-        <NativeSelect
-          id={axisId}
-          value={axis}
-          onChange={(event) => {
-            const next = event.currentTarget.value
-            if (next !== "x" && next !== "y" && next !== "z") return
-            setAxis(next)
-            const center = modelMidpoint(meshes, next)
-            setOffset(String(center))
-            if (section) onChange({ axis: next, offset: center, flipped })
-          }}
-        >
-          <option value="x">YZ / X</option>
-          <option value="y">XZ / Y</option>
-          <option value="z">XY / Z</option>
-        </NativeSelect>
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 font-medium">{t("axis")}</legend>
+          <div className="grid grid-cols-3 gap-2">
+            {sectionPlanes.map(({ axis: next, plane, icon: Icon }) => (
+              <label key={next} className="relative cursor-pointer">
+                <input
+                  type="radio"
+                  name={axisId}
+                  value={next}
+                  checked={axis === next}
+                  aria-label={t("planeLabel", { plane, axis: next.toUpperCase() })}
+                  className="peer absolute inset-0 z-10 m-0 size-full cursor-pointer opacity-0"
+                  onChange={() => {
+                    setAxis(next)
+                    const center = modelMidpoint(meshes, next)
+                    setOffset(String(center))
+                    if (section) onChange({ axis: next, offset: center, flipped })
+                  }}
+                />
+                <span
+                  className={cn(
+                    "flex flex-col items-center gap-1 rounded-md border border-input bg-background px-2 py-2",
+                    "peer-hover:bg-accent peer-checked:border-primary peer-checked:bg-accent peer-checked:ring-1 peer-checked:ring-primary",
+                    "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
+                  )}
+                >
+                  <Icon className="size-8" />
+                  <span className="font-medium">{plane}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <TextField
           label={t("offset")}
           type="number"

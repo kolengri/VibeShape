@@ -3201,6 +3201,87 @@ export const SectionViewIcon = /* @__PURE__ */ coloredIcon(
   </g>,
 )
 
+export const SectionPlaneXyIcon = /* @__PURE__ */ coloredIcon(
+  "section-plane-xy",
+  <g transform="scale(4)">
+    <path
+      d="M8 18 32 4 56 18v28L32 60 8 46Z"
+      fill="var(--icon-geometry-highlight, #e4eef9)"
+      stroke="var(--icon-geometry-shade, #8fb2dc)"
+      strokeWidth="2.4"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8 18 32 32 56 18M32 32v28M32 4v28M8 46 32 32 56 46"
+      fill="none"
+      stroke="var(--icon-geometry-shade, #8fb2dc)"
+      strokeWidth="2.4"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8 32 32 18 56 32 32 46Z"
+      fill="var(--icon-action-fill, #f1bc77)"
+      stroke="var(--icon-action-stroke, #cd7b24)"
+      strokeWidth="3.2"
+      strokeLinejoin="round"
+    />
+  </g>,
+)
+
+export const SectionPlaneXzIcon = /* @__PURE__ */ coloredIcon(
+  "section-plane-xz",
+  <g transform="scale(4)">
+    <path
+      d="M8 18 32 4 56 18v28L32 60 8 46Z"
+      fill="var(--icon-geometry-highlight, #e4eef9)"
+      stroke="var(--icon-geometry-shade, #8fb2dc)"
+      strokeWidth="2.4"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8 18 32 32 56 18M32 32v28M32 4v28M8 46 32 32 56 46"
+      fill="none"
+      stroke="var(--icon-geometry-shade, #8fb2dc)"
+      strokeWidth="2.4"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8 18 32 32v28L8 46Z"
+      fill="var(--icon-action-fill, #f1bc77)"
+      stroke="var(--icon-action-stroke, #cd7b24)"
+      strokeWidth="3.2"
+      strokeLinejoin="round"
+    />
+  </g>,
+)
+
+export const SectionPlaneYzIcon = /* @__PURE__ */ coloredIcon(
+  "section-plane-yz",
+  <g transform="scale(4)">
+    <path
+      d="M8 18 32 4 56 18v28L32 60 8 46Z"
+      fill="var(--icon-geometry-highlight, #e4eef9)"
+      stroke="var(--icon-geometry-shade, #8fb2dc)"
+      strokeWidth="2.4"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8 18 32 32 56 18M32 32v28M32 4v28M8 46 32 32 56 46"
+      fill="none"
+      stroke="var(--icon-geometry-shade, #8fb2dc)"
+      strokeWidth="2.4"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M32 32 56 18v28L32 60Z"
+      fill="var(--icon-action-fill, #f1bc77)"
+      stroke="var(--icon-action-stroke, #cd7b24)"
+      strokeWidth="3.2"
+      strokeLinejoin="round"
+    />
+  </g>,
+)
+
 export const PrintIcon = /* @__PURE__ */ coloredIcon(
   "print",
   <g transform="scale(4)">
