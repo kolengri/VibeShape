@@ -31,6 +31,7 @@ import {
   type WebFrameMain,
 } from "electron"
 import { registerAssistantIpc } from "./assistant-ipc"
+import { createAssistantLaunchResolver } from "./assistant-jev-runtime"
 import { createAssistantService } from "./assistant-service"
 import { reportDesktopStartupFailure, reportEditorLoadFailure } from "./editor-load-error"
 import { DESKTOP_EDITOR_ORIGIN, startEditorServer } from "./editor-server"
@@ -86,6 +87,10 @@ if (
 const editorOrigin = testPort ? `http://127.0.0.1:${testPort}` : DESKTOP_EDITOR_ORIGIN
 const descriptorPath = join(profile, DESKTOP_MCP_DESCRIPTOR_NAME)
 const runtimeDirectory = app.isPackaged ? app.getAppPath() : join(app.getAppPath(), "dist")
+const resolveAssistantLaunch = createAssistantLaunchResolver({
+  executable: process.execPath,
+  runtimeDirectory,
+})
 let editor: Awaited<ReturnType<typeof startEditorServer>> | undefined
 let nativeMcp: ReturnType<typeof createDesktopMcpService> | undefined
 let nativeSlicer: ReturnType<typeof createNativeSlicerService> | undefined
@@ -583,6 +588,7 @@ function installAssistant() {
   if (assistant) return
   assistant = createAssistantService({
     cwd: assistantDirectory,
+    resolveLaunch: resolveAssistantLaunch,
     applicationVersion: app.getVersion(),
     async getMcpSetup(projectId, questions) {
       const id = localDocumentSchema.shape.id.parse(projectId)

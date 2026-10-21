@@ -87,6 +87,25 @@ function fixture() {
 }
 
 describe("native project chat retention", () => {
+  it("preserves connection outcomes through the project facade and rejects a closed registry", async () => {
+    const f = fixture()
+    let reject = true
+    const bridge: AssistantBridge = {
+      ...f.bridge,
+      async connect(input) {
+        return reject ? { ok: false, code: "mcp-client-conflict" } : f.bridge.connect(input)
+      },
+    }
+    const registry = createNativeProjectChatRegistry(bridge, f.storage)
+    const chat = registry.get("outcome-project")
+    chat.start()
+    expect(await chat.connect({ command: "/installed/agent", args: [] })).toBe(false)
+    reject = false
+    expect(await chat.connect({ command: "/installed/agent", args: [] })).toBe(true)
+    registry.dispose()
+    expect(await chat.connect({ command: "/installed/agent", args: [] })).toBe(false)
+  })
+
   it("keeps the project busy through accepted save settlement and the explicit checkpoint restore", async () => {
     const f = fixture(),
       model = checkpointFixture()

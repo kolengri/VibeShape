@@ -30,6 +30,45 @@ describe("Jev adapter boundaries", () => {
     ])
       expect(() => readConfiguration({ ...env, JEV_ARGUMENTS_ENDPOINT: endpoint })).toThrow()
   })
+  it("decodes CLI settings through the shared bounds without changing the supplied environment", () => {
+    const env = {
+      TYPESAFE_API_KEY: "test-key",
+      TYPESAFE_MODEL: "jev-explicit",
+      JEV_ENABLE_IMAGES: "1",
+      JEV_MAX_STEPS: "48",
+      JEV_MIN_CONFIDENCE: "1",
+      JEV_TIMEOUT_MS: "120000",
+      JEV_ARGUMENTS_ENDPOINT: "https://helper.example.test/completions",
+      JEV_ARGUMENTS_MODEL: "helper",
+      JEV_ARGUMENTS_API_KEY: "helper-key",
+    }
+    const before = { ...env }
+    expect(readConfiguration(env)).toEqual({
+      apiKey: "test-key",
+      model: "jev-explicit",
+      images: true,
+      maxSteps: 48,
+      minConfidence: 1,
+      timeoutMs: 120000,
+      argumentsEndpoint: env.JEV_ARGUMENTS_ENDPOINT,
+      argumentsModel: "helper",
+      argumentsApiKey: "helper-key",
+    })
+    expect(env).toEqual(before)
+    expect(readConfiguration({ TYPESAFE_API_KEY: "test-key", JEV_ENABLE_IMAGES: "0" }).images).toBe(
+      false,
+    )
+    for (const invalid of [
+      { JEV_ENABLE_IMAGES: "true" },
+      { JEV_MAX_STEPS: "1.5" },
+      { JEV_MIN_CONFIDENCE: "Infinity" },
+      { JEV_TIMEOUT_MS: "999" },
+      { JEV_ARGUMENTS_API_KEY: "helper-key" },
+    ])
+      expect(() => readConfiguration({ TYPESAFE_API_KEY: "test-key", ...invalid })).toThrow(
+        "Invalid Jev environment",
+      )
+  })
   it("handles explicit text attachments and resource links without fetching them", () => {
     const content = promptContent(
       [

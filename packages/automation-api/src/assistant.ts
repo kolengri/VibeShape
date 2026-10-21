@@ -1,5 +1,6 @@
 import { documentIdSchema, featureIdSchema, sketchIdSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
+import { assistantJevAgentSchema, assistantJevCredentialsSchema } from "./assistant-jev"
 import { utf8StringBytes } from "./query-byte-budget"
 
 export const ASSISTANT_REQUEST_CHANNEL = "vibeshape:assistant:request"
@@ -153,7 +154,7 @@ export function assistantQuestionAnswersMatch(
   })
 }
 
-export const assistantAgentSchema = z.strictObject({
+export const assistantExternalAgentSchema = z.strictObject({
   command: z
     .string()
     .trim()
@@ -169,11 +170,20 @@ export const assistantAgentSchema = z.strictObject({
     )
     .max(64),
 })
-export const assistantConnectSchema = z.strictObject({
-  projectId: id,
-  agent: assistantAgentSchema,
-  resumeSessionId: id.optional(),
-})
+export const assistantAgentSchema = z.union([assistantExternalAgentSchema, assistantJevAgentSchema])
+export const assistantConnectSchema = z
+  .strictObject({
+    projectId: id,
+    agent: assistantAgentSchema,
+    jevCredentials: assistantJevCredentialsSchema.optional(),
+    resumeSessionId: id.optional(),
+  })
+  .refine(
+    (value) =>
+      !value.jevCredentials ||
+      ("kind" in value.agent &&
+        (!value.jevCredentials.argumentsApiKey || Boolean(value.agent.settings.argumentsEndpoint))),
+  )
 export const assistantScopeSchema = z.strictObject(scope)
 export const assistantPromptSchema = z
   .strictObject({
@@ -212,6 +222,7 @@ export const assistantErrorCodeSchema = z.enum([
   "protocol-error",
   "agent-exited",
   "authentication-required",
+  "jev-configuration-required",
   "agent-busy",
   "queue-full",
   "stale-session",
@@ -305,6 +316,7 @@ export const assistantEventSchema = z.discriminatedUnion("type", [
 ])
 
 export type AssistantAgent = z.infer<typeof assistantAgentSchema>
+export type AssistantExternalAgent = z.infer<typeof assistantExternalAgentSchema>
 export type AssistantSnapshot = z.infer<typeof assistantSnapshotSchema>
 export type AssistantEvent = z.infer<typeof assistantEventSchema>
 export type AssistantResult = z.infer<typeof assistantResultSchema>

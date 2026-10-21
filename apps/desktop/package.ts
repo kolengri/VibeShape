@@ -83,7 +83,7 @@ async function stageApplication(stage: string, input: ReturnType<typeof packageI
   if (verifyControlledEditorBuild(editor) !== input.editorHash)
     throw new Error("The editor changed while staging the desktop package.")
   const runtime: Record<string, string> = {}
-  for (const name of ["main.cjs", "preload.cjs", "mcp.cjs"]) {
+  for (const name of ["main.cjs", "preload.cjs", "mcp.cjs", "jev.cjs"]) {
     const bytes = await readFile(join(root, "apps/desktop/dist", name))
     await writeFile(join(app, name), bytes)
     runtime[name] = distributionHash(bytes)

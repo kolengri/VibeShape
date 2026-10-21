@@ -1,9 +1,10 @@
-# Experimental Jev ACP controller
+# Built-in Jev ACP controller
 
-`apps/jev-agent` is a source-checkout ACP agent for the native VibeShape chat. It connects to
-the desktop host's injected project MCP server. It does not require a new browser connection,
-another editor profile, a new CAD API, or changes to document and geometry ownership.
-The browser-only chat cannot launch this local process. The adapter is not bundled in desktop releases.
+The native chat offers **Jev (TypeSafe)** as its own agent choice. The desktop ships the existing
+`apps/jev-agent` adapter and runs it using Electron's embedded Node runtime. There is no external
+Bun installation, executable path or source-checkout requirement for this choice. Jev uses the
+host's existing injected project MCP server; it does not create another editor profile or CAD API.
+Browser-only chat cannot launch the bundled local process.
 
 ## Control loop
 
@@ -35,7 +36,32 @@ Jev's `done` is a stopping decision, not independent proof of geometric or manuf
 
 ## Configure and connect
 
-Use the repository's pinned Bun version and install its locked dependencies. Keep credentials in
+In the native chat settings, select **Agent → Jev (TypeSafe)**. Enter the TypeSafe API key and
+Jev model. The default model is the adapter's pinned `jev-1.14.0`; selecting it does not establish
+that the provider account has access to that model.
+
+Expand **Argument model** to configure an OpenAI-compatible endpoint, model name and optional key.
+Most CAD edits need this helper for dimensions and references. Jev selects the action; the helper
+fills only that action's open arguments. Configure endpoint and model together. The helper endpoint
+must use HTTPS or loopback HTTP and must not contain URL credentials, a query or fragment.
+
+**Jev advanced settings** expose image opt-in, the decision budget, confidence threshold and
+provider timeout. Images remain disabled by default. Connecting starts the bundled ACP adapter
+only after these settings pass validation. Existing project, question, Stop and CAD authority
+boundaries remain in force.
+
+Only the non-secret Jev settings persist as assistant preferences. After a successful connection,
+keys stay in host memory, scoped to the project, for the application session. A failed connection
+keeps both password fields in the form for retry; only an accepted current connection clears them. They do not enter chat, localStorage,
+command arguments or files. Leaving a key blank reuses that project's cached key or the explicitly
+configured app environment key; keys entered in another project are never borrowed. Helper keys are
+scoped to both the project and exact endpoint, so another project or endpoint cannot replace them.
+Restarting the application requires re-entering keys unless its environment already supplies them. Credentials
+are not forwarded to the injected MCP child.
+
+## Source CLI and custom ACP compatibility
+
+The custom-agent route remains available for development. Use the repository's pinned Bun version and install its locked dependencies. Keep credentials in
 the local agent process environment; do not put keys in arguments, project files or chat messages.
 The desktop process must inherit these variables. Finder launches do not inherit terminal exports;
 use your existing local environment/wrapper setup when launching the app from Finder.
@@ -125,7 +151,7 @@ among seven actions from structured emulator state; code owns timing and executi
 The VibeShape adapter applies that decomposition to its existing tool catalog. Compared with
 adapting the Python browser agent, a Bun/TypeScript ACP process reuses the installed protocol SDKs,
 project attachment and strict CAD schemas. Compared with adding a second provider to browser chat,
-it leaves the web bundle and connection UI unchanged and keeps API keys in the local process.
+it keeps provider execution outside the browser bundle. The native agent selector exposes its dedicated settings, while the desktop owns executable resolution and connection-only keys.
 Its costs are a separate process, helper configuration for open arguments and additional semantic
 decisions that still require real CAD evaluation before speed or quality claims.
 
