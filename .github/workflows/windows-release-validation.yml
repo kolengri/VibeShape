@@ -67,12 +67,12 @@ jobs:
           $name = "VibeShape-$version-win-x64.zip"
           $destination = Join-Path $env:RUNNER_TEMP 'windows-release'
           New-Item -ItemType Directory -Path $destination | Out-Null
-          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --dir $destination --pattern $name --pattern desktop-build.json --pattern SHA256SUMS
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --dir $destination --pattern $name --pattern desktop-build-win-x64.json --pattern SHA256SUMS-win-x64
           if ($LASTEXITCODE -ne 0) { throw 'Release download failed.' }
           $archive = Join-Path $destination $name
           $digest = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
-          $receipt = Get-Content (Join-Path $destination 'desktop-build.json') -Raw | ConvertFrom-Json
-          $manifest = (Get-Content (Join-Path $destination 'SHA256SUMS') -Raw).Trim()
+          $receipt = Get-Content (Join-Path $destination 'desktop-build-win-x64.json') -Raw | ConvertFrom-Json
+          $manifest = (Get-Content (Join-Path $destination 'SHA256SUMS-win-x64') -Raw).Trim()
           if ($digest -cne $env:ZIP_SHA256 -or
               $manifest -cne "$digest  $name" -or
               $receipt.schemaVersion -ne 1 -or

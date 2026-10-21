@@ -26,8 +26,9 @@ resource editor and the repository's `.ico` container of the existing applicatio
 uses its built-in `tar` ZIP support; macOS uses `ditto`. Cross-packaging is artifact evidence, not
 proof of successful execution on Windows.
 
-Output contains `VibeShape-win32-x64/`, `VibeShape-VERSION-win-x64.zip`, `SHA256SUMS` and
-`desktop-build.json`. The build receipt records the exact source commit, target platform, editor
+Output contains `VibeShape-win32-x64/`, `VibeShape-VERSION-win-x64.zip`, `SHA256SUMS-win-x64` and
+`desktop-build-win-x64.json`. Windows metadata names allow the Mac receipt and checksum manifest
+to coexist in the same GitHub release. The build receipt records the exact source commit, target platform, editor
 inventory, native bundle hashes and ZIP digest. The complete application source, CAD engine source
 archives, replacement instructions and runtime license notices accompany the editor under
 `resources/editor/sources/`. Electron notices come from the target Windows runtime. Packaging
@@ -99,7 +100,7 @@ model, and connects the bundled MCP forwarder with consent and revocation. The t
 existing default profile and removes only the profile it creates.
 
 The manual `Windows release validation` workflow performs this check against a draft GitHub
-release. Upload the ZIP, `desktop-build.json` and `SHA256SUMS`, then supply its `desktop-vX.Y.Z`
+release. Upload the ZIP, `desktop-build-win-x64.json` and `SHA256SUMS-win-x64`, then supply its `desktop-vX.Y.Z`
 tag, exact source commit and independently verified ZIP SHA-256. The workflow checks the receipt,
 manifest and digest before extracting and executing the archive. Publish that same draft only
 after acceptance succeeds; do not replace its validated assets.
