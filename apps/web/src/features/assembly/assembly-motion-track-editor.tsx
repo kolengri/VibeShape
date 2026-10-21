@@ -355,7 +355,10 @@ function TrackCard({
                   <legend className="text-xs text-muted-foreground">
                     {t("motionKeyNumber", { number: keyIndex + 1 })}
                   </legend>
-                  <div className="grid min-w-0 grid-cols-2 gap-2">
+                  <div
+                    key={`${track.coordinate}:${track.keys.length}`}
+                    className="grid min-w-0 grid-cols-2 gap-2"
+                  >
                     <AssemblyStudyNumber
                       label={t("motionKeyTime")}
                       value={key.time}
@@ -424,7 +427,13 @@ function TrackCard({
           >
             {t("motionAddKey")}
           </Button>
-          <CopyTrack track={track} study={study} options={options} edit={edit} />
+          <CopyTrack
+            key={track.coordinate}
+            track={track}
+            study={study}
+            options={options}
+            edit={edit}
+          />
         </>
       ) : (
         <p role="alert" className="text-xs text-destructive">

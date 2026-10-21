@@ -13,11 +13,13 @@ import { asBuiltUiFixture } from "./assembly-as-built-test-fixture"
 import { identityAssemblyPose } from "./assembly-model"
 import { AssemblyMotionTrackEditor } from "./assembly-motion-track-editor"
 
-function fixture(kind: "revolute" | "prismatic" = "revolute") {
+type JointKind = "revolute" | "prismatic" | "cylindrical"
+
+function fixture(kind: JointKind = "revolute") {
   const f = asBuiltUiFixture()
   const joints = [0, 1].map((index) =>
     assemblyJointRecordSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: kind === "cylindrical" ? 2 : 1,
       id: id(800 + index),
       kind,
       parentInstanceId: f.assembly.instances[0]?.id,
@@ -25,11 +27,22 @@ function fixture(kind: "revolute" | "prismatic" = "revolute") {
       parentFrame: identityAssemblyPose,
       childFrame: identityAssemblyPose,
       axis: [0, 0, 1],
-      value: 0,
-      limits: {
-        min: kind === "revolute" ? -Math.PI : -100,
-        max: kind === "revolute" ? Math.PI : 100,
-      },
+      ...(kind === "cylindrical"
+        ? {
+            angle: 0,
+            angleLimits: { min: -Math.PI, max: Math.PI },
+            rotationDriven: true,
+            translation: 0,
+            translationLimits: { min: -100, max: 100 },
+            translationDriven: true,
+          }
+        : {
+            value: 0,
+            limits: {
+              min: kind === "revolute" ? -Math.PI : -100,
+              max: kind === "revolute" ? Math.PI : 100,
+            },
+          }),
     }),
   )
   const first = joints[0]
@@ -43,10 +56,10 @@ function fixture(kind: "revolute" | "prismatic" = "revolute") {
       {
         id: id(811),
         jointId: first.id,
-        coordinate: kind === "revolute" ? "angle" : "translation",
+        coordinate: kind === "prismatic" ? "translation" : "angle",
         keys: [
           { time: 0, value: 0 },
-          { time: 2, value: kind === "revolute" ? Math.PI / 2 : 12.7 },
+          { time: 2, value: kind === "prismatic" ? 12.7 : Math.PI / 2 },
         ],
       },
     ],
@@ -59,7 +72,7 @@ function setup({
   length = "mm",
   disabled = false,
 }: {
-  kind?: "revolute" | "prismatic"
+  kind?: JointKind
   angle?: "deg" | "rad"
   length?: "mm" | "in"
   disabled?: boolean
@@ -103,6 +116,90 @@ async function replace(input: HTMLElement, value: string) {
 afterEach(cleanup)
 
 describe("Motion study track authoring", () => {
+  it.each([
+    {
+      from: "angle",
+      to: "translation",
+      offsetLabel: "Angular offset (deg)",
+      offset: "30",
+      resetLabel: "Value offset (mm)",
+    },
+    {
+      from: "translation",
+      to: "angle",
+      offsetLabel: "Value offset (mm)",
+      offset: "1",
+      resetLabel: "Angular offset (deg)",
+    },
+  ] as const)(
+    "resets copy offsets when switching from $from to $to",
+    async ({ from, to, offsetLabel, offset, resetLabel }) => {
+      const f = setup({ kind: "cylindrical" })
+      const first = f.view.assembly.joints[0]
+      const second = f.view.assembly.joints[1]
+      if (!first || !second) throw new Error("Expected two cylindrical joints.")
+      const coordinate = screen.getByRole("combobox", { name: "Coordinate" })
+      await userEvent.selectOptions(coordinate, `${first.id}:${from}`)
+      await userEvent.click(screen.getByText("Copy to another joint"))
+      await replace(screen.getByRole("spinbutton", { name: offsetLabel }), offset)
+      await userEvent.selectOptions(coordinate, `${first.id}:${to}`)
+      await userEvent.click(screen.getByText("Copy to another joint"))
+      expect(
+        inputValue(
+          screen.getByRole("spinbutton", {
+            name: resetLabel,
+          }),
+        ),
+      ).toBe("0")
+      await userEvent.click(screen.getByRole("button", { name: "Copy track" }))
+      expect(f.current().tracks[1]).toMatchObject({
+        jointId: second.id,
+        coordinate: to,
+        keys: [
+          { time: 0, value: 0 },
+          { time: 2, value: 0 },
+        ],
+      })
+    },
+  )
+
+  it.each(["Time (s)", "Value (deg)"])(
+    "clears buffered %s edits before adding or removing key rows",
+    async (label) => {
+      const f = setup()
+      await userEvent.click(screen.getByText("Edit keys (2)"))
+      await userEvent.click(screen.getByRole("button", { name: "Add key" }))
+      await userEvent.clear(elementAt(screen.getAllByRole("spinbutton", { name: label }), 2))
+      await userEvent.click(screen.getByRole("button", { name: "Add key" }))
+      expect(screen.getAllByRole("spinbutton", { name: label }).map(inputValue)).toEqual(
+        label === "Time (s)" ? ["0", "0.5", "1", "2"] : ["0", "22.5", "45", "90"],
+      )
+      await userEvent.clear(elementAt(screen.getAllByRole("spinbutton", { name: label }), 1))
+      await userEvent.click(elementAt(screen.getAllByRole("button", { name: "Remove key" }), 0))
+      expect(screen.getAllByRole("spinbutton", { name: label }).map(inputValue)).toEqual(
+        label === "Time (s)" ? ["0.5", "1", "2"] : ["22.5", "45", "90"],
+      )
+      expect(f.current().tracks[0]?.keys).toEqual([
+        { time: 0.5, value: Math.PI / 8 },
+        { time: 1, value: Math.PI / 4 },
+        { time: 2, value: Math.PI / 2 },
+      ])
+    },
+  )
+
+  it("preserves keyboard focus when removing a key resets the numeric editors", async () => {
+    const f = setup()
+    await userEvent.click(screen.getByText("Edit keys (2)"))
+    await userEvent.click(screen.getByRole("button", { name: "Add key" }))
+    await userEvent.click(screen.getByRole("button", { name: "Add key" }))
+    const remove = elementAt(screen.getAllByRole("button", { name: "Remove key" }), 0)
+    remove.focus()
+    await userEvent.keyboard("{Enter}")
+    expect(f.current().tracks[0]?.keys).toHaveLength(3)
+    expect(document.activeElement).toBe(remove)
+    expect(screen.getAllByRole("button", { name: "Remove key" })).toHaveLength(3)
+  })
+
   it.each(["time", "value"] as const)(
     "keeps a buffered %s edit when the next action drags the same key",
     async (field) => {

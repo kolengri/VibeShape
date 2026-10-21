@@ -81,6 +81,8 @@ Each track identifies a joint by its type and named component endpoints. Values 
 project's display units, including degrees by default; stored and MCP angles remain radians and
 lengths remain millimeters. Numeric edits preserve incomplete text, commit valid values on blur or
 Enter, and block playback/save while invalid or still awaiting field confirmation. Escape restores the last committed numeric field value.
+Adding or removing keys resets unfinished numeric text to the canonical study draft. Changing a
+track's coordinate kind also resets its numeric editors, copy target and copy offset.
 
 Each track exposes a graphical time lane. Drag a key to move its time without changing its value;
 release commits the draft edit, while Escape or pointer cancellation discards the drag. Left/Right
