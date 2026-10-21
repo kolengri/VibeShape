@@ -62,7 +62,9 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
     setSubmitting(true)
     setFailed(false)
     try {
-      if ((await chat.connect(parsed.data)) && saved) onSaved?.()
+      const accepted = await chat.connect(parsed.data)
+      setFailed(!accepted)
+      if (accepted && saved) onSaved?.()
     } catch {
       setFailed(true)
     } finally {

@@ -102,7 +102,9 @@ function useJevConnectionForm({ chat, connected, pending, testConnection }: JevC
     const saved = saveAssistantPreferences({ version: 1, agent: parsed.agent })
     setStorageFailed(!saved)
     try {
-      if (await chat.connect(parsed.agent, parsed.credentials)) {
+      const accepted = await chat.connect(parsed.agent, parsed.credentials)
+      setFailed(!accepted)
+      if (accepted) {
         for (const input of form.querySelectorAll<HTMLInputElement>('input[type="password"]'))
           input.value = ""
         if (saved) onSaved?.()

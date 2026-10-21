@@ -114,24 +114,66 @@ describe("assistant connection settings", () => {
     },
   )
 
-  it("keeps settings and credentials after a failed connection, then closes on retry", async () => {
+  it.each(["Jev (TypeSafe)", "Codex"])(
+    "reports a false %s connection result, retains settings and clears the error on retry",
+    async (agent) => {
+      const retry = deferred<boolean>()
+      const chat = {
+        connect: vi.fn().mockResolvedValueOnce(false).mockReturnValue(retry.promise),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      }
+      await openSettings(
+        <NativeAgentConfiguration chat={chat} connecting={false} connected={false} />,
+      )
+      await choose("Agent", agent)
+      if (agent === "Jev (TypeSafe)")
+        fireEvent.change(screen.getByLabelText("TypeSafe API key", { exact: true }), {
+          target: { value: "retry-key" },
+        })
+      const connect = screen.getByRole("button", { name: "Connect agent" })
+      await userEvent.click(connect)
+      const dialog = screen.getByRole("dialog")
+      expect(within(dialog).getByRole("alert").textContent).toContain("Reconnect and try again")
+      expect(connect.hasAttribute("disabled")).toBe(false)
+      expect(screen.getByRole("combobox", { name: "Agent" }).textContent).toContain(agent)
+      if (agent === "Jev (TypeSafe)")
+        expect(
+          (screen.getByLabelText("TypeSafe API key", { exact: true }) as HTMLInputElement).value,
+        ).toBe("retry-key")
+      await userEvent.click(connect)
+      expect(within(dialog).queryByRole("alert")).toBeNull()
+      expect(connect.hasAttribute("disabled")).toBe(true)
+      await act(async () => retry.resolve(true))
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+      expect(chat.connect).toHaveBeenCalledTimes(2)
+    },
+  )
+
+  it("reports a false API connection result and retains credentials until retry succeeds", async () => {
+    saveApiPreferences({
+      endpoint: "https://api.example.test/v1/chat/completions",
+      model: "configured-model",
+      apiKey: "",
+      stream: true,
+    })
+    const retry = deferred<boolean>()
     const chat = {
-      connect: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true),
+      connect: vi.fn().mockResolvedValueOnce(false).mockReturnValue(retry.promise),
       disconnect: vi.fn().mockResolvedValue(undefined),
     }
-    await openSettings(
-      <NativeAgentConfiguration chat={chat} connecting={false} connected={false} />,
-    )
-    await choose("Agent", "Jev (TypeSafe)")
-    fireEvent.change(screen.getByLabelText("TypeSafe API key", { exact: true }), {
-      target: { value: "retry-key" },
-    })
-    await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
-    expect(screen.getByRole("dialog")).toBeTruthy()
-    expect(
-      (screen.getByLabelText("TypeSafe API key", { exact: true }) as HTMLInputElement).value,
-    ).toBe("retry-key")
-    await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+    await openSettings(<ApiConfigurationForm chat={chat} busy={false} connected={false} />)
+    const key = screen.getByLabelText("API key (optional)", { exact: true }) as HTMLInputElement
+    fireEvent.change(key, { target: { value: "retry-api-key" } })
+    const connect = screen.getByRole("button", { name: "Connect and enable project access" })
+    await userEvent.click(connect)
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByRole("alert")).toBeTruthy()
+    expect(connect.hasAttribute("disabled")).toBe(false)
+    expect(key.value).toBe("retry-api-key")
+    await userEvent.click(connect)
+    expect(within(dialog).queryByRole("alert")).toBeNull()
+    expect(key.value).toBe("retry-api-key")
+    await act(async () => retry.resolve(true))
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     expect(chat.connect).toHaveBeenCalledTimes(2)
   })
