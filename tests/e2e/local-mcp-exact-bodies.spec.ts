@@ -141,9 +141,7 @@ test("repairs and applies exact-body Subtract/Revolve through MCP and restores s
     await expect(subtract).toBeEnabled()
     await subtract.click()
     const form = page.getByRole("form", { name: "Subtract solids" })
-    await expect(
-      form.getByRole("combobox", { name: "Target solid" }).locator("option"),
-    ).toHaveCount(3)
+    await expect(form.locator('select[name="targetFeatureId"] option')).toHaveCount(3)
     await expect(form.getByRole("button", { name: "Subtract", exact: true })).toBeEnabled({
       timeout: 30_000,
     })

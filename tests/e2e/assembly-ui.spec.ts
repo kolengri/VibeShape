@@ -52,6 +52,18 @@ async function addSecondInstance(page: Page) {
   await panel(page).getByRole("button", { name: "Add instance", exact: true }).click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Second bracket")
   await panel(page).getByRole("spinbutton", { name: "X (mm)", exact: true }).fill("40")
+  const definition = panel(page).getByRole("combobox", { name: "Definition", exact: true })
+  await definition.click()
+  await page.getByRole("combobox", { name: "Search options…", exact: true }).fill("Bracket")
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("listbox")).not.toBeVisible()
+  await expect(definition).toBeFocused()
+  await expect(panel(page).getByRole("textbox", { name: "Name", exact: true })).toHaveValue(
+    "Second bracket",
+  )
+  await expect(panel(page).getByRole("spinbutton", { name: "X (mm)", exact: true })).toHaveValue(
+    "40",
+  )
   await apply(page)
 }
 async function addRevoluteChild(page: Page, parentId: string) {

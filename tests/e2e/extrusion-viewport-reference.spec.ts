@@ -209,7 +209,7 @@ async function cancelAndPickEndpointBody(
   foregroundProfileCenter: ScreenPoint | undefined,
 ) {
   const field = form.getByRole("button", { name: "Select End support body in 3D", exact: true })
-  const body = form.getByRole("combobox", { name: "End support body", exact: true })
+  const body = form.locator('select[name="endTarget"]')
   const original = await body.inputValue()
   await field.click()
   await expect(field).toHaveAttribute("aria-pressed", "true")
@@ -231,9 +231,10 @@ async function cancelAndPickEndpointBody(
 }
 
 async function pickExactEndpointFace(page: Page, form: Locator): Promise<unknown> {
-  const face = form.getByRole("combobox", { name: "End face", exact: true })
+  const face = form.locator('select[name="endFace"]')
   const expectedFace = await face
-    .getByRole("option", { name: "Box 1 · result · primitive.box.cap.end", exact: true })
+    .locator("option")
+    .filter({ hasText: /^Box 1 · result · primitive\.box\.cap\.end$/ })
     .getAttribute("value")
   if (!expectedFace) throw new Error("The exact planar face must be available.")
   const faceReference: unknown = JSON.parse(expectedFace)

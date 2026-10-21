@@ -1,7 +1,7 @@
 import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts"
 import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { useTranslations } from "@vibeshape/i18n"
-import { useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { createBrowserFeatureId } from "../document/document-controller"
 import { FdmForm } from "../features/fdm/fdm-form"
 import type { FdmToolKind } from "../features/fdm/fdm-form-fields"
@@ -10,6 +10,28 @@ import { exactSolidBodyOptions } from "../features/part-design/exact-body-option
 import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
 import type { BodyFeatureTaskPanelProps } from "./body-feature-task-mode"
 import { featureTaskFormProps } from "./feature-task-form-props"
+
+function useFdmKindPicker(savedKind: FdmToolKind | undefined) {
+  const [createKind, setKind] = useState<FdmToolKind>("web")
+  const kind = savedKind ?? createKind
+  const kindControlRef = useRef<HTMLButtonElement>(null)
+  const restoreKindFocus = useRef(false)
+  useLayoutEffect(() => {
+    if (!restoreKindFocus.current) return
+    restoreKindFocus.current = false
+    kindControlRef.current?.focus()
+  }, [kind])
+  return {
+    kind,
+    kindControlRef,
+    onKindChange: (nextKind: FdmToolKind) => {
+      if (nextKind === kind) return
+      // Switching kind remounts its parameter form; keep keyboard navigation at the picker.
+      restoreKindFocus.current = true
+      setKind(nextKind)
+    },
+  }
+}
 
 export function FdmTaskPanel(
   props: BodyFeatureTaskPanelProps & { parts: readonly ResolvedAuthoredPart[] },
@@ -20,8 +42,7 @@ export function FdmTaskPanel(
       ? report.snapshot.features.find(({ id }) => id === activeTool.featureId)
       : undefined
   const saved = editing ? readFdmFeatureParameters(editing) : null
-  const [createKind, setKind] = useState<FdmToolKind>("web")
-  const kind = saved?.kind ?? createKind
+  const { kind, kindControlRef, onKindChange } = useFdmKindPicker(saved?.kind)
   const t = useTranslations("app.fdm"),
     task = useTranslations("app.shell.taskPanel"),
     tree = useTranslations("app.shell.modelTree")
@@ -52,7 +73,8 @@ export function FdmTaskPanel(
       <FdmForm
         key={`${editing?.id ?? "create"}:${report.snapshot.revision}:${kind}`}
         kind={kind}
-        onKindChange={setKind}
+        kindControlRef={kindControlRef}
+        onKindChange={onKindChange}
         mode={mode}
         options={options}
         sketches={report.snapshot.sketches}

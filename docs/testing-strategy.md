@@ -439,6 +439,7 @@ geometry-class drift, and degenerate projections; projection tests cover full an
 - Install missing local engines with `bunx playwright install chromium firefox webkit`.
 - Tests use role, label, and other user-facing locators with web-first assertions. Fixed sleeps and selectors coupled to styling or implementation details are prohibited.
 - The automatic runtime-health fixture fails the owning test on browser console errors or uncaught page exceptions.
+- `bun run --bun playwright test --config scripts/project-create-cold-start.config.ts` starts the real editor with a fresh, isolated Vite dependency cache and verifies that one New project click reaches Saved without reloading the page. Vite explicitly pre-bundles the worker-only Replicad dependencies so cold discovery cannot interrupt project activation. Each run keeps its cache and failure evidence under a unique `artifacts/project-create-race/regression-*` directory; `--output` can select another unique destination.
 - Failure diagnostics are written locally under `.artifacts/playwright` and are not uploaded automatically.
 - Automatic PR CI runs no Playwright project. The merge operator records the local all-engine result in the pull request.
 

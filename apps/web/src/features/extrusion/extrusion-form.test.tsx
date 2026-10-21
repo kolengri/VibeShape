@@ -1,5 +1,5 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, beforeAll, describe, expect, it } from "bun:test"
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -217,7 +217,20 @@ beforeAll(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 })
 
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 it.each(["up-to-body", "up-to-face"] as const)(
   "selects an exact sibling output through the %s viewport field",
@@ -265,11 +278,12 @@ it.each(["up-to-body", "up-to-face"] as const)(
       faceId: face.meshFaceId,
       faceOrdinal: 1,
     })
-    expect((screen.getByLabelText("End support body") as HTMLSelectElement).value).toBe(
+    const form = screen.getByRole("form") as HTMLFormElement
+    expect((form.elements.namedItem("endTarget") as HTMLSelectElement).value).toBe(
       `${target.id}:${target.outputRole}`,
     )
     if (kind === "up-to-face") {
-      expect((screen.getByLabelText("End face") as HTMLSelectElement).value).toBe(
+      expect((form.elements.namedItem("endFace") as HTMLSelectElement).value).toBe(
         JSON.stringify(face.reference),
       )
     }
@@ -299,9 +313,9 @@ it("authors v7 when choosing a current finite curved face from the real body col
   const onSave = vi.fn(async () => ({ ok: true as const }))
   renderForm(onSave, vi.fn(), undefined, vi.fn(), undefined, "deg", options)
   fireEvent.change(screen.getByLabelText("End condition"), { target: { value: "up-to-face" } })
-  fireEvent.change(screen.getByLabelText("End face"), {
-    target: { value: JSON.stringify(selected.reference) },
-  })
+  await userEvent.click(screen.getByRole("combobox", { name: "End face" }))
+  await userEvent.type(screen.getByRole("combobox", { name: "Search options…" }), selected.label)
+  await userEvent.click(screen.getByRole("option", { name: selected.label }))
   await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
   await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
   expect(onSave).toHaveBeenCalledWith(
@@ -380,8 +394,7 @@ async function selectOperation(user: ReturnType<typeof userEvent.setup>, operati
   }
   const label = labels[operation]
   if (!label) throw new Error("Unknown result operation fixture.")
-  fireEvent.keyDown(screen.getByRole("combobox", { name: copy.operation }), { key: "Enter" })
-  await user.click(await screen.findByRole("option", { name: label }))
+  await user.click(screen.getByRole("radio", { name: label }))
 }
 
 describe("ExtrusionForm", () => {
@@ -747,7 +760,7 @@ describe("ExtrusionForm", () => {
       profiles: [secondProfile, profile],
     })
     expect(
-      (screen.getByRole("combobox", { name: copy.operation }) as HTMLButtonElement).disabled,
+      (screen.getByRole("radio", { name: copy.operationNew }) as HTMLInputElement).disabled,
     ).toBe(false)
     await user.click(screen.getByRole("button", { name: copy.submit }))
     expect(onSave).toHaveBeenCalledWith(

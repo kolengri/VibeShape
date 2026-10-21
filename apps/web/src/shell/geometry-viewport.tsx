@@ -1085,6 +1085,7 @@ function useProjectThumbnail(
   useEffect(() => {
     let cancelled = false
     let retryTimer: number | undefined
+    const abort = new AbortController()
     const snapshot = controller.report?.snapshot
     if (!enabled || controller.status !== "ready" || !snapshot || meshes.length === 0) return
     const revisionKey = `${snapshot.id}:${snapshot.revision}`
@@ -1097,27 +1098,31 @@ function useProjectThumbnail(
       retryTimer = window.setTimeout(() => requestRetry((attempt) => attempt + 1), 250)
     }
 
-    void renderProjectThumbnail(meshes)
-      .then(async (thumbnail) => {
-        if (cancelled) return
-        if (!thumbnail) {
-          completedRevisionRef.current = revisionKey
-          return
-        }
-        const result = await saveActiveProjectThumbnail(snapshot.id, snapshot.revision, thumbnail)
-        if (cancelled) return
-        if (result.ok) {
-          completedRevisionRef.current = revisionKey
-          retryCountRef.current.delete(revisionKey)
-        } else {
-          retry()
-        }
-      })
-      // A derived preview must never block the authoritative geometry viewport.
-      .catch(retry)
+    const thumbnailTimer = window.setTimeout(() => {
+      void renderProjectThumbnail(meshes, { signal: abort.signal })
+        .then(async (thumbnail) => {
+          if (cancelled) return
+          if (!thumbnail) {
+            completedRevisionRef.current = revisionKey
+            return
+          }
+          const result = await saveActiveProjectThumbnail(snapshot.id, snapshot.revision, thumbnail)
+          if (cancelled) return
+          if (result.ok) {
+            completedRevisionRef.current = revisionKey
+            retryCountRef.current.delete(revisionKey)
+          } else {
+            retry()
+          }
+        })
+        // A derived preview must never block the authoritative geometry viewport.
+        .catch(retry)
+    }, 250)
 
     return () => {
       cancelled = true
+      abort.abort()
+      window.clearTimeout(thumbnailTimer)
       window.clearTimeout(retryTimer)
     }
   }, [controller.report?.snapshot, controller.status, enabled, meshes, retryAttempt])

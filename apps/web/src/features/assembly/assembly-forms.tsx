@@ -37,7 +37,7 @@ export function AssemblyTaskForm({
     <form
       className="grid gap-4"
       onKeyDown={(event) => {
-        if (event.key === "Escape" && !actions.pending) {
+        if (event.key === "Escape" && !event.defaultPrevented && !actions.pending) {
           event.preventDefault()
           actions.onCancel()
         }

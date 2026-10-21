@@ -156,4 +156,36 @@ describe("EditorCommandPalette", () => {
     const workspace = screen.getByRole("group", { name: "Workspace" })
     expect(within(workspace).getAllByRole("option")[0]?.textContent).toContain("Keyboard shortcuts")
   })
+  it("retains newly registered commands after reload and ignores stale entries individually", () => {
+    localStorage.setItem(
+      "vibeshape.editor-command-recents.v1",
+      JSON.stringify([
+        "removed-command",
+        editorCommandIds.createSphere,
+        { invalid: true },
+        editorCommandIds.createHole,
+        editorCommandIds.createSphere,
+        editorCommandIds.createBox,
+      ]),
+    )
+    renderPalette()
+    const modeling = screen.getByRole("group", { name: "Modeling" })
+    const options = within(modeling).getAllByRole("option")
+    expect(options.slice(0, 3).map((option) => option.textContent)).toEqual([
+      expect.stringContaining("Sphere"),
+      expect.stringContaining("Hole"),
+      expect.stringContaining("Box"),
+    ])
+  })
+
+  it("persists a newly registered primitive through an actual invocation and remount", async () => {
+    const user = userEvent.setup()
+    renderPalette()
+    await user.type(screen.getByRole("combobox", { name: "Search commands" }), "ball")
+    await user.click(screen.getByText("Sphere"))
+    cleanup()
+    renderPalette()
+    const modeling = screen.getByRole("group", { name: "Modeling" })
+    expect(within(modeling).getAllByRole("option")[0]?.textContent).toContain("Sphere")
+  })
 })

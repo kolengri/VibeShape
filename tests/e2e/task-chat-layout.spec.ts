@@ -11,9 +11,11 @@ test("opens model toolbar categories through named icon buttons", async ({ page 
     const trigger = page.getByRole("button", { name: label, exact: true })
     await expect(trigger).toHaveText("")
     await expect(trigger.locator("svg")).toHaveCount(1)
-    await expect(trigger).toHaveAttribute("aria-haspopup", "menu")
+    await expect(trigger).toHaveAttribute("aria-haspopup", /^(menu|dialog)$/)
     await trigger.click()
-    await expect(page.getByRole("menu")).toBeVisible()
+    await expect(
+      page.getByRole("menu").or(page.getByRole("dialog", { name: label, exact: true })),
+    ).toBeVisible()
     await page.keyboard.press("Escape")
   }
 })

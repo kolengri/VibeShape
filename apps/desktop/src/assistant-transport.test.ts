@@ -199,3 +199,33 @@ describe("assistant process shutdown", () => {
     },
   )
 })
+
+describe("trusted built-in runtime launch", () => {
+  it("sets Node mode only for a resolved built-in without mutating the input environment", async () => {
+    const env = { PATH: process.env.PATH, ELECTRON_RUN_AS_NODE: "ambient-value" }
+    const before = { ...env }
+    const argument = "literal argument; $(exit 9)"
+    const script =
+      "process.stdout.write(JSON.stringify({mode:process.env.ELECTRON_RUN_AS_NODE??null,args:process.argv.slice(1)}))"
+    for (const runAsNode of [false, true]) {
+      const child = spawnAssistantProcess(
+        {
+          agent: { command: "node", args: ["-e", script, argument] },
+          cwd: tmpdir(),
+          env,
+          runAsNode,
+        },
+        () => {},
+      )
+      const chunks: Buffer[] = []
+      child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk))
+      const [code] = await once(child, "close")
+      expect(code).toBe(0)
+      expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual({
+        mode: runAsNode ? "1" : null,
+        args: [argument],
+      })
+      expect(env).toEqual(before)
+    }
+  })
+})

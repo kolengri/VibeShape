@@ -37,10 +37,16 @@ the host must pass image content to a vision-capable model. A text-only client c
 picture by reading its metadata or base64.
 
 For saved geometry, supply `source: "model"` and `revision` from `model_info`. For unsaved geometry,
-supply `source: "draft"`, the owned `draftId`, and its current `revision`. Default rendering is a
-labeled isometric/front/right/top collage; request one to four unique standard `views` for a focused
-question. Optional `target: { featureId, outputRole }` selects one exact body from body measurements,
-including a historical producer output. A missing body fails instead of falling back to another body.
+supply `source: "draft"`, the owned `draftId`, and its current `revision`. Start with
+`quality: "overview"` (also used when omitted): one isometric view within 768 × 576 total pixels.
+For small features or shape verification, choose `quality: "detail"`, an exact body target and
+relevant views or a close-up. Detail defaults to the legacy labeled isometric/front/right/top
+collage within 1024 × 768 total pixels. Either policy may return a smaller raster to fit the
+unchanged byte budget; the required top-level `quality` metadata identifies the selected policy,
+not an exact resolution guarantee. Explicit one to four unique standard `views` retain their order
+independently of quality. Optional `target: { featureId, outputRole }` selects one exact body from
+body measurements, including a historical producer output. A missing body fails instead of falling
+back to another body.
 
 For an arbitrary angle or a close-up, supply `camera` instead of `views`. `camera.position` and
 `camera.target` are world-space XYZ triples in millimeters; `camera.up` is an optional nonzero,
@@ -50,7 +56,12 @@ to zoom into the target region; changing camera distance alone does not zoom. Wi
 the custom view automatically fits all requested bodies. A close-up intentionally crops the rest
 of the model, so retain an overview when evaluating the whole shape. Custom output is labeled
 `custom`, and metadata echoes the requested camera. Coordinates and view span are bounded by the
-live tool schema. Never estimate exact dimensions from apparent pixel sizes.
+live tool schema. Target and camera remain independent of quality; overview never discards other
+bodies unless an exact target is supplied. Never estimate exact dimensions from apparent pixel sizes.
+
+Automation previously defaulted to four views; choose `quality: "detail"` to restore that policy.
+Old strict clients can reject the added result field, and old strict servers can reject the request
+option. Do not assume mixed-version compatibility.
 
 The renderer fits full CAD body meshes on a separate canvas without changing the user's camera,
 selection, saved model or Undo history. It reports document/revision/generation, rendered body count
@@ -61,8 +72,9 @@ Hidden terminal bodies may be included because part visibility is display intent
 
 Check silhouettes, opening orientation and body placement against the request. Render another
 relevant angle when occlusion hides the evidence. Pictures do not establish dimensions, minimum wall
-thickness, clearance, exact topology, printability or physical fit; retain the corresponding numerical
-checks. Re-render after edits rather than combining evidence from different revisions.
+thickness, clearance, exact topology, printability or physical fit; exact measurements remain
+authoritative. Retain the corresponding numerical checks. Re-render after edits rather than
+combining evidence from different revisions.
 
 ## Interpret numerical evidence
 

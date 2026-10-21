@@ -1,11 +1,14 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { booleanFeatureType, featureIdSchema, featureRecordSchema } from "@vibeshape/domain"
 import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
+import { I18nProvider } from "@vibeshape/i18n/provider"
+import type { ReactNode } from "react"
 import { vi } from "../../../../../tests/unit/support/bun-test"
+import { i18n } from "../../i18n"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
 import { currentBodyOptions } from "../part-design/exact-body-options.test-fixtures"
 import { BooleanForm, type BooleanFormMode, type BooleanInputOption } from "./boolean-form"
@@ -52,6 +55,24 @@ const existingFeature = featureRecordSchema.parse({
   label: "Subtract 1",
 })
 
+function localizedRender(ui: ReactNode) {
+  return render(
+    <I18nProvider i18n={i18n} initialLocale="en">
+      {ui}
+    </I18nProvider>,
+  )
+}
+
+function bodyInput(name: "targetFeatureId" | "toolFeatureId") {
+  return (screen.getByRole("form") as HTMLFormElement).elements.namedItem(name) as HTMLSelectElement
+}
+
+async function chooseBody(user: ReturnType<typeof userEvent.setup>, label: string, option: string) {
+  await user.click(screen.getByRole("combobox", { name: label }))
+  await user.type(screen.getByRole("combobox", { name: "Search options…" }), option)
+  await user.click(screen.getByRole("option", { name: option }))
+}
+
 function deferred() {
   let resolve: () => void = () => undefined
   const promise = new Promise<void>((promiseResolve) => {
@@ -74,7 +95,7 @@ function renderForm(
     mode.kind === "edit"
       ? { ...copy, title: "Edit subtraction", submit: "Update subtraction" }
       : copy
-  render(
+  localizedRender(
     <BooleanForm
       baseRevision={4}
       copy={formCopy}
@@ -88,7 +109,21 @@ function renderForm(
   return { copy: formCopy, onSave, onSaved }
 }
 
-afterEach(cleanup)
+beforeEach(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe("BooleanForm", () => {
   it.each([["result"], ["pattern.instance.0", "pattern.instance.1"]].map((roles) => ({ roles })))(
@@ -108,17 +143,15 @@ describe("BooleanForm", () => {
         { kind: "edit", feature: existingFeature },
         collected,
       )
-      expect((screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement).value).toBe(
-        ids.box,
-      )
+      expect(bodyInput("targetFeatureId").value).toBe(ids.box)
       await user.click(screen.getByRole("button", { name: formCopy.submit }))
       expect(onSave).toHaveBeenLastCalledWith(4, existingFeature)
       const exact = collected.filter((option) => option.body)
       const target = exact[0]
       const tool = exact.find(({ body }) => body?.featureId === ids.cylinder)
       if (!target || !tool) throw new Error("Expected explicit target and tool body choices.")
-      await user.selectOptions(screen.getByRole("combobox", { name: copy.target }), target.id)
-      await user.selectOptions(screen.getByRole("combobox", { name: copy.tool }), tool.id)
+      await chooseBody(user, copy.target, target.label)
+      await chooseBody(user, copy.tool, tool.label)
       await user.click(screen.getByRole("button", { name: formCopy.submit }))
       expect(onSave).toHaveBeenLastCalledWith(
         4,
@@ -205,12 +238,12 @@ describe("BooleanForm", () => {
     const { onSave } = renderForm()
     const tool = screen.getByRole("combobox", { name: copy.tool })
 
-    await user.selectOptions(tool, ids.box)
+    await chooseBody(user, copy.tool, "Box 1")
     await user.click(screen.getByRole("button", { name: copy.submit }))
 
     expect((await screen.findByText(copy.sameInput)).textContent).toBe(copy.sameInput)
-    expect((tool as HTMLSelectElement).value).toBe(ids.box)
-    expect(document.activeElement).toBe(tool)
+    expect(bodyInput("toolFeatureId").value).toBe(ids.box)
+    expect(document.activeElement === tool).toBe(true)
     expect(onSave).not.toHaveBeenCalled()
   })
 
@@ -219,12 +252,9 @@ describe("BooleanForm", () => {
     const mode = { kind: "edit", feature: existingFeature } as const
     const { copy: editCopy, onSave, onSaved } = renderForm(undefined, undefined, mode)
 
-    expect((screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement).value).toBe(
-      ids.box,
-    )
-    const tool = screen.getByRole("combobox", { name: copy.tool }) as HTMLSelectElement
-    expect(tool.value).toBe(ids.cylinder)
-    await user.selectOptions(tool, ids.secondCylinder)
+    expect(bodyInput("targetFeatureId").value).toBe(ids.box)
+    expect(bodyInput("toolFeatureId").value).toBe(ids.cylinder)
+    await chooseBody(user, copy.tool, "Cylinder 2")
     await user.dblClick(screen.getByRole("button", { name: editCopy.submit }))
 
     expect(onSave).toHaveBeenCalledTimes(1)
@@ -262,7 +292,7 @@ describe("exact-body Boolean form", () => {
       createFeatureId: () => ids.boolean,
       featureLabel: "Subtract 1",
     }
-    const view = render(
+    const view = localizedRender(
       <BooleanForm
         baseRevision={4}
         copy={copy}
@@ -306,9 +336,7 @@ describe("exact-body Boolean form", () => {
     view.unmount()
     if (!saved) throw new Error("Expected saved exact-body feature.")
     renderForm(undefined, undefined, { kind: "edit", feature: saved }, exactOptions)
-    expect(
-      (screen.getByRole("combobox", { name: copy.tool }) as HTMLSelectElement).value,
-    ).toBe<unknown>(exactOptions[1]?.id)
+    expect(bodyInput("toolFeatureId").value).toBe<unknown>(exactOptions[1]?.id)
   })
 })
 

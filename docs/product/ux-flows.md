@@ -53,6 +53,20 @@ offset-only planes keep their original frames. Changing an already referenced pl
 can leave an oriented sketch support unresolved; use explicit support repair rather than silently
 retargeting it.
 
+## Native Jev connection
+
+**Agent → Jev (TypeSafe)** is a distinct bundled native adapter, with TypeSafe model/key settings
+and a separate optional argument-model endpoint, model and key. It does not ask for an executable
+or source path. Provider keys are connection-only and kept in host memory per project for the app
+session; only non-secret settings persist. Recovery reuses the same project's cached keys, never
+keys entered in another project. The form explains the difference between selecting CAD actions
+and completing their open parameters. Image input is opt-in. Invalid or incomplete settings do
+not start a process, repeated connection activation is blocked, and connection failure releases
+the form for correction. Password fields clear only after the current connection is accepted as
+ready; rejected, blocked or superseded attempts retain both keys for retry. Existing native chat
+Stop, questions, transcript and project authority
+remain authoritative. Browser-only chat cannot spawn this process.
+
 ## Assistant transcript
 
 Human messages use a compact, right-aligned bubble distinct from assistant prose and tool rows.

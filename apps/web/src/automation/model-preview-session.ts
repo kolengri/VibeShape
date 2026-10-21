@@ -18,7 +18,7 @@ import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
 import { terminalModelBodies } from "../features/part-design/model-bodies"
 
 type ModelPreview = Extract<RenderPreviewResult, { source: "model" }>
-type PreviewOptions = Pick<RenderPreviewArguments, "views" | "target" | "camera">
+type PreviewOptions = Pick<RenderPreviewArguments, "quality" | "views" | "target" | "camera">
 type SuccessfulRebuild = Extract<
   Awaited<ReturnType<DisposableDocumentPreview["preview"]>>,
   { ok: true }
@@ -100,6 +100,7 @@ function renderedEvidence(
     generation: rebuilt.evidence.generation,
     geometryStatus: rebuilt.valid ? "valid" : "invalid",
     bodyCount,
+    quality: options.quality ?? "overview",
     ...(options.target ? { target: options.target } : {}),
     ...(options.camera ? { camera: options.camera } : {}),
     image,
@@ -134,6 +135,7 @@ function rebuildFailure(
 function viewerOptions(options: PreviewOptions): ModelPreviewOptions {
   const camera = options.camera
   return {
+    quality: options.quality ?? "overview",
     ...(options.views ? { views: options.views } : {}),
     ...(camera
       ? {
@@ -186,16 +188,23 @@ export function createModelPreviewSession(
     signal?: Readonly<{ aborted: boolean }>,
   ): Promise<AutomationHostResult<ModelPreview>> {
     const operationEpoch = ++epoch
+    const requestedOptions: PreviewOptions = { ...options, quality: options.quality ?? "overview" }
     input.preview.cancel()
     try {
       const inactive = unavailable(operationEpoch, signal)
       if (inactive) return inactive
-      const bodies = await prepareGeometry(snapshot, options, operationEpoch, signal)
+      const bodies = await prepareGeometry(snapshot, requestedOptions, operationEpoch, signal)
       if (!bodies.ok) return bodies
-      const image = await input.render(bodies.meshes, viewerOptions(options))
+      const image = await input.render(bodies.meshes, viewerOptions(requestedOptions))
       const encoded = unavailable(operationEpoch, signal)
       if (encoded) return encoded
-      return renderedEvidence(snapshot, bodies.rebuilt, options, bodies.meshes.length, image)
+      return renderedEvidence(
+        snapshot,
+        bodies.rebuilt,
+        requestedOptions,
+        bodies.meshes.length,
+        image,
+      )
     } catch {
       return (
         unavailable(operationEpoch, signal) ??

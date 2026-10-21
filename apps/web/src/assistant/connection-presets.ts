@@ -7,6 +7,7 @@ export const agentPresets = [
 ] as const
 
 export function agentPresetId(agent: AssistantAgent) {
+  if ("kind" in agent) return "jev"
   return (
     agentPresets.find(
       (preset) =>

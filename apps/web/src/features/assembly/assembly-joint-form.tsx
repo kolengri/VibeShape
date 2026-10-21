@@ -10,6 +10,7 @@ import type { AssemblyInspection } from "@vibeshape/protocol"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useId, useState } from "react"
+import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import { browserAuthoredUuid } from "../../document/authored-document-session"
 import {
   AssemblyNameField,
@@ -322,18 +323,23 @@ function NewChildFields({ assembly, options, update }: ChildProps) {
   const t = useTranslations("app.assembly")
   return (
     <>
-      <SelectField
+      <LocalizedSearchableSelectField
         label={t("childDefinition")}
+        placeholder={t("childDefinition")}
         value={options.definitionId}
         onValueChange={(definitionId) => update({ definitionId })}
         required
-      >
-        {assembly.definitions.map(({ id, name }) => (
-          <SelectOption key={id} value={id}>
-            {name}
-          </SelectOption>
-        ))}
-      </SelectField>
+        options={assembly.definitions.map(({ id, name, pinnedModels }, index) => ({
+          value: id,
+          label: name,
+          description: t("choiceSource", {
+            number: index + 1,
+            source:
+              [...new Set(pinnedModels.map(({ snapshot }) => snapshot.name))].join(", ") || name,
+          }),
+          keywords: [id],
+        }))}
+      />
       <AssemblyNameField value={t("defaultChild")} />
     </>
   )
@@ -341,23 +347,29 @@ function NewChildFields({ assembly, options, update }: ChildProps) {
 function ExistingChildField({ assembly, options, update }: ChildProps) {
   const t = useTranslations("app.assembly")
   return (
-    <SelectField
+    <LocalizedSearchableSelectField
       label={t(assembly.schemaVersion === 2 ? "existingOccurrence" : "childInstance")}
+      placeholder={t(assembly.schemaVersion === 2 ? "existingOccurrence" : "childInstance")}
       value={options.childId}
       onValueChange={(childId) => update({ childId })}
       required
-    >
-      {assembly.instances
+      options={assembly.instances
         .filter(
           (instance) =>
             (assembly.schemaVersion === 2 || instance.grounded) && instance.id !== options.parentId,
         )
-        .map(({ id, name }) => (
-          <SelectOption key={id} value={id}>
-            {name}
-          </SelectOption>
-        ))}
-    </SelectField>
+        .map(({ id, name, definitionId }, index) => ({
+          value: id,
+          label: name,
+          description: t("choiceSource", {
+            number: index + 1,
+            source:
+              assembly.definitions.find((definition) => definition.id === definitionId)?.name ??
+              name,
+          }),
+          keywords: [id],
+        }))}
+    />
   )
 }
 function ChildCreationFields(props: ChildProps) {
@@ -457,20 +469,26 @@ export function AssemblyJointForm({
           </SelectOption>
         ))}
       </SelectField>
-      <SelectField
+      <LocalizedSearchableSelectField
         label={t("parentInstance")}
+        placeholder={t("parentInstance")}
         value={options.parentId}
         onValueChange={(parentId) => update({ parentId })}
         required
-      >
-        {assembly.instances
+        options={assembly.instances
           .filter(({ id }) => id !== options.childId)
-          .map(({ id, name }) => (
-            <SelectOption key={id} value={id}>
-              {name}
-            </SelectOption>
-          ))}
-      </SelectField>
+          .map(({ id, name, definitionId }, index) => ({
+            value: id,
+            label: name,
+            description: t("choiceSource", {
+              number: index + 1,
+              source:
+                assembly.definitions.find((definition) => definition.id === definitionId)?.name ??
+                name,
+            }),
+            keywords: [id],
+          }))}
+      />
       <JointChildFields joint={joint} assembly={assembly} options={options} update={update} />
       {assembly.schemaVersion === 2 && (
         <AssemblyFrameBindingFields

@@ -8,6 +8,7 @@ import { z } from "zod"
 import { serializedQueryBytes } from "./query-byte-budget"
 
 export const RENDER_PREVIEW_MAX_BYTES = 90 * 1024
+const renderPreviewQualitySchema = z.enum(["overview", "detail"])
 export const renderPreviewViewSchema = z.enum([
   "isometric",
   "front",
@@ -51,6 +52,7 @@ export const renderPreviewCameraSchema = z
 
 const options = {
   revision: revisionSchema,
+  quality: renderPreviewQualitySchema.optional(),
   views: renderPreviewViewsSchema.optional(),
   target: renderPreviewTargetSchema.optional(),
   camera: renderPreviewCameraSchema.optional(),
@@ -119,21 +121,28 @@ const evidence = {
   generation: z.number().int().nonnegative().safe(),
   geometryStatus: z.enum(["valid", "invalid"]),
   bodyCount: z.number().int().positive().safe(),
+  quality: renderPreviewQualitySchema,
   target: renderPreviewTargetSchema.optional(),
   camera: renderPreviewCameraSchema.optional(),
   image: renderedPreviewImageSchema,
 }
-export const renderPreviewResultSchema = z.discriminatedUnion("source", [
-  z.object({ source: z.literal("model"), ...evidence }).strict(),
-  z
-    .object({
-      source: z.literal("draft"),
-      draftId: draftIdSchema,
-      baseRevision: revisionSchema,
-      ...evidence,
-    })
-    .strict(),
-])
+const overviewSizeMatches = (preview: {
+  quality: "overview" | "detail"
+  image: { width: number; height: number }
+}) => preview.quality !== "overview" || (preview.image.width <= 768 && preview.image.height <= 576)
+export const renderPreviewResultSchema = z
+  .discriminatedUnion("source", [
+    z.object({ source: z.literal("model"), ...evidence }).strict(),
+    z
+      .object({
+        source: z.literal("draft"),
+        draftId: draftIdSchema,
+        baseRevision: revisionSchema,
+        ...evidence,
+      })
+      .strict(),
+  ])
+  .refine(overviewSizeMatches, "Overview images must fit within 768 × 576 pixels.")
 export type RenderPreviewArguments = z.infer<typeof renderPreviewArgumentsSchema>
 export type RenderPreviewResult = z.infer<typeof renderPreviewResultSchema>
 const renderOperationSchema = z
@@ -141,17 +150,19 @@ const renderOperationSchema = z
   .strict()
 
 const metadata = { ...evidence, image: previewImageFieldsSchema.omit({ base64: true }) }
-export const renderPreviewMetadataSchema = z.discriminatedUnion("source", [
-  z.object({ source: z.literal("model"), ...metadata }).strict(),
-  z
-    .object({
-      source: z.literal("draft"),
-      draftId: draftIdSchema,
-      baseRevision: revisionSchema,
-      ...metadata,
-    })
-    .strict(),
-])
+export const renderPreviewMetadataSchema = z
+  .discriminatedUnion("source", [
+    z.object({ source: z.literal("model"), ...metadata }).strict(),
+    z
+      .object({
+        source: z.literal("draft"),
+        draftId: draftIdSchema,
+        baseRevision: revisionSchema,
+        ...metadata,
+      })
+      .strict(),
+  ])
+  .refine(overviewSizeMatches, "Overview images must fit within 768 × 576 pixels.")
 
 export function renderPreviewMcpResult(value: RenderPreviewResult) {
   const { image, ...context } = value
@@ -180,6 +191,7 @@ export function renderPreviewResultContextMatches(
   const value = renderPreviewResultSchema.safeParse(result.value)
   if (!value.success) return false
   return (
+    value.data.quality === (operation.data.arguments.quality ?? "overview") &&
     revisionMatches(operation.data.arguments, value.data, documentId) &&
     targetMatches(operation.data.arguments, value.data) &&
     viewsMatch(operation.data.arguments, value.data) &&
@@ -190,7 +202,8 @@ export function renderPreviewResultContextMatches(
 function viewsMatch(args: RenderPreviewArguments, preview: RenderPreviewResult) {
   const requestedViews = args.camera
     ? ["custom"]
-    : (args.views ?? ["isometric", "front", "right", "top"])
+    : (args.views ??
+      (args.quality === "detail" ? ["isometric", "front", "right", "top"] : ["isometric"]))
   return (
     preview.image.views.length === requestedViews.length &&
     preview.image.views.every((view, index) => view === requestedViews[index])

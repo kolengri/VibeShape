@@ -319,6 +319,17 @@ function checkpointViewportFixture() {
   }
 }
 
+function thumbnailController(revision: number) {
+  const controller = readyController(
+    [{ id: boxId, dependencies: [] }],
+    [{ featureId: boxId, geometry: { mesh } }],
+  )
+  const snapshot = controller.report?.snapshot as { id: string; revision: number }
+  snapshot.id = "project-thumbnail"
+  snapshot.revision = revision
+  return controller
+}
+
 function optionalProp<Value>(name: string, value: Value | undefined) {
   return value === undefined ? {} : { [name]: value }
 }
@@ -624,6 +635,7 @@ function renderTaskViewport(
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -2875,6 +2887,7 @@ describe("GeometryViewport", () => {
   })
 
   it("discards a thumbnail render that finishes after its viewport was unmounted", async () => {
+    vi.useFakeTimers()
     let finish: ((value: { mediaType: "image/png"; bytes: Uint8Array }) => void) | undefined
     renderProjectThumbnailMock.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -2886,10 +2899,76 @@ describe("GeometryViewport", () => {
       [{ featureId: boxId, geometry: { mesh } }],
     )
     const viewport = renderViewport(controller)
+    expect(renderProjectThumbnailMock).not.toHaveBeenCalled()
+    await act(async () => vi.advanceTimersByTimeAsync(250))
     expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    const signal = renderProjectThumbnailMock.mock.calls[0]?.[1]?.signal as AbortSignal
     viewport.unmount()
+    expect(signal.aborted).toBe(true)
     await act(async () => finish?.({ mediaType: "image/png", bytes: new Uint8Array([1]) }))
     expect(saveActiveProjectThumbnailMock).not.toHaveBeenCalled()
+  })
+
+  it("cancels thumbnail preparation when the viewport unmounts during the debounce", async () => {
+    vi.useFakeTimers()
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const viewport = renderViewport(controller)
+    await act(async () => vi.advanceTimersByTimeAsync(249))
+    expect(renderProjectThumbnailMock).not.toHaveBeenCalled()
+    viewport.unmount()
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(renderProjectThumbnailMock).not.toHaveBeenCalled()
+    expect(saveActiveProjectThumbnailMock).not.toHaveBeenCalled()
+  })
+
+  it("prepares only the latest settled revision and skips save-status-only updates", async () => {
+    vi.useFakeTimers()
+    const viewport = renderViewport(thumbnailController(1))
+    await act(async () => vi.advanceTimersByTimeAsync(100))
+    const latest = thumbnailController(2)
+    viewport.rerenderController(latest)
+    await act(async () => vi.advanceTimersByTimeAsync(249))
+    expect(renderProjectThumbnailMock).not.toHaveBeenCalled()
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledWith("project-thumbnail", 2, {
+      mediaType: "image/png",
+      bytes: new Uint8Array([137, 80, 78, 71]),
+    })
+    viewport.rerenderController({ ...latest, saveStatus: "saving" })
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("aborts an obsolete thumbnail and never saves its late result over the newer revision", async () => {
+    vi.useFakeTimers()
+    let finish: ((value: { mediaType: "image/png"; bytes: Uint8Array }) => void) | undefined
+    renderProjectThumbnailMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    const viewport = renderViewport(thumbnailController(1))
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    const oldSignal = renderProjectThumbnailMock.mock.calls[0]?.[1]?.signal as AbortSignal
+    viewport.rerenderController(thumbnailController(2))
+    expect(oldSignal.aborted).toBe(true)
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(2)
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    expect(saveActiveProjectThumbnailMock.mock.calls[0]?.slice(0, 2)).toEqual([
+      "project-thumbnail",
+      2,
+    ])
+    await act(async () => finish?.({ mediaType: "image/png", bytes: new Uint8Array([1]) }))
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(2)
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
   })
 
   it("retries a rejected thumbnail render without blocking the viewport", async () => {
@@ -2900,11 +2979,12 @@ describe("GeometryViewport", () => {
       [{ featureId: boxId, geometry: { mesh } }],
     )
     renderViewport(controller)
-    await vi.waitFor(() => expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1))
-    await vi.advanceTimersByTimeAsync(250)
-    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1))
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
     expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(2)
-    vi.useRealTimers()
   })
 
   it("retries one failed derived thumbnail write before marking the revision complete", async () => {
@@ -2924,11 +3004,11 @@ describe("GeometryViewport", () => {
 
     renderViewport(controller)
 
-    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1))
-    await Promise.resolve()
-    await vi.advanceTimersByTimeAsync(250)
-    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(2))
-    vi.useRealTimers()
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(2)
   })
 })
 

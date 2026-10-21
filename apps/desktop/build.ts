@@ -8,9 +8,14 @@ await rm(output, { recursive: true, force: true })
 await mkdir(output, { recursive: true })
 const inputs = new Set<string>()
 const bundles: Record<string, unknown> = {}
-for (const entry of ["main", "preload", "mcp"]) {
+for (const [entry, source] of Object.entries({
+  main: "src/main.ts",
+  preload: "src/preload.ts",
+  mcp: "src/mcp.ts",
+  jev: "../jev-agent/src/index.ts",
+})) {
   const result = await Bun.build({
-    entrypoints: [join(directory, `src/${entry}.ts`)],
+    entrypoints: [join(directory, source)],
     target: "node",
     format: "cjs",
     packages: "bundle",
@@ -33,5 +38,5 @@ await Bun.write(
   await nativeLicenseNotices([...inputs], directory),
 )
 console.log(
-  "Built the native host, preload and MCP attachment; the editor is the existing Vite build.",
+  "Built the native host, preload, MCP attachment and Jev adapter; the editor is the existing Vite build.",
 )

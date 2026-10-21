@@ -13,6 +13,7 @@ import {
 } from "@vibeshape/automation-api/assistant"
 import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
 import { vi } from "../../../tests/unit/support/bun-test"
+import { createAssistantLaunchResolver } from "./assistant-jev-runtime"
 import { type AssistantServiceOptions, createAssistantService } from "./assistant-service"
 
 const fixture = String.raw`
@@ -2153,5 +2154,169 @@ describe("native ACP service", () => {
       }).success,
     ).toBe(false)
     expect(context.events).toEqual([])
+  })
+})
+
+describe("built-in assistant launch resolution", () => {
+  it("reports missing Jev configuration without exposing credentials or attempting a process", async () => {
+    const resolveLaunch = createAssistantLaunchResolver({
+      executable: process.execPath,
+      runtimeDirectory: tmpdir(),
+      env: {},
+    })
+    const context = await host({ resolveLaunch })
+    expect(
+      await context.service.handle({
+        operation: "connect",
+        input: { projectId: "project-a", agent: { kind: "jev", settings: {} } },
+      }),
+    ).toEqual({ ok: false, code: "jev-configuration-required" })
+    expect(context.events).toContainEqual({
+      projectId: "project-a",
+      sessionToken: expect.any(String),
+      type: "error",
+      code: "jev-configuration-required",
+    })
+    expect(JSON.stringify(context.events)).not.toContain("TYPESAFE_API_KEY")
+  })
+
+  it("keeps legacy ACP and its project attachment unchanged with the built-in resolver installed", async () => {
+    const resolveLaunch = createAssistantLaunchResolver({
+      executable: process.execPath,
+      runtimeDirectory: tmpdir(),
+      env: { TYPESAFE_API_KEY: "private-host-key" },
+    })
+    const context = await host({ resolveLaunch })
+    const session = ready(await context.connect())
+    expect(session.status).toBe("ready")
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(session), text: "inspect-mcp" },
+      }),
+    ).toMatchObject({ ok: true })
+    const text = context.events
+      .filter((event) => event.type === "text")
+      .map((event) => event.text)
+      .join("")
+    expect(text).toContain('"name":"ELECTRON_RUN_AS_NODE","value":"1"')
+    expect(text).not.toContain("private-host-key")
+    expect(text).not.toContain("TYPESAFE_API_KEY")
+    expect(JSON.stringify(context.events)).not.toContain("private-host-key")
+  })
+
+  it("forwards the captured project and connection credentials to the real launch resolver", async () => {
+    const resolve = createAssistantLaunchResolver({
+      executable: process.execPath,
+      runtimeDirectory: tmpdir(),
+      env: {},
+    })
+    const calls: {
+      projectId: string
+      apiKey: string | undefined
+      helperKey: string | undefined
+      configured: boolean
+    }[] = []
+    const context = await host({
+      resolveLaunch(projectId, agent, credentials) {
+        const resolved = resolve(projectId, agent, credentials)
+        calls.push({
+          projectId,
+          configured: resolved.ok,
+          apiKey: resolved.ok ? resolved.launch.env?.TYPESAFE_API_KEY : undefined,
+          helperKey: resolved.ok ? resolved.launch.env?.JEV_ARGUMENTS_API_KEY : undefined,
+        })
+        // Observe the real resolver without starting a process in this wiring test.
+        return { ok: false, code: "jev-configuration-required" }
+      },
+    })
+    const agent = {
+      kind: "jev",
+      settings: {
+        argumentsEndpoint: "https://helper.example.test/completions",
+        argumentsModel: "helper",
+      },
+    }
+    for (const input of [
+      {
+        projectId: "project-a",
+        agent,
+        jevCredentials: { apiKey: "key-a", argumentsApiKey: "helper-a" },
+      },
+      {
+        projectId: "project-b",
+        agent,
+        jevCredentials: { apiKey: "key-b", argumentsApiKey: "helper-b" },
+      },
+      { projectId: "project-a", agent },
+      { projectId: "project-b", agent },
+      { projectId: "project-c", agent },
+    ])
+      expect(await context.service.handle({ operation: "connect", input })).toEqual({
+        ok: false,
+        code: "jev-configuration-required",
+      })
+    expect(calls).toEqual([
+      { projectId: "project-a", apiKey: "key-a", helperKey: "helper-a", configured: true },
+      { projectId: "project-b", apiKey: "key-b", helperKey: "helper-b", configured: true },
+      { projectId: "project-a", apiKey: "key-a", helperKey: "helper-a", configured: true },
+      { projectId: "project-b", apiKey: "key-b", helperKey: "helper-b", configured: true },
+      { projectId: "project-c", apiKey: undefined, helperKey: undefined, configured: false },
+    ])
+    for (const secret of ["key-a", "key-b", "helper-a", "helper-b"])
+      expect(JSON.stringify(context.events)).not.toContain(secret)
+  })
+
+  it("does not let a replaced connection resolve or overwrite credentials after preparation", async () => {
+    const resolve = createAssistantLaunchResolver({
+      executable: process.execPath,
+      runtimeDirectory: tmpdir(),
+      env: {},
+    })
+    const calls: string[] = []
+    let first = true
+    let replace = () => {}
+    let replacement: Promise<AssistantResult> | undefined
+    const context = await host({
+      getMcpSetup: async () => {
+        if (first) {
+          first = false
+          // Replace after preparation settles but before its caller resumes initialization.
+          queueMicrotask(() => queueMicrotask(replace))
+        }
+        return {
+          protocolVersion: 1,
+          mcpServers: {
+            vibeshape: {
+              command: "/electron",
+              args: ["/mcp.cjs", "--descriptor", "/descriptor.json"],
+              env: { ELECTRON_RUN_AS_NODE: "1" },
+            },
+          },
+        }
+      },
+      resolveLaunch(projectId, agent, credentials) {
+        calls.push(credentials?.apiKey ?? "missing")
+        resolve(projectId, agent, credentials)
+        return { ok: false, code: "jev-configuration-required" }
+      },
+    })
+    const input = (apiKey: string) => ({
+      projectId: "project-a",
+      agent: { kind: "jev", settings: {} },
+      jevCredentials: { apiKey },
+    })
+    replace = () => {
+      replacement = context.service.handle({
+        operation: "connect",
+        input: input("replacement-key"),
+      })
+    }
+    expect(
+      await context.service.handle({ operation: "connect", input: input("obsolete-key") }),
+    ).toEqual({ ok: false, code: "stale-session" })
+    if (!replacement) throw new Error("The replacement connection did not start.")
+    expect(await replacement).toEqual({ ok: false, code: "jev-configuration-required" })
+    expect(calls).toEqual(["replacement-key"])
   })
 })

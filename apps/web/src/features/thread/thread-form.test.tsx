@@ -1,5 +1,5 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, beforeAll, describe, expect, it } from "bun:test"
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { FeatureRecord } from "@vibeshape/domain"
@@ -69,13 +69,27 @@ function setup(
   )
   return { ...view, onSave, onSaved, onCancel, onPreviewChange }
 }
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 describe("Modeled Thread form", () => {
   it("applies a metric diameter/pitch preset while preserving custom parameters and edits", async () => {
     const f = setup()
     const depth = screen.getByRole("combobox", { name: "Groove depth" })
     fireEvent.change(depth, { target: { value: "0.6 mm" } })
-    fireEvent.keyDown(screen.getByRole("combobox", { name: copy.metricSize }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("combobox", { name: copy.metricSize }))
+    await userEvent.type(screen.getByRole("combobox", { name: "Search options…" }), "M8")
     await userEvent.click(screen.getByRole("option", { name: "M8 × 1.25" }))
     expect(
       (screen.getByRole("combobox", { name: copy.nominalDiameter }) as HTMLInputElement).value,

@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process"
 import { once } from "node:events"
+import { existsSync } from "node:fs"
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { createRequire } from "node:module"
@@ -22,16 +23,34 @@ async function isolatedOrigin() {
   return `http://127.0.0.1:${address.port}`
 }
 
+function freshDefaultProfile(packagedApp: string | undefined) {
+  if (process.platform !== "win32" || !packagedApp)
+    throw new Error("Default-profile acceptance requires a packaged Windows application.")
+  const directory = join(z.string().min(1).parse(process.env.APPDATA), "VibeShape")
+  if (existsSync(directory))
+    throw new Error(
+      "Default-profile acceptance requires an account without an existing VibeShape profile.",
+    )
+  return directory
+}
+
 export async function createNativeFixture(
-  options: { directory?: string; bootstrap?: string; packagedApp?: string } = {},
+  options: {
+    directory?: string
+    bootstrap?: string
+    packagedApp?: string
+    defaultProfile?: boolean
+  } = {},
 ) {
   const directory = options.directory ?? (await mkdtemp(join(tmpdir(), "vibeshape-native-test-")))
-  const profileContainer = join(directory, "profile")
-  const profile =
-    process.platform === "win32" ? join(profileContainer, "User Data") : profileContainer
   const packagedApp = options.bootstrap
     ? undefined
     : (options.packagedApp ?? process.env.VIBESHAPE_PACKAGED_APP)
+  const profileContainer = options.defaultProfile
+    ? freshDefaultProfile(packagedApp)
+    : join(directory, "profile")
+  const profile =
+    process.platform === "win32" ? join(profileContainer, "User Data") : profileContainer
   const executablePath = packagedApp
     ? join(
         resolve(packagedApp),
@@ -45,7 +64,7 @@ export async function createNativeFixture(
       .object({ version: z.string() })
       .parse(JSON.parse(await readFile(join(nativeTestRoot, "apps/desktop/package.json"), "utf8")))
     await mkdir(join(directory, "dist"), { recursive: true })
-    for (const name of ["preload.cjs", "mcp.cjs"])
+    for (const name of ["preload.cjs", "mcp.cjs", "jev.cjs"])
       await cp(join(nativeTestRoot, "apps/desktop/dist", name), join(directory, "dist", name))
     await writeFile(
       join(directory, "package.json"),
@@ -79,7 +98,10 @@ export async function createNativeFixture(
       const application = options.bootstrap ? directory : join(nativeTestRoot, "apps/desktop")
       const native = await _electron.launch({
         executablePath,
-        args: [...(packagedApp ? [] : [application]), `--user-data-dir=${profileContainer}`],
+        args: [
+          ...(packagedApp ? [] : [application]),
+          ...(options.defaultProfile ? [] : [`--user-data-dir=${profileContainer}`]),
+        ],
         env: environment,
       })
       applications.set(native, native.process())
@@ -87,6 +109,7 @@ export async function createNativeFixture(
     },
     async cleanup() {
       for (const [native, child] of applications) if (child.exitCode === null) await native.close()
+      if (options.defaultProfile) await rm(profileContainer, { recursive: true, force: true })
       if (!options.directory) await rm(directory, { recursive: true, force: true })
     },
   }

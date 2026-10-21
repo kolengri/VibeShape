@@ -41,16 +41,16 @@ test.describe("Boolean subtraction", () => {
     await invokeModelCommand(page, "Modify", "Subtract")
     const createForm = page.getByRole("form", { name: "Subtract solids" })
     await expect(
-      createForm.getByRole("combobox", { name: "Target solid" }).locator('option:not([value=""])'),
+      createForm.locator('select[name="targetFeatureId"] option:not([value=""])'),
     ).toHaveText(["Box 1", "Box 2"])
     await createForm.getByRole("button", { name: "Cancel", exact: true }).click()
     await failedFeature.click()
     const editForm = page.getByRole("form", { name: "Edit subtraction" })
     await expect(
-      editForm.getByRole("combobox", { name: "Target solid" }).locator("option:checked"),
+      editForm.getByRole("button", { name: "Select Target solid in 3D", exact: true }),
     ).toHaveText("Box 1")
     await expect(
-      editForm.getByRole("combobox", { name: "Tool solid" }).locator("option:checked"),
+      editForm.getByRole("button", { name: "Select Tool solid in 3D", exact: true }),
     ).toHaveText("Box 2")
     await editForm.getByRole("button", { name: "Cancel", exact: true }).click()
     await page.reload()
@@ -90,9 +90,12 @@ test.describe("Boolean subtraction", () => {
 
     const createForm = page.getByRole("form", { name: "Subtract solids" })
     const createTarget = createForm.getByRole("combobox", { name: "Target solid" })
-    const createTool = createForm.getByRole("combobox", { name: "Tool solid" })
-    await expect(createTarget.locator("option:checked")).toHaveText("Box 1")
-    await expect(createTool.locator("option:checked")).toHaveText("Cylinder 1")
+    await expect(
+      createForm.getByRole("button", { name: "Select Target solid in 3D", exact: true }),
+    ).toHaveText("Box 1")
+    await expect(
+      createForm.getByRole("button", { name: "Select Tool solid in 3D", exact: true }),
+    ).toHaveText("Cylinder 1")
     const joined = await createTarget.evaluate((select) => {
       const button = select.parentElement?.parentElement?.querySelector("button")
       if (!button) throw new Error("Expected the joined viewport picker.")
@@ -132,11 +135,15 @@ test.describe("Boolean subtraction", () => {
     await page.getByRole("treeitem", { name: "Subtract 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit subtraction" })
     await expect(
-      editForm.getByRole("combobox", { name: "Target solid" }).locator("option:checked"),
+      editForm.getByRole("button", { name: "Select Target solid in 3D", exact: true }),
     ).toHaveText("Box 1")
     const editTool = editForm.getByRole("combobox", { name: "Tool solid" })
-    await expect(editTool.locator("option:checked")).toHaveText("Cylinder 1")
-    await editTool.selectOption({ label: "Cylinder 2" })
+    await expect(
+      editForm.getByRole("button", { name: "Select Tool solid in 3D", exact: true }),
+    ).toHaveText("Cylinder 1")
+    await editTool.click()
+    await page.getByRole("combobox", { name: "Search options…", exact: true }).fill("Cylinder 2")
+    await page.getByRole("option", { name: "Cylinder 2", exact: true }).click()
     await editForm.getByRole("checkbox", { name: "Keep tool solid" }).check()
     await editForm.getByRole("button", { name: "Update subtraction" }).dblclick()
     await expect(editForm).not.toBeVisible()
@@ -150,10 +157,10 @@ test.describe("Boolean subtraction", () => {
     await page.getByRole("treeitem", { name: "Subtract 1", exact: true }).click()
     const reopenedForm = page.getByRole("form", { name: "Edit subtraction" })
     await expect(
-      reopenedForm.getByRole("combobox", { name: "Target solid" }).locator("option:checked"),
+      reopenedForm.getByRole("button", { name: "Select Target solid in 3D", exact: true }),
     ).toHaveText("Box 1")
     await expect(
-      reopenedForm.getByRole("combobox", { name: "Tool solid" }).locator("option:checked"),
+      reopenedForm.getByRole("button", { name: "Select Tool solid in 3D", exact: true }),
     ).toHaveText("Cylinder 2")
 
     await expect(reopenedForm.getByRole("checkbox", { name: "Keep tool solid" })).toBeChecked()
@@ -170,7 +177,7 @@ test.describe("Boolean subtraction", () => {
     const nextForm = page.getByRole("form", { name: "Subtract solids" })
     // A terminal result retains its authored part name when its producing feature changes.
     await expect(
-      nextForm.getByRole("combobox", { name: "Target solid" }).locator('option:not([value=""])'),
+      nextForm.locator('select[name="targetFeatureId"] option:not([value=""])'),
     ).toHaveText(["Cylinder 1", "Box 1"])
     await nextForm.getByRole("button", { name: "Cancel", exact: true }).click()
     await expect(nextForm).not.toBeVisible()
@@ -218,10 +225,10 @@ test.describe("Boolean subtraction", () => {
     await page.getByRole("treeitem", { name: "Subtract 1", exact: true }).click()
     const restoredForm = page.getByRole("form", { name: "Edit subtraction", exact: true })
     await expect(
-      restoredForm.getByRole("combobox", { name: "Target solid" }).locator("option:checked"),
+      restoredForm.getByRole("button", { name: "Select Target solid in 3D", exact: true }),
     ).toHaveText("Box 1")
     await expect(
-      restoredForm.getByRole("combobox", { name: "Tool solid" }).locator("option:checked"),
+      restoredForm.getByRole("button", { name: "Select Tool solid in 3D", exact: true }),
     ).toHaveText("Cylinder 2")
     await expect(restoredForm.getByRole("checkbox", { name: "Keep tool solid" })).not.toBeChecked()
     await restoredForm.getByRole("button", { name: "Cancel", exact: true }).click()
@@ -272,10 +279,10 @@ test.describe("Boolean subtraction", () => {
     await invokeModelCommand(page, "Modify", "Subtract")
     const compoundCut = page.getByRole("form", { name: "Subtract solids" })
     await expect(
-      compoundCut.getByRole("combobox", { name: "Target solid" }).locator('option:not([value=""])'),
+      compoundCut.locator('select[name="targetFeatureId"] option:not([value=""])'),
     ).toHaveText(["Box 1", "Cylinder 1"])
     await expect(
-      compoundCut.getByRole("combobox", { name: "Tool solid" }).locator('option:not([value=""])'),
+      compoundCut.locator('select[name="toolFeatureId"] option:not([value=""])'),
     ).toHaveText(["Box 1", "Cylinder 1"])
     await compoundCut.getByRole("button", { name: "Cancel", exact: true }).click()
     await toolbar.getByRole("button", { name: "Undo", exact: true }).click()

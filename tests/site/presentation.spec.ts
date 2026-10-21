@@ -233,7 +233,9 @@ test("every documentation article supports direct links and return navigation", 
   await expect(page.getByRole("heading", { level: 1 })).toContainText("CAD for things")
 })
 
-test("downloads show the published Mac release with aligned primary actions", async ({ page }) => {
+test("downloads show both platforms with aligned actions and responsive installation guidance", async ({
+  page,
+}, testInfo) => {
   await page.route(
     "https://api.github.com/repos/kolengri/VibeShape/releases?per_page=100",
     (route) =>
@@ -253,6 +255,20 @@ test("downloads show the published Mac release with aligned primary actions", as
               },
             ],
           },
+          {
+            tag_name: "desktop-v9.8.8",
+            draft: false,
+            prerelease: false,
+            published_at: "2026-10-21T12:00:00Z",
+            assets: [
+              {
+                name: "VibeShape-9.8.8-win-x64.zip",
+                state: "uploaded",
+                browser_download_url:
+                  "https://github.com/kolengri/VibeShape/releases/download/desktop-v9.8.8/VibeShape-9.8.8-win-x64.zip",
+              },
+            ],
+          },
         ],
       }),
   )
@@ -260,24 +276,57 @@ test("downloads show the published Mac release with aligned primary actions", as
   await page.goto("/#downloads")
   const downloads = page.locator("#downloads")
   await expect(downloads.getByText("macOS · Apple Silicon · v9.8.7", { exact: true })).toBeVisible()
-  await expect(downloads.getByRole("link", { name: "All releases & checksums" })).toHaveAttribute(
-    "href",
-    "https://github.com/kolengri/VibeShape/releases",
-  )
+  await expect(
+    downloads.getByRole("link", { name: "All releases & checksums" }).first(),
+  ).toHaveAttribute("href", "https://github.com/kolengri/VibeShape/releases")
   await expect(downloads.getByRole("link", { name: "Download for Apple Silicon" })).toHaveAttribute(
     "href",
     "https://github.com/kolengri/VibeShape/releases/download/desktop-v9.8.7/VibeShape-9.8.7-mac-arm64.dmg",
   )
   await expect(downloads).toContainText("not notarized by Apple")
-  const actions = ["Open VibeShape", "Local installation guide", "Download for Apple Silicon"]
-  const bounds = await Promise.all(
-    actions.map((name) => downloads.getByRole("link", { name, exact: true }).boundingBox()),
+  await expect(downloads.getByText("Windows · x64 · ZIP · v9.8.8", { exact: true })).toBeVisible()
+  await expect(downloads.getByRole("link", { name: "Download for Windows x64" })).toHaveAttribute(
+    "href",
+    "https://github.com/kolengri/VibeShape/releases/download/desktop-v9.8.8/VibeShape-9.8.8-win-x64.zip",
   )
-  for (const boundsAtIndex of bounds) {
-    expect(boundsAtIndex).not.toBeNull()
-    expect(boundsAtIndex?.y).toBeCloseTo(bounds[0]?.y ?? 0, 0)
-    expect(boundsAtIndex?.height).toBe(bounds[0]?.height)
+  await expect(downloads).toContainText("This ZIP is unsigned")
+  await expect(downloads).toContainText("Extract the entire archive into a writable local folder")
+  await expect(downloads).toContainText("open VibeShape.exe")
+  await expect(downloads).toContainText("Keep all bundled files together")
+  await expect(downloads).toContainText("SmartScreen warning")
+  for (const actions of [
+    ["Open VibeShape", "Local installation guide"],
+    ["Download for Apple Silicon", "Download for Windows x64"],
+  ]) {
+    const bounds = await Promise.all(
+      actions.map((name) => downloads.getByRole("link", { name, exact: true }).boundingBox()),
+    )
+    for (const boundsAtIndex of bounds) {
+      expect(boundsAtIndex).not.toBeNull()
+      expect(boundsAtIndex?.y).toBeCloseTo(bounds[0]?.y ?? 0, 0)
+      expect(boundsAtIndex?.height).toBe(bounds[0]?.height)
+    }
   }
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  for (const width of [1440, 1024, 375, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true)
+    await expect(downloads.getByRole("link", { name: "Download for Windows x64" })).toBeVisible()
+    await downloads.screenshot({ path: testInfo.outputPath(`downloads-light-${width}.png`) })
+  }
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.evaluate(() => document.documentElement.classList.add("dark"))
+  await downloads.screenshot({ path: testInfo.outputPath("downloads-dark-1440.png") })
+  await page.evaluate(() => document.documentElement.classList.remove("dark"))
+  // A 1440px viewport at 200% browser zoom has a 720px CSS layout viewport.
+  await page.setViewportSize({ width: 720, height: 450 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await downloads.screenshot({ path: testInfo.outputPath("downloads-zoom-200-equivalent.png") })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await expect(downloads.getByRole("link", { name: "macOS desktop build guide" })).toHaveAttribute(
     "href",
     "https://github.com/kolengri/VibeShape/blob/main/docs/desktop-macos.md",

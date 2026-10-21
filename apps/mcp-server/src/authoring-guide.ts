@@ -17,17 +17,23 @@ Use MCP tools/list as the current input/output schema authority. Only listed too
 ## Visual checks
 
 Call render_preview with source=model and the saved revision, or source=draft, draftId and the
-current draft revision. It returns native PNG image content and revision/generation metadata.
-Default views are isometric/front/right/top; request one to four unique standard views or one
-exact featureId/outputRole target from body measurements. It does not move the person's camera
+current draft revision. It returns one native PNG image content block and revision/generation metadata.
+Start with quality=overview (also used when omitted): one isometric view within 768x576 total pixels.
+For small features or verification, choose quality=detail, an exact featureId/outputRole target from
+body measurements, and relevant views or a close-up. Detail defaults to the legacy labeled
+isometric/front/right/top collage within 1024x768 total pixels. Either policy can return a smaller
+raster to fit unchanged byte budgets; metadata echoes the resolved quality. Explicit one to four
+unique standard views preserve their order at either quality. It does not move the person's camera
 or save anything. For a custom angle or close-up, provide camera instead of views: position and
 target are world XYZ triples in mm, optional up sets orientation, and viewHeightMm sets the visible
 vertical span in mm. Projection is orthographic, so distance alone does not zoom. Omit viewHeightMm
 to auto-fit; specify it to crop around the target. Metadata echoes camera and labels the view custom.
 Forward image content to a vision-capable model and compare shape/orientation
 after significant steps and before shape-dependent acceptance. Invalid geometry may still show
-surviving bodies; numerical preview diagnostics and dimension checks remain required. Assembly
-occurrence placement and surface-relief layers are outside the CAD body render contract.
+surviving bodies; exact measurements and numerical preview diagnostics remain authoritative. The
+automation default has changed from four views to one; strict old clients/servers are not guaranteed
+to accept the new result quality field or request option. Assembly occurrence placement and
+surface-relief layers are outside the CAD body render contract.
 
 ## Additional exact feature tools
 

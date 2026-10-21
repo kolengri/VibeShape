@@ -1,6 +1,6 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, beforeAll, describe, expect, it } from "bun:test"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   createAngleQuantity,
@@ -119,6 +119,11 @@ const existingFeature = featureRecordSchema.parse({
 
 const targetFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3702")
 
+function targetBodyInput() {
+  const form = screen.getByRole("form") as HTMLFormElement
+  return form.elements.namedItem("targetFeatureId") as HTMLSelectElement
+}
+
 function deferred() {
   let resolve: () => void = () => undefined
   const promise = new Promise<void>((promiseResolve) => {
@@ -169,7 +174,20 @@ beforeAll(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 })
 
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 async function selectOperation(user: ReturnType<typeof userEvent.setup>, operation: string) {
   const labels: Record<string, string> = {
@@ -180,8 +198,7 @@ async function selectOperation(user: ReturnType<typeof userEvent.setup>, operati
   }
   const label = labels[operation]
   if (!label) throw new Error("Unknown result operation fixture.")
-  fireEvent.keyDown(screen.getByRole("combobox", { name: copy.operation }), { key: "Enter" })
-  await user.click(await screen.findByRole("option", { name: label }))
+  await user.click(screen.getByRole("radio", { name: label }))
 }
 
 describe("RevolveForm", () => {
@@ -214,9 +231,7 @@ describe("RevolveForm", () => {
       undefined,
       collected,
     )
-    expect((screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement).value).toBe(
-      targetFeatureId,
-    )
+    expect(targetBodyInput().value).toBe(targetFeatureId)
     await user.click(screen.getByRole("button", { name: formCopy.submit }))
     expect(onSave).toHaveBeenLastCalledWith(
       4,
@@ -233,7 +248,9 @@ describe("RevolveForm", () => {
     )
     const exact = collected.find((option) => option.body)
     if (!exact) throw new Error("Expected an explicit body choice.")
-    await user.selectOptions(screen.getByRole("combobox", { name: copy.target }), exact.id)
+    await user.click(screen.getByRole("combobox", { name: copy.target }))
+    await user.type(screen.getByRole("combobox", { name: "Search options…" }), exact.label)
+    await user.click(screen.getByRole("option", { name: exact.label }))
     await user.click(screen.getByRole("button", { name: formCopy.submit }))
     expect(onSave).toHaveBeenLastCalledWith(
       4,
@@ -397,7 +414,9 @@ describe("RevolveForm", () => {
     )
     await selectOperation(user, "add")
     expect(screen.getByRole("combobox", { name: copy.target })).toBeTruthy()
-    await user.selectOptions(screen.getByRole("combobox", { name: copy.target }), targetFeatureId)
+    await user.click(screen.getByRole("combobox", { name: copy.target }))
+    await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Box 1")
+    await user.click(screen.getByRole("option", { name: "Box 1" }))
     await user.click(screen.getByRole("button", { name: copy.submit }))
     expect(onSave).toHaveBeenCalledWith(
       4,
@@ -417,7 +436,7 @@ describe("RevolveForm", () => {
       profiles: [secondProfile, profile],
     })
     expect(
-      (screen.getByRole("combobox", { name: copy.operation }) as HTMLButtonElement).disabled,
+      (screen.getByRole("radio", { name: copy.operationNew }) as HTMLInputElement).disabled,
     ).toBe(false)
     await user.click(screen.getByRole("button", { name: copy.submit }))
     expect(onSave).toHaveBeenCalledWith(
@@ -473,8 +492,10 @@ describe("RevolveForm", () => {
     await selectOperation(user, "remove")
     await user.click(screen.getByRole("button", { name: copy.submit }))
 
-    const target = screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement
-    expect(screen.getByText(copy.missingTarget)).toBeTruthy()
+    const target = targetBodyInput()
+    expect(screen.getByRole("combobox", { name: copy.target }).textContent).toContain(
+      copy.missingTarget,
+    )
     expect(target.required).toBe(true)
     expect(target.checkValidity()).toBe(false)
     expect(onSave).not.toHaveBeenCalled()
@@ -495,12 +516,11 @@ describe("RevolveForm", () => {
       [{ id: targetFeatureId, label: "Box 1" }],
     )
 
-    expect(screen.getByRole("combobox", { name: copy.operation }).textContent).toBe(
-      "Intersect with body",
-    )
-    expect((screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement).value).toBe(
-      targetFeatureId,
-    )
+    expect(
+      (screen.getByRole("radio", { name: "Intersect with body" }) as HTMLInputElement).checked,
+    ).toBe(true)
+    expect(targetBodyInput().value).toBe(targetFeatureId)
+    expect(screen.getByRole("combobox", { name: copy.target }).textContent).toContain("Box 1")
   })
 
   it("previews and saves a graphically replacement profile", async () => {

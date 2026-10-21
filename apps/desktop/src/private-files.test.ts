@@ -15,7 +15,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { publishMcpDescriptor, readMcpDescriptor } from "./mcp-descriptor"
 import { createNativeSlicerApplications } from "./native-slicer-applications"
-import { preparePrivateDirectory, readPrivateFile, writePrivateFile } from "./private-files"
+import {
+  preparePrivateDirectory,
+  readPrivateFile,
+  WindowsPrivateFileReadError,
+  writePrivateFile,
+} from "./private-files"
 
 const windows = process.platform === "win32"
 const roots: string[] = []
@@ -79,6 +84,37 @@ if ($env:VIBESHAPE_TEST_ACL_OPERATION -eq 'expose') {
 }
 
 describe("native private files", () => {
+  it("reports Windows reader termination stages without exposing process output or credentials", () => {
+    const error = new WindowsPrivateFileReadError({
+      code: null,
+      killed: true,
+      stderr:
+        "VIBESHAPE_PRIVATE:compile\nVIBESHAPE_PRIVATE:operation\nBearer private-token C:\\private\\descriptor.json",
+    })
+    expect(error.message).toBe(
+      "Native workflows require a private file owned by this user. Windows reader status=terminated, stage=operation.",
+    )
+  })
+
+  it("does not expose unknown Windows process errors or unsupported error codes", () => {
+    for (const error of ["private-token", { code: "private-token", stderr: "private-token" }]) {
+      expect(new WindowsPrivateFileReadError(error).message).toBe(
+        "Native workflows require a private file owned by this user. Windows reader status=unknown, stage=not-started.",
+      )
+    }
+  })
+
+  it("distinguishes resolved Windows compiler commands from completed compilation", () => {
+    const error = new WindowsPrivateFileReadError({
+      code: null,
+      killed: true,
+      stderr: "VIBESHAPE_PRIVATE:compile\nVIBESHAPE_PRIVATE:resolved\n",
+    })
+    expect(error.message).toBe(
+      "Native workflows require a private file owned by this user. Windows reader status=terminated, stage=resolved.",
+    )
+  })
+
   it("creates a private directory and reads only bounded regular file bytes", async () => {
     const root = await directory()
     const privateDirectory = join(root, "native-workflows", "assistant")

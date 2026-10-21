@@ -167,7 +167,7 @@
 }
 
 .workspace-panel--task[data-collapsed="true"] {
-  visibility: hidden;
+  display: none;
 }
 
 /* Scrolling fields must not show through a sticky task heading. */
