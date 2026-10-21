@@ -1,5 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
+import { Button, type ButtonProps } from "@vibeshape/ui/components/button"
 import {
   Dialog,
   DialogClose,
@@ -18,7 +18,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@vibeshape/ui/components/dropdown-menu"
+import { ErrorIcon } from "@vibeshape/ui/components/icons"
 import { Popover, PopoverContent, PopoverTrigger } from "@vibeshape/ui/components/popover"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vibeshape/ui/components/tooltip"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useId, useRef, useState } from "react"
 import type { createLocalAutomationConnection } from "../automation/local-automation-connection"
 
@@ -61,14 +69,66 @@ export function LocalAutomationStatus({
         </span>
       ) : null}
       {current.error ? (
-        <span
-          role="status"
-          className="sr-only text-destructive sm:not-sr-only sm:max-w-48 sm:text-xs"
-        >
+        <span role="status" className="sr-only">
           {t("aiConnectionFailed")}
         </span>
       ) : null}
     </div>
+  )
+}
+
+function ConnectionStatusButton({
+  current,
+  className,
+  "aria-describedby": describedBy,
+  ...props
+}: ButtonProps & { current: Pick<ReturnType<Connection["getSnapshot"]>, "error"> }) {
+  const t = useTranslations("app.shell.applicationBar")
+  const errorId = useId()
+  const error = current.error ? t("aiConnectionFailed") : null
+  const button = (
+    <Button
+      {...props}
+      className={cn(
+        className,
+        error && "text-destructive hover:text-destructive disabled:text-destructive",
+      )}
+      aria-describedby={
+        [describedBy, error ? errorId : null].filter(Boolean).join(" ") || undefined
+      }
+    >
+      {error && <ErrorIcon aria-hidden="true" className="size-3" />}
+      {props.children}
+    </Button>
+  )
+  return (
+    <TooltipProvider delayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {props.disabled && error ? (
+            <fieldset
+              className="inline-flex min-w-0"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to inspect the disabled action's diagnostic.
+              tabIndex={0}
+              aria-label={props["aria-label"]}
+              aria-describedby={errorId}
+            >
+              {button}
+            </fieldset>
+          ) : (
+            button
+          )}
+        </TooltipTrigger>
+        {error && (
+          <>
+            <span id={errorId} className="sr-only">
+              {error}
+            </span>
+            <TooltipContent side="top">{error}</TooltipContent>
+          </>
+        )}
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -93,7 +153,8 @@ function ExternalConnectionApproval({
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
+          <ConnectionStatusButton
+            current={current}
             ref={trigger}
             type="button"
             size="xs"
@@ -106,7 +167,7 @@ function ExternalConnectionApproval({
                 mode: t(current.autoApply ? "autoApplyOn" : "manualApproval"),
               })}
             </span>
-          </Button>
+          </ConnectionStatusButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           side="top"
@@ -176,7 +237,8 @@ function ProjectAssistantConnectionStatus({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
+        <ConnectionStatusButton
+          current={current}
           type="button"
           size="xs"
           variant="ghost"
@@ -188,7 +250,7 @@ function ProjectAssistantConnectionStatus({
               ? t("approvalStatus", { mode: t("autoApplyOn") })
               : t("aiConnectedShort")}
           </span>
-        </Button>
+        </ConnectionStatusButton>
       </PopoverTrigger>
       <PopoverContent
         side="top"
@@ -248,7 +310,8 @@ function InactiveConnectionStatus({
     </span>
   ) : (
     <>
-      <Button
+      <ConnectionStatusButton
+        current={current}
         type="button"
         size="xs"
         variant="ghost"
@@ -259,7 +322,7 @@ function InactiveConnectionStatus({
         onClick={connection.enable}
       >
         {t("aiAccess")}
-      </Button>
+      </ConnectionStatusButton>
       {waitingForClient ? (
         <span
           id={waitingDescriptionId}
@@ -282,7 +345,8 @@ function StopConnectionControl({
   const t = useTranslations("app.shell.applicationBar")
   if (!current.connected && !current.recovering) return null
   return (
-    <Button
+    <ConnectionStatusButton
+      current={{ ...current, error: current.recovering && current.error }}
       type="button"
       size="xs"
       variant="ghost"
@@ -290,7 +354,7 @@ function StopConnectionControl({
       onClick={connection.disable}
     >
       {t("stopAi")}
-    </Button>
+    </ConnectionStatusButton>
   )
 }
 

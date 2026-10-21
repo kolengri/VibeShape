@@ -222,16 +222,46 @@ export const ConstraintParallelIcon = /* @__PURE__ */ coloredIcon(
 export const FilesIcon = /* @__PURE__ */ coloredIcon(
   "files",
   <g transform="scale(4)">
-    <g transform="translate(1.28 -0.64) scale(0.96)">
-      <path
-        d="M7 19q0-4 4-4h15l6 6h21q4 0 4 4v24q0 4-4 4H11q-4 0-4-4Z"
-        fill="var(--icon-geometry-fill, #bfd4ee)"
-        stroke="var(--icon-geometry-stroke, #326db2)"
-        strokeWidth="3.7500"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </g>
+    <path
+      d="M11 7h27l11 11v37H11Z"
+      fill="var(--icon-geometry-highlight, #e4eef9)"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="3.6"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M38 7v11h11"
+      fill="var(--icon-geometry-fill, #bfd4ee)"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="3.6"
+      strokeLinejoin="round"
+    />
+    <path d="m20 29 10-5 10 5-10 5Z" fill="var(--icon-geometry-fill, #bfd4ee)" />
+    <path d="m20 29 10 5v13l-10-5Z" fill="var(--icon-geometry-fill, #bfd4ee)" />
+    <path d="m30 34 10-5v13l-10 5Z" fill="var(--icon-geometry-shade, #8fb2dc)" />
+    <path
+      d="m20 29 10-5 10 5v13l-10 5-10-5Zm0 0 10 5 10-5M30 34v13"
+      fill="none"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="2.8"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M40 48h18m-7-7 7 7-7 7"
+      fill="none"
+      stroke="var(--icon-action-highlight, #fae5c9)"
+      strokeWidth="8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M40 48h18m-7-7 7 7-7 7"
+      fill="none"
+      stroke="var(--icon-action-stroke, #cd7b24)"
+      strokeWidth="4.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </g>,
 )
 
@@ -4016,6 +4046,50 @@ export const FilterIcon = /* @__PURE__ */ coloredIcon(
 export const NewProjectIcon = /* @__PURE__ */ coloredIcon(
   "new-project",
   <g transform="scale(4)">
+    <path
+      d="M11 7h27l11 11v37H11Z"
+      fill="var(--icon-geometry-highlight, #e4eef9)"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="3.6"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M38 7v11h11"
+      fill="var(--icon-geometry-fill, #bfd4ee)"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="3.6"
+      strokeLinejoin="round"
+    />
+    <path d="m20 29 10-5 10 5-10 5Z" fill="var(--icon-geometry-fill, #bfd4ee)" />
+    <path d="m20 29 10 5v13l-10-5Z" fill="var(--icon-geometry-fill, #bfd4ee)" />
+    <path d="m30 34 10-5v13l-10 5Z" fill="var(--icon-geometry-shade, #8fb2dc)" />
+    <path
+      d="m20 29 10-5 10 5v13l-10 5-10-5Zm0 0 10 5 10-5M30 34v13"
+      fill="none"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="2.8"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M49 30v18m-9-9h18"
+      fill="none"
+      stroke="var(--icon-action-highlight, #fae5c9)"
+      strokeWidth="8"
+      strokeLinecap="round"
+    />
+    <path
+      d="M49 30v18m-9-9h18"
+      fill="none"
+      stroke="var(--icon-action-stroke, #cd7b24)"
+      strokeWidth="4.2"
+      strokeLinecap="round"
+    />
+  </g>,
+)
+
+export const FolderPlusIcon = /* @__PURE__ */ coloredIcon(
+  "folder-plus",
+  <g transform="scale(4)">
     <g transform="translate(1.28 -0.64) scale(0.96)">
       <path
         d="M7 19q0-4 4-4h15l6 6h21q4 0 4 4v24q0 4-4 4H11q-4 0-4-4Z"
@@ -4030,6 +4104,22 @@ export const NewProjectIcon = /* @__PURE__ */ coloredIcon(
         fill="none"
         stroke="var(--icon-action-stroke, #cd7b24)"
         strokeWidth="4.3750"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </g>
+  </g>,
+)
+
+export const FolderOpenIcon = /* @__PURE__ */ coloredIcon(
+  "folder-open",
+  <g transform="scale(4)">
+    <g transform="translate(1.28 -0.64) scale(0.96)">
+      <path
+        d="M7 19q0-4 4-4h15l6 6h21q4 0 4 4v24q0 4-4 4H11q-4 0-4-4Z"
+        fill="var(--icon-geometry-fill, #bfd4ee)"
+        stroke="var(--icon-geometry-stroke, #326db2)"
+        strokeWidth="3.7500"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

@@ -5,6 +5,7 @@ import type {
 import type { AssistantJevCredentials } from "@vibeshape/automation-api/assistant-jev"
 import { useTranslations } from "@vibeshape/i18n"
 import { useRef, useState } from "react"
+import { useReportApplicationSuccess } from "../shell/application-notices"
 
 type Probe = (
   agent: AssistantAgent,
@@ -14,15 +15,18 @@ type Probe = (
 export function useAssistantConnectionTest(probe: Probe | undefined) {
   const active = useRef(false)
   const [pending, setPending] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<AssistantConnectionTestResult | null>(null)
   return {
     pending,
     result,
+    attempt,
     clear: () => setResult(null),
     async run(agent: AssistantAgent, credentials?: AssistantJevCredentials) {
       if (active.current) return
       active.current = true
       setPending(true)
+      setAttempt((value) => value + 1)
       setResult(null)
       try {
         setResult(
@@ -42,26 +46,30 @@ export function useAssistantConnectionTest(probe: Probe | undefined) {
 
 export function AssistantConnectionTestFeedback({
   result,
+  attempt,
 }: {
   result: AssistantConnectionTestResult | null
+  attempt: number
 }) {
   const t = useTranslations("app.assistant")
-  if (!result) return null
+  const success = result?.ok
+    ? t(
+        result.checks.includes("arguments")
+          ? "connectionTestProvidersPassed"
+          : result.checks.includes("jev")
+            ? "connectionTestJevPassed"
+            : "connectionTestAgentPassed",
+      )
+    : null
+  useReportApplicationSuccess(success, attempt)
+  if (!result || result.ok) return null
   return (
-    <p role={result.ok ? "status" : "alert"} className="text-xs text-muted-foreground">
-      {result.ok
-        ? t(
-            result.checks.includes("arguments")
-              ? "connectionTestProvidersPassed"
-              : result.checks.includes("jev")
-                ? "connectionTestJevPassed"
-                : "connectionTestAgentPassed",
-          )
-        : t("connectionTestFailed", {
-            stage: result.stage,
-            httpStatus: result.httpStatus === undefined ? "none" : String(result.httpStatus),
-            reason: t(`errors.${result.code}`),
-          })}
+    <p role="alert" className="text-xs text-destructive">
+      {t("connectionTestFailed", {
+        stage: result.stage,
+        httpStatus: result.httpStatus === undefined ? "none" : String(result.httpStatus),
+        reason: t(`errors.${result.code}`),
+      })}
     </p>
   )
 }

@@ -1,6 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { X } from "@vibeshape/ui/components/icons"
+import { AcceptIcon, X } from "@vibeshape/ui/components/icons"
 import {
   Notification,
   NotificationClose,
@@ -50,6 +50,9 @@ function ApplicationNotices({
                 if (!open) onDismiss(id)
               }}
             >
+              {notice.tone === "success" && (
+                <AcceptIcon aria-hidden="true" className="size-5 shrink-0" />
+              )}
               <p className="min-w-0 flex-1 break-words text-sm">{notice.message}</p>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -66,7 +69,7 @@ function ApplicationNotices({
       </TooltipProvider>
       <NotificationViewport
         label={t("title")}
-        className="right-auto left-1/2 w-3/4 max-w-sm -translate-x-1/2 sm:right-auto sm:left-1/2"
+        className="right-auto left-1/2 z-60 w-3/4 max-w-sm -translate-x-1/2 sm:right-auto sm:left-1/2"
       />
     </NotificationProvider>
   )

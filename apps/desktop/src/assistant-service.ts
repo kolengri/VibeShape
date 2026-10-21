@@ -100,6 +100,7 @@ export type AssistantServiceOptions = {
   cancelTimeoutMs?: number
   shutdownTimeoutMs?: number
   connectionTestTimeoutMs?: number
+  preferencesPath?: string
 }
 
 class AssistantFailure extends Error {
@@ -188,7 +189,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
   if (!isAbsolute(options.cwd)) throw new Error("The assistant working directory must be absolute.")
   const owners = new Map<string, Owner>()
   const connectionTests = createAssistantConnectionTests(options)
-  const preferences = createAssistantSessionPreferences()
+  const preferences = createAssistantSessionPreferences(options.preferencesPath)
   let disposed = false
   const stopping = new Map<string, Promise<void>>()
   const requestTimeout = options.requestTimeoutMs ?? 30_000
@@ -494,9 +495,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
     const owner: Owner = {
       snapshot: state,
-      preferencesKey: createHash("sha256")
-        .update(JSON.stringify([input.projectId, input.agent]))
-        .digest("hex"),
+      preferencesKey: createHash("sha256").update(JSON.stringify(input.agent)).digest("hex"),
       toolTargets: createAssistantToolTargetTracker(),
       process: null,
       connection: null,
@@ -873,7 +872,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     assertSelectedChoice(owner, choice)
   }
   async function recoverSettings(owner: Owner) {
-    const choices = preferences.read(owner.preferencesKey)
+    const choices = await preferences.read(owner.preferencesKey)
     try {
       for (const choice of choices) await restoreChoice(owner, choice)
       for (const choice of choices) assertSelectedChoice(owner, choice)
@@ -884,7 +883,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           ? "settings-unavailable"
           : "settings-recovery-failed"
       if (code === "settings-unavailable")
-        preferences.discardUnavailable(owner.preferencesKey, owner.snapshot)
+        await preferences.discardUnavailable(owner.preferencesKey, owner.snapshot)
       stop(owner, code)
       throw new AssistantFailure(code)
     }
@@ -912,7 +911,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
       if (!isCurrent(owner) || !owner.process) return failure("stale-session")
       const value = snapshot(owner)
       assertCurrent(owner)
-      if (choice) preferences.remember(owner.preferencesKey, choice, value)
+      if (choice) await preferences.remember(owner.preferencesKey, choice, value)
+      assertCurrent(owner)
       return { ok: true, value }
     } catch (error) {
       if (!isCurrent(owner) || disposed) return failure("stale-session")
@@ -1003,8 +1003,9 @@ export function createAssistantService(options: AssistantServiceOptions) {
       disposed = true
       for (const owner of owners.values()) stop(owner)
       owners.clear()
-      preferences.clear()
-      return Promise.all([...stopping.values(), connectionTests.close()]).then(() => undefined)
+      return Promise.all([...stopping.values(), connectionTests.close(), preferences.close()]).then(
+        () => undefined,
+      )
     },
   }
 }
