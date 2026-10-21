@@ -10,8 +10,9 @@ agents through a narrow native bridge. Static web chat calls the person's compat
 directly and executes tools through the same browser-owned automation sessions. Neither path adds
 a hosted AI worker or bypasses reviewed commands. The Jev descriptor contains validated provider
 settings, while credentials enter through connection-only input and remain in the trusted host
-for the app session. The host resolves the bundled executable and runtime; renderer settings do not
-choose a path for that built-in adapter. See [ADR-0111](../adr/0111-native-project-assistant-and-handoffs.md)
+for the app session, with independent project caches and exact-endpoint helper keys. A different
+project's explicit key cannot change credential-less recovery. The host resolves the bundled
+executable and runtime; renderer settings do not choose a path for that built-in adapter. See [ADR-0111](../adr/0111-native-project-assistant-and-handoffs.md)
 and the [desktop connection workflow](../desktop-macos.md#ai-connections).
 
 Desktop embedded chat retains one document-controller runtime and ACP owner per project. The visible

@@ -2204,4 +2204,119 @@ describe("built-in assistant launch resolution", () => {
     expect(text).not.toContain("TYPESAFE_API_KEY")
     expect(JSON.stringify(context.events)).not.toContain("private-host-key")
   })
+
+  it("forwards the captured project and connection credentials to the real launch resolver", async () => {
+    const resolve = createAssistantLaunchResolver({
+      executable: process.execPath,
+      runtimeDirectory: tmpdir(),
+      env: {},
+    })
+    const calls: {
+      projectId: string
+      apiKey: string | undefined
+      helperKey: string | undefined
+      configured: boolean
+    }[] = []
+    const context = await host({
+      resolveLaunch(projectId, agent, credentials) {
+        const resolved = resolve(projectId, agent, credentials)
+        calls.push({
+          projectId,
+          configured: resolved.ok,
+          apiKey: resolved.ok ? resolved.launch.env?.TYPESAFE_API_KEY : undefined,
+          helperKey: resolved.ok ? resolved.launch.env?.JEV_ARGUMENTS_API_KEY : undefined,
+        })
+        // Observe the real resolver without starting a process in this wiring test.
+        return { ok: false, code: "jev-configuration-required" }
+      },
+    })
+    const agent = {
+      kind: "jev",
+      settings: {
+        argumentsEndpoint: "https://helper.example.test/completions",
+        argumentsModel: "helper",
+      },
+    }
+    for (const input of [
+      {
+        projectId: "project-a",
+        agent,
+        jevCredentials: { apiKey: "key-a", argumentsApiKey: "helper-a" },
+      },
+      {
+        projectId: "project-b",
+        agent,
+        jevCredentials: { apiKey: "key-b", argumentsApiKey: "helper-b" },
+      },
+      { projectId: "project-a", agent },
+      { projectId: "project-b", agent },
+      { projectId: "project-c", agent },
+    ])
+      expect(await context.service.handle({ operation: "connect", input })).toEqual({
+        ok: false,
+        code: "jev-configuration-required",
+      })
+    expect(calls).toEqual([
+      { projectId: "project-a", apiKey: "key-a", helperKey: "helper-a", configured: true },
+      { projectId: "project-b", apiKey: "key-b", helperKey: "helper-b", configured: true },
+      { projectId: "project-a", apiKey: "key-a", helperKey: "helper-a", configured: true },
+      { projectId: "project-b", apiKey: "key-b", helperKey: "helper-b", configured: true },
+      { projectId: "project-c", apiKey: undefined, helperKey: undefined, configured: false },
+    ])
+    for (const secret of ["key-a", "key-b", "helper-a", "helper-b"])
+      expect(JSON.stringify(context.events)).not.toContain(secret)
+  })
+
+  it("does not let a replaced connection resolve or overwrite credentials after preparation", async () => {
+    const resolve = createAssistantLaunchResolver({
+      executable: process.execPath,
+      runtimeDirectory: tmpdir(),
+      env: {},
+    })
+    const calls: string[] = []
+    let first = true
+    let replace = () => {}
+    let replacement: Promise<AssistantResult> | undefined
+    const context = await host({
+      getMcpSetup: async () => {
+        if (first) {
+          first = false
+          // Replace after preparation settles but before its caller resumes initialization.
+          queueMicrotask(() => queueMicrotask(replace))
+        }
+        return {
+          protocolVersion: 1,
+          mcpServers: {
+            vibeshape: {
+              command: "/electron",
+              args: ["/mcp.cjs", "--descriptor", "/descriptor.json"],
+              env: { ELECTRON_RUN_AS_NODE: "1" },
+            },
+          },
+        }
+      },
+      resolveLaunch(projectId, agent, credentials) {
+        calls.push(credentials?.apiKey ?? "missing")
+        resolve(projectId, agent, credentials)
+        return { ok: false, code: "jev-configuration-required" }
+      },
+    })
+    const input = (apiKey: string) => ({
+      projectId: "project-a",
+      agent: { kind: "jev", settings: {} },
+      jevCredentials: { apiKey },
+    })
+    replace = () => {
+      replacement = context.service.handle({
+        operation: "connect",
+        input: input("replacement-key"),
+      })
+    }
+    expect(
+      await context.service.handle({ operation: "connect", input: input("obsolete-key") }),
+    ).toEqual({ ok: false, code: "stale-session" })
+    if (!replacement) throw new Error("The replacement connection did not start.")
+    expect(await replacement).toEqual({ ok: false, code: "jev-configuration-required" })
+    expect(calls).toEqual(["replacement-key"])
+  })
 })

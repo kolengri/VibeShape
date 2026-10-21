@@ -362,7 +362,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     input: Extract<AssistantRequest, { operation: "connect" }>["input"],
   ): AssistantProcessLaunch {
     if (options.resolveLaunch) {
-      const resolved = options.resolveLaunch(input.agent, input.jevCredentials)
+      const resolved = options.resolveLaunch(input.projectId, input.agent, input.jevCredentials)
       if (!resolved.ok) throw new AssistantFailure(resolved.code)
       return resolved.launch
     }
@@ -373,6 +373,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     owner: Owner,
     input: Extract<AssistantRequest, { operation: "connect" }>["input"],
   ) {
+    if (!isCurrent(owner) || disposed) throw new AssistantFailure("stale-session")
     const child = spawnAssistantProcess({ ...options, ...resolveLaunch(input) }, (code) => {
       if (owner.process) stop(owner, code)
     })

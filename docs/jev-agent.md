@@ -51,10 +51,11 @@ only after these settings pass validation. Existing project, question, Stop and 
 boundaries remain in force.
 
 Only the non-secret Jev settings persist as assistant preferences. Keys entered here stay in
-host memory for the application session, not in chat, localStorage, command arguments or files.
-Leaving a key blank reuses an appropriate session key or app environment key. A helper key is
-bound to its exact endpoint and is not silently reused for a different endpoint. Restarting the
-application requires re-entering keys unless its environment already supplies them. Credentials
+host memory, scoped to the project, for the application session. They do not enter chat, localStorage,
+command arguments or files. Leaving a key blank reuses that project's cached key or the explicitly
+configured app environment key; keys entered in another project are never borrowed. Helper keys are
+scoped to both the project and exact endpoint, so another project or endpoint cannot replace them.
+Restarting the application requires re-entering keys unless its environment already supplies them. Credentials
 are not forwarded to the injected MCP child.
 
 ## Source CLI and custom ACP compatibility

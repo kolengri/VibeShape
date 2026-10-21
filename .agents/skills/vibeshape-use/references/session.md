@@ -11,7 +11,8 @@ List tools and resources. Read `vibeshape://session` for the actual `editorUrl` 
 The native chat offers **Jev (TypeSafe)** as a separate bundled agent. Its settings distinguish the
 TypeSafe decision model from an optional OpenAI-compatible argument model. No external Bun or
 custom executable path is required for this choice. API keys are entered in native settings and
-kept only for the app session; never request them in chat or add them to project files. It uses the
+kept only for this project during the app session; never request them in chat or add them to project
+files. Reconnection reuses this project's key, not a key entered in another project. Jev uses the
 same project-bound MCP attachment and authority rules as other embedded agents.
 
 For an already open macOS or Windows app, use **Settings → Connections → Connect an MCP client** and copy its

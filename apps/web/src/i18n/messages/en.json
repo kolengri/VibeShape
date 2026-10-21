@@ -3857,7 +3857,7 @@
         "description": "Jev selects CAD actions through TypeSafe. Its bundled adapter runs locally and uses the current project connection.",
         "model": "Jev model",
         "apiKey": "TypeSafe API key",
-        "keyNotice": "Keys stay in memory for this app session. Leave blank to reuse a key from this session or the app environment. They are not saved with chat or settings.",
+        "keyNotice": "Keys stay in memory for this project until the app quits. Leave blank to reuse this project's key or the app environment. They are not saved with chat or settings.",
         "argumentModel": "Argument model",
         "argumentNotice": "Most CAD edits need a separate model to fill dimensions and references. Configure an OpenAI-compatible endpoint and model together.",
         "endpoint": "Argument model endpoint",

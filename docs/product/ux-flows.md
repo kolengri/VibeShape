@@ -57,8 +57,9 @@ retargeting it.
 
 **Agent → Jev (TypeSafe)** is a distinct bundled native adapter, with TypeSafe model/key settings
 and a separate optional argument-model endpoint, model and key. It does not ask for an executable
-or source path. Provider keys are connection-only and kept in host memory for the app session;
-only non-secret settings persist. The form explains the difference between selecting CAD actions
+or source path. Provider keys are connection-only and kept in host memory per project for the app
+session; only non-secret settings persist. Recovery reuses the same project's cached keys, never
+keys entered in another project. The form explains the difference between selecting CAD actions
 and completing their open parameters. Image input is opt-in. Invalid or incomplete settings do
 not start a process, repeated connection activation is blocked, and connection failure releases
 the form for correction. Existing native chat Stop, questions, transcript and project authority
