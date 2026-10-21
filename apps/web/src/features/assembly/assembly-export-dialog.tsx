@@ -24,13 +24,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/component
 import { useCallback, useState } from "react"
 import { exportActiveAssembly } from "../../document/document-controller"
 import { DocumentExportFormatField } from "../../document/document-export-options"
-import {
-  type MeshExportQualityChoice,
-  MeshExportQualityField,
-  meshExportQuality,
-} from "../../document/mesh-export-quality-field"
+import { MeshExportQualityField, meshExportQuality } from "../../document/mesh-export-quality-field"
 import { PrintPreparationPanel } from "../../printing/print-preparation-panel"
 import { useReportApplicationError } from "../../shell/application-notices"
+import { useViewerPreferences } from "../../shell/viewer-preferences"
 import { useAssemblyExport } from "./use-assembly-export"
 
 type ExportSelection = {
@@ -43,11 +40,15 @@ function selectedInstanceScope(scope: string) {
   return scope === "all" ? {} : { instanceIds: [scope] }
 }
 function useAssemblyExportSelection({ selectedId, inspection, disabled }: ExportSelection) {
-  const [format, setFormat] = useState<GeometryExportFormat>("3mf")
+  const format = useViewerPreferences(
+    (state) => state.lastExportFormat ?? state.preferredExportFormat,
+  )
+  const setFormat = useViewerPreferences((state) => state.actions.setPreferredExportFormat)
   const [scope, setScope] = useState(selectedId ?? "all")
   const [showPreparation, setShowPreparation] = useState(false)
   const [printPending, setPrintPending] = useState(false)
-  const [meshQualityChoice, setMeshQualityChoice] = useState<MeshExportQualityChoice>("default")
+  const meshQualityChoice = useViewerPreferences((state) => state.exportMeshQuality)
+  const setMeshQualityChoice = useViewerPreferences((state) => state.actions.setExportMeshQuality)
   const action = useAssemblyExport()
   const selected =
     inspection?.occurrences.filter(({ instanceId }) => scope === "all" || instanceId === scope) ??

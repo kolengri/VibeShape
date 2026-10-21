@@ -6,7 +6,7 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
-import { Paperclip, Send, StopIcon, X } from "@vibeshape/ui/components/icons"
+import { AssistantSteerIcon, Paperclip, Send, StopIcon, X } from "@vibeshape/ui/components/icons"
 import { Textarea } from "@vibeshape/ui/components/textarea"
 import {
   type Dispatch,
@@ -120,6 +120,7 @@ function AssistantQueue({
               isLoading={steeringQueuedId === message.id}
               onClick={() => onSteerQueued?.(message.id)}
             >
+              <AssistantSteerIcon aria-hidden="true" />
               {t("steerQueuedMessage")}
             </Button>
             {onRemoveQueued && (

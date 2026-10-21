@@ -1,7 +1,15 @@
 import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { Eye, EyeOff, MessageSquarePlus, Settings, Undo2, X } from "@vibeshape/ui/components/icons"
+import {
+  AssistantThinkingIcon,
+  Eye,
+  EyeOff,
+  MessageSquarePlus,
+  Settings,
+  Undo2,
+  X,
+} from "@vibeshape/ui/components/icons"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { type ReactNode, useId, useState } from "react"
 import { ReviewActions } from "../automation/automation-review-actions"
@@ -315,6 +323,16 @@ export function AssistantPanel(props: AssistantPanelProps) {
             ) : null
           }
         />
+        {props.busy && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-muted-foreground"
+          >
+            <AssistantThinkingIcon aria-hidden="true" className="size-4 shrink-0" />
+            <span className="application-wordmark-ink">{t("thinking")}</span>
+          </div>
+        )}
         <AssistantComposer
           {...props}
           draft={draft}

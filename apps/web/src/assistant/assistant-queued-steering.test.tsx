@@ -70,6 +70,9 @@ it("locks promotion and its removal while pending, retains queue content on fail
   const view = render(composer(props))
   const action = screen.getAllByRole("button", { name: "Steer now" })[0]
   if (!action) throw new Error("Missing queued steering action.")
+  expect(action.querySelector('[data-icon="assistant-steer"]')?.getAttribute("aria-hidden")).toBe(
+    "true",
+  )
   await userEvent.click(action)
   expect(steer).toHaveBeenCalledWith("first")
   expect(action.getAttribute("aria-busy")).toBe("true")

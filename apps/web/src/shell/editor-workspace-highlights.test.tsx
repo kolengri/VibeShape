@@ -31,6 +31,8 @@ Object.defineProperty(window, "matchMedia", {
 })
 
 const port: GeometryViewportPort = {
+  setEdgeCandidates: vi.fn(),
+  setEdgePreselection: vi.fn(),
   clearSketchProjection: vi.fn(),
   setSurfaceTextureBrush: vi.fn(),
   orientToFrame: vi.fn(() => true),

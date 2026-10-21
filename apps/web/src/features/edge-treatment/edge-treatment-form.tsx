@@ -88,6 +88,7 @@ export type EdgeTreatmentFormMode =
       createFeatureId: () => FeatureId
       featureLabel: string
       targetFeatureId?: FeatureId | null | undefined
+      references?: readonly EdgeTopoRef[] | undefined
     }>
   | Readonly<{
       kind: "edit"
@@ -429,25 +430,27 @@ function SelectedEdgesField({
       <p className="text-sm font-medium" role="status" aria-live="polite" aria-atomic="true">
         {copy.selectedEdgeCount(references.length)}
       </p>
-      <NativeSelectField
-        label={copy.pickEdges}
-        value=""
-        disabled={disabled || candidates.length === 0}
-        onChange={(event) => {
-          const candidate = candidates.find(
-            ({ candidateId }) => candidateId === event.currentTarget.value,
-          )
-          if (candidate)
-            onChange(toggleSelectedEdgeReference(references, candidate.reference, candidates))
-        }}
-      >
-        <option value="">{copy.pickEdges}</option>
-        {candidates.map((candidate) => (
-          <option key={candidate.candidateId} value={candidate.candidateId}>
-            {candidate.label}
-          </option>
-        ))}
-      </NativeSelectField>
+      <div className="sr-only focus-within:not-sr-only">
+        <NativeSelectField
+          label={copy.pickEdges}
+          value=""
+          disabled={disabled || candidates.length === 0}
+          onChange={(event) => {
+            const candidate = candidates.find(
+              ({ candidateId }) => candidateId === event.currentTarget.value,
+            )
+            if (candidate)
+              onChange(toggleSelectedEdgeReference(references, candidate.reference, candidates))
+          }}
+        >
+          <option value="">{copy.pickEdges}</option>
+          {candidates.map((candidate) => (
+            <option key={candidate.candidateId} value={candidate.candidateId}>
+              {candidate.label}
+            </option>
+          ))}
+        </NativeSelectField>
+      </div>
       {references.map((reference, index) => {
         const result = resolver(reference)
         const ownerMatches = reference.featureId === candidates[0]?.reference.featureId
@@ -563,7 +566,8 @@ function edgeTreatmentInitialState(
       targetFeatureId:
         mode.targetFeatureId === undefined ? (options[0]?.id ?? "") : (mode.targetFeatureId ?? ""),
       scope: "selected",
-      references: [],
+      references:
+        mode.references?.filter((reference) => reference.featureId === mode.targetFeatureId) ?? [],
     } satisfies FormValues,
   }
 }

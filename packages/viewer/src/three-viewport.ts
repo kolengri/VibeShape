@@ -40,6 +40,7 @@ import { LineSegments2 } from "three/addons/lines/LineSegments2.js"
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js"
 import { AnalysisOverlayDecoration, type ViewerAnalysisOverlay } from "./analysis-overlays"
 import { createBrowserEdgePreparation } from "./edge-preparation-browser"
+import { EdgePresentation } from "./edge-presentation"
 import { FaceHighlightPresentation } from "./face-highlights"
 import { FeatureHighlightPresentation } from "./feature-highlights"
 import { InfiniteGridDecoration } from "./infinite-grid"
@@ -242,6 +243,16 @@ export type ViewerSketchReferenceCandidate =
   | ViewerModelCurveCandidate
 
 export type ViewerVector3 = readonly [number, number, number]
+
+/** Disposable exact-kernel edge samples; the host resolves durable topology references. */
+export type ViewerEdgeCandidate = Readonly<{
+  featureId: string
+  outputRole?: string | undefined
+  candidateId: string
+  label: string
+  points: readonly ViewerVector3[]
+  selected?: boolean
+}>
 
 export type ViewerAxialGizmo = Readonly<{
   direction: ViewerVector3
@@ -538,6 +549,8 @@ export type GeometryViewport = Readonly<{
   setPrintBed: (bed: ViewerPrintBed | null) => void
   setGroundGrid: (enabled: boolean) => void
   setMeshes: (meshes: readonly ViewerMesh[]) => void
+  setEdgeCandidates: (candidates: readonly ViewerEdgeCandidate[]) => void
+  setEdgePreselection: (candidate: ViewerEdgeCandidate | null) => void
   setSketchReferenceCandidates: (candidates: readonly ViewerSketchReferenceCandidate[]) => void
   setSketchReferencePreselection: (candidate: ViewerSketchReferenceCandidate | null) => void
   setSketchProfilePreselection: (profile: ViewerSketchProfile | null) => void
@@ -660,6 +673,9 @@ export type GeometryViewportOptions = Readonly<{
   onOriginPlanePreselectionChange?: (plane: ViewerOriginPlane | null) => void
   onOriginPlaneSelectionChange?: (plane: ViewerOriginPlane | null) => void
   onSelectionChange?: (selection: ViewerSelection | null) => void
+  onEdgeSelectionChange?: (candidate: ViewerEdgeCandidate | null) => void
+  onEdgePreselectionChange?: (candidate: ViewerEdgeCandidate | null) => void
+  onEdgeCandidateStackChange?: (candidates: readonly ViewerEdgeCandidate[]) => void
   onSelectionCandidateStackChange?: (candidates: readonly ViewerSelection[]) => void
   onSelectionCandidateStackCommit?: (candidates: readonly ViewerSelection[]) => void
   onSketchReferenceCandidateStackChange?: (
@@ -1065,9 +1081,18 @@ export type ViewerSketchProfileHit = Readonly<{
 }>
 
 type IdleSelectionTarget =
+  | Readonly<{ kind: "edge"; candidate: ViewerEdgeCandidate }>
   | Readonly<{ kind: "profile"; profiles: readonly ViewerSketchProfile[] }>
   | Readonly<{ kind: "model"; selection: ViewerSelection }>
   | Readonly<{ kind: "empty" }>
+
+function viewerEdgeCallbacks(options: GeometryViewportOptions) {
+  return {
+    selection: options.onEdgeSelectionChange ?? (() => undefined),
+    preselection: options.onEdgePreselectionChange ?? (() => undefined),
+    stack: options.onEdgeCandidateStackChange ?? (() => undefined),
+  }
+}
 
 export function orderedUniqueViewerSketchProfiles(
   hits: readonly ViewerSketchProfileHit[],
@@ -1124,6 +1149,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #scene = new Scene()
   readonly #camera = new OrthographicCamera(-50, 50, 50, -50, 0.01, 10_000)
   #surfaceTextureBrush: ViewerSurfaceTextureBrush | null = null
+  #surfaceTextureBrushActive = false
   #surfaceTexturePointer: number | null = null
   #surfaceTextureLastPoint: Vector3 | null = null
   #surfaceTextureControlsEnabled = true
@@ -1409,6 +1435,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void
   readonly #onOriginPlaneSelectionChange: (plane: ViewerOriginPlane | null) => void
   readonly #onSelectionChange: (selection: ViewerSelection | null) => void
+  readonly #onEdgeSelectionChange: (candidate: ViewerEdgeCandidate | null) => void
+  readonly #edgePresentation: EdgePresentation
+  #edgeSelection: ViewerEdgeCandidate | null = null
   readonly #onSelectionCandidateStackChange: (candidates: readonly ViewerSelection[]) => void
   readonly #onSelectionCandidateStackCommit: (candidates: readonly ViewerSelection[]) => void
   readonly #onSketchReferenceCandidateStackChange: (
@@ -1507,6 +1536,13 @@ class ThreeGeometryViewport implements GeometryViewport {
       options.onOriginPlanePreselectionChange ?? (() => undefined)
     this.#onOriginPlaneSelectionChange = options.onOriginPlaneSelectionChange ?? (() => undefined)
     this.#onSelectionChange = options.onSelectionChange ?? (() => undefined)
+    const edgeCallbacks = viewerEdgeCallbacks(options)
+    this.#onEdgeSelectionChange = edgeCallbacks.selection
+    this.#edgePresentation = new EdgePresentation({
+      preselection: edgeCallbacks.preselection,
+      stack: edgeCallbacks.stack,
+      changed: () => this.#render(),
+    })
     this.#onSelectionCandidateStackChange = viewerSelectionStackCallback(
       options.onSelectionCandidateStackChange,
     )
@@ -1550,6 +1586,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#scene.add(this.#printDecoration.bed, this.#infiniteGrid.mesh)
     this.#scene.add(this.#analysisDecoration.group)
     this.#scene.add(this.#modelGroup)
+    this.#scene.add(this.#edgePresentation.group)
     this.#scene.add(this.#sketchGroup)
     this.#scene.add(this.#sketchProfileGroup)
     this.#scene.add(this.#sketchProfilePreselectionGroup)
@@ -1594,6 +1631,7 @@ class ThreeGeometryViewport implements GeometryViewport {
         this.#controls.enabled = enabled
       },
       onStart: () => {
+        this.#edgePresentation.clearPicking()
         this.#pointerOrbitPivot = this.#modelOrbitPivot()
         this.#pointerDown = null
         this.#onNavigationStart()
@@ -1719,6 +1757,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#sectionPlanes = sectionClipPlanes(section)
     this.#section = section
     this.#sectionDecoration.setSection(section)
+    this.#edgePresentation.setClipping(this.#sectionPlanes)
+    this.#clearEdgeSelection()
     this.clearSelection()
     this.#applySectionClipping()
     this.#setPreselection(null)
@@ -1745,10 +1785,12 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.clearSelection()
     this.#faceSelectionPresentation.clear()
     this.#setPreselection(null)
+    this.#clearEdgeSelection()
     this.#surfaceMeshes.length = 0
     this.#textureSourceMeshes.clear()
     this.#meshSources.clear()
     const entries = this.#modelPresentation.setMeshes(meshes)
+    this.#edgePresentation.setBodies(entries)
     const sectionBounds = new Box3()
     for (const { source, surface, textureSource } of entries) {
       if (
@@ -1768,6 +1810,42 @@ class ThreeGeometryViewport implements GeometryViewport {
       viewerHighlightMeshes(this.#featurePreselection),
     )
     this.#render()
+  }
+
+  setEdgeCandidates(candidates: readonly ViewerEdgeCandidate[]) {
+    if (this.#disposed) return
+    this.#hoverPicking.cancel()
+    const selection = this.#edgeSelection
+    if (
+      selection &&
+      !candidates.some(
+        (candidate) =>
+          viewerBodyKey(candidate) === viewerBodyKey(selection) &&
+          candidate.candidateId === selection.candidateId,
+      )
+    )
+      this.#clearEdgeSelection()
+    this.#edgePresentation.setCandidates(candidates)
+  }
+
+  setEdgePreselection(candidate: ViewerEdgeCandidate | null) {
+    if (this.#disposed) return
+    this.#edgePresentation.setPreselection(candidate)
+  }
+
+  #updateEdgeMode() {
+    this.#edgePresentation.setEnabled(
+      this.#interactionMode === "select" &&
+        !this.#originPlaneSelectionActive &&
+        !this.#surfaceTextureBrush &&
+        !this.#surfaceTextureBrushActive,
+    )
+  }
+
+  #clearEdgeSelection() {
+    if (!this.#edgeSelection) return
+    this.#edgeSelection = null
+    this.#onEdgeSelectionChange(null)
   }
 
   setFeaturePreselection(mesh: ViewerFeatureHighlight) {
@@ -1960,6 +2038,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#hoverPicking.cancel()
     this.#originPlaneSelection = selectedPlane
     this.#originPlaneSelectionActive = active
+    this.#updateEdgeMode()
     this.#originPlaneIdleSelectionEnabled = idleSelectionEnabled
     if (!active) this.#selectionCandidateStackPreserved = false
     this.#clearSelectionCandidateStack()
@@ -2167,7 +2246,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#pointerOrbitPosition = null
     this.#pointerOrbitPivot = enabled ? this.#modelOrbitPivot() : null
     this.#pointerDown = null
-    if (enabled) this.#onNavigationStart()
+    if (enabled) {
+      this.#edgePresentation.clearPicking()
+      this.#onNavigationStart()
+    }
   }
 
   clearSketchProjection() {
@@ -2180,6 +2262,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#disposed || mode === this.#interactionMode) return
     this.#hoverPicking.cancel()
     this.#interactionMode = mode
+    this.#updateEdgeMode()
+    this.#clearEdgeSelection()
     this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()
     this.#clearSketchProfileCandidateStack()
@@ -2201,6 +2285,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#disposed) return
     this.#onNavigationBlur()
     this.#orientationInteraction.cancel()
+    this.#edgePresentation.clearPicking()
     this.#clearSketchReferencePicking()
     this.#clearSketchProfileCandidateStack()
     const bounds = new Box3()
@@ -2272,6 +2357,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#analysisDecoration.dispose()
     if (this.#disposed) return
     this.#disposed = true
+    this.#edgePresentation.dispose()
     this.#orientationInteraction.dispose()
     this.#renderFrames.cancel()
     this.#textureSourceMeshes.clear()
@@ -2462,7 +2548,24 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #pickIdleSelectionTarget(event: PointerEvent): IdleSelectionTarget {
-    if (!this.#prepareRaycaster(event)) return { kind: "empty" }
+    if (!this.#prepareRaycaster(event)) {
+      this.#edgePresentation.clearPicking()
+      return { kind: "empty" }
+    }
+    const rect = this.#canvas.getBoundingClientRect()
+    const candidate = this.#edgePresentation.pick(
+      this.#camera,
+      new Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      ),
+      rect.width,
+      rect.height,
+    )
+    return candidate ? { kind: "edge", candidate } : this.#pickIdleSurfaceTarget()
+  }
+
+  #pickIdleSurfaceTarget(): IdleSelectionTarget {
     const modelHit = firstViewerSelectionHit(
       this.#raycaster.intersectObjects(this.#surfaceMeshes, false),
       this.#meshSources,
@@ -2713,6 +2816,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #onControlsChange = () => {
     this.#hoverPicking.cancel()
+    this.#edgePresentation.clearPicking()
     const orientation = this.#controlsNavigationOrientation
     if (orientation) {
       if (!orientation.equals(this.#camera.quaternion)) {
@@ -3166,6 +3270,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (textureBrushTargetChanged(this.#surfaceTextureBrush, brush))
       this.#finishSurfaceTextureStroke(true)
     this.#surfaceTextureBrush = brush
+    this.#surfaceTextureBrushActive = active
+    this.#updateEdgeMode()
     for (const group of [
       this.#featureSelectionGroup,
       this.#featurePreselectionGroup,
@@ -3406,6 +3512,12 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #commitIdleSelection(event: PointerEvent) {
     const target = this.#pickIdleSelectionTarget(event)
+    if (target.kind === "edge") {
+      this.#commitEdgeSelection(target.candidate)
+      return
+    }
+    this.#edgeSelection = null
+    this.#onEdgeSelectionChange(null)
     if (target.kind === "profile") {
       this.#setSketchProfileCandidateStack(target.profiles)
       if (target.profiles.length > 1) {
@@ -3445,6 +3557,25 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#onOriginPlaneSelectionChange(this.#pickOriginPlane(event))
   }
 
+  #commitEdgeSelection(candidate: ViewerEdgeCandidate) {
+    this.#clearSelectionCandidateStack()
+    this.#clearSketchProfileCandidateStack()
+    this.#setOriginPlanePreselection(null)
+    this.#setPreselection(null)
+    this.#setSketchProfilePreselection(null)
+    this.#setSelection(null)
+    this.#faceSelectionPresentation.clear()
+    this.#setSketchProfileSelections([])
+    if (this.#originPlaneSelection) {
+      this.#originPlaneSelection = null
+      this.#updateOriginPlanes()
+      this.#onOriginPlaneSelectionChange(null)
+    }
+    this.#edgeSelection = candidate
+    this.#onEdgeSelectionChange(candidate)
+    this.#render()
+  }
+
   #commitSketchPointSelection(event: PointerEvent) {
     this.#updateSketchReferencePicking(event)
     if (this.#sketchPointPreselection) {
@@ -3470,6 +3601,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #onPointerLeave = () => {
     this.#hoverPicking.cancel()
     if (this.#angularGizmoInteracting) return
+    this.#edgePresentation.clearPicking()
     this.#pointerDown = null
     if (this.#interactionMode === "camera-only") return
     if (this.#interactionMode === "sketch-reference-select") return
@@ -3526,6 +3658,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#applySectionClipping()
     this.#updateClippingToScene()
     const width = this.#canvas.clientWidth
+    this.#edgePresentation.resize(width, this.#canvas.clientHeight)
     const height = this.#canvas.clientHeight
     this.#publishSketchPlaneProjection()
     this.#publishAxialGizmoAvailability()

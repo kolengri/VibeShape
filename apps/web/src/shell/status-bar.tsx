@@ -2,12 +2,17 @@ import { useTranslations } from "@vibeshape/i18n"
 import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { viewerBodyKey } from "@vibeshape/viewer/three-viewport"
+import { useMemo } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 import { useDocumentDisplayUnits } from "../document/document-display-units"
 import { type ModelBodySelection, terminalModelBodies } from "../features/part-design/model-bodies"
 import { modelFaceSelectionDisplayOrdinal } from "../features/sketch/external-model-geometry"
-
 import { AutomationStatus } from "./automation-status"
+import {
+  type ModelEdgeSelection,
+  modelEdgeOptions,
+  resolveModelEdgeSelection,
+} from "./model-edge-selection"
 
 const EMPTY_GEOMETRY = [] as const
 
@@ -96,15 +101,27 @@ export function StatusBar({
   selectedOriginPlane,
   selectedBody = null,
   selection,
+  edgeSelection,
 }: {
   controller: DocumentControllerState
   selectedOriginPlane: ViewerOriginPlane | null
   selectedBody?: ModelBodySelection | null
   selection: ViewerSelection | null
+  edgeSelection?: ModelEdgeSelection | null
 }) {
   const t = useTranslations("app.shell.statusBar")
   const displayUnits = useDocumentDisplayUnits()
-  const selectedEntity = useSelectionLabel(controller, selection, selectedOriginPlane, selectedBody)
+  const ordinaryLabel = useSelectionLabel(controller, selection, selectedOriginPlane, selectedBody)
+  const edgeLabel = useMemo(() => {
+    if (!edgeSelection) return null
+    const edges = modelEdgeOptions(controller, [], undefined, (feature, edge, body) =>
+      body === null
+        ? t("selectionEdge", { feature: feature || t("unnamedFeature"), edge })
+        : t("selectionBodyEdge", { feature: feature || t("unnamedFeature"), edge, body }),
+    )
+    return resolveModelEdgeSelection(edges, edgeSelection)?.display.label ?? null
+  }, [controller.report, controller.status, edgeSelection, t])
+  const selectedEntity = edgeLabel ?? ordinaryLabel
 
   return (
     <footer className="flex items-center min-w-0 gap-2 border-t bg-toolbar px-2 text-xs text-muted-foreground">

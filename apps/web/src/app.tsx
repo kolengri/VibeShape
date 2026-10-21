@@ -99,6 +99,7 @@ import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
 import { historyInsertionAnchor, historyInsertionContext } from "./shell/history-insertion-context"
 import { historyFeatureForEditing, historySketchForEditing } from "./shell/history-repair-context"
+import { modelEdgeOptions, resolveModelEdgeSelection } from "./shell/model-edge-selection"
 import { partForModelBody } from "./shell/model-tree-selection"
 import type { ProjectAssistantActivity } from "./shell/project-assistant-status"
 import { ShortcutHelpDialog, useShortcutHelp } from "./shell/shortcut-help-dialog"
@@ -483,12 +484,22 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     (kind: "create-fillet" | "create-chamfer") => {
       const current = sessionStore.getState()
       const context = historyInsertionContext(controller)
-      const selected = selectedEdgeTreatmentSource(currentAuthoredParts(context), current)
+      const selected =
+        current.edgeSelection ?? selectedEdgeTreatmentSource(currentAuthoredParts(context), current)
       const report = context.report
       const targets = report
         ? modifyingSolidTargetFeatures(report.snapshot.features, undefined, report.rebuild)
         : []
-      sessionActions.startPartDesignTool(edgeTreatmentCreateTool(kind, selected, targets))
+      const edges = modelEdgeOptions(
+        context,
+        current.hiddenFeatureIds,
+        current.partVisibilityOverrides,
+        () => "",
+      )
+      const edge = resolveModelEdgeSelection(edges, current.edgeSelection)
+      sessionActions.startPartDesignTool(
+        edgeTreatmentCreateTool(kind, selected, targets, edge?.selection.reference),
+      )
     },
     [controller, sessionActions, sessionStore],
   )
@@ -499,6 +510,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         ...historyInsertionActions,
         acknowledgeExtrusionDistance: sessionActions.acknowledgeExtrusionDistance,
         acknowledgeRevolveAngle: sessionActions.acknowledgeRevolveAngle,
+        selectEdge: sessionActions.setModelEdgeSelection,
         closeTool: sessionActions.closeActiveTool,
         completeTool: () => sessionActions.completeActiveTool(partDesignToolGeneration),
         beginSketchSupportReplacement: sessionActions.beginSketchSupportReplacement,
@@ -682,6 +694,7 @@ type EditorApplicationSession = Pick<
   | "revolveAngleRequest"
   | "selectedOriginPlane"
   | "selection"
+  | "edgeSelection"
   | "sketch"
   | "workspace"
 > & { assistantToolTargets: AssistantToolTargets | null }
@@ -707,6 +720,7 @@ function useEditorApplicationSession() {
       revolveAngleRequest: state.revolveAngleRequest,
       selectedOriginPlane: state.selectedOriginPlane,
       selection: state.selection,
+      edgeSelection: state.edgeSelection,
       sketch: state.sketch,
       workspace: state.workspace,
     })),
@@ -905,6 +919,7 @@ function EditorWorkspaceComposition({
       selectedOriginPlane={session.selectedOriginPlane}
       workspace={session.workspace}
       selection={session.selection}
+      edgeSelection={session.edgeSelection}
       sketchConstruction={session.sketch.construction}
       sketchCameraMode={session.sketch.cameraMode}
       sketchFinalContext={session.sketch.showFinalContext}
@@ -949,14 +964,15 @@ function resolveAuthoredEditorSession(
         storedSession.partVisibilityOverrides,
       ),
     }
-  if (!storedSession.selection) return storedSession
-  return sessionFromBodySelection(storedSession, authoredParts, storedSession.selection)
+  const selection = storedSession.edgeSelection ?? storedSession.selection
+  if (!selection) return storedSession
+  return sessionFromBodySelection(storedSession, authoredParts, selection)
 }
 
 function sessionFromBodySelection(
   storedSession: EditorApplicationSession,
   authoredParts: ReturnType<typeof currentAuthoredParts>,
-  selection: NonNullable<EditorApplicationSession["selection"]>,
+  selection: Pick<NonNullable<EditorApplicationSession["selection"]>, "featureId" | "outputRole">,
 ) {
   const selectedBody = {
     featureId: featureIdSchema.parse(selection.featureId),
@@ -1228,6 +1244,7 @@ function EditorApplication({
       </div>
       <StatusBar
         selectedBody={session.selectedBody}
+        edgeSelection={session.edgeSelection}
         controller={controller}
         selectedOriginPlane={session.selectedOriginPlane}
         selection={session.selection}

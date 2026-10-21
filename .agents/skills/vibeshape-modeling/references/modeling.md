@@ -136,7 +136,13 @@ profiles to come from one sketch.
 
 ## Fillet and Chamfer
 
-Obtain durable resolved selections from `model_edges` or `draft_edges`. `edges` omission means **all edges**; preserve the entire array for a selected treatment. Body topology inspection references are not accepted as treatment selections. Radii/distances are positive mm fields; optional expressions are authoritative. Preserve an existing expression unless the request changes it.
+Obtain durable resolved selections from `model_edges` or `draft_edges`. A unique identical full edge signature resolves before approximate matching, including nearby circular rims; coincident identical candidates remain ambiguous and require explicit repair. `edges` omission means **all edges**; preserve the entire array for a selected treatment. Body topology inspection references are not accepted as treatment selections. Radii/distances are positive mm fields; optional expressions are authoritative. Preserve an existing expression unless the request changes it.
+
+In the visible editor, a current model edge can be selected directly in the idle 3D viewport,
+including through its keyboard edge selector. Starting Fillet or Chamfer with an eligible selected
+edge seeds that exact reference; a body or face selection seeds only the source body. Hidden,
+occluded, clipped, or preview-only edges do not intercept pointer picking. This is UI preselection,
+not an MCP session selection API: named MCP treatment tools still require explicit durable `edges`.
 
 If exact preview fails, inspect diagnostics and the complete treatment record. Correct the requested radius/distance or repair a missing selection through supported inspection; do not silently broaden to all edges. Sequential treatments usually target the prior treatment result, rather than an already consumed upstream solid.
 

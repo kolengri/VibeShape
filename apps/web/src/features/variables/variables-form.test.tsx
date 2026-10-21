@@ -17,6 +17,7 @@ class ResizeObserverMock {
 
 const variableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2601")
 const secondVariableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
+const thirdVariableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2603")
 const copy = {
   caption: "Document variables",
   name: "Name",
@@ -25,6 +26,10 @@ const copy = {
   status: "Status",
   actions: "Actions",
   empty: "No variables yet.",
+  noMatches: "No variables match your search.",
+  search: "Search variables",
+  searchPlaceholder: "Name or expression",
+  clearSearch: "Clear search",
   add: "Add variable",
   remove: "Remove",
   rename: "Rename",
@@ -84,6 +89,156 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("VariablesForm", () => {
+  it("searches names and expressions without mutating, and clears an unmatched search", async () => {
+    const user = userEvent.setup()
+    const { onApply, onRename } = renderForm({
+      variables: [
+        { schemaVersion: 0, id: variableId, name: "width", expression: "20 mm" },
+        { schemaVersion: 0, id: secondVariableId, name: "height", expression: "#width * 2" },
+      ],
+    })
+    const search = screen.getByRole("searchbox", { name: copy.search }) as HTMLInputElement
+    await user.type(search, "#HEIGHT{Enter}")
+    expect(screen.getAllByRole("textbox", { name: copy.nameInput })).toHaveLength(1)
+    expect((screen.getByRole("textbox", { name: copy.nameInput }) as HTMLInputElement).value).toBe(
+      "height",
+    )
+    await user.clear(search)
+    await user.type(search, "MM")
+    expect((screen.getByRole("textbox", { name: copy.nameInput }) as HTMLInputElement).value).toBe(
+      "width",
+    )
+    await user.clear(search)
+    await user.type(search, "#WIDTH")
+    expect(screen.getAllByRole("textbox", { name: copy.nameInput })).toHaveLength(2)
+    await user.clear(search)
+    await user.type(search, "unmatched")
+    expect(screen.queryAllByRole("textbox", { name: copy.nameInput })).toHaveLength(0)
+    expect(screen.getByText(copy.noMatches)).toBeTruthy()
+    expect(screen.queryByText(copy.empty)).toBeNull()
+    await user.click(screen.getByRole("button", { name: copy.clearSearch }))
+    expect(search.value).toBe("")
+    expect(document.activeElement === search).toBe(true)
+    expect(screen.getAllByRole("textbox", { name: copy.nameInput })).toHaveLength(2)
+    expect(onApply).not.toHaveBeenCalled()
+    expect(onRename).not.toHaveBeenCalled()
+  })
+
+  it("applies filtered edits at their original indices and preserves hidden authored and draft rows", async () => {
+    const user = userEvent.setup()
+    const { onApply } = renderForm({
+      variables: [
+        { schemaVersion: 0, id: secondVariableId, name: "width", expression: "20 mm" },
+        { schemaVersion: 0, id: thirdVariableId, name: "height", expression: "#width * 2" },
+      ],
+    })
+    await user.click(screen.getByRole("button", { name: copy.add }))
+    const draftName = screen.getAllByRole("textbox", {
+      name: copy.nameInput,
+    })[2] as HTMLInputElement
+    await user.type(draftName, "clearance")
+    await user.type(
+      screen.getAllByRole("combobox", { name: copy.expressionInput })[2] as HTMLElement,
+      "3 mm",
+    )
+    await user.type(screen.getByRole("searchbox", { name: copy.search }), "#HEIGHT")
+    const expression = screen.getByRole("combobox", {
+      name: copy.expressionInput,
+    }) as HTMLInputElement
+    expect(expression.name).toBe("variables[1].expression")
+    await user.clear(expression)
+    await user.type(expression, "#width * 3")
+    expect(screen.getByText("60 mm", { selector: "td" })).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: copy.apply }))
+    expect(onApply).toHaveBeenCalledWith(1, [
+      { schemaVersion: 0, id: secondVariableId, name: "width", expression: "20 mm" },
+      { schemaVersion: 0, id: thirdVariableId, name: "height", expression: "#width * 3" },
+      { schemaVersion: 0, id: variableId, name: "clearance", expression: "3 mm" },
+    ])
+    await user.click(screen.getByRole("button", { name: copy.clearSearch }))
+    expect(draftName.value).toBe("clearance")
+    expect(
+      screen
+        .getAllByRole("combobox", { name: copy.expressionInput })
+        .map((input) => (input as HTMLInputElement).value),
+    ).toEqual(["20 mm", "#width * 3", "3 mm"])
+  })
+
+  it("clears a filter before adding and focusing a new draft row", async () => {
+    const user = userEvent.setup()
+    const { onApply } = renderForm({
+      variables: [{ schemaVersion: 0, id: secondVariableId, name: "width", expression: "20 mm" }],
+    })
+    const search = screen.getByRole("searchbox", { name: copy.search }) as HTMLInputElement
+    await user.type(search, "unmatched")
+    await user.click(screen.getByRole("button", { name: copy.add }))
+    expect(search.value).toBe("")
+    const names = screen.getAllByRole("textbox", { name: copy.nameInput })
+    expect(names).toHaveLength(2)
+    expect(document.activeElement === names[1]).toBe(true)
+    expect(onApply).not.toHaveBeenCalled()
+  })
+
+  it("keeps renamed and draft names visible as edits stop matching the original search", async () => {
+    const user = userEvent.setup()
+    const { onRename } = renderForm({
+      variables: [{ schemaVersion: 0, id: secondVariableId, name: "width", expression: "20 mm" }],
+    })
+    const search = screen.getByRole("searchbox", { name: copy.search }) as HTMLInputElement
+    await user.type(search, "#width")
+    await user.click(screen.getByRole("button", { name: copy.rename }))
+    const renamed = screen.getByRole("textbox", { name: copy.nameInput }) as HTMLInputElement
+    expect(search.value).toBe("")
+    expect(document.activeElement === renamed).toBe(true)
+    await user.clear(renamed)
+    await user.type(renamed, "span")
+    expect(screen.getByRole("textbox", { name: copy.nameInput }) === renamed).toBe(true)
+    await user.click(screen.getByRole("button", { name: copy.confirmRename }))
+    expect(onRename).toHaveBeenCalledWith(1, secondVariableId, "span")
+
+    await user.click(screen.getByRole("button", { name: copy.add }))
+    const draft = screen.getAllByRole("textbox", { name: copy.nameInput })[1] as HTMLInputElement
+    await user.type(draft, "clearance")
+    await user.type(search, "#clearance")
+    await user.click(screen.getByRole("textbox", { name: copy.nameInput }))
+    expect(search.value).toBe("")
+    await user.clear(draft)
+    await user.type(draft, "gap")
+    expect(document.activeElement === draft).toBe(true)
+    expect(screen.getAllByRole("textbox", { name: copy.nameInput })).toHaveLength(2)
+    expect(draft.value).toBe("gap")
+  })
+
+  it("reveals and focuses a hidden invalid expression when Apply fails validation", async () => {
+    const user = userEvent.setup()
+    const { onApply } = renderForm({
+      variables: [
+        { schemaVersion: 0, id: variableId, name: "width", expression: "20 mm" },
+        { schemaVersion: 0, id: secondVariableId, name: "height", expression: "40 mm" },
+      ],
+    })
+    const expression = screen.getAllByRole("combobox", {
+      name: copy.expressionInput,
+    })[1] as HTMLInputElement
+    await user.clear(expression)
+    const search = screen.getByRole("searchbox", { name: copy.search }) as HTMLInputElement
+    await user.type(search, "width")
+    expect(screen.getAllByRole("combobox", { name: copy.expressionInput })).toHaveLength(1)
+    await user.click(screen.getByRole("button", { name: copy.apply }))
+    await waitFor(() => expect(document.activeElement === expression).toBe(true))
+    expect(search.value).toBe("")
+    expect(screen.getAllByRole("combobox", { name: copy.expressionInput })).toHaveLength(2)
+    expect(expression.getAttribute("aria-invalid")).toBe("true")
+    expect(screen.getByText(copy.validationSummary).getAttribute("role")).toBe("alert")
+    expect(onApply).not.toHaveBeenCalled()
+  })
+
+  it("shows the initial empty table separately from unmatched variables", () => {
+    renderForm()
+    expect(screen.getByText(copy.empty)).toBeTruthy()
+    expect(screen.queryByText(copy.noMatches)).toBeNull()
+  })
+
   it("keeps row actions compact and exposes protected removal reasons on keyboard focus", async () => {
     renderForm({
       variables: [

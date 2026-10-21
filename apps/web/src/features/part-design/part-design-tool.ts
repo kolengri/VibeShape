@@ -9,6 +9,7 @@ import {
   cylinderFeatureType,
   datumPlaneFeatureType,
   datumPlaneFeatureTypeV1,
+  type EdgeTopoRef,
   type FeatureId,
   type FeatureRecord,
   featureBodyDependencyIds,
@@ -95,9 +96,17 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-revolve"; featureId: FeatureId }>
   | Readonly<{ kind: "create-hole" }>
   | Readonly<{ kind: "edit-hole"; featureId: FeatureId }>
-  | Readonly<{ kind: "create-fillet"; targetFeatureId?: FeatureId | null }>
+  | Readonly<{
+      kind: "create-fillet"
+      targetFeatureId?: FeatureId | null
+      references?: EdgeTopoRef[]
+    }>
   | Readonly<{ kind: "edit-fillet"; featureId: FeatureId }>
-  | Readonly<{ kind: "create-chamfer"; targetFeatureId?: FeatureId | null }>
+  | Readonly<{
+      kind: "create-chamfer"
+      targetFeatureId?: FeatureId | null
+      references?: EdgeTopoRef[]
+    }>
   | Readonly<{ kind: "edit-chamfer"; featureId: FeatureId }>
   | Readonly<{ kind: "create-subtract" }>
   | Readonly<{ kind: "edit-subtract"; featureId: FeatureId }>

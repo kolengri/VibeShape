@@ -645,6 +645,21 @@
     "legacy": ["Star"]
   },
   {
+    "id": "modify",
+    "label": "Modify",
+    "legacy": []
+  },
+  {
+    "id": "assistant-thinking",
+    "label": "Thinking",
+    "legacy": []
+  },
+  {
+    "id": "assistant-steer",
+    "label": "Steer",
+    "legacy": []
+  },
+  {
     "id": "assistant",
     "label": "New assistant conversation",
     "legacy": ["MessageSquarePlus"]

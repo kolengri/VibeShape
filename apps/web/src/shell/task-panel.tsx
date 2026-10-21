@@ -1833,6 +1833,7 @@ function edgeTreatmentFormMode(
       createFeatureId: createBrowserFeatureId,
       featureLabel,
       ...("targetFeatureId" in activeTool ? { targetFeatureId: activeTool.targetFeatureId } : {}),
+      ...("references" in activeTool ? { references: activeTool.references } : {}),
     }
   }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)

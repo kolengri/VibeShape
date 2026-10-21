@@ -55,6 +55,13 @@ retargeting it.
 
 ## Assistant transcript
 
+The AI chat reserves workspace width beside the active task panel and ends above the full-width
+History timeline, including when History is collapsed. Opening or closing chat preserves the active
+form and mounted viewport. Desktop floating task headers are transparent; compact sheet headers
+retain their readable surface. While a turn is active, Thinking and its dedicated icon appear just
+above the composer. The text shares the wordmark shimmer and respects reduced motion. Steer keeps
+its existing action and accessible name with its own source-owned icon.
+
 Consecutive tool calls with the same title and status share one compact row with a count on the
 right. A different action, status, or conversational message starts a new row, preserving order
 and keeping failures visible. Groups with reported output stay collapsed by default; opening one
@@ -406,14 +413,32 @@ The target-body fields in Extrude, Revolve, Hole, Fillet and Chamfer, both Boole
 
 Only one field owns selection at a time. Committed eligible geometry is shown during selection; a dedicated face-only interaction mode filters hover and clicks without letting saved profiles or origin planes intercept the field's selection. Ordinary preview presentation, profile/axis selection and manipulators resume afterward without discarding form values. Hidden Parts and hidden source features stay unselectable, including historical edit inputs. Stale, failed, ambiguous or non-solid evidence is refused. Existing feature parsers and revision-checked commands remain authoritative. Arming a field focuses its control, including in browsers that do not focus buttons on pointer activation. Nested controls handle Escape first; the next Escape cancels reference selection and returns focus to its field, and a later Escape follows ordinary task cancellation. Closing the field/task, saving, changing document revision or rebuild evidence, or changing visibility invalidates its pending request.
 
+## Variable table search
+
+The variable table offers case-insensitive search by name or expression, including names prefixed
+with `#`. Search changes only visible rows: evaluation, dependency checks and Apply retain the
+complete draft table and every unsaved edit. Clear restores the complete table; adding a variable
+reveals and focuses its row. Validation reveals invalid rows even when the current search would
+hide them. Enter in the search field does not apply the table.
+
 ## Selected-edge treatments
 
+Model toolbar categories use icon-only triggers with accessible names and tooltips: Create, Modify,
+Primitives, and Inspect. Their menus retain text labels. A singleton group invokes its command
+directly; compact Modeling actions retains the shared overflow menu.
+
+In the idle 3D workspace, hovering near a visible exact model edge highlights and names that edge;
+clicking it selects stable edge intent independently of face selection. Edges behind another surface,
+outside the section, or on hidden/preview geometry do not intercept ordinary face or profile picking.
+Keyboard edge selectors appear on keyboard focus; the overlapping-edge chooser provides explicit disambiguation.
+
 New Fillet and Chamfer tasks start in Selected edges scope with viewport picking active and a visible
-zero-selection count. A selected eligible body or face seeds its source body; an ineligible selected
-source never falls back to an unrelated body. A face does not imply a particular boundary edge.
+selection count. An ordinarily selected eligible edge seeds both its source and the selected edge;
+a selected eligible body or face seeds only its source body and starts with zero edges. An ineligible
+selected source never falls back to an unrelated body. A face does not imply a particular boundary edge.
 All edges remains an explicit option, and editing preserves the feature's authored scope.
-Selected edges are picked in the viewport or either accessible edge chooser and highlighted during
-exact preview. The live count, persistent hint, and individually named Remove controls keep multiple
+Selected edges are picked directly with the pointer in the viewport and highlighted during
+exact preview. Accessible edge choosers appear on keyboard focus instead of occupying the pointer workflow. The live count, persistent hint, and individually named Remove controls keep multiple
 selections visible and keyboard-removable. Clicking a selected
 edge again removes it. The task preserves missing or ambiguous references as explicit repair rows;
 remove the broken row and choose a replacement before Apply. Changing the target does not transfer
@@ -423,6 +448,12 @@ features retain version 1 semantics. See [ADR-0040](../adr/0040-selected-edge-tr
 
 
 ## Parts, folders, placement, and export
+
+Export remembers the last file format and mesh quality in local application preferences across
+dialog reopen and browser sessions. Original-model, assembly and print-preparation mesh controls
+share the quality preference. A native slicer destination is restored only when native support is
+available, without initiating an export or handoff. Part/instance scope and model-specific print
+transforms remain transient so preferences never select stale geometry in another project.
 
 The Parts group is separate from History and contains selection, Rename, and visibility controls. Selecting a visible, available current exact Part in the tree or selecting its body/face in the viewport reveals Place / align faces, Mirror, Shell, Split, Pattern, and Thread icons in the main Model toolbar. Tooltips and accessible names identify each command. Compound and Union icons appear with that selection when at least two eligible exact body outputs exist, including independent sibling outputs. Mesh, hidden, consumed, ambiguous, or historical selections do not expose these Part commands. Active feature and sketch tasks hide the contextual group; the shared command registry guards read-only and pending-save invocation and supplies the same actions to the command palette.
 

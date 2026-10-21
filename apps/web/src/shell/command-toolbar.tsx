@@ -8,11 +8,28 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@vibeshape/ui/components/dropdown-menu"
-import { Check, ChevronDown, Ellipsis } from "@vibeshape/ui/components/icons"
+import {
+  AddIcon,
+  Check,
+  ChevronDown,
+  Ellipsis,
+  MeasureIcon,
+  ModelIcon,
+  ModifyIcon,
+} from "@vibeshape/ui/components/icons"
 import { Toolbar, ToolbarButton, ToolbarSeparator } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import {
+  type ComponentType,
+  type RefObject,
+  type SVGProps,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import {
   type EditorCommandId,
   type EditorCommandSketchFamilyId,
@@ -330,7 +347,7 @@ type ToolbarCommandMenuProps = {
   getDisabledReason: (command: ResolvedEditorCommand) => string | null
   getLabel: (command: ResolvedEditorCommand) => string
   label: string
-  showLabel?: boolean
+  icon?: ComponentType<SVGProps<SVGSVGElement>>
   focusId?: string
   onOpenChange?: (open: boolean) => void
 }
@@ -361,46 +378,34 @@ function ToolbarCommandDropdown({
   getDisabledReason,
   getLabel,
   label,
-  showLabel = false,
+  icon: Icon = Ellipsis,
   focusId,
   onOpenChange,
 }: ToolbarCommandMenuProps & { triggerRef: RefObject<HTMLButtonElement | null> }) {
   const menuId = useId()
   const hasActiveCommand = commands.some(({ active }) => active)
-  const trigger = (
-    <ToolbarButton asChild>
-      <DropdownMenuTrigger asChild>
-        <Button
-          ref={triggerRef}
-          type="button"
-          size={showLabel ? "sm" : "icon-sm"}
-          variant={hasActiveCommand ? "secondary" : "ghost"}
-          aria-label={label}
-          aria-current={hasActiveCommand ? "true" : undefined}
-          data-toolbar-menu={focusId}
-        >
-          {showLabel ? (
-            <>
-              {label}
-              <ChevronDown aria-hidden="true" />
-            </>
-          ) : (
-            <Ellipsis aria-hidden="true" />
-          )}
-        </Button>
-      </DropdownMenuTrigger>
-    </ToolbarButton>
-  )
   return (
     <DropdownMenu {...(onOpenChange ? { onOpenChange } : {})}>
-      {showLabel ? (
-        trigger
-      ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-          <TooltipContent>{label}</TooltipContent>
-        </Tooltip>
-      )}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ToolbarButton asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                ref={triggerRef}
+                type="button"
+                size="icon-sm"
+                variant={hasActiveCommand ? "secondary" : "ghost"}
+                aria-label={label}
+                aria-current={hasActiveCommand ? "true" : undefined}
+                data-toolbar-menu={focusId}
+              >
+                <Icon aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+          </ToolbarButton>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent
         align="start"
         className="max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
@@ -449,6 +454,7 @@ function ToolbarCommandDropdown({
 type ModelToolbarGroup = Readonly<{
   id: string
   label: string
+  icon: ComponentType<SVGProps<SVGSVGElement>>
   commands: readonly ResolvedEditorCommand[]
 }>
 const modelQuickCommands = [
@@ -505,20 +511,8 @@ function ModelToolbarProbe({
         <span
           key={group.id}
           data-fit-menu={group.id}
-          className={cn(
-            buttonVariants({
-              size: group.commands.length === 1 ? "icon-sm" : "sm",
-              variant: "ghost",
-            }),
-          )}
-        >
-          {group.commands.length > 1 && (
-            <>
-              {group.label}
-              <ChevronDown aria-hidden="true" />
-            </>
-          )}
-        </span>
+          className={cn(buttonVariants({ size: "icon-sm", variant: "ghost" }))}
+        />
       ))}
     </div>
   )
@@ -602,7 +596,7 @@ function ModelToolbar({
                   ))}
                 <ToolbarCommandMenu
                   {...shared}
-                  showLabel
+                  icon={group.icon}
                   focusId={group.id}
                   label={group.label}
                   commands={group.commands.filter((command) => !inline.has(command.descriptor.id))}
@@ -794,10 +788,30 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               getDisabledReason={getDisabledReason}
               getLabel={getLabel}
               groups={[
-                { id: "create", label: t("modelCreateLabel"), commands: modelCreateCommands },
-                { id: "modify", label: t("modelModifyLabel"), commands: modelModifyCommands },
-                { id: "primitives", label: t("primitives"), commands: modelPrimitiveCommands },
-                { id: "inspect", label: t("modelInspectLabel"), commands: modelInspectionCommands },
+                {
+                  id: "create",
+                  label: t("modelCreateLabel"),
+                  icon: AddIcon,
+                  commands: modelCreateCommands,
+                },
+                {
+                  id: "modify",
+                  label: t("modelModifyLabel"),
+                  icon: ModifyIcon,
+                  commands: modelModifyCommands,
+                },
+                {
+                  id: "primitives",
+                  label: t("primitives"),
+                  icon: ModelIcon,
+                  commands: modelPrimitiveCommands,
+                },
+                {
+                  id: "inspect",
+                  label: t("modelInspectLabel"),
+                  icon: MeasureIcon,
+                  commands: modelInspectionCommands,
+                },
               ]}
             />
           )}

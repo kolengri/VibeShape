@@ -14,6 +14,7 @@ const copy: VariablesTableCopy = {
   status: "Status",
   actions: "Actions",
   empty: "No variables yet.",
+  noMatches: "No variables match your search.",
   add: "Add variable",
 }
 

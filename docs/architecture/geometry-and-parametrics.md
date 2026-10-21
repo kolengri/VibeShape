@@ -197,10 +197,11 @@ A face signature MAY include surface type, normalized analytical parameters, are
 1. Filter candidates by topology kind.
 2. Resolve an exact semantic role. A missing or duplicated authoritative role returns `missing` or `ambiguous`; it never falls through to a similar shape.
 3. Resolve an exact immediate lineage token. A missing token returns `missing`; multiple descendants are ranked only within that lineage set.
-4. When the reference has no authoritative role or lineage, filter by geometry class and score measure, centroid or intent point, direction, bounds, boundary count, and adjacency.
-5. If one candidate passes the versioned score threshold and confidence margin, return `resolved`.
-6. If candidates are close, return `ambiguous`; never evaluate downstream features silently.
-7. If no compatible candidate exists or the best score exceeds the threshold, return `missing` and identify the first broken feature.
+4. Before approximate edge ranking, an edge without an explicit intent hint resolves one identical full geometric/adjacency signature within the eligible candidate set. Duplicate identical signatures remain ambiguous. This does not override authoritative semantic roles or missing lineage. See [ADR-0118](../adr/0118-exact-edge-signature-resolution.md).
+5. Otherwise filter by geometry class and score measure, centroid or intent point, direction, bounds, boundary count, and adjacency.
+6. If one candidate passes the versioned score threshold and confidence margin, return `resolved`.
+7. If candidates are close, return `ambiguous`; never evaluate downstream features silently.
+8. If no compatible candidate exists or the best score exceeds the threshold, return `missing` and identify the first broken feature.
 
 Thresholds and weights are versioned. A user repair stores a new intent hint and event without rewriting old history.
 

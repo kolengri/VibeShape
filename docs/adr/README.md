@@ -139,3 +139,5 @@ Statuses:
 When a decision changes, do not rewrite its ADR retroactively. Create a new record and add a `Superseded by` link to the old record.
 
 - [ADR-0082: Paged feature measurements and serialized local acknowledgements](0082-owned-draft-body-inspection-and-diagnostics.md)
+
+| [0118](0118-exact-edge-signature-resolution.md) | Accepted | Unique identical edge signatures resolve before approximate ranking |

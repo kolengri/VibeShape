@@ -23,7 +23,7 @@ export function ProjectAssistantStatus({
     idle,
   )
   return (
-    <span className="grid shrink-0 items-center whitespace-nowrap text-xs text-muted-foreground">
+    <span className="project-assistant-status grid shrink-0 items-center whitespace-nowrap text-xs text-muted-foreground">
       {/* Reserve the localized label's width even while the project is idle. */}
       <span
         aria-hidden="true"

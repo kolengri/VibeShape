@@ -163,10 +163,12 @@ import {
   viewerSketchDisplay,
 } from "./geometry-viewport"
 import { historyInsertionContext } from "./history-insertion-context"
+import type { ModelEdgeSelection } from "./model-edge-selection"
 import { ModelTree } from "./model-tree"
 import type { ModelTreeSelection } from "./model-tree-selection"
 import { ReferencePickProvider, useReferencePicking } from "./reference-pick-context"
 import { TaskPanel } from "./task-panel"
+import { useModelEdgePicking } from "./use-model-edge-picking"
 import { useViewerPreferences } from "./viewer-preferences"
 import { SAFE_VIEWPORT_CENTER } from "./viewport-chrome-styles"
 import type { EditorWorkspaceName } from "./workspace"
@@ -585,6 +587,7 @@ type WorkspaceContentProps = Readonly<{
     selectedOriginPlane: ViewerOriginPlane | null
     selectedFeatureId: FeatureId | null
     selection: ViewerSelection | null
+    edgeSelection?: ReturnType<typeof useModelEdgePicking>
     revolveAxisCandidates: readonly RevolveAxisCandidate[]
     revolveAxisSelectionActive: boolean
     savedProfilePickerActive: boolean
@@ -827,6 +830,7 @@ function ModelingWorkspaceContent({
       {...workspaceBodySelectionProps(model, actions)}
       selectedFeatureId={model.selectedFeatureId}
       selection={model.selection}
+      edgeSelection={model.edgeSelection}
       onSelectionChange={actions.onSelectionChange}
       {...modelingSketchContextProps(actions, sketch, activeSketchDisplay, sketchContext)}
     />
@@ -1882,6 +1886,7 @@ export type EditorWorkspaceActions = Readonly<{
   mirrorPart?: (partId: PartId) => void
   preselectSketch?: (sketchId: SketchId | null) => void
   preselectFeature: (featureId: FeatureId | null) => void
+  selectEdge?: (selection: ModelEdgeSelection | null) => void
   select: (selection: ViewerSelection | null) => void
   selectSavedSketchProfile: (
     profile: SketchProfileSelector,
@@ -1943,6 +1948,7 @@ type EditorWorkspaceProps = Readonly<{
   revolveAngleRequest: RevolveAngleRequest | null
   selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
+  edgeSelection?: ModelEdgeSelection | null
   sketchConstruction: boolean
   sketchCameraMode: SketchCameraMode
   sketchFinalContext: boolean
@@ -2399,6 +2405,26 @@ function workspaceBodyHighlights(
   }
 }
 
+function idleModelWorkspace(props: EditorWorkspaceProps) {
+  return props.activeTool === null && props.activeSketchTool === null && props.workspace === "model"
+}
+
+function workspaceViewportSelection(props: EditorWorkspaceProps) {
+  return {
+    preselectedFeatureId: props.preselectedFeatureId,
+    preselectedSketchId: props.preselectedSketchId,
+    preselectedSketchIds: workspaceToolTargets(props)?.sketchIds,
+    preselectedBody: props.preselectedBody ?? null,
+    selectedBody: props.selectedBody ?? null,
+    selectedSketchIds: props.modelTreeSelection
+      ?.filter((item) => item.kind === "sketch")
+      .map((item) => item.id),
+    selectedOriginPlane: props.selectedOriginPlane,
+    selectedFeatureId: activeFeatureId(props.activeTool),
+    selection: props.selection,
+  }
+}
+
 function EditorContent({
   historyProfilePreview,
   featureSelectionContext,
@@ -2433,7 +2459,15 @@ function EditorContent({
   onRevolveAxisChange: (axis: RevolveAxis) => void
   props: EditorWorkspaceProps
 }) {
-  const { actions, activeSketchId, activeSketchTool, controller, selection, workspace } = props
+  const { actions, activeSketchId, activeSketchTool, controller, workspace } = props
+  const edgeSelection = useModelEdgePicking(
+    controller,
+    idleModelWorkspace(props),
+    props.hiddenFeatureIds,
+    props.partVisibility?.overrides,
+    props.edgeSelection,
+    actions.selectEdge,
+  )
   const extrusion = useExtrusionManipulator(
     props.activeTool,
     manipulatorFeature,
@@ -2507,19 +2541,10 @@ function EditorContent({
         ineligibleProfileSketchIds: featureProfileHiddenSketchIds,
         idleOriginPlaneSelectionAvailable: props.activeTool === null,
         originPlaneVisibility: props.originPlaneVisibility,
-        preselectedFeatureId: props.preselectedFeatureId,
-        preselectedSketchId: props.preselectedSketchId,
-        preselectedSketchIds: workspaceToolTargets(props)?.sketchIds,
-        preselectedBody: props.preselectedBody ?? null,
-        selectedBody: props.selectedBody ?? null,
+        ...workspaceViewportSelection(props),
         selectedBodies,
-        selectedSketchIds: props.modelTreeSelection
-          ?.filter((item) => item.kind === "sketch")
-          .map((item) => item.id),
         preselectedBodies,
-        selectedOriginPlane: props.selectedOriginPlane,
-        selectedFeatureId: activeFeatureId(props.activeTool),
-        selection,
+        edgeSelection,
         revolveAxisCandidates,
         revolveAxisSelectionActive: sketchSelection.revolveAxisSelectionActive,
         savedProfilePickerActive: sketchSelection.savedProfilePickerActive,
@@ -2707,8 +2732,7 @@ function useModelFeaturePicking(props: EditorWorkspaceProps) {
 function useHistorySourcePreview(props: EditorWorkspaceProps) {
   const snapshot = props.controller.report?.snapshot
   const [profile, setProfile] = useState<SketchProfileSelector | null>(null)
-  const enabled =
-    props.activeTool === null && props.activeSketchTool === null && props.workspace === "model"
+  const enabled = idleModelWorkspace(props)
   useEffect(() => {
     setProfile(null)
   }, [props.activeTool, props.activeSketchTool, props.workspace, snapshot?.id, snapshot?.revision])

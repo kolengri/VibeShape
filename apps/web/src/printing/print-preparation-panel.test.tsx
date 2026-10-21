@@ -52,10 +52,14 @@ const { documentExportFailure } = await import("@vibeshape/application/persisten
 const { default: userEvent } = await import("@testing-library/user-event")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { i18n } = await import("../i18n")
-const { ViewerPreferencesProvider } = await import("../shell/viewer-preferences")
+const { ViewerPreferencesProvider, useViewerPreferences } = await import(
+  "../shell/viewer-preferences"
+)
+const { createTestBrowserStorage } = await import("../test-support/browser-storage")
 const { PrintPreparationPanel } = await import("./print-preparation-panel")
 const { ApplicationNoticesProvider } = await import("../shell/application-notices")
 beforeEach(() => {
+  vi.stubGlobal("localStorage", createTestBrowserStorage())
   HTMLElement.prototype.scrollIntoView = vi.fn()
   HTMLElement.prototype.hasPointerCapture = () => false
   HTMLElement.prototype.setPointerCapture = vi.fn()
@@ -80,11 +84,25 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function panel(onBusyChange = vi.fn(), applicationNotices = false) {
+function SharedQualityControl() {
+  const quality = useViewerPreferences((state) => state.exportMeshQuality)
+  const setQuality = useViewerPreferences((state) => state.actions.setExportMeshQuality)
+  return (
+    <>
+      <output aria-label="Shared export quality">{quality}</output>
+      <button type="button" onClick={() => setQuality("coarse")}>
+        Use coarse export quality
+      </button>
+    </>
+  )
+}
+
+function panel(onBusyChange = vi.fn(), applicationNotices = false, sharedQuality = false) {
   const content = <PrintPreparationPanel disabled={false} onBusyChange={onBusyChange} />
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <ViewerPreferencesProvider>
+        {sharedQuality ? <SharedQualityControl /> : null}
         {applicationNotices ? (
           <ApplicationNoticesProvider>{content}</ApplicationNoticesProvider>
         ) : (
@@ -107,6 +125,65 @@ const result = {
 }
 
 describe("print preparation interaction", () => {
+  it("shares and restores quality on reopen while keeping orientation and generated output transient", async () => {
+    exportDocument.mockResolvedValue(result)
+    const user = userEvent.setup()
+    const view = panel(undefined, false, true)
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Mesh quality" }), { key: "Enter" })
+    await user.click(screen.getByRole("option", { name: "Fine" }))
+    expect(screen.getByLabelText("Shared export quality").textContent).toBe("fine")
+    fireEvent.change(screen.getByLabelText("Tilt around X (degrees)"), { target: { value: "17" } })
+    await user.click(screen.getByRole("button", { name: "Generate print preview" }))
+    await screen.findByRole("button", { name: "Download prepared 3MF" })
+    view.unmount()
+    panel(undefined, false, true)
+    expect(screen.getByRole("combobox", { name: "Mesh quality" }).textContent).toContain("Fine")
+    expect((screen.getByLabelText("Tilt around X (degrees)") as HTMLInputElement).value).toBe("45")
+    expect(exportDocument).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("button", { name: "Download prepared 3MF" })).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Generate print preview" }))
+    await screen.findByRole("button", { name: "Download prepared 3MF" })
+    expect(exportDocument).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rotationX: 45 }),
+      expect.any(AbortSignal),
+      { chordTolerance: 0.01, angularTolerance: 0.05 },
+    )
+    await user.click(screen.getByRole("button", { name: "Use coarse export quality" }))
+    expect(screen.getByRole("combobox", { name: "Mesh quality" }).textContent).toContain("Coarse")
+    expect(screen.queryByRole("button", { name: "Download prepared 3MF" })).toBeNull()
+    expect(download).not.toHaveBeenCalled()
+    expect(handoff).not.toHaveBeenCalled()
+  })
+
+  it("aborts preparation and discards late output when shared export quality changes", async () => {
+    let finish: ((value: typeof result) => void) | undefined
+    exportDocument.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    const user = userEvent.setup()
+    const busy = vi.fn()
+    panel(busy, false, true)
+    await user.click(screen.getByRole("button", { name: "Generate print preview" }))
+    await user.click(screen.getByRole("button", { name: "Use coarse export quality" }))
+    expect(exportDocument.mock.calls[0]?.[1].aborted).toBe(true)
+    await act(async () => {
+      finish?.(result)
+    })
+    expect(screen.queryByRole("button", { name: "Download prepared 3MF" })).toBeNull()
+    expect(busy).toHaveBeenLastCalledWith(false)
+    expect(download).not.toHaveBeenCalled()
+    exportDocument.mockResolvedValueOnce(result)
+    await user.click(screen.getByRole("button", { name: "Generate print preview" }))
+    await screen.findByRole("button", { name: "Download prepared 3MF" })
+    expect(exportDocument).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rotationX: 45 }),
+      expect.any(AbortSignal),
+      { chordTolerance: 0.2, angularTolerance: 0.3 },
+    )
+  })
+
   it("reports known preparation details in fixed notices without adding panel rows and retries after dismissal", async () => {
     exportDocument.mockResolvedValue(documentExportFailure(printExportWorkerFailure()))
     const busy = vi.fn()

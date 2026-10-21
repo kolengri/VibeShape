@@ -22,6 +22,7 @@ const { default: userEvent } = await import("@testing-library/user-event")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { i18n } = await import("../../i18n")
 const { ViewerPreferencesProvider } = await import("../../shell/viewer-preferences")
+const { createTestBrowserStorage } = await import("../../test-support/browser-storage")
 const { authoredTestId: id } = await import("../../test-support/authored-tree-fixture")
 const { AssemblyExportDialog } = await import("./assembly-export-dialog")
 const { identityAssemblyPose, newAssemblyInstance } = await import("./assembly-model")
@@ -67,6 +68,7 @@ async function open(f = fixture(), selectedId: string | null = f.instances[0]?.i
   return view
 }
 beforeEach(() => {
+  vi.stubGlobal("localStorage", createTestBrowserStorage())
   vi.stubGlobal("matchMedia", () => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -81,6 +83,54 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Assembly export isolation", () => {
+  it("restores export choices across reopen and remount while resetting instance scope", async () => {
+    const f = fixture()
+    const view = await open(f)
+    await choose("Occurrence 2")
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "File format" }), "stl")
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Mesh quality" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "Fine" }))
+    await userEvent.click(screen.getByRole("button", { name: "Close export" }))
+    await userEvent.click(screen.getByRole("button", { name: "Export assembly…" }))
+    expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
+      "stl",
+    )
+    expect(screen.getByRole("combobox", { name: "Mesh quality" }).textContent).toContain("Fine")
+    expect(screen.getByRole("combobox", { name: "Instances to export" }).textContent).toContain(
+      "Occurrence 1",
+    )
+    view.unmount()
+    await open(f, null)
+    expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
+      "stl",
+    )
+    expect(screen.getByRole("combobox", { name: "Mesh quality" }).textContent).toContain("Fine")
+    expect(screen.getByRole("combobox", { name: "Instances to export" }).textContent).toContain(
+      "All assembly instances",
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Save STL file" }))
+    expect(ports.assembly).toHaveBeenCalledWith(
+      { format: "stl", meshQuality: { chordTolerance: 0.01, angularTolerance: 0.05 } },
+      expect.any(AbortSignal),
+    )
+  })
+
+  it("uses the existing preferred export format before a dialog choice is stored", async () => {
+    localStorage.setItem(
+      "vibeshape.viewer-preferences.v1",
+      JSON.stringify({
+        version: 1,
+        theme: "dark",
+        autoHideConsumedSketches: true,
+        preferredExportFormat: "step",
+      }),
+    )
+    await open()
+    expect((screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement).value).toBe(
+      "step",
+    )
+  })
+
   it("passes selected mesh quality to scoped assembly exports", async () => {
     const f = fixture()
     await open(f)

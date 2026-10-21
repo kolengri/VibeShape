@@ -109,6 +109,46 @@ function renderForm(overrides: Partial<React.ComponentProps<typeof EdgeTreatment
 
 afterEach(cleanup)
 
+it.each(["fillet", "chamfer"] as const)(
+  "retains an ordinarily selected edge when starting %s and saves that exact reference",
+  async (operation) => {
+    const reference = selectedEdgeCandidates(topologyCandidates, secondTargetId, copy.edgeLabel)[0]
+      ?.reference
+    if (!reference) throw new Error("Missing selected edge fixture")
+    const options = [
+      { id: targetId, label: "Box 1" },
+      { id: secondTargetId, label: "Box 2" },
+    ]
+    const tool = edgeTreatmentCreateTool(
+      operation === "fillet" ? "create-fillet" : "create-chamfer",
+      { featureId: secondTargetId },
+      options,
+      reference,
+    )
+    const view = renderForm({
+      operation,
+      options,
+      topologyCandidates,
+      mode: {
+        kind: "create",
+        createFeatureId: () => featureId,
+        featureLabel: "Treatment",
+        targetFeatureId: tool.targetFeatureId,
+        references: tool.references,
+      },
+    })
+    expect(screen.getByRole("status").textContent).toBe("1 edges selected")
+    await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
+    expect(view.onSave).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({
+        dependencies: [secondTargetId],
+        references: [reference],
+      }),
+    )
+  },
+)
+
 describe("EdgeTreatmentForm", () => {
   it("projects every retained edge into the selected source's viewport overlay and rejects a stale task context", () => {
     const geometry = topologyCandidates.map((record) => ({

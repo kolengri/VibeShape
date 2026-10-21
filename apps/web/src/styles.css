@@ -41,7 +41,7 @@
 .cad-shell {
   --application-bar-height: 5rem;
   --command-bar-height: 2.25rem;
-  --assistant-width: min(420px, calc(100vw - 16px));
+  --assistant-width: clamp(208px, 40vw, 420px);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows:
@@ -76,18 +76,22 @@
   z-index: 30;
   top: calc(var(--application-bar-height, 2.5rem) + var(--command-bar-height));
   right: 0;
-  bottom: 1.5rem;
+  bottom: calc(1.5rem + var(--workspace-history-height, 0px));
   width: min(var(--assistant-width), calc(100vw - 16px));
+}
+
+:where(.cad-shell:has(> .assistant-panel)) .cad-workspace-grid {
+  margin-right: var(--assistant-width);
+}
+
+.cad-shell:has(> .assistant-panel) .project-assistant-status {
+  display: none;
 }
 
 @media (min-width: 64rem) {
   .cad-shell {
     /* Preserve the tree, task, viewport and resize-handle minimums while chat is docked. */
     --assistant-width: clamp(208px, calc(100vw - 816px), 420px);
-  }
-
-  .cad-shell:has(> .assistant-panel) .editor-model-area {
-    margin-right: var(--assistant-width);
   }
 }
 

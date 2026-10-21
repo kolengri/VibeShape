@@ -169,6 +169,66 @@ describe("resolveTopologyReference", () => {
     })
   })
 
+  it.each([1, 5, 100])(
+    "resolves a picked circular edge beside a similar ring at radius %s",
+    (radius) => {
+      const circle = (z: number): TopoRef["signature"] => ({
+        kind: "edge",
+        geometryClass: "CIRCLE",
+        measure: 2 * Math.PI * radius,
+        centroid: [0, 0, z],
+        bounds: { min: [-radius, -radius, z], max: [radius, radius, z] },
+        direction: [0, 0, 1],
+        directionMode: "axis",
+        boundaryCount: 0,
+        adjacentGeometryClasses: ["CYLINDER", "PLANE"],
+      })
+      const picked = reference({ kind: "edge", signature: circle(0) })
+      const rings = [
+        candidate("upper", { kind: "edge", signature: circle(radius / 100) }),
+        candidate("picked", { kind: "edge", signature: circle(0) }),
+      ]
+      expect(resolveTopologyReference(picked, rings)).toMatchObject({
+        status: "resolved",
+        candidateId: "picked",
+        method: "signature",
+      })
+      // Reordering evaluation-local IDs must not determine which ring is selected.
+      expect(resolveTopologyReference(picked, [...rings].reverse())).toMatchObject({
+        status: "resolved",
+        candidateId: "picked",
+      })
+      expect(
+        resolveTopologyReference(picked, [
+          ...rings,
+          candidate("coincident", { kind: "edge", signature: circle(0) }),
+        ]),
+      ).toMatchObject({ status: "ambiguous", candidateIds: ["coincident", "picked"] })
+      expect(
+        resolveTopologyReference(
+          reference({ kind: "edge", signature: circle(radius / 200) }),
+          rings,
+        ),
+      ).toMatchObject({ status: "ambiguous" })
+    },
+  )
+
+  it("matches an edge when optional directions are explicitly undefined", () => {
+    const signature = topologySignatureSchema.parse({
+      ...faceSignature(),
+      kind: "edge",
+      geometryClass: "BSPLINE",
+      direction: undefined,
+      directionMode: undefined,
+    })
+    const { direction: _direction, directionMode: _mode, ...storedSignature } = signature
+    expect(
+      resolveTopologyReference(reference({ kind: "edge", signature: storedSignature }), [
+        candidate("curve", { kind: "edge", signature }),
+      ]),
+    ).toMatchObject({ status: "resolved", candidateId: "curve" })
+  })
+
   it("returns missing when the only candidate exceeds the conservative threshold", () => {
     const result = resolveTopologyReference(reference(), [
       candidate("distant", {

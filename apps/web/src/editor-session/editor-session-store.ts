@@ -46,6 +46,7 @@ import {
   type SketchDraftChangeMode,
   type SketchEditorTool,
 } from "../features/sketch/sketch-tool"
+import type { ModelEdgeSelection } from "../shell/model-edge-selection"
 import type { ModelTreeSelection } from "../shell/model-tree-selection"
 import type { EditorWorkspaceName } from "../shell/workspace"
 import type { PartVisibilityOverrides } from "./part-visibility"
@@ -57,9 +58,9 @@ function clearFeatureSelection(state: Draft<EditorSessionState>, featureId: Feat
       ? item.featureId !== featureId
       : item.kind !== "feature" || item.id !== featureId,
   )
-  if (state.selection?.featureId === featureId) state.selection = null
-  if (state.selectedBody?.featureId === featureId) state.selectedBody = null
-  if (state.preselectedBody?.featureId === featureId) state.preselectedBody = null
+  for (const key of ["selection", "edgeSelection", "selectedBody", "preselectedBody"] as const) {
+    if (state[key]?.featureId === featureId) state[key] = null
+  }
   if (state.preselectedFeatureId === featureId) state.preselectedFeatureId = null
 }
 
@@ -124,6 +125,7 @@ export type EditorSessionState = Readonly<{
   revolveAngleRequest: RevolveAngleRequest | null
   selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
+  edgeSelection: ModelEdgeSelection | null
   sketch: SketchEditorSessionState
   workspace: EditorWorkspaceName
 }>
@@ -177,6 +179,7 @@ export type EditorSessionActions = Readonly<{
     sketchIds: readonly SketchId[],
     effectiveHiddenIds?: readonly SketchId[],
   ) => void
+  setModelEdgeSelection: (selection: ModelEdgeSelection | null) => void
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
   setSketchCameraMode: (mode: SketchCameraMode) => void
@@ -245,6 +248,7 @@ function createEditorSessionState(overrides: SketchVisibilityOverrides): EditorS
     revolveAngleRequest: null,
     selectedOriginPlane: null,
     selection: null,
+    edgeSelection: null,
     sketch: createSketchState(),
     workspace: "model",
   }
@@ -331,6 +335,7 @@ function restoreProfileFeatureReturn(
 ) {
   state.workspace = "model"
   state.selection = null
+  state.edgeSelection = null
   state.sketch.activeSketchId = context.activeSketchId
   state.sketch.activeSketchTool = null
   resetSketchDraft(state.sketch, null)
@@ -370,6 +375,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.profileFeatureReturn = null
             state.selectedOriginPlane = null
             state.selection = null
+            state.edgeSelection = null
             state.selectedBody = null
             state.selectedPartId = null
             state.modelTreeSelection = []
@@ -386,6 +392,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.profileFeatureReturn = null
             state.selectedOriginPlane = null
             state.selection = null
+            state.edgeSelection = null
             state.selectedBody = null
             state.selectedPartId = null
             state.modelTreeSelection = []
@@ -402,6 +409,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.workspace = "model"
             state.selectedOriginPlane = null
             state.selection = null
+            state.edgeSelection = null
             state.selectedBody = null
             state.selectedPartId = null
             state.modelTreeSelection = []
@@ -424,6 +432,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
               state.selectedPartId = null
               state.preselectedBody = null
               state.selection = null
+              state.edgeSelection = null
               state.selectedOriginPlane = null
             }
             const profileFeatureReturn = state.profileFeatureReturn
@@ -439,6 +448,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             if (activeSketchTool?.kind === "select-sketch-plane" && activeSketchTool.returnTo) {
               state.workspace = "sketch"
               state.selection = null
+              state.edgeSelection = null
               state.selectedBody = null
               state.selectedPartId = null
               state.sketch.activeSketchTool = activeSketchTool.returnTo.tool
@@ -500,6 +510,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.preselectedFeatureId = null
             state.selectedOriginPlane = null
             state.selection = null
+            state.edgeSelection = null
             state.selectedBody = null
             state.selectedPartId = null
             state.modelTreeSelection = []
@@ -532,6 +543,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.workspace = "sketch"
             state.selectedOriginPlane = null
             state.selection = null
+            state.edgeSelection = null
             state.selectedBody = null
             state.selectedPartId = null
             state.modelTreeSelection = []
@@ -561,6 +573,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.workspace = "sketch"
             state.selectedOriginPlane = null
             state.selection = null
+            state.edgeSelection = null
             state.selectedBody = null
             state.selectedPartId = null
             state.modelTreeSelection = []
@@ -588,6 +601,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             if (!visible && state.selectedPartId === partId) {
               state.selectedPartId = null
               state.selection = null
+              state.edgeSelection = null
               state.selectedBody = null
             }
           }),
@@ -641,6 +655,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
                   }
                 : null
             state.selection = null
+            state.edgeSelection = null
           }),
         setSelectedBody: (body) =>
           set((state) => {
@@ -648,6 +663,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.selectedBody = body
             state.selectedPartId = null
             state.selection = null
+            state.edgeSelection = null
             if (body) state.selectedOriginPlane = null
           }),
         setSelectedPart: (partId) =>
@@ -656,6 +672,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.selectedPartId = partId
             state.selectedBody = null
             state.selection = null
+            state.edgeSelection = null
             state.selectedOriginPlane = null
           }),
         setFeaturePreselection: (featureId) =>
@@ -707,6 +724,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
             state.selectedOriginPlane = plane
             if (plane) {
               state.selection = null
+              state.edgeSelection = null
               state.selectedBody = null
               state.selectedPartId = null
               state.modelTreeSelection = []
@@ -744,10 +762,22 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
               closeSketch(state.sketch)
             }
           }),
+        setModelEdgeSelection: (edgeSelection) =>
+          set((state) => {
+            state.edgeSelection = edgeSelection
+            if (!edgeSelection) return
+            state.selection = null
+            state.selectedBody = null
+            state.selectedPartId = null
+            state.selectedOriginPlane = null
+            state.modelTreeSelection = []
+            state.sketch.selectedProfile = null
+          }),
         setSelection: (selection) =>
           set((state) => {
             state.modelTreeSelection = []
             state.selection = selection
+            state.edgeSelection = null
             state.selectedBody = null
             state.selectedPartId = null
             if (selection) state.selectedOriginPlane = null
@@ -885,6 +915,7 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
               state.profileFeatureReturn = null
               state.selectedOriginPlane = null
               state.selection = null
+              state.edgeSelection = null
               state.selectedBody = null
               state.selectedPartId = null
               state.modelTreeSelection = []

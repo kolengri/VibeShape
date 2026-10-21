@@ -81,6 +81,22 @@ afterEach(() => {
 })
 
 describe("assistant transcript and composer", () => {
+  it("shows Thinking above the composer while busy and preserves the chat heading", () => {
+    const view = render(panel({ busy: true }))
+    const chat = screen.getByRole("complementary", { name: "AI chat" })
+    const heading = within(chat).getByRole("heading", { name: "AI chat" })
+    const thinking = within(chat).getByText("Thinking")
+    expect(heading.textContent).toBe("AI chat")
+    expect(thinking.closest('[role="status"]')).not.toBeNull()
+    expect(thinking.classList.contains("application-wordmark-ink")).toBe(true)
+    expect(
+      thinking.compareDocumentPosition(draft()) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    view.rerender(panel({ busy: false }))
+    expect(heading.textContent).toBe("AI chat")
+    expect(within(chat).queryByText("Thinking")).toBeNull()
+  })
+
   it("applies only a ready private draft through its checkpoint wrapper and keeps the action pending", async () => {
     const pending = deferred<boolean>()
     const apply = vi.fn(() => pending.promise)
