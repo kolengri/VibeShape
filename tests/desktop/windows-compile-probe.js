@@ -1,7 +1,15 @@
 import { execFile } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
 // Public source only: this process never receives a descriptor path or token.
+const source = readFileSync(
+  new URL("../../apps/desktop/src/private-files.ts", import.meta.url),
+  "utf8",
+)
+const definition = /-TypeDefinition @'\r?\n([\s\S]*?)\r?\n'@/.exec(source)?.[1]
+if (!definition || /\\|\$\{/.test(definition))
+  throw new Error("Unsupported public compiler-probe source form.")
 const script = `
 $ErrorActionPreference = 'Stop'
 try {
@@ -9,6 +17,10 @@ try {
   [Console]::Out.WriteLine('resolved')
   & $command -TypeDefinition 'public static class VibeShapeCompileProbe { public static int Value = 1; }'
   if ([VibeShapeCompileProbe]::Value -ne 1) { throw 'Invalid public probe value.' }
+  [Console]::Out.WriteLine('basic-loaded')
+  & $command -TypeDefinition @'
+${definition}
+'@
   [Console]::Out.WriteLine('loaded')
 } catch { exit 1 }
 `
@@ -28,11 +40,9 @@ const child = execFile(
   { encoding: "utf8", timeout: 15_000, maxBuffer: 4096, windowsHide: true },
   (error, stdout, stderr) => {
     const lines = stdout.split(/\r?\n/)
-    const stage = lines.includes("loaded")
-      ? "loaded"
-      : lines.includes("resolved")
-        ? "resolved"
-        : "not-started"
+    const stage =
+      ["loaded", "basic-loaded", "resolved"].find((marker) => lines.includes(marker)) ??
+      "not-started"
     const code = error?.killed
       ? "terminated"
       : Number.isInteger(error?.code)

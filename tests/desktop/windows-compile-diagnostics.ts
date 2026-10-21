@@ -10,7 +10,7 @@ const resultSchema = z.object({
   method: z.literal("probe/compile"),
   params: z.object({
     ok: z.boolean(),
-    stage: z.enum(["loaded", "resolved", "not-started"]),
+    stage: z.enum(["loaded", "basic-loaded", "resolved", "not-started"]),
     code: z.union([z.number().int(), z.enum(["terminated", "unknown"])]),
     milliseconds: z.number().nonnegative(),
     stderrBytes: z.number().nonnegative(),

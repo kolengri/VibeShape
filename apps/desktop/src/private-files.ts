@@ -34,7 +34,8 @@ export class WindowsPrivateFileReadError extends Error {
     const failure = windowsFailureSchema.safeParse(error)
     const detail = failure.success ? failure.data : null
     const markers = [
-      ...(detail?.stderr?.matchAll(/VIBESHAPE_PRIVATE:(compile|operation|complete)/g) ?? []),
+      ...(detail?.stderr?.matchAll(/VIBESHAPE_PRIVATE:(compile|resolved|operation|complete)/g) ??
+        []),
     ]
     const stage = markers.at(-1)?.[1] ?? "not-started"
     const status = detail?.killed ? "terminated" : (detail?.code ?? "unknown")
@@ -48,7 +49,9 @@ const windowsScript = `
 $ErrorActionPreference = 'Stop'
 try {
   [Console]::Error.WriteLine('VIBESHAPE_PRIVATE:compile')
-  Add-Type -TypeDefinition @'
+  $addType = Get-Command 'Microsoft.PowerShell.Utility\\Add-Type' -ErrorAction Stop
+  [Console]::Error.WriteLine('VIBESHAPE_PRIVATE:resolved')
+  & $addType -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.IO;

@@ -104,6 +104,17 @@ describe("native private files", () => {
     }
   })
 
+  it("distinguishes resolved Windows compiler commands from completed compilation", () => {
+    const error = new WindowsPrivateFileReadError({
+      code: null,
+      killed: true,
+      stderr: "VIBESHAPE_PRIVATE:compile\nVIBESHAPE_PRIVATE:resolved\n",
+    })
+    expect(error.message).toBe(
+      "Native workflows require a private file owned by this user. Windows reader status=terminated, stage=resolved.",
+    )
+  })
+
   it("creates a private directory and reads only bounded regular file bytes", async () => {
     const root = await directory()
     const privateDirectory = join(root, "native-workflows", "assistant")
