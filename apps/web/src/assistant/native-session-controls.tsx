@@ -1,8 +1,23 @@
 import type { AssistantSnapshot } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { Button } from "@vibeshape/ui/components/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@vibeshape/ui/components/dropdown-menu"
+import { ChevronDown } from "@vibeshape/ui/components/icons"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vibeshape/ui/components/tooltip"
 import { useId, useRef, useState } from "react"
+import { useReportApplicationError } from "../shell/application-notices"
 import type { createNativeChatController } from "./native-chat-controller"
 
 type Session = Pick<
@@ -25,30 +40,62 @@ function SessionSelector({
   busy: boolean
   onChange: (value: string) => Promise<void>
 }) {
+  const t = useTranslations("app.assistant")
+  const labelId = useId()
   const descriptionId = useId()
+  const selected = options.find((option) => option.id === value)?.name ?? value ?? "—"
   return (
-    <div className="min-w-0 max-w-full">
-      <SelectField
-        label={label}
-        menuLabel={label}
-        menuDescription={description}
-        value={value ?? ""}
-        disabled={busy}
-        {...(description ? { "aria-describedby": descriptionId } : {})}
-        onValueChange={onChange}
-      >
-        {options.map((option) => (
-          <SelectOption key={option.id} value={option.id}>
-            {option.name}
-          </SelectOption>
-        ))}
-      </SelectField>
+    <DropdownMenu>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                className="w-full max-w-full min-w-0 justify-between text-muted-foreground"
+                aria-label={label}
+                aria-description={selected}
+                aria-describedby={description ? descriptionId : undefined}
+                disabled={busy}
+              >
+                <span className="truncate">{selected}</span>
+                <ChevronDown aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{t("sessionControlValue", { label, value: selected })}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       {description && (
-        <p id={descriptionId} className="sr-only">
+        <span id={descriptionId} className="sr-only">
           {description}
-        </p>
+        </span>
       )}
-    </div>
+      <DropdownMenuContent
+        side="top"
+        className="max-h-[var(--radix-dropdown-menu-content-available-height)] max-w-sm overflow-y-auto"
+      >
+        <p id={labelId} className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+          {label}
+        </p>
+        <DropdownMenuRadioGroup
+          value={value ?? ""}
+          aria-labelledby={labelId}
+          onValueChange={onChange}
+        >
+          {description && (
+            <p className="px-2 pb-1.5 text-xs text-muted-foreground">{description}</p>
+          )}
+          {options.map((option) => (
+            <DropdownMenuRadioItem key={option.id} value={option.id}>
+              {option.name}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -63,23 +110,56 @@ function SessionChoices({
 }) {
   const t = useTranslations("app.assistant")
   const [pending, setPending] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const failure = failed ? t("errors.request-failed") : null
+  const centralized = useReportApplicationError(failure)
   const changing = useRef(false)
   useReportActivity(pending)
   const change = async (action: () => Promise<void>) => {
     if (changing.current) return
     changing.current = true
     setPending(true)
+    setFailed(false)
     try {
       await action()
+    } catch {
+      setFailed(true)
     } finally {
       changing.current = false
       setPending(false)
     }
   }
   const locked = busy || pending || snapshot.status !== "ready"
+  return (
+    <div
+      className="grid min-w-0 grid-cols-2 gap-1 @xs/composer:grid-cols-3"
+      aria-busy={pending || undefined}
+    >
+      {failure && !centralized && (
+        <p role="alert" className="text-xs text-destructive">
+          {failure}
+        </p>
+      )}
+      <SessionFields chat={chat} snapshot={snapshot} locked={locked} change={change} />
+    </div>
+  )
+}
+
+function SessionFields({
+  chat,
+  snapshot,
+  locked,
+  change,
+}: {
+  chat: Session
+  snapshot: AssistantSnapshot
+  locked: boolean
+  change: (action: () => Promise<void>) => Promise<void>
+}) {
+  const t = useTranslations("app.assistant")
   const configs = snapshot.configOptions
   return (
-    <div className="grid min-w-0 gap-3" aria-busy={pending || undefined}>
+    <>
       {snapshot.modes.length > 0 && !configs.some((config) => config.category === "mode") && (
         <SessionSelector
           label={t("mode")}
@@ -109,7 +189,7 @@ function SessionChoices({
           onChange={(value) => change(() => chat.setModel(value))}
         />
       )}
-    </div>
+    </>
   )
 }
 

@@ -59,6 +59,7 @@ function fixtureProcessRunning(pid: number) {
 }
 const tabs = (page: Page) => page.getByRole("navigation", { name: "Open projects", exact: true })
 const panel = (page: Page) => page.getByRole("complementary", { name: "AI chat", exact: true })
+const settings = (page: Page) => page.getByRole("dialog", { name: "AI settings", exact: true })
 const transcript = (page: Page) =>
   panel(page).getByRole("log", { name: "Project conversation", exact: true })
 async function renameProject(page: Page, name: string) {
@@ -94,7 +95,9 @@ async function waitForNativeProjectAccess(page: Page) {
 }
 
 async function chooseCustomAgent(page: Page) {
-  await panel(page).getByRole("combobox", { name: "Agent", exact: true }).click()
+  if (!(await settings(page).isVisible()))
+    await panel(page).getByRole("button", { name: "AI settings", exact: true }).click()
+  await settings(page).getByRole("combobox", { name: "Agent", exact: true }).click()
   await page.getByRole("option", { name: "Custom ACP agent", exact: true }).click()
 }
 async function watchSnapshots(page: Page) {
@@ -118,10 +121,18 @@ async function snapshot(page: Page, projectId?: string) {
     ),
   )
 }
-async function connectFixture(page: Page, receipt: string, attachMcp = false, longLabels = false) {
+async function connectFixture(
+  page: Page,
+  receipt: string,
+  attachMcp = false,
+  longLabels = false,
+  manyOptions = false,
+) {
   await chooseCustomAgent(page)
-  await panel(page).getByRole("textbox", { name: "ACP agent executable", exact: true }).fill("node")
-  await panel(page)
+  await settings(page)
+    .getByRole("textbox", { name: "ACP agent executable", exact: true })
+    .fill("node")
+  await settings(page)
     .getByRole("textbox", { name: "Arguments (JSON array)", exact: true })
     .fill(
       JSON.stringify([
@@ -129,9 +140,11 @@ async function connectFixture(page: Page, receipt: string, attachMcp = false, lo
         receipt,
         ...(attachMcp ? ["--attach-mcp"] : []),
         ...(longLabels ? ["--long-labels"] : []),
+        ...(manyOptions ? ["--many-options"] : []),
       ]),
     )
-  await panel(page).getByRole("button", { name: "Connect agent", exact: true }).click()
+  await settings(page).getByRole("button", { name: "Connect agent", exact: true }).click()
+  await settings(page).getByRole("button", { name: "Close AI settings", exact: true }).click()
   await ready(page)
 }
 
@@ -158,7 +171,7 @@ test("native project chat streams ACP, reviews permissions, stops work and resto
     await expect(transcript(page)).toContainText("Inspect fixture")
     await expect(transcript(page)).not.toContainText("Harmless inspection complete")
     await writeFile(`${receipt}.continue`, "complete")
-    await transcript(page).getByText("Inspect fixture", { exact: true }).click()
+    await transcript(page).locator("summary").filter({ hasText: "Inspect fixture" }).click()
     await expect(transcript(page)).toContainText("Harmless inspection complete")
     await expect(transcript(page)).toContainText("Fixture response: bracket question")
     await ready(page)
@@ -257,19 +270,34 @@ test("native ACP accepts advertised configuration, files, structured answers and
     await openChat(page)
     await watchSnapshots(page)
     await connectFixture(page, receipt)
+    await panel(page).getByRole("button", { name: "AI settings", exact: true }).click()
+    const probe = settings(page).getByRole("button", { name: "Test connection", exact: true })
+    await probe.click()
+    const success = page.locator('[data-slot="notification"][data-tone="success"]')
+    await expect(success).toContainText("ACP handshake passed. Provider access was not tested.")
+    await expect(success.locator("svg").first()).toBeVisible()
+    await expect(settings(page)).not.toContainText("ACP handshake passed")
+    await page.screenshot({ path: test.info().outputPath("native-connection-success.png") })
+    await success.getByRole("button", { name: "Dismiss notification" }).click()
+    await expect(success).toHaveCount(0)
+    await probe.click()
+    await expect(success).toHaveCount(1)
+    await expect(success).toContainText("ACP handshake passed")
+    await success.getByRole("button", { name: "Dismiss notification" }).click()
+    await settings(page).getByRole("button", { name: "Close AI settings", exact: true }).click()
     const scope = await snapshot(page)
-    const reasoning = panel(page).getByRole("combobox", { name: "Reasoning effort", exact: true })
-    await expect(reasoning).toHaveText("Brief")
+    const reasoning = panel(page).getByRole("button", { name: "Reasoning effort", exact: true })
+    await expect(reasoning).toContainText("Brief")
     await reasoning.click()
-    await page.getByRole("option", { name: "Deep", exact: true }).click()
-    await expect(reasoning).toHaveText("Deep")
-    await panel(page).getByRole("combobox", { name: "Model", exact: true }).click()
-    await page.getByRole("option", { name: "Deep model", exact: true }).click()
-    await expect(reasoning).toHaveText("Maximal")
+    await page.getByRole("menuitemradio", { name: "Deep", exact: true }).click()
+    await expect(reasoning).toContainText("Deep")
+    await panel(page).getByRole("button", { name: "Model", exact: true }).click()
+    await page.getByRole("menuitemradio", { name: "Deep model", exact: true }).click()
+    await expect(reasoning).toContainText("Maximal")
     await reasoning.click()
-    await expect(page.getByRole("option", { name: "Brief", exact: true })).toHaveCount(0)
-    await page.getByRole("option", { name: "Deep", exact: true }).click()
-    await expect(reasoning).toHaveText("Deep")
+    await expect(page.getByRole("menuitemradio", { name: "Brief", exact: true })).toHaveCount(0)
+    await page.getByRole("menuitemradio", { name: "Deep", exact: true }).click()
+    await expect(reasoning).toContainText("Deep")
     expect(
       (await agentRecords(receipt))
         .filter((entry) => entry.event === "configuration")
@@ -397,9 +425,13 @@ test("composer settings keep their positions across label changes, narrow widths
     await openChat(page)
     await connectFixture(page, receipt, false, true)
     const composer = panel(page).getByRole("region", { name: "Message", exact: true })
-    const model = composer.getByRole("combobox", { name: "Model", exact: true })
-    const reasoning = composer.getByRole("combobox", { name: "Reasoning effort", exact: true })
-    await expect(composer.getByRole("combobox")).toHaveCount(5)
+    const model = composer.getByRole("button", { name: "Model", exact: true })
+    const reasoning = composer.getByRole("button", { name: "Reasoning effort", exact: true })
+    await expect(
+      composer.getByRole("button", {
+        name: /^(Access|Response style|Model|Reasoning effort|Web search)$/,
+      }),
+    ).toHaveCount(5)
     const measure = async () => {
       const bounds = await composer.boundingBox()
       if (!bounds) throw new Error("The composer must have visible bounds")
@@ -416,13 +448,13 @@ test("composer settings keep their positions across label changes, narrow widths
       const before = await measure()
       await model.focus()
       await model.press("Enter")
-      const longModel = page.getByRole("option", {
+      const longModel = page.getByRole("menuitemradio", {
         name: "Deep model with extended engineering capabilities",
         exact: true,
       })
       await expect(longModel).toBeVisible()
       await longModel.press("Enter")
-      await expect(reasoning).toHaveText("Maximum reasoning for complex engineering decisions")
+      await expect(reasoning).toContainText("Maximum reasoning for complex engineering decisions")
       expect(await measure()).toEqual(before)
       if (width === 1280)
         await composer.screenshot({ path: test.info().outputPath("composer-dark-wide.png") })
@@ -436,8 +468,8 @@ test("composer settings keep their positions across label changes, narrow widths
       ).toBeInViewport()
       await expect(composer.getByRole("button", { name: "Send", exact: true })).toBeInViewport()
       await model.click()
-      await page.getByRole("option", { name: "Fast model", exact: true }).click()
-      await expect(reasoning).toHaveText("Brief")
+      await page.getByRole("menuitemradio", { name: "Fast model", exact: true }).click()
+      await expect(reasoning).toContainText("Brief")
       expect(await measure()).toEqual(before)
     }
     await composer.screenshot({ path: test.info().outputPath("composer-dark-narrow.png") })
@@ -451,25 +483,71 @@ test("composer settings keep their positions across label changes, narrow widths
     const beforeZoomedChange = await measure()
     await model.click()
     await page
-      .getByRole("option", {
+      .getByRole("menuitemradio", {
         name: "Deep model with extended engineering capabilities",
         exact: true,
       })
       .click()
-    await expect(reasoning).toHaveText("Maximum reasoning for complex engineering decisions")
+    await expect(reasoning).toContainText("Maximum reasoning for complex engineering decisions")
     expect(await measure()).toEqual(beforeZoomedChange)
     await expect(composer).toBeInViewport({ ratio: 1 })
-    await composer.getByRole("combobox", { name: "Web search", exact: true }).click()
+    await composer.getByRole("button", { name: "Web search", exact: true }).click()
     await expect(page.getByRole("group", { name: "Web search", exact: true })).toContainText(
       "Allow the agent to search the web.",
     )
     await page.screenshot({ path: test.info().outputPath("composer-setting-explanation.png") })
-    await page.getByRole("option", { name: "On", exact: true }).click()
-    await expect(composer.getByRole("combobox", { name: "Web search", exact: true })).toHaveText(
+    await page.getByRole("menuitemradio", { name: "On", exact: true }).click()
+    await expect(composer.getByRole("button", { name: "Web search", exact: true })).toContainText(
       "On",
     )
     expect(await measure()).toEqual(beforeZoomedChange)
-    await composer.screenshot({ path: test.info().outputPath("composer-light-200.png") })
+    await page.screenshot({ path: test.info().outputPath("composer-light-200.png") })
+  } finally {
+    await saveAgentReceipt(receipt)
+    await fixture.cleanup()
+  }
+})
+
+test("composer configuration keeps 100 choices reachable in a short viewport", async () => {
+  test.skip(
+    Boolean(process.env.VIBESHAPE_PACKAGED_APP),
+    "The installed app keeps its production port.",
+  )
+  const fixture = await createNativeFixture()
+  const receipt = join(fixture.directory, "composer-many-options-agent.jsonl")
+  try {
+    const native = await fixture.launch()
+    const page = await openNativeEditor(native)
+    await openChat(page)
+    await connectFixture(page, receipt, false, false, true)
+    await page.setViewportSize({ width: 1024, height: 600 })
+    const composer = panel(page).getByRole("region", { name: "Message", exact: true })
+    const model = composer.getByRole("button", { name: "Model", exact: true })
+    await model.focus()
+    await model.press("Enter")
+    const menu = page.getByRole("menu")
+    await expect(menu.getByRole("menuitemradio")).toHaveCount(100)
+    const size = await menu.evaluate((node) => ({
+      height: node.clientHeight,
+      contentHeight: node.scrollHeight,
+      top: node.getBoundingClientRect().top,
+      bottom: node.getBoundingClientRect().bottom,
+    }))
+    expect(size.contentHeight).toBeGreaterThan(size.height)
+    expect(size.top).toBeGreaterThanOrEqual(0)
+    expect(size.bottom).toBeLessThanOrEqual(await page.evaluate("innerHeight"))
+    await page.keyboard.press("End")
+    const last = menu.getByRole("menuitemradio", { name: "Fixture model 100", exact: true })
+    await expect(last).toBeFocused()
+    await expect(last).toBeInViewport({ ratio: 1 })
+    expect(await menu.evaluate((node) => node.scrollTop)).toBeGreaterThan(0)
+    await page.screenshot({ path: test.info().outputPath("native-last-config-option.png") })
+    await last.press("Enter")
+    await expect(menu).toHaveCount(0)
+    await expect(model).toHaveText("Fixture model 100")
+    expect(
+      (await agentRecords(receipt)).filter((entry) => entry.event === "configuration"),
+    ).toEqual([expect.objectContaining({ configId: "model", value: "fixture-model-100" })])
   } finally {
     await saveAgentReceipt(receipt)
     await fixture.cleanup()
@@ -517,11 +595,15 @@ test("embedded agent reads its project automatically and preserves explicit Stop
       "Saved",
     )
     await openChat(page)
-    await ready(page)
+    await expect(panel(page).getByRole("textbox", { name: "Message", exact: true })).toBeDisabled()
+    await expect(panel(page).getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toBeEnabled()
     await expect(
       page.getByRole("button", { name: "AI connection and approval mode", exact: true }),
     ).toHaveCount(0)
+    expect(
+      (await agentRecords(receipt)).filter((entry) => entry.event === "mcp-read"),
+    ).toHaveLength(1)
     await page.screenshot({ path: test.info().outputPath("native-explicit-stop-retained.png") })
   } finally {
     await saveAgentReceipt(receipt)
@@ -683,13 +765,14 @@ test("native ACP relay replacement and project channels preserve external generi
       args: [join(nativeTestRoot, "tests/desktop/fixtures/acp-agent.cjs"), receipt, "--attach-mcp"],
     }
     await chooseCustomAgent(page)
-    await panel(page)
+    await settings(page)
       .getByRole("textbox", { name: "ACP agent executable", exact: true })
       .fill(agent.command)
-    await panel(page)
+    await settings(page)
       .getByRole("textbox", { name: "Arguments (JSON array)", exact: true })
       .fill(JSON.stringify(agent.args))
-    await panel(page).getByRole("button", { name: "Connect agent", exact: true }).click()
+    await settings(page).getByRole("button", { name: "Connect agent", exact: true }).click()
+    await settings(page).getByRole("button", { name: "Close AI settings", exact: true }).click()
     await ready(page)
     const first = scopeSchema.parse(await page.evaluate("globalThis.nativeChatSnapshot"))
     const input = { projectId: first.projectId, agent }
@@ -721,9 +804,9 @@ test("native ACP relay replacement and project channels preserve external generi
       (await agentRecords(receipt)).filter((entry) => entry.event === "mcp-attached"),
     ).toHaveLength(4)
     await panel(page).getByRole("button", { name: "AI settings", exact: true }).click()
-    await panel(page).getByRole("button", { name: "Disconnect", exact: true }).click()
+    await settings(page).getByRole("button", { name: "Disconnect", exact: true }).click()
     await expect(
-      panel(page).getByRole("button", { name: "Connect agent", exact: true }),
+      settings(page).getByRole("button", { name: "Connect agent", exact: true }),
     ).toBeEnabled()
     const setup = desktopMcpSetupSchema.parse(
       await page.evaluate("window.vibeshapeDesktop.getMcpSetup()"),

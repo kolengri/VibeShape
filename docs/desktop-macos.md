@@ -119,18 +119,24 @@ fallbacks, so the same setting is not shown twice. Project-access and MCP-attach
 to the global footer rather than a repeated chat summary. An ACP connection alone does not prove
 that its MCP client has attached or that the person has granted access to the model.
 
-Within the running desktop host, reconnecting the same project and agent restores accepted user
-model, mode, and session-option choices before the connection becomes ready. Restoration uses the
-new session's advertised catalog, applies the model before dependent options, and verifies effective
-values. Choices are isolated by project and agent configuration; stale responses cannot overwrite a
-replacement session. These recovery choices are held in memory, not persisted across application
-restart. Reconnecting does not replay modeling commands.
+Connecting the same agent configuration in another project or after application restart restores
+accepted user model, mode, and session-option choices before the connection becomes ready.
+Restoration uses the new session's advertised catalog, applies the model before dependent options,
+and verifies effective values. Unsupported saved choices fail visibly before ready and are removed
+from later restoration attempts. Choices are shared by exact agent configuration; project access,
+session tokens, credentials, conversation and Stop AI remain independently scoped to each project.
+The desktop profile stores only validated accepted runtime choices in a private, versioned file
+bounded to 64 KiB and 128 agent configurations. Missing, unreadable or malformed preference files
+restore no choices. Stale responses cannot overwrite a replacement session, and reconnecting does
+not replay modeling commands.
 Temporary failures of the embedded ACP or its project automation connection trigger up to five
 automatic recovery attempts with backoff. The chat shows recovery progress; after exhaustion it
 offers an explicit retry. Stop, Disconnect, revoked access, authentication requirements and permanent
 configuration failures do not silently reconnect. A brief ready notification does not reset the
 failure budget. Accepted settings remain available throughout recovery. If the agent no longer
 advertises a saved choice, restoration fails visibly instead of claiming the settings were restored.
+An unavailable private project attachment during host registration uses the same bounded recovery
+loop. Discovery grants no access, and Stop AI still prevents restoration and fresh pairing.
 
 An interrupted turn continues only after the provider reloads the exact resumable session and the
 project settles accepted persistence work. The new turn first reconciles the authoritative model,

@@ -60,13 +60,19 @@ and a separate optional argument-model endpoint, model and key. It does not ask 
 or source path. Provider keys are connection-only and kept in host memory per project for the app
 session; only non-secret settings persist. Recovery reuses the same project's cached keys, never
 keys entered in another project. The form explains the difference between selecting CAD actions
-and completing their open parameters. Connection and session settings open in an **AI settings**
-modal; closing it preserves the current form and connection. PNG/JPEG images are enabled on native
+and completing their open parameters. Connection configuration and credentials open in an **AI settings**
+modal; closing it preserves the current form and connection. Agent-advertised mode, model, reasoning,
+collaboration and speed choices live in compact composer menus. Their chips show the confirmed selected
+value; hover or keyboard focus reveals the setting name and full value. A shared pending lock prevents
+concurrent changes, and only currently advertised choices are offered. PNG/JPEG images are enabled on native
 Jev connections, including previously saved configurations, without a separate opt-in. The composer
 shows Jev's four-image limit and rejects unsupported formats or images exceeding its combined
 512 KiB base64 envelope before sending or queueing a turn. Captured views use the same admission.
 **Test connection** checks TypeSafe and any configured argument model without sending project data,
 images or CAD requests. Other ACP adapters receive an explicitly labelled initialization-only check.
+Successful probes use the shared success notification with a green confirmation icon, including repeated
+probes after dismissal; initialization success does not claim provider access. Failures retain actionable
+feedback and entered credentials for retry.
 Invalid or incomplete settings do
 not start a process, repeated connection activation is blocked, and connection failure releases
 the form for correction. Password fields clear only after the current connection is accepted as
@@ -183,7 +189,11 @@ The status bar exposes local **AI access** as an outlined button. It stays disab
 the visible **MCP client not connected** explanation until a client is available. An active
 local or remote AI session shows **AI access on**, its approval mode, and a direct outlined
 **Stop AI** action. Stop AI revokes session access; it does not stop the development MCP
-server. Auto-apply consent remains in the existing session dialog.
+server. Auto-apply consent remains in the existing session dialog. An interrupted connection marks the
+AI access control red with an error icon instead of adding inline diagnostic prose to the status bar.
+Its complete recovery explanation is available on hover and keyboard focus and remains an accessible
+description and status announcement. Disabled access retains a keyboard target for that diagnostic;
+recovery keeps Stop AI available with the same explanation.
 
 The FAQ's MCP page offers a copyable server URL and agent setup prompt. In development it derives
 `/mcp` from the current editor origin only when the local bridge marker is present. Its instructions

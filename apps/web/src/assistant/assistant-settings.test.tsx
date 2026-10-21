@@ -1,6 +1,6 @@
 import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type {
   AssistantConnectionTestResult,
@@ -28,17 +28,20 @@ function show(children: ReactNode) {
   return render(
     <ActivityProvider>
       <I18nProvider i18n={i18n} initialLocale="en">
-        <ApiAssistantProvider>
-          {children}
-          <ActivityReceipt />
-        </ApiAssistantProvider>
+        <ApplicationNoticesProvider>
+          <ApiAssistantProvider>
+            {children}
+            <ActivityReceipt />
+          </ApiAssistantProvider>
+        </ApplicationNoticesProvider>
       </I18nProvider>
     </ActivityProvider>,
   )
 }
 async function choose(label: string, option: string) {
-  fireEvent.keyDown(screen.getByRole("combobox", { name: label }), { key: "Enter" })
-  await userEvent.click(screen.getByRole("option", { name: option }))
+  const select = screen.queryByRole("combobox", { name: label })
+  fireEvent.keyDown(select ?? screen.getByRole("button", { name: label }), { key: "Enter" })
+  await userEvent.click(screen.getByRole(select ? "option" : "menuitemradio", { name: option }))
 }
 function deferred<T = void>() {
   let resolve: (value: T) => void = () => {}
@@ -49,6 +52,7 @@ function deferred<T = void>() {
 }
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => false)
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -111,22 +115,20 @@ describe("assistant connection settings", () => {
       ],
     }
     const view = show(<NativeSessionControls chat={chat} snapshot={snapshot} busy={false} />)
-    expect(screen.getAllByRole("combobox")).toHaveLength(3)
-    expect(screen.queryByRole("combobox", { name: "Agent mode" })).toBeNull()
+    expect(screen.getAllByRole("button")).toHaveLength(3)
+    expect(screen.queryByRole("button", { name: "Agent mode" })).toBeNull()
     await choose("Reasoning effort", "Deep")
     expect(chat.setConfigOption).toHaveBeenCalledWith("opaque-reasoning", "deep")
-    expect(screen.getByRole("combobox", { name: "Reasoning effort" }).textContent).toContain(
-      "Brief",
+    expect(screen.getByRole("button", { name: "Reasoning effort" }).textContent).toContain("Brief")
+    expect(screen.getAllByRole("button").every((element) => element.hasAttribute("disabled"))).toBe(
+      true,
     )
-    expect(
-      screen.getAllByRole("combobox").every((element) => element.hasAttribute("disabled")),
-    ).toBe(true)
     await act(async () => {
       pending.resolve()
       await pending.promise
     })
     expect(
-      screen.getAllByRole("combobox").every((element) => !element.hasAttribute("disabled")),
+      screen.getAllByRole("button").every((element) => !element.hasAttribute("disabled")),
     ).toBe(true)
     view.unmount()
     show(
@@ -148,11 +150,158 @@ describe("assistant connection settings", () => {
         busy={false}
       />,
     )
-    expect(screen.getByRole("combobox", { name: "Reasoning effort" }).textContent).toContain(
+    expect(screen.getByRole("button", { name: "Reasoning effort" }).textContent).toContain(
       "Extreme",
     )
-    fireEvent.keyDown(screen.getByRole("combobox", { name: "Reasoning effort" }), { key: "Enter" })
-    expect(screen.queryByRole("option", { name: "Deep" })).toBeNull()
+    fireEvent.keyDown(screen.getByRole("button", { name: "Reasoning effort" }), { key: "Enter" })
+    expect(screen.queryByRole("menuitemradio", { name: "Deep" })).toBeNull()
+  })
+
+  it("keeps advertised runtime choices inside the composer and releases the shared lock after rejection", async () => {
+    let reject: (reason: Error) => void = () => {}
+    const pending = new Promise<void>((_resolve, fail) => {
+      reject = fail
+    })
+    const chat = {
+      setMode: vi.fn().mockResolvedValue(undefined),
+      setModel: vi.fn().mockResolvedValue(undefined),
+      setConfigOption: vi.fn().mockReturnValueOnce(pending).mockResolvedValue(undefined),
+    }
+    const snapshot: AssistantSnapshot = {
+      projectId: "project",
+      sessionToken: "session",
+      sessionId: "agent-session",
+      status: "ready",
+      canResume: false,
+      modes: [],
+      models: [],
+      currentModeId: null,
+      currentModelId: null,
+      authMethods: [],
+      attachmentCapabilities: { text: false, images: false },
+      configOptions: [
+        {
+          id: "mode",
+          category: "mode",
+          name: "Mode",
+          currentValue: "auto-review",
+          options: [{ id: "auto-review", name: "Auto review" }],
+        },
+        {
+          id: "collaboration",
+          name: "Collaboration mode",
+          currentValue: "default",
+          options: [{ id: "default", name: "Default" }],
+        },
+        {
+          id: "model",
+          category: "model",
+          name: "Model",
+          currentValue: "sol",
+          options: [{ id: "sol", name: "6.1 Sol" }],
+        },
+        {
+          id: "effort",
+          category: "thought_level",
+          name: "Reasoning effort",
+          currentValue: "medium",
+          options: [
+            { id: "medium", name: "Medium" },
+            { id: "high", name: "High" },
+          ],
+        },
+        {
+          id: "fast",
+          name: "Fast mode",
+          currentValue: "off",
+          description: "Choose the agent service speed.",
+          options: [
+            { id: "off", name: "Off" },
+            { id: "on", name: "On" },
+          ],
+        },
+      ],
+    }
+    show(
+      <AssistantPanel
+        open
+        projectName="Bracket"
+        messages={[]}
+        busy={false}
+        canSend
+        configuration={<p>Private connection settings</p>}
+        sessionControls={<NativeSessionControls chat={chat} snapshot={snapshot} busy={false} />}
+        error={null}
+        storageFailed={false}
+        onClose={() => {}}
+        onSend={async () => {}}
+        onCancel={async () => {}}
+        onReset={async () => {}}
+      />,
+    )
+    const composer = screen.getByRole("region", { name: "Message" })
+    for (const [name, value] of [
+      ["Mode", "Auto review"],
+      ["Collaboration mode", "Default"],
+      ["Model", "6.1 Sol"],
+      ["Reasoning effort", "Medium"],
+      ["Fast mode", "Off"],
+    ] as const) {
+      const button = within(composer).getByRole("button", { name })
+      expect(button.textContent).toBe(value)
+      expect(button.getAttribute("aria-description")).toBe(value)
+    }
+    const fast = within(composer).getByRole("button", { name: "Fast mode" })
+    fireEvent.focus(fast)
+    expect(screen.getByRole("tooltip").textContent).toBe("Fast mode: Off")
+    fireEvent.blur(fast)
+    await choose("Reasoning effort", "High")
+    expect(chat.setConfigOption).toHaveBeenCalledTimes(1)
+    expect(within(composer).getByRole("button", { name: "Model" }).hasAttribute("disabled")).toBe(
+      true,
+    )
+    expect(within(composer).getByRole("button", { name: "Reasoning effort" }).textContent).toBe(
+      "Medium",
+    )
+    await act(async () => {
+      reject(new Error("Disconnected"))
+      await pending.catch(() => {})
+    })
+    expect(screen.getByRole("alert").textContent).toContain("Reconnect and try again")
+    expect(fast.hasAttribute("disabled")).toBe(false)
+    await choose("Fast mode", "On")
+    expect(chat.setConfigOption).toHaveBeenLastCalledWith("fast", "on")
+    expect(screen.queryByRole("alert")).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "AI settings" }))
+    expect(screen.getByRole("dialog").textContent).toContain("Private connection settings")
+    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: "Model" })).toBeNull()
+    await userEvent.keyboard("{Escape}")
+    expect(within(composer).getByRole("button", { name: "Model" }).textContent).toBe("6.1 Sol")
+  })
+
+  it("releases a rejected probe for retry and clears its actionable error on success", async () => {
+    const chat = {
+      connect: vi.fn().mockResolvedValue(true),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      testConnection: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Transport closed"))
+        .mockResolvedValue({ ok: true, checks: ["agent"] }),
+    }
+    saveAssistantPreferences({ version: 1, agent: { command: "/local/agent", args: [] } })
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected />)
+    const test = screen.getByRole("button", { name: "Test connection" })
+    await userEvent.click(test)
+    expect(screen.getByRole("alert").textContent).toContain("Reconnect and try again")
+    expect(test.hasAttribute("disabled")).toBe(false)
+    await userEvent.click(test)
+    expect(chat.testConnection).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(
+      screen
+        .getByText("ACP handshake passed. Provider access was not tested.")
+        .closest('[data-tone="success"]'),
+    ).toBeTruthy()
   })
 
   it("selects a known installed-command preset without launching or installing until Connect", async () => {
@@ -277,9 +426,13 @@ describe("assistant connection settings", () => {
     expect(chat.connect).not.toHaveBeenCalled()
     expect(JSON.stringify(readAssistantPreferences())).not.toContain("probe-private-key")
     await act(async () => pending.resolve({ ok: true, checks: ["agent", "jev"] }))
-    expect(screen.getByText(/Jev \(TypeSafe\) responded successfully/).getAttribute("role")).toBe(
-      "status",
-    )
+    expect(
+      screen
+        .getByText(/Jev \(TypeSafe\) responded successfully/)
+        .closest('[data-slot="notification"]')
+        ?.getAttribute("data-tone"),
+    ).toBe("success")
+    expect(screen.getByText(/Jev \(TypeSafe\) responded successfully/).closest("form")).toBeNull()
     expect(
       (screen.getByLabelText("TypeSafe API key", { exact: true }) as HTMLInputElement).value,
     ).toBe("probe-private-key")
@@ -324,7 +477,17 @@ describe("assistant connection settings", () => {
       { command: "/local/agent", args: ["acp"] },
       undefined,
     )
-    expect(screen.getByText(/Provider access was not tested/).getAttribute("role")).toBe("status")
+    const success = screen.getByText("ACP handshake passed. Provider access was not tested.")
+    expect(success.closest('[data-slot="notification"]')?.getAttribute("data-tone")).toBe("success")
+    expect(success.closest('[data-slot="notification"]')?.querySelector("svg")).toBeTruthy()
+    expect(success.closest("form")).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss notification" }))
+    expect(screen.queryByText("ACP handshake passed. Provider access was not tested.")).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "Test connection" }))
+    expect(chat.testConnection).toHaveBeenCalledTimes(2)
+    expect(
+      screen.getAllByText("ACP handshake passed. Provider access was not tested."),
+    ).toHaveLength(1)
     expect(chat.disconnect).not.toHaveBeenCalled()
   })
 
@@ -507,10 +670,10 @@ describe("assistant connection settings", () => {
       authMethods: [],
     }
     const view = show(<NativeSessionControls chat={chat} snapshot={snapshot} busy={false} />)
-    expect(screen.getByRole("combobox", { name: "Agent mode" }).textContent).toContain("Review")
+    expect(screen.getByRole("button", { name: "Agent mode" }).textContent).toContain("Review")
     await choose("Model", "Advertised model")
     expect(chat.setModel).toHaveBeenCalledWith("advertised-model")
-    expect(screen.getByRole("combobox", { name: "Model" }).hasAttribute("disabled")).toBe(true)
+    expect(screen.getByRole("button", { name: "Model" }).hasAttribute("disabled")).toBe(true)
     expect(screen.getByRole("status", { name: "Global activity" }).textContent).toBe("active")
     await act(async () => {
       pending.resolve()
@@ -525,7 +688,7 @@ describe("assistant connection settings", () => {
         busy={false}
       />,
     )
-    expect(screen.queryByRole("combobox")).toBeNull()
+    expect(screen.queryByRole("button")).toBeNull()
   })
 })
 

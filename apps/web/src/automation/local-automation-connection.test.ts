@@ -202,6 +202,84 @@ describe("embedded project access", () => {
     connection = createLocalAutomationConnection({ projectId, accessPolicy: "native-project" })
   }
 
+  it.each(["registered", "Stop AI"] as const)(
+    "retains native recovery before project attachment registration and respects %s",
+    async (next) => {
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(0)
+      connection.dispose()
+      const saved = sessionStorage.getItem(`vibeshape-local-ai-resume:${id}`)
+      expect(saved).not.toBeNull()
+      const original = mocks.request.getMockImplementation()
+      let registered = false
+      mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+        if (!registered)
+          return {
+            ok: false,
+            status: 404,
+            data: {
+              ok: false,
+              diagnostic: {
+                code: "project-session-unavailable",
+                message: "This project's native assistant is not connected.",
+                retryable: true,
+              },
+            },
+          }
+        if (path === "/resume") return { ok: false, status: 401, data: {} }
+        return original?.(path, ...args)
+      })
+      mocks.request.mockClear()
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(connection.getSnapshot()).toMatchObject({
+        connected: false,
+        recovering: true,
+        recoveryFailed: false,
+        recoveryAttempt: 1,
+      })
+      expect(sessionStorage.getItem(`vibeshape-local-ai-resume:${id}`)).toBe(saved)
+      expect(mocks.request.mock.calls.some(([path]) => path === "/revoke")).toBe(false)
+      registered = true
+      if (next === "Stop AI") await connection.disable()
+      await connection.status()
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(connection.getSnapshot().connected).toBe(next === "registered")
+      expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(
+        next === "registered" ? 1 : 0,
+      )
+      expect(mocks.execute).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each([
+    { code: "project-session-unavailable", retryable: false },
+    { code: "permission-denied", retryable: true },
+  ])("does not retry a native discovery refusal $code ($retryable)", async (diagnostic) => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    connection.dispose()
+    mocks.request.mockResolvedValue({
+      ok: false,
+      status: 404,
+      data: { ok: false, diagnostic: { ...diagnostic, message: "Access refused." } },
+    })
+    mocks.request.mockClear()
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: false,
+      recovering: false,
+      recoveryFailed: true,
+      recoveryAttempt: 1,
+    })
+    expect(mocks.request.mock.calls.some(([path]) => path === "/connect")).toBe(false)
+  })
+
   it("automatically pairs a fresh native client once its document becomes ready", async () => {
     useNativeProject()
     const unavailable = {

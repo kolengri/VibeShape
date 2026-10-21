@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type {
@@ -265,8 +265,9 @@ async function host(
   await writeFile(script, fixture)
   const events: AssistantEvent[] = []
   const waiters = new Set<(event: AssistantEvent) => void>()
-  const service = createAssistantService({
+  const serviceOptions: AssistantServiceOptions = {
     cwd: directory,
+    preferencesPath: join(directory, "session-preferences.json"),
     applicationVersion: "9.8.7",
     getMcpSetup: async () => ({
       protocolVersion: 1,
@@ -286,12 +287,20 @@ async function host(
     env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     requestTimeoutMs: 3000,
     ...overrides,
-  })
+  }
+  let service = createAssistantService(serviceOptions)
   cleanups.push(() => service.close())
   return {
-    service,
+    get service() {
+      return service
+    },
     script,
     events,
+    preferencesPath: join(directory, "session-preferences.json"),
+    async restart() {
+      await service.close()
+      service = createAssistantService(serviceOptions)
+    },
     signal: (name: string) => writeFile(join(directory, name), ""),
     settingsFixture: (flags: Record<string, unknown>) =>
       writeFile(join(directory, "reconnect-fixture.json"), JSON.stringify(flags)),
@@ -429,7 +438,7 @@ describe("native accepted settings reconnect", () => {
       id: "legacy-mode",
       value: "edit",
     })
-    const fresh = ready(await context.connect("reconnect", "other-project"))
+    const fresh = ready(await context.connect("reconnect-other", "other-project"))
     expect((await inspectSessionSettings(context, fresh)).settingCalls).toEqual([])
   })
 
@@ -518,17 +527,20 @@ describe("native accepted settings reconnect", () => {
     })
   })
 
-  it("keeps accepted choices isolated by project and exact agent configuration", async () => {
+  it("shares accepted runtime choices across projects while isolating exact agent configurations", async () => {
     const context = await host()
     const session = ready(await context.connect("reconnect"))
     await chooseSessionSettings(context, session)
     const project = ready(await context.connect("reconnect", "other-project"))
-    expect(sessionValues(project)).toEqual({
-      engine: "small",
-      behavior: "ask",
-      depth: "brief",
-      detail: "terse",
-    })
+    expect(sessionValues(project)).toEqual(selected)
+    expect(project.projectId).toBe("other-project")
+    expect(project.sessionToken).not.toBe(session.sessionToken)
+    expect(
+      await context.service.handle({
+        operation: "setMode",
+        input: { projectId: project.projectId, sessionToken: session.sessionToken, modeId: "ask" },
+      }),
+    ).toEqual({ ok: false, code: "stale-session" })
     const provider = ready(await context.connect("reconnect-other"))
     expect(sessionValues(provider)).toEqual({
       engine: "small",
@@ -549,6 +561,64 @@ describe("native accepted settings reconnect", () => {
       depth: "deep",
       detail: "terse",
     })
+  })
+
+  it("restores only accepted nonsecret runtime choices after host recreation in another project", async () => {
+    const context = await host()
+    const session = ready(await context.connect("reconnect"))
+    await chooseSessionSettings(context, session)
+    const saved = JSON.parse(await readFile(context.preferencesPath, "utf8"))
+    expect(saved.schemaVersion).toBe(1)
+    expect(saved.scopes).toHaveLength(1)
+    expect(Object.keys(saved.scopes[0])).toEqual(["key", "choices"])
+    expect(saved.scopes[0].choices).toEqual([
+      { kind: "config", id: "engine", category: "model", value: "large" },
+      { kind: "config", id: "behavior", category: "mode", value: "edit" },
+      { kind: "config", id: "depth", category: "thought_level", value: "extreme" },
+      { kind: "config", id: "detail", category: "other", value: "full" },
+    ])
+    await context.restart()
+    const start = context.events.length
+    const restored = ready(await context.connect("reconnect", "other-project"))
+    expect(sessionValues(restored)).toEqual(selected)
+    expect(restored.projectId).toBe("other-project")
+    expect(
+      context.events
+        .slice(start)
+        .filter((event) => event.type === "snapshot" && event.snapshot.status === "ready"),
+    ).toHaveLength(1)
+  })
+
+  it("rejects an unsupported persisted runtime choice before another project becomes ready", async () => {
+    const context = await host()
+    await chooseSessionSettings(context, ready(await context.connect("reconnect")))
+    await context.restart()
+    await context.settingsFixture({ noExtreme: true })
+    const start = context.events.length
+    expect(await context.connect("reconnect", "other-project")).toEqual({
+      ok: false,
+      code: "settings-unavailable",
+    })
+    expect(
+      context.events
+        .slice(start)
+        .some((event) => event.type === "snapshot" && event.snapshot.status === "ready"),
+    ).toBe(false)
+    await context.restart()
+    expect(sessionValues(ready(await context.connect("reconnect", "other-project")))).toEqual({
+      ...selected,
+      depth: "deep",
+    })
+  })
+
+  it.each([
+    { schemaVersion: 2, scopes: [] },
+    { schemaVersion: 1, scopes: [], credentials: { apiKey: "must-not-restore" } },
+  ])("ignores malformed or unknown persisted preferences ($schemaVersion)", async (saved) => {
+    const context = await host()
+    await writeFile(context.preferencesPath, JSON.stringify(saved), { mode: 0o600 })
+    const session = ready(await context.connect("reconnect"))
+    expect((await inspectSessionSettings(context, session)).settingCalls).toEqual([])
   })
 
   it("does not remember rejected user changes or stale control replies", async () => {

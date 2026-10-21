@@ -588,6 +588,7 @@ function installAssistant() {
   if (assistant) return
   assistant = createAssistantService({
     cwd: assistantDirectory,
+    preferencesPath: join(assistantDirectory, "session-preferences.json"),
     resolveLaunch: resolveAssistantLaunch,
     applicationVersion: app.getVersion(),
     async getMcpSetup(projectId, questions) {
