@@ -51,10 +51,14 @@ test("Windows launches with standard chrome and retains projects after restart",
         await realpath(fixture.executablePath),
       )
       const client = new Client({ name: "windows-release-acceptance", version: "1.0" })
+      let stderr = ""
       try {
         const transport = new StdioClientTransport({
           ...setup.mcpServers.vibeshape,
           stderr: "pipe",
+        })
+        transport.stderr?.on("data", (data) => {
+          stderr = (stderr + data.toString()).slice(-4096)
         })
         await client.connect(transport as Transport)
         const discovery = await client.request({ method: "tools/list" }, ListToolsResultSchema)
@@ -69,6 +73,10 @@ test("Windows launches with standard chrome and retains projects after restart",
         expect(await client.callTool({ name: "model_info", arguments: {} })).toMatchObject({
           isError: true,
           structuredContent: { result: { diagnostic: { code: "not-paired" } } },
+        })
+      } catch (error) {
+        throw new Error(`Windows MCP acceptance failed. Forwarder stderr: ${stderr}`, {
+          cause: error,
         })
       } finally {
         await client.close()

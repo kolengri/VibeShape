@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod"
 import { readMcpDescriptor } from "./mcp-descriptor"
 import { createMcpRelay } from "./mcp-relay"
+import { WindowsPrivateFileReadError } from "./private-files"
 
 async function attach() {
   const [, path] = z
@@ -35,7 +36,8 @@ async function attach() {
   await relay.start()
 }
 
-void attach().catch(() => {
+void attach().catch((error: unknown) => {
+  if (error instanceof WindowsPrivateFileReadError) process.stderr.write(`${error.message}\n`)
   process.stderr.write(
     "VibeShape MCP could not attach. Open the desktop app and copy its MCP configuration from Settings.\n",
   )
