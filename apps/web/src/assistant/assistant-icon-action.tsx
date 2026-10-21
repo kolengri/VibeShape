@@ -16,7 +16,7 @@ export function AssistantIconAction({
   disabled?: boolean
   expanded?: boolean
   pressed?: boolean
-  onAction: () => void | Promise<void>
+  onAction: () => unknown
   primary?: boolean
 }) {
   return (

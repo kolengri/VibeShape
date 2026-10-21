@@ -27,7 +27,7 @@ no preview. Explicit `preview_draft` still supplies the authoritative validation
 visible preview does not advance the saved revision, create Undo or grant Apply permission. Later
 commands replace it, and cancellation, discard, disposal or a changed committed base removes it.
 
-The person can use **Apply changes** in chat for the exact valid retained preview before the client
+The person can use **Confirm changes** (the checkmark above the chat composer) in chat for the exact valid retained preview before the client
 next calls `commit_draft`. This uses the same session authority, approval policy and ordinary atomic
 commit; the preview remains unsaved until that commit succeeds. If the draft was consumed or the
 committed base changed, reread `model_info` and the affected intent before continuing. Do not blindly

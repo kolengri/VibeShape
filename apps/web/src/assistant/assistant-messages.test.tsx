@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { documentIdSchema, featureIdSchema, sketchIdSchema } from "@vibeshape/domain"
+import { createI18n, defaultFormats } from "@vibeshape/i18n"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ReactNode } from "react"
+import * as markdown from "react-markdown"
 import { vi } from "../../../../tests/unit/support/bun-test"
-import { i18n } from "../i18n"
+import { i18n, messages } from "../i18n"
 import { AssistantMessages } from "./assistant-messages"
 import type { AssistantToolHighlight } from "./assistant-tool-highlight"
 import type { ChatMessage } from "./chat-history"
@@ -40,6 +42,176 @@ function toolMessage(
 ): ChatMessage {
   return { id, role: "tool", text, tool: { title, status } }
 }
+
+describe("assistant Markdown", () => {
+  it("parses only the changed reply when a retained transcript receives a stream update", () => {
+    const parse = vi.spyOn(markdown, "default")
+    try {
+      const history: ChatMessage[] = [
+        { id: "first", role: "assistant", text: "Saved **first** answer." },
+        { id: "second", role: "assistant", text: "Saved **second** answer." },
+        { id: "stream", role: "assistant", text: "New **answer" },
+      ]
+      const rendered = transcript(history)
+      expect(parse).toHaveBeenCalledTimes(3)
+      parse.mockClear()
+      rendered.rerender(
+        view(
+          history.map((message) => ({
+            ...message,
+            ...(message.id === "stream" ? { text: "New **answer**." } : {}),
+          })),
+        ),
+      )
+      expect(parse).toHaveBeenCalledTimes(1)
+      expect(screen.getByText("answer", { selector: "strong" })).toBeTruthy()
+      parse.mockClear()
+      rendered.rerender(
+        view(history.map((message) => ({ ...message, text: `${message.text} Updated.` }))),
+      )
+      expect(parse).toHaveBeenCalledTimes(3)
+    } finally {
+      parse.mockRestore()
+    }
+  })
+
+  it("renders model prose, code, lists, and tables while keeping user text literal", () => {
+    transcript([
+      { id: "user", role: "user", text: "Keep **these markers** in my message." },
+      {
+        id: "reply",
+        role: "assistant",
+        text: [
+          "## Updated model",
+          "Wall thickness is **2.0 mm** with *flexible* sides and `wallThickness` intent.",
+          "- Preserve the lid\n- Preserve the neck",
+          "1. Inspect\n2. Confirm",
+          "> Print strength is unverified.",
+          "```ts\nconst wall = 2.0\n```",
+          "| Dimension | Value |\n| --- | --- |\n| Wall | 2.0 mm |",
+        ].join("\n\n"),
+      },
+    ])
+    expect(screen.getByRole("heading", { name: "Updated model", level: 2 })).toBeTruthy()
+    expect(screen.getByText("2.0 mm", { selector: "strong" })).toBeTruthy()
+    expect(screen.getByText("flexible", { selector: "em" })).toBeTruthy()
+    expect(screen.getByText("wallThickness", { selector: "code" })).toBeTruthy()
+    expect(document.querySelectorAll("ul > li")).toHaveLength(2)
+    expect(document.querySelectorAll("ol > li")).toHaveLength(2)
+    expect(screen.getByText("Print strength is unverified.").closest("blockquote")).toBeTruthy()
+    expect(document.querySelector("pre > code")?.textContent).toBe("const wall = 2.0\n")
+    expect(within(screen.getByRole("table")).getByRole("cell", { name: "2.0 mm" })).toBeTruthy()
+    expect(
+      screen.getByText("Keep **these markers** in my message.").querySelector("strong"),
+    ).toBeNull()
+  })
+
+  it("ignores raw HTML, blocks unsafe links, and does not load model-authored images", () => {
+    transcript([
+      {
+        id: "reply",
+        role: "assistant",
+        text: [
+          "[Reference](https://example.com/model) [Unsafe](javascript:alert%281%29)",
+          "[Local file](file:///private/model.step) ![Model illustration](https://example.com/track.png)",
+          '<img src="https://example.com/raw.png" onerror="alert(1)">',
+          "<script>alert(1)</script>",
+        ].join("\n\n"),
+      },
+    ])
+    const reference = screen.getByRole("link", { name: "Reference" })
+    expect(reference.getAttribute("href")).toBe("https://example.com/model")
+    expect(reference.getAttribute("target")).toBe("_blank")
+    expect(reference.getAttribute("rel")).toBe("noopener noreferrer")
+    expect(screen.queryByRole("link", { name: "Unsafe" })).toBeNull()
+    expect(screen.queryByRole("link", { name: "Local file" })).toBeNull()
+    expect(screen.getByText("Model illustration")).toBeTruthy()
+    expect(document.querySelector("script, img")).toBeNull()
+  })
+
+  it("updates streamed Markdown without moving a reader away from earlier messages", () => {
+    const rendered = transcript([{ id: "reply", role: "assistant", text: "Wall **2.0" }])
+    const log = screen.getByRole("log")
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 500 },
+    })
+    log.scrollTop = 40
+    fireEvent.scroll(log)
+    const scrollCalls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    rendered.rerender(view([{ id: "reply", role: "assistant", text: "Wall **2.0 mm**." }]))
+    expect(screen.getByText("2.0 mm", { selector: "strong" })).toBeTruthy()
+    expect(log.scrollTop).toBe(40)
+    expect(vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls).toHaveLength(scrollCalls)
+  })
+
+  it("keeps footnote references, labels, and return links inside their own reply", () => {
+    transcript([
+      { id: "first", role: "assistant", text: "First answer[^1].\n\n[^1]: First explanation." },
+      { id: "second", role: "assistant", text: "Second answer[^1].\n\n[^1]: Second explanation." },
+    ])
+    const log = screen.getByRole("log")
+    const ids = [...log.querySelectorAll("[id]")].map((element) => element.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const article of log.querySelectorAll("article")) {
+      const reference = article.querySelector("a[data-footnote-ref]")
+      const back = article.querySelector("a[data-footnote-backref]")
+      const label = document.getElementById(reference?.getAttribute("aria-describedby") ?? "")
+      const note = document.getElementById(reference?.getAttribute("href")?.slice(1) ?? "")
+      expect(article.contains(label)).toBe(true)
+      expect(label?.textContent).toBe("Footnotes")
+      expect(article.contains(note)).toBe(true)
+      expect(note?.contains(back)).toBe(true)
+      expect(back?.getAttribute("href")).toBe(`#${reference?.id}`)
+      expect(reference?.hasAttribute("target")).toBe(false)
+      expect(back?.hasAttribute("target")).toBe(false)
+    }
+  })
+
+  it("uses catalog copy for footnote headings and repeated backreference labels", () => {
+    const catalog = createI18n({
+      defaultLocale: "en",
+      formats: defaultFormats,
+      messages: {
+        en: {
+          ...messages.en,
+          app: {
+            ...messages.en.app,
+            assistant: {
+              ...messages.en.app.assistant,
+              footnoteLabel: "Model notes",
+              footnoteBackLabel: "Return to item {reference}, mention {occurrence}",
+            },
+          },
+        },
+      },
+    })
+    const entries: ChatMessage[] = [
+      {
+        id: "reply",
+        role: "assistant",
+        text: "Answer[^note], repeated[^note], and another[^other].\n\n[^note]: Explanation.\n\n[^other]: More detail.",
+      },
+    ]
+    const rendered = render(
+      <I18nProvider i18n={catalog} initialLocale="en">
+        <AssistantMessages messages={entries} />
+      </I18nProvider>,
+    )
+    expect(screen.getByRole("heading", { name: "Model notes" })).toBeTruthy()
+    for (const name of [
+      "Return to item 1, mention 1",
+      "Return to item 1, mention 2",
+      "Return to item 2, mention 1",
+    ])
+      expect(screen.getByRole("link", { name })).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: "Footnotes" })).toBeNull()
+    rendered.rerender(view(entries))
+    expect(screen.getByRole("heading", { name: "Footnotes" })).toBeTruthy()
+    expect(screen.getByRole("link", { name: /^Back to reference 1$/ })).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: "Model notes" })).toBeNull()
+  })
+})
 
 describe("assistant tool messages", () => {
   it.each([
