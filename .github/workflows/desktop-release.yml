@@ -16,50 +16,36 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      # Draft releases require push access even for read-only API requests.
+      # Reserve an immutable version tag without writing main.
       contents: write
     outputs:
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
+      source-commit: ${{ steps.release.outputs.source-commit }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Check version, source and kernel availability
-        id: release
+      - name: Test release versioning and publication policy
+        run: python3 -m unittest discover -s ops/desktop-release -p 'test_*.py'
+      - name: Check source and kernel availability
         env:
           GH_TOKEN: ${{ github.token }}
           KERNEL_ASSET_ID: ${{ vars.VIBESHAPE_OCCT_RELEASE_ASSET_ID }}
+        run: python3 ops/cloudflare/preflight.py
+      - name: Reserve the next version and its exact source
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          python3 ops/cloudflare/preflight.py
-          version="$(python3 -c 'import json; print(json.load(open("apps/desktop/package.json"))["version"])')"
-          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
-          tag="desktop-v$version"
-          tag_commit="$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" | tail -n 1 | cut -f 1)"
-          if [[ -n "$tag_commit" && "$tag_commit" != "$GITHUB_SHA" ]]; then
-            echo '::error::Version already tagged from another commit. Bump apps/desktop/package.json on main.'
-            exit 1
-          fi
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
-            --jq ".[] | select(.tag_name == \"$tag\")" > "$RUNNER_TEMP/existing-release.json"
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          text = (Path(os.environ["RUNNER_TEMP"]) / "existing-release.json").read_text().strip()
-          if text:
-              release = json.loads(text)
-              if (release.get("draft") is not True
-                      or release.get("target_commitish") != os.environ["GITHUB_SHA"]):
-                  raise SystemExit("Version already released or belongs to another commit. Bump apps/desktop/package.json on main.")
-          PY
-          printf 'version=%s\ntag=%s\n' "$version" "$tag" >> "$GITHUB_OUTPUT"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases" > "$RUNNER_TEMP/existing-releases.json"
+          python3 ops/desktop-release/release.py prepare
 
   verify:
     needs: preflight
     uses: ./.github/workflows/ci.yml
+    with:
+      source_ref: ${{ needs.preflight.outputs.source-commit }}
 
   website:
     needs: preflight
@@ -69,6 +55,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
@@ -92,12 +79,14 @@ jobs:
       asset-digests: ${{ steps.assets.outputs.asset-digests }}
     env:
       GH_TOKEN: ${{ github.token }}
+      SOURCE_COMMIT: ${{ needs.preflight.outputs.source-commit }}
       RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
       RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
@@ -150,7 +139,8 @@ jobs:
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
-          Source: $GITHUB_SHA
+          <!-- vibeshape-desktop-release:$GITHUB_RUN_ID:$SOURCE_COMMIT -->
+          Source: $SOURCE_COMMIT
 
           macOS: Apple Silicon DMG, ad-hoc signed, not notarized or Developer ID authenticated.
           Windows: x64 portable ZIP, unsigned; no Authenticode signature.
@@ -162,21 +152,14 @@ jobs:
           Downloads also appear at https://vibeshape.hello-world.cz after publication.
           EOF
           if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --draft --title "VibeShape Desktop $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_COMMIT" \
+              --verify-tag --draft --title "VibeShape Desktop $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
           # A build-only rerun skips preflight, including after a successful publication.
-          release_state="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --json isDraft,targetCommitish --jq '[.isDraft, .targetCommitish] | @tsv')"
-          if [[ "$release_state" != $'true\t'"$GITHUB_SHA" ]]; then
-            echo '::error::Only a draft belonging to this source commit may receive release assets.'
-            exit 1
-          fi
-          tag_commit="$(git ls-remote origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}" | tail -n 1 | cut -f 1)"
-          if [[ -n "$tag_commit" && "$tag_commit" != "$GITHUB_SHA" ]]; then
-            echo '::error::Release tag belongs to another source commit; refuse asset replacement.'
-            exit 1
-          fi
+          RELEASE_TAG_COMMIT="$(git ls-remote origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}" | tail -n 1 | cut -f 1)"
+          export RELEASE_TAG_COMMIT
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
+          python3 ops/desktop-release/release.py stage
           # A full rerun may rebuild this same draft; both acceptance jobs run again below.
           gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber \
             "$RUNNER_TEMP/release-macos/VibeShape-$RELEASE_VERSION-mac-arm64.dmg" \
@@ -191,7 +174,7 @@ jobs:
     uses: ./.github/workflows/macos-release-validation.yml
     with:
       release_tag: ${{ needs.preflight.outputs.tag }}
-      source_commit: ${{ github.sha }}
+      source_commit: ${{ needs.preflight.outputs.source-commit }}
       dmg_sha256: ${{ needs.build.outputs.dmg-sha256 }}
 
   windows:
@@ -201,7 +184,7 @@ jobs:
     uses: ./.github/workflows/windows-release-validation.yml
     with:
       release_tag: ${{ needs.preflight.outputs.tag }}
-      source_commit: ${{ github.sha }}
+      source_commit: ${{ needs.preflight.outputs.source-commit }}
       zip_sha256: ${{ needs.build.outputs.zip-sha256 }}
 
   publish:
@@ -211,6 +194,7 @@ jobs:
     permissions:
       contents: write
     env:
+      SOURCE_COMMIT: ${{ needs.preflight.outputs.source-commit }}
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
       EXPECTED_DIGESTS: ${{ needs.build.outputs.asset-digests }}
@@ -221,27 +205,15 @@ jobs:
       - name: Verify the draft still contains exactly the accepted assets
         run: |
           set -euo pipefail
-          tag_commit="$(git ls-remote origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}" | tail -n 1 | cut -f 1)"
-          test -z "$tag_commit" || test "$tag_commit" = "$GITHUB_SHA"
+          # Existing tags are authoritative; target_commitish is only a tag-creation hint.
+          RELEASE_TAG_COMMIT="$(git ls-remote origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}" | tail -n 1 | cut -f 1)"
+          export RELEASE_TAG_COMMIT
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases" > "$RUNNER_TEMP/published-releases.json"
+          python3 ops/desktop-release/release.py verify
 
-          release = json.loads((Path(os.environ["RUNNER_TEMP"]) / "release.json").read_text())
-          expected = json.loads(os.environ["EXPECTED_DIGESTS"])
-          assets = release["assets"]
-          if (release.get("draft") is not True or release.get("prerelease") is not False
-                  or release.get("tag_name") != os.environ["RELEASE_TAG"]
-                  or release.get("target_commitish") != os.environ["GITHUB_SHA"]
-                  or len(assets) != len(expected)
-                  or {asset["name"]: asset.get("digest") for asset in assets} != expected
-                  or any(asset.get("state") != "uploaded" or asset.get("size", 0) <= 0 for asset in assets)):
-              raise SystemExit("Draft source or assets changed after building; refuse publication.")
-          PY
       - name: Publish the accepted release and expose website downloads
         run: |
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           printf 'Release: https://github.com/%s/releases/tag/%s\n\nSource: `%s`\n\nWebsite downloads: https://vibeshape.hello-world.cz (discovered from GitHub Releases on page load).\n' \
-            "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+            "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$SOURCE_COMMIT" >> "$GITHUB_STEP_SUMMARY"
