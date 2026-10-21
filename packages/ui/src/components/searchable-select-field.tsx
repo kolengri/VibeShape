@@ -130,10 +130,12 @@ function useSelectValue({
     form.addEventListener("reset", reset)
     return () => form.removeEventListener("reset", reset)
   }, [defaultValue, value])
+  const selectedValue = value ?? uncontrolledValue
   return {
     nativeRef,
-    selectedValue: value ?? uncontrolledValue,
+    selectedValue,
     select: (nextValue: string) => {
+      if (nextValue === selectedValue) return
       if (value === undefined) setUncontrolledValue(nextValue)
       onValueChange?.(nextValue)
     },

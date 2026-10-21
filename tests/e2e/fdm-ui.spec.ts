@@ -3,6 +3,49 @@ import { openApplicationMenuItem } from "./application-menu-support"
 import { openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
+import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
+
+test("preserves selected web lines when confirming the same saved sketch", async ({ page }) => {
+  await page.goto("/")
+  await saved(page)
+  for (const number of [1, 2]) {
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page)
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await saved(page)
+    await expect(
+      page.getByRole("treeitem", { name: `Sketch ${number}`, exact: true }),
+    ).toBeVisible()
+  }
+  await invokeModelCommand(page, "Modify", "FDM tools")
+  const form = page.getByRole("form", { name: "FDM tools", exact: true })
+  const sketch = form.getByRole("combobox", { name: "Saved sketch", exact: true })
+  await sketch.click()
+  await page.getByRole("option", { name: "Sketch 1", exact: true }).click()
+  const firstLine = form.getByRole("checkbox", { name: "Line 1", exact: true })
+  const secondLine = form.getByRole("checkbox", { name: "Line 2", exact: true })
+  await firstLine.check()
+  await secondLine.check()
+  await sketch.click()
+  await page.getByRole("option", { name: "Sketch 1", exact: true }).click()
+  await expect(firstLine).toBeChecked()
+  await expect(secondLine).toBeChecked()
+  await expect(sketch).toBeFocused()
+  await sketch.click()
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("listbox")).not.toBeVisible()
+  await expect(firstLine).toBeChecked()
+  await expect(secondLine).toBeChecked()
+  await expect(sketch).toBeFocused()
+  await sketch.click()
+  await page.getByRole("option", { name: "Sketch 2", exact: true }).click()
+  await expect(firstLine).not.toBeChecked()
+  await expect(secondLine).not.toBeChecked()
+})
 
 test("creates an authored FDM coupon, edits, undoes and reopens its native backup", async ({
   page,

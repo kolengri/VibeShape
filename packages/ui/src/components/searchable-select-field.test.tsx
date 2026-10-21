@@ -92,6 +92,53 @@ describe("SearchableSelectField", () => {
     expect(trigger.textContent).toContain("Shaft")
   })
 
+  it.each(["controlled", "uncontrolled"] as const)(
+    "closes unchanged %s selections without notifying the caller",
+    async (mode) => {
+      const user = userEvent.setup()
+      const change = mock(() => {})
+      const valueProps = mode === "controlled" ? { value: "block" } : { defaultValue: "block" }
+      const view = render(
+        <SearchableSelectField
+          {...copy}
+          {...valueProps}
+          options={options}
+          onValueChange={change}
+        />,
+      )
+      const trigger = screen.getByRole("combobox", { name: "Target body" })
+      await user.click(trigger)
+      await user.click(screen.getByRole("option", { name: "Housing" }))
+      expect(change).not.toHaveBeenCalled()
+      expect(screen.queryByRole("listbox")).toBeNull()
+      expect(document.activeElement === trigger).toBe(true)
+      await user.click(trigger)
+      await user.keyboard("{Enter}")
+      expect(change).not.toHaveBeenCalled()
+      expect(screen.queryByRole("listbox")).toBeNull()
+      expect(document.activeElement === trigger).toBe(true)
+
+      await user.click(trigger)
+      await user.click(screen.getByRole("option", { name: "Shaft" }))
+      expect(change).toHaveBeenCalledTimes(1)
+      expect(change).toHaveBeenLastCalledWith("shaft")
+      if (mode === "controlled")
+        view.rerender(
+          <SearchableSelectField
+            {...copy}
+            value="shaft"
+            options={options}
+            onValueChange={change}
+          />,
+        )
+      await user.click(trigger)
+      await user.click(screen.getByRole("option", { name: "Shaft" }))
+      expect(change).toHaveBeenCalledTimes(1)
+      expect(trigger.textContent).toContain("Shaft")
+      expect(screen.queryByRole("listbox")).toBeNull()
+    },
+  )
+
   it("navigates enabled results by keyboard and never commits on hover", async () => {
     const user = userEvent.setup()
     const change = mock(() => {})
