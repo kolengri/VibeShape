@@ -35,11 +35,11 @@ function metadata(source: string, name: string) {
 function resourceLinks(source: string, path: string, paths: Set<string>): string {
   return source.replace(/\[([^\]]*)\]\(([^)]+)\)/g, (original, label: string, target: string) => {
     if (target.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(target)) return original
-    const [file = "", ...fragment] = target.split("#")
+    const [file = ""] = target.split("#")
     const destination = posix.normalize(posix.join(posix.dirname(path), file))
     if (!paths.has(destination)) throw new Error(`Unbundled skill link in ${path}: ${target}`)
-    const suffix = fragment.length ? `#${fragment.join("#")}` : ""
-    return `[${label}](${resourceRoot}/${destination}${suffix})`
+    // MCP publishes whole documents at exact catalog URIs, not fragment resources.
+    return `[${label}](${resourceRoot}/${destination})`
   })
 }
 

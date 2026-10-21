@@ -45,6 +45,8 @@
   "workspaces": {
     "patterns": ["apps/*", "packages/*"]
   },
+  // Only the Bun skill-link validator imports this package; Fallow 3.14 classifies its helper as runtime.
+  "ignoreDependencies": ["github-slugger"],
   // Bun resolves these transitive security pins in bun.lock; Fallow currently checks pnpm lockfiles only.
   "ignoreDependencyOverrides": [
     { "package": "proxy-addr", "source": "package.json" },

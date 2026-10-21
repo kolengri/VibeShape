@@ -1,9 +1,8 @@
 # Native source import
 
-Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
-The built-in chat commits validated changes to its current project without another Apply action;
-manual review requirements below describe external MCP clients. Publishing or updating the reusable
-local library remains separately reviewed for every connection.
+Use the [model-write approval policy](../../vibeshape-use/references/session.md#model-write-approval)
+for the current connection. Manual review instructions below apply to external MCP clients;
+library publication remains separately reviewed for every connection.
 
 Use this flow only when the five import tools are advertised and the user authorized importing
 the selected source into the paired project. STEP/STP and BREP create exact solids. STL and 3MF

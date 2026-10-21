@@ -20,7 +20,7 @@ Before changing dependencies:
 - Update the parent dependency for a transitive issue before considering an override.
 - Keep unrelated upgrades out of the change.
 - Do not use a floating version to fix an advisory.
-- Ask before a breaking major update or a change that can alter geometry, file output, or solver results.
+- Confirm scope before an unrequested breaking major update or a change that can alter geometry, file output, or solver results. Reuse explicit authorization for the requested upgrade; prior authorization does not waive behavior-sensitive verification.
 - Use Bun catalogs for shared versions and keep dependencies in the workspace that uses them.
 - Rerun `bun audit` after every remediation set.
 

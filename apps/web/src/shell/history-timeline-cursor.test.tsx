@@ -375,6 +375,12 @@ describe("History rollback divider", () => {
     expect(frames.size).toBe(0)
   })
   it("preserves manual scrolling during hover remeasurement and reveals explicit boundary navigation", async () => {
+    let completeNavigation!: (moved: boolean) => void
+    ports.end.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        completeNavigation = resolve
+      }),
+    )
     render(<Harness width={200} />)
     const track = cursor().parentElement
     const row = document.querySelector<HTMLElement>('[data-history-index="0"]')
@@ -390,9 +396,15 @@ describe("History rollback divider", () => {
     fireEvent.keyDown(cursor(), { key: "Home" })
     await expectSettledCursor(0)
     fireEvent.keyDown(cursor(), { key: "End" })
-    await expectSettledCursor(4)
     expect(ports.end).toHaveBeenCalledTimes(1)
-    expect(track.scrollLeft).toBeGreaterThan(0)
+    expect(cursor().getAttribute("aria-valuenow")).toBe("4")
+    expect(cursor().hasAttribute("data-history-cursor-draft")).toBe(true)
+    expect(track.scrollLeft).toBe(0)
+    await act(async () => completeNavigation(true))
+    await expectSettledCursor(4)
+    await waitFor(() => {
+      expect(track.scrollLeft).toBeGreaterThan(0)
+    })
   })
   it("disposes an active drag without navigation or an idle animation frame", () => {
     const view = render(<Harness width={200} />)

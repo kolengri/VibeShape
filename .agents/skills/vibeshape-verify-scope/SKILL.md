@@ -5,6 +5,10 @@ description: Select and run the smallest correct deterministic verification scop
 
 # VibeShape Verify Scope
 
+## Establish the Check Environment
+
+Before executable checks, run `bun run check:bun` to verify the repository's pinned runtime and confirm the affected workspace dependencies are installed. Reuse valid environment evidence within the task. For authorized implementation, prepare missing dependencies with the pinned Bun and `bun ci`, preserving the lockfile. For read-only review, report unavailable dependencies or a runtime mismatch instead of changing the environment automatically. An import/setup failure is not an executed regression assertion.
+
 ## Map Changes to Owners
 
 1. Map every edited path to its `apps/<name>` or `packages/<name>` workspace and inspect that workspace's scripts.
