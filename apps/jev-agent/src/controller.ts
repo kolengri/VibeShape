@@ -92,7 +92,7 @@ function boundContext(state: DecisionState) {
   const bytes = () => Buffer.byteLength(JSON.stringify({ ...state, photos: [] }))
   while (state.history.length > 1 && bytes() > 64_000) state.history.shift()
   if (bytes() > 64_000)
-    throw new Error("The Jev text context exceeds its budget. Start a shorter request.")
+    throw new JevFailure("The Jev text context exceeds its budget. Start a shorter request.")
 }
 
 export function createController(options: ControllerOptions) {
@@ -222,7 +222,10 @@ export function createController(options: ControllerOptions) {
     onTool: (event: ToolEvent) => Promise<void>,
   ) {
     const tool = options.port.tools.find((tool) => tool.name === decision.tool.name)
-    if (!tool) throw new Error("Jev selected a tool outside the current catalog.")
+    if (!tool)
+      throw new JevFailure(
+        "Jev selected a tool outside the current catalog. Reconnect to refresh available tools before continuing.",
+      )
     if (uncertainWrite && !readOnlyTool(tool.name))
       return "An earlier write has an unknown outcome. Only read-only inspection is available; inspect saved state and reconnect before authoring again."
     const args = await resolveArguments(decision, tool, state, signal)
@@ -233,7 +236,9 @@ export function createController(options: ControllerOptions) {
     )
     signal.throwIfAborted()
     if (args.projectId !== undefined && args.projectId !== projectId)
-      throw new Error("The selected arguments target a different project.")
+      throw new JevFailure(
+        "The selected arguments target a different project. Check the project references before continuing.",
+      )
     if ((await model(signal, onTool)).revision !== revision) return null
     const result = await dispatch(tool.name, args, signal, onTool, state)
     if (result.failed)
@@ -271,9 +276,10 @@ export function createController(options: ControllerOptions) {
       signal: AbortSignal,
       onTool: (event: ToolEvent) => Promise<void>,
     ) {
-      if (active) throw new Error("A Jev turn is already running.")
+      if (active)
+        throw new JevFailure("A Jev turn is already running. Wait for it to finish or stop it.")
       if (photos.length && !options.images)
-        throw new Error("Enable JEV_ENABLE_IMAGES=1 to send images to Jev.")
+        throw new JevFailure("Enable JEV_ENABLE_IMAGES=1 to send images to Jev.")
       active = true
       try {
         if (photos.length) {

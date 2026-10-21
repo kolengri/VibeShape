@@ -3,7 +3,7 @@ import * as acp from "@agentclientprotocol/sdk"
 import type { Tool } from "@modelcontextprotocol/sdk/types.js"
 import { createJevAgent } from "./agent"
 import { readConfiguration } from "./configuration"
-import type { Decide } from "./contracts"
+import type { CompleteArguments, Decide } from "./contracts"
 import type { ToolPort } from "./controller"
 import type { connectMcp } from "./mcp"
 
@@ -20,6 +20,7 @@ function fixture(
     params: acp.CreateElicitationRequest,
     signal: AbortSignal,
   ) => Promise<acp.CreateElicitationResponse>,
+  completeArguments?: CompleteArguments,
 ) {
   let forward: Parameters<typeof connectMcp>[2] | undefined
   let connectionTimeout: number | undefined
@@ -65,6 +66,7 @@ function fixture(
     readConfiguration({ TYPESAFE_API_KEY: "test", JEV_TIMEOUT_MS: "120000", JEV_MAX_STEPS: "48" }),
     {
       decide,
+      completeArguments,
       connect: async (_server, _cwd, elicit, timeoutMs) => {
         forward = elicit
         connectionTimeout = timeoutMs
@@ -383,6 +385,85 @@ describe("Jev ACP adapter", () => {
       expect(f.calls).not.toContain("create_draft")
     },
   )
+
+  it("explains rejected cross-project arguments without dispatching them or testing the connection", async () => {
+    let completions = 0
+    const f = fixture(
+      async () => ({ kind: "tool", tool, arguments: {}, needsArguments: true, confidence: 1 }),
+      {},
+      undefined,
+      async () => {
+        completions++
+        return { baseRevision: 0, projectId: "0195b5ac-b213-7f2c-9c33-67a36a7f21ad" }
+      },
+    )
+    const { sessionId } = await open(f)
+    const response = await f.client.agent.request<acp.PromptResponse, acp.PromptRequest>(
+      acp.methods.agent.session.prompt,
+      { sessionId, prompt: [{ type: "text", text: "Create a draft" }] },
+    )
+    expect(response.stopReason).toBe("end_turn")
+    expect(completions).toBe(1)
+    expect(f.calls).toEqual(["read_agent_skill", "model_info"])
+    const display = JSON.stringify(f.updates)
+    expect(display).toContain("target a different project. Check the project references")
+    expect(display).toContain("No action was retried.")
+    expect(display).not.toContain("test the connection")
+    expect(display).not.toContain("0195b5ac-b213-7f2c-9c33-67a36a7f21ad")
+  })
+
+  it("preserves context-budget guidance and accepts a shorter subsequent request", async () => {
+    let decisions = 0
+    const f = fixture(async () => {
+      decisions++
+      return { kind: "done", confidence: 1 }
+    })
+    const original = f.port.call
+    f.port.call = (name, args, signal) =>
+      name === "read_agent_skill"
+        ? Promise.resolve({
+            failed: false,
+            photos: [],
+            value: { result: { ok: true, value: { text: "x".repeat(32_000) } } },
+          })
+        : original(name, args, signal)
+    const { sessionId } = await open(f)
+    await f.client.agent.request<acp.PromptResponse, acp.PromptRequest>(
+      acp.methods.agent.session.prompt,
+      { sessionId, prompt: [{ type: "text", text: "x".repeat(40_000) }] },
+    )
+    const display = JSON.stringify(f.updates)
+    expect(display).toContain("text context exceeds its budget. Start a shorter request.")
+    expect(display).not.toContain("test the connection")
+    expect(decisions).toBe(0)
+    expect(f.calls).not.toContain("create_draft")
+    const response = await f.client.agent.request<acp.PromptResponse, acp.PromptRequest>(
+      acp.methods.agent.session.prompt,
+      { sessionId, prompt: [{ type: "text", text: "Inspect" }] },
+    )
+    expect(response.stopReason).toBe("end_turn")
+    expect(decisions).toBe(1)
+  })
+
+  it("asks to refresh the tool catalog for an unsupported selection without exposing its name", async () => {
+    const f = fixture(async () => ({
+      kind: "tool",
+      tool: { ...tool, name: "private-provider-value" },
+      arguments: {},
+      needsArguments: false,
+      confidence: 1,
+    }))
+    const { sessionId } = await open(f)
+    await f.client.agent.request<acp.PromptResponse, acp.PromptRequest>(
+      acp.methods.agent.session.prompt,
+      { sessionId, prompt: [{ type: "text", text: "Inspect" }] },
+    )
+    const display = JSON.stringify(f.updates)
+    expect(display).toContain("Reconnect to refresh available tools")
+    expect(display).not.toContain("private-provider-value")
+    expect(display).not.toContain("test the connection")
+    expect(f.calls).toEqual(["read_agent_skill", "model_info"])
+  })
 
   it("identifies a TypeSafe HTTP error without exposing the provider body or replaying it", async () => {
     let decisions = 0
