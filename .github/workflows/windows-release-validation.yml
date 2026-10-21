@@ -1,0 +1,106 @@
+name: Windows release validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Draft desktop release containing the Windows ZIP and build receipt
+        required: true
+        type: string
+      source_commit:
+        description: Full source commit recorded by the packager
+        required: true
+        type: string
+      zip_sha256:
+        description: Independently verified Windows ZIP SHA-256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-validation
+  cancel-in-progress: false
+
+jobs:
+  packaged-windows:
+    name: Windows packaged release acceptance
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      # GitHub exposes draft releases only to callers with push access.
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      ZIP_SHA256: ${{ inputs.zip_sha256 }}
+    steps:
+      - name: Validate release coordinates
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^desktop-v\d+\.\d+\.\d+$' -or
+              $env:SOURCE_COMMIT -cnotmatch '^[a-f0-9]{40}$' -or
+              $env:ZIP_SHA256 -cnotmatch '^[a-f0-9]{64}$') {
+            throw 'Invalid release coordinates.'
+          }
+
+      - name: Checkout the acceptance harness
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install acceptance dependencies
+        run: bun ci
+
+      - name: Download and verify the draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:RELEASE_TAG.Substring(9)
+          $name = "VibeShape-$version-win-x64.zip"
+          $destination = Join-Path $env:RUNNER_TEMP 'windows-release'
+          New-Item -ItemType Directory -Path $destination | Out-Null
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --dir $destination --pattern $name --pattern desktop-build.json --pattern SHA256SUMS
+          if ($LASTEXITCODE -ne 0) { throw 'Release download failed.' }
+          $archive = Join-Path $destination $name
+          $digest = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          $receipt = Get-Content (Join-Path $destination 'desktop-build.json') -Raw | ConvertFrom-Json
+          $manifest = (Get-Content (Join-Path $destination 'SHA256SUMS') -Raw).Trim()
+          if ($digest -cne $env:ZIP_SHA256 -or
+              $manifest -cne "$digest  $name" -or
+              $receipt.schemaVersion -ne 1 -or
+              $receipt.sourceCommit -cne $env:SOURCE_COMMIT -or
+              $receipt.version -cne $version -or
+              $receipt.platform -cne 'win32' -or
+              $receipt.arch -cne 'x64' -or
+              $receipt.zipSha256 -cne $digest) {
+            throw 'Release receipt, manifest or independent digest mismatch.'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          $application = Join-Path $destination 'VibeShape-win32-x64'
+          if (!(Test-Path (Join-Path $application 'VibeShape.exe'))) {
+            throw 'Missing packaged Windows executable.'
+          }
+          "VIBESHAPE_PACKAGED_APP=$application" >> $env:GITHUB_ENV
+          "Release: $env:RELEASE_TAG`nArtifact source: $env:SOURCE_COMMIT`nAcceptance harness: $env:GITHUB_SHA`nZIP SHA-256: $digest" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Exercise the actual ZIP with a fresh default profile
+        env:
+          DEBUG: pw:browser,pw:api
+        run: bun run test:desktop:packaged
+
+      - name: Preserve packaged failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-packaged-failure
+          path: artifacts/windows-desktop/
+          if-no-files-found: ignore
+          retention-days: 7

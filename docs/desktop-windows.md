@@ -93,6 +93,17 @@ $env:VIBESHAPE_PACKAGED_APP = 'C:\build\VibeShape-win32-x64'
 bun run test:desktop:packaged
 ```
 
+Run packaged acceptance in an isolated Windows account without an existing VibeShape profile.
+It launches without `--user-data-dir`, checks the fresh default profile, creates and reopens a CAD
+model, and connects the bundled MCP forwarder with consent and revocation. The test refuses an
+existing default profile and removes only the profile it creates.
+
+The manual `Windows release validation` workflow performs this check against a draft GitHub
+release. Upload the ZIP, `desktop-build.json` and `SHA256SUMS`, then supply its `desktop-vX.Y.Z`
+tag, exact source commit and independently verified ZIP SHA-256. The workflow checks the receipt,
+manifest and digest before extracting and executing the archive. Publish that same draft only
+after acceptance succeeds; do not replace its validated assets.
+
 Require successful controlled-kernel CAD creation/reopen and native connection tests on Windows
 before publishing or describing a Windows artifact as release-verified. A Mac build or a skipped
 Windows test does not satisfy that gate.
