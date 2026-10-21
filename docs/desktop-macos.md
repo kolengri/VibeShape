@@ -260,6 +260,9 @@ correct printer settings, slicing, or printing.
 
 ## Release checks and downloads
 
+For a single manual build, native acceptance and publication run, see
+[automated desktop releases](desktop-release.md).
+
 **VibeShape → Check for Updates…** checks public GitHub Releases. Startup also checks quietly;
 network failures and an empty desktop release channel do not interrupt launch. An available update
 offers an explicit download. The native Save dialog chooses its destination, progress belongs to the
