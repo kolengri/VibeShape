@@ -2,6 +2,8 @@ import {
   type BufferAttribute,
   type BufferGeometry,
   Color,
+  DoubleSide,
+  FrontSide,
   Group,
   LineBasicMaterial,
   LineSegments,
@@ -205,8 +207,9 @@ export class ModelMeshPresentation {
 
   #sharedMaterials(source: ViewerMesh) {
     if (source.appearance === "preview") {
-      if (source.previewMaterial === "model") return null
-      return source.previewMaterial === "datum" ? this.#materials.datum : this.#materials.preview
+      if (source.previewMaterial === "highlight") return this.#materials.preview
+      if (source.previewMaterial === "datum") return this.#materials.datum
+      return null
     }
     if (source.appearance === "datum") return this.#materials.datum
     return null
@@ -217,6 +220,7 @@ export class ModelMeshPresentation {
       color: new Color(viewerBodyColor(source.featureId)),
       roughness: 0.72,
       metalness: 0.04,
+      side: source.appearance === "preview" ? DoubleSide : FrontSide,
       ...(source.appearance === "selection-source"
         ? { transparent: true, opacity: 0.12, depthWrite: false }
         : {}),

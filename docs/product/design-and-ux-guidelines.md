@@ -220,6 +220,7 @@ The X, Y, and Z axes may use conventional red, green, and blue, but every axis M
 
 - The viewport background is quiet and uniform. A subtle gradient is permitted only if it improves depth perception and passes selection-contrast tests.
 - Geometry shading, edges, selection, preview, and diagnostics have separate render layers and semantic tokens.
+- Tool-result previews use opaque shaded faces and depth-tested edges so shape changes stay readable against the grid. Translucency is reserved for explicit change highlights, reference geometry, and source-selection ghosts; preview geometry remains uncommitted.
 - Display-level tessellation is never presented as exact geometry in text or export behavior.
 - Grid density adapts to zoom and fades between steps; it must not shimmer or dominate faces.
 - Origin planes, axes, section planes, and print build volume remain individually togglable.
