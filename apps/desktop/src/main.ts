@@ -67,10 +67,14 @@ const updateFormat =
         extension: "dmg",
       } as const)
 const commandLineProfile = app.commandLine.getSwitchValue("user-data-dir")
-const profile =
+const profileContainer =
   commandLineProfile || (!app.isPackaged && process.env.VIBESHAPE_DESKTOP_USER_DATA)
     ? resolve(commandLineProfile || process.env.VIBESHAPE_DESKTOP_USER_DATA || "")
     : join(app.getPath("appData"), "VibeShape")
+// Electron can create the CLI container before JavaScript, with an elevated token's default owner.
+// Keep the actual Windows browser profile separate so our private-file policy creates it first.
+const profile =
+  process.platform === "win32" ? join(profileContainer, "User Data") : profileContainer
 app.enableSandbox()
 
 const testPort = !app.isPackaged ? process.env.VIBESHAPE_DESKTOP_TEST_PORT : undefined

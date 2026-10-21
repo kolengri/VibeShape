@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs"
 import { realpath } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
 import { invokeModelCommand } from "../e2e/model-command-support"
@@ -8,6 +9,7 @@ test.skip(process.platform !== "win32", "Windows native acceptance requires Wind
 test("Windows launches with standard chrome and retains projects after restart", async () => {
   const fixture = await createNativeFixture()
   try {
+    expect(existsSync(fixture.profile)).toBe(false)
     let native = await test.step("Launch the Windows host", () => fixture.launch())
     const profile = await native.evaluate(({ app }) => app.getPath("userData"))
     expect(await realpath(profile)).toBe(await realpath(fixture.profile))

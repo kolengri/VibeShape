@@ -42,8 +42,15 @@ installer. Do not describe a source build as a published release. Native ARM64, 
 registration and Windows code signing are outside this delivery.
 
 Projects live in the current user's Electron application profile, normally
-`%APPDATA%\VibeShape`, independently of the extracted application directory. Back up important
-projects as `.vshape` files before moving machines or deleting the profile. The editor retains
+`%APPDATA%\VibeShape\User Data`, independently of the extracted application directory. A custom
+`--user-data-dir` selects the containing directory; Windows browser data lives in its `User Data`
+child. Electron can create the container before application code runs, so VibeShape creates and
+protects this separate child with current-user ownership before selecting it as the browser profile.
+An existing child with another owner is refused; the app does not take ownership or change profiles
+on failure. Earlier local Windows test builds used the container itself; export `.vshape` backups
+from those builds before switching, because their browser data is not moved automatically.
+
+Back up important projects as `.vshape` files before moving machines or deleting the profile. The editor retains
 `http://127.0.0.1:43115`; an occupied port fails startup instead of opening another listener or
 changing the storage origin.
 
