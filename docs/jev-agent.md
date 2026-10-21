@@ -137,8 +137,8 @@ ACP JSON-RPC, so it is intended for an ACP client rather than an interactive ter
 - Up to 256 catalog entries, a 128 KiB question catalog, 12 recent observations and a 64 KB text context. Large observations
   are explicitly marked as truncated; earlier observations may leave the bounded window. Inspect
   the model again when a required identity or parameter is absent.
-  The decision state, including the description catalog, has a separate 128 KB ceiling, reserving
-  space for the full controller context alongside the current catalog. History and uncertain outcomes
+  The description catalog has a separate 128 KB ceiling, and decision state has a 192 KB ceiling,
+  reserving space for the full 64 KB controller context alongside the catalog. History and uncertain outcomes
   remain structured JSON instead of escaped JSON strings. Older observations are dropped first if
   needed, preserving the newest observation and the controller's history.
   Requests with more than 96 KB of state or 192 KB of combined state/questions opt into TypeSafe's

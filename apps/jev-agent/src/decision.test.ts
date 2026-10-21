@@ -231,10 +231,50 @@ describe("Jev decision batching", () => {
         { tool: "model_info", arguments: {}, result: { result: { ok: true, value } } },
       ])
       expect(new Headers(calls[0]?.init.headers).get("TypeSafe-Danger-Zone-Long-Context")).toBe(
-        size === "near-limit" ? "true" : null,
+        "true",
       )
     },
   )
+  test("keeps small decision requests within the default context mode", async () => {
+    const { decide, calls } = fixture({ action: answer("done") })
+    await decide(state, [inspectTool], signal())
+    expect(calls).toHaveLength(1)
+    expect(new Headers(calls[0]?.init.headers).get("TypeSafe-Danger-Zone-Long-Context")).toBeNull()
+  })
+  test("reserves controller context beside a bounded description catalog without truncation", async () => {
+    const { decide, calls } = fixture({ action: answer("done") })
+    const expanded = { ...state, goal: "g".repeat(40_000), instructions: "i".repeat(20_000) }
+    const description = "d".repeat(100_000)
+    await decide(expanded, [{ ...inspectTool, description }], signal())
+    const payload = z
+      .object({
+        state: z.looseObject({
+          goal: z.string(),
+          instructions: z.string(),
+          catalog: z.record(z.string(), z.string()),
+        }),
+      })
+      .parse(JSON.parse(String(calls[0]?.init.body)))
+    expect(payload.state.goal).toBe(expanded.goal)
+    expect(payload.state.instructions).toBe(expanded.instructions)
+    expect(payload.state.catalog).toEqual({ t0: description })
+    expect(Buffer.byteLength(JSON.stringify(payload.state))).toBeGreaterThan(128_000)
+    expect(Buffer.byteLength(JSON.stringify(payload.state))).toBeLessThan(192_000)
+    expect(new Headers(calls[0]?.init.headers).get("TypeSafe-Danger-Zone-Long-Context")).toBe(
+      "true",
+    )
+  })
+  test("rejects oversized combined state even when its catalog fits before contacting the provider", async () => {
+    const { decide, calls } = fixture({ action: answer("done") })
+    await expect(
+      decide(
+        { ...state, goal: "g".repeat(70_000) },
+        [{ ...inspectTool, description: "d".repeat(125_000) }],
+        signal(),
+      ),
+    ).rejects.toThrow("state and tool catalog exceed their text budget")
+    expect(calls).toHaveLength(0)
+  })
   test("rejects an oversized tool catalog before contacting the provider", async () => {
     const { decide, calls } = fixture({ action: answer("done") })
     await expect(

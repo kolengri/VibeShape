@@ -37,6 +37,14 @@ export interface AuthorityRecoveryReport {
 }
 const MAX_RECORDS = 100_000
 
+function requireSnapshotRecordBudget(inspected: number) {
+  if (inspected > MAX_RECORDS)
+    throw persistenceInvariantError(
+      "corrupt-history",
+      "The snapshot history exceeds its record budget.",
+    )
+}
+
 async function latestSnapshotThrough(
   database: VibeShapeDatabase,
   documentId: DocumentId,
@@ -88,8 +96,10 @@ async function latestValidAuthoritySnapshot(
   revision: number,
   corrupt: string[],
 ) {
+  let inspected = 0
   let record = await latestSnapshotThrough(database, documentId, revision)
   while (record) {
+    requireSnapshotRecordBudget(++inspected)
     const snapshot = await validAuthoritySnapshot(record)
     if (snapshot) return snapshot
     corrupt.push(`snapshot-authority:${record.revision}`)
@@ -125,12 +135,14 @@ async function earliestValidAuthoritySnapshot(
   first: number,
   last: number,
 ) {
+  let inspected = 0
   while (first <= last) {
     const record = await database.snapshotsV1
       .where("[documentId+revision]")
       .between([documentId, first], [documentId, last], true, true)
       .first()
     if (!record) return null
+    requireSnapshotRecordBudget(++inspected)
     const snapshot = await validAuthoritySnapshot(record)
     if (snapshot) return snapshot
     first = record.revision + 1
