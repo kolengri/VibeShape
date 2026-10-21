@@ -33,6 +33,8 @@ function localEnvironment() {
     "CLAUDE_CONFIG_DIR",
   ])
     if (process.env[key]) env[key] = process.env[key]
+  if (process.platform === "win32" && process.env.VIBESHAPE_ARGUMENT_TRACE)
+    env.VIBESHAPE_ARGUMENT_TRACE = process.env.VIBESHAPE_ARGUMENT_TRACE
   if (process.platform === "darwin") {
     const home = env.HOME || homedir()
     env.PATH = [
@@ -83,7 +85,10 @@ export async function requestLocalArguments(
     signal.throwIfAborted()
     const env = localEnvironment()
     const launch =
-      process.platform === "win32" ? windowsArgumentLaunch(agent, env, cwd) : { ...agent, env }
+      process.platform === "win32"
+        ? await windowsArgumentLaunch(agent, env, cwd)
+        : { ...agent, env }
+    signal.throwIfAborted()
     child = spawn(launch.command, launch.args, {
       cwd,
       env: launch.env,

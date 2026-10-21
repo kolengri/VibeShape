@@ -1,11 +1,24 @@
 import { join } from "node:path"
 import type { AssistantExternalAgent } from "@vibeshape/automation-api/assistant"
+import { windowsAgentCommand } from "./windows-agent-command"
 
 // The supervisor joins the job before spawning the agent; the job handle is not inherited.
 // Its native wait also notices host death, which cannot deliver Node signal handlers on Windows.
 const supervisor = `
 $ErrorActionPreference = 'Stop'
+$trace = $env:VIBESHAPE_ARGUMENT_TRACE
+function Trace($stage) {
+  if ($trace) {
+    try {
+      $entry = @{ time = [DateTime]::UtcNow.ToString('o'); stage = $stage; entryPoint = 'windows-argument-supervisor' }
+      [IO.File]::AppendAllText($trace, ($entry | ConvertTo-Json -Compress) + [Environment]::NewLine)
+    } catch {}
+  }
+}
+Trace 'script-start'
+Trace ('runtime:' + $PSVersionTable.PSVersion + ':' + [Environment]::Version + ':' + [Environment]::Is64BitProcess)
 try {
+  Trace 'compile-start'
   Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
@@ -13,6 +26,21 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 public static class VibeShapeArgumentJob {
+  static void Trace(string stage) {
+    string path = Environment.GetEnvironmentVariable("VIBESHAPE_ARGUMENT_TRACE");
+    if (String.IsNullOrEmpty(path)) return;
+    try {
+      System.IO.File.AppendAllText(path, "{\\"entryPoint\\":\\"windows-argument-supervisor\\",\\"time\\":\\"" +
+        DateTime.UtcNow.ToString("o") + "\\",\\"stage\\":\\"" + stage + "\\"}\\n");
+    } catch {}
+  }
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern IntPtr GetStdHandle(int id);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern uint GetFileType(IntPtr handle);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool GetHandleInformation(IntPtr handle, out uint flags);
+
   [StructLayout(LayoutKind.Sequential)]
   struct BasicLimits {
     public long ProcessTime, JobTime;
@@ -55,16 +83,31 @@ public static class VibeShapeArgumentJob {
   }
 
   public static int Run(string command, string arguments, string directory, int parentPid) {
+    Trace("job-start");
     using (Process parent = Process.GetProcessById(parentPid)) {
       IntPtr parentHandle = parent.Handle;
       InstallJob();
+      Trace("job-ready");
+      if (!String.IsNullOrEmpty(Environment.GetEnvironmentVariable("VIBESHAPE_ARGUMENT_TRACE"))) {
+        foreach (int id in new int[] { -10, -11, -12 }) {
+          IntPtr handle = GetStdHandle(id);
+          uint flags;
+          bool valid = GetHandleInformation(handle, out flags);
+          int error = valid ? 0 : Marshal.GetLastWin32Error();
+          Trace("stdio:" + id + ":" + handle.ToInt64() + ":" + GetFileType(handle) + ":" + valid + ":" + flags + ":" + error);
+        }
+      }
       ProcessStartInfo start = new ProcessStartInfo(command, arguments);
       start.UseShellExecute = false;
       start.CreateNoWindow = true;
       start.WorkingDirectory = directory;
       start.EnvironmentVariables.Remove("VIBESHAPE_ARGUMENT_LAUNCH");
+      start.EnvironmentVariables.Remove("VIBESHAPE_ARGUMENT_TRACE");
+      Trace("child-start");
       using (Process child = Process.Start(start)) {
+        Trace("child-ready:" + child.Id);
         uint stopped = WaitForMultipleObjects(2, new IntPtr[] { parentHandle, child.Handle }, false, UInt32.MaxValue);
+        Trace("wait:" + stopped);
         if (stopped == 0) return 1;
         if (stopped != 1) throw new Win32Exception();
         return child.ExitCode;
@@ -73,10 +116,12 @@ public static class VibeShapeArgumentJob {
   }
 }
 '@
+  Trace 'compile-ready'
   $launch = ConvertFrom-Json $env:VIBESHAPE_ARGUMENT_LAUNCH
   $result = [VibeShapeArgumentJob]::Run($launch.command, $launch.arguments, $launch.cwd, $launch.parentPid)
   exit $result
 } catch {
+  Trace ('failure:' + $_.Exception.HResult)
   [Console]::Error.WriteLine('The Windows argument agent job could not start.')
   exit 1
 }
@@ -87,21 +132,22 @@ function quoteArgument(value: string) {
   return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, "$1$1")}"`
 }
 
-export function windowsArgumentLaunch(
+export async function windowsArgumentLaunch(
   agent: AssistantExternalAgent,
   env: NodeJS.ProcessEnv,
   cwd: string,
 ) {
   const root = env.SystemRoot ?? env.SYSTEMROOT
   if (!root) throw new Error("Windows system directory is unavailable.")
+  const executable = await windowsAgentCommand(agent, env, cwd)
   return {
     command: join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
     args: ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", supervisor],
     env: {
       ...env,
       VIBESHAPE_ARGUMENT_LAUNCH: JSON.stringify({
-        command: agent.command,
-        arguments: agent.args.map(quoteArgument).join(" "),
+        command: executable.command,
+        arguments: executable.args.map(quoteArgument).join(" "),
         cwd,
         parentPid: process.pid,
       }),

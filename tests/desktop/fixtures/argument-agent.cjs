@@ -1,13 +1,13 @@
-const { appendFileSync } = require("node:fs")
+const { appendFileSync, fstatSync } = require("node:fs")
 const { createInterface } = require("node:readline")
 const { spawn } = require("node:child_process")
 const [mode, receipt] = process.argv.slice(2)
-const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`)
+const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`, () => record({ sent: message.id ?? message.method, at: Date.now() }))
 const record = (data) => appendFileSync(receipt, `${JSON.stringify(data)}\n`)
 const text = (value, sessionId = "helper") => send({ method: "session/update", params: {
   sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: value } },
 } })
-record({ pid: process.pid, parentPid: process.ppid, args: process.argv.slice(4), cwd: process.cwd(), secret: process.env.TYPESAFE_API_KEY, helperKey: process.env.JEV_ARGUMENTS_API_KEY, electron: process.env.ELECTRON_RUN_AS_NODE })
+record({ pid: process.pid, parentPid: process.ppid, args: process.argv.slice(4), cwd: process.cwd(), secret: process.env.TYPESAFE_API_KEY, helperKey: process.env.JEV_ARGUMENTS_API_KEY, electron: process.env.ELECTRON_RUN_AS_NODE, trace: process.env.VIBESHAPE_ARGUMENT_TRACE, at: Date.now(), stdio: [0, 1, 2].map((fd) => { try { const info = fstatSync(fd); return { fd, pipe: info.isFIFO(), character: info.isCharacterDevice(), file: info.isFile() } } catch { return { fd, unavailable: true } } }) })
 let promptId
 if (mode === "hang") process.on("SIGTERM", () => {})
 const backendReady = mode.startsWith("descendant-") ? new Promise((resolve) => {
@@ -37,7 +37,7 @@ function prompt(message) {
 }
 createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line)
-  record(message)
+  record({ ...message, at: Date.now() })
   if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1, agentCapabilities: {} } })
   else if (message.method === "session/new") send({ id: message.id, result: { sessionId: "helper" } })
   else if (message.method === "session/prompt") prompt(message)

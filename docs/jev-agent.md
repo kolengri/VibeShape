@@ -64,6 +64,15 @@ cannot run JavaScript signal handlers. Arguments are passed as data and stdout/s
 directly; no shell command evaluates the agent arguments. A blocked PowerShell or `Add-Type` policy
 fails the launch without an unsupervised fallback. Temporary-directory removal has bounded retries
 for asynchronous Windows handle release. Job termination is not a promise of synchronous OS reaping.
+Standard Windows npm `.cmd` launchers are resolved to their Node entrypoint before supervision;
+`node.exe` is selected beside the shim or from PATH. The wrapper itself is not executed. Launchers
+with another interpreter or interpreter options fail with guidance to configure an explicit
+executable and arguments. Direct native executable commands retain their argument arrays.
+For a bounded Windows startup investigation, `VIBESHAPE_ARGUMENT_TRACE` can point to a diagnostic
+JSON-lines file. It records supervisor stages, UTC times and numeric standard-handle metadata;
+it does not record agent text, arguments or credentials and is removed from the agent environment.
+Tracing is off by default. The Windows fixture enables it for one request to distinguish compilation,
+process startup and ACP transport delays.
 The agent uses its own default model; Jev does not select or change that agent's model settings.
 
 **API connection (advanced)** retains the compatible endpoint, model name and optional key option.

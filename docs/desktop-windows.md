@@ -70,10 +70,14 @@ project identity and revocation follow the [native integration policy](desktop-m
 The native workflow directory and its credential descriptor use Windows ACLs rather than POSIX
 permission bits. Private-file validation fails closed if Windows cannot establish those permissions.
 
-ACP agents must be executable programs. For a JavaScript adapter installed through npm, configure
-the absolute `node.exe` command and put the adapter's JavaScript entrypoint in its argument array.
-Shell `.cmd`/`.bat` wrappers are not executed by enabling a shell. External ACP adapters and their
-authentication remain separately installed; CAD itself does not require them.
+Direct ACP connections require executable programs. For a JavaScript adapter installed through npm,
+configure the absolute `node.exe` command and put the adapter's JavaScript entrypoint in its argument
+array. Jev's Argument model additionally resolves standard npm `.cmd` launchers from PATH or an
+explicit path to their Node script. It uses `node.exe` next to the shim when present, otherwise the
+first Node executable on PATH. This supports the installed Codex, Claude Code and OpenCode presets
+without evaluating a shell wrapper. Other interpreters or interpreter options require an explicit
+executable/argument configuration. External ACP adapters and their authentication remain separately
+installed; CAD itself does not require them.
 
 Jev's local argument helper uses the system Windows PowerShell/.NET runtime to own a
 kill-on-close Job Object before starting the selected agent. This contains backend descendants

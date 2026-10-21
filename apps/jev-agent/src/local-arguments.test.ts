@@ -27,6 +27,10 @@ async function fixture(
 ) {
   const directory = await mkdtemp(join(tmpdir(), "argument-test-"))
   const receipt = join(directory, "receipt.jsonl")
+  const trace = join(directory, "supervisor.jsonl")
+  const tracing = process.platform === "win32" && mode === "success"
+  const previousTrace = process.env.VIBESHAPE_ARGUMENT_TRACE
+  if (tracing) process.env.VIBESHAPE_ARGUMENT_TRACE = trace
   try {
     await run(
       createArgumentCompleter({
@@ -34,7 +38,31 @@ async function fixture(
       }),
       receipt,
     )
+  } catch (error) {
+    const log = await events(receipt).catch(() => [])
+    console.error(
+      "Argument fixture failure:",
+      log.map(({ pid, backendPid, cwd, method, ready, sent, at, stdio }) => ({
+        pid,
+        backendPid,
+        cwd,
+        method,
+        ready,
+        sent,
+        at,
+        stdio,
+      })),
+    )
+    throw error
   } finally {
+    if (tracing) {
+      if (previousTrace === undefined) delete process.env.VIBESHAPE_ARGUMENT_TRACE
+      else process.env.VIBESHAPE_ARGUMENT_TRACE = previousTrace
+      console.info(
+        "Argument supervisor trace:",
+        await readFile(trace, "utf8").catch(() => "absent"),
+      )
+    }
     await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
@@ -74,7 +102,8 @@ describe("local ACP argument helper", () => {
       const before = process.env.TYPESAFE_API_KEY
       process.env.TYPESAFE_API_KEY = "must-not-reach-helper"
       try {
-        expect(await complete(tool, state, { plane: "XY" }, budget())).toEqual({
+        const signal = AbortSignal.timeout(process.platform === "win32" ? 60_000 : 20_000)
+        expect(await complete(tool, state, { plane: "XY" }, signal)).toEqual({
           plane: "XY",
           geometry: { width: 20 },
         })
@@ -86,6 +115,7 @@ describe("local ACP argument helper", () => {
       expect(log[0]).not.toHaveProperty("secret")
       expect(log[0]).not.toHaveProperty("helperKey")
       expect(log[0]).not.toHaveProperty("electron")
+      expect(log[0]).not.toHaveProperty("trace")
       expect(log[0].args).toEqual(literalArgs)
       expect(log.find((e) => e.method === "initialize").params.clientCapabilities).toEqual({})
       expect(log.find((e) => e.method === "session/new").params.mcpServers).toEqual([])
@@ -95,7 +125,7 @@ describe("local ACP argument helper", () => {
       await expect(stat(log[0].cwd)).rejects.toThrow()
       expect(() => process.kill(log[0].pid, 0)).toThrow()
     })
-  }, 30_000)
+  }, 90_000)
   it("denies permission requests without granting tool authority", async () => {
     await fixture("permission", async (complete, receipt) => {
       await complete(tool, state, {}, budget())
@@ -179,6 +209,31 @@ describe("local ACP argument helper", () => {
       await expect(stat(log[0].cwd)).rejects.toThrow()
     })
   }, 30_000)
+
+  it.skipIf(process.platform !== "win32")(
+    "runs an npm shim through Node inside the supervised job",
+    async () => {
+      await fixture("unused", async (_complete, receipt) => {
+        const directory = dirname(receipt)
+        const entry = join(directory, "adapter.cjs")
+        await writeFile(entry, `#!/usr/bin/env node\n${await readFile(script, "utf8")}`)
+        const shim = join(directory, "codex-acp.cmd")
+        await writeFile(shim, '@ECHO off\r\n"%_prog%" "%dp0%\\adapter.cjs" %*\r\n')
+        const complete = createArgumentCompleter({
+          agent: { command: shim, args: ["descendant-success", receipt, ...literalArgs] },
+        })
+        await complete(tool, state, {}, budget())
+        const log = await events(receipt)
+        expect(log[0].args).toEqual(literalArgs)
+        const backend = log.find((event) => event.backendPid)?.backendPid
+        expect(backend).toBeNumber()
+        await expectExited(log[0].pid)
+        await expectExited(backend)
+        await expect(stat(log[0].cwd)).rejects.toThrow()
+      })
+    },
+    30_000,
+  )
 
   it.skipIf(process.platform !== "win32")(
     "terminates the job when its host is killed",

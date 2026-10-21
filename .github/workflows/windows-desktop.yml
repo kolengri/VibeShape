@@ -36,8 +36,8 @@ jobs:
         run: |
           bun run build
           bun run desktop:build
-      - name: Check local argument helper process trees
-        run: bun test apps/jev-agent/src/local-arguments.test.ts
+      - name: Check local argument helper launch and process trees
+        run: bun test apps/jev-agent/src/windows-agent-command.test.ts apps/jev-agent/src/local-arguments.test.ts
       - name: Exercise Windows native CAD and persistence
         env:
           DEBUG: pw:browser,pw:api
