@@ -5,7 +5,7 @@ import {
   millimetersToLength,
   radiansToAngle,
 } from "@vibeshape/domain"
-import type { AssemblyMutation } from "@vibeshape/domain/assembly-authority"
+import type { AssemblyMotionStudy, AssemblyMutation } from "@vibeshape/domain/assembly-authority"
 import {
   type AssemblyJointRecord,
   assemblyJointRecordSchema,
@@ -17,6 +17,28 @@ export type AssemblyMotionCoordinate = {
   min: number
   max: number
   driven: boolean
+}
+
+export function retimeAssemblyMotionStudy(
+  study: AssemblyMotionStudy,
+  duration: number,
+): AssemblyMotionStudy {
+  if (duration === study.duration) return study
+  const scale = duration / study.duration
+  const scaledTime = Number.isFinite(scale)
+    ? (time: number) => time * scale
+    : (time: number) => (time / study.duration) * duration
+  return {
+    ...study,
+    duration,
+    tracks: study.tracks.map((track) => ({
+      ...track,
+      keys: track.keys.map((key) => ({
+        ...key,
+        time: key.time === study.duration ? duration : scaledTime(key.time),
+      })),
+    })),
+  }
 }
 
 export function assemblyMotionCoordinates(joint: AssemblyJointRecord): AssemblyMotionCoordinate[] {

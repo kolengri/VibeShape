@@ -47,6 +47,17 @@ solves its first cycle and replays the cached solved poses, bounded to 256 poses
 Reset, project changes and revision changes discard disposable results. Interference uses the saved
 assembly and does not prove that an entire motion is collision-free.
 
+The labelled **Motion studies** toolbar control opens new/saved studies and Drive actions.
+**Play animation** starts playback inside an open study or Drive panel. An assembly without movable
+joints explains why a study cannot start; Model bodies alone are not a kinematic assembly. The UI
+labels tracks with named component endpoints and edits values in project display units (degrees by
+default); MCP payloads retain radians and millimeters. Per-track graphical keys support bounded time
+dragging and keyboard edits; exact key values remain available in **Edit keys**. Confirm numeric edits with Enter or blur before Save/playback. UI duration changes
+rescale all key times, rejecting changes that would merge distinct times. **Copy to another joint** copies keys to an unused same-kind coordinate with a
+constant angular/translation value offset, checked against target limits. Copies are independent;
+this does not add a gear coupling or a general temporal phase relation. Playback and exports remain
+visible-UI workflows with the ordinary preview/Apply distinction.
+
 Use `model_assembly` to read saved `motionStudies`. In an owned assembly draft, stage
 `create_assembly_motion_study`, `update_assembly_motion_study` or `remove_assembly_motion_study`, then
 preview and request ordinary manual Apply. A study has stable UUIDv7 study/track IDs, a duration up to
