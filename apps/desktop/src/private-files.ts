@@ -300,7 +300,11 @@ export async function readPrivateFile(path: string, maximum: number): Promise<Bu
   if (process.platform === "win32") {
     const { executable, options } = windowsOperation("read", path, maximum)
     try {
-      const { stdout } = await execute(executable, windowsArguments, options)
+      const pending = execute(executable, windowsArguments, options)
+      // Reads consume no input, including when launched by a long-lived stdio MCP client.
+      pending.child.stdin?.on("error", () => {})
+      pending.child.stdin?.end()
+      const { stdout } = await pending
       return Buffer.from(stdout, "base64")
     } catch (error) {
       throw new WindowsPrivateFileReadError(error)
