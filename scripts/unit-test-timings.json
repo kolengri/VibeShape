@@ -1,7 +1,9 @@
 {
   "version": 1,
   "files": {
-    "packages/structural-optimization/tests/quick-wasm.test.ts": 384370,
+    "packages/structural-optimization/tests/quick-wasm-curved.test.ts": 78949,
+    "packages/structural-optimization/tests/quick-wasm.test.ts": 69600,
+    "packages/structural-optimization/tests/quick-wasm-cell-matrix.test.ts": 50067,
     "packages/geometry-worker/src/occt-thread.test.ts": 100624,
     "packages/geometry-worker/src/occt-loft-filling-kernel.test.ts": 26452,
     "apps/web/src/features/lightweighting/lightweighting-dialog.test.tsx": 16967,

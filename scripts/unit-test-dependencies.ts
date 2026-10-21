@@ -1,13 +1,19 @@
 import { realpathSync } from "node:fs"
 import { isBuiltin } from "node:module"
-import { dirname, isAbsolute, resolve } from "node:path"
+import { dirname, isAbsolute, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { cacheInputPath, inside, type treeInputs } from "./unit-test-files"
 import { unitTestParser } from "./unit-test-parser"
 import { sourceAnalysis } from "./unit-test-source"
 
 type Input = Awaited<ReturnType<typeof treeInputs>>[number]
-type SourceEdges = { dependencies: Set<string>; wider: boolean; unsafe: boolean }
+type SourceEdges = {
+  dependencies: Set<string>
+  wider: boolean
+  unsafe: boolean
+  unsafeInputs: Set<string>
+  inputs: Map<string, string>
+}
 type Parser = Awaited<ReturnType<typeof unitTestParser>>
 type Context = {
   root: string
@@ -73,6 +79,7 @@ function addFile(path: string, context: Context, edges: SourceEdges, pending: Se
   const input = cacheInputPath(context.root, path) && indexedInput(path, context)
   if (!input || input.hash === "missing") {
     edges.unsafe = true
+    edges.unsafeInputs.add(relative(context.root, path))
     return
   }
   const owner = workspaceAt(path, context.directories)
@@ -119,20 +126,31 @@ async function scanInput(input: Input, context: Context, edges: SourceEdges, pen
   const analysis = await analysisFor(input, context)
   edges.unsafe ||= analysis.unsafe
   edges.wider ||= analysis.unsafe
+  if (analysis.unsafe) edges.unsafeInputs.add(input.path)
   for (const path of analysis.files) addFile(path, context, edges, pending)
   importedInputs(input, analysis, context, edges, pending)
 }
 
 async function reachableEdges(inputs: Input[], context: Context) {
-  const edges: SourceEdges = { dependencies: new Set(), wider: false, unsafe: false }
+  const edges: SourceEdges = {
+    dependencies: new Set(),
+    wider: false,
+    unsafe: false,
+    unsafeInputs: new Set(),
+    inputs: new Map(),
+  }
   const pending = new Set(inputs)
   for (const preload of preloads) addFile(resolve(context.root, preload), context, edges, pending)
   for (const input of pending) {
+    edges.inputs.set(input.path, input.hash)
     try {
       await scanInput(input, context, edges, pending)
-    } catch {
+    } catch (error) {
       edges.unsafe = true
       edges.wider = true
+      edges.unsafeInputs.add(
+        `${input.path}: ${error instanceof Error ? error.message : "source analysis failed"}`,
+      )
     }
   }
   return edges
@@ -183,12 +201,18 @@ export async function sourceDependencies(
       const selected = selectedEntries(name, execution.files, context)
       const edge = await reachableEdges(selected.entries, context)
       edge.unsafe ||= selected.unsafe
+      if (selected.unsafe) edge.unsafeInputs.add("unhashed test entry")
       // Explicit transport/home dependencies retain the original inherited environment.
-      edge.unsafe ||= inputs.some((input) =>
-        /\b(?:GITHUB_|RUNNER_|ACTIONS_|CODEX_|AGENT_|TURBO_|AI_AGENT\b)|\bhomedir\s*\(/.test(
-          input.source ?? "",
-        ),
-      )
+      for (const input of inputs) {
+        if (
+          /\b(?:GITHUB_|RUNNER_|ACTIONS_|CODEX_|AGENT_|TURBO_|AI_AGENT\b)|\bhomedir\s*\(/.test(
+            input.source ?? "",
+          )
+        ) {
+          edge.unsafe = true
+          edge.unsafeInputs.add(input.path)
+        }
+      }
       edges.set(name, edge)
     }
     return edges

@@ -11,6 +11,7 @@ const {
   cache: useCache,
   requested,
   force,
+  group: selectedGroup,
 } = unitTestOptions(process.argv.slice(2), root)
 if (requested && !useCache)
   console.log(
@@ -42,7 +43,12 @@ for (const file of files.sort()) {
 const groups = [
   { name: "node", files: nodeFiles, preload: [] as string[] },
   { name: "dom", files: domFiles, preload: ["--preload", "./tests/unit/support/dom.ts"] },
-]
+].filter((group) => !selectedGroup || group.name === selectedGroup)
+const selectedFiles = groups.flatMap((group) => group.files)
+if (!selectedFiles.length) {
+  console.error(`No unit test files matched the ${selectedGroup} group.`)
+  process.exit(1)
+}
 const splitOutputs = groups.every((group) => group.files.length > 0)
 const changed = forwarded.some(
   (argument) => argument === "--changed" || argument.startsWith("--changed="),
@@ -55,7 +61,7 @@ const controlledEnvironment = unitTestEnvironment(process.env)
 // Prepare the exact pinned runtime before snapshotting inputs, including first CI runs.
 if (
   cache &&
-  files.some((file) => file.includes("packages/structural-optimization/tests/")) &&
+  selectedFiles.some((file) => file.includes("packages/structural-optimization/tests/")) &&
   (await Bun.file(resolve(root, "scripts/prepare-structural-runtime.ts")).exists())
 ) {
   const prepare = Bun.spawn([process.execPath, "run", "scripts/prepare-structural-runtime.ts"], {
@@ -73,7 +79,7 @@ async function snapshotInputs() {
       [...timings, ...forwarded],
       controlledEnvironment,
       undefined,
-      files,
+      selectedFiles,
     )
   } catch (error) {
     console.log(`Unit cache disabled: inputs could not be verified (${String(error)}).`)
@@ -134,8 +140,19 @@ async function pendingScopes(group: (typeof groups)[number]) {
 function controlledScope(workspace: string) {
   return Boolean(snapshot?.scopes.get(workspace)?.cacheable)
 }
+function unsafeReason(scope: { unsafeInputs: string[]; unsafeDependencies: string[] }) {
+  let inputs = scope.unsafeInputs.slice(0, 5).join(", ")
+  if (scope.unsafeInputs.length > 5) inputs += ` (+${scope.unsafeInputs.length - 5} more)`
+  return `${inputs}; unsafe dependencies: ${scope.unsafeDependencies.join(", ") || "none"}`
+}
 function logMiss(workspace: string, group: string, count: number) {
-  if (cache) console.log(`Unit cache miss: ${workspace}/${group} (${count} files).`)
+  if (!cache) return
+  const scope = snapshot?.scopes.get(workspace)
+  if (scope && !scope.cacheable)
+    console.log(
+      `Unit cache uncacheable: ${workspace}/${group} (${count} files): ${unsafeReason(scope)}.`,
+    )
+  else console.log(`Unit cache miss: ${workspace}/${group} (${count} files; no matching receipt).`)
 }
 async function scopeHit(workspace: string, group: "node" | "dom", files: string[]) {
   if (!snapshot || !cache) return false

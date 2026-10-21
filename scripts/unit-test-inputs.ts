@@ -28,10 +28,23 @@ function scopeInput(
       JSON.stringify([
         sharedHash,
         values,
-        closure.map((dependency) => [dependency, hashInputs(sources.get(dependency) ?? [])]),
+        closure.map((dependency) => [
+          dependency,
+          hashInputs(sources.get(dependency) ?? []),
+          [...(edges.get(dependency)?.inputs ?? [])].sort(([left], [right]) =>
+            left.localeCompare(right),
+          ),
+        ]),
       ]),
     ),
     cacheable: name !== "$root" && !closure.some((dependency) => edges.get(dependency)?.unsafe),
+    unsafeInputs:
+      name === "$root"
+        ? ["root scripts require the original environment"]
+        : [...(edges.get(name)?.unsafeInputs ?? [])].sort(),
+    unsafeDependencies: closure.filter(
+      (dependency) => dependency !== name && edges.get(dependency)?.unsafe,
+    ),
   }
 }
 
@@ -68,14 +81,18 @@ export async function unitTestInputs(
     ...[...graph.workspaces.values()].map((workspace) => `${workspace.directory}/node_modules`),
   ]
   const installed = await treeInputs(root, installations, true)
+  // Documentation participates when a test actually imports or reads it.
+  const shared = globals.filter(
+    (input) => !input.path.startsWith("docs/") && !input.path.endsWith(".md"),
+  )
   const sharedHash = digest(
-    JSON.stringify([root, hashInputs(globals), hashInputs(installed), runtime, options]),
+    JSON.stringify([root, hashInputs(shared), hashInputs(installed), runtime, options]),
   )
   const edges = await sourceDependencies(root, sources, globals, installed, directories, {
     files: files ?? (await nativeFiles(root)),
     environment,
   })
-  const scopes = new Map<string, { hash: string; cacheable: boolean }>()
+  const scopes = new Map<string, ReturnType<typeof scopeInput>>()
   for (const name of [...names, "$root"]) {
     const closure = sourceClosure(name, names, graph.dependencyClosure, edges)
     scopes.set(name, scopeInput(name, closure, sharedHash, sources, edges, environment))

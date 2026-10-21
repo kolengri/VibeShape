@@ -31,8 +31,18 @@ const reviewedLoaders = new Map([
   ],
 ])
 
-function reviewedReader(input: Input, hashes: Map<string, string>) {
+function reviewedLoader(input: Input, environment: NodeJS.ProcessEnv) {
   if (reviewedLoaders.get(input.path) === input.hash) return true
+  // Without an override this exact loader only reads the fully hashed installed OCCT package.
+  return (
+    input.path === "packages/geometry-worker/src/occt-chamfer-v3-kernel.test.ts" &&
+    input.hash === "9f9a27a69b00fa96b5a510f0c05056ae6490cbf73bd6ae99d5f2b44390a873c3" &&
+    environment.VIBESHAPE_CHAMFER_OCCT_DIRECTORY === undefined
+  )
+}
+
+function reviewedReader(input: Input, hashes: Map<string, string>, environment: NodeJS.ProcessEnv) {
+  if (reviewedLoader(input, environment)) return true
   if (
     input.path === "packages/formats/src/text-outline/text-outline.test.ts" &&
     input.hash === "7327184842ec2450b0660cf8d64b72cbbaa2cb14977c42156a0eb9a1c0a28324"
@@ -135,18 +145,35 @@ function directoryUrl(literal: string) {
   return literal.endsWith("/") || [".", ".."].includes(literal)
 }
 
+function erasedType(node: ts.Node) {
+  // Class heritage expressions still execute, despite also being classified as type nodes.
+  return (
+    ts.isInterfaceDeclaration(node) ||
+    ts.isTypeAliasDeclaration(node) ||
+    (ts.isTypeNode(node) && !ts.isExpressionWithTypeArguments(node))
+  )
+}
+
+function newExpression(
+  node: ts.NewExpression,
+  analysis: Analysis,
+  context: Context,
+  policy: Policy,
+) {
+  const worker = workerConstructor(node, context, policy)
+  if (worker.target) analysis.files.add(worker.target)
+  analysis.unsafe ||= !worker.safe && externalCall(node.expression, context, policy)
+  moduleUrl(node, analysis, context)
+}
+
 function visit(node: ts.Node, analysis: Analysis, context: Context, policy: Policy) {
+  if (erasedType(node)) return
   analysis.unsafe ||= readerEscape(node, context)
   analysis.unsafe ||= unsupportedBuiltinMember(node, context, policy)
   analysis.unsafe ||= externalEscape(node, context, policy)
   moduleDeclaration(node, analysis)
   if (ts.isCallExpression(node)) callNode(node, analysis, context, policy)
-  if (ts.isNewExpression(node)) {
-    const worker = workerConstructor(node, context, policy)
-    if (worker.target) analysis.files.add(worker.target)
-    analysis.unsafe ||= !worker.safe && externalCall(node.expression, context, policy)
-    moduleUrl(node, analysis, context)
-  }
+  if (ts.isNewExpression(node)) newExpression(node, analysis, context, policy)
   node.forEachChild((child) => visit(child, analysis, context, policy))
 }
 
@@ -172,8 +199,8 @@ export function sourceAnalysis(
   const context = sourcePathContext(root, path, file)
   visit(file, analysis, context, {
     ...runtimePolicy(input, hashes, root, environment),
-    reader: reviewedReader(input, hashes),
-    loader: reviewedLoaders.get(input.path) === input.hash,
+    reader: reviewedReader(input, hashes, environment),
+    loader: reviewedLoader(input, environment),
   })
   analysis.unsafe ||= [...analysis.imports].some(unsupportedBuiltin)
   return analysis
