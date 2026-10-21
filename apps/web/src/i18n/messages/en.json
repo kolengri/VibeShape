@@ -3712,6 +3712,8 @@
       "storageFailed": "Open project tabs could not be remembered on this device."
     },
     "assistant": {
+      "footnoteLabel": "Footnotes",
+      "footnoteBackLabel": "Back to reference {reference}{occurrence, plural, one {} other {, occurrence #}}",
       "thinking": "Thinking",
       "reconnecting": "Reconnecting… attempt {attempt} of {limit}",
       "reconnectFailed": "Connection recovery stopped after {attempts, plural, =0 {a permanent error} one {# attempt} other {# attempts}}.",

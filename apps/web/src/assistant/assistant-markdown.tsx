@@ -1,3 +1,4 @@
+import { useTranslations } from "@vibeshape/i18n"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useId, useMemo } from "react"
 import Markdown, { type Components } from "react-markdown"
@@ -14,6 +15,7 @@ const components: Components = {
 }
 
 export function AssistantMarkdown({ text }: { text: string }) {
+  const t = useTranslations("app.assistant")
   const prefix = `assistant-${useId()}-`
   const scopedComponents = useMemo<Components>(
     () => ({
@@ -57,7 +59,12 @@ export function AssistantMarkdown({ text }: { text: string }) {
     >
       <Markdown
         remarkPlugins={[remarkGfm]}
-        remarkRehypeOptions={{ clobberPrefix: prefix }}
+        remarkRehypeOptions={{
+          clobberPrefix: prefix,
+          footnoteLabel: t("footnoteLabel"),
+          footnoteBackLabel: (referenceIndex, occurrence) =>
+            t("footnoteBackLabel", { reference: referenceIndex + 1, occurrence }),
+        }}
         components={scopedComponents}
         skipHtml
       >

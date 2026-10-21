@@ -3,10 +3,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { documentIdSchema, featureIdSchema, sketchIdSchema } from "@vibeshape/domain"
+import { createI18n, defaultFormats } from "@vibeshape/i18n"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ReactNode } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
-import { i18n } from "../i18n"
+import { i18n, messages } from "../i18n"
 import { AssistantMessages } from "./assistant-messages"
 import type { AssistantToolHighlight } from "./assistant-tool-highlight"
 import type { ChatMessage } from "./chat-history"
@@ -133,6 +134,47 @@ describe("assistant Markdown", () => {
       expect(reference?.hasAttribute("target")).toBe(false)
       expect(back?.hasAttribute("target")).toBe(false)
     }
+  })
+
+  it("uses catalog copy for footnote headings and repeated backreference labels", () => {
+    const catalog = createI18n({
+      defaultLocale: "en",
+      formats: defaultFormats,
+      messages: {
+        en: {
+          ...messages.en,
+          app: {
+            ...messages.en.app,
+            assistant: {
+              ...messages.en.app.assistant,
+              footnoteLabel: "Model notes",
+              footnoteBackLabel: "Return to item {reference}, mention {occurrence}",
+            },
+          },
+        },
+      },
+    })
+    render(
+      <I18nProvider i18n={catalog} initialLocale="en">
+        <AssistantMessages
+          messages={[
+            {
+              id: "reply",
+              role: "assistant",
+              text: "Answer[^note], repeated[^note], and another[^other].\n\n[^note]: Explanation.\n\n[^other]: More detail.",
+            },
+          ]}
+        />
+      </I18nProvider>,
+    )
+    expect(screen.getByRole("heading", { name: "Model notes" })).toBeTruthy()
+    for (const name of [
+      "Return to item 1, mention 1",
+      "Return to item 1, mention 2",
+      "Return to item 2, mention 1",
+    ])
+      expect(screen.getByRole("link", { name })).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: "Footnotes" })).toBeNull()
   })
 })
 
