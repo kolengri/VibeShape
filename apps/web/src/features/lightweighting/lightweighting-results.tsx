@@ -1,6 +1,7 @@
 import type { StructuralOptimizationSummary } from "@vibeshape/domain/lightweighting"
 import { useTranslations } from "@vibeshape/i18n"
 import { FdmSupportDemand } from "./fdm-analysis-details"
+import { LightweightingAlgorithmDetails } from "./lightweighting-algorithm-details"
 
 export function LightweightingResults({ result }: { result: StructuralOptimizationSummary }) {
   const t = useTranslations("app.lightweighting")
@@ -101,6 +102,7 @@ export function LightweightingResults({ result }: { result: StructuralOptimizati
           })}
         </p>
       ))}
+      <LightweightingAlgorithmDetails result={result} />
       {result.fdm && <FdmSupportDemand summary={result.fdm} />}
       {result.warnings.map((warning, index) => (
         <p key={`${index}-${warning}`} role="status" className="text-sm">

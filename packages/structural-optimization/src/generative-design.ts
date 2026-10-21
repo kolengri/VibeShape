@@ -110,6 +110,9 @@ function studyScenarios(study: GenerativeDesignInput): StudyScenario[] {
       input: {
         ...study.analysis,
         material: material.material,
+        ...(study.analysis.algorithm?.kind === "simp"
+          ? { algorithm: { ...study.analysis.algorithm, volumeFraction: retainedMassFraction } }
+          : {}),
         objective: { kind: "maximize-stiffness", retainedMassFraction },
       },
     })),

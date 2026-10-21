@@ -673,6 +673,12 @@ without repeating FEM. Settings/source changes invalidate the entire study; Appl
 renderer readiness, atomic import, source hiding, and Undo behavior. See
 [the study contract](generative-design.md) for scope and limitations.
 
+The structural panel also selects feasible removal, SIMP topology optimization, or an FEM-graded
+lattice. Method-specific fields share the existing source, load/support, cancellation, preview, Apply,
+and Undo lifecycle. Changing a method or parameter invalidates prior results. SIMP shows density
+convergence separately from reconstructed target achievement; adaptive lattices show field and
+conservative feature-size evidence. See [the algorithm contract](lightweighting.md#topology-optimization-and-adaptive-lattices).
+
 Structural and quick lightweighting use the toolbar **Modify** menu and the responsive right task
 panel. The selected exact solid is prefilled. Structural inputs select support, load, and optional
 preserved faces in the canvas; quick inputs select lattice cells and slider values. Required action

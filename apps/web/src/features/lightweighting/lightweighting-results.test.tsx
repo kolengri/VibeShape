@@ -46,3 +46,26 @@ it("shows small nonzero masses without rounding them to zero", () => {
   expect(screen.getByText(/Source volume: 0.00004 mm³/)).toBeTruthy()
   expect(screen.getByText(/stress 0.000048 MPa; displacement 0.000032 mm/)).toBeTruthy()
 })
+
+it("distinguishes density convergence from a missed reconstructed solid target", () => {
+  const result = lightweightingSummary()
+  result.algorithm = {
+    kind: "simp",
+    settings: { kind: "simp", volumeFraction: 0.5, filterRadiusMm: 1.5, penalty: 3 },
+    densityIterations: 4,
+    converged: true,
+    maxDensityChange: 0.005,
+    targetCellCount: 20,
+    achievedCellCount: 32,
+    targetStatus: "not-reached",
+    projectionEvaluations: 3,
+  }
+  render(
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <LightweightingResults result={result} />
+    </I18nProvider>,
+  )
+  expect(screen.getByText(/Converged: yes/)).toBeTruthy()
+  expect(screen.getByText(/did not reach the requested volume target/)).toBeTruthy()
+  expect(screen.getByText(/Requested retained volume: 50%. Achieved: 80%/)).toBeTruthy()
+})

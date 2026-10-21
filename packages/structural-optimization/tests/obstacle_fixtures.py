@@ -147,11 +147,16 @@ def verify_obstacle_conflicts_and_mapping(solver):
 
 
 def verify_obstacle_baseline_failures(solver):
-    # Existing structural topology requires one connected surface; an enclosed
-    # cavity is rejected honestly rather than emitting an unsupported solid.
+    # An enclosed inward cavity shell represents one connected material solid.
     request = obstacle_bar()
     request["obstacleRegions"] = [{"min": [0.1, 0.1, 0.1], "max": [0.2, 0.2, 0.2]}]
-    expect_code(solver, request, "disconnected-mesh")
+    hollow = solver.solve(request)
+    assert hollow["initialCellCount"] == 159
+    assert hollow["optimized"]["volumeMm3"] == 159
+    source = trimesh.Trimesh(np.array(hollow["mesh"]["vertices"]).reshape(-1, 3),
+                             np.array(hollow["mesh"]["indices"]).reshape(-1, 3), process=False)
+    assert len(source.split(only_watertight=True)) == 2
+    assert abs(source.volume - 159) < 1e-8
     request = obstacle_bar()
     request["obstacleRegions"] = [{"min": [-0.2, -3, -3], "max": [0.2, 3, 3]}]
     expect_code(solver, request, "infeasible-baseline")

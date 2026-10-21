@@ -447,3 +447,7 @@ source tessellation. Loads/supports are frozen to baseline geometry, candidate r
 every supplied constraint, and the final exported surface is exactly the repeated analyzed solid.
 It introduces no B-Rep feature or document-worker protocol change. See
 [Structural lightweighting](../product/lightweighting.md) for limitations and snapshot semantics.
+
+[ADR-0122](../adr/0122-density-topology-and-adaptive-lattices.md) extends the same numerical owner
+with filtered SIMP and baseline-FEM-graded TPMS lattices. Relaxed densities guide reconstruction only;
+accepted metrics describe the repeated full-solid solve of the exported occupied-cell surface.

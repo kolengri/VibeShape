@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
+import { structuralOptimizationInputSchema } from "@vibeshape/structural-optimization/contract"
 import {
   initialLightweightingFields,
   type LightweightingSource,
@@ -101,3 +102,32 @@ describe("captured Lightweighting surface targets", () => {
     expect(legacy.loadCases[0]?.region).toEqual({ min: [9.5, 0, 0], max: [10, 10, 10] })
   })
 })
+
+it.each([12.3456, 61.21, 0.123456])(
+  "initializes schema-valid adaptive defaults from non-round extent %s",
+  (extent) => {
+    const scaledSource: LightweightingSource = {
+      ...source,
+      body: {
+        ...body,
+        shape: { ...body.shape, bounds: { min: [0, 0, 0], max: [extent, extent, extent] } },
+      },
+    }
+    const fields = initialLightweightingFields(scaledSource, "Load")
+    Object.assign(fields, {
+      youngModulusMpa: "1000",
+      poissonRatio: "0",
+      yieldStrengthMpa: "100",
+      densityKgM3: "1000",
+    })
+    fields.optimization.kind = "adaptive-lattice"
+    const load = fields.loadCases[0]
+    if (!load) throw new Error("Expected initial load case.")
+    load.force = ["1", "0", "0"]
+    const input = lightweightingInput(scaledSource, fields)
+    expect(structuralOptimizationInputSchema.safeParse(input).success).toBe(true)
+    if (input.algorithm?.kind !== "adaptive-lattice") throw new Error("Expected lattice settings.")
+    expect(input.algorithm.minWallThicknessMm).toBeGreaterThanOrEqual(2 * input.cellSizeMm)
+    expect(input.algorithm.cellPeriodMm).toBeGreaterThanOrEqual(8 * input.cellSizeMm)
+  },
+)

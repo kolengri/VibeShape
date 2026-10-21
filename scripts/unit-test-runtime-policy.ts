@@ -36,7 +36,7 @@ const preparation = new Map([
 const python = new Map([
   [
     "packages/structural-optimization/src/solver.py",
-    "bdbec4e84c11998247ba6fb964a38ea416e0d67e12fd748903929ec3c2d72f37",
+    "029bb8810ef18981a0901ae9b8c81390a1f135c18cf4e040b64c6607fd28cff6",
   ],
   [
     "packages/structural-optimization/src/quick-solver.py",
@@ -48,7 +48,11 @@ const python = new Map([
   ],
   [
     "packages/structural-optimization/tests/obstacle_fixtures.py",
-    "40b6cc3823a0943de007724c9d427ee88daff01da1f80ba90e3d4dc218a49365",
+    "43c7689e26184fe7be8628ed515bc8fa64677343e3895e543ec6970794f173ac",
+  ],
+  [
+    "packages/structural-optimization/tests/implicit_fixtures.py",
+    "135bc02aa7fd16bca80ee8af4d041850fc6211beb62db5d1970b96cee2e3ce93",
   ],
   [
     "packages/structural-optimization/tests/fdm_fixtures.py",
@@ -70,7 +74,7 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/wasm-solver.test.ts",
-    "99debd0b78baf56962ab6d940b794f77a4a6cc9be72bc56622b060bd1c8adcfb",
+    "b8eb26df388fe80b5bac7d2d1cce2b17a81657d49d33242dc37597f06625696c",
   ],
 ])
 
