@@ -62,6 +62,48 @@ test("finds a model by name and type, preserves hidden selection, and restores t
   ).toHaveAttribute("aria-selected", "true")
 })
 
+test("finds hidden origin planes through search and replaces authored selection", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await saved(page)
+  await createSolids(page)
+  const tree = page.getByRole("complementary", { name: "Model tree", exact: true })
+  await tree.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
+  const planeGroup = tree.getByRole("treeitem", { name: "Planes", exact: true })
+  await planeGroup.click()
+  await tree.getByRole("button", { name: "Hide XZ", exact: true }).click()
+  await planeGroup.click()
+  const search = tree.getByRole("searchbox", { name: "Search model" })
+  await search.focus()
+  await tree.getByRole("button", { name: "Planes", exact: true }).click()
+  const results = tree.getByRole("tree", { name: "Model search results" })
+  await expect(results.getByRole("treeitem")).toHaveCount(3)
+  for (const name of ["XY", "XZ", "YZ"])
+    await expect(results.getByRole("treeitem", { name, exact: true })).toBeVisible()
+  await search.fill("xz")
+  await search.press("ArrowDown")
+  const result = results.getByRole("treeitem", { name: "XZ", exact: true })
+  await expect(result).toBeFocused()
+  await result.press("Enter")
+  await expect(result).toHaveAttribute("aria-selected", "true")
+  await result.press("Delete")
+  await expect(page.getByRole("alertdialog")).toHaveCount(0)
+  await page.screenshot({
+    path: test.info().outputPath("origin-plane-search.png"),
+    animations: "disabled",
+  })
+  await result.press("Escape")
+  await expect(search).toBeFocused()
+  await planeGroup.click()
+  await expect(tree.getByRole("treeitem", { name: "XZ", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  await expect(tree.getByRole("button", { name: "Hide XZ", exact: true })).toBeVisible()
+  await expect(tree.getByRole("treeitem", { name: "Part Box 1", exact: true })).toBeVisible()
+})
+
 test("deletes a filtered model result after confirmation while preserving query editing", async ({
   page,
 }) => {

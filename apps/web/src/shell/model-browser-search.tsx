@@ -13,21 +13,26 @@ import {
   useState,
 } from "react"
 import { modelBrowserSelectedRow } from "./model-browser-styles"
-import { type ModelTreeSelection, modelTreeSelectionKey } from "./model-tree-selection"
 
 type SearchType = "part" | "body" | "sketch" | "plane" | "operation"
 const searchTypes = ["all", "part", "body", "sketch", "plane", "operation"] as const
+const searchGroups = ["parts", "planes", "history"] as const
 
 export type ModelBrowserSearchEntry = Readonly<{
-  selection: ModelTreeSelection
+  key: string
   type: SearchType
   label: string
   path: string
   searchText: string
   unavailable: boolean
   onActivate: () => void
-  onPreselect: (active: boolean) => void
+  onPreselect?: (active: boolean) => void
 }>
+
+function modelSearchGroup(entry: ModelBrowserSearchEntry) {
+  if (entry.type === "part" || entry.type === "body") return "parts"
+  return entry.type === "plane" ? "planes" : "history"
+}
 
 function modelSearchMatches(
   entry: ModelBrowserSearchEntry,
@@ -45,9 +50,8 @@ function modelSearchTabStop(
   focusedKey: string | null,
 ) {
   return (
-    entries.find(
-      (entry) => !entry.unavailable && modelTreeSelectionKey(entry.selection) === focusedKey,
-    ) ?? entries.find((entry) => !entry.unavailable)
+    entries.find((entry) => !entry.unavailable && entry.key === focusedKey) ??
+    entries.find((entry) => !entry.unavailable)
   )
 }
 
@@ -69,29 +73,31 @@ export function ModelBrowserSearch({
   const preview = useRef<ModelBrowserSearchEntry | null>(null)
   const [query, setQuery] = useState("")
   const [type, setType] = useState<(typeof searchTypes)[number]>("all")
-  const [focused, setFocused] = useState(false)
   const [focusedKey, setFocusedKey] = useState<string | null>(null)
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
   const active = query.length > 0 || type !== "all"
-  const matches = entries.filter((entry) =>
-    modelSearchMatches(entry, terms, type, t(`types.${entry.type}`)),
-  )
-  const visibleKeys = new Set(matches.map((entry) => modelTreeSelectionKey(entry.selection)))
+  const matches = entries
+    .filter((entry) => modelSearchMatches(entry, terms, type, t(`types.${entry.type}`)))
+    .sort(
+      (a, b) =>
+        searchGroups.indexOf(modelSearchGroup(a)) - searchGroups.indexOf(modelSearchGroup(b)),
+    )
+  const visibleKeys = new Set(matches.map((entry) => entry.key))
   const hiddenSelection = [...selectedKeys].filter((key) => !visibleKeys.has(key)).length
   const tabStop = modelSearchTabStop(matches, focusedKey)
   const clearPreview = () => {
-    preview.current?.onPreselect(false)
+    preview.current?.onPreselect?.(false)
     preview.current = null
   }
   const preselect = (entry: ModelBrowserSearchEntry, active: boolean) => {
     clearPreview()
     if (!active || entry.unavailable) return
     preview.current = entry
-    entry.onPreselect(true)
+    entry.onPreselect?.(true)
   }
   useEffect(
     () => () => {
-      preview.current?.onPreselect(false)
+      preview.current?.onPreselect?.(false)
     },
     [],
   )
@@ -117,13 +123,7 @@ export function ModelBrowserSearch({
 
   return (
     <>
-      <div
-        className="mb-2 grid gap-1.5"
-        onFocusCapture={() => setFocused(true)}
-        onBlurCapture={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false)
-        }}
-      >
+      <div className="mb-2 grid gap-1.5">
         <div className="relative flex min-w-0 items-center">
           <SearchIcon
             aria-hidden="true"
@@ -164,7 +164,6 @@ export function ModelBrowserSearch({
           )}
         </div>
         <ModelSearchFilters
-          visible={active || focused}
           type={type}
           onTypeChange={(value) => {
             clearPreview()
@@ -212,18 +211,15 @@ export function ModelBrowserSearch({
 }
 
 function ModelSearchFilters({
-  visible,
   type,
   onTypeChange,
   onKeyDown,
 }: {
-  visible: boolean
   type: (typeof searchTypes)[number]
   onTypeChange: (value: (typeof searchTypes)[number]) => void
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
 }) {
   const t = useTranslations("app.shell.modelTree.search")
-  if (!visible) return null
   return (
     <fieldset aria-label={t("filters")} className="flex flex-wrap gap-1">
       {searchTypes.map((value) => (
@@ -292,23 +288,17 @@ type ModelSearchGroupsProps = {
 function ModelSearchGroups(props: ModelSearchGroupsProps) {
   const t = useTranslations("app.shell.modelTree.search")
   const treeT = useTranslations("app.shell.modelTree")
-  return (["parts", "history"] as const).map((group) => {
-    const grouped = props.matches.filter(
-      (entry) => (entry.type === "part" || entry.type === "body") === (group === "parts"),
-    )
+  return searchGroups.map((group) => {
+    const grouped = props.matches.filter((entry) => modelSearchGroup(entry) === group)
     if (!grouped.length) return null
-    const label = group === "parts" ? t("types.part") : treeT("items.history")
+    const label = group === "parts" ? t("types.part") : treeT(`items.${group}`)
     return (
       <fieldset key={group} aria-label={label}>
         <p className="px-2 py-1 text-xs font-medium text-muted-foreground" aria-hidden="true">
           {label}
         </p>
         {grouped.map((entry) => (
-          <ModelSearchResult
-            key={modelTreeSelectionKey(entry.selection)}
-            {...props}
-            entry={entry}
-          />
+          <ModelSearchResult key={entry.key} {...props} entry={entry} />
         ))}
       </fieldset>
     )
@@ -324,7 +314,7 @@ function ModelSearchResult({
   onPreselect,
 }: Omit<ModelSearchGroupsProps, "matches"> & { entry: ModelBrowserSearchEntry }) {
   const t = useTranslations("app.shell.modelTree.search")
-  const key = modelTreeSelectionKey(entry.selection)
+  const key = entry.key
   const selected = selectedKeys.has(key)
   const descriptionId = `${id}-${encodeURIComponent(key)}`
   return (

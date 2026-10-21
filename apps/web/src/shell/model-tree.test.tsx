@@ -569,6 +569,74 @@ function timeline() {
 }
 
 describe("ModelTree browser search", () => {
+  it.each(["xy", "xz", "yz"] as const)(
+    "finds the hidden %s origin plane and activates it with the keyboard",
+    async (plane) => {
+      const user = userEvent.setup()
+      const onSelect = vi.fn()
+      const onModelTreeSelectionChange = vi.fn()
+      const origin = {
+        selected: null,
+        visibility: { xy: false, xz: false, yz: false },
+        onSelect,
+        onVisibilityChange: vi.fn(),
+        disabled: false,
+      }
+      const { rerenderTree } = renderTree({ origin, onModelTreeSelectionChange })
+      await user.type(browser().getByRole("searchbox"), plane)
+      const results = browser().getByRole("tree", { name: "Model search results" })
+      const result = within(results).getByRole("treeitem", { name: plane.toUpperCase() })
+      expect(within(results).getAllByRole("treeitem")).toHaveLength(1)
+      expect(result.getAttribute("aria-selected")).toBe("false")
+      await user.keyboard("{ArrowDown}{Enter}")
+      expect(document.activeElement).toBe(result)
+      expect(onSelect.mock.calls).toEqual([[plane]])
+      expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
+      expect(origin.onVisibilityChange).not.toHaveBeenCalled()
+      rerenderTree({ origin: { ...origin, selected: plane } })
+      expect(result.getAttribute("aria-selected")).toBe("true")
+    },
+  )
+
+  it("lists all origin planes in the Planes filter and preserves disabled and saving guards", async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    const origin = {
+      selected: null,
+      visibility: { xy: true, xz: false, yz: true },
+      onSelect,
+      onVisibilityChange: vi.fn(),
+      disabled: false,
+    }
+    const { rerenderTree } = renderTree({ origin })
+    await user.click(browser().getByRole("button", { name: /^Planes$/ }))
+    const results = browser().getByRole("tree", { name: "Model search results" })
+    const planes = within(results).getByRole("group", { name: "Planes" })
+    expect(
+      within(planes)
+        .getAllByRole("treeitem")
+        .map((item) => item.getAttribute("aria-label")),
+    ).toEqual(["XY", "XZ", "YZ"])
+    const result = within(planes).getByRole("treeitem", { name: "XZ" }) as HTMLButtonElement
+    await user.click(result)
+    expect(onSelect.mock.calls).toEqual([["xz"]])
+    rerenderTree({ origin: { ...origin, disabled: true } })
+    expect(result.disabled).toBe(true)
+    await user.click(result)
+    rerenderTree({ origin, controller: { ...controller, saveStatus: "saving" } })
+    expect(result.disabled).toBe(true)
+    await user.click(result)
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not invent origin-plane results when origin controls are unavailable", async () => {
+    const user = userEvent.setup()
+    renderTree()
+    await user.type(browser().getByRole("searchbox"), "xy")
+    const results = browser().getByRole("tree", { name: "Model search results" })
+    expect(within(results).queryByRole("treeitem")).toBeNull()
+  })
+
   for (const key of ["Delete", "Backspace"]) {
     it(`routes ${key} from filtered results to selection confirmation and restores focus`, async () => {
       const user = userEvent.setup()

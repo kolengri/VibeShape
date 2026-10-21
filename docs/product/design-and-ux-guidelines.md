@@ -94,7 +94,8 @@ menus, and a single remaining command stays a direct action.
 
 The model browser supports name/type search across Parts, unowned bodies, sketches, planes, and
 History operations. Results include source paths to distinguish repeated names and use the existing
-selection and preselection handlers. Type filters remain visible while searching; an explicit notice
+selection and preselection handlers. Type filters stay visible so focus changes do not move the tree;
+origin planes use their existing selection action. An explicit notice
 identifies selected items outside the result set. Clearing search restores the mounted tree and its
 collapse state. Search does not change History insertion eligibility or object identity.
 

@@ -28,9 +28,10 @@ import {
 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import type {
-  ViewerOriginPlane,
-  ViewerOriginPlaneVisibility,
+import {
+  type ViewerOriginPlane,
+  type ViewerOriginPlaneVisibility,
+  viewerOriginPlanes,
 } from "@vibeshape/viewer/origin-planes"
 import {
   createContext,
@@ -2625,15 +2626,32 @@ function modelSearchSelectedFeature(props: ModelTreeHistoryBranchProps) {
 }
 
 function modelSearchSelectionKeys(props: ModelTreeHistoryBranchProps) {
+  const originKeys = props.origin?.selected ? [`origin-plane:${props.origin.selected}`] : []
   if (props.modelTreeSelection?.length)
-    return new Set(props.modelTreeSelection.map(modelTreeSelectionKey))
+    return new Set([...originKeys, ...props.modelTreeSelection.map(modelTreeSelectionKey)])
   const selected: ModelTreeSelection[] = []
   const featureId = modelSearchSelectedFeature(props)
   if (props.selectedPartId) selected.push({ kind: "part", id: props.selectedPartId })
   else if (props.activeBody) selected.push({ kind: "body", ...props.activeBody })
   else if (props.activeSketchId) selected.push({ kind: "sketch", id: props.activeSketchId })
   else if (featureId) selected.push({ kind: "feature", id: featureId })
-  return new Set(selected.map(modelTreeSelectionKey))
+  return new Set([...originKeys, ...selected.map(modelTreeSelectionKey)])
+}
+
+function modelSearchOriginEntries(props: ModelTreeHistoryBranchProps): ModelBrowserSearchEntry[] {
+  const { origin, controller, t } = props
+  if (!origin) return []
+  const unavailable =
+    origin.disabled || controller.status !== "ready" || controller.saveStatus === "saving"
+  return viewerOriginPlanes.map((plane) => ({
+    key: `origin-plane:${plane}`,
+    type: "plane",
+    label: plane.toUpperCase(),
+    path: t("items.planes"),
+    searchText: "",
+    unavailable,
+    onActivate: () => origin.onSelect(plane),
+  }))
 }
 
 function modelSearchHistoryPaths(props: ModelTreeHistoryBranchProps) {
@@ -2676,7 +2694,7 @@ function modelSearchHistoryEntries(props: ModelTreeHistoryBranchProps): ModelBro
         ? { kind: "sketch", id: row.ref.id as SketchId }
         : { kind: "feature", id: row.ref.id as FeatureRecord["id"] }
     return {
-      selection,
+      key: modelTreeSelectionKey(selection),
       type,
       label,
       path: paths.get(historyRefKey(row.ref)) ?? label,
@@ -2729,7 +2747,7 @@ function modelSearchBodyEntries(props: ModelTreeHistoryBranchProps): ModelBrowse
     const body = selectedAuthoredBody(parts, part.id, props.partVisibility?.overrides)
     const binding = resolvedBody ?? part.bodyHistory.at(-1)
     return {
-      selection: { kind: "part", id: part.id },
+      key: modelTreeSelectionKey({ kind: "part", id: part.id }),
       type: "part",
       label: part.name,
       path: t("search.partPath", {
@@ -2751,7 +2769,7 @@ function modelSearchBodyEntries(props: ModelTreeHistoryBranchProps): ModelBrowse
       ...(geometry.outputRole === undefined ? {} : { outputRole: geometry.outputRole }),
     }
     entries.push({
-      selection: { kind: "body", ...selection },
+      key: modelTreeSelectionKey({ kind: "body", ...selection }),
       type: "body",
       label: t("bodyLabel", { number: index + 1 }),
       path: t("search.bodyPath", {
@@ -2852,6 +2870,7 @@ export function ModelTree(props: ModelTreeProps) {
       <ModelBrowserSearch
         entries={[
           ...modelSearchBodyEntries({ ...props, t, view: historyView }),
+          ...modelSearchOriginEntries({ ...props, t, view: historyView }),
           ...modelSearchHistoryEntries({ ...props, t, view: historyView }),
         ]}
         selectedKeys={modelSearchSelectionKeys({ ...props, t, view: historyView })}
