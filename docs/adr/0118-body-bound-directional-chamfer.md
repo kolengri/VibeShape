@@ -4,6 +4,8 @@
 - Date: 2026-10-20
 - Extends: [ADR-0040](0040-selected-edge-treatments.md) and
   [ADR-0049](0049-constituent-body-identity-and-solid-patterns.md)
+- Measurement boundary superseded in part by:
+  [ADR-0121](0121-circular-offset-chamfer.md)
 
 ## Decision
 

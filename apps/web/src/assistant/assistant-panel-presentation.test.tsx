@@ -1,6 +1,6 @@
 import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, expect, it } from "bun:test"
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { type ComponentProps, useEffect } from "react"
@@ -48,32 +48,16 @@ function panel(props: Partial<PanelProps> = {}) {
   )
 }
 
-it("uses the panel's real busy prop for polite header activity and retains the reserved status slot while idle", () => {
+it("keeps the chat header free of working status while retaining cancellation in the composer", () => {
   const view = render(panel())
   const heading = screen.getByRole("heading", { name: "AI chat" })
-  const titleRow = heading.parentElement
-  if (!titleRow) throw new Error("Missing assistant header title row.")
-  const status = within(titleRow).getByRole("status")
-  const reserved = status.previousElementSibling
-  const layout = titleRow.className
-  const settings = screen.getByRole("button", { name: "AI settings" })
-  expect(status.textContent).toBe("")
-  expect(status.getAttribute("aria-live")).toBe("polite")
-  expect(status.getAttribute("aria-atomic")).toBe("true")
-  expect(reserved?.getAttribute("aria-hidden")).toBe("true")
-  expect(reserved?.classList.contains("invisible")).toBe(true)
-  expect(reserved?.textContent).toBe("AI working…")
+  const header = heading.closest("header")
+  expect(header?.textContent).toBe("AI chatBracket")
   view.rerender(panel({ busy: true }))
-  expect(within(titleRow).getByRole("status")).toBe(status)
-  expect(status.textContent).toBe("AI working…")
-  expect(status.querySelector("svg")?.classList.contains("motion-safe:animate-spin")).toBe(true)
-  expect(status.previousElementSibling).toBe(reserved)
-  expect(titleRow.className).toBe(layout)
-  expect(screen.getByRole("button", { name: "AI settings" })).toBe(settings)
-  view.rerender(panel({ busy: false }))
-  expect(status.textContent).toBe("")
-  expect(status.previousElementSibling).toBe(reserved)
-  expect(titleRow.className).toBe(layout)
+  expect(heading.closest("header")).toBe(header)
+  expect(header?.textContent).toBe("AI chatBracket")
+  expect(header?.querySelector('[role="status"]')).toBeNull()
+  expect(screen.getByRole("button", { name: /^Stop$/ })).toBeTruthy()
 })
 
 function ConnectionControls({ mount, disconnect }: { mount: () => void; disconnect: () => void }) {

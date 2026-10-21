@@ -233,6 +233,16 @@ SPK-005 proves cached-shell offline reopen with a spike-only service worker and 
 
 ## Backup policy
 
+Native project saves run repository recovery, complete-history replay, canonical serialization,
+checksums, ZIP compression, and archive-limit validation in a disposable worker. The UI sends only
+the database name, document ID, and expected committed revision; the worker reuses the existing
+repository and format-version writer, then transfers the archive buffer back. A revision mismatch
+or changed active session rejects the result. Worker errors and timeouts terminate the worker and
+release the existing save-action lock for retry. Export does not change the persisted project head.
+
+Import validation, identity-remapping copies, and their persistence replay still run on the main
+thread. Long journals can therefore stall import or duplication even though native save is isolated.
+
 v1 includes:
 
 - export reminders for projects without an external file copy;
