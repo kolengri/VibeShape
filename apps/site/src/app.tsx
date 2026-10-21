@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react"
 import { type MouseEvent, type ReactNode, useEffect, useState, useSyncExternalStore } from "react"
-import { useDesktopRelease } from "./desktop-release"
+import { type DesktopRelease, useDesktopRelease } from "./desktop-release"
 import { HeroVisual } from "./hero-visual"
 import { articles, editorUrl, referenceUrl, releasesUrl, repository } from "./links"
 import { AnimatedScene, ConstructionPlanes, FeatureVisual, PrintVisual } from "./spatial-visuals"
@@ -50,7 +50,7 @@ function ActionLink({
     <Button
       asChild
       variant={secondary ? "outline" : "default"}
-      className="h-auto min-h-12 rounded-lg px-5 py-3 text-sm"
+      className="h-auto min-h-12 whitespace-normal rounded-lg px-5 py-3 text-sm"
     >
       <a href={href}>{children}</a>
     </Button>
@@ -455,24 +455,46 @@ function Documentation() {
   )
 }
 
-function DesktopInstallerCard() {
+function DesktopInstallerCard({
+  platform,
+  release,
+}: {
+  platform: "mac" | "windows"
+  release: DesktopRelease | null
+}) {
   const t = useTranslations("downloads")
-  const release = useDesktopRelease()
+  const copy = {
+    mac: {
+      title: "installers",
+      status: "installerStatus",
+      version: "installerVersion",
+      body: "installerBody",
+      action: "desktopAction",
+    },
+    windows: {
+      title: "windowsTitle",
+      status: "windowsStatus",
+      version: "windowsVersion",
+      body: "windowsBody",
+      action: "windowsAction",
+    },
+  } as const
+  const messages = copy[platform]
   return (
     <div className="flex flex-col rounded-xl border border-border bg-background p-7">
       <Download size={24} strokeWidth={1.5} className="mb-8 text-muted-foreground" />
-      <h3 className="text-xl font-medium tracking-tight">{t("installers")}</h3>
+      <h3 className="text-xl font-medium tracking-tight">{t(messages.title)}</h3>
       <p aria-live="polite" className="mt-2 text-xs font-medium text-primary">
-        {release ? t("installerVersion", { version: release.version }) : t("installerStatus")}
+        {release ? t(messages.version, { version: release.version }) : t(messages.status)}
       </p>
       <p className="mb-7 mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">
-        {t("installerBody")}
+        {t(messages.body)}
       </p>
       <a href={releasesUrl} className="mb-4 text-sm text-primary hover:underline">
         {t("releases")}
       </a>
       <ActionLink href={release ? release.downloadUrl : releasesUrl} secondary>
-        {release ? t("desktopAction") : t("desktopReleasesAction")}
+        {release ? t(messages.action) : t("desktopReleasesAction")}
         <ArrowUpRight size={16} />
       </ActionLink>
     </div>
@@ -481,6 +503,7 @@ function DesktopInstallerCard() {
 
 function Downloads() {
   const t = useTranslations("downloads")
+  const releases = useDesktopRelease()
   return (
     <section id="downloads" className="scroll-mt-24 border-y border-border bg-panel/60">
       <div className="mx-auto max-w-7xl px-6 py-20 lg:px-12 lg:py-28">
@@ -494,7 +517,7 @@ function Downloads() {
         <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground">
           {t("description")}
         </p>
-        <div className="mt-10 grid gap-4 lg:grid-cols-3">
+        <div className="mt-10 grid gap-4 lg:grid-cols-2">
           <div className="flex flex-col rounded-xl border border-primary/40 bg-background p-7">
             <div className="mb-8 flex min-h-6 items-center justify-between">
               <Monitor size={24} strokeWidth={1.5} className="text-primary" />
@@ -528,7 +551,8 @@ function Downloads() {
               <ArrowRight size={16} />
             </ActionLink>
           </div>
-          <DesktopInstallerCard />
+          <DesktopInstallerCard platform="mac" release={releases.mac} />
+          <DesktopInstallerCard platform="windows" release={releases.windows} />
         </div>
         <div className="mt-12 flex items-start gap-4 border-t border-border pt-7">
           <LockKeyhole size={19} className="mt-0.5 shrink-0 text-primary" />

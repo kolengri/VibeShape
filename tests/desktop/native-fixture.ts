@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process"
 import { once } from "node:events"
+import { existsSync } from "node:fs"
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { createRequire } from "node:module"
@@ -22,16 +23,39 @@ async function isolatedOrigin() {
   return `http://127.0.0.1:${address.port}`
 }
 
+function freshDefaultProfile(packagedApp: string | undefined) {
+  if (process.platform !== "win32" || !packagedApp)
+    throw new Error("Default-profile acceptance requires a packaged Windows application.")
+  const directory = join(z.string().min(1).parse(process.env.APPDATA), "VibeShape")
+  if (existsSync(directory))
+    throw new Error(
+      "Default-profile acceptance requires an account without an existing VibeShape profile.",
+    )
+  return directory
+}
+
 export async function createNativeFixture(
-  options: { directory?: string; bootstrap?: string; packagedApp?: string } = {},
+  options: {
+    directory?: string
+    bootstrap?: string
+    packagedApp?: string
+    defaultProfile?: boolean
+  } = {},
 ) {
   const directory = options.directory ?? (await mkdtemp(join(tmpdir(), "vibeshape-native-test-")))
-  const profile = join(directory, "profile")
   const packagedApp = options.bootstrap
     ? undefined
     : (options.packagedApp ?? process.env.VIBESHAPE_PACKAGED_APP)
+  const profileContainer = options.defaultProfile
+    ? freshDefaultProfile(packagedApp)
+    : join(directory, "profile")
+  const profile =
+    process.platform === "win32" ? join(profileContainer, "User Data") : profileContainer
   const executablePath = packagedApp
-    ? join(resolve(packagedApp), "Contents/MacOS/VibeShape")
+    ? join(
+        resolve(packagedApp),
+        process.platform === "win32" ? "VibeShape.exe" : "Contents/MacOS/VibeShape",
+      )
     : nativeElectronExecutable
   const origin = packagedApp ? "http://127.0.0.1:43115" : await isolatedOrigin()
   const applications = new Map<ElectronApplication, ChildProcess>()
@@ -66,7 +90,7 @@ export async function createNativeFixture(
       if (packagedApp) {
         delete environment.VIBESHAPE_DESKTOP_TEST_PORT
         delete environment.VIBESHAPE_DESKTOP_EDITOR
-        environment.PATH = "/usr/bin:/bin"
+        if (process.platform !== "win32") environment.PATH = "/usr/bin:/bin"
       } else {
         environment.VIBESHAPE_DESKTOP_TEST_PORT = new URL(origin).port
         environment.VIBESHAPE_DESKTOP_EDITOR = join(nativeTestRoot, "apps/web/dist")
@@ -74,7 +98,10 @@ export async function createNativeFixture(
       const application = options.bootstrap ? directory : join(nativeTestRoot, "apps/desktop")
       const native = await _electron.launch({
         executablePath,
-        args: [...(packagedApp ? [] : [application]), `--user-data-dir=${profile}`],
+        args: [
+          ...(packagedApp ? [] : [application]),
+          ...(options.defaultProfile ? [] : [`--user-data-dir=${profileContainer}`]),
+        ],
         env: environment,
       })
       applications.set(native, native.process())
@@ -82,6 +109,7 @@ export async function createNativeFixture(
     },
     async cleanup() {
       for (const [native, child] of applications) if (child.exitCode === null) await native.close()
+      if (options.defaultProfile) await rm(profileContainer, { recursive: true, force: true })
       if (!options.directory) await rm(directory, { recursive: true, force: true })
     },
   }

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { publishMcpDescriptor, readMcpDescriptor } from "./mcp-descriptor"
 import { initializeDesktopProfile } from "./startup-profile"
 
 const directories: string[] = []
@@ -43,6 +44,26 @@ function startupFailure(dialogs: ReturnType<typeof host>["dialogs"], path: strin
 }
 
 describe("early native profile startup", () => {
+  it.skipIf(process.platform !== "win32")(
+    "creates the Windows userData profile with current-user ownership before publishing credentials",
+    async () => {
+      const path = join(directory(), "VibeShape")
+      const context = host()
+      expect(initializeDesktopProfile(path, context.options)).toBe(true)
+      expect(context.configured).toEqual([path])
+      const descriptor = {
+        protocolVersion: 1 as const,
+        endpoint: "http://127.0.0.1:43115/__vibeshape/native-mcp",
+        token: "a".repeat(64),
+        pid: process.pid,
+      }
+      const descriptorPath = join(path, "descriptor.json")
+      const remove = await publishMcpDescriptor(descriptorPath, descriptor)
+      expect(await readMcpDescriptor(descriptorPath)).toEqual(descriptor)
+      await remove()
+    },
+    60_000,
+  )
   it("creates the selected profile synchronously before configuring Electron userData", () => {
     const path = join(directory(), "Application Support", "VibeShape")
     const context = host()

@@ -8,9 +8,10 @@ The goal is not to clone all of Onshape. The first practical release must provid
 
 By default, all computation, files, and model history remain on the user's device. A cloud account, server-side CAD session, and mandatory telemetry are not required.
 
-The [macOS desktop application](docs/desktop-macos.md) packages the same editor with native launch,
-an isolated persistent profile and GitHub release checks/downloads. Local `.app` and `.dmg` builds
-require no external runtime; public signed/notarized distribution remains a release gate.
+The [macOS](docs/desktop-macos.md) and [Windows x64](docs/desktop-windows.md) desktop applications
+package the same editor with native launch, an isolated persistent profile and GitHub release
+checks/downloads. Mac `.app`/`.dmg` and Windows portable ZIP builds require no external runtime.
+Windows archives are unsigned; public signing and platform acceptance remain release gates.
 
 ## Status
 

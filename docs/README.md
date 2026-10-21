@@ -3,6 +3,8 @@
 Current delivery priorities: [Local CAD and MCP development plan](product/local-cad-and-mcp-development-plan.md)
 (working-tree audit, 2026-09-04).
 
+Native application delivery: [macOS](desktop-macos.md) and [Windows x64](desktop-windows.md).
+
 ## Recommended reading order
 
 For an external agent operating the application, use [Skills for agents using VibeShape](agent-skills.md), the [local MCP quickstart](mcp-quickstart.md), or [remote MCP operation](remote-mcp.md). The architecture reading order below is for developing the product.

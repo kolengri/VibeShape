@@ -6,11 +6,14 @@ Use an already configured server when available. If setup was requested, launch 
 
 List tools and resources. Read `vibeshape://session` for the actual `editorUrl` and `paired` status, then the advertised `vibeshape://authoring-guide` for schemas and examples. Open that exact URL and intended project. Have the person choose **Enable AI session** in the bottom status bar. The default source bridge origin is `http://127.0.0.1:43114`, but the session resource is authoritative; changing host or port changes browser-local storage.
 
-## Native Mac application
+## Native desktop application
 
-For an already open Mac app, use **Settings → Connections → Connect an MCP client** and copy its
+For an already open macOS or Windows app, use **Settings → Connections → Connect an MCP client** and copy its
 configuration. The bundled Electron stdio forwarder attaches to the app's existing editor and storage
-origin; no external Bun or Node runtime is needed. Do not substitute the standalone stdio server,
+origin; no external Bun or Node runtime is needed. Keep absolute Windows executable, runtime and
+descriptor paths exactly as copied, including JSON backslash escaping. Windows credential files
+require private current-user ACLs; a permission failure is not a reason to weaken descriptor checks.
+Do not substitute the standalone stdio server,
 which opens a separate editor profile. The copied configuration permits one external client. The
 in-app ACP agent instead receives a separate project-bound MCP attachment automatically when its
 configured agent connects. Its internal server name is project-specific; discover advertised tool

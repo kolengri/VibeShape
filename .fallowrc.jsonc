@@ -4,6 +4,7 @@
   "entry": [
     // Bun scripts bundle/package the native main process; Playwright owns its native test config.
     "apps/desktop/build.ts",
+    "apps/desktop/start.ts",
     "apps/desktop/package.ts",
     "apps/desktop/src/main.ts",
     "apps/desktop/src/mcp.ts",
