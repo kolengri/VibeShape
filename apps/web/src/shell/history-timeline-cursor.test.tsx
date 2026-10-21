@@ -383,8 +383,10 @@ describe("History rollback divider", () => {
     fireEvent.keyDown(cursor(), { key: "Home" })
     await waitFor(() => expect(cursor().getAttribute("aria-valuenow")).toBe("0"))
     fireEvent.keyDown(cursor(), { key: "End" })
-    await waitFor(() => expect(cursor().getAttribute("aria-valuenow")).toBe("4"))
-    expect(track.scrollLeft).toBeGreaterThan(0)
+    await waitFor(() => {
+      expect(cursor().getAttribute("aria-valuenow")).toBe("4")
+      expect(track.scrollLeft).toBeGreaterThan(0)
+    })
   })
   it("disposes an active drag without navigation or an idle animation frame", () => {
     const view = render(<Harness width={200} />)
