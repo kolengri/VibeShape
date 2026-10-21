@@ -60,7 +60,14 @@ and a separate optional argument-model endpoint, model and key. It does not ask 
 or source path. Provider keys are connection-only and kept in host memory per project for the app
 session; only non-secret settings persist. Recovery reuses the same project's cached keys, never
 keys entered in another project. The form explains the difference between selecting CAD actions
-and completing their open parameters. Image input is opt-in. Invalid or incomplete settings do
+and completing their open parameters. Connection and session settings open in an **AI settings**
+modal; closing it preserves the current form and connection. PNG/JPEG images are enabled on native
+Jev connections, including previously saved configurations, without a separate opt-in. The composer
+shows Jev's four-image limit and rejects unsupported formats or images exceeding its combined
+512 KiB base64 envelope before sending or queueing a turn. Captured views use the same admission.
+**Test connection** checks TypeSafe and any configured argument model without sending project data,
+images or CAD requests. Other ACP adapters receive an explicitly labelled initialization-only check.
+Invalid or incomplete settings do
 not start a process, repeated connection activation is blocked, and connection failure releases
 the form for correction. Password fields clear only after the current connection is accepted as
 ready; rejected, blocked or superseded attempts retain both keys for retry. Existing native chat

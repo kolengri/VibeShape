@@ -2,6 +2,7 @@ import type {
   AssistantAgent,
   AssistantAttachment,
   AssistantBridge,
+  AssistantConnectionTestResult,
   AssistantErrorCode,
   AssistantEvent,
   AssistantQuestion,
@@ -10,6 +11,9 @@ import type {
 } from "@vibeshape/automation-api/assistant"
 import {
   assistantAgentSchema,
+  assistantAttachmentsSupported,
+  assistantConnectionTestResultSchema,
+  assistantConnectionTestSchema,
   assistantPromptSchema,
   assistantQuestionAnswersMatch,
   assistantQuestionResponseSchema,
@@ -869,9 +873,8 @@ export function createNativeChatController({
     }
     const capabilities = state.snapshot?.attachmentCapabilities
     if (
-      attachments.some((attachment) =>
-        attachment.type === "image" ? !capabilities?.images : !capabilities?.text,
-      )
+      attachments.length &&
+      (!capabilities || !assistantAttachmentsSupported(attachments, capabilities))
     ) {
       publish({ error: "unsupported" })
       return null
@@ -929,6 +932,10 @@ export function createNativeChatController({
     const next = queued[0]
     if (!next || !promptReady()) return
     if (state.busy || state.settlingCheckpoint || state.queuePaused) return
+    if (!validPrompt(next.text, next.attachments)) {
+      publish({ queuePaused: true })
+      return
+    }
     launchPrompt(next.text, next.attachments, next)
   }
   function restoreQueued(item: QueuedPrompt | undefined, transcript = activePrompt?.transcript) {
@@ -1185,6 +1192,27 @@ export function createNativeChatController({
       return () => listeners.delete(listener)
     },
     connect,
+    async testConnection(
+      agent: AssistantAgent,
+      credentials?: AssistantJevCredentials,
+    ): Promise<AssistantConnectionTestResult> {
+      const input = assistantConnectionTestSchema.safeParse({
+        projectId,
+        agent,
+        jevCredentials: credentials,
+      })
+      if (!input.success) return { ok: false, code: "invalid-request", stage: "agent" }
+      if (disposed) return { ok: false, code: "stale-session", stage: "agent" }
+      if (!bridge.testConnection) return { ok: false, code: "unsupported", stage: "agent" }
+      try {
+        const result = assistantConnectionTestResultSchema.safeParse(
+          await bridge.testConnection(input.data),
+        )
+        return result.success ? result.data : { ok: false, code: "protocol-error", stage: "agent" }
+      } catch {
+        return { ok: false, code: "request-failed", stage: "agent" }
+      }
+    },
     disconnect,
     async retryRecovery() {
       if (!recovery || state.recovery?.status !== "failed" || disposed) return false

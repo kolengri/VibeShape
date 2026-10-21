@@ -1,13 +1,28 @@
 import { Readable, Writable } from "node:stream"
 import * as acp from "@agentclientprotocol/sdk"
 import { TypeSafeClient } from "@typesafe-ai/sdk"
+import {
+  type AssistantConnectionTestResult,
+  assistantConnectionTestResultSchema,
+} from "@vibeshape/automation-api/assistant"
 import { createJevAgent } from "./agent"
 import { createArgumentCompleter } from "./arguments"
 import { readConfiguration } from "./configuration"
 import { createJevDecision } from "./decision"
+import { probeProviders } from "./provider-probe"
 import { typesafeFetch } from "./transport"
 
 async function main() {
+  if (process.argv.includes("--test-connection")) {
+    let result: AssistantConnectionTestResult
+    try {
+      result = await probeProviders(readConfiguration(process.env))
+    } catch {
+      result = { ok: false, code: "jev-configuration-required", stage: "jev" }
+    }
+    process.stdout.write(`${JSON.stringify(assistantConnectionTestResultSchema.parse(result))}\n`)
+    return
+  }
   try {
     const configuration = readConfiguration(process.env)
     const typesafe = new TypeSafeClient({

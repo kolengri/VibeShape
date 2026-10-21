@@ -4,18 +4,22 @@ import { isAbsolute } from "node:path"
 import { Readable, Writable } from "node:stream"
 import * as acp from "@agentclientprotocol/sdk"
 import {
+  type AssistantAgent,
   type AssistantAttachment,
   type AssistantErrorCode,
   type AssistantEvent,
   type AssistantRequest,
   type AssistantResult,
   type AssistantSnapshot,
+  assistantAttachmentsSupported,
   assistantEventSchema,
   assistantRequestSchema,
   assistantSnapshotSchema,
 } from "@vibeshape/automation-api/assistant"
+import { JEV_IMAGE_CONSTRAINTS } from "@vibeshape/automation-api/assistant-jev"
 import { type DesktopMcpSetup, desktopMcpSetupSchema } from "@vibeshape/automation-api/desktop-host"
 import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
+import { createAssistantConnectionTests } from "./assistant-connection-test"
 import type { createAssistantLaunchResolver } from "./assistant-jev-runtime"
 import { createAssistantPermissions } from "./assistant-permissions"
 import { assistantPromptContent } from "./assistant-prompt-content"
@@ -95,6 +99,7 @@ export type AssistantServiceOptions = {
   questionTimeoutMs?: number
   cancelTimeoutMs?: number
   shutdownTimeoutMs?: number
+  connectionTestTimeoutMs?: number
 }
 
 class AssistantFailure extends Error {
@@ -138,14 +143,26 @@ function errorCode(error: unknown, fallback: AssistantErrorCode): AssistantError
   return fallback
 }
 
-function applyInitialization(owner: Owner, init: acp.InitializeResponse) {
-  if (init.protocolVersion !== acp.PROTOCOL_VERSION) throw new AssistantFailure("protocol-error")
-  owner.snapshot.canResume = init.agentCapabilities?.loadSession === true
-  if (supportsAssistantSteering(init)) owner.snapshot.canSteer = true
-  owner.snapshot.attachmentCapabilities = {
+function agentAttachmentCapabilities(init: acp.InitializeResponse, agent: AssistantAgent) {
+  const capabilities = {
     text: init.agentCapabilities?.promptCapabilities?.embeddedContext === true,
     images: init.agentCapabilities?.promptCapabilities?.image === true,
   }
+  if (!("kind" in agent) || !capabilities.images) return capabilities
+  return {
+    ...capabilities,
+    imageConstraints: {
+      ...JEV_IMAGE_CONSTRAINTS,
+      mimeTypes: [...JEV_IMAGE_CONSTRAINTS.mimeTypes],
+    },
+  }
+}
+
+function applyInitialization(owner: Owner, init: acp.InitializeResponse, agent: AssistantAgent) {
+  if (init.protocolVersion !== acp.PROTOCOL_VERSION) throw new AssistantFailure("protocol-error")
+  owner.snapshot.canResume = init.agentCapabilities?.loadSession === true
+  if (supportsAssistantSteering(init)) owner.snapshot.canSteer = true
+  owner.snapshot.attachmentCapabilities = agentAttachmentCapabilities(init, agent)
   owner.snapshot.authMethods = (init.authMethods ?? [])
     .filter((method) => !("type" in method) || method.type !== "terminal")
     .slice(0, 32)
@@ -170,6 +187,7 @@ async function settleShutdown(pending: Promise<unknown>, timeoutMs: number) {
 export function createAssistantService(options: AssistantServiceOptions) {
   if (!isAbsolute(options.cwd)) throw new Error("The assistant working directory must be absolute.")
   const owners = new Map<string, Owner>()
+  const connectionTests = createAssistantConnectionTests(options)
   const preferences = createAssistantSessionPreferences()
   let disposed = false
   const stopping = new Map<string, Promise<void>>()
@@ -411,7 +429,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         clientCapabilities: { elicitation: { form: {} } },
       }),
     )
-    applyInitialization(owner, init)
+    applyInitialization(owner, init, input.agent)
   }
   async function prepareConnection(owner: Owner, projectId: string) {
     await stopping.get(projectId)
@@ -625,10 +643,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
   }
   function supportedAttachments(owner: Owner, attachments: readonly AssistantAttachment[]) {
-    const capabilities = owner.snapshot.attachmentCapabilities
-    return attachments.every((attachment) =>
-      attachment.type === "image" ? capabilities.images : capabilities.text,
-    )
+    return assistantAttachmentsSupported(attachments, owner.snapshot.attachmentCapabilities)
   }
   function settleSteering(owner: Owner) {
     owner.steering = null
@@ -975,6 +990,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
   }
   return {
+    testConnection: connectionTests.testConnection,
     async handle(payload: unknown): Promise<AssistantResult> {
       const parsed = assistantRequestSchema.safeParse(payload)
       if (!parsed.success) return failure("invalid-request")
@@ -988,7 +1004,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
       for (const owner of owners.values()) stop(owner)
       owners.clear()
       preferences.clear()
-      return Promise.all(stopping.values()).then(() => undefined)
+      return Promise.all([...stopping.values(), connectionTests.close()]).then(() => undefined)
     },
   }
 }

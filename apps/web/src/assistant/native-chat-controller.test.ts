@@ -758,6 +758,114 @@ describe("project-scoped agent chat", () => {
     chat.dispose()
   })
 
+  it("rejects an over-budget renderer envelope before sending, queueing, or recording it", async () => {
+    const f = fixture(),
+      chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
+    chat.start()
+    await chat.connect(agent)
+    const snapshot: AssistantSnapshot = {
+      ...f.snapshot(),
+      attachmentCapabilities: {
+        text: true,
+        images: true,
+        imageConstraints: {
+          mimeTypes: ["image/png", "image/jpeg"],
+          maxCount: 4,
+          maxTotalBase64Bytes: 524288,
+        },
+      },
+    }
+    f.emit({ projectId, sessionToken: snapshot.sessionToken, type: "snapshot", snapshot })
+    const attachments = ["first", "second"].map((id) => ({
+      id,
+      name: `${id}.png`,
+      type: "image" as const,
+      mimeType: "image/png" as const,
+      data: Buffer.alloc(196609).toString("base64"),
+    }))
+    expect(await chat.send("Invalid direct prompt", attachments)).toBe(false)
+    expect(await chat.enqueue("Invalid queued prompt", attachments)).toBe(false)
+    expect(f.prompts).toHaveLength(0)
+    expect(chat.getSnapshot().messages).toHaveLength(0)
+    expect(chat.getSnapshot().queuedMessages).toHaveLength(0)
+    expect(chat.getSnapshot().error).toBe("unsupported")
+    expect(await chat.send("One image still fits", attachments.slice(0, 1))).toBe(true)
+    expect(f.prompts).toHaveLength(1)
+    expect(f.prompts[0]?.attachments).toEqual(attachments.slice(0, 1))
+    f.finish()
+    await until(() => !chat.getSnapshot().busy)
+    chat.dispose()
+  })
+
+  it("pauses retained attachments rejected by a new agent before checkpoints, history, or dispatch", async () => {
+    const f = fixture(),
+      disk = storage(),
+      checkpoint = checkpointFixture(),
+      port = checkpoint.host.open()
+    if (!port) throw new Error("Missing checkpoint port")
+    let captures = 0
+    const chat = createNativeChatController({
+      projectId,
+      bridge: f.bridge,
+      storage: disk,
+      checkpointHost: {
+        ...checkpoint.host,
+        open: () => ({
+          ...port,
+          capture(...args: Parameters<typeof port.capture>) {
+            captures += 1
+            return port.capture(...args)
+          },
+        }),
+      },
+    })
+    chat.start()
+    await chat.connect(agent)
+    const attachments = [
+      {
+        id: "retained-view",
+        name: "view.webp",
+        type: "image" as const,
+        mimeType: "image/webp" as const,
+        data: "AAAA",
+      },
+    ]
+    expect(await chat.enqueue("Inspect the retained view", attachments)).toBe(true)
+    const queued = chat.getSnapshot().queuedMessages
+    await chat.connect(assistantJevAgentSchema.parse({ kind: "jev", settings: { model: "test" } }))
+    const snapshot: AssistantSnapshot = {
+      ...f.snapshot(),
+      attachmentCapabilities: {
+        text: true,
+        images: true,
+        imageConstraints: {
+          mimeTypes: ["image/png", "image/jpeg"],
+          maxCount: 4,
+          maxTotalBase64Bytes: 524288,
+        },
+      },
+    }
+    f.emit({ projectId, sessionToken: snapshot.sessionToken, type: "snapshot", snapshot })
+    await chat.resumeQueue()
+    expect(chat.getSnapshot()).toMatchObject({
+      queuePaused: true,
+      error: "unsupported",
+      messages: [],
+      queuedMessages: queued,
+    })
+    expect(captures).toBe(0)
+    expect(f.prompts).toHaveLength(0)
+    expect((await readChatHistory(projectId, disk))?.messages ?? []).toHaveLength(0)
+    await chat.connect(agent)
+    await chat.resumeQueue()
+    expect(f.prompts).toHaveLength(1)
+    expect(f.prompts[0]?.attachments).toEqual(attachments)
+    expect(captures).toBe(1)
+    f.finish()
+    await until(() => !chat.getSnapshot().busy)
+    chat.dispose()
+  })
+
   it("accepts a turn immediately, drains queued messages in order, and persists attachment names without file contents", async () => {
     const f = fixture(),
       disk = storage(),

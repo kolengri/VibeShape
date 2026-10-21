@@ -2,7 +2,10 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { AssistantSnapshot } from "@vibeshape/automation-api/assistant"
+import type {
+  AssistantConnectionTestResult,
+  AssistantSnapshot,
+} from "@vibeshape/automation-api/assistant"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { ActivityProvider, useActivityPending } from "@vibeshape/ui/components/activity"
 import type { ReactNode } from "react"
@@ -223,7 +226,7 @@ describe("assistant connection settings", () => {
         kind: "jev",
         settings: {
           model: "jev-1.14.0",
-          images: false,
+          images: true,
           maxSteps: 24,
           minConfidence: 0.5,
           timeoutMs: 60000,
@@ -235,6 +238,94 @@ describe("assistant connection settings", () => {
     expect(JSON.stringify(readAssistantPreferences())).not.toContain("private-typesafe-key")
     await act(async () => pending.resolve(true))
     expect(new window.FormData(form as HTMLFormElement).get("apiKey")).toBe("")
+  })
+
+  it("tests Jev with the current settings without connecting, saving keys or submitting twice", async () => {
+    const pending = deferred<AssistantConnectionTestResult>()
+    const chat = {
+      connect: vi.fn().mockResolvedValue(true),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      testConnection: vi.fn().mockReturnValue(pending.promise),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    fireEvent.change(screen.getByLabelText("TypeSafe API key", { exact: true }), {
+      target: { value: "probe-private-key" },
+    })
+    expect(screen.queryByRole("checkbox", { name: /images/ })).toBeNull()
+    const test = screen.getByRole("button", { name: "Test connection" })
+    await userEvent.click(test)
+    fireEvent.click(test)
+    expect(chat.testConnection).toHaveBeenCalledTimes(1)
+    expect(chat.testConnection).toHaveBeenCalledWith(
+      {
+        kind: "jev",
+        settings: {
+          model: "jev-1.14.0",
+          images: true,
+          maxSteps: 24,
+          minConfidence: 0.5,
+          timeoutMs: 60000,
+        },
+      },
+      { apiKey: "probe-private-key" },
+    )
+    expect(screen.getByRole("button", { name: "Connect agent" }).hasAttribute("disabled")).toBe(
+      true,
+    )
+    expect(screen.getByRole("combobox", { name: "Agent" }).hasAttribute("disabled")).toBe(true)
+    expect(chat.connect).not.toHaveBeenCalled()
+    expect(JSON.stringify(readAssistantPreferences())).not.toContain("probe-private-key")
+    await act(async () => pending.resolve({ ok: true, checks: ["agent", "jev"] }))
+    expect(screen.getByText(/Jev \(TypeSafe\) responded successfully/).getAttribute("role")).toBe(
+      "status",
+    )
+    expect(
+      (screen.getByLabelText("TypeSafe API key", { exact: true }) as HTMLInputElement).value,
+    ).toBe("probe-private-key")
+  })
+
+  it("shows a safe provider failure, retains credentials for retry and invalidates stale results", async () => {
+    const chat = {
+      connect: vi.fn().mockResolvedValue(true),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      testConnection: vi
+        .fn()
+        .mockResolvedValue({ ok: false, code: "request-failed", stage: "jev", httpStatus: 401 }),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    const key = screen.getByLabelText("TypeSafe API key", { exact: true }) as HTMLInputElement
+    fireEvent.change(key, { target: { value: "incorrect-key" } })
+    await userEvent.click(screen.getByRole("button", { name: "Test connection" }))
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Jev (TypeSafe) connection test failed (HTTP 401)",
+    )
+    expect(key.value).toBe("incorrect-key")
+    fireEvent.input(key, { target: { value: "corrected-key" } })
+    expect(screen.queryByRole("alert")).toBeNull()
+    await userEvent.click(screen.getByRole("button", { name: "Test connection" }))
+    expect(chat.testConnection).toHaveBeenLastCalledWith(expect.anything(), {
+      apiKey: "corrected-key",
+    })
+    expect(chat.connect).not.toHaveBeenCalled()
+  })
+
+  it("tests the configured adapter while connected and reports the limited handshake scope", async () => {
+    const chat = {
+      connect: vi.fn().mockResolvedValue(true),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      testConnection: vi.fn().mockResolvedValue({ ok: true, checks: ["agent"] }),
+    }
+    saveAssistantPreferences({ version: 1, agent: { command: "/local/agent", args: ["acp"] } })
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected />)
+    await userEvent.click(screen.getByRole("button", { name: "Test connection" }))
+    expect(chat.testConnection).toHaveBeenCalledWith(
+      { command: "/local/agent", args: ["acp"] },
+      undefined,
+    )
+    expect(screen.getByText(/Provider access was not tested/).getAttribute("role")).toBe("status")
+    expect(chat.disconnect).not.toHaveBeenCalled()
   })
 
   it("retains both Jev keys after a reported connection failure and resends them on retry", async () => {
@@ -541,13 +632,19 @@ describe("compact chat actions", () => {
       expect(button.hasAttribute("title")).toBe(false)
     }
     expect(screen.getByText("Advertised session controls")).toBeTruthy()
-    expect(screen.queryByRole("region", { name: "AI settings" })).toBeNull()
+    expect(screen.queryByRole("dialog", { name: "AI settings" })).toBeNull()
     const settings = screen.getByRole("button", { name: "AI settings" })
     fireEvent.focus(settings)
     expect(screen.getByRole("tooltip").textContent).toBe("AI settings")
     fireEvent.blur(settings)
     await userEvent.click(settings)
-    expect(screen.getByRole("region", { name: "AI settings" })).toBeTruthy()
+    expect(screen.getByRole("dialog", { name: "AI settings" }).getAttribute("aria-modal")).toBe(
+      "true",
+    )
+    expect(screen.queryByRole("button", { name: "New chat" })).toBeNull()
+    await userEvent.keyboard("{Escape}")
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(document.activeElement).toBe(settings)
     await userEvent.click(screen.getByRole("button", { name: "New chat" }))
     expect(reset).toHaveBeenCalledTimes(1)
     fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {

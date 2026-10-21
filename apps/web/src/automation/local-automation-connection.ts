@@ -20,6 +20,10 @@ import { createLocalToolExecutor } from "./local-tool-executor"
 import { createProjectToolPort } from "./project-tool-port"
 
 type Handle = Extract<ReturnType<typeof createVisibleDocumentAutomationSession>, { ok: true }>
+type DocumentFailure = Extract<
+  ReturnType<typeof createVisibleDocumentAutomationSession>,
+  { ok: false }
+>
 type Identity = ReturnType<Handle["readIdentity"]>
 type Snapshot = Readonly<{
   available: boolean
@@ -117,6 +121,11 @@ function savedClearResume(key = resumeKey) {
   }
 }
 class LocalAutomationSessionLostError extends Error {}
+class LocalAutomationDocumentError extends Error {
+  constructor(readonly diagnostic: DocumentFailure["diagnostic"]) {
+    super(diagnostic.message)
+  }
+}
 function requireSessionCredential(response: { status: number }) {
   if (response.status === 401 || response.status === 410)
     throw new LocalAutomationSessionLostError("The local session credential is no longer valid.")
@@ -782,7 +791,7 @@ export function createLocalAutomationConnection(
     const at = ++generation
     const created = createActiveDocumentAutomationSession()
     try {
-      if (!created.ok) throw new Error("The active document is unavailable.")
+      if (!created.ok) throw new LocalAutomationDocumentError(created.diagnostic)
       return await connect(created, at, undefined, expectedClient)
     } catch (error) {
       if (created.ok) created.dispose()
@@ -885,7 +894,12 @@ export function createLocalAutomationConnection(
   }
   function nativeRecoveryFailure(error: unknown) {
     nativeRecoveryPending = true
-    if (!(error instanceof LocalAutomationTransportError) || nativeRecoveryAttempt >= 5) {
+    const retryable =
+      error instanceof LocalAutomationTransportError ||
+      (error instanceof LocalAutomationDocumentError &&
+        error.diagnostic.code === "document-write-unavailable" &&
+        error.diagnostic.retryable)
+    if (!retryable || nativeRecoveryAttempt >= 5) {
       nativeRecoveryFailed = true
       nativeRecoveryPending = false
       if (restoreTimer) clearTimeout(restoreTimer)

@@ -19,6 +19,39 @@ function launch(result: ReturnType<ReturnType<typeof createAssistantLaunchResolv
 }
 
 describe("built-in Jev runtime authority", () => {
+  it("reuses project and endpoint credentials for probes without caching supplied probe keys", () => {
+    const resolve = createAssistantLaunchResolver({ executable, runtimeDirectory, env: {} })
+    launch(
+      resolve("project-a", helper(), { apiKey: "connect-key", argumentsApiKey: "connect-helper" }),
+    )
+    const probe = launch(
+      resolve(
+        "project-a",
+        helper(),
+        { apiKey: "probe-key", argumentsApiKey: "probe-helper" },
+        { testConnection: true },
+      ),
+    )
+    expect(probe.agent.args).toEqual([join(runtimeDirectory, "jev.cjs"), "--test-connection"])
+    expect(probe.env?.TYPESAFE_API_KEY).toBe("probe-key")
+    expect(probe.env?.JEV_ARGUMENTS_API_KEY).toBe("probe-helper")
+    const recovered = launch(resolve("project-a", helper(), {}, { testConnection: true }))
+    expect(recovered.env?.TYPESAFE_API_KEY).toBe("connect-key")
+    expect(recovered.env?.JEV_ARGUMENTS_API_KEY).toBe("connect-helper")
+    expect(
+      launch(resolve("project-a", helper(secondEndpoint), {}, { testConnection: true })).env
+        ?.JEV_ARGUMENTS_API_KEY,
+    ).toBeUndefined()
+    launch(resolve("project-b", helper(), { apiKey: "only-probed" }, { testConnection: true }))
+    expect(resolve("project-b", helper())).toEqual({
+      ok: false,
+      code: "jev-configuration-required",
+    })
+    expect(resolve("project-c", helper(), {}, { testConnection: true })).toEqual({
+      ok: false,
+      code: "jev-configuration-required",
+    })
+  })
   it("resolves only the application runtime with explicit settings and a private environment", () => {
     const inherited = {
       PATH: "/usr/bin:/bin",

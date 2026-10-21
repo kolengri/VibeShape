@@ -2,6 +2,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js"
 import { choice, Image, type TypeSafeClient } from "@typesafe-ai/sdk"
 import { z } from "zod"
 import type { Decide, Decision } from "./contracts"
+import { JevFailure } from "./failure"
 
 const primitive = z.union([z.string(), z.number().finite(), z.boolean(), z.null()])
 const primitiveType = z.enum(["string", "number", "integer", "boolean", "null"])
@@ -82,7 +83,7 @@ function describeParameters(tool: Tool) {
 
 function readChoice(input: unknown, options: ReadonlySet<string>, label: string) {
   const result = choiceAnswer.refine((answer) => options.has(answer.choice)).safeParse(input)
-  if (!result.success) throw new Error(`Jev returned an invalid ${label} answer.`)
+  if (!result.success) throw new JevFailure(`Jev returned an invalid ${label} answer.`)
   return result.data
 }
 
@@ -170,7 +171,7 @@ function selectedDecision(
   }
   const tool = plan.actions.get(action.choice)
   const branch = plan.branches.get(action.choice)
-  if (!tool || !branch) throw new Error("Jev returned an unknown tool action.")
+  if (!tool || !branch) throw new JevFailure("Jev returned an unknown tool action.")
   const selected: Record<string, unknown> = {}
   const omitted: string[] = []
   let confidence = action.confidence
@@ -201,7 +202,7 @@ export function createJevDecision(client: TypeSafeClient, model: string): Decide
     signal.throwIfAborted()
     const plan = decisionQuestions(tools)
     if (Buffer.byteLength(JSON.stringify(plan.questions)) > 128 * 1024)
-      throw new Error("The Jev question catalog exceeds its 128 KiB budget.")
+      throw new JevFailure("The Jev question catalog exceeds its 128 KiB budget.")
     const content = {
       goal: state.goal,
       instructions: state.instructions,
@@ -217,7 +218,7 @@ export function createJevDecision(client: TypeSafeClient, model: string): Decide
       content.history = JSON.stringify(history)
     }
     if (Buffer.byteLength(JSON.stringify(content)) > 96_000)
-      throw new Error("The Jev state and tool catalog exceed their text budget.")
+      throw new JevFailure("The Jev state and tool catalog exceed their text budget.")
     const result: unknown = await client.systemOne(
       {
         model,
@@ -231,7 +232,7 @@ export function createJevDecision(client: TypeSafeClient, model: string): Decide
     )
     signal.throwIfAborted()
     const envelope = responseEnvelope.safeParse(result)
-    if (!envelope.success) throw new Error("Jev returned an invalid decision response.")
+    if (!envelope.success) throw new JevFailure("Jev returned an invalid decision response.")
     const action = readChoice(envelope.data.answers.action, plan.options, "action")
     return selectedDecision(action, envelope.data.answers, plan)
   }

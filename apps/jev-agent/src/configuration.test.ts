@@ -5,7 +5,10 @@ import { validateToolInput } from "./tool-contract"
 
 describe("Jev adapter boundaries", () => {
   it("pins the model, requires a key and validates optional helper configuration", () => {
-    expect(readConfiguration({ TYPESAFE_API_KEY: "test" }).model).toBe("jev-1.14.0")
+    expect(readConfiguration({ TYPESAFE_API_KEY: "test" })).toMatchObject({
+      model: "jev-1.14.0",
+      images: true,
+    })
     for (const env of [
       {},
       { TYPESAFE_API_KEY: "bad\nkey" },
@@ -81,7 +84,7 @@ describe("Jev adapter boundaries", () => {
     expect(content.goal).toContain("20 mm")
     expect(content.goal).toContain('"expanded":false')
   })
-  it("requires explicit image opt-in and bounds image and text input", () => {
+  it("supports images by default, respects an explicit opt-out and bounds attachments", () => {
     expect(() =>
       promptContent(
         [

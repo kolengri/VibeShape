@@ -2,6 +2,8 @@ import {
   ASSISTANT_MAX_IMAGE_ATTACHMENT_BYTES,
   ASSISTANT_MAX_TEXT_ATTACHMENT_BYTES,
   type AssistantAttachment,
+  type AssistantAttachmentCapabilities,
+  assistantAttachmentsSupported,
 } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { FileText, X } from "@vibeshape/ui/components/icons"
@@ -59,13 +61,21 @@ function supportedTextFile(file: File) {
 
 function attachmentFormat(
   file: File,
-  capabilities: { text: boolean; images: boolean },
+  capabilities: AssistantAttachmentCapabilities,
 ): AttachmentFormat | null {
   const mimeType = imageMimeType(file.type)
-  if (mimeType)
-    return capabilities.images
-      ? { type: "image", mimeType, limit: ASSISTANT_MAX_IMAGE_ATTACHMENT_BYTES }
-      : null
+  if (mimeType) {
+    const constraints = capabilities.imageConstraints
+    if (!capabilities.images || (constraints && !constraints.mimeTypes.includes(mimeType)))
+      return null
+    const limit = constraints
+      ? Math.min(
+          ASSISTANT_MAX_IMAGE_ATTACHMENT_BYTES,
+          Math.floor(constraints.maxTotalBase64Bytes / 4) * 3,
+        )
+      : ASSISTANT_MAX_IMAGE_ATTACHMENT_BYTES
+    return { type: "image", mimeType, limit }
+  }
   if (!capabilities.text || !supportedTextFile(file)) return null
   return {
     type: "text",
@@ -102,7 +112,7 @@ function decodeAttachment(
 export async function readAssistantAttachment(
   file: File,
   id: string,
-  capabilities: { text: boolean; images: boolean },
+  capabilities: AssistantAttachmentCapabilities,
 ): Promise<AssistantAttachmentDraft> {
   const draft = { id, name: file.name, size: file.size }
   const format = attachmentFormat(file, capabilities)
@@ -117,6 +127,37 @@ export async function readAssistantAttachment(
   } catch {
     return { ...draft, status: "error", issue: "read-failed" }
   }
+}
+
+export function readyAssistantAttachments(files: readonly AssistantAttachmentDraft[]) {
+  return files.flatMap((file) =>
+    file.status === "ready" && file.attachment ? [file.attachment] : [],
+  )
+}
+
+export function AssistantImageAttachmentFeedback({
+  capabilities,
+  attachments,
+}: {
+  capabilities: AssistantAttachmentCapabilities | undefined
+  attachments: readonly AssistantAttachmentDraft[]
+}) {
+  const t = useTranslations("app.assistant")
+  const limits = capabilities?.imageConstraints
+  if (!limits) return null
+  const unsupported = !assistantAttachmentsSupported(
+    readyAssistantAttachments(attachments),
+    capabilities,
+  )
+  return (
+    <p role={unsupported ? "alert" : undefined} className="px-3 pt-2 text-xs text-muted-foreground">
+      {t(unsupported ? "attachmentImageEnvelopeExceeded" : "attachmentImageLimits", {
+        formats: limits.mimeTypes.map((type) => type.slice(6).toUpperCase()).join(", "),
+        count: limits.maxCount,
+        limit: (Math.floor(limits.maxTotalBase64Bytes / 4) * 3) / 1024,
+      })}
+    </p>
+  )
 }
 
 export function AssistantAttachments({

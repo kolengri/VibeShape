@@ -1,16 +1,22 @@
 import { assistantAgentSchema } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Button } from "@vibeshape/ui/components/button"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { type FormEvent, useId, useState } from "react"
+import {
+  AssistantConnectionTestFeedback,
+  useAssistantConnectionTest,
+} from "./assistant-connection-test"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
 import { agentPresetId, agentPresets } from "./connection-presets"
 import { JevAgentConfiguration } from "./jev-agent-configuration"
 import { NativeAgentActions } from "./native-agent-actions"
 import type { createNativeChatController } from "./native-chat-controller"
 
-type Connection = Pick<ReturnType<typeof createNativeChatController>, "connect" | "disconnect">
+type Connection = Pick<ReturnType<typeof createNativeChatController>, "connect" | "disconnect"> &
+  Partial<Pick<ReturnType<typeof createNativeChatController>, "testConnection">>
 
 function initialConfiguration() {
   const agent = readAssistantPreferences()?.agent ?? { command: "", args: [] }
@@ -56,17 +62,18 @@ function useAgentConfiguration(chat: Connection, connected: boolean) {
     setChoice("custom")
     setDraft((previous) => ({ ...previous, [key]: value }))
   }
+  const validate = () => {
+    const parsed = parseConfiguration(draft.command, draft.args)
+    setInvalid(!parsed?.success)
+    return parsed?.success ? parsed.data : null
+  }
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (disconnecting) return
-    const parsed = parseConfiguration(draft.command, draft.args)
-    if (!parsed?.success) {
-      setInvalid(true)
-      return
-    }
-    setInvalid(false)
-    setStorageFailed(!saveAssistantPreferences({ version: 1, agent: parsed.data }))
-    void chat.connect(parsed.data)
+    const agent = validate()
+    if (!agent) return
+    setStorageFailed(!saveAssistantPreferences({ version: 1, agent }))
+    void chat.connect(agent)
   }
   return {
     draft,
@@ -78,6 +85,7 @@ function useAgentConfiguration(chat: Connection, connected: boolean) {
     choose,
     edit,
     submit,
+    validate,
     disconnect,
     setAdvanced,
   }
@@ -95,7 +103,8 @@ export function NativeAgentConfiguration({
   const t = useTranslations("app.assistant")
   const id = useId()
   const form = useAgentConfiguration(chat, connected)
-  const pending = connecting || form.disconnecting
+  const test = useAssistantConnectionTest(chat.testConnection)
+  const pending = connecting || form.disconnecting || test.pending
   const locked = pending || connected
   return (
     <div className="grid gap-3">
@@ -103,7 +112,10 @@ export function NativeAgentConfiguration({
         label={t("agent")}
         value={form.choice}
         disabled={pending}
-        onValueChange={form.choose}
+        onValueChange={(value) => {
+          test.clear()
+          form.choose(value)
+        }}
       >
         <SelectOption value="choose" disabled>
           {t("chooseAgent")}
@@ -122,9 +134,20 @@ export function NativeAgentConfiguration({
           connected={connected}
           pending={pending}
           disconnect={form.disconnect}
+          testing={test.pending}
+          testConnection={test.run}
+          clearTest={test.clear}
         />
       ) : (
-        <form className="grid gap-3" onSubmit={form.submit} aria-busy={pending || undefined}>
+        <form
+          className="grid gap-3"
+          onInput={test.clear}
+          onSubmit={(event) => {
+            if (test.pending) event.preventDefault()
+            else form.submit(event)
+          }}
+          aria-busy={pending || undefined}
+        >
           <p className="text-xs text-muted-foreground">{t("presetNotice")}</p>
           <details
             open={form.advanced}
@@ -169,9 +192,23 @@ export function NativeAgentConfiguration({
             disabled={!form.draft.command.trim()}
             disconnect={form.disconnect}
           />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pending || !form.draft.command.trim()}
+            isLoading={test.pending}
+            onClick={async () => {
+              const agent = form.validate()
+              if (agent) await test.run(agent)
+            }}
+          >
+            {t("testConnection")}
+          </Button>
           <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
         </form>
       )}
+      <AssistantConnectionTestFeedback result={test.result} />
     </div>
   )
 }

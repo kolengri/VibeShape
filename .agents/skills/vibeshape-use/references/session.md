@@ -75,7 +75,14 @@ the approval mode or restore a stopped connection.
 The bundled **Jev (TypeSafe)** agent and the compatible source-checkout Custom ACP launch use the
 same injected project attachment described above. They do not add MCP tools or permissions. Jev
 selects actions and closed parameter values; a separately configured language model supplies open
-arguments. Images require an explicit experimental opt-in.
+arguments. Native Jev connections enable PNG/JPEG input without a separate opt-in. Custom CLI
+launches may disable images with `JEV_ENABLE_IMAGES=0`. Image input is limited to four PNG/JPEG
+images and 512 KiB of base64 combined. Native chat checks this envelope before sending or queueing,
+including captured views; other ACP agents retain their advertised attachment support.
+The AI settings modal offers a connection
+test: it checks the selected Jev and configured argument providers without sending project data,
+images or CAD requests. Other ACP agents receive an initialization-only check. A successful provider
+test does not establish project MCP readiness or verify a CAD result.
 Manual-review calls use a separate client horizon of about 24.8 days, bypassing the short provider
 and ordinary-operation timeout. Stop and the server's authority, liveness and proposal expiry still
 apply; this client horizon does not extend consent or guarantee that a review remains available.

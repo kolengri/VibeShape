@@ -5,6 +5,7 @@ import { utf8StringBytes } from "./query-byte-budget"
 
 export const ASSISTANT_REQUEST_CHANNEL = "vibeshape:assistant:request"
 export const ASSISTANT_EVENT_CHANNEL = "vibeshape:assistant:event"
+export const ASSISTANT_CONNECTION_TEST_CHANNEL = "vibeshape:assistant:test-connection"
 
 const id = z
   .string()
@@ -80,7 +81,42 @@ export const assistantAttachmentsSchema = z
         0,
       ) <= ASSISTANT_MAX_ATTACHMENT_TOTAL_BYTES,
   )
-const attachmentCapabilities = z.strictObject({ text: z.boolean(), images: z.boolean() })
+const attachmentCapabilities = z.strictObject({
+  text: z.boolean(),
+  images: z.boolean(),
+  imageConstraints: z
+    .strictObject({
+      mimeTypes: z
+        .array(z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]))
+        .min(1)
+        .max(4),
+      maxCount: z.number().int().min(1).max(ASSISTANT_MAX_ATTACHMENTS),
+      maxTotalBase64Bytes: z
+        .number()
+        .int()
+        .min(4)
+        .max(16 * 1024 * 1024),
+    })
+    .optional(),
+})
+export type AssistantAttachmentCapabilities = z.infer<typeof attachmentCapabilities>
+
+export function assistantAttachmentsSupported(
+  attachments: readonly AssistantAttachment[],
+  capabilities: AssistantAttachmentCapabilities,
+) {
+  const images = attachments.filter((attachment) => attachment.type === "image")
+  if (images.length && !capabilities.images) return false
+  if (attachments.some((attachment) => attachment.type === "text") && !capabilities.text)
+    return false
+  const limits = capabilities.imageConstraints
+  return (
+    !limits ||
+    (images.length <= limits.maxCount &&
+      images.every((image) => limits.mimeTypes.includes(image.mimeType)) &&
+      images.reduce((bytes, image) => bytes + image.data.length, 0) <= limits.maxTotalBase64Bytes)
+  )
+}
 const questionField = z
   .strictObject({
     id,
@@ -171,12 +207,11 @@ export const assistantExternalAgentSchema = z.strictObject({
     .max(64),
 })
 export const assistantAgentSchema = z.union([assistantExternalAgentSchema, assistantJevAgentSchema])
-export const assistantConnectSchema = z
+export const assistantConnectionTestSchema = z
   .strictObject({
     projectId: id,
     agent: assistantAgentSchema,
     jevCredentials: assistantJevCredentialsSchema.optional(),
-    resumeSessionId: id.optional(),
   })
   .refine(
     (value) =>
@@ -184,6 +219,9 @@ export const assistantConnectSchema = z
       ("kind" in value.agent &&
         (!value.jevCredentials.argumentsApiKey || Boolean(value.agent.settings.argumentsEndpoint))),
   )
+export const assistantConnectSchema = assistantConnectionTestSchema.safeExtend({
+  resumeSessionId: id.optional(),
+})
 export const assistantScopeSchema = z.strictObject(scope)
 export const assistantPromptSchema = z
   .strictObject({
@@ -234,6 +272,24 @@ export const assistantErrorCodeSchema = z.enum([
   "timeout",
   "mcp-client-conflict",
 ])
+const connectionTestStage = z.enum(["agent", "jev", "arguments"])
+export const assistantConnectionTestResultSchema = z.discriminatedUnion("ok", [
+  z.strictObject({
+    ok: z.literal(true),
+    checks: z
+      .array(connectionTestStage)
+      .min(1)
+      .max(3)
+      .refine((checks) => new Set(checks).size === checks.length),
+  }),
+  z.strictObject({
+    ok: z.literal(false),
+    code: assistantErrorCodeSchema,
+    stage: connectionTestStage,
+    httpStatus: z.number().int().min(100).max(599).optional(),
+  }),
+])
+export type AssistantConnectionTestResult = z.infer<typeof assistantConnectionTestResultSchema>
 export const assistantSnapshotSchema = z.strictObject({
   ...scope,
   status: z.enum([
@@ -327,6 +383,9 @@ export type AssistantQuestion = z.infer<typeof assistantQuestionSchema>
 export type AssistantBridge = Readonly<{
   protocolVersion: 1
   connect(input: z.infer<typeof assistantConnectSchema>): Promise<AssistantResult>
+  testConnection?(
+    input: z.infer<typeof assistantConnectionTestSchema>,
+  ): Promise<AssistantConnectionTestResult>
   prompt(input: z.input<typeof assistantPromptSchema>): Promise<AssistantResult>
   steer?(input: z.input<typeof assistantSteerSchema>): Promise<AssistantResult>
   cancel(input: z.infer<typeof assistantScopeSchema>): Promise<AssistantResult>

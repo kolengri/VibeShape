@@ -1,11 +1,12 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
 import type { CompleteArguments, DecisionState } from "./contracts"
+import { JevFailure } from "./failure"
 
 const maxRequestBytes = 256 * 1024
 const maxResponseBytes = 256 * 1024
 const encoder = new TextEncoder()
-class ResponseLimitError extends Error {
+class ResponseLimitError extends JevFailure {
   constructor() {
     super("Argument provider response exceeds the 256 KiB limit.")
   }
@@ -29,7 +30,7 @@ const helperInstructions =
   "Do not call tools, select another action, return a tool-call envelope or include explanations."
 
 function checkCancellation(signal: AbortSignal) {
-  if (signal.aborted) throw new Error("Argument completion was cancelled.")
+  if (signal.aborted) throw new JevFailure("Argument completion was cancelled.")
 }
 
 async function cancellable<T>(start: () => Promise<T>, signal: AbortSignal): Promise<T> {
@@ -49,7 +50,7 @@ async function cancellable<T>(start: () => Promise<T>, signal: AbortSignal): Pro
 
 async function readResponse(response: Response, signal: AbortSignal): Promise<string> {
   const reader = response.body?.getReader()
-  if (!reader) throw new Error("Argument provider returned an empty response.")
+  if (!reader) throw new JevFailure("Argument provider returned an empty response.")
   let size = 0
   let content = ""
   let complete = false
@@ -103,10 +104,10 @@ function argumentRequest(
       ],
     })
   } catch {
-    throw new Error("Argument request could not be serialized.")
+    throw new JevFailure("Argument request could not be serialized.")
   }
   if (encoder.encode(body).byteLength > maxRequestBytes)
-    throw new Error("Argument request exceeds the 256 KiB limit.")
+    throw new JevFailure("Argument request exceeds the 256 KiB limit.")
   return body
 }
 
@@ -130,19 +131,19 @@ async function requestCompletion(config: ArgumentConfig, body: string, signal: A
     )
   } catch {
     checkCancellation(signal)
-    throw new Error("Argument provider request failed.")
+    throw new JevFailure("Argument provider request failed.")
   }
   checkCancellation(signal)
   if (!response.ok) {
     void response.body?.cancel().catch(() => {})
-    throw new Error(`Argument provider returned HTTP ${response.status}.`)
+    throw new JevFailure(`Argument provider returned HTTP ${response.status}.`)
   }
   try {
     return await readResponse(response, signal)
   } catch (error) {
     checkCancellation(signal)
     if (error instanceof ResponseLimitError) throw error
-    throw new Error("Argument provider response could not be read.")
+    throw new JevFailure("Argument provider response could not be read.")
   }
 }
 
@@ -151,20 +152,20 @@ function parseArguments(text: string) {
   try {
     payload = JSON.parse(text)
   } catch {
-    throw new Error("Argument provider returned invalid JSON.")
+    throw new JevFailure("Argument provider returned invalid JSON.")
   }
   const completion = completionResponse.safeParse(payload)
-  if (!completion.success) throw new Error("Argument provider returned an invalid completion.")
+  if (!completion.success) throw new JevFailure("Argument provider returned an invalid completion.")
   const message = completion.data.choices[0]
-  if (!message) throw new Error("Argument provider returned an invalid completion.")
+  if (!message) throw new JevFailure("Argument provider returned an invalid completion.")
   let result: unknown
   try {
     result = JSON.parse(message.message.content)
   } catch {
-    throw new Error("Argument provider returned invalid argument JSON.")
+    throw new JevFailure("Argument provider returned invalid argument JSON.")
   }
   const parsed = argumentsObject.safeParse(result)
-  if (!parsed.success) throw new Error("Argument provider arguments must be a JSON object.")
+  if (!parsed.success) throw new JevFailure("Argument provider arguments must be a JSON object.")
   return parsed.data
 }
 
@@ -177,7 +178,7 @@ export function createArgumentCompleter(config: ArgumentConfig): CompleteArgumen
     checkCancellation(signal)
     const merged = { ...completed, ...selected }
     if (encoder.encode(JSON.stringify(merged)).byteLength > maxResponseBytes) {
-      throw new Error("Completed arguments exceed the 256 KiB limit.")
+      throw new JevFailure("Completed arguments exceed the 256 KiB limit.")
     }
     return merged
   }

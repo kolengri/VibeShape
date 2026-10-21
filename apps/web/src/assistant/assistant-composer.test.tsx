@@ -6,6 +6,7 @@ import {
   ASSISTANT_MAX_ATTACHMENT_TOTAL_BYTES,
   ASSISTANT_MAX_ATTACHMENTS,
   ASSISTANT_MAX_IMAGE_ATTACHMENT_BYTES,
+  type AssistantAttachmentCapabilities,
 } from "@vibeshape/automation-api/assistant"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
@@ -115,6 +116,163 @@ function sizedImage(name: string, size: number) {
   Object.defineProperty(file, "size", { value: size })
   return file
 }
+
+const jevCapabilities: AssistantAttachmentCapabilities = {
+  text: true,
+  images: true,
+  imageConstraints: {
+    mimeTypes: ["image/png", "image/jpeg"],
+    maxCount: 4,
+    maxTotalBase64Bytes: 524288,
+  },
+}
+
+it("keeps WebP available to generic agents without image constraints", async () => {
+  const onSend = vi.fn().mockResolvedValue(true)
+  render(<Composer onSend={onSend} />)
+  drop([new File([new Uint8Array([1, 2, 3])], "view.webp", { type: "image/webp" })])
+  await waitFor(() => expect(send().hasAttribute("disabled")).toBe(false))
+  await userEvent.click(send())
+  expect(onSend).toHaveBeenCalledWith("Describe this", [
+    expect.objectContaining({ name: "view.webp", mimeType: "image/webp", data: "AQID" }),
+  ])
+})
+
+it.each(["image/webp", "image/gif"])(
+  "rejects Jev %s attachments before reading or sending",
+  async (mimeType) => {
+    const readers = delayedReads()
+    const onSend = vi.fn()
+    render(<Composer attachmentCapabilities={jevCapabilities} onSend={onSend} />)
+    drop([new File(["image"], "unsupported-image", { type: mimeType })])
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("not supported"))
+    expect(readers).toHaveLength(0)
+    expect(send().hasAttribute("disabled")).toBe(true)
+    fireEvent.keyDown(textbox(), { key: "Enter", ctrlKey: true })
+    expect(onSend).not.toHaveBeenCalled()
+  },
+)
+
+it("rejects a Jev PNG one raw byte beyond the encoded budget before opening its reader", async () => {
+  const readers = delayedReads()
+  const onSend = vi.fn()
+  render(<Composer attachmentCapabilities={jevCapabilities} onSend={onSend} />)
+  drop([new File([new Uint8Array(393217)], "too-large.png", { type: "image/png" })])
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("too-large.png"))
+  expect(readers).toHaveLength(0)
+  expect(send().hasAttribute("disabled")).toBe(true)
+  fireEvent.keyDown(textbox(), { key: "Enter", ctrlKey: true })
+  expect(onSend).not.toHaveBeenCalled()
+})
+
+it("sends a Jev PNG at the exact 524288-byte base64 boundary", async () => {
+  const onSend = vi.fn().mockResolvedValue(true)
+  render(<Composer attachmentCapabilities={jevCapabilities} onSend={onSend} />)
+  drop([new File([new Uint8Array(393216)], "boundary.png", { type: "image/png" })])
+  await waitFor(() => expect(send().hasAttribute("disabled")).toBe(false))
+  await userEvent.click(send())
+  expect(onSend).toHaveBeenCalledWith("Describe this", [
+    expect.objectContaining({ mimeType: "image/png", data: "A".repeat(524288) }),
+  ])
+})
+
+it.each([false, true])(
+  "blocks combined Jev image bytes before dispatch with busy=%s and permits removal to recover",
+  async (busy) => {
+    const onSend = vi.fn().mockResolvedValue(true)
+    const onQueue = vi.fn().mockResolvedValue(true)
+    render(
+      <Composer
+        busy={busy}
+        attachmentCapabilities={jevCapabilities}
+        onSend={onSend}
+        onQueue={onQueue}
+      />,
+    )
+    drop(
+      ["one.png", "two.png"].map(
+        (name) => new File([new Uint8Array(196609)], name, { type: "image/png" }),
+      ),
+    )
+    await waitFor(() => expect(message().querySelectorAll("img")).toHaveLength(2))
+    const submit = screen.getByRole("button", { name: busy ? "Queue message" : "Send" })
+    expect(submit.hasAttribute("disabled")).toBe(true)
+    expect(screen.getByRole("alert")).toBeTruthy()
+    fireEvent.click(submit)
+    fireEvent.keyDown(textbox(), { key: "Enter", ctrlKey: true })
+    expect(onSend).not.toHaveBeenCalled()
+    expect(onQueue).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "Remove two.png" }))
+    expect(submit.hasAttribute("disabled")).toBe(false)
+    await userEvent.click(submit)
+    expect(busy ? onQueue : onSend).toHaveBeenCalledWith("Describe this", [
+      expect.objectContaining({ name: "one.png", data: expect.any(String) }),
+    ])
+    expect(busy ? onSend : onQueue).not.toHaveBeenCalled()
+  },
+)
+
+it("blocks five individually valid Jev images and recovers with four", async () => {
+  const onSend = vi.fn().mockResolvedValue(true)
+  render(<Composer attachmentCapabilities={jevCapabilities} onSend={onSend} />)
+  drop(
+    ["one", "two", "three", "four", "five"].map(
+      (name) => new File([new Uint8Array([1, 2, 3])], `${name}.png`, { type: "image/png" }),
+    ),
+  )
+  await waitFor(() => expect(message().querySelectorAll("img")).toHaveLength(5))
+  expect(send().hasAttribute("disabled")).toBe(true)
+  expect(screen.getByRole("alert")).toBeTruthy()
+  fireEvent.keyDown(textbox(), { key: "Enter", ctrlKey: true })
+  expect(onSend).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole("button", { name: "Remove five.png" }))
+  await userEvent.click(send())
+  expect(onSend.mock.calls[0]?.[1]).toHaveLength(4)
+})
+
+it("applies the current Jev image reader policy to a captured view", async () => {
+  const readers = delayedReads()
+  const onSend = vi.fn()
+  render(
+    <Composer
+      attachmentCapabilities={jevCapabilities}
+      onSend={onSend}
+      onCaptureView={async () =>
+        new File([new Uint8Array(393217)], "current-view.png", { type: "image/png" })
+      }
+    />,
+  )
+  await userEvent.click(capture())
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("current-view.png"))
+  expect(readers).toHaveLength(0)
+  expect(send().hasAttribute("disabled")).toBe(true)
+  fireEvent.keyDown(textbox(), { key: "Enter", ctrlKey: true })
+  expect(onSend).not.toHaveBeenCalled()
+})
+
+it.each(["format", "budget"])(
+  "revalidates a ready draft's image %s after switching from a generic agent to Jev",
+  async (constraint) => {
+    const onSend = vi.fn().mockResolvedValue(true)
+    const view = render(<Composer onSend={onSend} />)
+    const file =
+      constraint === "format"
+        ? new File([new Uint8Array([1, 2, 3])], "view.webp", { type: "image/webp" })
+        : new File([new Uint8Array(393217)], "view.png", { type: "image/png" })
+    drop([file])
+    await waitFor(() => expect(send().hasAttribute("disabled")).toBe(false))
+    view.rerender(<Composer attachmentCapabilities={jevCapabilities} onSend={onSend} />)
+    expect(send().hasAttribute("disabled")).toBe(true)
+    expect(screen.getByRole("alert")).toBeTruthy()
+    expect(screen.getByRole("button", { name: `Remove ${file.name}` })).toBeTruthy()
+    fireEvent.keyDown(textbox(), { key: "Enter", ctrlKey: true })
+    expect(onSend).not.toHaveBeenCalled()
+    view.rerender(<Composer onSend={onSend} />)
+    expect(send().hasAttribute("disabled")).toBe(false)
+    await userEvent.click(send())
+    expect(onSend).toHaveBeenCalledTimes(1)
+  },
+)
 
 it("keeps nested file drag feedback visible until the outer leave and leaves text drags alone", () => {
   render(<Composer />)

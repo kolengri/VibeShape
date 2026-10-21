@@ -120,17 +120,29 @@ export function createAssistantLaunchResolver(options: {
     })
     if (!selected.success) return null
     if (selected.data.argumentsApiKey && !endpoint) return null
-    cached.apiKey = selected.data.apiKey
-    if (endpoint && selected.data.argumentsApiKey)
-      cached.helperKeys.set(endpoint, selected.data.argumentsApiKey)
-    projects.set(projectId, cached)
     return selected.data
+  }
+
+  function rememberCredentials(
+    projectId: string,
+    endpoint: string | undefined,
+    credentials: AssistantJevCredentials & { apiKey: string },
+  ) {
+    const cached = projects.get(projectId) ?? {
+      apiKey: undefined,
+      helperKeys: new Map<string, string>(),
+    }
+    cached.apiKey = credentials.apiKey
+    if (endpoint && credentials.argumentsApiKey)
+      cached.helperKeys.set(endpoint, credentials.argumentsApiKey)
+    projects.set(projectId, cached)
   }
 
   return (
     projectId: string,
     agent: AssistantAgent,
     supplied: AssistantJevCredentials = {},
+    mode: { testConnection?: boolean } = {},
   ): LaunchResolution => {
     if (!("kind" in agent)) return { ok: true, launch: { agent } }
     const descriptor = assistantJevAgentSchema.safeParse(agent)
@@ -138,10 +150,18 @@ export function createAssistantLaunchResolver(options: {
     const settings = descriptor.data.settings
     const credentials = selectCredentials(projectId, settings.argumentsEndpoint, supplied)
     if (!credentials) return { ok: false, code: "jev-configuration-required" }
+    if (!mode.testConnection)
+      rememberCredentials(projectId, settings.argumentsEndpoint, credentials)
     return {
       ok: true,
       launch: {
-        agent: { command: options.executable, args: [join(options.runtimeDirectory, "jev.cjs")] },
+        agent: {
+          command: options.executable,
+          args: [
+            join(options.runtimeDirectory, "jev.cjs"),
+            ...(mode.testConnection ? ["--test-connection"] : []),
+          ],
+        },
         env: jevEnvironment(baseEnvironment, settings, credentials),
         runAsNode: true,
       },

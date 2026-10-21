@@ -290,6 +290,7 @@ async function host(
   cleanups.push(() => service.close())
   return {
     service,
+    script,
     events,
     signal: (name: string) => writeFile(join(directory, name), ""),
     settingsFixture: (flags: Record<string, unknown>) =>
@@ -1579,6 +1580,92 @@ describe("native ACP service", () => {
         input: { ...scope(unsupported), text: "inspect-attachments", attachments },
       }),
     ).toEqual({ ok: false, code: "unsupported" })
+  })
+
+  it("advertises Jev limits and rejects invalid image envelopes before the agent receives a prompt", async () => {
+    const agent = { command: "node", args: [] as string[] }
+    const context = await host({
+      resolveLaunch: () => ({ ok: true, launch: { agent } }),
+    })
+    agent.args.push(context.script, "normal")
+    const session = ready(
+      await context.service.handle({
+        operation: "connect",
+        input: { projectId: "project-a", agent: { kind: "jev", settings: { images: true } } },
+      }),
+    )
+    expect(session.attachmentCapabilities).toEqual({
+      text: true,
+      images: true,
+      imageConstraints: {
+        mimeTypes: ["image/png", "image/jpeg"],
+        maxCount: 4,
+        maxTotalBase64Bytes: 524288,
+      },
+    })
+    const image = {
+      id: "view",
+      name: "view.png",
+      type: "image",
+      mimeType: "image/png",
+      data: "AQID",
+    }
+    for (const attachments of [
+      [{ ...image, mimeType: "image/webp" }],
+      [{ ...image, mimeType: "image/gif" }],
+      [{ ...image, data: Buffer.alloc(393217).toString("base64") }],
+      [
+        { ...image, id: "first", data: Buffer.alloc(196609).toString("base64") },
+        { ...image, id: "second", data: Buffer.alloc(196609).toString("base64") },
+      ],
+      Array.from({ length: 5 }, (_, index) => ({ ...image, id: `view-${index}` })),
+    ]) {
+      expect(
+        await context.service.handle({
+          operation: "prompt",
+          input: { ...scope(session), text: "inspect-attachments", attachments },
+        }),
+      ).toEqual({ ok: false, code: "unsupported" })
+    }
+    expect(context.events.some((event) => event.type === "text")).toBe(false)
+    expect(
+      context.events.some(
+        (event) => event.type === "snapshot" && event.snapshot.status === "prompting",
+      ),
+    ).toBe(false)
+
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: {
+          ...scope(session),
+          text: "inspect-attachments",
+          attachments: [{ ...image, data: "A".repeat(524288) }],
+        },
+      }),
+    ).toMatchObject({ ok: true })
+    const output = context.events
+      .filter((event) => event.type === "text")
+      .map((event) => event.text)
+      .join("")
+    expect(JSON.parse(output)).toContainEqual({
+      type: "image",
+      mimeType: "image/png",
+      data: "A".repeat(524288),
+    })
+
+    const generic = ready(await context.connect())
+    expect(generic.attachmentCapabilities).toEqual({ text: true, images: true })
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: {
+          ...scope(generic),
+          text: "inspect-attachments",
+          attachments: [{ ...image, mimeType: "image/webp" }],
+        },
+      }),
+    ).toMatchObject({ ok: true })
   })
 
   it("presents only protocol questions, validates choices and custom text, and cancels unsupported forms", async () => {

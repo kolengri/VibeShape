@@ -1,5 +1,11 @@
 import { z } from "zod"
 
+export const JEV_IMAGE_CONSTRAINTS = {
+  mimeTypes: ["image/png", "image/jpeg"],
+  maxCount: 4,
+  maxTotalBase64Bytes: 512 * 1024,
+} as const
+
 // Describe only the host URL API used here without importing DOM or Node globals.
 declare const URL: {
   new (
@@ -44,7 +50,7 @@ const endpoint = z
 export const assistantJevSettingsSchema = z
   .strictObject({
     model: model.default("jev-1.14.0"),
-    images: z.boolean().default(false),
+    images: z.boolean().default(true),
     maxSteps: z.number().int().min(1).max(48).default(24),
     minConfidence: z.number().min(0).max(1).default(0.5),
     timeoutMs: z.number().int().min(1000).max(120_000).default(60_000),

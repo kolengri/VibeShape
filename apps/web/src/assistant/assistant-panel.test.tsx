@@ -244,7 +244,7 @@ describe("assistant transcript and composer", () => {
     )
   })
 
-  it("keeps settings closed and scroll position steady during Before/current checkpoint locks", () => {
+  it("keeps settings closed and scroll position steady during Before/current checkpoint locks", async () => {
     const props = {
       messages: [{ id: "reply", role: "assistant", text: "Saved batch." }],
       configuration: <span>Connection setup</span>,
@@ -279,7 +279,10 @@ describe("assistant transcript and composer", () => {
     expect(screen.queryByText("Connection setup")).toBeNull()
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
     rendered.rerender(panel({ ...props, canSend: false, configurationRequired: true }))
-    expect(screen.getByText("Connection setup")).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "Configure AI" }))
+    expect(screen.getByRole("dialog", { name: "AI settings" }).textContent).toContain(
+      "Connection setup",
+    )
   })
 
   it("preserves a reader's position and closed settings through temporary reconnect attempts and manual recovery feedback", () => {

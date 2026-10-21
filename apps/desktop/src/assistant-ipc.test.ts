@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  ASSISTANT_CONNECTION_TEST_CHANNEL,
   ASSISTANT_EVENT_CHANNEL,
   ASSISTANT_REQUEST_CHANNEL,
   type AssistantBridge,
@@ -14,20 +15,22 @@ describe("native assistant IPC boundary", () => {
     const owned = {} as IpcMainInvokeEvent
     const foreign = {} as IpcMainInvokeEvent
     let handler: Parameters<IpcMain["handle"]>[1] | undefined
-    let removed = ""
+    const removed: string[] = []
     let calls = 0
     const unregister = registerAssistantIpc({
       ipcMain: {
         handle(channel, listener) {
-          expect(channel).toBe(ASSISTANT_REQUEST_CHANNEL)
-          handler = listener
+          if (channel === ASSISTANT_REQUEST_CHANNEL) handler = listener
         },
         removeHandler(channel) {
-          removed = channel
+          removed.push(channel)
         },
       },
       isOwnedSender: (event) => event === owned,
       service: {
+        async testConnection() {
+          return { ok: true, checks: ["agent"] }
+        },
         async handle() {
           calls += 1
           return { ok: false, code: "stale-session" }
@@ -61,7 +64,7 @@ describe("native assistant IPC boundary", () => {
     ).toEqual({ ok: false, code: "forbidden" })
     expect(calls).toBe(1)
     unregister()
-    expect(removed).toBe(ASSISTANT_REQUEST_CHANNEL)
+    expect(removed).toEqual([ASSISTANT_REQUEST_CHANNEL, ASSISTANT_CONNECTION_TEST_CHANNEL])
   })
 
   it("exposes a narrow bridge and validates requests, responses and streamed events", async () => {
