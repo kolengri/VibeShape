@@ -205,8 +205,9 @@ export class ModelMeshPresentation {
 
   #sharedMaterials(source: ViewerMesh) {
     if (source.appearance === "preview") {
-      if (source.previewMaterial === "model") return null
-      return source.previewMaterial === "datum" ? this.#materials.datum : this.#materials.preview
+      if (source.previewMaterial === "highlight") return this.#materials.preview
+      if (source.previewMaterial === "datum") return this.#materials.datum
+      return null
     }
     if (source.appearance === "datum") return this.#materials.datum
     return null

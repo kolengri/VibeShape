@@ -143,7 +143,9 @@ describe("current model mesh resource ownership", () => {
     const { presentation, materials, dispose } = fixture()
     const previewDisposed = vi.spyOn(materials.preview.surface, "dispose")
     const previewEdgesDisposed = vi.spyOn(materials.preview.edges, "dispose")
-    const [preview] = presentation.setMeshes([{ ...mesh, appearance: "preview" }])
+    const [preview] = presentation.setMeshes([
+      { ...mesh, appearance: "preview", previewMaterial: "highlight" },
+    ])
     const [model] = presentation.setMeshes([{ ...mesh, appearance: "model" }])
     expect(model?.surface).not.toBe(preview?.surface)
     expect(previewDisposed).not.toHaveBeenCalled()
@@ -190,10 +192,10 @@ describe("current model mesh resource ownership", () => {
     expect(released).toHaveBeenCalledTimes(1)
   })
 
-  it("switches preview materials for identical buffers while retaining preview authority and body colors", () => {
+  it("defaults tool previews to shaded opaque results and keeps explicit highlights disposable", () => {
     const { presentation, materials, dispose } = fixture()
     const preview: ViewerMesh = { ...mesh, appearance: "preview", textureSource: mesh }
-    const [highlight] = presentation.setMeshes([preview])
+    const [highlight] = presentation.setMeshes([{ ...preview, previewMaterial: "highlight" }])
     if (!highlight) throw new Error("Expected a highlighted preview.")
     expect(highlight.surface.material).toBe(materials.preview.surface)
     const surface = highlight.surface
@@ -202,11 +204,14 @@ describe("current model mesh resource ownership", () => {
     const edgeGeometry = edges.geometry
     const surfaceReleased = vi.spyOn(surfaceGeometry, "dispose")
     const edgesReleased = vi.spyOn(edgeGeometry, "dispose")
-    const [solid] = presentation.setMeshes([{ ...preview, previewMaterial: "model" }])
+    const [solid] = presentation.setMeshes([preview])
     if (!solid || !(solid.surface.material instanceof MeshStandardMaterial))
       throw new Error("Expected a solid preview material.")
     expect(solid.surface.material.transparent).toBe(false)
     expect(solid.surface.material.opacity).toBe(1)
+    expect(solid.surface.material.depthTest).toBe(true)
+    expect(solid.surface.material.depthWrite).toBe(true)
+    expect(solid.edges.material).not.toBe(materials.preview.edges)
     expect(solid.source.appearance).toBe("preview")
     expect(solid.surface).toBe(surface)
     expect(solid.edges).toBe(edges)
@@ -233,6 +238,9 @@ describe("current model mesh resource ownership", () => {
     expect(surfaceReleased).not.toHaveBeenCalled()
     expect(edgesReleased).not.toHaveBeenCalled()
     expect(released).toHaveBeenCalledTimes(1)
+    const [restored] = presentation.setMeshes([{ ...preview, previewMaterial: "model" }])
+    expect(restored?.surface.material).toBeInstanceOf(MeshStandardMaterial)
+    expect(restored?.surface.geometry).toBe(surfaceGeometry)
     const [committed] = presentation.setMeshes([mesh])
     if (!committed || !(committed.surface.material instanceof MeshStandardMaterial))
       throw new Error("Expected the committed body material.")
