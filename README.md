@@ -12,6 +12,8 @@ The [macOS](docs/desktop-macos.md) and [Windows x64](docs/desktop-windows.md) de
 package the same editor with native launch, an isolated persistent profile and GitHub release
 checks/downloads. Mac `.app`/`.dmg` and Windows portable ZIP builds require no external runtime.
 Windows archives are unsigned; public signing and platform acceptance remain release gates.
+The manual [Desktop release workflow](docs/desktop-release.md) builds both platforms, runs native
+packaged acceptance and publishes the validated downloads to GitHub Releases and the website.
 
 ## Status
 

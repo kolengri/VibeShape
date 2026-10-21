@@ -81,6 +81,9 @@ failed-launch recovery and the absence of slicing or printer traffic match the M
 
 ## Verification and release limits
 
+For a single manual build, native acceptance and publication run, see
+[automated desktop releases](desktop-release.md).
+
 `Windows desktop` CI runs Windows x64 target/ZIP/update/schema/private-file checks, builds the native
 host and source editor, and exercises CAD creation and project persistence through real Electron.
 Its source editor uses the normal feasibility build; it does not certify a controlled release.
