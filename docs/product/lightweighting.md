@@ -1,8 +1,8 @@
 # Structural lightweighting
 
 The **Lightweighting** button in the main modeling toolbar reduces occupied material while satisfying supplied
-von Mises stress, safety-factor, and displacement limits in every load case. It uses energy-guided
-cell removal with feasibility backtracking, not a global optimum or physical strength certification.
+von Mises stress, safety-factor, and displacement limits in every load case. Choose feasible cell removal, filtered SIMP topology optimization, or an FEM-graded lattice.
+All modes verify the final occupied solid; none proves a global optimum or certifies physical strength.
 `analyze_lightweighting` and `request_lightweighting` expose the same browser calculation through
 paired local and remote MCP. See the [operator reference](../../.agents/skills/vibeshape-modeling/references/lightweighting.md).
 
@@ -146,13 +146,52 @@ accuracy certification. Sharp corners and voxel stair steps can produce resoluti
 stress concentrations. Smaller cell size changes the numerical problem and can exceed limits.
 
 Conservative voxelization can lose thin features and misrepresent curved interfaces. Source meshes
-must have one closed connected surface; separate internal cavity shells are unsupported. The source
+must bound one connected material solid. Closed inward-oriented cavity shells are permitted;
+separate outer solids, nested material islands, or inconsistent shell orientation are rejected. The source
 must be a valid CAD solid, but tessellation self-intersections are not exhaustively proven. Reported
 constraints concern the analyzed grid only. Physical load testing and an appropriate higher fidelity
 analysis remain necessary before relying on a load-bearing part.
 
 See [the architecture decision](../adr/0101-browser-structural-lightweighting.md),
 [testing strategy](../testing-strategy.md), and [licensing](../licensing.md).
+
+## Topology optimization and adaptive lattices
+
+The **Optimization method** selector is shared by Lightweighting and Generative Design. Omission
+of MCP `settings.algorithm` preserves feasible material removal. The two additional methods are:
+
+- **Topology optimization (SIMP):** `{kind: "simp", volumeFraction, filterRadiusMm, penalty}`.
+  Target retained volume is 10–100% of the conservative baseline. The filter radius must be at least
+  one voxel; penalization is 1–5. A simultaneous maximize-stiffness objective must request the same
+  retained fraction. The density iteration uses penalized elastic stiffness, filtered sensitivities,
+  and bounded optimality-criteria updates. Protected cells remain full material. Binary projection
+  restores material when constraints prevent the requested target. Density convergence and solid
+  target achievement are reported separately; neither implies a global optimum.
+- **Adaptive lattice (FEM):** `{kind: "adaptive-lattice", lattice, cellPeriodMm,
+  minWallThicknessMm, maxWallThicknessMm, skinThicknessMm, field, gamma}`. Lattice types are
+  `gyroid`, `schwarz-p`, and `schwarz-d`. The baseline maximum across load cases supplies
+  `strain-energy` or `von-mises`; exponent `gamma` is 0.1–8. Local field magnitude maps to the
+  requested wall range. A period needs at least eight voxels; the minimum wall needs at least two,
+  and maximum wall must be between minimum wall and half the period. Skin is zero for open
+  geometry or at least one voxel. Protected interfaces remain solid independently of skin.
+
+These are bounded voxel constructions, without smooth-wall accuracy or exact source-face preservation.
+Adaptive minimum features use complete occupied-cube coverage, including captured float32 coordinates;
+requested widths are not measurements of the smooth TPMS surface. Underresolved or incompatible
+settings fail explicitly. Increasing the implicit threshold can restore material to obtain a feasible
+candidate, including an unchanged baseline when no lighter valid solid is found.
+
+Every candidate must satisfy all supplied stress, safety, displacement, keep-out, connectivity, and
+optional FDM constraints. Repeated final FEM uses the full-solid exported cells, never relaxed SIMP
+stiffness or baseline-field estimates. Results and downloaded reports include algorithm settings and
+evidence; settings/source changes invalidate the result. Apply uses the existing inspected mesh
+snapshot, atomic transaction, and Undo workflow. Results remain mesh Parts, without CAD reconstruction
+or STEP export. Computational and small-strain limits remain unchanged.
+
+Local and paired remote `analyze_lightweighting` and `request_lightweighting` accept both methods.
+The result's `algorithm.settings` must match the request. In Generative Design, each SIMP scenario
+uses its scenario retained fraction as `volumeFraction`; the standalone target is not silently reused.
+See [ADR-0121](../adr/0121-density-topology-and-adaptive-lattices.md).
 
 ## Quick lightweighting
 

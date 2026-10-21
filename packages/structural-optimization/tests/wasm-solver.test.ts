@@ -5,6 +5,7 @@ import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadPyodide, type PyodideInterface } from "pyodide"
 import { vi } from "../../../tests/unit/support/bun-test"
+import { optimizeStructuralModel } from "../src/client"
 import {
   type StructuralMesh,
   type StructuralOptimizationInput,
@@ -53,6 +54,30 @@ async function run(input: StructuralOptimizationInput) {
   const raw: unknown = await runtime.runPythonAsync("solve_json(_structural_request_json)")
   if (typeof raw !== "string") throw new Error("The WASM solver must return a JSON string.")
   return structuralSolverResponseSchema.parse(JSON.parse(raw))
+}
+
+class NumericalWorker {
+  onmessage: ((event: MessageEvent<unknown>) => void) | null = null
+  onerror: (() => void) | null = null
+  onmessageerror: (() => void) | null = null
+  stopped = false
+  terminate() {
+    this.stopped = true
+  }
+  postMessage(request: { input: StructuralOptimizationInput }) {
+    this.onmessage?.({
+      data: { type: "progress", stage: "solving" },
+    } as MessageEvent<unknown>)
+    void run(request.input).then(
+      (response) => {
+        if (!this.stopped)
+          this.onmessage?.({ data: { type: "complete", response } } as MessageEvent<unknown>)
+      },
+      () => {
+        if (!this.stopped) this.onerror?.()
+      },
+    )
+  }
 }
 
 function signedSurfaceVolume(mesh: StructuralMesh) {
@@ -129,6 +154,12 @@ beforeAll(async () => {
   await runtime.runPythonAsync(
     readFileSync(resolve(root, "packages/structural-optimization/tests/fdm_fixtures.py"), "utf8"),
   )
+  await runtime.runPythonAsync(
+    readFileSync(
+      resolve(root, "packages/structural-optimization/tests/implicit_fixtures.py"),
+      "utf8",
+    ),
+  )
   expect(runtime.version).toBe("314.0.7")
   const versions: unknown = await runtime.runPythonAsync(
     'import json, numpy, scipy, skfem, trimesh; json.dumps({"numpy": numpy.__version__, "scipy": scipy.__version__, "skfem": skfem.__version__, "trimesh": trimesh.__version__})',
@@ -143,6 +174,107 @@ beforeAll(async () => {
 }, timeout)
 
 describe("pinned Pyodide full-solid structural solver", () => {
+  it(
+    "executes penalized SIMP FEM, independent sensitivities, filtering, projection and protected target failure",
+    async () => {
+      await runtime.runPythonAsync(
+        "verify_penalized_fem_and_sensitivity(_surface_test_solver); verify_simp_search(_surface_test_solver)",
+      )
+      const raw = await runtime.runPythonAsync("json.dumps(implicit_request(_surface_test_solver))")
+      const input = structuralOptimizationInputSchema.parse(JSON.parse(String(raw)))
+      const response = await run(input)
+      expect(response.ok).toBe(true)
+      if (!response.ok) return
+      expect(response.result.algorithm?.kind).toBe("simp")
+      expect(signedSurfaceVolume(response.result.mesh)).toBeCloseTo(
+        response.result.optimized.volumeMm3,
+        8,
+      )
+      expect(
+        encodeStructuralStl(response.result.mesh, input.cellSizeMm).byteLength,
+      ).toBeGreaterThan(84)
+    },
+    timeout,
+  )
+
+  it.each([1, 3])(
+    "accepts the actual full-solid lattice fallback through client validation at budget %s",
+    async (budget) => {
+      const raw = await runtime.runPythonAsync(
+        `json.dumps(verify_lattice_baseline_fallback(_surface_test_solver, ${budget})[0])`,
+      )
+      const input = structuralOptimizationInputSchema.parse(JSON.parse(String(raw)))
+      vi.stubGlobal("Worker", NumericalWorker)
+      try {
+        const output = await optimizeStructuralModel(input, {
+          runtimeBaseUrl: "http://localhost/structural-runtime/",
+        })
+        expect(output.status).toBe("no-improvement")
+        expect(output.finalCellCount).toBe(output.initialCellCount)
+        expect(output.algorithm?.kind).toBe("adaptive-lattice")
+        if (output.algorithm?.kind !== "adaptive-lattice")
+          throw new Error("Expected lattice evidence.")
+        expect(output.algorithm.thresholdPasses).toBe(output.iterations)
+        expect(output.iterations).toBeLessThanOrEqual(budget)
+        expect(output.algorithm.projectionEvaluations).toBeLessThanOrEqual(budget)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    },
+    timeout,
+  )
+  it(
+    "rejects both directions of cavity intersections and coplanar contacts",
+    async () => {
+      await runtime.runPythonAsync("verify_shell_intersections(_surface_test_solver)")
+    },
+    timeout,
+  )
+
+  it(
+    "accepts disjoint skinny cavities and rejects unresolved shell arithmetic explicitly",
+    async () => {
+      await runtime.runPythonAsync("verify_skinny_cavity_separation(_surface_test_solver)")
+    },
+    timeout,
+  )
+
+  it.each(["gyroid", "schwarz-p", "schwarz-d"] as const)(
+    "verifies FEM-graded %s cells and captured solid volume",
+    async (lattice) => {
+      await runtime.runPythonAsync(
+        `_implicit_pair = verify_lattice_search(_surface_test_solver, ${JSON.stringify(lattice)}, "von-mises", 0)`,
+      )
+      const raw = await runtime.runPythonAsync("json.dumps(_implicit_pair[1])")
+      const response = structuralSolverResponseSchema.parse({
+        ok: true,
+        result: JSON.parse(String(raw)),
+      })
+      expect(response.ok).toBe(true)
+      if (!response.ok) return
+      expect(response.result.algorithm?.kind).toBe("adaptive-lattice")
+      expect(response.result.finalCellCount).toBeLessThan(response.result.initialCellCount)
+      expect(signedSurfaceVolume(response.result.mesh)).toBeCloseTo(
+        response.result.optimized.volumeMm3,
+        8,
+      )
+      expect(
+        encodeStructuralStl(response.result.mesh, response.result.cellSizeMm).byteLength,
+      ).toBeGreaterThan(84)
+    },
+    timeout,
+  )
+
+  it(
+    "rejects underresolution, conflicting targets, invalid geometry and infeasibility for both algorithms",
+    async () => {
+      await runtime.runPythonAsync(
+        "verify_implicit_failures(_surface_test_solver); verify_implicit_constraints(_surface_test_solver, 'simp'); verify_implicit_constraints(_surface_test_solver, 'adaptive-lattice')",
+      )
+    },
+    timeout,
+  )
+
   it.each([
     [
       "FDM axes, full cube coverage, thin features, and impossible sizes",
@@ -168,29 +300,6 @@ describe("pinned Pyodide full-solid structural solver", () => {
     async (fdmEnabled) => {
       // Only transport is replaced: every scenario executes the pinned WASM solver
       // and passes through the production structural client's final validation.
-      class NumericalWorker {
-        onmessage: ((event: MessageEvent<unknown>) => void) | null = null
-        onerror: (() => void) | null = null
-        onmessageerror: (() => void) | null = null
-        stopped = false
-        terminate() {
-          this.stopped = true
-        }
-        postMessage(request: { input: StructuralOptimizationInput }) {
-          this.onmessage?.({
-            data: { type: "progress", stage: "solving" },
-          } as MessageEvent<unknown>)
-          void run(request.input).then(
-            (response) => {
-              if (!this.stopped)
-                this.onmessage?.({ data: { type: "complete", response } } as MessageEvent<unknown>)
-            },
-            () => {
-              if (!this.stopped) this.onerror?.()
-            },
-          )
-        }
-      }
       vi.stubGlobal("Worker", NumericalWorker)
       const analysis = axialBar(4)
       if (fdmEnabled)

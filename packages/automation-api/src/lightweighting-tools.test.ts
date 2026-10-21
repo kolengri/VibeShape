@@ -23,6 +23,100 @@ import { remoteOperationSchema } from "./remote-session"
 import { localToolAnnotations } from "./tool-metadata"
 
 describe("bounded paired-browser lightweighting contracts", () => {
+  it("binds algorithm evidence to the requested settings on local and remote transports", () => {
+    for (const request of [false, true]) {
+      const operation = lightweightingOperation(request)
+      const algorithm = {
+        kind: "simp",
+        volumeFraction: 0.8,
+        filterRadiusMm: 1.5,
+        penalty: 3,
+      } as const
+      const withAlgorithm = {
+        ...operation,
+        arguments: {
+          ...operation.arguments,
+          settings: { ...operation.arguments.settings, algorithm },
+        },
+      }
+      for (const schema of [localOperationSchema, remoteOperationSchema])
+        expect(schema.parse(withAlgorithm).arguments).toMatchObject({ settings: { algorithm } })
+      const evidence = {
+        kind: "simp",
+        settings: algorithm,
+        densityIterations: 4,
+        converged: false,
+        maxDensityChange: 0.1,
+        targetCellCount: 32,
+        achievedCellCount: 32,
+        targetStatus: "reached",
+        projectionEvaluations: 2,
+      }
+      const value = {
+        documentId: lightweightingId(3),
+        baseRevision: 4,
+        source: operation.arguments.source,
+        summary: { ...lightweightingSummary(), algorithm: evidence },
+        ...(request ? { snapshot: lightweightingSnapshot() } : {}),
+      }
+      expect(lightweightingResultContextMatches(withAlgorithm, { ok: true, value })).toBe(true)
+      expect(lightweightingResultContextMatches(operation, { ok: true, value })).toBe(false)
+      for (const patch of [
+        undefined,
+        { ...evidence, settings: { ...algorithm, penalty: 2 } },
+        { ...evidence, achievedCellCount: 31 },
+      ]) {
+        expect(
+          lightweightingResultContextMatches(withAlgorithm, {
+            ok: true,
+            value: { ...value, summary: { ...value.summary, algorithm: patch } },
+          }),
+        ).toBe(false)
+      }
+    }
+  })
+  it("preserves adaptive lattice settings and rejects underresolved walls before dispatch", () => {
+    const algorithm = {
+      kind: "adaptive-lattice",
+      lattice: "gyroid",
+      cellPeriodMm: 10,
+      minWallThicknessMm: 2,
+      maxWallThicknessMm: 4,
+      skinThicknessMm: 1,
+      field: "strain-energy",
+      gamma: 1,
+    }
+    for (const schema of [localOperationSchema, remoteOperationSchema]) {
+      const operation = lightweightingOperation()
+      const withAlgorithm = {
+        ...operation,
+        arguments: {
+          ...operation.arguments,
+          settings: { ...operation.arguments.settings, algorithm },
+        },
+      }
+      expect(schema.parse(withAlgorithm).arguments).toMatchObject({ settings: { algorithm } })
+      for (const patch of [
+        { minWallThicknessMm: 0.5 },
+        { cellPeriodMm: 3 },
+        { skinThicknessMm: 0.5 },
+        { gamma: 0 },
+        { field: "stress-guess" },
+      ])
+        expect(
+          schema.safeParse({
+            ...withAlgorithm,
+            arguments: {
+              ...withAlgorithm.arguments,
+              settings: {
+                ...withAlgorithm.arguments.settings,
+                algorithm: { ...algorithm, ...patch },
+              },
+            },
+          }).success,
+        ).toBe(false)
+    }
+  })
   it("binds FDM evidence to the request before accepting analysis or an applied snapshot", () => {
     for (const request of [false, true]) {
       const operation = lightweightingOperation(request)

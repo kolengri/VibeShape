@@ -8,6 +8,7 @@ import {
 import {
   type StructuralOptimizationSettings,
   type StructuralOptimizationSummary,
+  structuralAlgorithmSummaryMatches,
   structuralFdmSummaryMatches,
   structuralOptimizationSettingsSchema,
   structuralOptimizationSummarySchema,
@@ -94,12 +95,7 @@ export function lightweightingResultContextMatches(
     value.summary.iterations > input.settings.maxIterations
   )
     return false
-  if (
-    !constraintsMatch(value.summary, input.settings) ||
-    !objectiveMatches(value.summary, input.settings) ||
-    !structuralFdmSummaryMatches(value.summary.fdm, input.settings.fdm, input.settings.cellSizeMm)
-  )
-    return false
+  if (!summaryMatchesSettings(value.summary, input.settings)) return false
   if (parsed.data.tool === "request_lightweighting") {
     const request = lightweightingRequestSchema.parse(result.value)
     if (
@@ -111,6 +107,24 @@ export function lightweightingResultContextMatches(
       return false
   }
   return true
+}
+
+function summaryMatchesSettings(
+  summary: StructuralOptimizationSummary,
+  settings: StructuralOptimizationSettings,
+) {
+  return [
+    structuralAlgorithmSummaryMatches(
+      summary.algorithm,
+      settings.algorithm,
+      settings.cellSizeMm,
+      summary.initialCellCount,
+      summary.finalCellCount,
+    ),
+    constraintsMatch(summary, settings),
+    objectiveMatches(summary, settings),
+    structuralFdmSummaryMatches(summary.fdm, settings.fdm, settings.cellSizeMm),
+  ].every(Boolean)
 }
 
 function objectiveMatches(

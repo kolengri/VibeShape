@@ -356,14 +356,14 @@ export function LightweightingTaskPanel({
       aria-label={panelCopy.title}
       className={
         generative
-          ? "@container flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden p-4"
+          ? "@container flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden p-4 max-lg:grid max-lg:content-start max-lg:overflow-y-auto"
           : "@container grid h-full min-h-0 min-w-0 grid-cols-1 content-start gap-4 overflow-y-auto p-4"
       }
     >
       <TaskPanelHeader
         title={panelCopy.title}
         description={panelCopy.description}
-        className="shrink-0"
+        className="shrink-0 max-lg:static"
         actions={
           <LightweightingLifecycleActions
             state={state}
@@ -448,7 +448,7 @@ function TaskPanelContent({
       data-generative-form={generative || undefined}
       className={
         generative
-          ? "grid min-h-0 min-w-0 flex-1 grid-cols-1 content-start gap-4 overflow-y-auto"
+          ? "grid min-h-0 min-w-0 flex-1 grid-cols-1 content-start gap-4 overflow-y-auto max-lg:contents"
           : "contents"
       }
     >

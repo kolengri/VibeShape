@@ -65,6 +65,31 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
    target or another stop condition. This is an approximate stiffness-guided removal heuristic;
    it does not solve a globally optimal minimum-compliance or generative-design problem.
 
+## Select an optimization algorithm
+
+Both paired transports accept optional `settings.algorithm`. Omission keeps feasible cell removal.
+
+- SIMP: `{kind: "simp", volumeFraction, filterRadiusMm, penalty}`. Fraction is 0.1–1 of the
+  conservative baseline; filter radius is at least one cell and penalty is 1–5. When also supplying
+  a maximize-stiffness objective, its retained fraction must match exactly. Inspect
+  `summary.algorithm` for the echoed settings, density iteration/convergence, binary target count,
+  achieved count, target status, and projection evaluations. Density convergence does not establish
+  that the exported full-solid geometry reached the volume target or a global optimum.
+- Adaptive TPMS: `{kind: "adaptive-lattice", lattice, cellPeriodMm, minWallThicknessMm,
+  maxWallThicknessMm, skinThicknessMm, field, gamma}`. Types are `gyroid`, `schwarz-p`, and
+  `schwarz-d`; field is `strain-energy` or `von-mises`, combined conservatively across cases.
+  Period requires at least eight analysis cells and minimum wall at least two; maximum wall lies
+  between minimum wall and half the period. Skin is 0 or at least one analysis cell. Gamma is
+  0.1–8. Load/support/preserved cells remain protected. Inspect field range, requested wall range,
+  conservative occupied-cube feature bound, and projection evidence. Do not call requested wall
+  thickness a measured smooth-surface minimum.
+
+Every accepted result is reanalyzed as full-solid cells for every load case. Relaxed SIMP metrics
+or the source field cannot substitute for final feasibility. Underresolved walls and incompatible
+protected geometry fail explicitly; never weaken user constraints to obtain success. Ordinary
+resource limits, stale-source protection, cancellation, review, Apply, and Undo remain authoritative.
+The multi-candidate study remains editor-only; these tools run one selected algorithm/scenario.
+
 ## Analyze and request a snapshot
 
 `analyze_lightweighting` computes bounded baseline and feasible-candidate evidence without editing
