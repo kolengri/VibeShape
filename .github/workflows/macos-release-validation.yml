@@ -120,7 +120,7 @@ jobs:
           application="$extracted/VibeShape.app"
           ditto "$volume/VibeShape.app" "$application"
           codesign --verify --deep --strict "$application"
-          lipo -verify_arch arm64 "$application/Contents/MacOS/VibeShape"
+          lipo "$application/Contents/MacOS/VibeShape" -verify_arch arm64
           echo "VIBESHAPE_PACKAGED_APP=$application" >> "$GITHUB_ENV"
 
       - name: Exercise the actual DMG application with an isolated profile
