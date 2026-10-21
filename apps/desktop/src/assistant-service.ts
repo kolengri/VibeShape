@@ -16,6 +16,7 @@ import {
 } from "@vibeshape/automation-api/assistant"
 import { type DesktopMcpSetup, desktopMcpSetupSchema } from "@vibeshape/automation-api/desktop-host"
 import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
+import { createAssistantConnectionTests } from "./assistant-connection-test"
 import type { createAssistantLaunchResolver } from "./assistant-jev-runtime"
 import { createAssistantPermissions } from "./assistant-permissions"
 import { assistantPromptContent } from "./assistant-prompt-content"
@@ -95,6 +96,7 @@ export type AssistantServiceOptions = {
   questionTimeoutMs?: number
   cancelTimeoutMs?: number
   shutdownTimeoutMs?: number
+  connectionTestTimeoutMs?: number
 }
 
 class AssistantFailure extends Error {
@@ -170,6 +172,7 @@ async function settleShutdown(pending: Promise<unknown>, timeoutMs: number) {
 export function createAssistantService(options: AssistantServiceOptions) {
   if (!isAbsolute(options.cwd)) throw new Error("The assistant working directory must be absolute.")
   const owners = new Map<string, Owner>()
+  const connectionTests = createAssistantConnectionTests(options)
   const preferences = createAssistantSessionPreferences()
   let disposed = false
   const stopping = new Map<string, Promise<void>>()
@@ -975,6 +978,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
   }
   return {
+    testConnection: connectionTests.testConnection,
     async handle(payload: unknown): Promise<AssistantResult> {
       const parsed = assistantRequestSchema.safeParse(payload)
       if (!parsed.success) return failure("invalid-request")
@@ -988,7 +992,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
       for (const owner of owners.values()) stop(owner)
       owners.clear()
       preferences.clear()
-      return Promise.all(stopping.values()).then(() => undefined)
+      return Promise.all([...stopping.values(), connectionTests.close()]).then(() => undefined)
     },
   }
 }

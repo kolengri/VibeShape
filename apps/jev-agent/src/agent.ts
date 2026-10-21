@@ -4,6 +4,7 @@ import { z } from "zod"
 import type { Configuration } from "./configuration"
 import type { CompleteArguments, Decide, Photo } from "./contracts"
 import { createController, type ToolEvent } from "./controller"
+import { JevFailure } from "./failure"
 import { connectMcp } from "./mcp"
 
 const photoSchema = z.object({
@@ -183,7 +184,7 @@ export function createJevAgent(configuration: Configuration, dependencies: Depen
           },
         })
         return { stopReason: "end_turn" }
-      } catch {
+      } catch (error) {
         if (turnSignal.aborted) return { stopReason: "cancelled" }
         await client.notify(acp.methods.client.session.update, {
           sessionId: current.id,
@@ -191,7 +192,7 @@ export function createJevAgent(configuration: Configuration, dependencies: Depen
             sessionUpdate: "agent_message_chunk",
             content: {
               type: "text",
-              text: "The Jev controller stopped after a provider, connection or argument error. No action was retried. Inspect the last tool result before continuing.",
+              text: `${error instanceof JevFailure ? error.message : "The Jev controller stopped unexpectedly. Open AI settings and test the connection before continuing."} No action was retried.`,
             },
           },
         })

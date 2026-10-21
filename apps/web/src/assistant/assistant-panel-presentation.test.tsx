@@ -112,10 +112,11 @@ it("retains mounted composer, pending attachments, transcript expansion, setting
   const aside = screen.getByRole("complementary", { name: "AI chat" })
   const draft = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement
   fireEvent.change(draft, { target: { value: "Unsent description" } })
+  const answer = screen.getByRole("textbox", { name: "Finish" }) as HTMLInputElement
   await userEvent.click(screen.getByRole("button", { name: "AI settings" }))
   const setting = screen.getByRole("textbox", { name: "Connection label" }) as HTMLInputElement
-  const answer = screen.getByRole("textbox", { name: "Finish" }) as HTMLInputElement
   fireEvent.change(setting, { target: { value: "Keep this connection" } })
+  await userEvent.click(screen.getByRole("button", { name: "Close AI settings" }))
   fireEvent.change(answer, { target: { value: "Round corners" } })
   const summary = screen.getByText("Inspect model", { selector: "summary span" }).closest("summary")
   if (!summary) throw new Error("Missing tool output disclosure.")
@@ -175,12 +176,15 @@ it("retains mounted composer, pending attachments, transcript expansion, setting
   expect(setting.value).toBe("Keep this connection")
   expect(answer.value).toBe("Round corners")
   expect(screen.getByRole("button", { name: "AI settings" }).getAttribute("aria-expanded")).toBe(
-    "true",
+    "false",
   )
   expect(details?.open).toBe(true)
   expect(log.scrollTop).toBe(120)
   expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(scrollCalls)
   expect(screen.getByRole("button", { name: "Remove pending.txt" })).toBeTruthy()
+  await userEvent.click(screen.getByRole("button", { name: "AI settings" }))
+  expect(screen.getByRole("textbox", { name: "Connection label" })).toBe(setting)
+  expect(setting.value).toBe("Keep this connection")
   expect(mount).toHaveBeenCalledTimes(1)
   expect(disconnect).not.toHaveBeenCalled()
   expect(cancel).not.toHaveBeenCalled()

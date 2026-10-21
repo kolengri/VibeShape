@@ -28,7 +28,10 @@ export function readAssistantPreferences(storage = assistantStorage()) {
     const raw = storage.getItem(key)
     if (!raw || raw.length > 32_000) return null
     const preferences = assistantPreferencesSchema.safeParse(JSON.parse(raw))
-    return preferences.success ? preferences.data : null
+    if (!preferences.success) return null
+    // The previous native form persisted its image opt-in default as an explicit false.
+    if ("kind" in preferences.data.agent) preferences.data.agent.settings.images = true
+    return preferences.data
   } catch {
     return null
   }

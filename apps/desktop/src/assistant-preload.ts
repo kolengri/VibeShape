@@ -1,8 +1,11 @@
 import {
+  ASSISTANT_CONNECTION_TEST_CHANNEL,
   ASSISTANT_EVENT_CHANNEL,
   ASSISTANT_REQUEST_CHANNEL,
   type AssistantBridge,
   type AssistantResult,
+  assistantConnectionTestResultSchema,
+  assistantConnectionTestSchema,
   assistantEventSchema,
   assistantRequestSchema,
   assistantResultSchema,
@@ -37,6 +40,18 @@ export function exposeAssistantBridge(
   const bridge: AssistantBridge = Object.freeze({
     protocolVersion: 1,
     connect: (input) => invoke({ operation: "connect", input }),
+    async testConnection(input) {
+      const parsed = assistantConnectionTestSchema.safeParse(input)
+      if (!parsed.success) return { ok: false, code: "invalid-request", stage: "agent" }
+      try {
+        const result = assistantConnectionTestResultSchema.safeParse(
+          await ipcRenderer.invoke(ASSISTANT_CONNECTION_TEST_CHANNEL, parsed.data),
+        )
+        return result.success ? result.data : { ok: false, code: "protocol-error", stage: "agent" }
+      } catch {
+        return { ok: false, code: "request-failed", stage: "agent" }
+      }
+    },
     prompt: (input) => invoke({ operation: "prompt", input }),
     steer: (input) => invoke({ operation: "steer", input }),
     cancel: (input) => invoke({ operation: "cancel", input }),

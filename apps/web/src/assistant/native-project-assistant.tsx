@@ -109,16 +109,20 @@ function NativeProjectChat({
       storageFailed={state.storageFailed}
       onRetryHistory={chat.retryHistory}
       error={error}
-      configuration={<AgentConnection chat={chat} state={state} />}
-      sessionControls={
-        <>
-          <NativeRecoveryControls chat={chat} state={state} />
-          <AgentAuthentication chat={chat} snapshot={state.snapshot} />
+      configuration={
+        <div className="grid gap-4">
+          <AgentConnection chat={chat} state={state} />
           <NativeSessionControls
             chat={chat}
             snapshot={state.snapshot}
             busy={state.busy || state.connecting}
           />
+        </div>
+      }
+      sessionControls={
+        <>
+          <NativeRecoveryControls chat={chat} state={state} />
+          <AgentAuthentication chat={chat} snapshot={state.snapshot} />
         </>
       }
       permission={<AgentPermission chat={chat} state={state} />}

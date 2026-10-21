@@ -202,6 +202,131 @@ describe("embedded project access", () => {
     connection = createLocalAutomationConnection({ projectId, accessPolicy: "native-project" })
   }
 
+  it("automatically pairs a fresh native client once its document becomes ready", async () => {
+    useNativeProject()
+    const unavailable = {
+      ok: false,
+      diagnostic: {
+        code: "document-write-unavailable",
+        message: "No local project is open.",
+        retryable: true,
+        issues: [],
+      },
+    }
+    mocks.createHandle.mockReturnValueOnce(unavailable).mockReturnValueOnce(unavailable)
+    await ready()
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: false,
+      recovering: true,
+      recoveryFailed: false,
+      error: false,
+    })
+    expect(connection.currentActor()).toBeNull()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryAttempt: 1 })
+    expect(mocks.request.mock.calls.some(([path]) => path === "/connect")).toBe(false)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      recovering: false,
+      recoveryAttempt: 0,
+      recoveryFailed: false,
+      autoApply: true,
+      projectManagement: false,
+      error: false,
+    })
+    expect(connection.currentActor()).toEqual(commandActorSchema.parse(credential.actor))
+    expect(mocks.request).toHaveBeenCalledWith(
+      "/connect",
+      { protocolVersion: 1, document: { id, name: "Bracket", revision: 4 } },
+      undefined,
+      undefined,
+      id,
+    )
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+    expect(mocks.request.mock.calls.some(([path]) => path === "/resume")).toBe(false)
+    expect(mocks.execute).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { code: "document-write-unavailable", retryable: false },
+    { code: "permission-denied", retryable: true },
+  ])("keeps fresh native document failure $code ($retryable) permanent", async (diagnostic) => {
+    useNativeProject()
+    mocks.createHandle.mockReturnValueOnce({
+      ok: false,
+      diagnostic: { ...diagnostic, message: "Document access refused.", issues: [] },
+    })
+    await ready()
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: false,
+      recovering: false,
+      recoveryAttempt: 0,
+      recoveryFailed: true,
+      error: true,
+    })
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mocks.createHandle).toHaveBeenCalledTimes(1)
+    expect(connection.currentActor()).toBeNull()
+    expect(mocks.request.mock.calls.some(([path]) => path === "/connect")).toBe(false)
+  })
+
+  it("bounds fresh native document readiness recovery without discovery restarting it", async () => {
+    useNativeProject()
+    mocks.createHandle.mockReturnValue({
+      ok: false,
+      diagnostic: {
+        code: "document-write-unavailable",
+        message: "No local project is open.",
+        retryable: true,
+        issues: [],
+      },
+    })
+    await ready()
+    await vi.advanceTimersByTimeAsync(23_000)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: false,
+      recovering: false,
+      recoveryAttempt: 5,
+      recoveryFailed: true,
+      error: true,
+    })
+    expect(mocks.createHandle).toHaveBeenCalledTimes(6)
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mocks.createHandle).toHaveBeenCalledTimes(6)
+    expect(mocks.request.mock.calls.some(([path]) => path === "/connect")).toBe(false)
+  })
+
+  it.each(["Stop AI", "dispose"] as const)(
+    "cancels fresh native readiness recovery on %s without reviving authority",
+    async (action) => {
+      useNativeProject()
+      mocks.createHandle.mockReturnValueOnce({
+        ok: false,
+        diagnostic: {
+          code: "document-write-unavailable",
+          message: "No local project is open.",
+          retryable: true,
+          issues: [],
+        },
+      })
+      await ready()
+      expect(connection.getSnapshot().recovering).toBe(true)
+      if (action === "Stop AI") await connection.disable()
+      else connection.dispose()
+      await connection.status()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(connection.getSnapshot().connected).toBe(false)
+      expect(connection.currentActor()).toBeNull()
+      expect(mocks.createHandle).toHaveBeenCalledTimes(1)
+      expect(mocks.request.mock.calls.some(([path]) => path === "/connect")).toBe(false)
+      expect(enableAutoApply).not.toHaveBeenCalled()
+      expect(mocks.createExecutor).not.toHaveBeenCalled()
+    },
+  )
+
   it.each(["restored", "unavailable"] as const)(
     "keeps no-resume native recovery scheduled when discovery becomes %s before its retry",
     async (discovery) => {

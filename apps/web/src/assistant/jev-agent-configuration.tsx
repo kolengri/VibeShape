@@ -3,6 +3,7 @@ import {
   assistantJevSettingsSchema,
 } from "@vibeshape/automation-api/assistant-jev"
 import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { type FormEvent, useRef, useState } from "react"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
@@ -25,7 +26,7 @@ function configuration(data: FormData) {
   const argumentsApiKey = optional("argumentsApiKey")
   const settings = assistantJevSettingsSchema.safeParse({
     model: data.get("model"),
-    images: data.get("images") === "on",
+    images: true,
     maxSteps: Number(data.get("maxSteps")),
     minConfidence: Number(data.get("minConfidence")),
     timeoutMs: Number(data.get("timeoutMs")),
@@ -41,20 +42,22 @@ function configuration(data: FormData) {
     : null
 }
 
-export function JevAgentConfiguration({
-  chat,
-  connected,
-  pending,
-  disconnect,
-}: {
+type JevConfigurationProps = {
   chat: Pick<ReturnType<typeof createNativeChatController>, "connect">
   connected: boolean
   pending: boolean
+  testing: boolean
   disconnect: () => Promise<void>
-}) {
-  const t = useTranslations("app.assistant")
+  testConnection: (
+    ...args: Parameters<ReturnType<typeof createNativeChatController>["testConnection"]>
+  ) => Promise<void>
+  clearTest: () => void
+}
+
+function useJevConnectionForm({ chat, connected, pending, testConnection }: JevConfigurationProps) {
   const [initial] = useState(initialSettings)
   const active = useRef(false)
+  const formRef = useRef<HTMLFormElement>(null)
   const [submitting, setSubmitting] = useState(false)
   const [invalid, setInvalid] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -82,9 +85,28 @@ export function JevAgentConfiguration({
       setSubmitting(false)
     }
   }
+  async function test() {
+    if (!formRef.current || active.current || pending) return
+    const data = new window.FormData(formRef.current)
+    for (const input of formRef.current.querySelectorAll<HTMLInputElement>("input:disabled[name]"))
+      data.set(input.name, input.value)
+    const parsed = configuration(data)
+    setInvalid(!parsed)
+    if (parsed) await testConnection(parsed.agent, parsed.credentials)
+  }
+  return { initial, formRef, submitting, invalid, failed, storageFailed, locked, submit, test }
+}
+
+export function JevAgentConfiguration(props: JevConfigurationProps) {
+  const t = useTranslations("app.assistant")
+  const { connected, pending, testing, disconnect, clearTest } = props
+  const { initial, formRef, submitting, invalid, failed, storageFailed, locked, submit, test } =
+    useJevConnectionForm(props)
   return (
     <form
+      ref={formRef}
       className="grid gap-3"
+      onInput={clearTest}
       onSubmit={submit}
       aria-label={t("jev.settings")}
       aria-busy={pending || submitting || undefined}
@@ -135,10 +157,6 @@ export function JevAgentConfiguration({
         <details>
           <summary className="cursor-pointer text-xs font-medium">{t("jev.advanced")}</summary>
           <div className="mt-3 grid gap-3">
-            <label className="flex items-center gap-2 text-xs">
-              <input name="images" type="checkbox" defaultChecked={initial.images} />
-              {t("jev.images")}
-            </label>
             <TextField
               name="maxSteps"
               type="number"
@@ -190,6 +208,17 @@ export function JevAgentConfiguration({
         pending={pending || submitting}
         disconnect={disconnect}
       />
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={pending || submitting}
+        isLoading={testing}
+        onClick={test}
+      >
+        {t("testConnection")}
+      </Button>
+      <p className="text-xs text-muted-foreground">{t("connectionTestNotice")}</p>
       <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
     </form>
   )

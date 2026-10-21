@@ -24,6 +24,7 @@ import type { AssistantDraftDisplay } from "./assistant-draft-display"
 import { AssistantIconAction } from "./assistant-icon-action"
 import { AssistantMessages } from "./assistant-messages"
 import { AssistantQuestionForm } from "./assistant-question"
+import { AssistantSettingsDialog, useAssistantSettings } from "./assistant-settings-dialog"
 import type { AssistantToolHighlight } from "./assistant-tool-highlight"
 import type { ChatMessage } from "./chat-history"
 
@@ -320,7 +321,7 @@ function AssistantFeedback(
 export function AssistantPanel(props: AssistantPanelProps) {
   const t = useTranslations("app.assistant")
   const titleId = useId()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settings = useAssistantSettings(props.open)
   const [draft, setDraft] = useState<AssistantComposerDraft>({ text: "", attachments: [] })
   return (
     <TooltipProvider>
@@ -335,19 +336,16 @@ export function AssistantPanel(props: AssistantPanelProps) {
         <AssistantHeader
           titleId={titleId}
           projectName={props.projectName}
-          settingsOpen={settingsOpen}
-          onSettings={() => setSettingsOpen(!settingsOpen)}
+          settingsOpen={settings.open}
+          onSettings={settings.show}
           onClose={props.onClose}
           onReset={props.onReset}
           canReset={!props.busy && !props.queuedMessages?.length && props.messages.length > 0}
         />
-        {(settingsOpen || (props.configurationRequired ?? !props.canSend)) && (
-          <section
-            aria-label={t("settingsTitle")}
-            className="shrink-0 overflow-y-auto border-b p-3 max-h-[45%]"
-          >
-            {props.configuration}
-          </section>
+        {(props.configurationRequired ?? !props.canSend) && (
+          <Button size="sm" variant="outline" className="m-3" onClick={settings.show}>
+            {t("configure")}
+          </Button>
         )}
         <AssistantMessages
           messages={props.messages}
@@ -378,6 +376,14 @@ export function AssistantPanel(props: AssistantPanelProps) {
           feedback={<AssistantFeedback {...props} />}
         />
       </aside>
+      <AssistantSettingsDialog
+        {...settings.dialog}
+        title={t("settingsTitle")}
+        description={t("settingsDescription")}
+        closeLabel={t("closeSettings")}
+      >
+        {props.configuration}
+      </AssistantSettingsDialog>
     </TooltipProvider>
   )
 }

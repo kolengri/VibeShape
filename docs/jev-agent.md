@@ -36,7 +36,8 @@ Jev's `done` is a stopping decision, not independent proof of geometric or manuf
 
 ## Configure and connect
 
-In the native chat settings, select **Agent → Jev (TypeSafe)**. Enter the TypeSafe API key and
+Open **AI settings** from the chat header. Settings open in a modal dialog; closing it preserves
+the current form and connection. Select **Agent → Jev (TypeSafe)**. Enter the TypeSafe API key and
 Jev model. The default model is the adapter's pinned `jev-1.14.0`; selecting it does not establish
 that the provider account has access to that model.
 
@@ -45,10 +46,20 @@ Most CAD edits need this helper for dimensions and references. Jev selects the a
 fills only that action's open arguments. Configure endpoint and model together. The helper endpoint
 must use HTTPS or loopback HTTP and must not contain URL credentials, a query or fragment.
 
-**Jev advanced settings** expose image opt-in, the decision budget, confidence threshold and
-provider timeout. Images remain disabled by default. Connecting starts the bundled ACP adapter
+PNG/JPEG input is enabled when connecting Jev, without a separate image permission.
+**Jev advanced settings** expose the decision budget, confidence threshold and
+provider timeout. Connecting starts the bundled ACP adapter
 only after these settings pass validation. Existing project, question, Stop and CAD authority
 boundaries remain in force.
+
+Use **Test connection** to verify the current settings before sending a CAD request. For Jev,
+the test makes one small TypeSafe inference and, when configured, one argument-model JSON request.
+It sends no project data or images, creates no CAD session and leaves the current conversation
+and connection intact. Provider usage may be billed. A successful test confirms the configured
+providers responded; without an argument model, most CAD edits still need that configuration.
+For other ACP agents, the test checks process startup and ACP initialization only, and explicitly
+does not claim to have verified provider access. Failures identify the stage and an HTTP status
+when available, without displaying provider bodies or credentials.
 
 Only the non-secret Jev settings persist as assistant preferences. After a successful connection,
 keys stay in host memory, scoped to the project, for the application session. A failed connection
@@ -73,7 +84,7 @@ use your existing local environment/wrapper setup when launching the app from Fi
 | `JEV_ARGUMENTS_ENDPOINT` | Full OpenAI-compatible chat-completions endpoint for open arguments |
 | `JEV_ARGUMENTS_MODEL` | Model served by that endpoint; required when the endpoint is set |
 | `JEV_ARGUMENTS_API_KEY` | Optional helper key; omit for a local endpoint without authentication |
-| `JEV_ENABLE_IMAGES` | `1` enables experimental PNG/JPEG input; default `0` |
+| `JEV_ENABLE_IMAGES` | PNG/JPEG input defaults to `1`; set `0` to disable it for a custom CLI launch |
 | `JEV_MIN_CONFIDENCE` | Minimum selected-branch confidence; default `0.5`, range `0`–`1` |
 | `JEV_MAX_STEPS` | Decisions per turn; default `24`, maximum `48` |
 | `JEV_TIMEOUT_MS` | Provider and ordinary MCP operation timeout; default `60000`, range `1000`–`120000`. Manual-review calls use the separate horizon below. |

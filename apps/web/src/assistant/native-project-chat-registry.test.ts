@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import type {
+  AssistantAgent,
   AssistantBridge,
   AssistantEvent,
   AssistantSnapshot,
@@ -87,6 +88,53 @@ function fixture() {
 }
 
 describe("native project chat retention", () => {
+  it("enables images on automatic startup from legacy Jev preferences without resubmitting settings", async () => {
+    const f = fixture()
+    saveAssistantPreferences(
+      {
+        version: 1,
+        agent: {
+          kind: "jev",
+          settings: {
+            model: "jev-1.14.0",
+            images: false,
+            maxSteps: 24,
+            minConfidence: 0.5,
+            timeoutMs: 60_000,
+          },
+        },
+      },
+      f.storage,
+    )
+    let launched: AssistantAgent | undefined
+    const bridge: AssistantBridge = {
+      ...f.bridge,
+      async connect(input) {
+        launched = input.agent
+        const result = await f.bridge.connect(input)
+        if (result.ok)
+          result.value.attachmentCapabilities.images =
+            "kind" in input.agent && input.agent.settings.images
+        return result
+      },
+    }
+    const registry = createNativeProjectChatRegistry(bridge, f.storage)
+    const chat = registry.get("legacy-jev-project")
+    const ready = new Promise<void>((resolve) => {
+      const unsubscribe = chat.subscribe(() => {
+        if (chat.getSnapshot().snapshot?.status === "ready") {
+          unsubscribe()
+          resolve()
+        }
+      })
+    })
+    chat.start()
+    await ready
+    expect(launched).toMatchObject({ kind: "jev", settings: { images: true } })
+    expect(chat.getSnapshot().snapshot?.attachmentCapabilities.images).toBe(true)
+    registry.dispose()
+  })
+
   it("preserves connection outcomes through the project facade and rejects a closed registry", async () => {
     const f = fixture()
     let reject = true

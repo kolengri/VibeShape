@@ -15,7 +15,7 @@ import type {
   Observation,
   Photo,
 } from "./contracts"
-
+import { JevFailure, jevOperation } from "./failure"
 import { readOnlyTool, toolTimeoutMs, validateToolInput } from "./tool-contract"
 
 export type ToolResult = { value: unknown; photos: Photo[]; failed: boolean }
@@ -105,19 +105,33 @@ export function createController(options: ControllerOptions) {
   const timed = (signal: AbortSignal, timeoutMs = options.timeoutMs) =>
     AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
   const call = (name: string, args: Record<string, unknown>, signal: AbortSignal) =>
-    options.port.call(name, args, timed(signal, toolTimeoutMs(name, options.timeoutMs)))
-  async function model(signal: AbortSignal) {
+    jevOperation(
+      `The VibeShape MCP request ${name} failed`,
+      () => options.port.call(name, args, timed(signal, toolTimeoutMs(name, options.timeoutMs))),
+      signal,
+    )
+  async function failedRead(
+    name: string,
+    args: Record<string, unknown>,
+    result: unknown,
+    onTool: (event: ToolEvent) => Promise<void>,
+  ): Promise<never> {
+    const id = crypto.randomUUID()
+    await onTool({ id, name, arguments: args, status: "in_progress" })
+    await onTool({ id, name, arguments: args, status: "failed", result })
+    throw new JevFailure(`VibeShape ${name} failed. Inspect its tool result before continuing.`)
+  }
+  async function model(signal: AbortSignal, onTool: (event: ToolEvent) => Promise<void>) {
     const result = await call("model_info", {}, signal)
     const parsed = modelEnvelope.safeParse(result.value)
-    if (result.failed || !parsed.success)
-      throw new Error("The connected model is unavailable. No action was retried.")
+    if (result.failed || !parsed.success) return failedRead("model_info", {}, result.value, onTool)
     const summary = parsed.data.result.value.summary
     if (projectId !== undefined && summary.documentId !== projectId)
-      throw new Error("The connected project changed. Reconnect before continuing.")
+      throw new JevFailure("The connected project changed. Reconnect before continuing.")
     projectId = summary.documentId
     return { result: result.value, revision: summary.revision }
   }
-  async function instructions(signal: AbortSignal) {
+  async function instructions(signal: AbortSignal, onTool: (event: ToolEvent) => Promise<void>) {
     const result = await call(
       "read_agent_skill",
       { uri: "vibeshape://agent-skills/vibeshape-use/SKILL.md" },
@@ -125,7 +139,12 @@ export function createController(options: ControllerOptions) {
     )
     const parsed = skillEnvelope.safeParse(result.value)
     if (result.failed || !parsed.success)
-      throw new Error("The VibeShape operator workflow is unavailable.")
+      return failedRead(
+        "read_agent_skill",
+        { uri: "vibeshape://agent-skills/vibeshape-use/SKILL.md" },
+        result.value,
+        onTool,
+      )
     return `${controlInstructions}\n${parsed.data.result.value.text}`
   }
   async function dispatch(
@@ -179,7 +198,11 @@ export function createController(options: ControllerOptions) {
     if (decision.needsArguments && !options.completeArguments) return null
     const completed =
       decision.needsArguments && options.completeArguments
-        ? await options.completeArguments(tool, state, decision.arguments, timed(signal))
+        ? await jevOperation(
+            `Argument completion for ${tool.name} failed`,
+            () => options.completeArguments?.(tool, state, decision.arguments, timed(signal)),
+            signal,
+          )
         : {}
     const args = { ...completed, ...decision.arguments }
     for (const omitted of decision.omitted ?? []) delete args[omitted]
@@ -204,12 +227,14 @@ export function createController(options: ControllerOptions) {
       return "An earlier write has an unknown outcome. Only read-only inspection is available; inspect saved state and reconnect before authoring again."
     const args = await resolveArguments(decision, tool, state, signal)
     if (!args)
-      return "This step needs open arguments. Configure JEV_ARGUMENTS_ENDPOINT and JEV_ARGUMENTS_MODEL, or use a planning agent."
-    validateToolInput(tool.name, args)
+      return "This step needs dimensions or references. Open AI settings and configure the Argument model, or use a planning agent."
+    await jevOperation(`Arguments for ${tool.name} did not match its tool contract`, () =>
+      validateToolInput(tool.name, args),
+    )
     signal.throwIfAborted()
     if (args.projectId !== undefined && args.projectId !== projectId)
       throw new Error("The selected arguments target a different project.")
-    if ((await model(signal)).revision !== revision) return null
+    if ((await model(signal, onTool)).revision !== revision) return null
     const result = await dispatch(tool.name, args, signal, onTool, state)
     if (result.failed)
       return "The tool rejected the step. Execution stopped without replaying the action; inspect its diagnostic before continuing."
@@ -222,14 +247,18 @@ export function createController(options: ControllerOptions) {
     onTool: (event: ToolEvent) => Promise<void>,
   ) {
     signal.throwIfAborted()
-    const before = await model(signal)
+    const before = await model(signal, onTool)
     appendHistory(state, { tool: "model_info", arguments: {}, result: before.result })
     if (uncertainWrite) state.uncertainOutcome = boundedObservation(uncertainWrite)
     boundContext(state)
     const eligible = uncertainWrite
       ? options.port.tools.filter((tool) => readOnlyTool(tool.name))
       : options.port.tools
-    const decision = await options.decide(state, eligible, timed(signal))
+    const decision = await jevOperation(
+      "The Jev decision request to TypeSafe failed",
+      () => options.decide(state, eligible, timed(signal)),
+      signal,
+    )
     signal.throwIfAborted()
     const stop = stopMessage(decision, options.minConfidence)
     if (stop) return stop
@@ -255,7 +284,7 @@ export function createController(options: ControllerOptions) {
           goal,
           photos: [...referencePhotos, ...previewPhotos].slice(0, 4),
           history,
-          instructions: await instructions(signal),
+          instructions: await instructions(signal, onTool),
         }
         for (let index = 0; index < options.maxSteps; index++) {
           const stop = await step(state, signal, onTool)

@@ -9,7 +9,7 @@ describe("built-in Jev connection boundary", () => {
       args: [],
     })
     const agent = assistantJevAgentSchema.parse({ kind: "jev", settings: {} })
-    expect(agent.settings).toMatchObject({ model: "jev-1.14.0", maxSteps: 24, images: false })
+    expect(agent.settings).toMatchObject({ model: "jev-1.14.0", maxSteps: 24, images: true })
     expect(assistantAgentSchema.safeParse({ ...agent, apiKey: "private" }).success).toBe(false)
     expect(
       assistantAgentSchema.safeParse({

@@ -44,7 +44,7 @@ const endpoint = z
 export const assistantJevSettingsSchema = z
   .strictObject({
     model: model.default("jev-1.14.0"),
-    images: z.boolean().default(false),
+    images: z.boolean().default(true),
     maxSteps: z.number().int().min(1).max(48).default(24),
     minConfidence: z.number().min(0).max(1).default(0.5),
     timeoutMs: z.number().int().min(1000).max(120_000).default(60_000),
