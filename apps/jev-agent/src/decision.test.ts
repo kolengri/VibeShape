@@ -2,11 +2,19 @@ import { describe, expect, test } from "bun:test"
 import type { Tool } from "@modelcontextprotocol/sdk/types.js"
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js"
 import { TypeSafeClient } from "@typesafe-ai/sdk"
+import { agentSkillTool, readAgentSkillResource } from "@vibeshape/automation-api/agent-skills"
 import { isAssemblyLibraryToolName } from "@vibeshape/automation-api/assembly-result-context"
-import { localToolNameSchema, mcpToolInputSchema } from "@vibeshape/automation-api/local-tools"
+import { assistantQuestionTool } from "@vibeshape/automation-api/assistant"
+import {
+  localModelInfoSchema,
+  localToolNameSchema,
+  mcpToolInputSchema,
+} from "@vibeshape/automation-api/local-tools"
 import { localToolDescriptions } from "@vibeshape/automation-api/tool-metadata"
 import { z } from "zod"
+import { projectAssistantContext } from "../../desktop/src/assistant-project-context"
 import type { DecisionState } from "./contracts"
+import { createController } from "./controller"
 import { createJevDecision } from "./decision"
 
 const state: DecisionState = {
@@ -69,31 +77,164 @@ function fixture(answers: unknown) {
   return { decide: createJevDecision(client, "jev-pinned"), calls }
 }
 
+function cadTools() {
+  return localToolNameSchema.options.map((name) =>
+    ToolSchema.parse({
+      name,
+      description: localToolDescriptions[name],
+      inputSchema: {
+        ...z.toJSONSchema(mcpToolInputSchema(name), {
+          reused: "ref",
+          io: isAssemblyLibraryToolName(name) || name === "list_projects" ? "input" : "output",
+        }),
+        type: "object",
+      },
+    }),
+  )
+}
+
 describe("Jev decision batching", () => {
   test("keeps the real CAD catalog within the selector budget without transmitting nested schemas", async () => {
-    const tools = localToolNameSchema.options.map((name) =>
-      ToolSchema.parse({
-        name,
-        description: localToolDescriptions[name],
-        inputSchema: {
-          ...z.toJSONSchema(mcpToolInputSchema(name), {
-            reused: "ref",
-            io: isAssemblyLibraryToolName(name) || name === "list_projects" ? "input" : "output",
-          }),
-          type: "object",
-        },
-      }),
-    )
+    const tools = cadTools()
     const { decide, calls } = fixture({ action: answer("done") })
-    await decide(state, tools, signal())
+    const instructions = readAgentSkillResource("vibeshape://agent-skills/vibeshape-use/SKILL.md")
+      ?.contents[0]?.text
+    expect(instructions).toBeDefined()
+    const history = [
+      { tool: "old_read", arguments: {}, result: "old".repeat(6000) },
+      { tool: "model_info", arguments: {}, result: { evidence: "x".repeat(20_000) } },
+    ]
+    await decide(
+      {
+        ...state,
+        goal: `${projectAssistantContext("0195b5ac-b213-7f2c-9c33-67a36a7f21ac")}\nCreate a bicycle bottle-cage container.`,
+        instructions: instructions ?? "",
+        history,
+      },
+      [...tools, agentSkillTool, assistantQuestionTool].map((tool) => ToolSchema.parse(tool)),
+      signal(),
+    )
     expect(tools.length).toBeGreaterThan(150)
     const body = String(calls[0]?.init.body)
-    expect(Buffer.byteLength(body)).toBeLessThan(160 * 1024)
+    expect(Buffer.byteLength(body)).toBeLessThan(256 * 1024)
     const payload = requestSchema.parse(JSON.parse(body))
-    for (const value of Object.values(payload.questions.action?.criteria ?? {}))
-      if (typeof value === "string" && value.startsWith("{"))
-        expect(JSON.parse(value)).not.toHaveProperty("inputSchema")
+    const context = z
+      .object({
+        state: z.looseObject({
+          catalog: z.record(z.string(), z.string()),
+          history: z.array(z.unknown()),
+        }),
+      })
+      .parse(JSON.parse(body)).state
+    expect(Buffer.byteLength(JSON.stringify(context))).toBeLessThan(128_000)
+    expect(Object.values(context.catalog)).toEqual([
+      ...tools.map((tool) => tool.description ?? ""),
+      agentSkillTool.description,
+      assistantQuestionTool.description,
+    ])
+    expect(context.history).toEqual(history)
+    expect(history).toHaveLength(2)
+    expect(Object.values(payload.questions.action?.criteria ?? {})).toEqual(
+      expect.arrayContaining(tools.map((tool) => tool.name)),
+    )
   })
+  test.each(["short", "near-limit"] as const)(
+    "preserves full controller instructions and current diagnostic evidence (%s goal)",
+    async (size) => {
+      const goal = "Inspect the current model. ".repeat(size === "short" ? 1 : 1100)
+      const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
+      const value = localModelInfoSchema.parse({
+        summary: {
+          kind: "org.vibeshape.document.summary",
+          schemaVersion: 1,
+          documentId,
+          revision: 0,
+          classification: "semantic",
+          truncated: false,
+          data: {
+            name: "Part",
+            createdAt: "2026-10-20T12:00:00.000Z",
+            updatedAt: "2026-10-20T12:00:00.000Z",
+          },
+        },
+        measurements: null,
+        measurementDiagnostic: null,
+        diagnostics: {
+          schemaVersion: 1,
+          documentId,
+          revision: 0,
+          generation: 0,
+          status: "invalid",
+          truncated: false,
+          entries: Array.from({ length: 110 }, (_, index) => ({
+            entity: {
+              kind: "feature",
+              id: `0195b5ac-b213-7f2c-9c33-${String(index).padStart(12, "0")}`,
+            },
+            code: "model.dependency-missing",
+            values: {},
+            resolution: "missing",
+            action: "repair-dependency",
+          })),
+        },
+      })
+      const instructions = readAgentSkillResource("vibeshape://agent-skills/vibeshape-use/SKILL.md")
+        ?.contents[0]?.text
+      expect(instructions).toBeDefined()
+      const { decide, calls } = fixture({ action: answer("blocked") })
+      const controller = createController({
+        port: {
+          tools: [...cadTools(), agentSkillTool, assistantQuestionTool].map((tool) =>
+            ToolSchema.parse(tool),
+          ),
+          close: async () => {},
+          call: async (name) => {
+            expect(["read_agent_skill", "model_info"]).toContain(name)
+            return {
+              value: {
+                result: {
+                  ok: true,
+                  value: name === "read_agent_skill" ? { text: instructions } : value,
+                },
+              },
+              photos: [],
+              failed: false,
+            }
+          },
+        },
+        decide,
+        maxSteps: 1,
+        minConfidence: 0.5,
+        timeoutMs: 10_000,
+        images: false,
+      })
+      await controller.run(
+        `${projectAssistantContext(documentId)}\n${goal}`,
+        [],
+        signal(),
+        async () => {},
+      )
+      expect(calls).toHaveLength(1)
+      const payload = z
+        .object({
+          state: z.object({
+            goal: z.string(),
+            instructions: z.string(),
+            history: z.array(z.unknown()),
+          }),
+        })
+        .parse(JSON.parse(String(calls[0]?.init.body)))
+      expect(payload.state.instructions).toContain("Never replay an uncertain write.")
+      expect(payload.state.goal).toBe(`${projectAssistantContext(documentId)}\n${goal}`)
+      expect(payload.state.instructions.endsWith(instructions ?? "")).toBe(true)
+      expect(payload.state.history).toEqual([
+        { tool: "model_info", arguments: {}, result: { result: { ok: true, value } } },
+      ])
+      expect(new Headers(calls[0]?.init.headers).get("TypeSafe-Danger-Zone-Long-Context")).toBe(
+        size === "near-limit" ? "true" : null,
+      )
+    },
+  )
   test("rejects an oversized tool catalog before contacting the provider", async () => {
     const { decide, calls } = fixture({ action: answer("done") })
     await expect(

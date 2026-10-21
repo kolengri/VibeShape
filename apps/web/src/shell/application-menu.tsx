@@ -15,7 +15,7 @@ import {
   CommandIcon,
   Download,
   ExtensionsIcon,
-  FolderOpen,
+  FilesIcon,
   HelpIcon,
   ImportGeometryIcon,
   ImportSketchIcon,
@@ -120,7 +120,7 @@ function ApplicationProjectMenu({
         disabled={navigation.navigating}
         onSelect={() => void navigation.navigateProjects()}
       >
-        <FolderOpen aria-hidden="true" />
+        <FilesIcon aria-hidden="true" />
         {t("files")}
       </DropdownMenuItem>
       <DropdownMenuItem

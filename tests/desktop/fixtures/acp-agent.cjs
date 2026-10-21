@@ -8,6 +8,7 @@ const { resolve } = require("node:path")
 const receipt = process.argv[2]
 const attachMcp = process.argv[3] === "--attach-mcp"
 const longLabels = process.argv.includes("--long-labels")
+const manyOptions = process.argv.includes("--many-options")
 let mcpClient
 let sessionId = `fixture-${process.pid}`
 let pendingPrompt
@@ -27,6 +28,21 @@ const reply = (id, result) => send({ id, result })
 const update = (value) => send({ method: "session/update", params: { sessionId, update: value } })
 const text = (value) =>
   update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: value } })
+function advertisedModelOptions() {
+  return [
+    { value: "compact", name: "Fast model" },
+    {
+      value: "deep-model",
+      name: longLabels ? "Deep model with extended engineering capabilities" : "Deep model",
+    },
+    ...(manyOptions
+      ? Array.from({ length: 98 }, (_, index) => ({
+          value: `fixture-model-${index + 3}`,
+          name: `Fixture model ${index + 3}`,
+        }))
+      : []),
+  ]
+}
 const configs = () => [
   {
     id: "access",
@@ -42,13 +58,7 @@ const configs = () => [
     name: "Model",
     type: "select",
     currentValue: model,
-    options: [
-      { value: "compact", name: "Fast model" },
-      {
-        value: "deep-model",
-        name: longLabels ? "Deep model with extended engineering capabilities" : "Deep model",
-      },
-    ],
+    options: advertisedModelOptions(),
   },
   {
     id: "deliberation",
@@ -144,7 +154,7 @@ function cancel() {
 function setConfig(id, params) {
   record({ event: "configuration", configId: params.configId, value: params.value, sessionId })
   if (params.configId === "model") {
-    assert.ok(["compact", "deep-model"].includes(params.value))
+    assert.ok(advertisedModelOptions().some((option) => option.value === params.value))
     model = params.value
     effort = model === "compact" ? "brief" : "maximal"
   } else if (params.configId === "web-search") {

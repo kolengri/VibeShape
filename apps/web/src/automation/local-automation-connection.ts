@@ -6,7 +6,11 @@ import {
   localPollResponseSchema,
   localStatusSchema,
 } from "@vibeshape/automation-api/local-session"
-import { localFailure, localToolOutputs } from "@vibeshape/automation-api/local-tools"
+import {
+  localFailure,
+  localFailureSchema,
+  localToolOutputs,
+} from "@vibeshape/automation-api/local-tools"
 import type { CommandActor } from "@vibeshape/domain/commands"
 import { z } from "zod"
 import { createActiveDocumentAutomationSession as createVisibleDocumentAutomationSession } from "../document/document-controller"
@@ -55,6 +59,12 @@ type Pair = {
   timer: ReturnType<typeof setTimeout> | null
 }
 const preferenceKey = "vibeshape-local-ai-preferences"
+const projectUnavailableSchema = localFailureSchema.extend({
+  diagnostic: localFailureSchema.shape.diagnostic.extend({
+    code: z.literal("project-session-unavailable"),
+    retryable: z.literal(true),
+  }),
+})
 const preferenceSchema = z
   .object({
     client: localConnectResponseSchema.shape.client,
@@ -257,6 +267,10 @@ export function createLocalAutomationConnection(
       response.status >= 500 ||
       response.status === 408 ||
       response.status === 429 ||
+      // The renderer may restore before the ACP host registers this project's attachment.
+      (nativeProjectAccess &&
+        response.status === 404 &&
+        projectUnavailableSchema.safeParse(response.data).success) ||
       (response.status === 409 &&
         z
           .object({ diagnostic: z.object({ code: z.literal("session-suspended") }) })

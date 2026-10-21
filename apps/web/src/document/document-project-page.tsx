@@ -2,7 +2,7 @@ import { VSHAPE_MAX_ARCHIVE_BYTES, VSHAPE_MEDIA_TYPE } from "@vibeshape/formats/
 import { useTranslations } from "@vibeshape/i18n"
 import type { LocalProjectSummary } from "@vibeshape/persistence"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
-import { FolderOpen } from "@vibeshape/ui/components/icons"
+import { FilesIcon } from "@vibeshape/ui/components/icons"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { type DropEvent, type FileRejection, useDropzone } from "react-dropzone"
@@ -90,7 +90,7 @@ function ProjectFileDropzone({
       >
         <input {...getInputProps({ "aria-label": t("open.inputLabel") })} />
         <div className="grid justify-items-center gap-2">
-          <FolderOpen aria-hidden="true" className="size-5 text-muted-foreground" />
+          <FilesIcon aria-hidden="true" className="size-5 text-muted-foreground" />
           <p>{t("open.dropTitle")}</p>
         </div>
       </div>

@@ -11,7 +11,9 @@ Browser-only chat cannot launch the bundled local process.
 1. Discover the injected MCP catalog and load the bundled `vibeshape-use` instructions.
 2. Read `model_info`, retaining the actual project identity and revision.
 3. Send the goal, a bounded observation history, operator instructions and optional images to Jev.
-   One request uses compact tool descriptions to select a tool and speculate on its closed argument values. Only the selected
+   One request uses the complete tool descriptions to select a tool and speculate on its closed
+   argument values. The selector catalog stores descriptions once, keyed by action ID; tool names
+   belong to action choices and argument schemas belong to parameter questions. Only the selected
    branch's answers are consumed.
 4. If arguments need free text, numbers, identifiers or nested geometry, send only the selected
    tool's full schema to the separately configured small language model and request a JSON argument
@@ -135,6 +137,14 @@ ACP JSON-RPC, so it is intended for an ACP client rather than an interactive ter
 - Up to 256 catalog entries, a 128 KiB question catalog, 12 recent observations and a 64 KB text context. Large observations
   are explicitly marked as truncated; earlier observations may leave the bounded window. Inspect
   the model again when a required identity or parameter is absent.
+  The decision state, including the description catalog, has a separate 128 KB ceiling, reserving
+  space for the full controller context alongside the current catalog. History and uncertain outcomes
+  remain structured JSON instead of escaped JSON strings. Older observations are dropped first if
+  needed, preserving the newest observation and the controller's history.
+  Requests with more than 96 KB of state or 192 KB of combined state/questions opt into TypeSafe's
+  [long-context mode](https://docs.typesafe.ai/models#long-context). This preserves required evidence;
+  the provider documents higher latency and lower accuracy than its default context window. These
+  byte ceilings are application limits, not token-count estimates or a context-acceptance guarantee.
 - Incoming prompt text is bounded to 48 KB. At most four PNG/JPEG inputs are accepted, with a
   combined 512 KiB base64 budget. Fresh `render_preview` image blocks can join the next Jev request
   when images are enabled. Unsupported images are rejected rather than silently ignored.

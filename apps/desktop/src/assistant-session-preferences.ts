@@ -1,8 +1,35 @@
-import type { AssistantRequest, AssistantSnapshot } from "@vibeshape/automation-api/assistant"
+import { rename, rm } from "node:fs/promises"
+import { dirname, isAbsolute } from "node:path"
+import {
+  type AssistantRequest,
+  type AssistantSnapshot,
+  assistantSnapshotSchema,
+} from "@vibeshape/automation-api/assistant"
+import { z } from "zod"
+import { preparePrivateDirectory, readPrivateFile, writePrivateFile } from "./private-files"
 
-export type AssistantSessionChoice =
-  | { kind: "mode"; value: string }
-  | { kind: "config"; id: string; category: string | undefined; value: string }
+const settingId = assistantSnapshotSchema.shape.configOptions.unwrap().element.shape.id
+const sessionChoiceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("mode"), value: settingId }),
+  z.strictObject({
+    kind: z.literal("config"),
+    id: settingId,
+    category: settingId.optional(),
+    value: settingId,
+  }),
+])
+const preferencesSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  scopes: z
+    .array(
+      z.strictObject({
+        key: z.string().regex(/^[a-f0-9]{64}$/),
+        choices: z.array(sessionChoiceSchema).max(33),
+      }),
+    )
+    .max(128),
+})
+export type AssistantSessionChoice = z.infer<typeof sessionChoiceSchema>
 type SettingRequest = Extract<
   AssistantRequest,
   { operation: "setMode" | "setModel" | "setConfigOption" }
@@ -81,15 +108,67 @@ function recoveryOrder(choice: AssistantSessionChoice) {
 }
 
 /** Accepted, currently selected user choices only; provider defaults are never captured. */
-export function createAssistantSessionPreferences() {
+export function createAssistantSessionPreferences(path?: string) {
+  if (path && !isAbsolute(path)) throw new Error("Assistant preferences require an absolute path.")
   const scopes = new Map<string, readonly AssistantSessionChoice[]>()
+  let loaded: Promise<void> | undefined
+  let writing = Promise.resolve()
+  function load() {
+    loaded ??= (async () => {
+      if (!path) return
+      try {
+        const bytes = await readPrivateFile(path, 65536)
+        const saved = preferencesSchema.parse(JSON.parse(bytes.toString("utf8")))
+        for (const { key, choices } of saved.scopes) scopes.set(key, choices)
+      } catch {
+        // Missing, unreadable or invalid preferences grant nothing and restore no choices.
+      }
+    })()
+    return loaded
+  }
+  function serialized() {
+    return JSON.stringify(
+      preferencesSchema.parse({
+        schemaVersion: 1,
+        scopes: [...scopes].map(([key, choices]) => ({ key, choices })),
+      }),
+    )
+  }
+  function save() {
+    if (!path) return Promise.resolve()
+    let content = serialized()
+    while (Buffer.byteLength(content, "utf8") > 65536) {
+      const oldest = scopes.keys().next().value
+      if (oldest === undefined) break
+      scopes.delete(oldest)
+      content = serialized()
+    }
+    const destination = path
+    const pending = writing
+      .then(async () => {
+        preparePrivateDirectory(dirname(destination))
+        const temporary = `${destination}.${crypto.randomUUID()}.tmp`
+        try {
+          await writePrivateFile(temporary, content)
+          await rename(temporary, destination)
+        } finally {
+          await rm(temporary, { force: true })
+        }
+      })
+      // Disk persistence cannot invalidate an accepted provider setting or its in-memory choice.
+      .catch(() => undefined)
+    writing = pending
+    return pending
+  }
   return {
-    read(key: string) {
+    async read(key: string) {
+      await load()
       return [...(scopes.get(key) ?? [])].sort(
         (left, right) => recoveryOrder(left) - recoveryOrder(right),
       )
     },
-    remember(key: string, choice: AssistantSessionChoice, snapshot: AssistantSnapshot) {
+    async remember(key: string, choice: AssistantSessionChoice, snapshot: AssistantSnapshot) {
+      await load()
       const retained = (scopes.get(key) ?? []).filter((choice) =>
         assistantSessionChoiceSelected(snapshot, choice),
       )
@@ -104,14 +183,18 @@ export function createAssistantSessionPreferences() {
         const oldest = scopes.keys().next().value
         if (oldest !== undefined) scopes.delete(oldest)
       }
+      await save()
     },
-    discardUnavailable(key: string, snapshot: AssistantSnapshot) {
+    async discardUnavailable(key: string, snapshot: AssistantSnapshot) {
+      await load()
       const retained = (scopes.get(key) ?? []).filter((choice) =>
         assistantSessionChoiceSupported(snapshot, choice),
       )
       scopes.set(key, retained)
+      await save()
     },
-    clear() {
+    async close() {
+      await writing.catch(() => undefined)
       scopes.clear()
     },
   }

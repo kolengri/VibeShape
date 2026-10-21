@@ -1,6 +1,6 @@
 import "../../../../tests/unit/support/dom"
-import { afterEach, describe, expect, it } from "bun:test"
-import { cleanup, render, screen } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ComponentProps } from "react"
@@ -46,7 +46,20 @@ async function openSetup() {
   await userEvent.click(screen.getByRole("menuitemradio", { name: "Apply automatically" }))
 }
 
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe("local AI auto-apply controls", () => {
   it.each([false, true])(
@@ -120,6 +133,68 @@ describe("local AI auto-apply controls", () => {
     expect(screen.getByRole("button", { name: "Stop AI" }).getAttribute("data-variant")).toBe(
       "ghost",
     )
+  })
+
+  it.each([false, true])(
+    "keeps error diagnostics on the actual active status trigger (project bound: %s)",
+    async (projectBound) => {
+      const { connection } = setup({ ...manual, projectBound, error: true })
+      const button = screen.getByRole("button", { name: "AI connection and approval mode" })
+      const diagnostic =
+        "AI connection interrupted. An approved local session reconnects automatically while its approval remains valid."
+      expect(button.classList.contains("text-destructive")).toBe(true)
+      expect(
+        screen.getAllByText(diagnostic).every((node) => node.classList.contains("sr-only")),
+      ).toBe(true)
+      expect(
+        document.getElementById(button.getAttribute("aria-describedby") ?? "")?.textContent,
+      ).toBe(diagnostic)
+      await userEvent.hover(button)
+      await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe(diagnostic))
+      await userEvent.unhover(button)
+      await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull())
+      fireEvent.focus(button)
+      expect(screen.getByRole("tooltip").textContent).toBe(diagnostic)
+      await userEvent.click(button)
+      expect(screen.getByRole(projectBound ? "dialog" : "menu")).toBeTruthy()
+      await userEvent.keyboard("{Escape}")
+      expect(document.activeElement).toBe(button)
+      await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+      expect(connection.disable).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it("exposes a disabled access diagnostic to keyboard focus and keeps the action inert", async () => {
+    const { connection } = setup({ ...manual, connected: false, client: null, error: true })
+    const button = screen.getByRole("button", { name: "Enable AI session" })
+    expect(button.hasAttribute("disabled")).toBe(true)
+    await userEvent.tab()
+    expect(document.activeElement).toBe(button.parentElement)
+    expect(screen.getByRole("tooltip").textContent).toContain("AI connection interrupted.")
+    await userEvent.keyboard("{Enter}")
+    expect(connection.enable).not.toHaveBeenCalled()
+  })
+
+  it("keeps recovery cancellation available with its full error diagnostic", async () => {
+    const { connection, rerender } = setup({
+      ...manual,
+      connected: false,
+      recovering: true,
+      error: true,
+    })
+    const stop = screen.getByRole("button", { name: "Stop AI" })
+    expect(stop.classList.contains("text-destructive")).toBe(true)
+    fireEvent.focus(stop)
+    expect(screen.getByRole("tooltip").textContent).toContain("AI connection interrupted.")
+    await userEvent.click(stop)
+    expect(connection.disable).toHaveBeenCalledTimes(1)
+    rerender({ ...manual, error: false })
+    expect(
+      screen
+        .getByRole("button", { name: "AI connection and approval mode" })
+        .classList.contains("text-destructive"),
+    ).toBe(false)
+    expect(screen.queryByText(/AI connection interrupted/)).toBeNull()
   })
 
   it("offers project management as a separate explicit grant with a described browser-local scope", async () => {

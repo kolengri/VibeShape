@@ -124,6 +124,26 @@ describe("app-owned native MCP attachment", () => {
   const projectId = "0195b5ac-b220-7a2c-8c33-67a36a7f6101"
   const document = { id: projectId, name: "Open project", revision: 4 }
 
+  it("reports retryable project discovery before registration without granting access", async () => {
+    const context = await host()
+    const unavailable = await browser(context, "status", {}, projectId)
+    expect(unavailable.status).toBe(404)
+    expect(await unavailable.json()).toEqual({
+      ok: false,
+      diagnostic: {
+        code: "project-session-unavailable",
+        message: "This project's native assistant is not connected.",
+        retryable: true,
+      },
+    })
+    await project(context, projectId)
+    expect(await (await browser(context, "status", {}, projectId)).json()).toEqual({
+      protocolVersion: 1,
+      client: { name: projectId, version: "1.0" },
+      paired: false,
+    })
+  })
+
   it("discovers and invokes native questions without ACP elicitation and rejects superseded transport callbacks", async () => {
     const context = await host()
     let calls = 0

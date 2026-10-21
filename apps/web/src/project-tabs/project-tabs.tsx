@@ -1,6 +1,6 @@
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
-import { FolderOpen, FolderPlus, X } from "@vibeshape/ui/components/icons"
+import { FilesIcon, NewProjectIcon, X } from "@vibeshape/ui/components/icons"
 import { Tabs, TabsList, TabsTrigger } from "@vibeshape/ui/components/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
@@ -165,7 +165,7 @@ function ProjectTabActions({
             aria-label={copy.newProject}
             onClick={tabs.create}
           >
-            <FolderPlus aria-hidden="true" />
+            <NewProjectIcon aria-hidden="true" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{tabs.blocked ? copy.blocked : copy.newProject}</TooltipContent>
@@ -180,7 +180,7 @@ function ProjectTabActions({
             aria-label={copy.openProjects}
             onClick={tabs.openLibrary}
           >
-            <FolderOpen aria-hidden="true" />
+            <FilesIcon aria-hidden="true" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{copy.openProjects}</TooltipContent>

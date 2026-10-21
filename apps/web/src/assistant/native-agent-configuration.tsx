@@ -208,7 +208,7 @@ export function NativeAgentConfiguration({
           <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
         </form>
       )}
-      <AssistantConnectionTestFeedback result={test.result} />
+      <AssistantConnectionTestFeedback result={test.result} attempt={test.attempt} />
     </div>
   )
 }
