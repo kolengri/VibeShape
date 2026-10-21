@@ -150,19 +150,10 @@ async function earliestValidAuthoritySnapshot(
   return null
 }
 
-async function historicalReplaySeed(
-  database: VibeShapeDatabase,
-  documentId: DocumentId,
-  revision: number,
-) {
-  const creation = await eventAt(database, documentId, 1)
-  return creation?.event.type === "org.vibeshape.document.created"
-    ? null
-    : earliestValidAuthoritySnapshot(database, documentId, 0, revision)
-}
-
 /** One request shares bounded full states and compact receipts for already validated reductions. */
 class AuthorityReplayContext {
+  #eventReads = 0
+  #creation: StoredReplayEvent | null = null
   #cache = new Map<number, { snapshot: DocumentAuthoritySnapshot; bytes: number }>()
   #bytes = 0
   #receipts = new Map<number, ReplayReceipt>()
@@ -173,6 +164,29 @@ class AuthorityReplayContext {
     private readonly database: VibeShapeDatabase,
     private readonly documentId: DocumentId,
   ) {}
+
+  async #eventAt(revision: number): Promise<StoredReplayEvent | null> {
+    if (revision === 1 && this.#creation) return this.#creation
+    if (this.#eventReads >= MAX_RECORDS)
+      throw persistenceInvariantError(
+        "corrupt-history",
+        "The event history exceeds its record budget.",
+      )
+    this.#eventReads++
+    const stored = await eventAt(this.database, this.documentId, revision)
+    // The seed peek and replay share this small validated record. Other events may
+    // contain oversized payloads, so they are reread within the same request budget.
+    if (revision === 1 && stored?.event.type === "org.vibeshape.document.created")
+      this.#creation = stored
+    return stored
+  }
+
+  async #historicalReplaySeed(revision: number) {
+    const creation = await this.#eventAt(1)
+    return creation?.event.type === "org.vibeshape.document.created"
+      ? null
+      : earliestValidAuthoritySnapshot(this.database, this.documentId, 0, revision)
+  }
 
   #cached(revision: number) {
     const cached = this.#cache.get(revision)
@@ -280,7 +294,7 @@ class AuthorityReplayContext {
     }
     // Start an uncached historical prefix at creation or its earliest verified seed.
     // Every resolvable target is then encountered in the same forward context.
-    let seed = await historicalReplaySeed(this.database, this.documentId, revision)
+    let seed = await this.#historicalReplaySeed(revision)
     this.#markUnavailable(1, (seed?.revision ?? 1) - 1)
     let snapshot = await this.replay(seed, revision, [])
     while (snapshot?.revision !== revision) {
@@ -353,7 +367,7 @@ class AuthorityReplayContext {
       return snapshot?.schemaVersion === receipt.schemaVersion
         ? { ...snapshot, revision, updatedAt: receipt.updatedAt }
         : null
-    const stored = await eventAt(this.database, this.documentId, revision)
+    const stored = await this.#eventAt(revision)
     if (!stored || stored.checksum !== receipt.eventChecksum) return null
     // A restore reaches this path only across schemas. Its target has a lower authority
     // version, so reconstruction holds a bounded number of working states, not a
@@ -367,7 +381,7 @@ class AuthorityReplayContext {
     let snapshot = seed
     if (seed) this.#remember(seed)
     for (let revision = (seed?.revision ?? 0) + 1; revision <= headRevision; revision += 1) {
-      const stored = await eventAt(this.database, this.documentId, revision)
+      const stored = await this.#eventAt(revision)
       if (!stored) {
         corrupt.push(`event-authority:${revision}`)
         break
