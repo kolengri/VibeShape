@@ -486,7 +486,9 @@ ordinary broker, credentials, exact previews, revisions and commit path; it gran
 management authority. External clients retain the initial pairing action below.
 
 The embedded native chat and its project automation connection bound transient recovery to five
-attempts before explicit retry. Exact ACP session loading, effective setting restoration and settled
+attempts before explicit retry. Transient model retries that expire while ACP is still loading do not discard
+that pending ACP connection. Once ACP is ready, the model connection gets a new bounded recovery
+phase; exhausting that phase still requires explicit retry. Exact ACP session loading, effective setting restoration and settled
 document persistence precede automatic continuation of an interrupted turn. The continuation reads
 authoritative state; neither the original prompt nor uncertain CAD operations are replayed. Explicit
 Stop or Disconnect, lost consent, permanent configuration errors and required authentication remain

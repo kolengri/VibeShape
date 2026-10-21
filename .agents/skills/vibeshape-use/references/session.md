@@ -46,7 +46,10 @@ unapplied semantic intent; follow the explicit adoption procedure in
 still prevents automatic reconnection and requires the person's intentional Enable action.
 
 The embedded desktop chat retries temporary ACP and native project-connection failures up to five
-times before exposing manual retry. When the provider supports loading the exact previous session,
+times before exposing manual retry. If transient model retries expire while ACP is still loading its session,
+the pending ACP connection can finish and then restart the bounded model recovery phase. Wait for
+that recovery before reading the saved model; a successful ACP handshake alone does not establish
+model access. When the provider supports loading the exact previous session,
 an interrupted turn resumes with instructions to reconcile the current model and recoverable intent
 before further changes. The interrupted prompt and uncertain writes are never replayed by the
 controller. If restoration is unsupported, authentication is required, or retries are exhausted,

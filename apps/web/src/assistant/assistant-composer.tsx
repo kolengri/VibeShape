@@ -314,7 +314,7 @@ function AssistantTurnActions({
 
 function AssistantComposerActions(props: ComposerActionsProps) {
   return (
-    <div className="grid min-w-0 grid-cols-1 items-end gap-1 px-2 pb-2 @sm/composer:grid-cols-[minmax(0,1fr)_auto]">
+    <div className="grid min-w-0 grid-cols-1 gap-2 px-2 pb-2">
       <div className="min-w-0">{props.sessionControls}</div>
       <div className="flex shrink-0 items-center justify-self-end gap-1">
         <AssistantAttachmentAction {...props} />

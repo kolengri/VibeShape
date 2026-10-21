@@ -343,6 +343,7 @@ describe("embedded project access", () => {
       recoveryFailed: true,
       error: true,
     })
+    expect(await connection.retryRecovery({ automatic: true })).toBe(false)
     await connection.status()
     await vi.advanceTimersByTimeAsync(60_000)
     expect(mocks.createHandle).toHaveBeenCalledTimes(1)
@@ -462,54 +463,57 @@ describe("embedded project access", () => {
     },
   )
 
-  it("bounds native transport recovery at five attempts, retains the error through discovery, and resets on manual recovery", async () => {
-    useNativeProject()
-    await ready()
-    await vi.advanceTimersByTimeAsync(0)
-    const original = mocks.request.getMockImplementation()
-    let unavailable = true
-    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
-      if (unavailable && (path === "/poll" || path === "/resume"))
-        throw new LocalAutomationTransportError("Fixture transport outage")
-      return original?.(path, ...args)
-    })
-    await vi.advanceTimersByTimeAsync(500)
-    expect(connection.getSnapshot()).toMatchObject({ connected: false, recovering: true })
-    for (const [index, delay] of [1000, 2000, 4000, 8000, 8000].entries()) {
-      await vi.advanceTimersByTimeAsync(delay)
-      expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(
-        index + 1,
-      )
-    }
-    expect(connection.getSnapshot()).toMatchObject({
-      recovering: false,
-      error: true,
-      recoveryAttempt: 5,
-      recoveryFailed: true,
-    })
-    await connection.status()
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(5)
-    expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
-    expect(connection.getSnapshot().error).toBe(true)
-    unavailable = false
-    expect(await connection.retryRecovery()).toBe(true)
-    expect(await connection.retryRecovery()).toBe(false)
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(connection.getSnapshot()).toMatchObject({
-      connected: true,
-      error: false,
-      recoveryAttempt: 0,
-      recoveryFailed: false,
-    })
-    unavailable = true
-    await vi.advanceTimersByTimeAsync(1500)
-    expect(connection.getSnapshot().recoveryAttempt).toBe(1)
-    await connection.disable()
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(7)
-    expect(connection.getSnapshot().connected).toBe(false)
-  })
+  it.each([false, true])(
+    "bounds native transport recovery and permits retry (automatic: %s)",
+    async (automatic) => {
+      useNativeProject()
+      await ready()
+      await vi.advanceTimersByTimeAsync(0)
+      const original = mocks.request.getMockImplementation()
+      let unavailable = true
+      mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+        if (unavailable && (path === "/poll" || path === "/resume"))
+          throw new LocalAutomationTransportError("Fixture transport outage")
+        return original?.(path, ...args)
+      })
+      await vi.advanceTimersByTimeAsync(500)
+      expect(connection.getSnapshot()).toMatchObject({ connected: false, recovering: true })
+      for (const [index, delay] of [1000, 2000, 4000, 8000, 8000].entries()) {
+        await vi.advanceTimersByTimeAsync(delay)
+        expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(
+          index + 1,
+        )
+      }
+      expect(connection.getSnapshot()).toMatchObject({
+        recovering: false,
+        error: true,
+        recoveryAttempt: 5,
+        recoveryFailed: true,
+      })
+      await connection.status()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(5)
+      expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+      expect(connection.getSnapshot().error).toBe(true)
+      unavailable = false
+      expect(await connection.retryRecovery({ automatic })).toBe(true)
+      expect(await connection.retryRecovery()).toBe(false)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(connection.getSnapshot()).toMatchObject({
+        connected: true,
+        error: false,
+        recoveryAttempt: 0,
+        recoveryFailed: false,
+      })
+      unavailable = true
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(connection.getSnapshot().recoveryAttempt).toBe(1)
+      await connection.disable()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(7)
+      expect(connection.getSnapshot().connected).toBe(false)
+    },
+  )
 
   it("does not retry a changed approved native client or let status reset its permanent failure", async () => {
     useNativeProject()
@@ -534,6 +538,8 @@ describe("embedded project access", () => {
       recoveryFailed: true,
       recoveryAttempt: 1,
     })
+    expect(await connection.retryRecovery({ automatic: true })).toBe(false)
+    await vi.advanceTimersByTimeAsync(30_000)
     expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
     expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(0)
   })

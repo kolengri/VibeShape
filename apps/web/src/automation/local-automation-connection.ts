@@ -226,6 +226,7 @@ export function createLocalAutomationConnection(
   let statusRequest: Promise<void> | null = null
   let nativeRecoveryAttempt = 0
   let nativeRecoveryFailed = false
+  let nativeRecoveryRetryable = false
   let nativeRecoveryPending = false
   const listeners = new Set<() => void>()
   function publish(next: Snapshot) {
@@ -852,6 +853,7 @@ export function createLocalAutomationConnection(
     }
     if (nativeProjectAccess) {
       nativeRecoveryFailed = true
+      nativeRecoveryRetryable = false
       nativeRecoveryPending = false
     }
     publish({ ...snapshot, recovering: false, error: true })
@@ -914,6 +916,7 @@ export function createLocalAutomationConnection(
       (error instanceof LocalAutomationDocumentError &&
         error.diagnostic.code === "document-write-unavailable" &&
         error.diagnostic.retryable)
+    nativeRecoveryRetryable = retryable
     if (!retryable || nativeRecoveryAttempt >= 5) {
       nativeRecoveryFailed = true
       nativeRecoveryPending = false
@@ -985,10 +988,14 @@ export function createLocalAutomationConnection(
   const onPageShow = () => {
     void status()
   }
+  function canRestartNativeRecovery() {
+    return nativeProjectAccess && nativeRecoveryFailed && !disposed && !connecting && !pair
+  }
   return {
     disconnect: () => disconnect(),
-    async retryRecovery() {
-      if (!nativeProjectAccess || !nativeRecoveryFailed || disposed || connecting || pair)
+    async retryRecovery(options?: { automatic?: boolean }) {
+      if (!canRestartNativeRecovery()) return false
+      if (options?.automatic && (!nativeRecoveryRetryable || automaticConnectionBlocked))
         return false
       automaticConnectionBlocked = savedConnectionBlocked()
       if (automaticConnectionBlocked) return false
