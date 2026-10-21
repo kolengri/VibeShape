@@ -126,45 +126,84 @@ function fixture() {
 }
 
 describe("isolated model previews", () => {
-  it("forwards a custom camera and detail height without changing the user's viewport", async () => {
+  it.each([undefined, "overview", "detail"] as const)(
+    "resolves %s quality before rendering default views",
+    async (quality) => {
+      const f = fixture()
+      const resolved = quality ?? "overview"
+      const views: ModelPreview["views"] =
+        resolved === "detail" ? ["isometric", "front", "right", "top"] : ["isometric"]
+      f.render.mockResolvedValue({ ...image, views })
+      await expect(
+        f.reader.read(f.snapshot.id, { source: "model", revision: 4, quality }),
+      ).resolves.toMatchObject({ ok: true, value: { quality: resolved, image: { views } } })
+      expect(f.render).toHaveBeenCalledWith(expect.any(Array), { quality: resolved })
+      expect(f.commit).not.toHaveBeenCalled()
+    },
+  )
+  it.each(["overview", "detail"] as const)(
+    "forwards a custom camera and span at %s quality",
+    async (quality) => {
+      const f = fixture()
+      const camera = {
+        position: [10, 20, 30] as [number, number, number],
+        target: [0, 0, 0] as [number, number, number],
+        up: [0, 0, 1] as [number, number, number],
+        viewHeightMm: 3,
+      }
+      const customImage = { ...image, views: ["custom"] } as ModelPreview
+      f.render.mockResolvedValue(customImage)
+      await expect(
+        f.reader.read(f.snapshot.id, { source: "model", revision: 4, quality, camera }),
+      ).resolves.toMatchObject({
+        ok: true,
+        value: { quality, camera, image: { views: ["custom"] } },
+      })
+      expect(f.render).toHaveBeenCalledWith(expect.any(Array), { quality, camera })
+      expect(f.commit).not.toHaveBeenCalled()
+      f.render.mockResolvedValue(image)
+      await expect(
+        f.reader.read(f.snapshot.id, { source: "model", revision: 4, quality, camera }),
+      ).resolves.toMatchObject({ ok: false, diagnostic: { code: "invalid-geometry-evidence" } })
+    },
+  )
+  it.each(["overview", "detail"] as const)(
+    "renders explicit views and terminal bodies at %s quality without committing",
+    async (quality) => {
+      const f = fixture()
+      await expect(f.reader.read(f.snapshot.id, { ...f.request, quality })).resolves.toMatchObject({
+        ok: true,
+        value: {
+          source: "model",
+          documentId: f.snapshot.id,
+          revision: 4,
+          generation: 9,
+          geometryStatus: "valid",
+          bodyCount: 1,
+          quality,
+          image,
+        },
+      })
+      expect(f.render).toHaveBeenCalledWith(
+        [expect.objectContaining({ featureId: id(1), outputRole: "result" })],
+        { quality, views: ["front"] },
+      )
+      expect(f.commit).not.toHaveBeenCalled()
+    },
+  )
+  it("captures the requested quality before an asynchronous rebuild", async () => {
     const f = fixture()
-    const camera = {
-      position: [10, 20, 30] as [number, number, number],
-      target: [0, 0, 0] as [number, number, number],
-      up: [0, 0, 1] as [number, number, number],
-      viewHeightMm: 3,
-    }
-    const customImage = { ...image, views: ["custom"] } as ModelPreview
-    f.render.mockResolvedValue(customImage)
-    await expect(
-      f.reader.read(f.snapshot.id, { source: "model", revision: 4, camera }),
-    ).resolves.toMatchObject({ ok: true, value: { camera, image: { views: ["custom"] } } })
-    expect(f.render).toHaveBeenCalledWith(expect.any(Array), { camera })
-    expect(f.commit).not.toHaveBeenCalled()
-    f.render.mockResolvedValue(image)
-    await expect(
-      f.reader.read(f.snapshot.id, { source: "model", revision: 4, camera }),
-    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "invalid-geometry-evidence" } })
-  })
-  it("renders terminal model bodies with exact rebuild metadata without committing", async () => {
-    const f = fixture()
-    await expect(f.reader.read(f.snapshot.id, f.request)).resolves.toMatchObject({
-      ok: true,
-      value: {
-        source: "model",
-        documentId: f.snapshot.id,
-        revision: 4,
-        generation: 9,
-        geometryStatus: "valid",
-        bodyCount: 1,
-        image,
-      },
+    const pendingRebuild = deferred<DisposableDocumentPreviewResult>()
+    f.preview.mockImplementation(() => pendingRebuild.promise)
+    const options: { quality?: "overview" | "detail"; views: ["front"] } = { views: ["front"] }
+    const pending = f.reader.renderSnapshot(f.snapshot, options)
+    options.quality = "detail"
+    pendingRebuild.resolve(f.rebuilt)
+    await expect(pending).resolves.toMatchObject({ ok: true, value: { quality: "overview" } })
+    expect(f.render).toHaveBeenCalledWith(expect.any(Array), {
+      quality: "overview",
+      views: ["front"],
     })
-    expect(f.render).toHaveBeenCalledWith(
-      [expect.objectContaining({ featureId: id(1), outputRole: "result" })],
-      { views: ["front"] },
-    )
-    expect(f.commit).not.toHaveBeenCalled()
   })
   it("keeps invalid status while rendering successful independent bodies", async () => {
     const f = fixture()
@@ -242,13 +281,15 @@ describe("isolated model previews", () => {
     })
     expect(f.render).not.toHaveBeenCalled()
   })
-  it("rejects a superseded render generation while a later render succeeds", async () => {
+  it("rejects a superseded overview while a later detail render succeeds", async () => {
     const f = fixture(),
       first = deferred<ModelPreview>()
     f.render.mockImplementationOnce(() => first.promise)
     const old = f.reader.read(f.snapshot.id, f.request)
     await vi.waitFor(() => expect(f.render).toHaveBeenCalledTimes(1))
-    await expect(f.reader.read(f.snapshot.id, f.request)).resolves.toMatchObject({ ok: true })
+    await expect(
+      f.reader.read(f.snapshot.id, { ...f.request, quality: "detail" }),
+    ).resolves.toMatchObject({ ok: true, value: { quality: "detail" } })
     first.resolve(image)
     await expect(old).resolves.toMatchObject({
       ok: false,

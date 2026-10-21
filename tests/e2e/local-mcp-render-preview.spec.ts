@@ -163,7 +163,7 @@ test("renders owned draft and saved CAD images through real stdio MCP without ch
     }
     const renderedDraft = await render(
       { source: "draft", draftId: draft.draftId, revision },
-      "draft-collage.png",
+      "draft-overview.png",
     )
     expect(renderedDraft).toMatchObject({
       source: "draft",
@@ -172,6 +172,20 @@ test("renders owned draft and saved CAD images through real stdio MCP without ch
       baseRevision: base,
       bodyCount: 1,
       geometryStatus: "valid",
+      quality: "overview",
+      image: { views: ["isometric"] },
+    })
+    expect(renderedDraft.image.width).toBeLessThanOrEqual(768)
+    expect(renderedDraft.image.height).toBeLessThanOrEqual(576)
+    const detailedDraft = await render(
+      { source: "draft", draftId: draft.draftId, revision, quality: "detail" },
+      "draft-collage.png",
+    )
+    expect(detailedDraft).toMatchObject({
+      source: "draft",
+      draftId: draft.draftId,
+      revision,
+      quality: "detail",
       image: { views: ["isometric", "front", "right", "top"] },
     })
     expect(
@@ -189,11 +203,12 @@ test("renders owned draft and saved CAD images through real stdio MCP without ch
     )
     await expect(review).not.toBeVisible()
     const canvas = page.locator("canvas").first()
-    const before = await canvas.screenshot()
+    const before = await canvas.screenshot({ animations: "disabled" })
     const savedImage = await render(
       {
         source: "model",
         revision: saved.revision,
+        quality: "detail",
         views: ["top"],
         target: { featureId: id(3), outputRole: "result" },
       },
@@ -204,20 +219,32 @@ test("renders owned draft and saved CAD images through real stdio MCP without ch
       revision: saved.revision,
       bodyCount: 1,
       geometryStatus: "valid",
+      quality: "detail",
     })
     const camera = { position: [0, 0, 50], target: [0, 0, 5], viewHeightMm: 16 }
     const detail = await render(
       {
         source: "model",
         revision: saved.revision,
+        quality: "detail",
         camera,
         target: { featureId: id(3), outputRole: "result" },
       },
       "hole-detail.png",
     )
-    expect(detail).toMatchObject({ camera, image: { views: ["custom"] } })
+    expect(detail).toMatchObject({ quality: "detail", camera, image: { views: ["custom"] } })
     expect(detail.centerGapPixels).toBeGreaterThan(savedImage.centerGapPixels * 2)
-    expect(await canvas.screenshot()).toEqual(before)
+    const after = await canvas.screenshot({ animations: "disabled" })
+    for (const [name, bytes] of [
+      ["viewport-before.png", before],
+      ["viewport-after.png", after],
+    ] as const) {
+      await writeFile(info.outputPath(name), bytes)
+      await info.attach(name, { body: bytes, contentType: "image/png" })
+    }
+    expect(after.equals(before), "Preview rendering must preserve the live viewport pixels.").toBe(
+      true,
+    )
     expect(
       success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary.revision,
     ).toBe(saved.revision)

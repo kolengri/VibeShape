@@ -37,10 +37,21 @@ test("offers both exact Split outputs as Hole targets after a real worker rebuil
   await invokeModelCommand(page, "Modify", "Hole")
   const hole = page.getByRole("form", { name: "Hole", exact: true })
   const targetBody = hole.getByRole("combobox", { name: "Target body", exact: true })
-  await expect(targetBody.getByRole("option", { name: /split\.negative/ })).toBeAttached()
-  await expect(targetBody.getByRole("option", { name: /split\.positive/ })).toBeAttached()
-  await targetBody.selectOption({ label: "Split 1 · split.positive" })
-  await expect(targetBody.locator("option:checked")).toHaveText("Split 1 · split.positive")
+  await targetBody.click()
+  await expect(
+    page.getByRole("option", { name: "Split 1 · split.negative", exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("option", { name: "Split 1 · split.positive", exact: true }),
+  ).toBeVisible()
+  await page.getByRole("combobox", { name: "Search options…", exact: true }).fill("split.positive")
+  await expect(
+    page.getByRole("option", { name: "Split 1 · split.positive", exact: true }),
+  ).toBeVisible()
+  await page.getByRole("option", { name: "Split 1 · split.positive", exact: true }).click()
+  await expect(
+    hole.getByRole("button", { name: "Select Target body in 3D", exact: true }),
+  ).toHaveText("Split 1 · split.positive")
   await hole.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Split 1", exact: true })).toBeVisible()
 })

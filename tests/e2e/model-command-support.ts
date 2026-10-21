@@ -11,7 +11,9 @@ export async function openModelCommand(
   const direct = toolbar.getByRole("button", { name, exact: true })
   const group = toolbar.getByRole("button", { name: menu, exact: true })
   const compact = toolbar.getByRole("button", { name: "Modeling actions", exact: true })
-  const item = page.getByRole("menuitem", { name, exact: true })
+  const item = page
+    .getByRole("menuitem", { name, exact: true })
+    .or(page.getByRole("option", { name, exact: true }))
   await expect(direct.or(item).or(group).or(compact).first()).toBeVisible()
   if (await direct.isVisible()) return direct
   if (await item.isVisible()) return item

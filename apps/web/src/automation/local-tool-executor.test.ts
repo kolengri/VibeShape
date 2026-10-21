@@ -209,13 +209,13 @@ describe("local automation tool executor", () => {
     const camera = { position: [10, 20, 30], target: [0, 0, 0], viewHeightMm: 3 }
     const operation = localOperationSchema.parse({
       tool: "render_preview",
-      arguments: { source: "draft", draftId: id(3), revision: 4, camera },
+      arguments: { source: "draft", draftId: id(3), revision: 4, quality: "detail", camera },
     })
     await createLocalToolExecutor(session, actor).execute(operation)
     expect(renderDraft).toHaveBeenCalledTimes(1)
     expect(renderDraft).toHaveBeenCalledWith(
       actor,
-      { schemaVersion: 1, draftId: id(3), revision: 4, camera },
+      { schemaVersion: 1, draftId: id(3), revision: 4, quality: "detail", camera },
       undefined,
     )
   })
@@ -261,6 +261,7 @@ describe("local automation tool executor", () => {
       const argumentsInput = {
         source,
         revision: 4,
+        quality: "detail",
         views: ["front"],
         target,
         ...(source === "draft" ? { draftId: id(3) } : {}),
@@ -281,7 +282,14 @@ describe("local automation tool executor", () => {
         expect(renderDraft).toHaveBeenCalledTimes(1)
         expect(renderDraft).toHaveBeenCalledWith(
           actor,
-          { schemaVersion: 1, draftId: id(3), revision: 4, views: ["front"], target },
+          {
+            schemaVersion: 1,
+            draftId: id(3),
+            revision: 4,
+            quality: "detail",
+            views: ["front"],
+            target,
+          },
           signal,
         )
         expect(readRenderPreview).not.toHaveBeenCalled()

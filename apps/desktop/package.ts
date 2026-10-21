@@ -15,6 +15,7 @@ import { createWindowsArchive } from "./windows-archive"
 
 const root = resolve(import.meta.dirname, "../..")
 const dist = join(root, "apps/web/dist")
+const buildReceiptNames = { darwin: "desktop-build.json", win32: "desktop-build-win-x64.json" }
 function run(command: string, args: string[]) {
   const result = spawnSync(command, args, { cwd: root, encoding: "utf8" })
   if (result.status !== 0) throw new Error(`${command} failed: ${result.stderr}`)
@@ -228,7 +229,7 @@ await withPackageOutput(input.output, async (stage) => {
     throw new Error("Source or editor changed during packaging; refuse the generated artifacts.")
   await verifyRuntimeFiles(join(root, "apps/desktop/dist"), files.runtime)
   await writeFile(
-    join(input.output, "desktop-build.json"),
+    join(input.output, buildReceiptNames[input.platform]),
     `${JSON.stringify(
       {
         schemaVersion: 1,

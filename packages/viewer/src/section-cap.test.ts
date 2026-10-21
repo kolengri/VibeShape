@@ -156,6 +156,42 @@ describe("disposable closed-mesh section caps", () => {
     ).toBeNull()
   })
 
+  it.each(["x", "y", "z"] as const)(
+    "preserves cap area and tolerance at translated %s bounds",
+    (axis) => {
+      const mesh = source(new BoxGeometry(10, 10, 10).translate(100_000, 100_000, 100_000))
+      const coordinate = { x: 0, y: 1, z: 2 }[axis]
+      for (const flipped of [false, true]) {
+        for (const offset of [99_995.002, 100_000, 100_004.998]) {
+          const cap = sectionCapPositions(mesh, { axis, offset, flipped })
+          expect(area(cap)).toBeCloseTo(100, 4)
+          expect(cap).not.toBeNull()
+          if (!cap) throw new Error("Expected an interior cap.")
+          for (let index = coordinate; index < cap.length; index += 3)
+            expect(cap[index]).toBe(Math.fround(offset))
+        }
+        // At this translation the welding tolerance is 0.00100005 mm.
+        for (const offset of [
+          99_990, 99_994.9995, 99_995, 99_995.0005, 100_004.9995, 100_005, 100_005.0005, 100_010,
+        ])
+          expect(sectionCapPositions(mesh, { axis, offset, flipped })).toBeNull()
+      }
+    },
+  )
+
+  it("refreshes cached bounds when a body snapshot is replaced", () => {
+    const mesh = source(new BoxGeometry(10, 10, 10).translate(100_000, 100_000, 100_000))
+    expect(area(sectionCapPositions(mesh, { axis: "x", offset: 100_000, flipped: false }))).toBe(
+      100,
+    )
+    const replacement = source(new BoxGeometry(10, 10, 10))
+    expect(replacement.featureId).toBe(mesh.featureId)
+    expect(area(sectionCapPositions(replacement, { axis: "x", offset: 0, flipped: false }))).toBe(
+      100,
+    )
+    expect(sectionCapPositions(mesh, { axis: "x", offset: 0, flipped: false })).toBeNull()
+  })
+
   it("rejects a single self-intersecting contour even with a closed manifold edge graph", () => {
     const polygon = [
       [0, 0],

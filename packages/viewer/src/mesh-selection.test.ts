@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { BoxGeometry, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three"
 import { createViewerGeometry, viewerBodyKey } from "./mesh-geometry"
 import {
+  createFaceHighlightGeometry,
   firstViewerSelectionHit,
   viewerFaceOrdinal,
   viewerSelectionFromSource,
@@ -21,6 +22,60 @@ function source(ids: Uint32Array): ViewerMesh {
 }
 
 describe("current display face metadata", () => {
+  it("extracts noncontiguous face triangles in source order with exact normals and independent buffers", () => {
+    const mesh: ViewerMesh = {
+      ...source(new Uint32Array([0, 8, 0])),
+      positions: new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+      normals: new Float32Array([0, 1, 0, 1, 0, 0, 0, 0, 1, -1, 0, 0]),
+      indices: new Uint32Array([0, 1, 2, 1, 2, 3, 3, 2, 0]),
+    }
+    for (let repeat = 0; repeat < 2; repeat += 1) {
+      const geometry = createFaceHighlightGeometry(mesh, 0)
+      if (!geometry) throw new Error("Expected face zero.")
+      expect(Array.from(geometry.getAttribute("position").array)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 7, 8, 9, 1, 2, 3,
+      ])
+      expect(Array.from(geometry.getAttribute("normal").array)).toEqual([
+        0, 1, 0, 1, 0, 0, 0, 0, 1, -1, 0, 0, 0, 0, 1, 0, 1, 0,
+      ])
+      geometry.getAttribute("position").setX(0, 99)
+      expect(mesh.positions[0]).toBe(1)
+      geometry.dispose()
+    }
+    const replaced = { ...mesh, triangleFaceIds: new Uint32Array([8, 0, 8]) }
+    const replacement = createFaceHighlightGeometry(replaced, 0)
+    expect(Array.from(replacement?.getAttribute("position").array ?? [])).toEqual([
+      4, 5, 6, 7, 8, 9, 10, 11, 12,
+    ])
+    replacement?.dispose()
+    // Sharing immutable face metadata never caches the geometry or its vertex buffers.
+    const moved = createFaceHighlightGeometry(
+      { ...mesh, positions: mesh.positions.map((x) => x + 1) },
+      0,
+    )
+    expect(moved?.getAttribute("position").getX(0)).toBe(2)
+    moved?.dispose()
+  })
+
+  it("omits highlights for missing IDs, missing indices, positions, or normals after indexing", () => {
+    const mesh: ViewerMesh = {
+      ...source(new Uint32Array([7])),
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      normals: new Float32Array(9),
+      indices: new Uint32Array([0, 1, 2]),
+    }
+    createFaceHighlightGeometry(mesh, 7)?.dispose()
+    for (const broken of [
+      { ...mesh, indices: new Uint32Array([0, 1]) },
+      { ...mesh, indices: new Uint32Array([0, 1, 3]) },
+      { ...mesh, positions: new Float32Array(8) },
+      { ...mesh, normals: new Float32Array(8) },
+    ])
+      expect(createFaceHighlightGeometry(broken, 7)).toBeNull()
+    expect(createFaceHighlightGeometry(mesh, 99)).toBeNull()
+    expect(createFaceHighlightGeometry(source(new Uint32Array()), 7)).toBeNull()
+  })
+
   it("indexes first-occurrence ordinals once and preserves zero and missing IDs", () => {
     const ids = new Uint32Array([42, 42, 7, 42, 0, 7, 99])
     const values = ids[Symbol.iterator].bind(ids)

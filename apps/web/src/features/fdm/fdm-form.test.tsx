@@ -1,8 +1,13 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, beforeAll, expect, it } from "bun:test"
+import { afterEach, beforeAll, beforeEach, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
+import {
+  type FeatureRecord,
+  featureIdSchema,
+  type SketchRecord,
+  sketchRecordSchema,
+} from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
@@ -17,10 +22,24 @@ const units = { length: "mm", angle: "deg" } as const
 beforeAll(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 })
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 function setup(
   onSave = vi.fn(async (_revision: number, _feature: FeatureRecord) => ({ ok: true as const })),
   kind: FdmToolKind = "calibration-coupon",
+  sketches: readonly SketchRecord[] = [],
 ) {
   const onSaved = vi.fn(),
     onPreviewChange = vi.fn(),
@@ -34,7 +53,7 @@ function setup(
         baseRevision={3}
         variables={[]}
         options={[]}
-        sketches={[]}
+        sketches={sketches}
         frameOptions={{ planes: [], axes: [] }}
         onCancel={vi.fn()}
         onSave={onSave}
@@ -111,22 +130,65 @@ it("restores the coupon feature with its authored dimensions", () => {
 it("limits wall extension to Web and clears the incompatible setting when choosing Rib", async () => {
   setup(undefined, "web")
   await userEvent.click(screen.getByRole("checkbox", { name: "Extend lines to cavity walls" }))
-  fireEvent.keyDown(screen.getByRole("combobox", { name: "Reinforcement type" }), { key: "Enter" })
-  await userEvent.click(screen.getByRole("option", { name: "Rib / gusset" }))
+  await userEvent.click(screen.getByRole("radio", { name: "Rib / gusset" }))
   expect(screen.queryByRole("checkbox", { name: "Extend lines to cavity walls" })).toBeNull()
-  fireEvent.keyDown(screen.getByRole("combobox", { name: "Reinforcement type" }), { key: "Enter" })
-  await userEvent.click(screen.getByRole("option", { name: /^Web$/ }))
+  await userEvent.click(screen.getByRole("radio", { name: /^Web$/ }))
   expect(
     (screen.getByRole("checkbox", { name: "Extend lines to cavity walls" }) as HTMLInputElement)
       .checked,
   ).toBe(false)
 })
 
+it("clears a saved sketch and its selected lines before choosing it again", async () => {
+  const pointA = "0195b5ac-b220-7a2c-8c33-67a36a7f8102"
+  const pointB = "0195b5ac-b220-7a2c-8c33-67a36a7f8103"
+  const lineId = "0195b5ac-b220-7a2c-8c33-67a36a7f8104"
+  const sketch = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f8101",
+    label: "Web profile",
+    plane: "xy",
+    entities: [
+      { schemaVersion: 0, id: pointA, type: "point", x: 0, y: 0, construction: false },
+      { schemaVersion: 0, id: pointB, type: "point", x: 10, y: 0, construction: false },
+      {
+        schemaVersion: 0,
+        id: lineId,
+        type: "line",
+        startPointId: pointA,
+        endPointId: pointB,
+        construction: false,
+      },
+    ],
+    constraints: [],
+  })
+  const user = userEvent.setup()
+  const f = setup(undefined, "web", [sketch])
+  const picker = screen.getByRole("combobox", { name: "Saved sketch" })
+  await user.click(picker)
+  await user.click(screen.getByRole("option", { name: "Web profile" }))
+  const line = screen.getByRole("checkbox", { name: "Line 1" }) as HTMLInputElement
+  await user.click(line)
+  expect(line.checked).toBe(true)
+  await user.click(picker)
+  await user.click(screen.getByRole("option", { name: "Choose a saved sketch" }))
+  expect(picker.textContent).toBe("Choose a saved sketch")
+  expect(screen.queryByRole("checkbox", { name: "Line 1" })).toBeNull()
+  expect(screen.queryByText(`Unavailable line: ${lineId}`)).toBeNull()
+  await user.click(picker)
+  expect(
+    screen.getByRole("option", { name: "Choose a saved sketch" }).getAttribute("aria-current"),
+  ).toBe("true")
+  await user.click(screen.getByRole("option", { name: "Web profile" }))
+  expect((screen.getByRole("checkbox", { name: "Line 1" }) as HTMLInputElement).checked).toBe(false)
+  expect(f.onSave).not.toHaveBeenCalled()
+})
+
 it("pairs all twelve FDM tool choices with distinct decorative artwork", async () => {
   setup()
-  fireEvent.keyDown(screen.getByRole("combobox", { name: messages.app.fdm.kind }), { key: "Enter" })
-  const options = await screen.findAllByRole("option")
-  expect(options).toHaveLength(12)
+  await userEvent.click(screen.getByRole("combobox", { name: messages.app.fdm.kind }))
+  await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(12))
+  const options = screen.getAllByRole("option")
   const ids = options.map((option) =>
     option.querySelector("svg[data-icon]")?.getAttribute("data-icon"),
   )

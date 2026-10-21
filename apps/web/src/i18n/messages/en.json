@@ -842,7 +842,9 @@
         "partActionsLabel": "Selected part actions",
         "modelCreateLabel": "Create",
         "modelModifyLabel": "Modify",
-        "modelInspectLabel": "Inspect"
+        "modelInspectLabel": "Inspect",
+        "searchTools": "Search tools…",
+        "noMatchingTools": "No matching tools"
       },
       "sketchShortcutToolbar": {
         "ariaLabel": "Sketch shortcuts"
@@ -930,7 +932,32 @@
         "originPlanes": "Origin planes",
         "projectNameFallback": "Untitled project",
         "hideAllOriginPlanes": "Hide all origin planes",
-        "showAllOriginPlanes": "Show all origin planes"
+        "showAllOriginPlanes": "Show all origin planes",
+        "search": {
+          "label": "Search model",
+          "placeholder": "Search by name or type",
+          "clear": "Clear model search",
+          "filters": "Filter model results by type",
+          "types": {
+            "all": "All",
+            "part": "Parts",
+            "body": "Bodies",
+            "sketch": "Sketches",
+            "plane": "Planes",
+            "operation": "Operations"
+          },
+          "results": "Model search results",
+          "count": "{count, plural, =0 {No results} one {# result} other {# results}}",
+          "hiddenSelection": "{count, plural, one {# selected item is outside these results.} other {# selected items are outside these results.}}",
+          "unavailable": "Unavailable at the current History position",
+          "partPath": "Parts / {source}",
+          "bodyPath": "{group} / {source} / {role}",
+          "historyPath": "History / {source} / {type} {number}",
+          "folderPath": "{folder} / {name}",
+          "sourceRole": "{source} / {role}",
+          "resultRole": "Result",
+          "selection": "Selected"
+        }
       },
       "statusBar": {
         "selectionFilter": "Selection filter",
@@ -1452,6 +1479,8 @@
         },
         "sketch": {
           "taskAriaLabel": "Sketch task panel",
+          "profiles": "Sketch profiles",
+          "profile": "Profile {number}",
           "workspaceTitle": "Sketch workspace",
           "workspaceDescription": "Create and constrain points, lines, rectangles, circles, ellipses, and arcs on an origin plane or supported planar model face. Sketches are solved locally and can use document variables.",
           "savedDescription": "Saved on its support plane. Edit its geometry and constraints or select a closed profile for a downstream feature.",
@@ -2958,7 +2987,8 @@
       "capturedPlacement": "Placements are captured from the current rebuilt revision. Changing the project or revision requires reopening this task.",
       "asBuiltFailed": "The assembled placement could not be connected. Check grounding, existing joints and selected members, then retry. The design is unchanged.",
       "selectedItemActions": "Actions for {name}",
-      "editJointWith": "Edit {kind} joint with {instance}"
+      "editJointWith": "Edit {kind} joint with {instance}",
+      "choiceSource": "{number} · {source}"
     },
     "import": {
       "trigger": "Import…",
@@ -3870,6 +3900,10 @@
         "timeoutMs": "Provider timeout (ms)",
         "invalid": "Check the model and limits. Set both the argument endpoint and model, using HTTPS or local HTTP without embedded credentials."
       }
+    },
+    "searchableSelect": {
+      "search": "Search options…",
+      "empty": "No matching options"
     }
   }
 }

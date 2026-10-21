@@ -13,6 +13,8 @@
     ".github/workflows/ci.yml"
   ],
   "globalEnv": [
+    "APPDATA",
+    "SystemRoot",
     "CI",
     "NODE_ENV",
     "TZ",

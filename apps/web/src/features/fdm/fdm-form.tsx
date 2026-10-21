@@ -1,9 +1,10 @@
 import type { FeatureRecord, SketchRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Field, FieldDescription, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useState } from "react"
+import { type Ref, useState } from "react"
+import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import type { ExactBodyOption } from "../part-design/exact-body-options"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel } from "../part-design/parameter-panel"
@@ -35,6 +36,7 @@ import { FdmToolIcon } from "./fdm-tool-icon"
 type Props = FeatureParameterFormProps<FdmFormMode, never> & {
   kind: FdmToolKind
   onKindChange: (kind: FdmToolKind) => void
+  kindControlRef?: Ref<HTMLButtonElement>
   options: readonly ExactBodyOption[]
   sketches: readonly SketchRecord[]
   frameOptions: ReferenceFrameOptions
@@ -132,7 +134,7 @@ export function FdmForm(props: FdmFormProps) {
       <>
         <form.Field name="style">
           {(field) => (
-            <SelectField
+            <ChoiceField
               label={t("style")}
               value={field.state.value}
               onValueChange={(value) => {
@@ -140,29 +142,31 @@ export function FdmForm(props: FdmFormProps) {
                 form.setFieldValue("stopPlane", null)
                 if (value === "rib") form.setFieldValue("extendToWalls", false)
               }}
-            >
-              <SelectOption value="web">{t("web")}</SelectOption>
-              <SelectOption value="rib">{t("rib")}</SelectOption>
-            </SelectField>
+              options={[
+                { value: "web", label: t("web") },
+                { value: "rib", label: t("rib") },
+              ]}
+            />
           )}
         </form.Field>
         <form.Field name="sketchId">
           {(field) => (
-            <SelectField
+            <LocalizedSearchableSelectField
               label={t("sketch")}
-              value={field.state.value || "none"}
+              value={field.state.value}
               onValueChange={(id) => {
-                field.handleChange(id === "none" ? "" : id)
+                field.handleChange(id)
                 form.setFieldValue("lineIds", [])
               }}
-            >
-              <SelectOption value="none">{t("chooseSketch")}</SelectOption>
-              {props.sketches.map((sketch) => (
-                <SelectOption key={sketch.id} value={sketch.id}>
-                  {sketch.label ?? sketch.id}
-                </SelectOption>
-              ))}
-            </SelectField>
+              placeholder={t("chooseSketch")}
+              options={[
+                { value: "", label: t("chooseSketch") },
+                ...props.sketches.map((sketch) => ({
+                  value: sketch.id,
+                  label: sketch.label ?? sketch.id,
+                })),
+              ]}
+            />
           )}
         </form.Field>
         <form.Field name="lineIds">
@@ -196,16 +200,17 @@ export function FdmForm(props: FdmFormProps) {
         </form.Field>
         <form.Field name="direction">
           {(field) => (
-            <SelectField
+            <ChoiceField
               label={t("direction")}
               value={field.state.value}
               onValueChange={(value) =>
                 field.handleChange(value === "reverse" ? "reverse" : "forward")
               }
-            >
-              <SelectOption value="forward">{t("forward")}</SelectOption>
-              <SelectOption value="reverse">{t("reverse")}</SelectOption>
-            </SelectField>
+              options={[
+                { value: "forward", label: t("forward") },
+                { value: "reverse", label: t("reverse") },
+              ]}
+            />
           )}
         </form.Field>
         {values.style === "web" && (
@@ -253,23 +258,19 @@ export function FdmForm(props: FdmFormProps) {
       <form.Field name="targetId">
         {(field) => (
           <Field>
-            <SelectField
+            <LocalizedSearchableSelectField
               label={t("target")}
-              value={field.state.value || "none"}
+              placeholder={t("chooseTarget")}
+              value={field.state.value}
               onValueChange={(value) => {
                 state.clearSubmissionErrors()
-                field.handleChange(value === "none" ? "" : value)
+                field.handleChange(value)
               }}
-            >
-              <SelectOption value="none">
-                {t(kind === "flexible-sleeve" ? "noTarget" : "chooseTarget")}
-              </SelectOption>
-              {props.options.map((option) => (
-                <SelectOption key={option.id} value={option.id}>
-                  {option.label}
-                </SelectOption>
-              ))}
-            </SelectField>
+              options={[
+                { value: "", label: t(kind === "flexible-sleeve" ? "noTarget" : "chooseTarget") },
+                ...props.options.map(({ id, label }) => ({ value: id, label })),
+              ]}
+            />
             {issues.targetId && <FieldError>{issues.targetId}</FieldError>}
           </Field>
         )}
@@ -280,19 +281,18 @@ export function FdmForm(props: FdmFormProps) {
     return (
       <form.Field name="axis">
         {(field) => (
-          <SelectField
+          <ChoiceField
             label={t("axis")}
             value={field.state.value}
             onValueChange={(value) => {
               if (value === "X" || value === "Y" || value === "Z") field.handleChange(value)
             }}
-          >
-            {["X", "Y", "Z"].map((axis) => (
-              <SelectOption key={axis} value={axis}>
-                {axis}
-              </SelectOption>
-            ))}
-          </SelectField>
+            options={[
+              { value: "X", label: "X" },
+              { value: "Y", label: "Y" },
+              { value: "Z", label: "Z" },
+            ]}
+          />
         )}
       </form.Field>
     )
@@ -314,30 +314,32 @@ export function FdmForm(props: FdmFormProps) {
         {kind === "enclosure-joint" && (
           <form.Field name="jointMode">
             {(field) => (
-              <SelectField
+              <ChoiceField
                 label={t("mode")}
                 value={field.state.value}
                 onValueChange={(value) => field.handleChange(value === "groove" ? "groove" : "lip")}
-              >
-                <SelectOption value="lip">{t("lip")}</SelectOption>
-                <SelectOption value="groove">{t("groove")}</SelectOption>
-              </SelectField>
+                options={[
+                  { value: "lip", label: t("lip") },
+                  { value: "groove", label: t("groove") },
+                ]}
+              />
             )}
           </form.Field>
         )}
         {kind === "membrane" && (
           <form.Field name="membraneMode">
             {(field) => (
-              <SelectField
+              <ChoiceField
                 label={t("mode")}
                 value={field.state.value}
                 onValueChange={(value) =>
                   field.handleChange(value === "bridges" ? "bridges" : "sheet")
                 }
-              >
-                <SelectOption value="sheet">{t("sheet")}</SelectOption>
-                <SelectOption value="bridges">{t("bridges")}</SelectOption>
-              </SelectField>
+                options={[
+                  { value: "sheet", label: t("sheet") },
+                  { value: "bridges", label: t("bridges") },
+                ]}
+              />
             )}
           </form.Field>
         )}
@@ -415,24 +417,22 @@ export function FdmForm(props: FdmFormProps) {
                   />
                 }
               >
-                <SelectField
+                <LocalizedSearchableSelectField
+                  ref={props.kindControlRef}
                   label={t("kind")}
+                  placeholder={t("kind")}
                   value={kind}
                   disabled={disabled || mode.kind === "edit"}
                   onValueChange={(value) => {
-                    if (fdmToolKinds.includes(value as FdmToolKind))
-                      props.onKindChange(value as FdmToolKind)
+                    const selected = fdmToolKinds.find((tool) => tool === value)
+                    if (selected) props.onKindChange(selected)
                   }}
-                >
-                  {fdmToolKinds.map((tool) => (
-                    <SelectOption key={tool} value={tool}>
-                      <span className="inline-flex items-center gap-2">
-                        <FdmToolIcon kind={tool} className="size-5 shrink-0" />
-                        <span>{t(`tools.${tool}`)}</span>
-                      </span>
-                    </SelectOption>
-                  ))}
-                </SelectField>
+                  options={fdmToolKinds.map((tool) => ({
+                    value: tool,
+                    label: t(`tools.${tool}`),
+                    icon: <FdmToolIcon kind={tool} className="size-5 shrink-0" />,
+                  }))}
+                />
                 {targetField(issues)}
                 {kind === "web" ? webFields(values, issues) : axisField()}
                 {specialFields()}

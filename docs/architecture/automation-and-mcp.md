@@ -77,9 +77,13 @@ empty partial updates retain earlier genuine failure evidence. Older v1 messages
 
 `render_preview` is a read-only tool shared by local and remote MCP. Its explicit `source` selects
 either a saved model at `revision`, or an actor-owned CAD draft at `draftId` and its current
-`revision`. Default output is a labeled isometric/front/right/top PNG collage; one to four unique
-standard views can be requested. An optional exact `featureId`/`outputRole` target selects one body,
-including historical geometry, and never silently falls back to a whole feature or another body.
+`revision`. Optional `quality` selects `overview` or `detail`. Omitted automation quality resolves to
+`overview`: one isometric view within 768 × 576 total raster pixels. Explicit `detail` restores the
+legacy labeled isometric/front/right/top PNG collage within 1024 × 768 total pixels. One to four
+unique standard views can be requested in explicit order under either policy. Quality does not
+change body selection, camera framing or complete-geometry requirements. An optional exact
+`featureId`/`outputRole` target selects one body, including historical geometry, and never silently
+falls back to a whole feature or another body.
 Alternatively, `camera` supplies world-mm `position` and `target`, an optional orientation `up`
 vector, and optional `viewHeightMm`. Camera and standard views are exclusive. The orthographic
 vertical span controls detail zoom and permits intentional cropping; omitting it auto-fits the
@@ -94,17 +98,27 @@ saved revision before returning. Source assets use the ordinary materialization 
 dependency enters the domain or automation host.
 
 Metadata identifies the document, revision, rebuild generation, rendered body count and geometry
-status; drafts also identify their draft and base revision. Invalid rebuilds may show surviving
-bodies and remain explicitly invalid. Empty/unsupported geometry, stale work, unavailable WebGL
+status and required resolved top-level `quality`; drafts also identify their draft and base revision.
+Invalid rebuilds may show surviving bodies and remain explicitly invalid. Empty/unsupported geometry,
+stale work, unavailable WebGL
 and unencodable bounded images return diagnostics. Assembly occurrence placement and surface-relief
 layers are outside this CAD body render contract and must not be silently represented as complete.
 
-The renderer retains all triangles, fits each view, and bounds raster size to 1024 by 768 pixels.
+The renderer retains all triangles and fits each view unless an explicit camera span requests a crop.
 It may reduce raster resolution to keep the PNG within the wire budget, never sample away geometry.
+Quality denotes policy, not an exact resolution promise: detail fallback can be smaller than an
+overview maximum. The automation adapter passes resolved quality explicitly; direct viewer callers
+that omit quality retain the legacy detail default, including assembly export. The renderer's image
+shape is unchanged. Limits remain 88 KiB for renderer PNG bytes, 90 KiB at the API image boundary,
+128 KiB for correlated results and 192 KiB for the remote envelope.
 Adapters return image bytes once in native MCP `image` content and place only image metadata in
 text/structured output. Protocol schemas bound bytes and dimensions and validate PNG header sizes;
-both brokers reject results with mismatched revision, source, draft, target or views. Native image
-support in the MCP protocol does not prove a client passes images to its model.
+both brokers reject results with missing/wrong quality, mismatched revision, source, draft, target,
+camera or quality-dependent default views. Overview PNG dimensions must also fit 768 × 576 pixels.
+The automation default intentionally changes from four views to one. Old strict clients can reject
+the added result field, and old strict servers can reject the new request field; this is not a
+mixed-version compatibility guarantee. Native image support in the MCP protocol does not prove a
+client passes images to its model.
 
 Pictures complement exact measurements and diagnostics. They establish visible appearance rather
 than exact dimensions, clearance, topology, printability or physical fit. Operator usage is owned by

@@ -69,7 +69,7 @@ const triangle: ViewerMesh = {
   triangleFaceIds: new Uint32Array([1]),
 }
 
-function browserStub(sizes = [1_000], webglAvailable = true) {
+function browserStub(sizes = [1_000], webglAvailable = true, holdEncoding = false) {
   const labels: string[] = []
   const encodedWidths: number[] = []
   const context = {
@@ -82,6 +82,7 @@ function browserStub(sizes = [1_000], webglAvailable = true) {
     stroke: vi.fn(),
   }
   let encodingCount = 0
+  const pendingEncodings: (() => void)[] = []
   vi.stubGlobal("document", {
     createElement: () => {
       const canvas = Object.assign(new EventTarget(), {
@@ -96,13 +97,15 @@ function browserStub(sizes = [1_000], webglAvailable = true) {
         toBlob: (callback: BlobCallback) => {
           encodedWidths.push(canvas.width)
           const size = sizes[Math.min(encodingCount++, sizes.length - 1)] ?? 1_000
-          queueMicrotask(() => callback(new Blob([new Uint8Array(size)], { type: "image/png" })))
+          const finish = () => callback(new Blob([new Uint8Array(size)], { type: "image/png" }))
+          if (holdEncoding) pendingEncodings.push(finish)
+          else queueMicrotask(finish)
         },
       })
       return canvas
     },
   })
-  return { labels, encodedWidths }
+  return { labels, encodedWidths, pendingEncodings }
 }
 
 beforeEach(() => {
@@ -215,6 +218,67 @@ describe("model preview", () => {
     expect(camera.position.toArray()).toEqual([0, 0, 4])
   })
 
+  it("renders an overview at lower resolution with every triangle and preserves explicit detail", async () => {
+    const { encodedWidths } = browserStub()
+    const overview = await renderModelPreview([triangle], { quality: "overview" })
+    expect(overview).toMatchObject({ width: 768, height: 576, views: ["isometric"] })
+    expect(rendererState.draws).toHaveLength(1)
+    expect(rendererState.draws[0]?.indexLengths).toEqual([3])
+    const detail = await renderModelPreview([triangle], { quality: "detail" })
+    expect(detail).toMatchObject({
+      width: 1_024,
+      height: 768,
+      views: ["isometric", "front", "right", "top"],
+    })
+    expect(encodedWidths).toEqual([768, 1_024])
+    expect(rendererState.draws).toHaveLength(5)
+    for (const draw of rendererState.draws) {
+      expect(draw.indexLengths).toEqual([3])
+      expect(draw.positions).toEqual(rendererState.draws[0]?.positions ?? [])
+    }
+  })
+
+  it("honors explicit views and custom crop cameras independently of overview quality", async () => {
+    browserStub()
+    const views = await renderModelPreview([triangle], {
+      quality: "overview",
+      views: ["back", "left"],
+    })
+    expect(views).toMatchObject({ width: 768, height: 288, views: ["back", "left"] })
+    const camera: ModelPreviewCamera = {
+      position: [18, 10, 50],
+      target: [18, 10, 8],
+      viewHeightMm: 2,
+    }
+    const crop = await renderModelPreview([triangle], { quality: "overview", camera })
+    expect(crop).toMatchObject({ width: 768, height: 576, views: ["custom"] })
+    const rendered = rendererState.draws[2]?.camera as OrthographicCamera
+    expect(rendered.top - rendered.bottom).toBeCloseTo(0.1)
+  })
+
+  it("snapshots quality before queued rendering and rejects unknown runtime policies", async () => {
+    browserStub()
+    const options: { quality: "overview" | "detail" } = { quality: "overview" }
+    const pending = renderModelPreview([triangle], options)
+    options.quality = "detail"
+    await expect(pending).resolves.toMatchObject({ width: 768, views: ["isometric"] })
+    for (const quality of [null, "low", 1]) {
+      await expect(
+        renderModelPreview([triangle], { quality: quality as "overview" }),
+      ).rejects.toThrow("quality must be overview or detail")
+    }
+  })
+
+  it("starts overview fallback at 768 and retains the existing byte budget", async () => {
+    const { encodedWidths } = browserStub([100_000, 95_000, 80_000])
+    const result = await renderModelPreview([triangle], { quality: "overview" })
+    expect(encodedWidths).toEqual([768, 576, 432])
+    expect(result).toMatchObject({ width: 432, height: 324, views: ["isometric"] })
+    expect(atob(result.base64).length).toBe(80_000)
+    expect(rendererState.draws).toHaveLength(3)
+    for (const draw of rendererState.draws) expect(draw.indexLengths).toEqual([3])
+  })
+
   it("reduces image resolution deterministically without reducing geometry", async () => {
     const { encodedWidths } = browserStub([100_000, 95_000, 80_000])
     const result = await renderModelPreview([triangle], { views: ["front", "top"] })
@@ -319,6 +383,68 @@ describe("model preview", () => {
 })
 
 describe("project thumbnail", () => {
+  it("skips superseded queued snapshots and keeps the latest revision behind an explicit preview", async () => {
+    const { pendingEncodings } = browserStub([1_000], true, true)
+    const explicit = renderModelPreview([triangle], { views: ["front"] })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rendererState.instances).toHaveLength(1)
+    const abort = new AbortController()
+    const obsolete = renderProjectThumbnail(
+      [
+        {
+          ...triangle,
+          get positions(): Float32Array {
+            throw new Error("Obsolete snapshot was prepared.")
+          },
+        },
+      ],
+      { signal: abort.signal },
+    )
+    abort.abort()
+    const latest = renderProjectThumbnail(
+      [
+        {
+          ...triangle,
+          indices: new Uint32Array([0, 1, 2, 2, 1, 0]),
+          triangleFaceIds: new Uint32Array([4, 5]),
+        },
+      ],
+      { signal: new AbortController().signal },
+    )
+    pendingEncodings.shift()?.()
+    await expect(explicit).resolves.toMatchObject({ views: ["front"] })
+    await expect(obsolete).resolves.toBeNull()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rendererState.instances).toHaveLength(2)
+    expect(rendererState.draws.at(-1)?.indexLengths).toEqual([6])
+    pendingEncodings.shift()?.()
+    await expect(latest).resolves.toMatchObject({ mediaType: "image/png" })
+    expect(rendererState.previousDisposed).toEqual([true, true])
+    for (const renderer of rendererState.instances) {
+      expect(renderer.dispose).toHaveBeenCalledTimes(1)
+      expect(renderer.forceContextLoss).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it("discards an in-flight thumbnail after cancellation while disposing resources and releasing the queue", async () => {
+    const { pendingEncodings } = browserStub([1_000], true, true)
+    const abort = new AbortController()
+    const obsolete = renderProjectThumbnail([triangle], { signal: abort.signal })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rendererState.instances).toHaveLength(1)
+    abort.abort()
+    const latest = renderProjectThumbnail([triangle])
+    pendingEncodings.shift()?.()
+    await expect(obsolete).resolves.toBeNull()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rendererState.instances[0]?.dispose).toHaveBeenCalledTimes(1)
+    expect(rendererState.instances[0]?.forceContextLoss).toHaveBeenCalledTimes(1)
+    expect(rendererState.instances).toHaveLength(2)
+    pendingEncodings.shift()?.()
+    await expect(latest).resolves.toMatchObject({ mediaType: "image/png" })
+    expect(rendererState.instances[1]?.dispose).toHaveBeenCalledTimes(1)
+  })
+
   it("renders all dense surface triangles in one unlabeled isometric image and releases resources", async () => {
     const { labels, encodedWidths } = browserStub()
     const indices = Uint32Array.from({ length: 12_000 }, (_, index) => index % 3)

@@ -77,9 +77,9 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await expect(edit.getByRole("combobox", { name: dimension, exact: true })).toHaveValue(
       "#edgeSize * 2",
     )
-    await expect(edit.getByRole("combobox", { name: "Target body", exact: true })).toContainText(
-      "Box 1",
-    )
+    await expect(
+      edit.getByRole("button", { name: "Select Target body in 3D", exact: true }),
+    ).toContainText("Box 1")
     await page.locator("html").evaluate((element, dark) => {
       const root = element as unknown as {
         classList: { toggle: (token: string, force: boolean) => boolean }

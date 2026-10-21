@@ -86,6 +86,27 @@ Panel sizes are user preferences. Double-clicking a separator restores its defau
 
 A horizontally scrolling sketch toolbar MUST reserve native scrollbar space below its 32 × 32 px controls. The scrollbar MUST NOT reduce their usable pointer area. The shell row and docked assistant offset MUST share the same toolbar-height value so the extra lane cannot overlap the workspace or chat.
 
+Long tool menus (more than six commands) open a bounded searchable picker. Search retains command
+icons, shortcuts, active state, and prerequisite explanations, and invokes the same registered
+command. Arrow Down opens the picker from its toolbar trigger; Escape restores focus. The compact
+model toolbar uses this picker for its complete command set. Smaller menus remain conventional
+menus, and a single remaining command stays a direct action.
+
+The model browser supports name/type search across Parts, unowned bodies, sketches, planes, and
+History operations. Results include source paths to distinguish repeated names and use the existing
+selection and preselection handlers. Type filters stay visible so focus changes do not move the tree;
+origin planes use their existing selection action. An explicit notice
+identifies selected items outside the result set. Clearing search restores the mounted tree and its
+collapse state. Search does not change History insertion eligibility or object identity.
+
+Reference fields retain their graphical pick action and provide a searchable list alternative.
+Searchable fields also cover assembly definitions/occurrences/frame bindings, metric thread presets,
+FDM tool/sketch/body choices, and analytical measurement elements. Shown provenance and keywords
+participate in search. The list is height-bounded, supports keyboard selection and Escape, and keeps
+native form validity/submission behavior. Short result-operation and FDM mode/axis choices are visible
+radio groups; measurement point choices use the same control. Direct geometry picking for measurement
+elements and assembly frame bindings remains a separate workflow limitation.
+
 The application bar's **Workspace layout settings** popover provides independent model-tree and task-panel width, visibility, and background-opacity controls, plus **Reset layout**. Pointer and keyboard resizing use the shared `react-resizable-panels` adapter; separators provide an 8 px hit area. Widths are saved after interactive resizing, not on every pointer movement. A versioned, validated local-storage preference record survives document switches and reloads, but is not part of project history or exported files. Unavailable storage falls back to in-memory preferences.
 
 Panels are opaque by default. On desktop, explicitly lowering a panel's background opacity reveals the same 3D/sketch viewport beneath it; text, inputs, buttons, and focus indicators remain opaque. This is a user-controlled visibility option, not a decorative glass treatment. View controls stay inset into the unobscured central region, and panel interactions never fall through to the model. Resizing, hiding, and changing opacity preserve the mounted viewport and task form. Below 1024 px, the task panel remains the existing bottom sheet and both panel backgrounds stay opaque; desktop task width/visibility and opacity preferences are retained for the return to desktop.

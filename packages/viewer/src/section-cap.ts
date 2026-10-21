@@ -1,4 +1,4 @@
-import { ShapeUtils, Vector2, Vector3 } from "three"
+import { Box3, ShapeUtils, Vector2, Vector3 } from "three"
 import type { ViewerSection } from "./section-view"
 import type { ViewerMesh } from "./three-viewport"
 
@@ -6,6 +6,7 @@ type Topology = Readonly<{
   vertices: readonly Vector3[]
   triangles: readonly number[][]
   tolerance: number
+  bounds: Box3
 }>
 const topologyCache = new WeakMap<ViewerMesh, Topology | null>()
 
@@ -83,7 +84,14 @@ function prepareTopology(source: ViewerMesh): Topology | null {
   const welded = weldVertices(source.positions)
   if (!welded) return null
   const triangles = closedTriangles(source.indices, welded.vertexIds)
-  return triangles ? { vertices: welded.vertices, triangles, tolerance: welded.tolerance } : null
+  return triangles
+    ? {
+        vertices: welded.vertices,
+        triangles,
+        tolerance: welded.tolerance,
+        bounds: new Box3().setFromPoints(welded.vertices),
+      }
+    : null
 }
 
 function containsPoint(contour: readonly Vector2[], point: Vector2) {
@@ -397,6 +405,12 @@ export function sectionCapPositions(
   const topology = closedTopology(source)
   if (!topology || !Number.isFinite(section.offset)) return null
   const coordinate = { x: 0, y: 1, z: 2 }[section.axis]
+  // Keep boundary/tolerance cases in the exact extractor; reject only definitely disjoint planes.
+  if (
+    section.offset < topology.bounds.min.getComponent(coordinate) - topology.tolerance ||
+    section.offset > topology.bounds.max.getComponent(coordinate) + topology.tolerance
+  )
+    return null
   const [u, v] = [0, 1, 2].filter((value) => value !== coordinate)
   if (u === undefined || v === undefined) return null
   const slice = sectionSegments(topology, coordinate, section.offset)

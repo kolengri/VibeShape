@@ -1890,10 +1890,7 @@ test.describe("full sketch editor", () => {
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
-      .click()
+    await invokeModelCommand(page, "Create", "Create sketch")
     await confirmSketchPlane(page)
 
     const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
@@ -1965,8 +1962,8 @@ test.describe("full sketch editor", () => {
     })
     await expect(sketchModificationTools).toBeVisible()
     await sketchModificationTools.click()
-    await expect(page.getByRole("menuitem", { name: /^Extend/ })).toBeVisible()
-    await expect(page.getByRole("menuitem", { name: /^Trim/ })).toHaveCount(0)
+    await expect(page.getByRole("option", { name: /^Extend/ })).toBeVisible()
+    await expect(page.getByRole("option", { name: /^Trim/ })).toHaveCount(0)
     await page.keyboard.press("Escape")
     await expect(toolbar.getByRole("button", { name: "Profile features" })).toHaveCount(0)
     await expect(taskPanel.getByRole("button", { name: "Extrude selected profile" })).toHaveCount(0)
@@ -3819,7 +3816,6 @@ test.describe("full sketch editor", () => {
     ).toBeVisible({
       timeout: 30_000,
     })
-    const startPanel = page.getByRole("complementary", { name: "Task panel" })
 
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
@@ -3833,7 +3829,7 @@ test.describe("full sketch editor", () => {
       .filter({ hasText: "Done" })
       .click()
     await expect(variables).toHaveCount(0)
-    await startPanel.getByRole("button", { name: "Create sketch" }).click()
+    await invokeModelCommand(page, "Create", "Create sketch")
     await confirmSketchPlane(page, "xz")
     const drawing = await drawRectangle(page)
     await page.getByRole("button", { name: "Undo", exact: true }).click()
