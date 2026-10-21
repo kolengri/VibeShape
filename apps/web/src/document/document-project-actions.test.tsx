@@ -3,6 +3,7 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { vi } from "../../../../tests/unit/support/bun-test"
+import type { ProjectBackupRequest } from "./project-backup-contract"
 
 const mocks = (() => ({
   open: vi.fn(),
@@ -23,6 +24,12 @@ mock.module("./browser-project-repository", () => ({
     exportPortableProject = mocks.exportProject
     copyPortableProject = mocks.copyProject
     listProjects = mocks.list
+  },
+}))
+mock.module("./project-backup-client", () => ({
+  exportProjectBackup: async (expected: Omit<ProjectBackupRequest, "schemaVersion">) => {
+    const { exportSavedProjectBackup } = await import("./project-backup-service")
+    return exportSavedProjectBackup({ ...expected, schemaVersion: 0 })
   },
 }))
 const originalModule1 = { ...(await import("@vibeshape/formats/vshape")) }

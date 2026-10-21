@@ -90,15 +90,37 @@ function edgeSupports(edges: Map<number, Edge>, faces: readonly Face[]) {
   return supports
 }
 
-function planarSupports(key: number, supports: Map<number, Face[]>) {
-  const adjacent = supports.get(key) ?? []
+function isCircularOffsetRim(
+  edge: Edge,
+  adjacent: readonly Face[],
+  parameters: ChamferGeometryParameters,
+) {
+  // A closed circular intersection of an exact plane and cylinder is an orthogonal rim.
+  return (
+    parameters.mode === "equal-distance" &&
+    parameters.measurement === "offset" &&
+    edge.geomType === "CIRCLE" &&
+    edge.isClosed &&
+    adjacent.some((face) => face.geomType === "PLANE") &&
+    adjacent.some((face) => face.geomType === "CYLINDRE")
+  )
+}
+
+function measurementSupports(
+  edge: Edge | undefined,
+  supports: Map<number, Face[]>,
+  parameters: ChamferGeometryParameters,
+) {
+  if (!edge) throw new ChamferV3Error("Chamfer contour edge is missing from the exact source.")
+  const adjacent = supports.get(edge.hashCode) ?? []
   if (adjacent.length !== 2)
     throw new ChamferV3Error(
       "Chamfer requires two distinct adjacent faces; seam, degenerate, or non-manifold edges are unsupported.",
     )
-  if (adjacent.some((face) => face.geomType !== "PLANE"))
+  const planar = adjacent.every((face) => face.geomType === "PLANE")
+  if (!planar && !isCircularOffsetRim(edge, adjacent, parameters))
     throw new ChamferV3Error(
-      "Chamfer V3 Offset/Tangent measurement on non-planar adjacent faces is unsupported. Native Classic chamfer is not a verified equivalent.",
+      "Chamfer V3 measurement on non-planar adjacent faces is unsupported except equal-distance Offset on closed circular plane/cylinder rims.",
     )
   return adjacent
 }
@@ -141,6 +163,7 @@ function addSeed(
 }
 
 type ContourContext = {
+  edges: Map<number, Edge>
   seeds: Map<number, Seed>
   supports: Map<number, Face[]>
   overrides: Set<number>
@@ -150,11 +173,11 @@ type ContourContext = {
   propagated: Set<number>
 }
 
-function validateContourDirection(key: number, context: ContourContext) {
-  const { seeds, supports, overrides, parameters, referenceSide } = context
+function validateContourDirection(key: number, adjacent: Face[], context: ContourContext) {
+  const { seeds, overrides, parameters, referenceSide } = context
   const seed = seeds.get(key)
   const flip = parameters.flip !== overrides.has(key)
-  const side = seed ? effectiveSide(seed, planarSupports(key, supports), flip) : undefined
+  const side = seed ? effectiveSide(seed, adjacent, flip) : undefined
   if (referenceSide && side && !samePlanarSide(referenceSide, side))
     throw new ChamferV3Error(
       "Chamfer direction overrides conflict within one native tangent contour.",
@@ -174,13 +197,17 @@ function validateContour(
     const edge = builder.Edge(contour, index)
     try {
       const key = edge.HashCode(2_147_483_647)
-      planarSupports(key, context.supports)
+      const adjacent = measurementSupports(
+        context.edges.get(key),
+        context.supports,
+        context.parameters,
+      )
       context.propagated.add(key)
       if (!context.parameters.tangentPropagation && !context.seeds.has(key))
         throw new ChamferV3Error(
           "Chamfer without tangent propagation cannot stop within this native tangent contour. Select the complete contour or enable propagation.",
         )
-      validateContourDirection(key, context)
+      validateContourDirection(key, adjacent, context)
     } finally {
       edge.delete()
     }
@@ -212,7 +239,7 @@ export function chamferOcctShapeV3(
         try {
           const propagated = new Set<number>()
           for (const [key, seed] of seeds) {
-            const adjacent = planarSupports(key, supports)
+            const adjacent = measurementSupports(seed.edge, supports, parameters)
             const side = effectiveSide(seed, adjacent, parameters.flip !== overrides.has(key))
             if (builder.Contour(seed.edge.wrapped) > 0) continue
             addSeed(builder, parameters, seed, side)
@@ -222,6 +249,7 @@ export function chamferOcctShapeV3(
                 "OCCT rejected the selected Chamfer edge before construction.",
               )
             validateContour(builder, contour, {
+              edges: byEdge,
               seeds,
               supports,
               overrides,

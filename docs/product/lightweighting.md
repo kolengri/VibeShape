@@ -191,7 +191,7 @@ or STEP export. Computational and small-strain limits remain unchanged.
 Local and paired remote `analyze_lightweighting` and `request_lightweighting` accept both methods.
 The result's `algorithm.settings` must match the request. In Generative Design, each SIMP scenario
 uses its scenario retained fraction as `volumeFraction`; the standalone target is not silently reused.
-See [ADR-0121](../adr/0121-density-topology-and-adaptive-lattices.md).
+See [ADR-0122](../adr/0122-density-topology-and-adaptive-lattices.md).
 
 ## Quick lightweighting
 

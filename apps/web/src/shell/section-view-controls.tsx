@@ -72,6 +72,7 @@ export function SectionViewControls({
               variant={section ? "secondary" : "ghost"}
               aria-label={t("title")}
               aria-pressed={section !== null}
+              dropdown
             >
               <SectionViewIcon aria-hidden="true" />
             </Button>

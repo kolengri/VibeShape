@@ -63,6 +63,7 @@ function SketchActionsMenu(props: {
               size="icon-xs"
               variant="ghost"
               aria-label={triggerLabel}
+              dropdown
             >
               <Ellipsis aria-hidden="true" />
             </Button>

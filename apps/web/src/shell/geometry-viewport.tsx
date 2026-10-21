@@ -1221,6 +1221,7 @@ function ViewportControls({
               <Button
                 disabled={cameraLocked}
                 aria-label={t("standardViews")}
+                dropdown
                 size="icon-sm"
                 type="button"
                 variant="ghost"

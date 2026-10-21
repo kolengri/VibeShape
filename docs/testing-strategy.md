@@ -45,6 +45,13 @@ cancellation/restart, task controls, and compact layout.
 | Extension conformance | Packages, capabilities, determinism, isolation, compatibility | `SPK-006` harness and browser E2E |
 | Automation and MCP conformance | Resources, schemas, draft safety, pairing, consent, progress, cancellation | Contract tests, hostile loopback fixtures, and real MCP client E2E |
 
+Chamfer V3 circular Offset coverage requires native plane/cylinder incidence and closed circular
+edges, both radial and axial setbacks, analytic removed volumes on inner/outer and top/bottom annular
+rims, arbitrary rigid placement, valid results and unchanged borrowed sources. Keep curved Tangent,
+directional modes and seams as explicit failure cases, plus native Add/Build/incomplete-result
+disposal checks. [ADR-0121](adr/0121-circular-offset-chamfer.md) bounds this extension; cone/cylinder
+transitions and automatic crossing of neighboring faces are outside its guarantee.
+
 ## CI unit-test receipts
 
 `bun run test` always runs the complete matching native unit corpus. CI can use

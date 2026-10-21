@@ -1,4 +1,4 @@
-# ADR-0121: Density Topology Optimization and FEM-Graded Lattices
+# ADR-0122: Density Topology Optimization and FEM-Graded Lattices
 
 - Status: Accepted with reduced scope
 - Date: 2026-10-21

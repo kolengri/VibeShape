@@ -115,8 +115,8 @@ the model to send another command. Saved batches expose **View before** / **View
 the existing internal checkpoint. These controls remain hidden while the agent is busy and do not
 move the transcript when the person is reading earlier messages. Inspection locks do not open
 connection settings, and footer/display changes do not trigger transcript following without new
-message content. The chat header names active-project AI work from the actual controller busy state,
-with reserved space and reduced-motion support. Hiding chat preserves its mounted transcript, draft,
+message content. The chat header contains the chat title, project name, and actions without a working-status label.
+Hiding chat preserves its mounted transcript, draft,
 attachment reads, scroll position, settings and active connection. The header AI chat toggle reopens
 the same panel; show/hide and message updates do not resize or remount the viewport canvas.
 
@@ -514,12 +514,15 @@ Chamfer additionally accepts face targets and exposes equal distance, two distan
 plus angle. Advanced records retain quantity expressions, Offset/Tangent measurement, tangent
 propagation, global flip and per-edge direction overrides. Asymmetric edge targets require an
 explicit side face; the exact worker preview validates incidence. Advanced geometry is limited to
-proven planar supports, with explicit unsupported feedback for curved cases. Simple circular-rim
-treatments retain the existing version-2 path. Apply creates one ordinary committed edit, Cancel
+proven planar supports. Equal-distance Offset additionally admits closed circular rims with one
+planar and one cylindrical adjacent face; exact native incidence remains authoritative. Curved
+Tangent, directional modes, open arcs and other curved support pairs remain unsupported. Simple
+circular-rim treatments retain the existing version-2 path. Apply creates one ordinary committed edit, Cancel
 discards the task, and Undo/Redo uses shared session history. Existing all-edge features retain
 version-1 semantics, and explicit-edge features are not migrated automatically. See
-[ADR-0040](../adr/0040-selected-edge-treatments.md) and
-[ADR-0118](../adr/0118-body-bound-directional-chamfer.md).
+[ADR-0040](../adr/0040-selected-edge-treatments.md),
+[ADR-0118](../adr/0118-body-bound-directional-chamfer.md) and its bounded measurement extension,
+[ADR-0121](../adr/0121-circular-offset-chamfer.md).
 
 
 ## Parts, folders, placement, and export

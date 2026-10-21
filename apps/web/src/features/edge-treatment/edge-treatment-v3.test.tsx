@@ -61,6 +61,49 @@ it("keeps an ordinary circular rim on legacy V2 with its explicit edge reference
   expect(saved(onSave).parameters).not.toHaveProperty("mode")
 })
 
+it("authors a closed plane-cylinder rim on a named output with equal-distance Offset and retains unsupported-mode feedback", async () => {
+  const rim = candidate("edge", 1, true)
+  rim.signature.boundaryCount = 0
+  const options = [option(sourceId, "pattern.instance.1", "Body A", [rim])]
+  const { onSave } = setup({ options, topologyCandidates: geometry(options) })
+  await pick()
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(saved(onSave)).toMatchObject({
+    type: chamferFeatureTypeV3.type,
+    references: [],
+    parameters: {
+      targetBody: { featureId: sourceId, outputRole: "pattern.instance.1" },
+      mode: "equal-distance",
+      measurement: "offset",
+      targets: [{ kind: "edge", edge: { signature: { geometryClass: "CIRCLE" } } }],
+    },
+  })
+  onSave.mockClear()
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Measurement" }), "tangent")
+  expect(screen.getByText(/other curved supports are unsupported/)).toBeTruthy()
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(onSave).not.toHaveBeenCalled()
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Measurement" }), "offset")
+  await mode("two-distances")
+  expect(screen.getByText(/other curved supports are unsupported/)).toBeTruthy()
+})
+
+it.each(["open-rim", "conical-support"])(
+  "keeps the V3 circular Offset exception bounded for %s",
+  async (unsupported) => {
+    const rim = candidate("edge", 1, true)
+    rim.signature.boundaryCount = unsupported === "open-rim" ? 2 : 0
+    if (unsupported === "conical-support")
+      rim.signature.adjacentGeometryClasses = ["CONE", "CYLINDRE"]
+    const options = [option(sourceId, "pattern.instance.1", "Body A", [rim])]
+    const { onSave } = setup({ options, topologyCandidates: geometry(options) })
+    await pick()
+    expect(screen.getByText(/other curved supports are unsupported/)).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).not.toHaveBeenCalled()
+  },
+)
+
 it("promotes an edited V2 edge set into typed V3 targets only after advanced controls are requested", async () => {
   const options = [option()]
   const selected = edgeTreatmentCandidates(options, geometry(options), (kind) => kind)[0]
@@ -268,7 +311,7 @@ it("reports unsupported advanced curved supports while keeping the normal rim pa
   const { onSave } = setup({ options, topologyCandidates: geometry(options) })
   await pick()
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Measurement" }), "tangent")
-  expect(screen.getByText(/Advanced Chamfer supports proven planar face pairs only/)).toBeTruthy()
+  expect(screen.getByText(/Advanced Chamfer supports planar face pairs/)).toBeTruthy()
   await userEvent.click(screen.getByRole("button", { name: copy.submit }))
   expect(onSave).not.toHaveBeenCalled()
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Measurement" }), "offset")

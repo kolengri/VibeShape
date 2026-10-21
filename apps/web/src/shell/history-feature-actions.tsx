@@ -129,6 +129,7 @@ function FeatureHistoryMenu({
               size="icon-xs"
               variant="ghost"
               aria-label={actionsLabel}
+              dropdown
             >
               <Ellipsis aria-hidden="true" />
             </Button>

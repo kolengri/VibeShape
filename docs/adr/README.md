@@ -130,7 +130,8 @@
 | [0118](0118-body-bound-directional-chamfer.md) | Accepted with bounded planar measurement support | Exact body/face-side Chamfer modes and native contour semantics |
 | [0119](0119-explicit-private-draft-recovery.md) | Accepted | Bounded private CAD intent retention and explicit current-actor restoration |
 | [0120](0120-exact-edge-signature-resolution.md) | Accepted | Unique identical edge signatures resolve before approximate ranking |
-| [0121](0121-density-topology-and-adaptive-lattices.md) | Accepted with reduced scope | Filtered SIMP and FEM-graded lattice snapshots |
+| [0121](0121-circular-offset-chamfer.md) | Accepted with bounded circular-rim support | Equal-distance Offset on exact closed circular plane/cylinder rims; partially supersedes 0118 |
+| [0122](0122-density-topology-and-adaptive-lattices.md) | Accepted with reduced scope | Filtered SIMP and FEM-graded lattice snapshots |
 
 Statuses:
 
