@@ -6,7 +6,7 @@ editor/stdio package and its versioned installer.
 
 The runtime package contains the built editor, its module worker and WASM, a bundled stdio MCP
 server, a launcher, corresponding application source, and the existing controlled OCCT/SolveSpace
-source and licensing assets. It needs an already installed **Bun 1.4.2** on `PATH`. Bun is not copied
+source and licensing assets. It needs an already installed **Bun 1.4.3** on `PATH`. Bun is not copied
 into the package. No checkout, `node_modules`, account, model API, or network service is needed at run
 time. The external MCP client provides reasoning; the browser editor has no embedded chat.
 

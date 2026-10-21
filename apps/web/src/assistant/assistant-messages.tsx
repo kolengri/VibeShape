@@ -364,7 +364,15 @@ export function AssistantMessages({
         return message.role === "tool" ? (
           <ToolMessage key={message.id} messages={group} onHighlight={onHighlight} />
         ) : (
-          <article key={message.id} className="mb-4 min-w-0">
+          <article
+            key={message.id}
+            data-message-role={message.role}
+            className={cn(
+              "mb-4 min-w-0",
+              message.role === "user" &&
+                "ml-auto w-fit max-w-[90%] rounded-2xl rounded-tr-sm bg-secondary px-3 py-2 text-secondary-foreground",
+            )}
+          >
             <h3 className="mb-1 text-xs font-medium text-muted-foreground">
               {t(`role.${message.role}`)}
             </h3>

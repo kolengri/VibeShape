@@ -1,5 +1,10 @@
 # Automation and MCP architecture
 
+The optional source-checkout [Jev ACP controller](../jev-agent.md) is an external decision adapter
+over the native host's existing injected MCP attachment. It owns bounded action selection and
+optional argument completion, while the host retains project authority, schemas, exact previews,
+transactions and checkpoints. It adds no browser-side provider or document mutation path.
+
 The desktop host attaches external MCP clients to its already open project and runs installed ACP
 agents through a narrow native bridge. Static web chat calls the person's compatible model API
 directly and executes tools through the same browser-owned automation sessions. Neither path adds
@@ -16,6 +21,20 @@ separately copied external MCP configuration retains its existing single-client,
 scope. ACP readiness, MCP attachment and project authority remain distinct states. Connecting a built-in
 chat authorizes validated model writes under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md);
 external clients retain their separate approval policy.
+
+The private native-project attachment also exposes `ask_user_question`, a host interaction outside
+the external CAD catalog. Its callback captures the assistant owner/session and MCP client transport
+generation and uses the same desktop question owner as ACP form elicitation. This requires ordinary
+MCP tools rather than provider-specific elicitation forwarding. Pending questions own a host wait
+barrier: CAD dispatch, steering, queue drain and automatic continuation cannot pass it on a premature
+ready event. Validated unexpired replies release the barrier; cancellation or expiry pauses work.
+The browser API shares its bounded input schema and stops later tools in the same response after an
+abandoned question. Neither path infers interaction or consent from assistant prose.
+
+Native ACP prompts and steering-owned continuation turns have no default whole-turn deadline,
+so a pending manual review does not terminate the agent after ten minutes. Explicit host timeout
+overrides still apply. Connection/settings requests, permission/question expiry and the Stop
+escalation keep their separate bounds; a stalled turn remains cancellable by the person.
 
 A native completion/error event can belong to a predecessor request while a steering continuation
 is still active. Aggregate terminal/cancelling host snapshots own control and tool cleanup, so the
@@ -187,7 +206,10 @@ feature/output-role pair and returns scoped v1 references with conservative reso
 Pages bind the full document/rebuild/body/kind provenance and are limited to 100 entries and
 128 KiB UTF-8. Missing catalogs/roles and stale cursors fail closed. Existing `model_edges` and
 `draft_edges` retain their separate selection contract. Shell is the explicitly versioned consumer
-of body-bound face references and source hashes; Hole, Fillet and Chamfer do not accept them.
+of body-bound face references and source hashes. Legacy Fillet/Chamfer V1/V2 do not accept those
+references. Chamfer V3 accepts exact body-bound edge/face targets through its alternate strict
+`parameters` input, with explicit adjacent side intent, expression-capable quantities and bounded
+planar measurement support. See [ADR-0118](../adr/0118-body-bound-directional-chamfer.md).
 [ADR-0051](../adr/0051-body-bound-topology-inspection.md) records that staged boundary.
 
 ## Goals and non-goals
@@ -448,6 +470,15 @@ document persistence precede automatic continuation of an interrupted turn. The 
 authoritative state; neither the original prompt nor uncertain CAD operations are replayed. Explicit
 Stop or Disconnect, lost consent, permanent configuration errors and required authentication remain
 terminal until the person acts. Generic external and remote recovery policies are unchanged.
+
+Authenticated local recovery can retain bounded private CAD intent in the same tab under
+[ADR-0119](../adr/0119-explicit-private-draft-recovery.md). `list_recoverable_drafts` exposes complete
+semantic journals after uncertain saved outcomes have been reconciled. Explicit `restore_draft`
+requires the exact committed base and creates a new private draft attributed to the current actor;
+it does not save, approve or replay a persistence operation. The old handle and actor remain
+disposed. Retention is memory-only, at most four journals/64 commands each/128 KiB combined, with
+the original expiry and authenticated document/client/bearer lineage. Stop, explicit disconnect,
+project/client replacement or reload removes it. Remote sessions receive no such recovery grant.
 
 The loopback origin has these requirements:
 

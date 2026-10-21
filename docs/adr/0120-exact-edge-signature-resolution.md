@@ -1,4 +1,4 @@
-# ADR-0118: Exact Edge Signature Resolution
+# ADR-0120: Exact Edge Signature Resolution
 
 - Status: Accepted
 - Date: 2026-10-21

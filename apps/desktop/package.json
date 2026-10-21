@@ -1,15 +1,16 @@
 {
   "name": "@vibeshape/desktop",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
   "main": "dist/main.cjs",
   "scripts": {
     "build": "bun run build.ts",
-    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "start": "bun run start.ts",
     "typecheck": "bun run --bun tsc -p tsconfig.json && bun run --bun tsc -p tsconfig.test.json && bun run --bun tsc -p tsconfig.tools.json",
-    "package": "bun run package.ts"
+    "package": "bun run package.ts",
+    "package:windows": "bun run package.ts --windows"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.9.0",

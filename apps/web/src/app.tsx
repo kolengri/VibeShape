@@ -12,18 +12,16 @@ import {
 import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import type { PartId } from "@vibeshape/domain/identifiers"
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { ApiAssistantProvider } from "./assistant/api-assistant-provider"
-import {
-  BrowserProjectAssistant,
-  getBrowserProjectChatController,
-} from "./assistant/browser-project-assistant"
 import { getNativeAssistant } from "./assistant/native-assistant-bridge"
-import { NativeProjectAssistant } from "./assistant/native-project-assistant"
-import { getNativeProjectChatController } from "./assistant/native-project-chat-registry"
+import {
+  AssistantPresentationProvider,
+  ProjectAssistantPanel,
+  ProjectAssistantToggle,
+} from "./assistant/project-assistant-presentation"
 import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
 import { editorCommandIds, type ResolvedEditorCommand } from "./commands/editor-command"
 import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
@@ -99,9 +97,7 @@ import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
 import { historyInsertionAnchor, historyInsertionContext } from "./shell/history-insertion-context"
 import { historyFeatureForEditing, historySketchForEditing } from "./shell/history-repair-context"
-import { modelEdgeOptions, resolveModelEdgeSelection } from "./shell/model-edge-selection"
 import { partForModelBody } from "./shell/model-tree-selection"
-import type { ProjectAssistantActivity } from "./shell/project-assistant-status"
 import { ShortcutHelpDialog, useShortcutHelp } from "./shell/shortcut-help-dialog"
 import { SketchNavigationControl } from "./shell/sketch-navigation-control"
 import {
@@ -110,6 +106,7 @@ import {
 } from "./shell/sketch-shortcut-toolbar"
 import { StatusBar } from "./shell/status-bar"
 import { useViewerPreferences, ViewerPreferencesProvider } from "./shell/viewer-preferences"
+import { useViewportCapture, ViewportCaptureProvider } from "./shell/viewport-capture"
 import { WorkspaceLayoutPreferencesProvider } from "./shell/workspace-layout-preferences"
 
 type SketchPersistenceBeforeExtrusionResult = "failed" | "saved" | "unchanged"
@@ -484,21 +481,13 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     (kind: "create-fillet" | "create-chamfer") => {
       const current = sessionStore.getState()
       const context = historyInsertionContext(controller)
-      const selected =
-        current.edgeSelection ?? selectedEdgeTreatmentSource(currentAuthoredParts(context), current)
+      const selected = selectedEdgeTreatmentSource(currentAuthoredParts(context), current)
       const report = context.report
       const targets = report
         ? modifyingSolidTargetFeatures(report.snapshot.features, undefined, report.rebuild)
         : []
-      const edges = modelEdgeOptions(
-        context,
-        current.hiddenFeatureIds,
-        current.partVisibilityOverrides,
-        () => "",
-      )
-      const edge = resolveModelEdgeSelection(edges, current.edgeSelection)
       sessionActions.startPartDesignTool(
-        edgeTreatmentCreateTool(kind, selected, targets, edge?.selection.reference),
+        edgeTreatmentCreateTool(kind, selected, targets, current.selectedModelEdges),
       )
     },
     [controller, sessionActions, sessionStore],
@@ -510,7 +499,6 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         ...historyInsertionActions,
         acknowledgeExtrusionDistance: sessionActions.acknowledgeExtrusionDistance,
         acknowledgeRevolveAngle: sessionActions.acknowledgeRevolveAngle,
-        selectEdge: sessionActions.setModelEdgeSelection,
         closeTool: sessionActions.closeActiveTool,
         completeTool: () => sessionActions.completeActiveTool(partDesignToolGeneration),
         beginSketchSupportReplacement: sessionActions.beginSketchSupportReplacement,
@@ -694,7 +682,8 @@ type EditorApplicationSession = Pick<
   | "revolveAngleRequest"
   | "selectedOriginPlane"
   | "selection"
-  | "edgeSelection"
+  | "selectedModelEdges"
+  | "modelEdgeSelectionEnabled"
   | "sketch"
   | "workspace"
 > & { assistantToolTargets: AssistantToolTargets | null }
@@ -720,7 +709,8 @@ function useEditorApplicationSession() {
       revolveAngleRequest: state.revolveAngleRequest,
       selectedOriginPlane: state.selectedOriginPlane,
       selection: state.selection,
-      edgeSelection: state.edgeSelection,
+      selectedModelEdges: state.selectedModelEdges,
+      modelEdgeSelectionEnabled: state.modelEdgeSelectionEnabled,
       sketch: state.sketch,
       workspace: state.workspace,
     })),
@@ -919,7 +909,10 @@ function EditorWorkspaceComposition({
       selectedOriginPlane={session.selectedOriginPlane}
       workspace={session.workspace}
       selection={session.selection}
-      edgeSelection={session.edgeSelection}
+      selectedModelEdges={session.selectedModelEdges}
+      modelEdgeSelectionEnabled={session.modelEdgeSelectionEnabled}
+      onModelEdgeToggle={sessionActions.toggleModelEdgeSelection}
+      onModelEdgeSelectionChange={sessionActions.setModelEdgeSelection}
       sketchConstruction={session.sketch.construction}
       sketchCameraMode={session.sketch.cameraMode}
       sketchFinalContext={session.sketch.showFinalContext}
@@ -964,15 +957,14 @@ function resolveAuthoredEditorSession(
         storedSession.partVisibilityOverrides,
       ),
     }
-  const selection = storedSession.edgeSelection ?? storedSession.selection
-  if (!selection) return storedSession
-  return sessionFromBodySelection(storedSession, authoredParts, selection)
+  if (!storedSession.selection) return storedSession
+  return sessionFromBodySelection(storedSession, authoredParts, storedSession.selection)
 }
 
 function sessionFromBodySelection(
   storedSession: EditorApplicationSession,
   authoredParts: ReturnType<typeof currentAuthoredParts>,
-  selection: Pick<NonNullable<EditorApplicationSession["selection"]>, "featureId" | "outputRole">,
+  selection: NonNullable<EditorApplicationSession["selection"]>,
 ) {
   const selectedBody = {
     featureId: featureIdSchema.parse(selection.featureId),
@@ -1042,44 +1034,17 @@ function lightweightingWorkspaceActive(session: EditorApplicationSession) {
   )
 }
 
-function useProjectAssistantActivity(
-  projectId: string | undefined,
-  bridge: ReturnType<typeof getNativeAssistant>,
-) {
-  const [activity, setActivity] = useState<{
-    projectId: string
-    source: ProjectAssistantActivity
-  } | null>(null)
-  useEffect(() => {
-    if (!projectId) {
-      setActivity(null)
-      return
-    }
-    const source = bridge
-      ? getNativeProjectChatController(bridge, projectId)
-      : getBrowserProjectChatController(projectId)
-    setActivity({ projectId, source })
-  }, [bridge, projectId])
-  return activity?.projectId === projectId ? activity?.source : undefined
-}
-
 function useProjectAssistant(controller: ReturnType<typeof useDocumentController>) {
-  const t = useTranslations("app.assistant")
-  const [open, setOpen] = useState(false)
+  const capturePort = useViewportCapture()
+  const captureView = useCallback(async () => {
+    const image = await capturePort?.capture()
+    return image ? new File([image], "viewport.png", { type: image.type }) : null
+  }, [capturePort])
   const bridge = getNativeAssistant()
-  const activity = useProjectAssistantActivity(controller.report?.snapshot.id, bridge)
-  const close = () => setOpen(false)
   return {
-    activity,
-    toggle: (
-      <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {t("title")}
-      </Button>
-    ),
-    panel: bridge ? (
-      <NativeProjectAssistant bridge={bridge} controller={controller} open={open} onClose={close} />
-    ) : (
-      <BrowserProjectAssistant controller={controller} open={open} onClose={close} />
+    toggle: <ProjectAssistantToggle />,
+    panel: (
+      <ProjectAssistantPanel bridge={bridge} controller={controller} onCaptureView={captureView} />
     ),
   }
 }
@@ -1177,7 +1142,6 @@ function EditorApplication({
       data-window-chrome={getDesktopHost()?.windowChrome}
     >
       <ApplicationBar
-        assistantActivity={assistant.activity}
         controller={controller}
         projectNavigation={<LocalizedProjectTabs controller={controller} />}
         hideModelExport={assemblyMode.active}
@@ -1244,10 +1208,12 @@ function EditorApplication({
       </div>
       <StatusBar
         selectedBody={session.selectedBody}
-        edgeSelection={session.edgeSelection}
         controller={controller}
         selectedOriginPlane={session.selectedOriginPlane}
         selection={session.selection}
+        selectedModelEdges={session.selectedModelEdges}
+        modelEdgeSelectionEnabled={session.modelEdgeSelectionEnabled}
+        onModelEdgeSelectionEnabledChange={sessionActions.setModelEdgeSelectionEnabled}
       />
     </main>
   )
@@ -1274,7 +1240,11 @@ export function App() {
                       documentId={controller.report?.snapshot.id}
                     >
                       <AutomationEditorScope />
-                      <EditorApplication controller={controller} />
+                      <ViewportCaptureProvider>
+                        <AssistantPresentationProvider>
+                          <EditorApplication controller={controller} />
+                        </AssistantPresentationProvider>
+                      </ViewportCaptureProvider>
                     </EditorSessionProvider>
                   ) : (
                     <DocumentProjectPage controller={controller} />

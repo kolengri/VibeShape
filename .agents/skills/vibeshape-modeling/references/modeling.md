@@ -1,9 +1,8 @@
 # Modeling contracts and recipes
 
-Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
-The built-in chat commits validated changes to its current project without another Apply action;
-manual review requirements below describe external MCP clients. Publishing or updating the reusable
-local library remains separately reviewed for every connection.
+Use the [model-write approval policy](../../vibeshape-use/references/session.md#model-write-approval)
+for the current connection. Manual review instructions below apply to external MCP clients;
+library publication remains separately reviewed for every connection.
 
 ## Choose a construction
 
@@ -106,7 +105,7 @@ indices. Local and paired remote transports use ordinary owned draft preview, re
 
 `create_union`/`update_union` and `create_compound`/`update_compound` use schema v2: two to eight distinct exact bodies selected by `{ schemaVersion: 0, featureId, outputRole }`. Multiple roles from the same producer are supported; dependencies list each producer once in first-occurrence order, and references are empty. Use inspected roles for saved bodies. Known newly authored single-solid Box/Extrude/Revolve/Union outputs use `result`; do not invent roles for arbitrary multi-body features.
 
-Union takes ordered `bodies`, requires one connected positive-volume solid and keeps the first selected PartId while consuming the other selected parts. Compound takes ordered `slots`, each with a unique UUIDv7 `slotId` and `targetBody`; it retains separate solids and exposes `body.<slotId>`. Preserve slot IDs on edit to retain output and part identities. Missing roles fail exact preview; they never fall back to another body. An explicit update can upgrade saved v1 Union/Compound intent to v2. Manual Apply is the default; a matching explicit browser session grant permits Union v2 and Loft v1/v2/v3 creation and same-version edits. Compound and schema-upgrade edits still require manual review.
+Union takes ordered `bodies`, requires one connected positive-volume solid and keeps the first selected PartId while consuming the other selected parts. Compound takes ordered `slots`, each with a unique UUIDv7 `slotId` and `targetBody`; it retains separate solids and exposes `body.<slotId>`. Preserve slot IDs on edit to retain output and part identities. Missing roles fail exact preview; they never fall back to another body. An explicit update can upgrade saved v1 Union/Compound intent to v2. Creation, updates and supported schema upgrades follow the [session approval policy](../../vibeshape-use/references/session.md#model-write-approval).
 
 ## Hole
 
@@ -132,19 +131,53 @@ for every profile and fail the whole feature if any endpoint is unreachable or i
 bounds, volume and solid count for the complete selection before Apply. Revolve still requires all
 profiles to come from one sketch.
 
-`create_face_extent_extrude` and `update_face_extent_extrude` author v7 up-to-face for one-sketch selections, or v8 for cross-sketch selections, with the same typed advanced fields and exact target/body dependency rules. Obtain a current finite planar or curved `BodyFaceRef` from `model_body_topology` or `draft_body_topology` and retain its captured support hash. Curved termination requires one complete reachable cap; every new cap face must lie on the selected finite face. Partial patches, neighboring boundaries, an inside start, unreachable extents and stale or ambiguous support fail closed. No implicit surface extension is performed. Explicitly upgrading a legacy feature uses this named update tool and manual browser review; editing a saved v7 feature through it remains v7 when the endpoint becomes planar. Preview downstream geometry before committing. These additive tools are shared by local stdio and paired remote MCP.
+`create_face_extent_extrude` and `update_face_extent_extrude` author v7 up-to-face for one-sketch selections, or v8 for cross-sketch selections, with the same typed advanced fields and exact target/body dependency rules. Obtain a current finite planar or curved `BodyFaceRef` from `model_body_topology` or `draft_body_topology` and retain its captured support hash. Curved termination requires one complete reachable cap; every new cap face must lie on the selected finite face. Partial patches, neighboring boundaries, an inside start, unreachable extents and stale or ambiguous support fail closed. No implicit surface extension is performed. Explicitly upgrading a legacy feature uses this named update tool and the session approval policy; editing a saved v7 feature through it remains v7 when the endpoint becomes planar. Preview downstream geometry before committing. These additive tools are shared by local stdio and paired remote MCP.
 
 ## Fillet and Chamfer
 
-Obtain durable resolved selections from `model_edges` or `draft_edges`. A unique identical full edge signature resolves before approximate matching, including nearby circular rims; coincident identical candidates remain ambiguous and require explicit repair. `edges` omission means **all edges**; preserve the entire array for a selected treatment. Body topology inspection references are not accepted as treatment selections. Radii/distances are positive mm fields; optional expressions are authoritative. Preserve an existing expression unless the request changes it.
+A unique identical complete edge signature resolves before approximate matching, including nearby
+circular rims. Coincident identical candidates remain ambiguous and require explicit repair. This
+rule preserves semantic, lineage and exact output-body restrictions.
 
-In the visible editor, a current model edge can be selected directly in the idle 3D viewport,
-including through its keyboard edge selector. Starting Fillet or Chamfer with an eligible selected
-edge seeds that exact reference; a body or face selection seeds only the source body. Hidden,
-occluded, clipped, or preview-only edges do not intercept pointer picking. This is UI preselection,
-not an MCP session selection API: named MCP treatment tools still require explicit durable `edges`.
+In the visible editor, current exact edges can be selected directly in the idle 3D viewport or
+through its focus-revealed keyboard selector. Starting Fillet or Chamfer captures eligible edge intent
+before clearing idle selection. Hidden, occluded, clipped and preview-only edges do not intercept
+ordinary pointer picking. This is UI preselection, not an MCP session-selection API; named tools
+still require their explicit durable selections.
 
-If exact preview fails, inspect diagnostics and the complete treatment record. Correct the requested radius/distance or repair a missing selection through supported inspection; do not silently broaden to all edges. Sequential treatments usually target the prior treatment result, rather than an already consumed upstream solid.
+Legacy Fillet/Chamfer V1/V2 obtain durable resolved selections from `model_edges` or
+`draft_edges`. Omitting `edges` means all edges (V1); supplying it retains selected-edge intent
+(V2). Body topology references are not accepted by those legacy contracts. Radius/distance fields
+use positive mm and preserve authoritative expressions. Do not migrate an existing feature merely
+because a new version exists.
+
+`create_chamfer` and `update_chamfer` also accept a strict V3 alternative with `draftId`,
+`baseRevision`, `commandId`, `featureId`, optional `label`, and `parameters`. Read the live schema.
+V3 parameters retain an exact `targetBody`, mode (`equal-distance`, `two-distances`, or
+`distance-angle`), expression-capable quantities, `measurement`, `flip`, `tangentPropagation`,
+`targets`, and `directionOverrides`. Obtain exact body-bound edges and faces through
+`model_body_topology` or `draft_body_topology`, retaining the output role. Generic feature references
+are empty and the sole dependency is the target body's producer. This contract is shared by local
+and paired remote MCP.
+
+Two-distance and distance-angle edge targets require an explicitly selected adjacent `sideFace`.
+A face target supplies its own side and expands its current native boundary. Catalogue adjacency
+classes do not identify exact adjacent faces; never guess a side from the nearest plane. The native
+worker validates incidence. The first distance and angle are relative to that side. Global flip XOR
+each edge override chooses the opposite side. Equal-distance mode has no direction controls.
+
+V3 Offset and Tangent are supported only on planar adjacent faces, where their measured behavior
+coincides. Curved V3 support fails explicitly; do not relabel a native OCCT mode or silently downgrade
+an advanced request. Legacy circular equal-distance V1/V2 operations retain their existing path.
+Native tangent propagation extends complete contours. With propagation disabled, every contour edge
+must be explicitly covered. Uniform complete-contour direction overrides are supported; partial or
+mixed directions within one contour fail explicitly.
+
+On exact preview failure, inspect the complete treatment record and diagnostic. Geometric failures
+advise reducing radius/distance or choosing another edge; missing or ambiguous references require
+explicit reselection on the current body. Do not broaden to all edges or promise that an oversized
+chamfer automatically crosses neighboring faces. Sequential treatments normally target the previous
+result. Preserve the source, verify the latest preview, then use ordinary draft commit authority.
 
 ## Variables
 
@@ -196,7 +229,7 @@ Sketch fillet/chamfer are sketch edits, separate from solid Fillet/Chamfer featu
 
 ## Placement and editable text
 
-`create_placement`/`update_placement` take the registered typed translation/rotation parameters and an exact `targetBody`. Supply exactly that producer as the sole dependency and empty references. Placement is numeric and non-associative; preview bounds and volume before ordinary manual review. Read the existing feature before update and retain its identity.
+`create_placement`/`update_placement` take the registered typed translation/rotation parameters and an exact `targetBody`. Supply exactly that producer as the sole dependency and empty references. Placement is numeric and non-associative; preview bounds and volume before committing under the session approval policy. Read the existing feature before update and retain its identity.
 
 `create_sketch_text` takes `draftId`, the current draft `baseRevision` from its last returned state, a fresh `commandId`, `sketchId`, a new stable UUIDv7 `groupId`, bounded `origin: [x, y]` and `intent` (`text`, `heightMm`, `trackingMm`, `alignment`, `kerning`). Inspect the live schema for supported characters and bounds. The browser uses its pinned bundled font; do not supply font bytes, hashes, entity IDs or outline metadata. Existing outline complexity budgets still apply even below the 64-scalar text limit.
 

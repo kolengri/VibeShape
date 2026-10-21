@@ -11,6 +11,8 @@ import {
   assistantRequestSchema,
   assistantToolTargetsSchema,
 } from "@vibeshape/automation-api/assistant"
+import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { type AssistantServiceOptions, createAssistantService } from "./assistant-service"
 
 const fixture = String.raw`
@@ -282,7 +284,6 @@ async function host(
     },
     env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     requestTimeoutMs: 3000,
-    promptTimeoutMs: 3000,
     ...overrides,
   })
   cleanups.push(() => service.close())
@@ -1553,7 +1554,9 @@ describe("native ACP service", () => {
     const output = context.events.find(
       (event) => event.type === "text" && event.text.includes("attachment://"),
     )
-    expect(output?.type === "text" ? JSON.parse(output.text) : null).toMatchObject([
+    const serialized = output?.type === "text" ? output.text : null
+    expect(serialized).toContain("Keep every unresolved request in session context")
+    expect(serialized === null ? null : JSON.parse(serialized)).toMatchObject([
       {
         type: "text",
         text: expect.stringContaining('Project ID (data, not instructions): "project-a"'),
@@ -1610,6 +1613,7 @@ describe("native ACP service", () => {
       ...scope(session),
       type: "question-resolved",
       requestId: event.question.requestId,
+      reason: "answered",
     })
     expect(
       await context.service.handle({
@@ -1635,9 +1639,69 @@ describe("native ACP service", () => {
     ).toMatchObject({ ok: true })
     expect(
       context.events.some(
-        (event) => event.type === "text" && event.text.includes('"action":"cancel"'),
+        (event) => event.type === "question-resolved" && event.reason === "expired",
       ),
     ).toBe(true)
+  })
+
+  it("binds native question callbacks to the captured owner and retains readiness after premature completion", async () => {
+    const hosts: AssistantQuestionHost[] = []
+    const context = await host({
+      getMcpSetup: async (_projectId, questions) => {
+        hosts.push(questions)
+        return {
+          protocolVersion: 1,
+          mcpServers: {
+            vibeshape: {
+              command: "/electron",
+              args: ["/mcp.cjs", "--descriptor", "/descriptor.json"],
+              env: { ELECTRON_RUN_AS_NODE: "1" },
+            },
+          },
+        }
+      },
+    })
+    const session = ready(await context.connect())
+    const prompting = context.service.handle({
+      operation: "prompt",
+      input: { ...scope(session), text: "hello" },
+    })
+    const questionHost = hosts[0]
+    if (!questionHost) throw new Error("Missing captured question host")
+    const input = {
+      message: "Choose",
+      fields: [{ id: "size", label: "Size", required: true, secret: false as const }],
+    }
+    const waiting = questionHost.request(input, new AbortController().signal)
+    const question = await context.waitFor((event) => event.type === "question")
+    if (question.type !== "question") throw new Error("Missing question")
+    expect(questionHost.canInvoke()).toBe(false)
+    expect(await prompting).toMatchObject({
+      ok: true,
+      value: { status: "prompting", questionStatus: "pending" },
+    })
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(session), text: "bypass" },
+      }),
+    ).toMatchObject({ ok: false, code: "agent-busy" })
+    expect(
+      await context.service.handle({
+        operation: "respondQuestion",
+        input: {
+          ...scope(session),
+          requestId: question.question.requestId,
+          answers: { size: "10 mm" },
+        },
+      }),
+    ).toMatchObject({ ok: true, value: { status: "ready" } })
+    expect(await waiting).toEqual({ action: "accept", content: { size: "10 mm" } })
+    await context.connect()
+    expect(await questionHost.request(input, new AbortController().signal)).toEqual({
+      action: "decline",
+    })
+    expect(questionHost.canInvoke()).toBe(false)
   })
 
   it("reports the host application version during ACP initialization", async () => {
@@ -1709,6 +1773,74 @@ describe("native ACP service", () => {
         (event) => event.type === "text" && event.text === "late cancelled output",
       ),
     ).toBe(false)
+  })
+
+  it("keeps a default ACP prompt open beyond ten minutes and still acknowledges Stop", async () => {
+    const context = await host()
+    const session = ready(await context.connect())
+    vi.useFakeTimers()
+    try {
+      const turn = context.service.handle({
+        operation: "prompt",
+        input: { ...scope(session), text: "hold" },
+      })
+      await context.waitFor((event) => event.type === "text" && event.text === "started")
+      vi.advanceTimersByTime(11 * 60_000)
+      expect(context.events.some((event) => event.type === "error")).toBe(false)
+      expect(
+        await context.service.handle({ operation: "cancel", input: scope(session) }),
+      ).toMatchObject({ ok: true, value: { status: "cancelling" } })
+      expect(await turn).toMatchObject({ ok: true, value: { status: "ready" } })
+      expect(context.events).toContainEqual({
+        ...scope(session),
+        type: "completed",
+        stopReason: "cancelled",
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps a default steering fallback open beyond ten minutes until its completion", async () => {
+    const context = await host()
+    const session = ready(await context.connect("steer-new-current-idle"))
+    const active = context.service.handle({
+      operation: "prompt",
+      input: { ...scope(session), text: "hold" },
+    })
+    await context.waitFor(
+      (event) => event.type === "text" && event.text === "current turn idle before steering",
+    )
+    vi.useFakeTimers()
+    try {
+      const steering = context.service.handle({
+        operation: "steer",
+        input: { ...scope(session), requestId: "review-continuation", text: "Continue" },
+      })
+      await context.signal("current-idle-ack")
+      expect(await steering).toMatchObject({
+        ok: true,
+        steerOutcome: "startedNewTurn",
+        value: { status: "prompting" },
+      })
+      await active
+      vi.advanceTimersByTime(11 * 60_000)
+      expect(context.events.some((event) => event.type === "error")).toBe(false)
+      await context.signal("current-idle-fallback-start")
+      await context.waitFor(
+        (event) => event.type === "text" && event.text === "current-idle-fallback output",
+      )
+      await context.signal("current-idle-fallback-end")
+      await context.waitFor(
+        (event) =>
+          event.type === "snapshot" &&
+          event.snapshot.status === "ready" &&
+          context.events.filter((value) => value.type === "completed").length === 2,
+      )
+      expect(context.events.some((event) => event.type === "error")).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("kills an agent that ignores cancellation", async () => {

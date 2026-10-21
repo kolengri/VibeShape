@@ -21,7 +21,6 @@ const fragmentShader = /* glsl */ `
 uniform vec2 gridOrigin;
 uniform vec2 gridRight;
 uniform vec2 gridUp;
-uniform vec3 rayDistance;
 uniform vec3 gridColor;
 uniform float gridSpacing;
 uniform float gridBlend;
@@ -38,8 +37,6 @@ float gridLine(vec2 coordinate, float width) {
 }
 
 void main() {
-  float distance = rayDistance.x + dot(rayDistance.yz, gridScreen);
-  if (distance <= 0.0) discard;
   vec2 coordinate = (gridOrigin + gridRight * gridScreen.x + gridUp * gridScreen.y) / gridSpacing;
   float minor = gridLine(coordinate, 0.55) * 0.055 * (1.0 - gridBlend);
   float major = gridLine(coordinate / 10.0, mix(0.85, 0.55, gridBlend)) * mix(0.15, 0.055, gridBlend);
@@ -69,7 +66,6 @@ export class InfiniteGridDecoration {
     gridOrigin: { value: new Vector2() },
     gridRight: { value: new Vector2() },
     gridUp: { value: new Vector2() },
-    rayDistance: { value: new Vector3() },
     gridColor: { value: viewerSemanticColor("--muted-foreground") },
     gridSpacing: { value: 1 },
     gridBlend: { value: 0 },
@@ -135,6 +131,7 @@ export class InfiniteGridDecoration {
     const rightY = (this.#cameraRight.y - (dy * this.#cameraRight.z) / dz) * halfWidth
     const upX = (this.#cameraUp.x - (dx * this.#cameraUp.z) / dz) * halfHeight
     const upY = (this.#cameraUp.y - (dy * this.#cameraUp.z) / dz) * halfHeight
+    // Orthographic background coordinates extend across the camera plane, independent of scene depth.
     const centerDistance = -this.#cameraPosition.z / dz
     const centerX = this.#cameraPosition.x + dx * centerDistance
     const centerY = this.#cameraPosition.y + dy * centerDistance
@@ -145,14 +142,12 @@ export class InfiniteGridDecoration {
     const lod = Math.log10(worldUnitsPerPixel * 10)
     const spacing = 10 ** Math.floor(lod)
     const period = spacing * 100
-    const distanceX = (-this.#cameraRight.z * halfWidth) / dz
-    const distanceY = (-this.#cameraUp.z * halfHeight) / dz
     if (
       halfWidth <= 0 ||
       halfHeight <= 0 ||
       spacing <= 0 ||
       !Number.isFinite(
-        rightX + rightY + upX + upY + centerX + centerY + period + distanceX + distanceY + lod,
+        rightX + rightY + upX + upY + centerDistance + centerX + centerY + period + lod,
       )
     ) {
       return
@@ -164,7 +159,6 @@ export class InfiniteGridDecoration {
     )
     this.#uniforms.gridRight.value.set(rightX, rightY)
     this.#uniforms.gridUp.value.set(upX, upY)
-    this.#uniforms.rayDistance.value.set(centerDistance, distanceX, distanceY)
     this.#uniforms.gridSpacing.value = spacing
     this.#uniforms.gridBlend.value = lod - Math.floor(lod)
     const fade = Math.min(1, (inclination - 0.025) / (0.18 - 0.025))

@@ -8,11 +8,16 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 import { LATEST_PROTOCOL_VERSION, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js"
+import type { AssistantQuestionReply } from "@vibeshape/automation-api/assistant"
 import { DESKTOP_MCP_DESCRIPTOR_NAME } from "@vibeshape/automation-api/desktop-host"
+import { localFailureSchema } from "@vibeshape/automation-api/local-tools"
+import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
+import { z } from "zod"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { startEditorServer } from "./editor-server"
 import { publishMcpDescriptor, readMcpDescriptor } from "./mcp-descriptor"
 import { createDesktopMcpService } from "./mcp-service"
+import { preparePrivateDirectory } from "./private-files"
 
 const cleanups: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -20,8 +25,10 @@ afterEach(async () => {
 })
 
 async function host() {
-  const directory = await mkdtemp(join(tmpdir(), "vibeshape-native-mcp-"))
-  cleanups.push(() => rm(directory, { recursive: true, force: true }))
+  const root = await mkdtemp(join(tmpdir(), "vibeshape-native-mcp-"))
+  cleanups.push(() => rm(root, { recursive: true, force: true }))
+  const directory = process.platform === "win32" ? join(root, "private") : root
+  if (process.platform === "win32") preparePrivateDirectory(directory)
   const editor = join(directory, "editor")
   await mkdir(editor)
   await writeFile(
@@ -59,8 +66,16 @@ async function connect(context: Awaited<ReturnType<typeof host>>, name = "native
   return { client, transport }
 }
 
-async function project(context: Awaited<ReturnType<typeof host>>, id: string) {
-  const path = await context.service.publishProject(id, join(context.directory, `${id}.json`))
+async function project(
+  context: Awaited<ReturnType<typeof host>>,
+  id: string,
+  questions?: AssistantQuestionHost,
+) {
+  const path = await context.service.publishProject(
+    id,
+    join(context.directory, `${id}.json`),
+    questions,
+  )
   const descriptor = await readMcpDescriptor(path)
   const attached = await connect(
     {
@@ -108,6 +123,87 @@ function browser(
 describe("app-owned native MCP attachment", () => {
   const projectId = "0195b5ac-b220-7a2c-8c33-67a36a7f6101"
   const document = { id: projectId, name: "Open project", revision: 4 }
+
+  it("discovers and invokes native questions without ACP elicitation and rejects superseded transport callbacks", async () => {
+    const context = await host()
+    let calls = 0
+    let waiting = false
+    let started!: () => void
+    const began = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    let answer!: (reply: AssistantQuestionReply) => void
+    const questions: AssistantQuestionHost = {
+      canInvoke: () => !waiting,
+      request: async (_input, signal) => {
+        calls += 1
+        waiting = true
+        started()
+        return new Promise<AssistantQuestionReply>((resolve) => {
+          answer = resolve
+          signal.addEventListener("abort", () => resolve({ action: "cancel" }), { once: true })
+        })
+      },
+    }
+    const native = await project(context, projectId, questions)
+    // Discover over HTTP without compiling every CAD output schema on the server's test loop.
+    expect(
+      (await native.client.request({ method: "tools/list" }, ListToolsResultSchema)).tools,
+    ).toContainEqual(expect.objectContaining({ name: "ask_user_question" }))
+    const input = {
+      message: "Choose a size",
+      fields: [{ id: "size", label: "Size", required: true }],
+    }
+    let completed = false
+    const call = native.client
+      .callTool({ name: "ask_user_question", arguments: input })
+      .then((result) => {
+        completed = true
+        return result
+      })
+    await began
+    expect(completed).toBe(false)
+    const blocked = await native.client.callTool({ name: "model_info", arguments: {} })
+    expect(blocked).toMatchObject({
+      isError: true,
+      structuredContent: { result: { diagnostic: { code: "assistant-question-blocked" } } },
+    })
+    const failure = z
+      .object({ result: localFailureSchema })
+      .strict()
+      .parse(blocked.structuredContent)
+    expect(failure.result.diagnostic.code).toBe("assistant-question-blocked")
+    const replacement: AssistantQuestionHost = {
+      canInvoke: () => true,
+      request: async () => ({ action: "accept", content: { size: "20 mm" } }),
+    }
+    await context.service.publishProject(
+      projectId,
+      join(context.directory, `${projectId}.json`),
+      replacement,
+    )
+    expect(await call).toMatchObject({ isError: true, structuredContent: { action: "cancel" } })
+    answer({ action: "accept", content: { size: "stale answer" } })
+    expect(
+      await native.client.callTool({ name: "ask_user_question", arguments: input }),
+    ).toMatchObject({ isError: true, structuredContent: { action: "cancel" } })
+    expect(calls).toBe(1)
+    await native.client.close()
+    await context.service.whenClientReleased(projectId)
+    const current = await project(context, projectId, replacement)
+    expect(
+      await current.client.callTool({ name: "ask_user_question", arguments: input }),
+    ).toMatchObject({
+      isError: false,
+      structuredContent: { action: "accept", content: { size: "20 mm" } },
+    })
+    const external = await connect(context)
+    expect(
+      (await external.client.request({ method: "tools/list" }, ListToolsResultSchema)).tools.some(
+        (tool) => tool.name === "ask_user_question",
+      ),
+    ).toBe(false)
+  })
 
   async function grant(context: Awaited<ReturnType<typeof host>>) {
     const response = await browser(context, "connect", { protocolVersion: 1, document }, projectId)
@@ -213,20 +309,24 @@ describe("app-owned native MCP attachment", () => {
     expect((await poll(context, replacement.token)).work).toBeNull()
   })
 
-  it("bounds an initial native read and never queues it for a later grant", async () => {
-    const context = await host()
-    const native = await project(context, projectId)
-    expect(
-      await native.client.callTool({ name: "model_info", arguments: {} }, undefined, {
-        timeout: 7000,
-      }),
-    ).toMatchObject({
-      isError: true,
-      structuredContent: { result: { diagnostic: { code: "not-paired", retryable: true } } },
-    })
-    const credential = await grant(context)
-    expect((await poll(context, credential.token)).work).toBeNull()
-  }, 9000)
+  it(
+    "bounds an initial native read and never queues it for a later grant",
+    async () => {
+      const context = await host()
+      const native = await project(context, projectId)
+      expect(
+        await native.client.callTool({ name: "model_info", arguments: {} }, undefined, {
+          timeout: 7000,
+        }),
+      ).toMatchObject({
+        isError: true,
+        structuredContent: { result: { diagnostic: { code: "not-paired", retryable: true } } },
+      })
+      const credential = await grant(context)
+      expect((await poll(context, credential.token)).work).toBeNull()
+    },
+    process.platform === "win32" ? 120_000 : 9000,
+  )
 
   it.each(["abort", "client-close", "service-close"])(
     "cancels native identity readiness on %s without leaking into a later owner",
@@ -380,7 +480,8 @@ describe("app-owned native MCP attachment", () => {
 
   it("discovers existing tools before consent, reserves one client and revokes it when its stream closes", async () => {
     const context = await host()
-    expect((await lstat(context.descriptorPath)).mode & 0o777).toBe(0o600)
+    if (process.platform !== "win32")
+      expect((await lstat(context.descriptorPath)).mode & 0o777).toBe(0o600)
     expect(await (await fetch(context.origin)).text()).toContain(
       'name="vibeshape-local-automation"',
     )
@@ -470,14 +571,21 @@ describe("app-owned native MCP attachment", () => {
     ).toBeGreaterThan(0)
   })
 
-  it("reads only private, owned descriptors and never follows symlinks", async () => {
+  it.skipIf(process.platform === "win32")(
+    "reads only private POSIX descriptors and never follows symlinks",
+    async () => {
+      const context = await host()
+      const link = join(context.directory, "linked.json")
+      await symlink(context.descriptorPath, link)
+      await expect(readMcpDescriptor(link)).rejects.toThrow()
+      await chmod(context.descriptorPath, 0o644)
+      await expect(readMcpDescriptor(context.descriptorPath)).rejects.toThrow("private file")
+      await chmod(context.descriptorPath, 0o600)
+    },
+  )
+
+  it("refuses oversized descriptors", async () => {
     const context = await host()
-    const link = join(context.directory, "linked.json")
-    await symlink(context.descriptorPath, link)
-    await expect(readMcpDescriptor(link)).rejects.toThrow()
-    await chmod(context.descriptorPath, 0o644)
-    await expect(readMcpDescriptor(context.descriptorPath)).rejects.toThrow("private file")
-    await chmod(context.descriptorPath, 0o600)
     await writeFile(context.descriptorPath, "x".repeat(4097))
     await expect(readMcpDescriptor(context.descriptorPath)).rejects.toThrow()
   })

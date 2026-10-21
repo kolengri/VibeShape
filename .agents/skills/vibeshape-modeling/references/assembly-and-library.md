@@ -1,9 +1,8 @@
 # Assembly and local component library
 
-Model-write approval follows the [session policy](../../vibeshape-use/references/session.md).
-The built-in chat commits validated changes to its current project without another Apply action;
-manual review requirements below describe external MCP clients. Publishing or updating the reusable
-local library remains separately reviewed for every connection.
+Use the [model-write approval policy](../../vibeshape-use/references/session.md#model-write-approval)
+for the current connection. Manual review instructions below apply to external MCP clients;
+library publication remains separately reviewed for every connection.
 
 Discover the named tools and their live schemas in the paired local or remote MCP session. Read
 `model_info`, then `model_assembly` at its committed revision. Assembly writes have a separate owned
@@ -29,8 +28,9 @@ draft; ordinary CAD `create_draft` and its command IDs do not apply to this work
    global uniqueness. Conflicting mates, nonconvergence, unsupported budgets and invalid topology fail
    closed. Repair the relevant named records and preview again. Never remove unrelated constraints
    merely to obtain success.
-5. Call `commit_assembly_draft` and apply the ordinary browser review. Assembly and library writes
-   always require manual Apply, including a session with CAD auto-apply enabled. The exact solver runs
+5. Call `commit_assembly_draft` and apply the ordinary browser review. External assembly clients
+   require manual Apply, including a session with CAD auto-apply enabled. Library writes require
+   manual review for every connection. The exact solver runs
    again after approval before the revision CAS. Edits staged after a review starts cannot share its
    approval. A successful receipt identifies the saved revision and one Undo checkpoint.
 

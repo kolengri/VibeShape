@@ -4,6 +4,7 @@
   "entry": [
     // Bun scripts bundle/package the native main process; Playwright owns its native test config.
     "apps/desktop/build.ts",
+    "apps/desktop/start.ts",
     "apps/desktop/package.ts",
     "apps/desktop/src/main.ts",
     "apps/desktop/src/mcp.ts",
@@ -27,6 +28,7 @@
     "apps/web/src/features/extensions/ui-panel-runtime.js",
     "apps/slicer-bridge/src/index.ts",
     "apps/mcp-server/src/index.ts",
+    "apps/jev-agent/src/index.ts",
     "apps/remote-mcp/src/index.ts",
     "apps/remote-mcp/vitest.config.ts",
     // Bun preloads the Vite import adapter through a CLI runtime path.
@@ -69,6 +71,7 @@
     "zones": [
       { "name": "web", "patterns": ["apps/web/**"] },
       { "name": "mcp-server", "patterns": ["apps/mcp-server/**"] },
+      { "name": "jev-agent", "patterns": ["apps/jev-agent/**"] },
       { "name": "remote-mcp", "patterns": ["apps/remote-mcp/**"] },
       { "name": "slicer-bridge", "patterns": ["apps/slicer-bridge/**"] },
       { "name": "i18n", "patterns": ["packages/i18n/**"] },
@@ -110,6 +113,7 @@
       // The loopback adapter depends only on its strict shared contract.
       { "from": "slicer-bridge", "allow": ["slicer-handoff"] },
       { "from": "mcp-server", "allow": ["automation-api"] },
+      { "from": "jev-agent", "allow": ["automation-api"] },
       { "from": "remote-mcp", "allow": ["automation-api"] },
       // Use-case coordination depends on pure domain policy and serializable runtime contracts.
       { "from": "application", "allow": ["domain", "protocol"] },

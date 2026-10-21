@@ -197,7 +197,7 @@ A face signature MAY include surface type, normalized analytical parameters, are
 1. Filter candidates by topology kind.
 2. Resolve an exact semantic role. A missing or duplicated authoritative role returns `missing` or `ambiguous`; it never falls through to a similar shape.
 3. Resolve an exact immediate lineage token. A missing token returns `missing`; multiple descendants are ranked only within that lineage set.
-4. Before approximate edge ranking, an edge without an explicit intent hint resolves one identical full geometric/adjacency signature within the eligible candidate set. Duplicate identical signatures remain ambiguous. This does not override authoritative semantic roles or missing lineage. See [ADR-0118](../adr/0118-exact-edge-signature-resolution.md).
+4. Before approximate edge ranking, an edge without an explicit intent hint resolves one identical full geometric/adjacency signature within the eligible candidate set. Duplicate identical signatures remain ambiguous. This does not override authoritative semantic roles or missing lineage. See [ADR-0120](../adr/0120-exact-edge-signature-resolution.md).
 5. Otherwise filter by geometry class and score measure, centroid or intent point, direction, bounds, boundary count, and adjacency.
 6. If one candidate passes the versioned score threshold and confidence margin, return `resolved`.
 7. If candidates are close, return `ambiguous`; never evaluate downstream features silently.
@@ -362,6 +362,12 @@ or ambiguous references, and duplicate native selections fail closed. Geometry p
 document protocol 18 carry disposable edge display polylines, limited to 1,025 points per edge and
 65,536 per feature. Exact reference geometry and modeling do not depend on these display points.
 
+[ADR-0118](../adr/0118-body-bound-directional-chamfer.md) adds body-bound Chamfer V3 with explicit
+side-face intent, measured asymmetric modes, direction overrides and native tangent-contour checks.
+Offset/Tangent are proven only on planar supports; curved V3 requests fail explicitly while legacy
+circular-rim V1/V2 execution remains unchanged. Named output roles are resolved against their exact
+native body snapshot. No native mode name is treated as proof of another CAD product's semantics.
+
 ## Sketch-point holes
 
 The Hole form now creates named body targets as v2 and recognizes both v1 and v2 for editing.
@@ -420,8 +426,8 @@ reverse-tree traversal and source-path intervals avoid repeated ancestor walks a
 sets. Draft targets remain distinct from committed sources even when their IDs match; model evidence
 is memoized only within that inspection by both owner sketch and reference-object identity.
 
-Body-bound Fillet/Chamfer execution still requires per-output native topology snapshots and explicit
-feature versions. Sketch supports, persistent repair, and a real native multi-copy producer remain
+Body-bound Chamfer V3 uses per-output native topology snapshots and explicit feature versions.
+Fillet retains its legacy single-solid whole-result contract. Sketch supports, persistent repair, and a real native multi-copy producer remain
 open gates; synthetic coincident-body tests are isolation evidence, not native pattern delivery.
 
 ## FDM feature family and export mesh quality

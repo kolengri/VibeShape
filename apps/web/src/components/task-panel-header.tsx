@@ -29,6 +29,7 @@ export function TaskPanelHeader({
   const supplement = useContext(supplementalContent)
   return (
     <header
+      data-slot="task-panel-header"
       className={cn(
         "sticky top-0 z-10 grid min-w-0 gap-2 bg-transparent max-lg:bg-panel",
         // Cover the compact scrollport's top padding without moving the header or its actions.

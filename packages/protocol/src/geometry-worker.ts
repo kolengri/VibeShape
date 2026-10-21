@@ -1608,6 +1608,84 @@ export const shellFeatureContentParametersV2Schema = shellFeatureContentParamete
   openings: z.array(shellOpeningContentSchema).max(64),
 })
 
+// Kept separate from shell's face-only refinement at this untrusted worker boundary.
+export const chamferEdgeContentRefSchema = z
+  .object({
+    ...shellOpeningContentSchema.shape,
+    kind: z.literal("edge"),
+  })
+  .strict()
+  .refine(
+    (reference) => reference.signature.kind === "edge",
+    "Chamfer edge signature must identify an edge.",
+  )
+
+export const chamferFeatureContentParametersV3Schema = z
+  .object({
+    mode: z.enum(["equal-distance", "two-distances", "distance-angle"]),
+    distance: cadLengthSchema,
+    secondDistance: cadLengthSchema.optional(),
+    angle: finiteNumberSchema
+      .positive()
+      .lt(Math.PI / 2)
+      .optional(),
+    measurement: z.enum(["offset", "tangent"]),
+    flip: z.boolean(),
+    tangentPropagation: z.boolean(),
+    targets: z
+      .array(
+        z.discriminatedUnion("kind", [
+          z
+            .object({
+              kind: z.literal("edge"),
+              edge: chamferEdgeContentRefSchema,
+              sideFace: shellOpeningContentSchema.optional(),
+            })
+            .strict(),
+          z.object({ kind: z.literal("face"), face: shellOpeningContentSchema }).strict(),
+        ]),
+      )
+      .min(1)
+      .max(256),
+    directionOverrides: z.array(chamferEdgeContentRefSchema).max(256),
+  })
+  .strict()
+  .superRefine((parameters, context) => {
+    if ((parameters.mode === "two-distances") !== (parameters.secondDistance !== undefined))
+      context.addIssue({
+        code: "custom",
+        path: ["secondDistance"],
+        message: "Only two-distance Chamfer requires a second distance.",
+      })
+    if ((parameters.mode === "distance-angle") !== (parameters.angle !== undefined))
+      context.addIssue({
+        code: "custom",
+        path: ["angle"],
+        message: "Only distance-angle Chamfer requires an angle.",
+      })
+    if (
+      parameters.mode === "equal-distance" &&
+      (parameters.flip || parameters.directionOverrides.length)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["flip"],
+        message: "Equal-distance Chamfer has no direction to flip.",
+      })
+    if (parameters.mode !== "equal-distance")
+      parameters.targets.forEach((target, index) => {
+        if (target.kind === "edge" && !target.sideFace)
+          context.addIssue({
+            code: "custom",
+            path: ["targets", index, "sideFace"],
+            message: "Directional Chamfer requires an explicit adjacent face.",
+          })
+      })
+  })
+export type ChamferFeatureContentParametersV3 = z.infer<
+  typeof chamferFeatureContentParametersV3Schema
+>
+
 const featureContentIdentityV0Schema = z
   .object({
     schemaVersion: z.literal(0),

@@ -2,6 +2,9 @@ import { z } from "zod"
 import bundle from "./generated/agent-skills.json" with { type: "json" }
 import { localFailure, localFailureSchema } from "./local-tools"
 
+export const assistantTaskContinuityInstructions =
+  "Treat successive user messages as additions or corrections to the ongoing task. Keep every unresolved request in session context; a later message replaces earlier work only when the user explicitly cancels or supersedes it. Reconcile steering with active work and resume unfinished requests after an interruption. Save small validated modeling milestones through preview_draft and commit_draft as soon as they are usable, before lengthy inspection or rendering and before starting another independent part. Aim to save within eight successful modeling commands; finish or repair an incomplete coherent stage rather than committing invalid geometry. A preview is not saved work: confirm the successful commit and its actual revision before continuing. After an uncertain write, inspect the saved revision and affected identities instead of repeating it. Before reporting completion, check all pending requests against actual tool results and state any blocked item explicitly."
+
 const indexUri = "vibeshape://agent-skills"
 export const agentSkillInstructions =
   "Read vibeshape://agent-skills for the VibeShape operator skill index, then read vibeshape-use and only the workflows/references needed for this task. If your client only exposes tools, call read_agent_skill with no arguments for the index, then with the listed uri for each document. These are instructions, not installed files or permission grants."

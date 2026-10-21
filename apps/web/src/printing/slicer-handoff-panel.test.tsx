@@ -303,10 +303,10 @@ it("retains a failed-launch mesh for an opaque Finder reveal and releases the ac
   fireEvent.click(button)
   await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
   await act(async () => complete?.({ ok: false, reason: "launch-failed", fileId }))
-  expect(screen.getByRole("alert").textContent).toContain("Your mesh is kept on this Mac")
+  expect(screen.getByRole("alert").textContent).toContain("Your mesh is kept on this computer")
   expect(button.hasAttribute("disabled")).toBe(false)
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Show mesh in Finder" }))
+    fireEvent.click(screen.getByRole("button", { name: "Show mesh in folder" }))
   })
   expect(reveal).toHaveBeenCalledWith(fileId)
   expect(downloaded).not.toHaveBeenCalled()

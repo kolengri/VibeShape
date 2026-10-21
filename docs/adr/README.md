@@ -127,6 +127,10 @@
 | [0116](0116-connected-assistant-model-authority-and-checkpoints.md) | Accepted | Connected built-in chat model authority and internal turn comparison/undo checkpoints |
 | [0117](0117-source-owned-colored-ui-icons.md) | Accepted | Source-owned colored SVG icon family, optical sizing, generated React components and contextual command artwork |
 
+| [0118](0118-body-bound-directional-chamfer.md) | Accepted with bounded planar measurement support | Exact body/face-side Chamfer modes and native contour semantics |
+| [0119](0119-explicit-private-draft-recovery.md) | Accepted | Bounded private CAD intent retention and explicit current-actor restoration |
+| [0120](0120-exact-edge-signature-resolution.md) | Accepted | Unique identical edge signatures resolve before approximate ranking |
+
 Statuses:
 
 - `Proposed` — under discussion
@@ -139,5 +143,3 @@ Statuses:
 When a decision changes, do not rewrite its ADR retroactively. Create a new record and add a `Superseded by` link to the old record.
 
 - [ADR-0082: Paged feature measurements and serialized local acknowledgements](0082-owned-draft-body-inspection-and-diagnostics.md)
-
-| [0118](0118-exact-edge-signature-resolution.md) | Accepted | Unique identical edge signatures resolve before approximate ranking |

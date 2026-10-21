@@ -80,21 +80,6 @@
   width: min(var(--assistant-width), calc(100vw - 16px));
 }
 
-:where(.cad-shell:has(> .assistant-panel)) .cad-workspace-grid {
-  margin-right: var(--assistant-width);
-}
-
-.cad-shell:has(> .assistant-panel) .project-assistant-status {
-  display: none;
-}
-
-@media (min-width: 64rem) {
-  .cad-shell {
-    /* Preserve the tree, task, viewport and resize-handle minimums while chat is docked. */
-    --assistant-width: clamp(208px, calc(100vw - 816px), 420px);
-  }
-}
-
 .application-bar[data-unified-chrome] {
   -webkit-app-region: drag;
   padding-left: 88px;
@@ -142,6 +127,17 @@
   --workspace-chrome-right: 0px;
 }
 
+/* Keep the active task adjacent to chat while the shared History spans below both. */
+.cad-shell:has(.assistant-panel:not([hidden])) .cad-workspace-grid {
+  margin-right: var(--assistant-width);
+}
+
+@media (min-width: 64rem) {
+  .cad-shell {
+    --assistant-width: clamp(208px, calc(100vw - 816px), 420px);
+  }
+}
+
 .workspace-panel {
   --panel: transparent;
   height: 100%;
@@ -172,6 +168,11 @@
 
 .workspace-panel--task[data-collapsed="true"] {
   visibility: hidden;
+}
+
+/* Scrolling fields must not show through a sticky task heading. */
+.workspace-panel--task [data-slot="task-panel-header"] {
+  --panel: var(--workspace-solid-panel);
 }
 
 .cad-workspace-grid[data-transparent="false"] .workspace-panel {

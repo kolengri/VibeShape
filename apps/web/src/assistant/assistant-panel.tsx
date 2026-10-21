@@ -11,6 +11,7 @@ import {
   X,
 } from "@vibeshape/ui/components/icons"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useId, useState } from "react"
 import { ReviewActions } from "../automation/automation-review-actions"
 import { useReportApplicationError } from "../shell/application-notices"
@@ -24,6 +25,7 @@ import { AssistantIconAction } from "./assistant-icon-action"
 import { AssistantMessages } from "./assistant-messages"
 import { AssistantQuestionForm } from "./assistant-question"
 import type { AssistantToolHighlight } from "./assistant-tool-highlight"
+import { AssistantWorkingStatus } from "./assistant-working-status"
 import type { ChatMessage } from "./chat-history"
 
 type AssistantPanelProps = AssistantComposerProps & {
@@ -40,6 +42,8 @@ type AssistantPanelProps = AssistantComposerProps & {
   onAnswer?: (answers: Record<string, string> | null) => Promise<boolean>
   error: string | null
   storageFailed: boolean
+  contextOmittedMessages?: number | undefined
+  onRetryHistory?: (() => Promise<void>) | undefined
   onClose: () => void
   onReset: () => Promise<void>
   canUndoAgentChanges?: boolean
@@ -214,6 +218,7 @@ function AssistantHeader({
   onClose,
   onReset,
   canReset,
+  busy,
 }: {
   titleId: string
   projectName: string
@@ -222,14 +227,18 @@ function AssistantHeader({
   onClose: () => void
   onReset: () => Promise<void>
   canReset: boolean
+  busy: boolean
 }) {
   const t = useTranslations("app.assistant")
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
+    <header className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
       <div className="min-w-0 flex-1">
-        <h2 id={titleId} className="font-medium">
-          {t("title")}
-        </h2>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h2 id={titleId} className="truncate font-medium">
+            {t("title")}
+          </h2>
+          <AssistantWorkingStatus busy={busy} />
+        </div>
         <p className="truncate text-xs text-muted-foreground">{projectName}</p>
       </div>
       <AssistantIconAction label={t("newChat")} disabled={!canReset} onAction={onReset}>
@@ -241,23 +250,58 @@ function AssistantHeader({
       <AssistantIconAction label={t("close")} onAction={onClose}>
         <X aria-hidden="true" />
       </AssistantIconAction>
-    </div>
+    </header>
+  )
+}
+
+function AssistantHistoryFeedback(
+  props: Pick<
+    AssistantPanelProps,
+    "storageFailed" | "contextOmittedMessages" | "onRetryHistory" | "busy"
+  >,
+) {
+  const t = useTranslations("app.assistant")
+  const storageCentralized = useReportApplicationError(
+    props.storageFailed ? t("storageFailed") : null,
+  )
+  return (
+    <>
+      {Boolean(props.contextOmittedMessages) && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {t("historyContextLimited", { count: props.contextOmittedMessages ?? 0 })}
+        </p>
+      )}
+      {props.storageFailed && props.onRetryHistory && (
+        <Button size="sm" variant="outline" disabled={props.busy} onClick={props.onRetryHistory}>
+          {t("historyRetry")}
+        </Button>
+      )}
+      {props.storageFailed && !storageCentralized && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {t("storageFailed")}
+        </p>
+      )}
+    </>
   )
 }
 
 function AssistantFeedback(
   props: Pick<
     AssistantPanelProps,
-    "permission" | "error" | "storageFailed" | "question" | "onAnswer"
+    | "permission"
+    | "error"
+    | "storageFailed"
+    | "question"
+    | "onAnswer"
+    | "contextOmittedMessages"
+    | "onRetryHistory"
+    | "busy"
   >,
 ) {
-  const t = useTranslations("app.assistant")
   const centralized = useReportApplicationError(props.error)
-  const storageCentralized = useReportApplicationError(
-    props.storageFailed ? t("storageFailed") : null,
-  )
   return (
     <>
+      <AssistantHistoryFeedback {...props} />
       {props.permission}
       {props.question && props.onAnswer && (
         <div className="max-h-72 overflow-y-auto">
@@ -273,11 +317,6 @@ function AssistantFeedback(
           {props.error}
         </p>
       )}
-      {props.storageFailed && !storageCentralized && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {t("storageFailed")}
-        </p>
-      )}
     </>
   )
 }
@@ -287,16 +326,20 @@ export function AssistantPanel(props: AssistantPanelProps) {
   const titleId = useId()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [draft, setDraft] = useState<AssistantComposerDraft>({ text: "", attachments: [] })
-  if (!props.open) return null
   return (
     <TooltipProvider>
       <aside
-        className="assistant-panel flex min-h-0 flex-col border-l bg-panel shadow-lg"
+        hidden={!props.open}
+        className={cn(
+          "assistant-panel min-h-0 flex-col border-l bg-panel shadow-lg",
+          props.open ? "flex" : "hidden",
+        )}
         aria-labelledby={titleId}
       >
         <AssistantHeader
           titleId={titleId}
           projectName={props.projectName}
+          busy={props.busy}
           settingsOpen={settingsOpen}
           onSettings={() => setSettingsOpen(!settingsOpen)}
           onClose={props.onClose}

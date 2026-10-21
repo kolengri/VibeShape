@@ -8,9 +8,10 @@ The goal is not to clone all of Onshape. The first practical release must provid
 
 By default, all computation, files, and model history remain on the user's device. A cloud account, server-side CAD session, and mandatory telemetry are not required.
 
-The [macOS desktop application](docs/desktop-macos.md) packages the same editor with native launch,
-an isolated persistent profile and GitHub release checks/downloads. Local `.app` and `.dmg` builds
-require no external runtime; public signed/notarized distribution remains a release gate.
+The [macOS](docs/desktop-macos.md) and [Windows x64](docs/desktop-windows.md) desktop applications
+package the same editor with native launch, an isolated persistent profile and GitHub release
+checks/downloads. Mac `.app`/`.dmg` and Windows portable ZIP builds require no external runtime.
+Windows archives are unsigned; public signing and platform acceptance remain release gates.
 
 ## Status
 
@@ -198,6 +199,10 @@ All documentation, architecture records, source identifiers, commit-facing techn
 VibeShape is distributed under the **GNU General Public License v3.0 or later**. See [LICENSE](LICENSE) and the [licensing strategy](docs/licensing.md).
 
 ## Local MCP development preview
+
+For an optional native chat controller that selects CAD tools with TypeSafe Jev, see the
+[experimental Jev ACP adapter](docs/jev-agent.md). It runs from a source checkout through the
+existing custom-agent connection and requires separate API configuration.
 
 `bun run dev` starts the Vite editor and a loopback Streamable HTTP MCP endpoint in the same
 process. Connect an HTTP MCP client to the `Local MCP` URL printed in the terminal (normally

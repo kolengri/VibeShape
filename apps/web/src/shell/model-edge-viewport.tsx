@@ -19,7 +19,7 @@ import {
 } from "react"
 import { SAFE_VIEWPORT_CENTER, SAFE_VIEWPORT_LEFT } from "./viewport-chrome-styles"
 
-export type ModelEdgeSelection = Readonly<{
+export type ModelEdgeViewportSelection = Readonly<{
   candidates: readonly ViewerEdgeCandidate[]
   onSelect: (candidate: ViewerEdgeCandidate | null) => void
 }>
@@ -95,7 +95,7 @@ function useModelEdgePointerState(
 }
 
 export function useModelEdgeViewport(
-  selection: ModelEdgeSelection | undefined,
+  selection: ModelEdgeViewportSelection | undefined,
   meshes: readonly ViewerMesh[],
 ) {
   const candidates = useMemo(

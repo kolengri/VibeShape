@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test"
 import {
+  bodyTopoRefSchema,
   createEmptySketch,
   documentIdSchema,
-  edgeTopoRefSchema,
   featureIdSchema,
   partIdSchema,
   type SketchProfileSelector,
@@ -22,23 +22,25 @@ const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3202")
 const referenceId = sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3203")
 
 const edgeSelection = {
-  featureId,
-  outputRole: "result",
-  reference: edgeTopoRefSchema.parse({
-    schemaVersion: 0,
-    featureId,
-    kind: "edge",
-    semanticRole: "box.edge",
-    signature: {
+  targetBody: { schemaVersion: 0 as const, featureId, outputRole: "result" },
+  edges: [
+    bodyTopoRefSchema.parse({
+      schemaVersion: 1,
+      outputRole: "result",
+      featureId,
       kind: "edge",
-      geometryClass: "LINE",
-      measure: 20,
-      centroid: [10, 0, 0],
-      bounds: { min: [0, 0, 0], max: [20, 0, 0] },
-      boundaryCount: 0,
-      adjacentGeometryClasses: [],
-    },
-  }),
+      semanticRole: "box.edge",
+      signature: {
+        kind: "edge",
+        geometryClass: "LINE",
+        measure: 20,
+        centroid: [10, 0, 0],
+        bounds: { min: [0, 0, 0], max: [20, 0, 0] },
+        boundaryCount: 0,
+        adjacentGeometryClasses: [],
+      },
+    }),
+  ],
 }
 
 describe("ordinary model-edge selection", () => {
@@ -47,7 +49,7 @@ describe("ordinary model-edge selection", () => {
     const { actions } = store.getState()
     actions.setSelection({ featureId, faceId: 42, faceOrdinal: 1 })
     actions.setModelEdgeSelection(edgeSelection)
-    expect(store.getState().edgeSelection).toEqual(edgeSelection)
+    expect(store.getState().selectedModelEdges).toEqual(edgeSelection)
     expect(store.getState().selection).toBeNull()
     expect(store.getState().selectedBody).toBeNull()
     expect(store.getState().modelTreeSelection).toEqual([])
@@ -66,7 +68,7 @@ describe("ordinary model-edge selection", () => {
       if (kind === "hidden") actions.setFeatureVisibility(featureId, false)
       if (kind === "workspace") actions.switchWorkspace("variables")
       if (kind === "clear") actions.setSelection(null)
-      expect(store.getState().edgeSelection).toBeNull()
+      expect(store.getState().selectedModelEdges).toBeNull()
     },
   )
 })
@@ -1290,5 +1292,92 @@ describe("constituent body selection", () => {
     expect(store.getState().selection).toBeNull()
     store.getState().actions.closeActiveTool()
     expect(store.getState().selectedBody).toBeNull()
+  })
+})
+
+describe("Idle exact CAD edge selection", () => {
+  function edgeSelection(role = "result", semanticRole = "box.edge.z-max.x-min") {
+    const targetBody = { schemaVersion: 0 as const, featureId, outputRole: role }
+    const edge = {
+      schemaVersion: 1 as const,
+      featureId,
+      outputRole: role,
+      kind: "edge" as const,
+      semanticRole,
+      signature: {
+        kind: "edge" as const,
+        geometryClass: "LINE",
+        measure: 20,
+        centroid: [0, 10, 20] as [number, number, number],
+        bounds: {
+          min: [0, 0, 20] as [number, number, number],
+          max: [0, 20, 20] as [number, number, number],
+        },
+        boundaryCount: 2,
+        adjacentGeometryClasses: ["PLANE", "PLANE"],
+      },
+    }
+    return { targetBody, edges: [edge] }
+  }
+
+  it("toggles exact edges within one body, replaces a sibling body, and captures tool intent", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    actions.setSelection({ featureId, faceId: 1, faceOrdinal: 0 })
+    const first = edgeSelection()
+    const second = edgeSelection("result", "box.edge.z-max.x-max")
+    actions.toggleModelEdgeSelection(first)
+    actions.toggleModelEdgeSelection(second)
+    expect(store.getState().selection).toBeNull()
+    expect(store.getState().selectedModelEdges?.edges).toHaveLength(2)
+    actions.toggleModelEdgeSelection(first)
+    expect(store.getState().selectedModelEdges?.edges).toEqual(second.edges)
+    const sibling = edgeSelection("pattern.instance.1")
+    actions.toggleModelEdgeSelection(sibling)
+    expect(store.getState().selectedModelEdges).toEqual(sibling)
+    const captured = store.getState().selectedModelEdges
+    if (!captured) throw new Error("Expected selected CAD edges")
+    actions.startPartDesignTool({ kind: "create-chamfer", edgeSelection: captured })
+    expect(store.getState().activePartDesignTool).toEqual({
+      kind: "create-chamfer",
+      edgeSelection: sibling,
+    })
+    expect(store.getState().selectedModelEdges).toBeNull()
+  })
+
+  it("clears edge intent when a face, tree body, plane, visibility or filter changes", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    const edge = edgeSelection()
+    actions.toggleModelEdgeSelection(edge)
+    actions.setSelectedBody({ featureId, outputRole: "result" })
+    expect(store.getState().selectedModelEdges).toBeNull()
+    actions.toggleModelEdgeSelection(edge)
+    actions.setSelectedOriginPlane("xy")
+    expect(store.getState().selectedModelEdges).toBeNull()
+    actions.toggleModelEdgeSelection(edge)
+    actions.setModelTreeSelection([{ kind: "feature", id: featureId }])
+    expect(store.getState().selectedModelEdges).toBeNull()
+    actions.toggleModelEdgeSelection(edge)
+    actions.setSelection({ featureId, faceId: 1, faceOrdinal: 0 })
+    expect(store.getState().selectedModelEdges).toBeNull()
+    actions.toggleModelEdgeSelection(edge)
+    actions.setFeatureVisibility(featureId, false)
+    expect(store.getState().selectedModelEdges).toBeNull()
+    actions.setModelEdgeSelectionEnabled(true)
+    actions.toggleModelEdgeSelection(edge)
+    actions.setModelEdgeSelectionEnabled(false)
+    expect(store.getState().selectedModelEdges).toBeNull()
+  })
+
+  it("rejects mismatched role intent without changing the current selection", () => {
+    const store = createEditorSessionStore()
+    const edge = edgeSelection()
+    store.getState().actions.toggleModelEdgeSelection(edge)
+    store.getState().actions.toggleModelEdgeSelection({
+      ...edge,
+      targetBody: { ...edge.targetBody, outputRole: "pattern.instance.2" },
+    })
+    expect(store.getState().selectedModelEdges).toEqual(edge)
   })
 })

@@ -118,7 +118,7 @@ test("records the local controlled OCCT performance budget", async ({
     type Observer = { observe: (options: { buffered: boolean; type: string }) => void }
     type ObserverConstructor = {
       new (callback: (list: ObserverList) => void): Observer
-      supportedEntryTypes?: string[]
+      supportedEntryTypes?: readonly string[]
     }
 
     const Observer = Reflect.get(globalThis, "PerformanceObserver") as

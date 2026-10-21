@@ -6,11 +6,14 @@ Use an already configured server when available. If setup was requested, launch 
 
 List tools and resources. Read `vibeshape://session` for the actual `editorUrl` and `paired` status, then the advertised `vibeshape://authoring-guide` for schemas and examples. Open that exact URL and intended project. Have the person choose **Enable AI session** in the bottom status bar. The default source bridge origin is `http://127.0.0.1:43114`, but the session resource is authoritative; changing host or port changes browser-local storage.
 
-## Native Mac application
+## Native desktop application
 
-For an already open Mac app, use **Settings → Connections → Connect an MCP client** and copy its
+For an already open macOS or Windows app, use **Settings → Connections → Connect an MCP client** and copy its
 configuration. The bundled Electron stdio forwarder attaches to the app's existing editor and storage
-origin; no external Bun or Node runtime is needed. Do not substitute the standalone stdio server,
+origin; no external Bun or Node runtime is needed. Keep absolute Windows executable, runtime and
+descriptor paths exactly as copied, including JSON backslash escaping. Windows credential files
+require private current-user ACLs; a permission failure is not a reason to weaken descriptor checks.
+Do not substitute the standalone stdio server,
 which opens a separate editor profile. The copied configuration permits one external client. The
 in-app ACP agent instead receives a separate project-bound MCP attachment automatically when its
 configured agent connects. Its internal server name is project-specific; discover advertised tool
@@ -29,13 +32,15 @@ model and does not authorize another project or a replacement CAD workflow.
 
 A retryable `session-suspended` diagnostic is a transient connection pause. Keep the current project
 and allow automatic recovery; do not ask the person to enable an already authorized embedded
-session. Retry only the safe `model_info` identity read after recovery, inspect the saved revision
-and affected records, and decide what remains. Never replay an uncertain write. Explicit Stop AI
+session. Read `model_info` after recovery, inspect the saved revision and affected records, and
+decide what remains. In the same authenticated local tab, `list_recoverable_drafts` can expose
+unapplied semantic intent; follow the explicit adoption procedure in
+[transactions](transactions.md). Never replay an uncertain write. Explicit Stop AI
 still prevents automatic reconnection and requires the person's intentional Enable action.
 
 The embedded desktop chat retries temporary ACP and native project-connection failures up to five
 times before exposing manual retry. When the provider supports loading the exact previous session,
-an interrupted turn resumes with instructions to reconcile the current model and pending draft
+an interrupted turn resumes with instructions to reconcile the current model and recoverable intent
 before further changes. The interrupted prompt and uncertain writes are never replayed by the
 controller. If restoration is unsupported, authentication is required, or retries are exhausted,
 report the actual state rather than asking for another pairing grant. External clients retain their
@@ -57,6 +62,30 @@ Native connection state is retained per project, separately from external client
 revokes that project's access and keeps it disabled across reload or reopening until the person
 chooses **Enable AI session**. Reconnecting the ACP process does not undo Stop. No tool can change
 the approval mode or restore a stopped connection.
+
+## Experimental Jev ACP client
+
+The optional source-checkout Jev controller connects through the native app's custom ACP executable
+setting and the same injected project attachment described above. It does not add MCP tools or
+permissions. It selects actions and closed parameter values with Jev; a separately configured
+language model supplies open arguments. Images require an explicit experimental opt-in.
+Manual-review calls use a separate client horizon of about 24.8 days, bypassing the short provider
+and ordinary-operation timeout. Stop and the server's authority, liveness and proposal expiry still
+apply; this client horizon does not extend consent or guarantee that a review remains available.
+If advertised, `ask_user_question` uses the native host's structured-question owner and the same long
+client ceiling. Host question expiry and Stop still apply. Only a valid accepted answer allows
+dependent work; cancelling or failing a question grants no answer or CAD authority.
+The native host has no default whole-turn ACP deadline, so waiting for review does not end the agent
+after ten minutes. Stop and its bounded process-termination grace period remain available.
+Large tool arguments can be omitted from chat and result text summarized; use tool inspection for
+complete current evidence. Omitted arguments have no argument-derived chat target hints.
+The controller stops on uncertain writes, schema rejection, low selected-branch confidence or its
+step limit. Inspect the saved model before continuing; a `done` decision is not verification.
+After an uncertain dispatch, this process permits read-only inspection only. Inspect saved state
+and reconnect before authoring again; a saved revision alone cannot reconcile an unsaved draft.
+It does not support exact ACP session loading after process restart. Keep the native connection's
+actual recovery state distinct from its saved transcript. Source configuration is documented in
+the repository's `docs/jev-agent.md`; do not install another CAD runtime to bypass this boundary.
 
 ## Development HTTP
 
@@ -87,11 +116,22 @@ Remote exposes the shared named tools except legacy `export_model`, plus the bun
 
 Remote uses stateless Streamable HTTP with JSON POST responses. `405 Method Not Allowed` for an authenticated GET to `/mcp` means the optional standalone SSE stream is unavailable; continue through POST rather than restarting OAuth. The consent page accepts one valid **Request tab approval** submission while waiting for approval in the editor. A consumed consent handle requires fresh OAuth authorization.
 
-## Verify and retain the session
+## Verify the session
 
 After tool discovery and pairing, call `model_info` with `{}`. Check the actual project and `summary.revision`, and retain any measurement diagnostic. A failed invocation is a connectivity/access failure, not an empty model. Distinguish configuration, protocol initialization, tool discovery, pairing, and a successful invocation when reporting setup.
 
-For external MCP clients, manual browser Apply is the default. Clicking the status bar's **AI connection and approval mode** opens **Approve each change** and **Apply automatically**. The automatic option opens **Set up auto-apply**, which requires a separate explicit human opt-in for supported first-party CAD edits. Local access and approval mode are remembered for that client and browser origin across projects and browser sessions; remote consent remains session-bound. It covers current feature versions, supported same-type upgrades, feature/sketch/variable lifecycle edits, suppression and removal. An existing grant applies a valid coherent CAD draft without repeated confirmation. Unknown, extension and import feature targets remain outside this grant. Metadata and separate import, assembly, history and texture reviews remain manual. No MCP tool enables it. An idle person can choose **Approve each change** to disable auto-apply without ending pairing; already running operations must finish first. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
+## Model-write approval
+
+The built-in native and browser API chats use connected-assistant authority for validated changes
+inside their current project. CAD drafts, metadata, imports (including structural and quick
+lightweighting results), assembly changes, saved Undo/Redo and surface textures do not require a
+second human Apply action there. Publishing or updating the reusable local library remains manually
+reviewed for every connection. Validation, revision checks, cancellation and atomic persistence still
+apply; connected-assistant authority does not grant external publication or project-management access.
+
+For external MCP clients, manual browser Apply is the default. Clicking the status bar's **AI connection and approval mode** opens **Approve each change** and **Apply automatically**. The automatic option opens **Set up auto-apply**, which requires a separate explicit human opt-in for supported first-party CAD edits. Local access and approval mode are remembered for that client and browser origin across projects and browser sessions; remote consent remains session-bound. It covers registered first-party CAD feature versions, including Compound and Placement, supported same-type schema upgrades, feature/sketch/variable lifecycle edits, suppression and removal. An existing grant applies a valid coherent CAD draft without repeated confirmation. Unknown, extension and import feature targets remain outside this grant. Project rename, metadata and separate import, assembly, history, texture and library reviews remain manual for external clients, including those with a CAD auto-apply grant. No MCP tool enables it. An idle person can choose **Approve each change** to disable auto-apply without ending pairing; already running operations must finish first. Do not click approval controls merely to unblock a tool; use the existing grant or have the person review the proposal.
+
+## Retain and recover the session
 
 Keep the paired tab open. Local stdio automatically restores the same approved client and project
 following transient transport errors, reload, background pauses or bridge restart. External connections retain the latest explicitly chosen approval mode, including manual mode. Built-in chat retains connected model authority. Recovery
@@ -101,7 +141,9 @@ change, the remembered local client can establish fresh authority. A different c
 new approval. An active owner is never displaced by fresh pairing. Stop AI clears both recovery
 authority and the browser preference, preventing automatic reconnection.
 
-Recovery does not replay interrupted commands, drafts, reviews or exports. After a timeout or
+Recovery does not automatically replay interrupted commands, drafts, reviews or exports. Explicit
+`restore_draft` adopts compatible retained intent into a new current-actor private draft, without
+saving or approving it. Tab-memory intent retention does not survive reload or Stop. After a timeout or
 uncertain write, wait for pairing recovery, call `model_info`, and inspect saved revision/records
 before deciding whether a fresh proposal is needed. A transaction already accepted by persistence
 may finish despite Stop AI. Remote HTTPS retains its existing fresh-pairing rule after reload.
@@ -128,5 +170,5 @@ preview/review/commit path.
 - Current shared serialized operation limit is 192 KiB; semantic pages are bounded to 128 KiB. Reduce page size or divide valid authoring work when necessary. Do not truncate a replacement record.
 - Remote additionally limits operations to 30/minute and 128 per tab lifetime, with bounded onboarding attempts. Follow reported rate-limit guidance; do not repeatedly reconnect to evade budgets.
 - `busy` requires waiting for the pending request. Stale committed state requires a fresh read/draft. Validation failures require corrected input. A duplicate command ID is an error, not proof of an earlier success.
-- A review operation may wait up to six minutes. Keep it pending while the person reviews; client timeout/cancellation interrupts pending work; local access can recover without replay. Do not start a second commit.
+- Local CAD draft review has no wall-clock deadline while the browser remains live and authorized; other review operations retain their advertised expiry, typically up to six minutes. Keep the request pending while the person reviews; client timeout/cancellation interrupts pending work. Local access can recover without replay. Do not start a second commit.
 - Unknown outcomes require inspection before retrying; a fresh ID does not make a duplicate write safe.

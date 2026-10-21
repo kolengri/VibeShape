@@ -4,7 +4,7 @@
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.3",
   "workspaces": {
     "packages": [
       "apps/*",
@@ -61,6 +61,7 @@
     "desktop:build": "bun run --cwd apps/desktop build",
     "desktop:start": "bun run --cwd apps/desktop start",
     "desktop:package": "bun run --cwd apps/desktop package",
+    "desktop:package:windows": "bun run --cwd apps/desktop package:windows",
     "test:desktop": "bun run desktop:build && bun run --bun playwright test --config playwright.desktop.config.ts",
     "test:desktop:packaged": "bun run --bun playwright test --config playwright.desktop-packaged.config.ts",
     "test:distribution": "bun run --bun playwright test --config playwright.distribution.config.ts",
@@ -109,6 +110,7 @@
     "shadcn:add": "bunx --bun shadcn add --cwd apps/web",
     "check": "bun run skills:validate && bun run solvespace:verify:runtime && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run test:remote-mcp && bun run build",
     "mcp:local": "bun run --cwd apps/mcp-server start",
+    "agent:jev": "bun run --cwd apps/jev-agent start",
     "test:assembly-library-persistence": "bun run --bun playwright test --config scripts/assembly-library-persistence.config.ts",
     "test:surface-texture-mcp": "bun run --bun playwright test --config scripts/surface-texture-mcp.config.ts"
   },
@@ -120,10 +122,11 @@
     "@biomejs/biome": "2.5.7",
     "@playwright/test": "1.62.1",
     "@sinonjs/fake-timers": "15.4.0",
-    "@types/bun": "1.4.2",
+    "@types/bun": "1.4.3",
     "@types/jsdom": "30.0.0",
     "@types/sinonjs__fake-timers": "15.0.1",
     "fallow": "3.14.0",
+    "github-slugger": "2.0.0",
     "jsdom": "30.0.1",
     "replicad": "catalog:",
     "replicad-opencascadejs": "catalog:",

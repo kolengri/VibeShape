@@ -33,9 +33,9 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await expect(
       form.getByRole("button", { name: `Create ${operation}`, exact: true }),
     ).toBeDisabled()
-    const picker = viewport.getByRole("combobox", { name: "Select an edge", exact: true })
-    await picker.focus()
-    await picker.selectOption({ index: 1 })
+    await form.getByText("Keyboard choices", { exact: true }).focus()
+    await form.getByText("Keyboard choices", { exact: true }).click()
+    await form.getByRole("button", { name: "Box 1 · Edge 1", exact: true }).click()
     await expect(form.getByRole("button", { name: /^Remove Edge \d+$/ })).toHaveCount(1)
     await form.getByRole("button", { name: `Create ${operation}`, exact: true }).click()
     const treatment = page.getByRole("treeitem", { name: `${title} 1`, exact: true })

@@ -1,18 +1,15 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { viewerBodyKey } from "@vibeshape/viewer/three-viewport"
-import { useMemo } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 import { useDocumentDisplayUnits } from "../document/document-display-units"
 import { type ModelBodySelection, terminalModelBodies } from "../features/part-design/model-bodies"
+import type { ModelEdgeSelection } from "../features/part-design/model-edge-selection"
 import { modelFaceSelectionDisplayOrdinal } from "../features/sketch/external-model-geometry"
+
 import { AutomationStatus } from "./automation-status"
-import {
-  type ModelEdgeSelection,
-  modelEdgeOptions,
-  resolveModelEdgeSelection,
-} from "./model-edge-selection"
 
 const EMPTY_GEOMETRY = [] as const
 
@@ -101,32 +98,51 @@ export function StatusBar({
   selectedOriginPlane,
   selectedBody = null,
   selection,
-  edgeSelection,
+  selectedModelEdges = null,
+  modelEdgeSelectionEnabled = false,
+  onModelEdgeSelectionEnabledChange,
 }: {
   controller: DocumentControllerState
   selectedOriginPlane: ViewerOriginPlane | null
   selectedBody?: ModelBodySelection | null
   selection: ViewerSelection | null
-  edgeSelection?: ModelEdgeSelection | null
+  selectedModelEdges?: ModelEdgeSelection | null
+  modelEdgeSelectionEnabled?: boolean
+  onModelEdgeSelectionEnabledChange?: (enabled: boolean) => void
 }) {
   const t = useTranslations("app.shell.statusBar")
   const displayUnits = useDocumentDisplayUnits()
-  const ordinaryLabel = useSelectionLabel(controller, selection, selectedOriginPlane, selectedBody)
-  const edgeLabel = useMemo(() => {
-    if (!edgeSelection) return null
-    const edges = modelEdgeOptions(controller, [], undefined, (feature, edge, body) =>
-      body === null
-        ? t("selectionEdge", { feature: feature || t("unnamedFeature"), edge })
-        : t("selectionBodyEdge", { feature: feature || t("unnamedFeature"), edge, body }),
-    )
-    return resolveModelEdgeSelection(edges, edgeSelection)?.display.label ?? null
-  }, [controller.report, controller.status, edgeSelection, t])
-  const selectedEntity = edgeLabel ?? ordinaryLabel
+  const ordinarySelection = useSelectionLabel(
+    controller,
+    selection,
+    selectedOriginPlane,
+    selectedBody,
+  )
+  const selectedEntity = selectedModelEdges
+    ? t("selectionEdgeSet", {
+        count: selectedModelEdges.edges.length,
+        feature: selectionFeatureLabel(controller, selectedModelEdges.targetBody.featureId, t),
+      })
+    : ordinarySelection
 
   return (
     <footer className="flex items-center min-w-0 gap-2 border-t bg-toolbar px-2 text-xs text-muted-foreground">
       <span>{t("units", displayUnits)}</span>
-      <span className="hidden lg:inline">{t("filter", { filter: t("selectionAny") })}</span>
+      {onModelEdgeSelectionEnabledChange ? (
+        <NativeSelect
+          aria-label={t("selectionFilter")}
+          className="h-5 w-auto shrink-0 border-0 bg-transparent py-0 text-xs"
+          value={modelEdgeSelectionEnabled ? "edges" : "any"}
+          onChange={(event) =>
+            onModelEdgeSelectionEnabledChange(event.currentTarget.value === "edges")
+          }
+        >
+          <option value="any">{t("selectionAny")}</option>
+          <option value="edges">{t("selectionEdges")}</option>
+        </NativeSelect>
+      ) : (
+        <span className="hidden lg:inline">{t("filter", { filter: t("selectionAny") })}</span>
+      )}
       <span className="min-w-0 truncate" role="status">
         {t("selection", { selection: selectedEntity })}
       </span>

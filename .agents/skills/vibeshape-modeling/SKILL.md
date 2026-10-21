@@ -13,6 +13,11 @@ the browser numerical worker; a result is a separate mesh snapshot using the con
 For material removal without prescribed loads, read [quick load-free lightweighting](references/quick-lightweighting.md).
 Its Gyroid, Schwarz P and Schwarz D geometry reports measured removal and makes no structural performance claim.
 
+Keep successive user requests additive unless the user explicitly cancels or replaces earlier work.
+Retain unresolved requirements in the session context, reconcile new steering with active work, and
+check all requested outcomes before declaring completion. Report specific blocked items instead of
+silently dropping them when a later message arrives.
+
 ## Choose design guidance by purpose
 
 | Purpose | Guidance to load |
@@ -20,6 +25,7 @@ Its Gyroid, Schwarz P and Schwarz D geometry reports measured removal and makes 
 | Every CAD model | The common intent rules below and [modeling contracts and recipes](references/modeling.md) |
 | Functional parts, load-bearing details, fits, or mechanisms | [Mechanical design](references/mechanical-design.md) |
 | Models intended for 3D printing | [3D-printing design](references/3d-printing.md), using the section for the intended process |
+| FDM/FFF insert lids, corner binding, or compliant perimeter retention | [Lid fits and compliant retention](references/lid-fits.md) |
 | Assemblies or reusable components | [Assembly and library transactions](references/assembly-and-library.md) |
 
 Combine applicable categories: a printed latch needs both mechanical and printing guidance. Apply manufacturing rules only when the intended process is established; preserve requested appearance and exact source geometry for visualization or reconstruction. For another manufacturing process, use its current process-specific guidance instead of importing FDM rules.
@@ -27,6 +33,12 @@ Combine applicable categories: a printed latch needs both mechanical and printin
 ## Author or revise intent
 
 Translate the request into dimensions, units, mating interfaces, target body, and acceptance measurements. Ask only for missing information that changes the design. For reversible choices, state a reasonable assumption and continue. Preserve protected interfaces and existing model intent.
+
+In embedded chat, use the advertised `ask_user_question` interaction tool for a required design
+choice and wait for its validated answer before dependent work. Dismissal, cancellation or timeout
+provides no answer. This tool is available through the native project's private MCP attachment and
+browser API chat; external CAD MCP clients use their host's own question mechanism. Do not assume
+that prose phrased as a question creates an interactive form.
 
 Make all editable design dimensions and numeric controls variable-driven by default: lengths, thicknesses, diameters/radii, clearances, offsets, angles, and supported counts. Create or reuse named document variables before their consumers, and retain `#name` references or derived expressions in sketch constraints and feature quantities instead of baking in evaluated numbers. Follow the Variables section of [modeling contracts and recipes](references/modeling.md), including expression support limits and editability checks.
 

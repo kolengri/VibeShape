@@ -1,17 +1,34 @@
 import {
+  canonicalJson,
   createTopologyReferenceResolver,
   type EdgeTopoRef,
+  edgeTopoRefSchema,
   featureIdSchema,
   type TopologyCandidate,
   topologyCandidateSchema,
+  topoRefSchema,
 } from "@vibeshape/domain"
+import type { BodyTopoRef } from "@vibeshape/domain/body-topology-reference"
+import {
+  createBodyTopologyReferenceProjector,
+  createBodyTopologyReferenceResolver,
+} from "@vibeshape/domain/model-body-topology"
 import { createEdgeReferenceProjector } from "@vibeshape/domain/model-edges"
+import type { EdgeTreatmentTargetOption } from "./edge-treatment-options"
 
 type WireCandidate = TopologyCandidate &
   Readonly<{ edgePolyline?: readonly [number, number, number][] | undefined }>
 export type EdgeTreatmentGeometry = Readonly<{
   featureId: string
-  geometry: Readonly<{ topologyCandidates: readonly WireCandidate[] }>
+  geometry: Readonly<{
+    topologyCandidates: readonly WireCandidate[]
+    bodies?:
+      | readonly Readonly<{
+          outputRole: string
+          topologyCandidates: readonly WireCandidate[]
+        }>[]
+      | undefined
+  }>
 }>
 
 export type SelectedEdgeCandidate = Readonly<{
@@ -54,11 +71,142 @@ export function selectedEdgeCandidates(
   })
 }
 
+export type EdgeTreatmentCandidate = Readonly<{
+  candidateId: string
+  id: string
+  optionId: string
+  label: string
+  reference: EdgeTopoRef | BodyTopoRef
+  candidate: TopologyCandidate
+  resolveStatus: () => "resolved" | "missing" | "ambiguous"
+  edgePolyline?: readonly [number, number, number][] | undefined
+}>
+
+function cachedStatus(
+  read: EdgeTreatmentCandidate["resolveStatus"],
+): EdgeTreatmentCandidate["resolveStatus"] {
+  let status: ReturnType<EdgeTreatmentCandidate["resolveStatus"]> | undefined
+  return () => (status ??= read())
+}
+
+export function edgeTreatmentCandidates(
+  options: readonly EdgeTreatmentTargetOption[],
+  geometry: readonly EdgeTreatmentGeometry[],
+  label: (kind: "edge" | "face", ordinal: number, option: EdgeTreatmentTargetOption) => string,
+  kind?: "edge" | "face",
+): readonly EdgeTreatmentCandidate[] {
+  return options.flatMap<EdgeTreatmentCandidate>((option) => {
+    if (!option.body) {
+      if (kind === "face") return []
+      const legacy = selectedEdgeCandidates(geometry, option.id, (n) => label("edge", n, option))
+      const resolve = createTopologyReferenceResolver(legacy.map(({ candidate }) => candidate))
+      return legacy.map((entry) => ({
+        ...entry,
+        id: JSON.stringify([option.id, entry.candidateId]),
+        optionId: option.id,
+        resolveStatus: cachedStatus(() => resolve(entry.reference).status),
+      }))
+    }
+    const source = geometry.find(({ featureId }) => featureId === option.body?.featureId)
+    const wire = source?.geometry.bodies?.find(
+      ({ outputRole }) => outputRole === option.body?.outputRole,
+    )
+    const displayCandidates = new Map(
+      wire?.topologyCandidates.map((candidate) => [candidate.candidateId, candidate]),
+    )
+    return [option.edgeEvidence, option.faceEvidence].flatMap((evidence) => {
+      if (!evidence || (kind && kind !== evidence.kind)) return []
+      const project = createBodyTopologyReferenceProjector(evidence)
+      const resolve = createBodyTopologyReferenceResolver(evidence)
+      return evidence.candidates.map((candidate, ordinal) => {
+        const reference = project(candidate)
+        const display = displayCandidates.get(candidate.candidateId)
+        return {
+          candidateId: candidate.candidateId,
+          id: JSON.stringify([option.id, candidate.candidateId]),
+          optionId: option.id,
+          label: label(evidence.kind, ordinal + 1, option),
+          reference,
+          candidate: {
+            ...candidate,
+            ...(candidate.kind === "face" && display?.meshFaceId !== undefined
+              ? { meshFaceId: display.meshFaceId }
+              : {}),
+          },
+          resolveStatus: cachedStatus(() => resolve(reference).status),
+          edgePolyline: display?.edgePolyline,
+        }
+      })
+    })
+  })
+}
+
+export function legacyEdgeReference(reference: EdgeTopoRef | BodyTopoRef): EdgeTopoRef | null {
+  if (
+    reference.kind !== "edge" ||
+    (reference.schemaVersion === 1 && reference.outputRole !== "result")
+  )
+    return null
+  const { schemaVersion: _version, ...value } = reference
+  const { outputRole: _role, ...legacy } = { outputRole: "result", ...value }
+  return edgeTopoRefSchema.parse({ ...legacy, schemaVersion: 0 })
+}
+
+export function sameTreatmentReference(
+  left: EdgeTopoRef | BodyTopoRef,
+  right: EdgeTopoRef | BodyTopoRef,
+) {
+  if (left.featureId !== right.featureId || left.kind !== right.kind) return false
+  if (left.schemaVersion === 1 && right.schemaVersion === 1 && left.outputRole !== right.outputRole)
+    return false
+  if (
+    (left.schemaVersion === 0 && right.schemaVersion === 1 && right.outputRole !== "result") ||
+    (right.schemaVersion === 0 && left.schemaVersion === 1 && left.outputRole !== "result")
+  )
+    return false
+  if (left.semanticRole || right.semanticRole)
+    return Boolean(left.semanticRole && left.semanticRole === right.semanticRole)
+  if (left.lineageToken || right.lineageToken)
+    return Boolean(left.lineageToken && left.lineageToken === right.lineageToken)
+  return canonicalJson(left.signature) === canonicalJson(right.signature)
+}
+
+/** Resolve against the whole exact body, so neighboring anonymous edges retain their margin. */
+export function resolveTreatmentReference(
+  reference: EdgeTopoRef | BodyTopoRef,
+  candidates: readonly EdgeTreatmentCandidate[],
+): { status: "resolved"; candidate: EdgeTreatmentCandidate } | { status: "missing" | "ambiguous" } {
+  const role = reference.schemaVersion === 1 ? reference.outputRole : "result"
+  const scoped = candidates.filter(
+    ({ reference: candidate }) =>
+      candidate.featureId === reference.featureId &&
+      candidate.kind === reference.kind &&
+      (candidate.schemaVersion === 1 ? candidate.outputRole : "result") === role,
+  )
+  const resolve = createTopologyReferenceResolver(scoped.map(({ candidate }) => candidate))
+  const { outputRole: _role, ...legacy } = { outputRole: "result", ...reference }
+  const result = resolve(topoRefSchema.parse({ ...legacy, schemaVersion: 0 }))
+  if (result.status !== "resolved") return { status: result.status }
+  const candidate = scoped.find(({ candidateId }) => candidateId === result.candidateId)
+  return candidate ? { status: "resolved", candidate } : { status: "missing" }
+}
+
+/** Compare stored intent with a current candidate only after resolving its complete catalogue. */
+export function treatmentReferenceMatchesCandidate(
+  reference: EdgeTopoRef | BodyTopoRef,
+  candidate: EdgeTreatmentCandidate,
+  candidates: readonly EdgeTreatmentCandidate[],
+) {
+  if (reference.kind !== candidate.reference.kind) return false
+  const resolved = resolveTreatmentReference(reference, candidates)
+  return resolved.status === "resolved" && resolved.candidate.id === candidate.id
+}
+
 /** Toggle the resolved current edge, preserving other unresolved authored references for repair. */
 export function toggleSelectedEdgeReference(
   references: readonly EdgeTopoRef[],
   picked: EdgeTopoRef,
-  candidates: readonly SelectedEdgeCandidate[],
+  candidates: readonly Pick<SelectedEdgeCandidate, "reference" | "candidate">[],
 ): readonly EdgeTopoRef[] {
   const owner = candidates[0]?.reference.featureId
   if (
