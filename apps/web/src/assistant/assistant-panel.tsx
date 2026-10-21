@@ -25,7 +25,6 @@ import { AssistantIconAction } from "./assistant-icon-action"
 import { AssistantMessages } from "./assistant-messages"
 import { AssistantQuestionForm } from "./assistant-question"
 import type { AssistantToolHighlight } from "./assistant-tool-highlight"
-import { AssistantWorkingStatus } from "./assistant-working-status"
 import type { ChatMessage } from "./chat-history"
 
 type AssistantPanelProps = AssistantComposerProps & {
@@ -218,7 +217,6 @@ function AssistantHeader({
   onClose,
   onReset,
   canReset,
-  busy,
 }: {
   titleId: string
   projectName: string
@@ -227,7 +225,6 @@ function AssistantHeader({
   onClose: () => void
   onReset: () => Promise<void>
   canReset: boolean
-  busy: boolean
 }) {
   const t = useTranslations("app.assistant")
   return (
@@ -237,7 +234,6 @@ function AssistantHeader({
           <h2 id={titleId} className="truncate font-medium">
             {t("title")}
           </h2>
-          <AssistantWorkingStatus busy={busy} />
         </div>
         <p className="truncate text-xs text-muted-foreground">{projectName}</p>
       </div>
@@ -339,7 +335,6 @@ export function AssistantPanel(props: AssistantPanelProps) {
         <AssistantHeader
           titleId={titleId}
           projectName={props.projectName}
-          busy={props.busy}
           settingsOpen={settingsOpen}
           onSettings={() => setSettingsOpen(!settingsOpen)}
           onClose={props.onClose}

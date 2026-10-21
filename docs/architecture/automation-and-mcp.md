@@ -227,7 +227,10 @@ Pages bind the full document/rebuild/body/kind provenance and are limited to 100
 of body-bound face references and source hashes. Legacy Fillet/Chamfer V1/V2 do not accept those
 references. Chamfer V3 accepts exact body-bound edge/face targets through its alternate strict
 `parameters` input, with explicit adjacent side intent, expression-capable quantities and bounded
-planar measurement support. See [ADR-0118](../adr/0118-body-bound-directional-chamfer.md).
+planar measurement support and equal-distance Offset on closed circular plane/cylinder rims. Curved
+Tangent, directional modes and other curved support pairs remain unsupported. See
+[ADR-0118](../adr/0118-body-bound-directional-chamfer.md) and its bounded measurement extension,
+[ADR-0121](../adr/0121-circular-offset-chamfer.md).
 [ADR-0051](../adr/0051-body-bound-topology-inspection.md) records that staged boundary.
 
 ## Goals and non-goals

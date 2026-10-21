@@ -364,9 +364,13 @@ document protocol 18 carry disposable edge display polylines, limited to 1,025 p
 
 [ADR-0118](../adr/0118-body-bound-directional-chamfer.md) adds body-bound Chamfer V3 with explicit
 side-face intent, measured asymmetric modes, direction overrides and native tangent-contour checks.
-Offset/Tangent are proven only on planar supports; curved V3 requests fail explicitly while legacy
-circular-rim V1/V2 execution remains unchanged. Named output roles are resolved against their exact
-native body snapshot. No native mode name is treated as proof of another CAD product's semantics.
+Offset/Tangent coincide on planar supports. [ADR-0121](../adr/0121-circular-offset-chamfer.md)
+additionally admits equal-distance Offset on exact closed circular plane/cylinder rims, with measured
+axial/radial setbacks and annular volume. Curved Tangent, directional modes and other curved support
+pairs remain unsupported in V3. Legacy V1/V2 execution remains unchanged. Named output roles are
+resolved against their exact native body snapshot. No native mode name is treated as proof of another
+CAD product's semantics, and a valid selection does not guarantee an oversized treatment can cross a
+neighboring face.
 
 ## Sketch-point holes
 
