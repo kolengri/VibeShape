@@ -110,10 +110,12 @@ for (const theme of ["light", "dark"]) {
     if (!toolbarBounds) throw new Error("Toolbar must be measurable.")
     // The gap above the toolbar is rendered by the same interactive canvas.
     expect(
-      await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, {
-        x: 720,
-        y: toolbarBounds.y - 4,
-      }),
+      await page
+        .locator("html")
+        .evaluate((element, { x, y }) => element.ownerDocument.elementFromPoint(x, y)?.tagName, {
+          x: 720,
+          y: toolbarBounds.y - 4,
+        }),
     ).toBe("CANVAS")
     await page.screenshot({ path: test.info().outputPath(`floating-workspace-${theme}.png`) })
   })
