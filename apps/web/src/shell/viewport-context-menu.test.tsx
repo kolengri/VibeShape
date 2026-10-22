@@ -3,6 +3,7 @@ import { afterEach, expect, it, mock } from "bun:test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { ContextMenuTrigger } from "@vibeshape/ui/components/context-menu"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useContext } from "react"
 import { builtInEditorCommandDescriptors } from "../commands/built-in-editor-commands"
 import { editorCommandIds, type ResolvedEditorCommand } from "../commands/editor-command"
@@ -90,14 +91,14 @@ function fixture(mode: "read-write" | "read-only") {
   return { controller, body }
 }
 
-function Target() {
+function Target({ candidates }: { candidates: readonly ViewerSelection[] }) {
   const context = useContext(ViewportContextTargetContext)
   return (
     <ContextMenuTrigger
       onContextMenu={(event) =>
         context?.request({
           face: null,
-          candidates: [],
+          candidates,
           focus: event.currentTarget,
           select: () => {},
           preview: () => {},
@@ -112,6 +113,7 @@ function Target() {
 function renderMenu(
   mode: "read-write" | "read-only",
   commands: readonly ResolvedEditorCommand[] = [],
+  faceOrdinals: readonly number[] = [],
 ) {
   const { controller, body } = fixture(mode)
   render(
@@ -127,7 +129,13 @@ function renderMenu(
         hiddenFeatureIds={[]}
         onReveal={() => {}}
       >
-        <Target />
+        <Target
+          candidates={faceOrdinals.map((faceOrdinal, index) => ({
+            ...body,
+            faceId: 100 + index,
+            faceOrdinal,
+          }))}
+        />
         <ViewportSelectionProperties />
       </ViewportContextMenu>
     </I18nProvider>,
@@ -163,4 +171,14 @@ it("keeps Measure available in read-only documents while blocking model mutation
   )
   await act(async () => fireEvent.click(action))
   expect(measure).toHaveBeenCalledTimes(1)
+})
+
+it("preserves one-based face ordinals in overlapping-face menu labels", async () => {
+  renderMenu("read-write", [], [1, 7])
+  fireEvent.contextMenu(screen.getByText("Model"))
+  const chooser = await screen.findByRole("menuitem", { name: "Select Other…" })
+  fireEvent.keyDown(chooser, { key: "ArrowRight" })
+  expect(await screen.findByRole("menuitem", { name: "Box 1 · Face 1" })).toBeTruthy()
+  expect(screen.getByRole("menuitem", { name: "Box 1 · Face 7" })).toBeTruthy()
+  expect(screen.queryByRole("menuitem", { name: "Box 1 · Face 2" })).toBeNull()
 })

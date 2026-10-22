@@ -429,7 +429,7 @@ function SelectOtherActions({ props, menu }: { props: Props; menu: Menu }) {
                     if (fresh) request.select(face)
                   }}
                 >
-                  {t("face", { name, number: face.faceOrdinal + 1 })}
+                  {t("face", { name, number: face.faceOrdinal })}
                 </ContextMenuItem>
               )
             })}
