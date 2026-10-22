@@ -3,6 +3,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button, type ButtonProps } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -376,26 +377,27 @@ function AutoApplyConsentContent({
         event.preventDefault()
         onClose()
       }}
-      className="flex flex-col overflow-hidden p-4"
     >
-      <DialogHeader className="shrink-0">
+      <DialogHeader>
         <DialogTitle>{t("autoApplySetup")}</DialogTitle>
         <DialogDescription>{t("autoApplyScope")}</DialogDescription>
       </DialogHeader>
-      <section
-        aria-label={t("autoApplySetup")}
-        className="min-h-0 space-y-3 overflow-y-auto text-sm"
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll the consent details.
-        tabIndex={0}
-      >
-        <p>{t("autoApplyEdits")}</p>
-        <p>{t("autoApplyManual")}</p>
-        <p>{t("autoApplyExcluded")}</p>
-        <p>{t("autoApplyReset")}</p>
-        <p>{t("stopAiDescription")}</p>
-      </section>
-      {failed ? <Alert className="shrink-0">{t("autoApplyBusy")}</Alert> : null}
-      <DialogFooter className="shrink-0">
+      <DialogBody>
+        <section
+          aria-label={t("autoApplySetup")}
+          className="space-y-3 text-sm"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll the consent details.
+          tabIndex={0}
+        >
+          <p>{t("autoApplyEdits")}</p>
+          <p>{t("autoApplyManual")}</p>
+          <p>{t("autoApplyExcluded")}</p>
+          <p>{t("autoApplyReset")}</p>
+          <p>{t("stopAiDescription")}</p>
+        </section>
+        {failed ? <Alert>{t("autoApplyBusy")}</Alert> : null}
+      </DialogBody>
+      <DialogFooter>
         <DialogClose asChild>
           <Button type="button" variant="outline">
             {t("autoApplyCancel")}

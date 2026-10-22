@@ -7,9 +7,10 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { DialogBody, DialogFooter } from "@vibeshape/ui/components/dialog"
 import { SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm, withFieldGroup } from "@vibeshape/ui/integrations/tanstack-form"
-import { useState } from "react"
+import { type ReactNode, useId, useState } from "react"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
 import { useAssistantSettingsSaved } from "./assistant-settings-dialog"
 import { agentPresetId, agentPresets } from "./connection-presets"
@@ -135,6 +136,8 @@ function initialFormValues(initial: AssistantJevSettings): JevFormValues {
 }
 
 type JevConfigurationProps = {
+  agentField?: ReactNode
+  feedback?: ReactNode
   chat: Pick<ReturnType<typeof createNativeChatController>, "connect">
   connected: boolean
   pending: boolean
@@ -374,6 +377,7 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
   const { form, initial, advanced, setAdvanced, failed, storageFailed } =
     useJevConnectionForm(props)
   const { connected, pending, testing, disconnect, clearTest } = props
+  const id = useId()
   return (
     <form.Subscribe selector={(state) => state.isSubmitting}>
       {(submitting) => {
@@ -381,7 +385,9 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
         const locked = connected || working
         return (
           <Form
+            id={id}
             form={form}
+            className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
             onInput={clearTest}
             aria-label={t("jev.settings")}
             aria-busy={working || undefined}
@@ -391,49 +397,60 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
               event.stopPropagation()
             }}
           >
-            <fieldset disabled={locked} className="grid min-w-0 gap-2">
-              <JevIdentityFields form={form} fields={{ model: "model", apiKey: "apiKey" }} />
-              <JevArgumentFields
-                form={form}
-                fields={{
-                  argumentChoice: "argumentChoice",
-                  argumentsEndpoint: "argumentsEndpoint",
-                  argumentsModel: "argumentsModel",
-                  argumentsApiKey: "argumentsApiKey",
-                }}
-                locked={locked}
-                hasSavedAgent={initialArgumentChoice(initial) === "saved"}
+            <DialogBody className="gap-2">
+              {props.agentField}
+              <fieldset disabled={locked} className="grid min-w-0 gap-2">
+                <JevIdentityFields form={form} fields={{ model: "model", apiKey: "apiKey" }} />
+                <JevArgumentFields
+                  form={form}
+                  fields={{
+                    argumentChoice: "argumentChoice",
+                    argumentsEndpoint: "argumentsEndpoint",
+                    argumentsModel: "argumentsModel",
+                    argumentsApiKey: "argumentsApiKey",
+                  }}
+                  locked={locked}
+                  hasSavedAgent={initialArgumentChoice(initial) === "saved"}
+                />
+                <JevAdvancedFields
+                  form={form}
+                  fields={{
+                    maxSteps: "maxSteps",
+                    minConfidence: "minConfidence",
+                    timeoutMs: "timeoutMs",
+                  }}
+                  open={advanced}
+                  onOpenChange={setAdvanced}
+                />
+              </fieldset>
+              {failed && <Alert>{t("errors.request-failed")}</Alert>}
+              {storageFailed && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  {t("settingsNotSaved")}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">{t("connectionTestNotice")}</p>
+              <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
+              {props.feedback}
+            </DialogBody>
+            <DialogFooter>
+              <NativeAgentActions
+                form={id}
+                connected={connected}
+                pending={working}
+                disconnect={disconnect}
               />
-              <JevAdvancedFields
-                form={form}
-                fields={{
-                  maxSteps: "maxSteps",
-                  minConfidence: "minConfidence",
-                  timeoutMs: "timeoutMs",
-                }}
-                open={advanced}
-                onOpenChange={setAdvanced}
-              />
-            </fieldset>
-            {failed && <Alert>{t("errors.request-failed")}</Alert>}
-            {storageFailed && (
-              <p role="status" className="text-xs text-muted-foreground">
-                {t("settingsNotSaved")}
-              </p>
-            )}
-            <NativeAgentActions connected={connected} pending={working} disconnect={disconnect} />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={working}
-              isLoading={testing}
-              onClick={() => form.handleSubmit("test")}
-            >
-              {t("testConnection")}
-            </Button>
-            <p className="text-xs text-muted-foreground">{t("connectionTestNotice")}</p>
-            <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={working}
+                isLoading={testing}
+                onClick={() => form.handleSubmit("test")}
+              >
+                {t("testConnection")}
+              </Button>
+            </DialogFooter>
           </Form>
         )
       }}

@@ -9,11 +9,12 @@ import {
   EyeOff,
   Layers3,
   MessageSquarePlus,
+  PanelLeftClose,
   Settings,
   Undo2,
-  X,
 } from "@vibeshape/ui/components/icons"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
+import { WindowHeader, WindowTitle } from "@vibeshape/ui/components/window-header"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type ComponentProps, type ReactNode, useEffect, useId, useState } from "react"
 import { ReviewActions } from "../automation/automation-review-actions"
@@ -228,30 +229,34 @@ function AssistantHeader({
 }) {
   const t = useTranslations("app.assistant")
   return (
-    <header className="flex shrink-0 items-center gap-2 border-b px-3 py-1">
-      <h2 id={titleId} className="min-w-0 flex-1 truncate text-xs font-medium">
-        {t("title")}
-      </h2>
-      <AssistantIconAction
-        size="icon-xs"
-        label={t("newChat")}
-        disabled={!canReset}
-        onAction={onReset}
-      >
-        <MessageSquarePlus aria-hidden="true" />
-      </AssistantIconAction>
-      <AssistantIconAction
-        size="icon-xs"
-        label={t("settingsTitle")}
-        expanded={settingsOpen}
-        onAction={onSettings}
-      >
-        <Settings aria-hidden="true" />
-      </AssistantIconAction>
-      <AssistantIconAction size="icon-xs" label={t("close")} onAction={onClose}>
-        <X aria-hidden="true" />
-      </AssistantIconAction>
-    </header>
+    <WindowHeader>
+      <div className="flex min-w-0 items-start gap-2">
+        <WindowTitle id={titleId} className="flex-1">
+          {t("title")}
+        </WindowTitle>
+        <div className="flex shrink-0 items-center gap-2">
+          <AssistantIconAction
+            size="icon-xs"
+            label={t("newChat")}
+            disabled={!canReset}
+            onAction={onReset}
+          >
+            <MessageSquarePlus aria-hidden="true" />
+          </AssistantIconAction>
+          <AssistantIconAction
+            size="icon-xs"
+            label={t("settingsTitle")}
+            expanded={settingsOpen}
+            onAction={onSettings}
+          >
+            <Settings aria-hidden="true" />
+          </AssistantIconAction>
+          <AssistantIconAction size="icon-xs" label={t("collapse")} onAction={onClose}>
+            <PanelLeftClose aria-hidden="true" className="rotate-180" />
+          </AssistantIconAction>
+        </div>
+      </div>
+    </WindowHeader>
   )
 }
 

@@ -2,6 +2,7 @@ import { Command as CommandPrimitive } from "cmdk"
 import type * as React from "react"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -50,15 +51,19 @@ function CommandDialog({
     <Dialog {...props}>
       <DialogContent
         closeLabel={closeLabel}
-        className={cn("gap-0 overflow-hidden p-0", className)}
+        className={className}
         onCloseAutoFocus={onCloseAutoFocus}
         showCloseButton={showCloseButton}
       >
-        <DialogHeader className="sr-only">
+        <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <Command label={searchLabel}>{children}</Command>
+        <DialogBody className="flex flex-col gap-0 overflow-hidden p-0">
+          <Command label={searchLabel} className="h-auto flex-1 rounded-none">
+            {children}
+          </Command>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )

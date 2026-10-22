@@ -31,7 +31,7 @@ async function clickUsableControl(page: Page, control: Locator) {
   await page.mouse.click(point.x, point.y)
 }
 
-async function expectAssistantBelowToolbar(page: Page, toolbar: Locator) {
+async function expectAssistantBesideToolbar(page: Page, toolbar: Locator) {
   await page.getByRole("button", { name: "AI chat", exact: true }).click()
   const assistant = page.getByRole("complementary", { name: "AI chat", exact: true })
   await expect(assistant).toBeVisible()
@@ -43,9 +43,10 @@ async function expectAssistantBelowToolbar(page: Page, toolbar: Locator) {
   if (!barBounds || !panelBounds || !workspaceBounds) {
     throw new Error("The toolbar, assistant, and workspace must remain measurable.")
   }
-  expect(panelBounds.y).toBe(barBounds.y + barBounds.height)
+  expect(panelBounds.y).toBe(barBounds.y)
+  expect(barBounds.x + barBounds.width).toBeLessThanOrEqual(panelBounds.x)
   expect(workspaceBounds.y).toBeGreaterThanOrEqual(barBounds.y + barBounds.height)
-  await assistant.getByRole("button", { name: "Close chat", exact: true }).click()
+  await assistant.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
   await expect(assistant).toHaveCount(0)
 }
 
@@ -109,7 +110,7 @@ for (const width of [800, 1280]) {
     await expect(unavailableReason).not.toBeVisible()
     await expect(drawing).toBeVisible()
     await expectSeparateScrollbar(toolbar, extrude)
-    await expectAssistantBelowToolbar(page, toolbar)
+    await expectAssistantBesideToolbar(page, toolbar)
 
     const rail = await scrollToolbarAtLowerEdge(page, toolbar)
     const orbit = toolbar.getByRole("button", { name: "Orbit 3D view", exact: true })
@@ -147,6 +148,6 @@ for (const width of [800, 1280]) {
     )
     await expect(toolbar).toHaveAttribute("data-sketch-mode", "false")
     expect(await toolbar.evaluate((element) => element.getBoundingClientRect().height)).toBe(36)
-    await expectAssistantBelowToolbar(page, toolbar)
+    await expectAssistantBesideToolbar(page, toolbar)
   })
 }

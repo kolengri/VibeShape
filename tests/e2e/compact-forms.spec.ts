@@ -22,7 +22,10 @@ for (const theme of ["dark", "light"] as const) {
       await expect(form).toBeVisible()
       const bounds = await form.boundingBox()
       if (!bounds) throw new Error("The parameter form has no measurable bounds.")
-      expect(bounds.height).toBeLessThan(400)
+      const body = form.locator('[data-slot="task-panel-content"]')
+      const bodyBounds = await body.boundingBox()
+      if (!bodyBounds) throw new Error("The parameter body has no measurable bounds.")
+      expect(bodyBounds.height).toBeLessThan(bounds.height)
       for (const name of ["Width", "Depth", "Origin X"]) {
         const input = form.getByRole("combobox", { name, exact: true })
         const field = input.locator("xpath=ancestor::*[@data-slot='field']")
@@ -30,6 +33,9 @@ for (const theme of ["dark", "light"] as const) {
         const control = await input.boundingBox()
         if (!label || !control)
           throw new Error("The field label or control has no measurable bounds.")
+        const row = await field.boundingBox()
+        if (!row) throw new Error("The field row has no measurable bounds.")
+        expect(row.height).toBeLessThanOrEqual(40)
         expect(label.x + label.width).toBeLessThan(control.x)
         expect(Math.abs(label.y + label.height / 2 - control.y - control.height / 2)).toBeLessThan(
           16,

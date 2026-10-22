@@ -11,6 +11,7 @@ import {
 } from "@vibeshape/domain"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
@@ -270,97 +271,102 @@ export function DatumPlaneForm({
   })
 
   return (
-    <Form form={form} aria-label={copy.title} className="gap-0">
-      <form.FormError />
-      {onPreviewChange ? (
-        <form.Subscribe selector={(state) => state.values}>
-          {(values) => (
-            <DatumPlanePreviewSync
-              copy={copy}
-              displayUnits={displayUnits}
-              featureId={featureId}
-              mode={mode}
-              onPreviewChange={onPreviewChange}
-              values={values}
-              variables={variables}
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        {onPreviewChange ? (
+          <form.Subscribe selector={(state) => state.values}>
+            {(values) => (
+              <DatumPlanePreviewSync
+                copy={copy}
+                displayUnits={displayUnits}
+                featureId={featureId}
+                mode={mode}
+                onPreviewChange={onPreviewChange}
+                values={values}
+                variables={variables}
+              />
+            )}
+          </form.Subscribe>
+        ) : null}
+        <ParameterPanel
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={copy.submit}
+              ariaLabel={copy.title}
+              cancelLabel={copy.cancel}
+              disabled={disabled}
+              onCancel={onCancel}
+              previewStatus={previewStatus}
             />
-          )}
-        </form.Subscribe>
-      ) : null}
-      <ParameterPanel
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={copy.submit}
-            ariaLabel={copy.title}
-            cancelLabel={copy.cancel}
-            disabled={disabled}
-            onCancel={onCancel}
-            previewStatus={previewStatus}
-          />
-        }
-        copy={copy}
-        disabled={disabled}
-        legend={copy.parameters}
-        message={message}
-      >
-        <form.AppField name="originPlane">
-          {(field) => (
-            <field.NativeSelectField
-              disabled={faceSupported}
-              label={copy.support}
-              description={copy.supportDescription}
-              onValueChange={clearSubmissionErrors}
-            >
-              {faceSupported ? <option value="xy">{copy.selectedFace}</option> : null}
-              {!faceSupported ? (
-                <>
-                  <option value="xy">{copy.planeXy}</option>
-                  <option value="xz">{copy.planeXz}</option>
-                  <option value="yz">{copy.planeYz}</option>
-                </>
-              ) : null}
-            </field.NativeSelectField>
-          )}
-        </form.AppField>
-        <form.AppField name="offset">
-          {(field) => (
-            <field.LengthExpressionField
-              id="datum-plane-offset"
-              label={copy.offset}
-              description={copy.expressionDescription}
-              suggestions={suggestions}
-              onValueChange={() => {
-                clearSubmissionErrors()
-              }}
-            />
-          )}
-        </form.AppField>
-        <form.AppField name="rotationAxis">
-          {(field) => (
-            <field.NativeSelectField
-              label={copy.rotationAxis}
-              description={copy.rotationDescription}
-              onValueChange={clearSubmissionErrors}
-            >
-              <option value="x">{copy.rotationAxisX}</option>
-              <option value="y">{copy.rotationAxisY}</option>
-            </field.NativeSelectField>
-          )}
-        </form.AppField>
-        <form.AppField name="angle">
-          {(field) => (
-            <field.VariableExpressionField
-              id="datum-plane-angle"
-              label={copy.angle}
-              description={copy.angleDescription}
-              suggestions={suggestions}
-              onValueChange={() => {
-                clearSubmissionErrors()
-              }}
-            />
-          )}
-        </form.AppField>
-      </ParameterPanel>
+          }
+          copy={copy}
+          disabled={disabled}
+          legend={copy.parameters}
+          message={message}
+        >
+          <form.AppField name="originPlane">
+            {(field) => (
+              <field.NativeSelectField
+                disabled={faceSupported}
+                label={copy.support}
+                description={copy.supportDescription}
+                onValueChange={clearSubmissionErrors}
+              >
+                {faceSupported ? <option value="xy">{copy.selectedFace}</option> : null}
+                {!faceSupported ? (
+                  <>
+                    <option value="xy">{copy.planeXy}</option>
+                    <option value="xz">{copy.planeXz}</option>
+                    <option value="yz">{copy.planeYz}</option>
+                  </>
+                ) : null}
+              </field.NativeSelectField>
+            )}
+          </form.AppField>
+          <form.AppField name="offset">
+            {(field) => (
+              <field.LengthExpressionField
+                id="datum-plane-offset"
+                label={copy.offset}
+                description={copy.expressionDescription}
+                suggestions={suggestions}
+                onValueChange={() => {
+                  clearSubmissionErrors()
+                }}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="rotationAxis">
+            {(field) => (
+              <field.NativeSelectField
+                label={copy.rotationAxis}
+                description={copy.rotationDescription}
+                onValueChange={clearSubmissionErrors}
+              >
+                <option value="x">{copy.rotationAxisX}</option>
+                <option value="y">{copy.rotationAxisY}</option>
+              </field.NativeSelectField>
+            )}
+          </form.AppField>
+          <form.AppField name="angle">
+            {(field) => (
+              <field.VariableExpressionField
+                id="datum-plane-angle"
+                label={copy.angle}
+                description={copy.angleDescription}
+                suggestions={suggestions}
+                onValueChange={() => {
+                  clearSubmissionErrors()
+                }}
+              />
+            )}
+          </form.AppField>
+        </ParameterPanel>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

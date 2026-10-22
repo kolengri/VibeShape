@@ -8,6 +8,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { type KeyboardEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { useReferencePicking } from "../../shell/reference-pick-context"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
@@ -397,43 +398,44 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
       ref={formElement}
       form={form}
       aria-label={props.copy.title}
-      className="gap-0"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
       onKeyDown={(event) => escapeHandler.current?.(event)}
     >
-      <form.FormError />
-      <ParameterPanel
-        copy={props.copy}
-        disabled={Boolean(props.disabled)}
-        legend={props.copy.scopeLabel}
-        message={state.message}
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={props.copy.submit}
-            ariaLabel={props.copy.title}
-            cancelLabel={props.copy.cancel}
-            disabled={Boolean(props.disabled)}
-            onCancel={props.onCancel}
-            previewStatus={props.previewStatus}
-          />
-        }
-      >
-        <form.Field name="draft">
-          {(field) => (
-            <TreatmentFields
-              props={props}
-              values={field.state.value}
-              featureId={initial.featureId}
-              state={state}
-              submitIssues={field.state.meta.errors[0] ?? {}}
-              formElement={formElement}
-              onChange={field.handleChange}
-              setEscape={(handler) => {
-                escapeHandler.current = handler
-              }}
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <ParameterPanel
+          copy={props.copy}
+          disabled={Boolean(props.disabled)}
+          legend={props.copy.scopeLabel}
+          message={state.message}
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={props.copy.submit}
+              ariaLabel={props.copy.title}
+              cancelLabel={props.copy.cancel}
+              disabled={Boolean(props.disabled)}
+              onCancel={props.onCancel}
+              previewStatus={props.previewStatus}
             />
-          )}
-        </form.Field>
-      </ParameterPanel>
+          }
+        >
+          <form.Field name="draft">
+            {(field) => (
+              <TreatmentFields
+                props={props}
+                values={field.state.value}
+                featureId={initial.featureId}
+                state={state}
+                submitIssues={field.state.meta.errors[0] ?? {}}
+                formElement={formElement}
+                onChange={field.handleChange}
+                setEscape={(handler) => {
+                  escapeHandler.current = handler
+                }}
+              />
+            )}
+          </form.Field>
+        </ParameterPanel>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

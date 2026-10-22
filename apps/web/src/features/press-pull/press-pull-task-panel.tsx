@@ -3,6 +3,7 @@ import type { FeatureRecord } from "@vibeshape/domain"
 import { readPressPullFeatureParameters } from "@vibeshape/domain/part-design-press-pull"
 import { useTranslations } from "@vibeshape/i18n"
 import { type ReactNode, useMemo } from "react"
+import { TaskPanelSurface } from "../../components/task-panel-layout"
 import {
   createBrowserFeatureId,
   type DocumentControllerState,
@@ -72,7 +73,10 @@ export function PressPullTaskPanel(props: Props) {
   }
   if (!mode) return null
   return (
-    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <TaskPanelSurface
+      aria-label={task("ariaLabel")}
+      trailingContent={mode.kind === "edit" && props.renderDelete(mode.feature)}
+    >
       <PressPullForm
         key={`${mode.kind}:${mode.kind === "edit" ? mode.feature.id : mode.sourceContentHash}:${report.snapshot.revision}`}
         copy={copy}
@@ -81,7 +85,6 @@ export function PressPullTaskPanel(props: Props) {
         variables={report.snapshot.variables}
         {...featureTaskFormProps(props, mode)}
       />
-      {mode.kind === "edit" && props.renderDelete(mode.feature)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

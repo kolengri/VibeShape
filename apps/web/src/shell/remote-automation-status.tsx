@@ -3,6 +3,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -93,8 +94,8 @@ export function RemoteAutomationStatus({
             blocked={blocked}
             onClose={() => setOpen(false)}
             onFailed={setFailed}
+            failed={failed || Boolean(current.error)}
           />
-          {failed || current.error ? <Alert>{t("failed")}</Alert> : null}
         </DialogContent>
       </Dialog>
     </div>
@@ -108,7 +109,9 @@ function RemoteDialogBody({
   blocked,
   onClose,
   onFailed,
+  failed,
 }: {
+  failed: boolean
   connection: Connection
   current: ReturnType<Connection["getSnapshot"]>
   siteKey: string | null
@@ -121,6 +124,7 @@ function RemoteDialogBody({
       <RemotePairingCode
         code={current.pairingCode}
         connected={current.connected}
+        failed={failed}
         onStop={() => {
           void connection.disable()
           onClose()
@@ -133,6 +137,7 @@ function RemoteDialogBody({
       siteKey={siteKey}
       blocked={blocked || current.connecting}
       onFailed={onFailed}
+      failed={failed}
     />
   )
 }
@@ -178,13 +183,13 @@ export function RemoteAutomationConsentDialog({
         {current.consent ? (
           <RemoteClientConsent
             consent={current.consent}
+            failed={failed}
             onDecision={(approved) => {
               const accepted = connection.consent(approved)
               setFailed(approved && !accepted)
             }}
           />
         ) : null}
-        {failed ? <Alert>{t("failed")}</Alert> : null}
       </DialogContent>
     </Dialog>
   )
@@ -193,16 +198,21 @@ export function RemoteAutomationConsentDialog({
 function RemoteClientConsent({
   consent,
   onDecision,
+  failed,
 }: {
+  failed: boolean
   consent: NonNullable<ReturnType<Connection["getSnapshot"]>["consent"]>
   onDecision: (approved: boolean) => void
 }) {
   const t = useTranslations("app.shell.remoteAi")
   return (
-    <div className="grid gap-2 text-sm">
-      <p>{t("client", { name: consent.client.name })}</p>
-      <p className="break-all">{t("returnAddress", { address: consent.client.redirectUri })}</p>
-      <p>{t("verifyClient")}</p>
+    <>
+      <DialogBody className="gap-2 text-sm">
+        <p>{t("client", { name: consent.client.name })}</p>
+        <p className="break-all">{t("returnAddress", { address: consent.client.redirectUri })}</p>
+        <p>{t("verifyClient")}</p>
+        {failed ? <Alert>{t("failed")}</Alert> : null}
+      </DialogBody>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={() => onDecision(false)}>
           {t("deny")}
@@ -211,7 +221,7 @@ function RemoteClientConsent({
           {t("allow")}
         </Button>
       </DialogFooter>
-    </div>
+    </>
   )
 }
 
@@ -219,26 +229,33 @@ function RemotePairingCode({
   code,
   connected,
   onStop,
+  failed,
 }: {
+  failed: boolean
   code: string
   connected: boolean
   onStop: () => void
 }) {
   const t = useTranslations("app.shell.remoteAi")
   return (
-    <div className="grid gap-3 text-sm">
-      <p>{t("codeHelp")}</p>
-      <output
-        className="select-all rounded border bg-muted p-3 font-mono"
-        aria-label={t("codeLabel")}
-      >
-        {code}
-      </output>
-      <p role="status">{t(connected ? "connected" : "waiting")}</p>
-      <Button type="button" variant="outline" onClick={onStop}>
-        {t("disconnect")}
-      </Button>
-    </div>
+    <>
+      <DialogBody className="gap-3 text-sm">
+        <p>{t("codeHelp")}</p>
+        <output
+          className="select-all rounded border bg-muted p-3 font-mono"
+          aria-label={t("codeLabel")}
+        >
+          {code}
+        </output>
+        <p role="status">{t(connected ? "connected" : "waiting")}</p>
+        {failed ? <Alert>{t("failed")}</Alert> : null}
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onStop}>
+          {t("disconnect")}
+        </Button>
+      </DialogFooter>
+    </>
   )
 }
 
@@ -247,7 +264,9 @@ function CreateRemotePair({
   siteKey,
   blocked,
   onFailed,
+  failed,
 }: {
+  failed: boolean
   connection: Connection
   siteKey: string | null
   blocked: boolean
@@ -256,20 +275,25 @@ function CreateRemotePair({
   const t = useTranslations("app.shell.remoteAi")
   const [token, setToken] = useState<string | null>(null)
   return (
-    <div className="grid gap-3 text-sm">
-      <p>{t("pairHelp")}</p>
-      {siteKey ? <TurnstileChallenge siteKey={siteKey} onToken={setToken} /> : null}
-      <Button
-        type="button"
-        disabled={!token || blocked}
-        onClick={async () => {
-          if (!token) return
-          onFailed(!(await connection.enable(token)))
-          setToken(null)
-        }}
-      >
-        {t("create")}
-      </Button>
-    </div>
+    <>
+      <DialogBody className="gap-3 text-sm">
+        <p>{t("pairHelp")}</p>
+        {siteKey ? <TurnstileChallenge siteKey={siteKey} onToken={setToken} /> : null}
+        {failed ? <Alert>{t("failed")}</Alert> : null}
+      </DialogBody>
+      <DialogFooter>
+        <Button
+          type="button"
+          disabled={!token || blocked}
+          onClick={async () => {
+            if (!token) return
+            onFailed(!(await connection.enable(token)))
+            setToken(null)
+          }}
+        >
+          {t("create")}
+        </Button>
+      </DialogFooter>
+    </>
   )
 }

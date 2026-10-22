@@ -3,6 +3,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -162,26 +163,28 @@ function ImportTask({
   const pending = state.activity !== "idle"
   return (
     <>
-      <fieldset disabled={disabled || pending} aria-busy={pending} className="grid gap-4">
-        <legend className="sr-only">{t("source")}</legend>
-        <ImportSourceFields state={state} />
-        <Button
-          type="button"
-          variant="outline"
-          isLoading={state.activity === "inspecting"}
-          disabled={!state.canInspect}
-          onClick={() => void state.inspect()}
-        >
-          {t("inspect")}
-        </Button>
-      </fieldset>
-      {state.ready && <ImportInspection ready={state.ready} onReady={state.setPreviewReady} />}
-      {state.activity === "inspecting" && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {t("inspecting")}
-        </p>
-      )}
-      {state.message && <Alert>{state.message}</Alert>}
+      <DialogBody>
+        <fieldset disabled={disabled || pending} aria-busy={pending} className="grid gap-4">
+          <legend className="sr-only">{t("source")}</legend>
+          <ImportSourceFields state={state} />
+          <Button
+            type="button"
+            variant="outline"
+            isLoading={state.activity === "inspecting"}
+            disabled={!state.canInspect}
+            onClick={() => void state.inspect()}
+          >
+            {t("inspect")}
+          </Button>
+        </fieldset>
+        {state.ready && <ImportInspection ready={state.ready} onReady={state.setPreviewReady} />}
+        {state.activity === "inspecting" && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {t("inspecting")}
+          </p>
+        )}
+        {state.message && <Alert>{state.message}</Alert>}
+      </DialogBody>
       <DialogFooter>
         <Button
           type="button"

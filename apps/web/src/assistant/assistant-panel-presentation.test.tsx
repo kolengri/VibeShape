@@ -53,7 +53,8 @@ it("keeps one compact chat header without project copy and retains cancellation 
   const header = heading.closest("header")
   expect(header?.textContent).toBe("AI chat")
   expect(header?.querySelector("p")).toBeNull()
-  expect(heading.classList.contains("text-xs")).toBe(true)
+  expect(heading.hasAttribute("data-window-title")).toBe(true)
+  expect(heading.querySelector("svg")).toBeNull()
   for (const button of header?.querySelectorAll("button") ?? []) {
     expect(button.getAttribute("data-size")).toBe("icon-xs")
   }
@@ -140,7 +141,7 @@ it("retains mounted composer, pending attachments, transcript expansion, setting
   })
   const attachment = screen.getByText("pending.txt").parentElement
   expect(attachment?.getAttribute("aria-busy")).toBe("true")
-  await userEvent.click(screen.getByRole("button", { name: "Close chat" }))
+  await userEvent.click(screen.getByRole("button", { name: "Collapse AI chat" }))
   const toggle = screen.getByRole("button", { name: "Chat toggle" })
   view.rerender(panel({ ...props, open: false }))
   expect(aside.hasAttribute("hidden")).toBe(true)

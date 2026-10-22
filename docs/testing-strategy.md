@@ -668,7 +668,7 @@ bun run test:e2e \
   tests/e2e/feature-input-validation.spec.ts \
   tests/e2e/revolve.spec.ts \
   tests/e2e/sketch-editor.spec.ts \
-  --grep 'selector-backed|starts (Extrude|Revolve) immediately|keeps the Extrude preview|rejects invalid Extrude|keeps sketch lifecycle actions compact|opens registered sketch shortcuts beside the pointer at 200 percent zoom|keeps the expanded sketch panel inside a compact viewport|draws, constrains, dimensions, edits, persists, and reopens a profile' \
+  --grep 'selector-backed|starts (Extrude|Revolve) immediately|keeps the Extrude preview|rejects invalid Extrude|keeps sketch lifecycle actions in the footer|opens registered sketch shortcuts beside the pointer at 200 percent zoom|keeps the expanded sketch panel inside a compact viewport|draws, constrains, dimensions, edits, persists, and reopens a profile' \
   --workers=3 --trace=retain-on-failure
 ```
 

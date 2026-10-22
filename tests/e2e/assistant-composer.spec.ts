@@ -49,16 +49,19 @@ async function fulfill(route: Route, body: unknown) {
 async function connect(page: Page) {
   await page.getByRole("button", { name: "AI chat", exact: true }).click()
   const panel = page.getByRole("complementary", { name: "AI chat", exact: true })
-  await panel.getByRole("combobox", { name: "Provider", exact: true }).click()
+  await panel.getByRole("button", { name: "AI settings", exact: true }).click()
+  const settings = page.getByRole("dialog", { name: "AI settings", exact: true })
+  await settings.getByRole("combobox", { name: "Provider", exact: true }).click()
   await page.getByRole("option", { name: "Custom endpoint", exact: true }).click()
-  await panel
+  await settings
     .getByRole("textbox", { name: "Chat Completions endpoint URL", exact: true })
     .fill(endpoint)
-  await panel.getByRole("textbox", { name: "API model", exact: true }).fill("fixture-model")
-  await panel.getByLabel("API key (optional)", { exact: true }).fill("fixture-memory-key")
-  await panel
+  await settings.getByRole("textbox", { name: "API model", exact: true }).fill("fixture-model")
+  await settings.getByLabel("API key (optional)", { exact: true }).fill("fixture-memory-key")
+  await settings
     .getByRole("button", { name: "Connect and enable project access", exact: true })
     .click()
+  await expect(settings).toBeHidden()
   await expect(panel.getByRole("textbox", { name: "Message", exact: true })).toBeEnabled()
   return panel
 }
@@ -258,7 +261,7 @@ test("transfers selected files, answers structured model questions, collapses to
   await expect(activity).toHaveCount(0)
   const stop = panel.getByRole("button", { name: "Stop", exact: true })
   await expect(stop).toBeVisible()
-  await panel.getByRole("button", { name: "Close chat", exact: true }).click()
+  await panel.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
   await expect(panel).not.toBeVisible()
   await expect(stop).not.toBeVisible()
   await expect(page.locator(".application-bar")).not.toContainText("AI working…")

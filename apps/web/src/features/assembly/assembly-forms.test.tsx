@@ -139,8 +139,12 @@ describe("Assembly forms", () => {
     )
     const header = screen.getByRole("heading", { name: "Create definition" }).closest("header")
     expect(header).not.toBeNull()
-    expect(screen.getByRole("button", { name: "Apply" }).closest("header")).toBe(header)
-    expect(screen.getByRole("button", { name: "Cancel" }).closest("header")).toBe(header)
+    const apply = screen.getByRole<HTMLButtonElement>("button", { name: "Apply" })
+    const footer = apply.closest("footer")
+    expect(footer).not.toBeNull()
+    expect(screen.getByRole("button", { name: "Cancel" }).closest("footer")).toBe(footer)
+    expect(apply.closest("header")).toBeNull()
+    expect(apply.form).toBe(screen.getByRole("textbox", { name: "Name" }).closest("form"))
     expect(screen.getAllByRole("button", { name: "Apply" })).toHaveLength(1)
     expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(1)
     await userEvent.clear(screen.getByRole("textbox", { name: "Name" }))
@@ -392,7 +396,7 @@ describe("Assembly forms", () => {
     expect(a.onApply).not.toHaveBeenCalled()
   })
 
-  it("locks header actions during apply and preserves edited instance fields after failure", async () => {
+  it("locks footer actions during apply and preserves edited instance fields after failure", async () => {
     const f = assemblyUiFixture(),
       a = actions()
     a.onApply.mockResolvedValue(false)
@@ -434,8 +438,11 @@ describe("Assembly forms", () => {
     expect(screen.getAllByRole("heading")).toHaveLength(1)
     const header = screen.getByRole("heading", { name: "Edit instance" }).closest("header")
     expect(header).not.toBeNull()
-    expect(apply.closest("header")).toBe(header)
-    expect(cancel.closest("header")).toBe(header)
+    const footer = apply.closest("footer")
+    expect(footer).not.toBeNull()
+    expect(cancel.closest("footer")).toBe(footer)
+    expect(apply.closest("header")).toBeNull()
+    expect(apply.form).toBe(screen.getByRole("textbox", { name: "Name" }).closest("form"))
     expect(screen.getByRole("alert").closest("header")).toBeNull()
   })
 })

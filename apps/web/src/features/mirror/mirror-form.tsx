@@ -9,6 +9,7 @@ import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -128,94 +129,99 @@ export function MirrorForm({
     },
   })
   return (
-    <Form form={form} aria-label={copy.title} className="gap-0">
-      <form.FormError />
-      {onPreviewChange && (
-        <form.Subscribe selector={(formState) => formState.values}>
-          {(values) => (
-            <MirrorPreview
-              values={values}
-              variables={variables}
-              units={state.displayUnits}
-              copy={copy}
-              mode={mode}
-              featureId={featureId}
-              referencePlane={referencePlane}
-              onPreviewChange={onPreviewChange}
-            />
-          )}
-        </form.Subscribe>
-      )}
-      <form.Subscribe selector={(formState) => formState.isSubmitting}>
-        {(pending) => (
-          <ParameterPanel
-            copy={copy}
-            legend={copy.parameters}
-            disabled={disabled || pending}
-            message={state.message}
-            actions={
-              <TaskPanelFormActions
-                acceptLabel={copy.submit}
-                ariaLabel={copy.title}
-                cancelLabel={copy.cancel}
-                disabled={disabled || referencePlane === null}
-                onCancel={onCancel}
-                previewStatus={previewStatus}
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        {onPreviewChange && (
+          <form.Subscribe selector={(formState) => formState.values}>
+            {(values) => (
+              <MirrorPreview
+                values={values}
+                variables={variables}
+                units={state.displayUnits}
+                copy={copy}
+                mode={mode}
+                featureId={featureId}
+                referencePlane={referencePlane}
+                onPreviewChange={onPreviewChange}
               />
-            }
-          >
-            <ReferencePlaneSelection
-              options={referenceOptions}
-              value={referencePlane}
-              selectedFace={selectedFace ?? startingFace}
-              onChange={(value) => {
-                state.clearSubmissionErrors()
-                setReference(value)
-              }}
+            )}
+          </form.Subscribe>
+        )}
+        <form.Subscribe selector={(formState) => formState.isSubmitting}>
+          {(pending) => (
+            <ParameterPanel
+              copy={copy}
+              legend={copy.parameters}
+              disabled={disabled || pending}
+              message={state.message}
+              actions={
+                <TaskPanelFormActions
+                  acceptLabel={copy.submit}
+                  ariaLabel={copy.title}
+                  cancelLabel={copy.cancel}
+                  disabled={disabled || referencePlane === null}
+                  onCancel={onCancel}
+                  previewStatus={previewStatus}
+                />
+              }
             >
-              <form.AppField name="plane">
+              <ReferencePlaneSelection
+                options={referenceOptions}
+                value={referencePlane}
+                selectedFace={selectedFace ?? startingFace}
+                onChange={(value) => {
+                  state.clearSubmissionErrors()
+                  setReference(value)
+                }}
+              >
+                <form.AppField name="plane">
+                  {(field) => (
+                    <field.ChoiceField
+                      label={copy.plane}
+                      onValueChange={() => {
+                        state.clearSubmissionErrors()
+                      }}
+                      options={(["XY", "XZ", "YZ"] as const).map((plane) => ({
+                        value: plane,
+                        label: plane,
+                      }))}
+                    />
+                  )}
+                </form.AppField>
+              </ReferencePlaneSelection>
+              <form.AppField name="offset">
                 {(field) => (
-                  <field.ChoiceField
-                    label={copy.plane}
+                  <field.LengthExpressionField
+                    id="mirror-offset"
+                    label={copy.offset}
+                    description={copy.offsetDescription}
+                    suggestions={state.suggestions}
                     onValueChange={() => {
                       state.clearSubmissionErrors()
                     }}
-                    options={(["XY", "XZ", "YZ"] as const).map((plane) => ({
-                      value: plane,
-                      label: plane,
-                    }))}
                   />
                 )}
               </form.AppField>
-            </ReferencePlaneSelection>
-            <form.AppField name="offset">
-              {(field) => (
-                <field.LengthExpressionField
-                  id="mirror-offset"
-                  label={copy.offset}
-                  description={copy.offsetDescription}
-                  suggestions={state.suggestions}
-                  onValueChange={() => {
-                    state.clearSubmissionErrors()
-                  }}
-                />
-              )}
-            </form.AppField>
-            <form.AppField name="preserveSource">
-              {(field) => (
-                <field.CheckboxField
-                  id="mirror-preserve-source"
-                  label={copy.preserveSource}
-                  description={copy.preserveSourceDescription}
-                  onValueChange={() => {
-                    state.clearSubmissionErrors()
-                  }}
-                />
-              )}
-            </form.AppField>
-          </ParameterPanel>
-        )}
-      </form.Subscribe>
+              <form.AppField name="preserveSource">
+                {(field) => (
+                  <field.CheckboxField
+                    id="mirror-preserve-source"
+                    label={copy.preserveSource}
+                    description={copy.preserveSourceDescription}
+                    onValueChange={() => {
+                      state.clearSubmissionErrors()
+                    }}
+                  />
+                )}
+              </form.AppField>
+            </ParameterPanel>
+          )}
+        </form.Subscribe>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

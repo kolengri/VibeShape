@@ -4,6 +4,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -122,25 +123,31 @@ function TextTask({
   })
   const { form } = state
   return (
-    <Form form={form} aria-label={t(target.group ? "editTitle" : "title")} className="grid gap-4">
-      <form.Subscribe selector={(state) => state.isSubmitting}>
-        {(pending) => (
-          <fieldset disabled={pending} aria-busy={pending} className="grid gap-4">
-            <legend className="sr-only">{t("parameters")}</legend>
-            <form.AppField name="text">
-              {(field) => <field.TextField label={t("text")} required />}
-            </form.AppField>
-            <TextDimensions form={form} />
-            <TextAlignment form={form} />
-            <form.AppField name="kerning">
-              {(field) => <field.CheckboxField label={t("kerning")} />}
-            </form.AppField>
-            <TextRegenerationNotice state={state} />
-          </fieldset>
-        )}
-      </form.Subscribe>
-      <form.FormError />
-      {state.error && <Alert>{state.error}</Alert>}
+    <Form
+      form={form}
+      aria-label={t(target.group ? "editTitle" : "title")}
+      className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <DialogBody>
+        <form.Subscribe selector={(state) => state.isSubmitting}>
+          {(pending) => (
+            <fieldset disabled={pending} aria-busy={pending} className="grid gap-4">
+              <legend className="sr-only">{t("parameters")}</legend>
+              <form.AppField name="text">
+                {(field) => <field.TextField label={t("text")} required />}
+              </form.AppField>
+              <TextDimensions form={form} />
+              <TextAlignment form={form} />
+              <form.AppField name="kerning">
+                {(field) => <field.CheckboxField label={t("kerning")} />}
+              </form.AppField>
+              <TextRegenerationNotice state={state} />
+            </fieldset>
+          )}
+        </form.Subscribe>
+        <form.FormError />
+        {state.error && <Alert>{state.error}</Alert>}
+      </DialogBody>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           {t("cancel")}

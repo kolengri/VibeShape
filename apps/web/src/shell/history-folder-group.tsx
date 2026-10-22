@@ -4,6 +4,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
+  AlertDialogBody,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -83,9 +84,11 @@ function RemoveFolder({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("removeFolder", { name: folder.name })}</AlertDialogTitle>
-          <AlertDialogDescription>{t("removeFolderDescription")}</AlertDialogDescription>
         </AlertDialogHeader>
-        {error && <Alert>{error}</Alert>}
+        <AlertDialogBody>
+          <AlertDialogDescription>{t("removeFolderDescription")}</AlertDialogDescription>
+          {error && <Alert>{error}</Alert>}
+        </AlertDialogBody>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>{t("cancel")}</AlertDialogCancel>
           <Button variant="destructive" onClick={remove}>

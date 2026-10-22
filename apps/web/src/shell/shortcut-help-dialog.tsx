@@ -1,6 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -106,41 +107,43 @@ export function ShortcutHelpDialog({
           <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
-        <Input
-          aria-label={t("search")}
-          placeholder={t("search")}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <div className="max-h-[45svh] overflow-y-auto overscroll-contain">
-          <dl className="divide-y" aria-label={t("list")}>
-            {rows.map((row) => (
-              <div
-                key={row.id}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2"
-              >
-                <dt className="min-w-0 break-words">
-                  <span>{row.label}</span>
-                  <span className="block text-xs text-muted-foreground">{row.context}</span>
-                  {row.reason ? (
-                    <span className="block text-xs text-muted-foreground">{row.reason}</span>
-                  ) : null}
-                </dt>
-                <dd>
-                  <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">
-                    {row.keys}
-                  </kbd>
-                </dd>
-              </div>
-            ))}
-          </dl>
-          {rows.length === 0 ? (
-            <p role="status" className="py-3 text-sm text-muted-foreground">
-              {t("empty")}
-            </p>
-          ) : null}
-        </div>
-        <p className="text-xs text-muted-foreground">{t("dragHelp")}</p>
+        <DialogBody>
+          <Input
+            aria-label={t("search")}
+            placeholder={t("search")}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <div>
+            <dl className="divide-y" aria-label={t("list")}>
+              {rows.map((row) => (
+                <div
+                  key={row.id}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2"
+                >
+                  <dt className="min-w-0 break-words">
+                    <span>{row.label}</span>
+                    <span className="block text-xs text-muted-foreground">{row.context}</span>
+                    {row.reason ? (
+                      <span className="block text-xs text-muted-foreground">{row.reason}</span>
+                    ) : null}
+                  </dt>
+                  <dd>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">
+                      {row.keys}
+                    </kbd>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            {rows.length === 0 ? (
+              <p role="status" className="py-3 text-sm text-muted-foreground">
+                {t("empty")}
+              </p>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted-foreground">{t("dragHelp")}</p>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )
