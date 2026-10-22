@@ -7,7 +7,6 @@ import {
   CirclePlay,
   ConstraintFixedIcon,
   Cuboid,
-  Layers3,
   Link2,
 } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
@@ -36,12 +35,10 @@ type AssemblyTreeProps = {
 function AssemblySection({
   title,
   count,
-  icon,
   children,
 }: {
   title: string
   count: number
-  icon: ReactNode
   children: ReactNode
 }) {
   const [expanded, setExpanded] = useState(true)
@@ -50,9 +47,9 @@ function AssemblySection({
     <section className="min-w-0">
       <h2>
         <Button
-          size="xs"
+          size="sm"
           variant="ghost"
-          className={modelBrowserGroupRow}
+          className={cn(modelBrowserGroupRow, "text-base font-semibold leading-6")}
           aria-expanded={expanded}
           aria-controls={id}
           onClick={() => setExpanded((value) => !value)}
@@ -61,8 +58,7 @@ function AssemblySection({
             aria-hidden="true"
             className={cn("size-4 shrink-0", !expanded && "-rotate-90")}
           />
-          {icon}
-          <span className="truncate">{title}</span>
+          <span className="min-w-0 break-words text-left">{title}</span>
           <span aria-hidden="true" className={modelBrowserCount}>
             {count}
           </span>
@@ -94,11 +90,7 @@ function AssemblyInstances({
     ),
   )
   return (
-    <AssemblySection
-      title={t("instances")}
-      count={instances.length}
-      icon={<Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />}
-    >
+    <AssemblySection title={t("instances")} count={instances.length}>
       <ul className="grid">
         {instances.map((instance) => {
           const definition = assembly.definitions.find(({ id }) => id === instance.definitionId)
@@ -158,11 +150,7 @@ function AssemblyDefinitions({
   const t = useTranslations("app.assembly")
   const definitions = assembly.definitions.filter(({ name }) => matchesFilter(filter, name))
   return (
-    <AssemblySection
-      title={t("definitions")}
-      count={definitions.length}
-      icon={<Layers3 aria-hidden="true" className="size-4 text-muted-foreground" />}
-    >
+    <AssemblySection title={t("definitions")} count={definitions.length}>
       <ul className="grid">
         {definitions.map((definition) => (
           <li key={definition.id}>
@@ -229,11 +217,7 @@ function AssemblyJoints({
     })
     .filter(({ parent, child, kind }) => matchesFilter(filter, parent, child, kind))
   return (
-    <AssemblySection
-      title={t("joints")}
-      count={joints.length}
-      icon={<Link2 aria-hidden="true" className="size-4 text-muted-foreground" />}
-    >
+    <AssemblySection title={t("joints")} count={joints.length}>
       <ul className="grid">
         {joints.map(({ joint, parent, child, kind }) => (
           <li key={joint.id} className={modelBrowserItem} data-assembly-joint-id={joint.id}>
@@ -287,7 +271,7 @@ export function AssemblyTree(props: AssemblyTreeProps) {
   const filter = query.trim().toLocaleLowerCase()
   return (
     <aside
-      className="grid h-full content-start gap-1 overflow-y-auto bg-panel p-2"
+      className="grid min-h-0 content-start gap-1 overflow-y-auto bg-panel p-2"
       aria-label={t("tree")}
     >
       <Input

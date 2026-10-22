@@ -80,7 +80,7 @@ for (const width of [800, 1024, 1440]) {
         return historyBounds.x + historyBounds.width <= bounds.x - 7
       })
       .toBe(true)
-    await chat.getByRole("button", { name: "Close chat", exact: true }).click()
+    await chat.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
     await expect(chat).toHaveCount(0)
     await expect(draft).toHaveValue("77")
     await expect.poll(async () => (await toolbar.boundingBox())?.width).toBe(width - 16)
@@ -142,7 +142,7 @@ test("shows Thinking by the composer with the wordmark shimmer and respects redu
   await page.goto("/")
   await page.getByRole("button", { name: "AI chat", exact: true }).click()
   const chat = page.getByRole("complementary", { name: "AI chat", exact: true })
-  await chat.getByRole("button", { name: "Configure AI", exact: true }).click()
+  await chat.getByRole("button", { name: "AI settings", exact: true }).click()
   const settings = page.getByRole("dialog", { name: "AI settings", exact: true })
   await settings.getByRole("combobox", { name: "Provider", exact: true }).click()
   await page.getByRole("option", { name: "Custom endpoint", exact: true }).click()
@@ -153,6 +153,7 @@ test("shows Thinking by the composer with the wordmark shimmer and respects redu
   await settings
     .getByRole("button", { name: "Connect and enable project access", exact: true })
     .click()
+  await expect(settings).toBeHidden()
   await chat.getByRole("textbox", { name: "Message", exact: true }).fill("Describe the project")
   await chat.getByRole("button", { name: "Send", exact: true }).click()
   const thinking = chat.getByRole("status").filter({ hasText: /^Thinking$/ })
@@ -181,7 +182,9 @@ test("shows Thinking by the composer with the wordmark shimmer and respects redu
 })
 
 for (const theme of ["light", "dark"]) {
-  test(`keeps the floating task header transparent in ${theme} theme`, async ({ page }) => {
+  test(`keeps the fixed task header transparent without body overlap in ${theme} theme`, async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto("/")
     await invokeModelCommand(page, "Primitives", "Box")
@@ -192,15 +195,21 @@ for (const theme of ["light", "dark"]) {
     const header = form.locator("header")
     await expect(header).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
     await page.setViewportSize({ width: 800, height: 900 })
-    await expect
-      .poll(() =>
-        header.evaluate((element) => {
-          return (
-            element.ownerDocument.defaultView?.getComputedStyle(element).backgroundColor !==
-            "rgba(0, 0, 0, 0)"
-          )
-        }),
-      )
-      .toBe(true)
+    await expect(header).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
+    await expect(page.locator(".workspace-panel--task")).not.toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    )
+    const body = form.locator('[data-slot="task-panel-content"]')
+    const headerBounds = await header.boundingBox()
+    const bodyBounds = await body.boundingBox()
+    if (!headerBounds || !bodyBounds) throw new Error("Task header and body must have bounds.")
+    expect(bodyBounds.y).toBeGreaterThanOrEqual(headerBounds.y + headerBounds.height)
+    await body.evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+    })
+    expect(await body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    expect(await header.boundingBox()).toEqual(headerBounds)
+    await expect(form.locator('[data-slot="task-panel-footer"]')).toBeInViewport()
   })
 }

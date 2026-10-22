@@ -2,6 +2,7 @@ import type { FeatureRecord } from "@vibeshape/domain"
 import { readThreadFeatureParameters } from "@vibeshape/domain/part-design-thread"
 import { useTranslations } from "@vibeshape/i18n"
 import type { ReactNode } from "react"
+import { TaskPanelSurface } from "../components/task-panel-layout"
 import {
   createBrowserFeatureId,
   type DocumentControllerState,
@@ -119,7 +120,10 @@ export function ThreadTaskPanel(props: Props) {
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
       : `create:${report.snapshot.revision}`
   return (
-    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <TaskPanelSurface
+      aria-label={task("ariaLabel")}
+      trailingContent={mode.kind === "edit" && props.renderDelete(mode.feature)}
+    >
       <ThreadForm
         key={key}
         copy={copy}
@@ -133,7 +137,6 @@ export function ThreadTaskPanel(props: Props) {
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />
-      {mode.kind === "edit" && props.renderDelete(mode.feature)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

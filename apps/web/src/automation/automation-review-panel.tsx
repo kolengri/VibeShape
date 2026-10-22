@@ -7,7 +7,7 @@ import type { CommandActor, DocumentCommand } from "@vibeshape/domain/commands"
 import { quantitySchema } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
-import { TaskPanelHeader } from "../components/task-panel-header"
+import { TaskPanelLayout } from "../components/task-panel-layout"
 import { useSurfaceTexturePreviewContext } from "../features/surface-texture/surface-texture-preview-context"
 import { AssemblyAutomationReviewPanel } from "./assembly-review-panel"
 import { isDestructiveCommand, ReviewActions } from "./automation-review-actions"
@@ -348,61 +348,61 @@ function CadReviewPanel({
   return (
     <section
       aria-label={t("title")}
-      className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l bg-panel"
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
     >
-      <TaskPanelHeader
+      <TaskPanelLayout
         title={t("title")}
-        className="border-b p-3"
         actions={<ReviewActions commands={commands} review={review} t={t} />}
-      />
-      <section
-        key={review.status === "error" ? "error" : "proposal"}
-        aria-label={t("changes")}
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: The labelled scroll region needs keyboard access to long proposals.
-        tabIndex={0}
-        className="min-h-0 min-w-0 overflow-auto overscroll-contain p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <ReviewDiagnostic review={review} />
-        <p className="text-xs text-muted-foreground">{t("description")}</p>
-        <dl className="mt-4 grid gap-2 text-sm">
-          <div className="flex justify-between gap-3">
-            <dt>{t("client")}</dt>
-            <dd className="min-w-0 break-all">{actorLabel(input.actor, t)}</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt>{t("document")}</dt>
-            <dd className="min-w-0 break-words">{input.preview.summary.data.name}</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt>{t("baseRevision")}</dt>
-            <dd className="font-mono">{input.preview.draft.baseRevision}</dd>
-          </div>
-        </dl>
-        <section className="mt-4 border-t pt-3">
-          <h3 className="text-xs font-medium">{t("changes")}</h3>
-          <ul className="mt-2 grid gap-2 text-xs">
-            {input.metadata ? <MetadataDetails metadata={input.metadata} /> : null}
-            {input.historyMove ? <HistoryMoveDetails move={input.historyMove} /> : null}
-            {commands.map((command) => (
-              <li key={command.commandId} className="break-words rounded border p-2">
-                <div className="font-medium">
-                  {t(commandLabels[command.kind] ?? "unknownCommand")}
-                </div>
-                <div className="text-muted-foreground">
-                  {t("target", { target: commandTarget(command, t("documentTarget")) })}
-                </div>
-                <div className="text-muted-foreground">
-                  <CommandDetails command={command} />
-                </div>
-              </li>
-            ))}
-          </ul>
+        <section
+          key={review.status === "error" ? "error" : "proposal"}
+          aria-label={t("changes")}
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: The labelled scroll region needs keyboard access to long proposals.
+          tabIndex={0}
+          className="min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <ReviewDiagnostic review={review} />
+          <p className="text-xs text-muted-foreground">{t("description")}</p>
+          <dl className="mt-4 grid gap-2 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt>{t("client")}</dt>
+              <dd className="min-w-0 break-all">{actorLabel(input.actor, t)}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt>{t("document")}</dt>
+              <dd className="min-w-0 break-words">{input.preview.summary.data.name}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt>{t("baseRevision")}</dt>
+              <dd className="font-mono">{input.preview.draft.baseRevision}</dd>
+            </div>
+          </dl>
+          <section className="mt-4 border-t pt-3">
+            <h3 className="text-xs font-medium">{t("changes")}</h3>
+            <ul className="mt-2 grid gap-2 text-xs">
+              {input.metadata ? <MetadataDetails metadata={input.metadata} /> : null}
+              {input.historyMove ? <HistoryMoveDetails move={input.historyMove} /> : null}
+              {commands.map((command) => (
+                <li key={command.commandId} className="break-words rounded border p-2">
+                  <div className="font-medium">
+                    {t(commandLabels[command.kind] ?? "unknownCommand")}
+                  </div>
+                  <div className="text-muted-foreground">
+                    {t("target", { target: commandTarget(command, t("documentTarget")) })}
+                  </div>
+                  <div className="text-muted-foreground">
+                    <CommandDetails command={command} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <Measurements preview={input.preview} />
+          {commands.some(isDestructiveCommand) ? (
+            <Alert aria-live="polite">{t("destructiveWarning")}</Alert>
+          ) : null}
         </section>
-        <Measurements preview={input.preview} />
-        {commands.some(isDestructiveCommand) ? (
-          <Alert aria-live="polite">{t("destructiveWarning")}</Alert>
-        ) : null}
-      </section>
+      </TaskPanelLayout>
     </section>
   )
 }

@@ -15,7 +15,11 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerSelection } from "@vibeshape/viewer"
 import { type ReactNode, useMemo, useState } from "react"
-import { TaskPanelHeader } from "../components/task-panel-header"
+import {
+  TaskPanelContentProvider,
+  TaskPanelLayout,
+  TaskPanelSurface,
+} from "../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import {
   addFeature,
@@ -223,14 +227,18 @@ function VariablesTaskPanel() {
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
-      <h2 className="text-xs font-medium">{t("variables.title")}</h2>
-      <p className="mt-2 leading-5 text-muted-foreground">{t("variables.description")}</p>
-      <ul className="mt-4 grid gap-2 border-t pt-4 text-muted-foreground">
-        <li>{t("variables.reference")}</li>
-        <li>{t("variables.units")}</li>
-        <li>{t("variables.names")}</li>
-      </ul>
+    <aside
+      aria-label={t("ariaLabel")}
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+    >
+      <TaskPanelLayout title={t("variables.title")}>
+        <p className="mt-2 leading-5 text-muted-foreground">{t("variables.description")}</p>
+        <ul className="mt-4 grid gap-2 border-t pt-4 text-muted-foreground">
+          <li>{t("variables.reference")}</li>
+          <li>{t("variables.units")}</li>
+          <li>{t("variables.names")}</li>
+        </ul>
+      </TaskPanelLayout>
     </aside>
   )
 }
@@ -773,38 +781,47 @@ function ExtrusionTaskPanel({
   )
   const profileLabel = profileLabels.join(", ")
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
-      {previewStatus === "error" && diagnostics ? (
-        <CadErrorPresentation
-          diagnostics={diagnostics}
-          snapshot={snapshot}
-          contextLabels={profileLabels}
-        />
-      ) : null}
-      <ExtrusionForm
-        key={task.key}
-        baseRevision={snapshot.revision}
-        copy={copy}
-        disabled={report.mode === "read-only"}
-        distanceRequest={distanceRequest}
-        mode={mode}
-        options={options}
-        profileLabel={profileLabel}
-        profileLabels={profileLabels}
-        onProfileSelectionRequest={() =>
-          document.querySelector<HTMLSelectElement>("[data-saved-profile-picker]")?.focus()
+    <TaskPanelSurface
+      aria-label={t("ariaLabel")}
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
+    >
+      <TaskPanelContentProvider
+        content={
+          previewStatus === "error" && diagnostics ? (
+            <CadErrorPresentation
+              diagnostics={diagnostics}
+              snapshot={snapshot}
+              contextLabels={profileLabels}
+            />
+          ) : null
         }
-        onProfileRemove={profileRemovalHandler(mode.profiles, onProfileRemove)}
-        onProfilesClear={onProfilesClear}
-        variables={snapshot.variables}
-        onCancel={onCloseTool}
-        onPreviewChange={onPreviewChange}
-        onSave={task.onSave}
-        onSaved={onCompleteTool}
-        previewStatus={previewStatus}
-      />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+      >
+        <ExtrusionForm
+          key={task.key}
+          baseRevision={snapshot.revision}
+          copy={copy}
+          disabled={report.mode === "read-only"}
+          distanceRequest={distanceRequest}
+          mode={mode}
+          options={options}
+          profileLabel={profileLabel}
+          profileLabels={profileLabels}
+          onProfileSelectionRequest={() =>
+            document.querySelector<HTMLSelectElement>("[data-saved-profile-picker]")?.focus()
+          }
+          onProfileRemove={profileRemovalHandler(mode.profiles, onProfileRemove)}
+          onProfilesClear={onProfilesClear}
+          variables={snapshot.variables}
+          onCancel={onCloseTool}
+          onPreviewChange={onPreviewChange}
+          onSave={task.onSave}
+          onSaved={onCompleteTool}
+          previewStatus={previewStatus}
+        />
+      </TaskPanelContentProvider>
+    </TaskPanelSurface>
   )
 }
 
@@ -889,7 +906,12 @@ function RevolveTaskPanel({
   const copy = useRevolveFormCopy(mode.kind)
   const task = featureTaskContext(mode, snapshot.revision)
   return (
-    <aside aria-label={panelT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+    <TaskPanelSurface
+      aria-label={panelT("ariaLabel")}
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
+    >
       <RevolveForm
         angleRequest={angleRequest}
         axisLineLabel={axisLineLabel}
@@ -915,8 +937,7 @@ function RevolveTaskPanel({
         onSaved={onCompleteTool}
         previewStatus={preview.status}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -943,7 +964,12 @@ function BoxTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+    <TaskPanelSurface
+      aria-label={t("ariaLabel")}
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
+    >
       <BoxForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -958,8 +984,7 @@ function BoxTaskPanel({
         placementRequest={placementRequest}
         previewStatus={previewStatus}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -983,7 +1008,12 @@ function DatumPlaneTaskPanel({
   const task = featureTaskContext(mode, snapshot.revision)
   const t = useTranslations("app.shell.taskPanel")
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+    <TaskPanelSurface
+      aria-label={t("ariaLabel")}
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
+    >
       <DatumPlaneForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -997,8 +1027,7 @@ function DatumPlaneTaskPanel({
         onSaved={onCompleteTool}
         previewStatus={previewStatus}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -1025,7 +1054,12 @@ function CylinderTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+    <TaskPanelSurface
+      aria-label={t("ariaLabel")}
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
+    >
       <CylinderForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -1040,8 +1074,7 @@ function CylinderTaskPanel({
         placementRequest={placementRequest}
         previewStatus={previewStatus}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -1069,7 +1102,12 @@ function BooleanTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+    <TaskPanelSurface
+      aria-label={t("ariaLabel")}
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
+    >
       <BooleanForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -1083,8 +1121,7 @@ function BooleanTaskPanel({
         onSave={task.onSave}
         onSaved={onCompleteTool}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -1353,9 +1390,9 @@ function EmptyProfileFeatureTaskPanel({
   return (
     <aside
       aria-label={panelT("ariaLabel")}
-      className="grid min-h-0 content-start gap-2 overflow-auto border-l bg-panel p-3"
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
     >
-      <TaskPanelHeader
+      <TaskPanelLayout
         title={title}
         instruction={description}
         actions={
@@ -1365,8 +1402,9 @@ function EmptyProfileFeatureTaskPanel({
             onCancel={onCloseTool}
           />
         }
-      />
-      {children}
+      >
+        {children}
+      </TaskPanelLayout>
     </aside>
   )
 }
@@ -1670,7 +1708,12 @@ function ActiveBasicPrimitiveTaskPanel({
   if (!mode) return null
   const task = featureTaskContext(mode, report.snapshot.revision)
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+    <TaskPanelSurface
+      aria-label={t("ariaLabel")}
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
+    >
       <BasicPrimitiveForm
         key={`${primitiveKind}:${task.key}`}
         primitiveKind={primitiveKind}
@@ -1686,8 +1729,7 @@ function ActiveBasicPrimitiveTaskPanel({
         placementRequest={primitivePlacementRequest}
         previewStatus={featurePreviewStatus}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -1910,7 +1952,12 @@ function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
   const copy = edgeTreatmentCopy(t, operation, mode.kind)
 
   return (
-    <aside aria-label={taskT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+    <TaskPanelSurface
+      aria-label={taskT("ariaLabel")}
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
+      }
+    >
       <EdgeTreatmentForm
         key={`${operation}:${task.key}`}
         baseRevision={report.snapshot.revision}
@@ -1933,8 +1980,7 @@ function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
           ? { onPickingContextChange: props.onEdgeTreatmentPickingContextChange }
           : {})}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -2015,7 +2061,12 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
     pointLabel: (ordinal) => t("pointLabel", { ordinal }),
   }
   return (
-    <aside aria-label={taskT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+    <TaskPanelSurface
+      aria-label={taskT("ariaLabel")}
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
+      }
+    >
       <HoleForm
         key={`hole:${task.key}`}
         baseRevision={report.snapshot.revision}
@@ -2035,8 +2086,7 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
           ? { onPickingContextChange: props.onHolePickingContextChange }
           : {})}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -2093,8 +2143,11 @@ function ImportedSourceTaskPanel(props: ActiveTaskPanelProps) {
   )
   if (!feature) return null
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
-      <TaskPanelHeader
+    <aside
+      aria-label={t("ariaLabel")}
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+    >
+      <TaskPanelLayout
         title={feature.label ?? treeT("unnamedFeature")}
         description={t("capturedSource.description")}
         actions={
@@ -2104,12 +2157,13 @@ function ImportedSourceTaskPanel(props: ActiveTaskPanelProps) {
             onCancel={props.onCloseTool}
           />
         }
-      />
-      <ActiveFeatureDeleteAction
-        feature={feature}
-        onDeleted={props.onCompleteTool}
-        report={props.report}
-      />
+      >
+        <ActiveFeatureDeleteAction
+          feature={feature}
+          onDeleted={props.onCompleteTool}
+          report={props.report}
+        />
+      </TaskPanelLayout>
     </aside>
   )
 }
@@ -2471,11 +2525,10 @@ function ActiveSketchTaskPanel({
   return (
     <aside
       aria-label={t("taskAriaLabel")}
-      className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l bg-panel"
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
     >
       <SketchConstraintManagerPopover actions={panelActions} copy={copy} state={panelState} />
-      <TaskPanelHeader
-        className="border-b p-3"
+      <TaskPanelLayout
         title={draft.label}
         instruction={modeDescription}
         actions={
@@ -2490,10 +2543,10 @@ function ActiveSketchTaskPanel({
         }
       >
         <p className="text-xs font-medium text-primary">{t("modeLabel")}</p>
-      </TaskPanelHeader>
-      <div className="min-h-0 overflow-auto p-3">
-        <SketchEditorPanel copy={copy} state={panelState} actions={panelActions} />
-      </div>
+        <div className="min-w-0">
+          <SketchEditorPanel copy={copy} state={panelState} actions={panelActions} />
+        </div>
+      </TaskPanelLayout>
     </aside>
   )
 }
@@ -2514,10 +2567,9 @@ function SketchPlaneSelectionTaskPanel({
   return (
     <aside
       aria-label={t("taskAriaLabel")}
-      className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l bg-panel"
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
     >
-      <TaskPanelHeader
-        className="border-b p-3"
+      <TaskPanelLayout
         title={title}
         instruction={description}
         actions={
@@ -2527,21 +2579,22 @@ function SketchPlaneSelectionTaskPanel({
             onCancel={onCancel}
           />
         }
-      />
-      <div className="min-h-0 overflow-auto p-3">
-        <fieldset className="grid grid-cols-3 gap-2">
-          <legend className="sr-only">{t("plane")}</legend>
-          <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("xy")}>
-            {t("planeXy")}
-          </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("xz")}>
-            {t("planeXz")}
-          </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("yz")}>
-            {t("planeYz")}
-          </Button>
-        </fieldset>
-      </div>
+      >
+        <div className="min-w-0">
+          <fieldset className="grid grid-cols-3 gap-2">
+            <legend className="sr-only">{t("plane")}</legend>
+            <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("xy")}>
+              {t("planeXy")}
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("xz")}>
+              {t("planeXz")}
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("yz")}>
+              {t("planeYz")}
+            </Button>
+          </fieldset>
+        </div>
+      </TaskPanelLayout>
     </aside>
   )
 }
@@ -2559,31 +2612,35 @@ function SelectedSketchTaskPanel({
 }) {
   const t = useTranslations("app.shell.taskPanel.sketch")
   return (
-    <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
-      <h2 className="text-xs font-medium">{sketch.label}</h2>
-      <p className="mt-2 text-xs leading-4 text-muted-foreground">
-        {t("savedDescription", { plane: sketch.plane.toUpperCase() })}
-      </p>
-      {profiles.length > 1 ? (
-        <fieldset className="mt-3 flex flex-wrap gap-1 border-0 p-0">
-          <legend className="sr-only">{t("profiles")}</legend>
-          {profiles.map((profile, index) => (
-            <Button
-              key={profile.outerBoundaryEntityIds.join(":")}
-              type="button"
-              size="xs"
-              variant={profileSelectorsEqual(selectedProfile, profile) ? "secondary" : "outline"}
-              aria-pressed={profileSelectorsEqual(selectedProfile, profile)}
-              onClick={() => onSelectedProfileChange(profile)}
-            >
-              {t("profile", { number: index + 1 })}
-            </Button>
-          ))}
-        </fieldset>
-      ) : null}
-      <p className="mt-3 text-xs leading-4 text-muted-foreground">
-        {t(selectedProfile ? "profileFeatureReady" : "profileFeatureHint")}
-      </p>
+    <aside
+      aria-label={t("taskAriaLabel")}
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+    >
+      <TaskPanelLayout title={sketch.label}>
+        <p className="mt-2 text-xs leading-4 text-muted-foreground">
+          {t("savedDescription", { plane: sketch.plane.toUpperCase() })}
+        </p>
+        {profiles.length > 1 ? (
+          <fieldset className="mt-3 flex flex-wrap gap-1 border-0 p-0">
+            <legend className="sr-only">{t("profiles")}</legend>
+            {profiles.map((profile, index) => (
+              <Button
+                key={profile.outerBoundaryEntityIds.join(":")}
+                type="button"
+                size="xs"
+                variant={profileSelectorsEqual(selectedProfile, profile) ? "secondary" : "outline"}
+                aria-pressed={profileSelectorsEqual(selectedProfile, profile)}
+                onClick={() => onSelectedProfileChange(profile)}
+              >
+                {t("profile", { number: index + 1 })}
+              </Button>
+            ))}
+          </fieldset>
+        ) : null}
+        <p className="mt-3 text-xs leading-4 text-muted-foreground">
+          {t(selectedProfile ? "profileFeatureReady" : "profileFeatureHint")}
+        </p>
+      </TaskPanelLayout>
     </aside>
   )
 }

@@ -8,6 +8,7 @@ import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { Button } from "@vibeshape/ui/components/button"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import type { FeatureParameterFormProps, PrimitiveLengthCopy } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
@@ -101,112 +102,117 @@ export function SplitForm(props: SplitFormProps) {
   const draft = useSplitDraft(props)
   const { form, state } = draft
   return (
-    <Form form={form} aria-label={copy.title} className="gap-0">
-      <form.FormError />
-      {onManipulatorChange && (
-        <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
-          {([values, pending]) => (
-            <SplitManipulatorBinding
-              values={values}
-              variables={variables}
-              units={state.displayUnits}
-              copy={copy}
-              featureId={draft.featureId}
-              sourceBounds={sourceBounds}
-              referencePlane={draft.referencePlane}
-              resolvePlane={resolvePlane}
-              disabled={disabled || pending || !draft.interactive}
-              onManipulatorChange={onManipulatorChange}
-              onOffsetChange={draft.changeOffset}
-            />
-          )}
-        </form.Subscribe>
-      )}
-      {onPreviewChange && sourceBounds && (
-        <form.Subscribe selector={(formState) => formState.values}>
-          {(values) => (
-            <SplitPreview
-              values={values}
-              variables={variables}
-              units={state.displayUnits}
-              copy={copy}
-              mode={mode}
-              featureId={draft.featureId}
-              referencePlane={draft.referencePlane}
-              resolvePlane={resolvePlane}
-              onPreviewChange={onPreviewChange}
-            />
-          )}
-        </form.Subscribe>
-      )}
-      <form.Subscribe selector={(formState) => formState.isSubmitting}>
-        {(pending) => (
-          <ParameterPanel
-            copy={copy}
-            legend={copy.parameters}
-            disabled={disabled || pending || !sourceBounds}
-            message={
-              state.message ??
-              (!sourceBounds || !draft.referenceAvailable ? copy.unavailable : null)
-            }
-            actions={
-              <TaskPanelFormActions
-                acceptLabel={copy.submit}
-                ariaLabel={copy.title}
-                cancelLabel={copy.cancel}
-                disabled={disabled || !sourceBounds || !draft.referenceAvailable}
-                onCancel={draft.cancel}
-                previewStatus={previewStatus}
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        {onManipulatorChange && (
+          <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
+            {([values, pending]) => (
+              <SplitManipulatorBinding
+                values={values}
+                variables={variables}
+                units={state.displayUnits}
+                copy={copy}
+                featureId={draft.featureId}
+                sourceBounds={sourceBounds}
+                referencePlane={draft.referencePlane}
+                resolvePlane={resolvePlane}
+                disabled={disabled || pending || !draft.interactive}
+                onManipulatorChange={onManipulatorChange}
+                onOffsetChange={draft.changeOffset}
               />
-            }
-          >
-            <ReferencePlaneSelection
-              options={referenceOptions}
-              value={draft.referencePlane}
-              selectedFace={selectedFace}
-              onChange={draft.setReference}
+            )}
+          </form.Subscribe>
+        )}
+        {onPreviewChange && sourceBounds && (
+          <form.Subscribe selector={(formState) => formState.values}>
+            {(values) => (
+              <SplitPreview
+                values={values}
+                variables={variables}
+                units={state.displayUnits}
+                copy={copy}
+                mode={mode}
+                featureId={draft.featureId}
+                referencePlane={draft.referencePlane}
+                resolvePlane={resolvePlane}
+                onPreviewChange={onPreviewChange}
+              />
+            )}
+          </form.Subscribe>
+        )}
+        <form.Subscribe selector={(formState) => formState.isSubmitting}>
+          {(pending) => (
+            <ParameterPanel
+              copy={copy}
+              legend={copy.parameters}
+              disabled={disabled || pending || !sourceBounds}
+              message={
+                state.message ??
+                (!sourceBounds || !draft.referenceAvailable ? copy.unavailable : null)
+              }
+              actions={
+                <TaskPanelFormActions
+                  acceptLabel={copy.submit}
+                  ariaLabel={copy.title}
+                  cancelLabel={copy.cancel}
+                  disabled={disabled || !sourceBounds || !draft.referenceAvailable}
+                  onCancel={draft.cancel}
+                  previewStatus={previewStatus}
+                />
+              }
             >
-              <form.AppField name="plane">
+              <ReferencePlaneSelection
+                options={referenceOptions}
+                value={draft.referencePlane}
+                selectedFace={selectedFace}
+                onChange={draft.setReference}
+              >
+                <form.AppField name="plane">
+                  {(field) => (
+                    <field.ChoiceField
+                      label={copy.plane}
+                      description={copy.planeDescription}
+                      onValueChange={() => {
+                        state.clearSubmissionErrors()
+                      }}
+                      options={(["XY", "XZ", "YZ"] as const).map((plane) => ({
+                        value: plane,
+                        label: plane,
+                      }))}
+                    />
+                  )}
+                </form.AppField>
+              </ReferencePlaneSelection>
+              <form.AppField name="offset">
                 {(field) => (
-                  <field.ChoiceField
-                    label={copy.plane}
-                    description={copy.planeDescription}
+                  <field.LengthExpressionField
+                    id="split-offset"
+                    label={copy.offset}
+                    description={copy.lengthDescription}
+                    suggestions={state.suggestions}
                     onValueChange={() => {
                       state.clearSubmissionErrors()
                     }}
-                    options={(["XY", "XZ", "YZ"] as const).map((plane) => ({
-                      value: plane,
-                      label: plane,
-                    }))}
                   />
                 )}
               </form.AppField>
-            </ReferencePlaneSelection>
-            <form.AppField name="offset">
-              {(field) => (
-                <field.LengthExpressionField
-                  id="split-offset"
-                  label={copy.offset}
-                  description={copy.lengthDescription}
-                  suggestions={state.suggestions}
-                  onValueChange={() => {
-                    state.clearSubmissionErrors()
-                  }}
-                />
-              )}
-            </form.AppField>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!sourceBounds || draft.referencePlane !== undefined}
-              onClick={draft.midpoint}
-            >
-              {copy.midpoint}
-            </Button>
-          </ParameterPanel>
-        )}
-      </form.Subscribe>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!sourceBounds || draft.referencePlane !== undefined}
+                onClick={draft.midpoint}
+              >
+                {copy.midpoint}
+              </Button>
+            </ParameterPanel>
+          )}
+        </form.Subscribe>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

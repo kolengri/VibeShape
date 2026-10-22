@@ -36,6 +36,7 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
@@ -1097,43 +1098,48 @@ function ExtrusionAdvancedFields({ controller }: { controller: ExtrusionFormCont
 function ExtrusionFormView({ controller }: { controller: ExtrusionFormController }) {
   const { form } = controller
   return (
-    <Form form={form} aria-label={controller.copy.title} className="gap-0">
-      <form.FormError />
-      <ExtrusionProfileSelectionSync
-        profiles={controller.mode.profiles}
-        supportReferences={modeSupportReferences(controller.mode)}
-        onChange={controller.applyProfileSelection}
-      />
-      <ExtrusionPreviewField controller={controller} />
-      <ExtrusionParameterPanel
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={controller.copy.submit}
-            ariaLabel={controller.copy.title}
-            cancelLabel={controller.copy.cancel}
-            disabled={controller.disabled}
-            onCancel={controller.onCancel}
-            previewStatus={controller.previewStatus}
-          />
-        }
-        copy={controller.copy}
-        disabled={controller.disabled}
-        message={controller.message}
-        profileLabels={controller.profileLabels ?? [controller.profileLabel]}
-        onProfileSelectionRequest={controller.onProfileSelectionRequest}
-        onProfileRemove={controller.onProfileRemove}
-        onProfilesClear={controller.onProfilesClear}
-        operationField={<ExtrusionOperationField controller={controller} />}
-        targetField={<ExtrusionTargetField controller={controller} />}
-        distanceField={<ExtrusionDistanceField controller={controller} />}
-        symmetricField={<ExtrusionSymmetricField controller={controller} />}
-        extentFields={
-          <>
-            <ExtrusionExtentFields controller={controller} />
-            <ExtrusionAdvancedFields controller={controller} />
-          </>
-        }
-      />
+    <Form
+      form={form}
+      aria-label={controller.copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <ExtrusionProfileSelectionSync
+          profiles={controller.mode.profiles}
+          supportReferences={modeSupportReferences(controller.mode)}
+          onChange={controller.applyProfileSelection}
+        />
+        <ExtrusionPreviewField controller={controller} />
+        <ExtrusionParameterPanel
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={controller.copy.submit}
+              ariaLabel={controller.copy.title}
+              cancelLabel={controller.copy.cancel}
+              disabled={controller.disabled}
+              onCancel={controller.onCancel}
+              previewStatus={controller.previewStatus}
+            />
+          }
+          copy={controller.copy}
+          disabled={controller.disabled}
+          message={controller.message}
+          profileLabels={controller.profileLabels ?? [controller.profileLabel]}
+          onProfileSelectionRequest={controller.onProfileSelectionRequest}
+          onProfileRemove={controller.onProfileRemove}
+          onProfilesClear={controller.onProfilesClear}
+          operationField={<ExtrusionOperationField controller={controller} />}
+          targetField={<ExtrusionTargetField controller={controller} />}
+          distanceField={<ExtrusionDistanceField controller={controller} />}
+          symmetricField={<ExtrusionSymmetricField controller={controller} />}
+          extentFields={
+            <>
+              <ExtrusionExtentFields controller={controller} />
+              <ExtrusionAdvancedFields controller={controller} />
+            </>
+          }
+        />
+      </TaskPanelContentProvider>
     </Form>
   )
 }

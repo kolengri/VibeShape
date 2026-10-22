@@ -1,6 +1,7 @@
 import type { FeatureRecord } from "@vibeshape/domain"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
@@ -125,58 +126,63 @@ export function BooleanForm({
   )
 
   return (
-    <Form form={form} aria-label={copy.title} className="gap-0">
-      <form.FormError />
-      <form.Subscribe selector={(state) => state.values}>
-        {(values) => {
-          const parsed = parseBooleanValues(values, options, copy)
-          return (
-            <BooleanPreviewSync
-              onPreviewChange={onPreviewChange}
-              feature={
-                parsed.ok
-                  ? booleanFeatureRecord(
-                      mode,
-                      featureId,
-                      parsed.target,
-                      parsed.tool,
-                      values.keepTools,
-                    )
-                  : null
-              }
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <form.Subscribe selector={(state) => state.values}>
+          {(values) => {
+            const parsed = parseBooleanValues(values, options, copy)
+            return (
+              <BooleanPreviewSync
+                onPreviewChange={onPreviewChange}
+                feature={
+                  parsed.ok
+                    ? booleanFeatureRecord(
+                        mode,
+                        featureId,
+                        parsed.target,
+                        parsed.tool,
+                        values.keepTools,
+                      )
+                    : null
+                }
+              />
+            )
+          }}
+        </form.Subscribe>
+        <BooleanParameterPanel
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={copy.submit}
+              ariaLabel={copy.title}
+              cancelLabel={copy.cancel}
+              disabled={disabled || options.length < 2}
+              previewStatus={previewStatus}
+              onCancel={onCancel}
             />
-          )
-        }}
-      </form.Subscribe>
-      <BooleanParameterPanel
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={copy.submit}
-            ariaLabel={copy.title}
-            cancelLabel={copy.cancel}
-            disabled={disabled || options.length < 2}
-            previewStatus={previewStatus}
-            onCancel={onCancel}
-          />
-        }
-        copy={copy}
-        disabled={disabled}
-        message={message}
-        fields={
-          <>
-            {inputField("targetFeatureId", copy.target, copy.targetDescription)}
-            {inputField("toolFeatureId", copy.tool, copy.toolDescription)}
-            <form.AppField name="keepTools">
-              {(field) => (
-                <field.CheckboxField
-                  label={copy.keepTools}
-                  onValueChange={() => setMessage(null)}
-                />
-              )}
-            </form.AppField>
-          </>
-        }
-      />
+          }
+          copy={copy}
+          disabled={disabled}
+          message={message}
+          fields={
+            <>
+              {inputField("targetFeatureId", copy.target, copy.targetDescription)}
+              {inputField("toolFeatureId", copy.tool, copy.toolDescription)}
+              <form.AppField name="keepTools">
+                {(field) => (
+                  <field.CheckboxField
+                    label={copy.keepTools}
+                    onValueChange={() => setMessage(null)}
+                  />
+                )}
+              </form.AppField>
+            </>
+          }
+        />
+      </TaskPanelContentProvider>
     </Form>
   )
 }

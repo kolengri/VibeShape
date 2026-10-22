@@ -4,6 +4,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { useReportApplicationError } from "../shell/application-notices"
+import { type ActionContainer, OptionalActionPortal } from "./optional-action-portal"
 import { type SlicerHandoffActions, useSlicerHandoff } from "./use-slicer-handoff"
 
 type Handoff = ReturnType<typeof useSlicerHandoff>
@@ -123,12 +124,18 @@ export function SlicerHandoffOptions({ handoff, disabled }: Controls) {
 }
 export function SlicerHandoffPanel({
   disabled,
+  actionContainer,
   ...actions
-}: { disabled: boolean } & SlicerHandoffActions) {
+}: { disabled: boolean; actionContainer?: ActionContainer } & SlicerHandoffActions) {
   const t = useTranslations("app.export.slicer.native")
   const common = useTranslations("app.export")
   const handoff = useSlicerHandoff(actions)
   const busy = disabled || handoff.pending
+  const sendAction = (
+    <Button type="button" disabled={busy || !handoff.canSend} onClick={handoff.send}>
+      {handoff.sendLabel}
+    </Button>
+  )
   return (
     <section className="grid gap-4 rounded-md border border-primary/30 bg-card p-4">
       <div className="grid gap-1">
@@ -143,9 +150,7 @@ export function SlicerHandoffPanel({
       </div>
       <div className="flex flex-wrap gap-2">
         <SlicerSecondaryActions handoff={handoff} disabled={busy} />
-        <Button type="button" disabled={busy || !handoff.canSend} onClick={handoff.send}>
-          {handoff.sendLabel}
-        </Button>
+        <OptionalActionPortal container={actionContainer}>{sendAction}</OptionalActionPortal>
       </div>
       <HandoffNotice status={handoff.status} attempt={handoff.attempt} />
     </section>

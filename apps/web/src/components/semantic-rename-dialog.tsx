@@ -2,6 +2,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -94,25 +95,31 @@ function SemanticRenameForm({
   })
 
   return (
-    <Form form={form} aria-label={copy.title} className="gap-4">
-      <form.AppField
-        name="name"
-        validators={{
-          onChange: ({ value }) => semanticNameIssue(value, currentName, nameSchema, copy),
-        }}
-      >
-        {(field) => (
-          <field.TextField
-            autoFocus
-            required
-            autoComplete="off"
-            disabled={pending}
-            label={copy.fieldLabel}
-            description={copy.fieldDescription}
-          />
-        )}
-      </form.AppField>
-      {message ? <Alert>{message}</Alert> : null}
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
+      <DialogBody>
+        <form.AppField
+          name="name"
+          validators={{
+            onChange: ({ value }) => semanticNameIssue(value, currentName, nameSchema, copy),
+          }}
+        >
+          {(field) => (
+            <field.TextField
+              autoFocus
+              required
+              autoComplete="off"
+              disabled={pending}
+              label={copy.fieldLabel}
+              description={copy.fieldDescription}
+            />
+          )}
+        </form.AppField>
+        {message ? <Alert>{message}</Alert> : null}
+      </DialogBody>
       <DialogFooter>
         <DialogClose asChild>
           <Button type="button" variant="outline" disabled={pending}>

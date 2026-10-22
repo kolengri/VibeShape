@@ -4,6 +4,7 @@ import { readPlacementFeatureParameters } from "@vibeshape/domain/part-design-pl
 import { useTranslations } from "@vibeshape/i18n"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { type ReactNode, useMemo } from "react"
+import { TaskPanelSurface } from "../components/task-panel-layout"
 import {
   createBrowserFeatureId,
   type DocumentControllerState,
@@ -116,7 +117,10 @@ export function PlacementTaskPanel(props: PlacementPanelProps) {
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
       : `create:${mode.targetBody.featureId}:${mode.targetBody.outputRole}:${report.snapshot.revision}`
   return (
-    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <TaskPanelSurface
+      aria-label={task("ariaLabel")}
+      trailingContent={mode.kind === "edit" && props.renderDelete(mode.feature)}
+    >
       <PlacementForm
         key={key}
         copy={copy}
@@ -128,7 +132,6 @@ export function PlacementTaskPanel(props: PlacementPanelProps) {
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />
-      {mode.kind === "edit" && props.renderDelete(mode.feature)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

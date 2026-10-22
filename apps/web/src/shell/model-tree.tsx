@@ -28,6 +28,7 @@ import {
   SketchIcon,
 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import { WindowHeader, WindowTitle } from "@vibeshape/ui/components/window-header"
 import { cn } from "@vibeshape/ui/lib/cn"
 import {
   type ViewerOriginPlane,
@@ -2874,45 +2875,44 @@ export function ModelTree(props: ModelTreeProps) {
     <aside
       ref={browser}
       aria-label={t("ariaLabel")}
-      className="min-h-0 overflow-auto border-r bg-panel p-2"
+      className="flex min-h-0 flex-col overflow-hidden border-r bg-panel"
       onKeyDown={deletion.onKeyDown}
     >
-      <header className="mb-1 border-b px-2 py-1">
-        <h2 className="flex min-w-0 items-center gap-2 pl-6 text-xs font-medium">
-          <Cuboid aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate">{t("title")}</span>
-        </h2>
-      </header>
-      <ModelBrowserSearch
-        entries={[
-          ...modelSearchBodyEntries({ ...props, t, view: historyView }),
-          ...modelSearchOriginEntries({ ...props, t, view: historyView }),
-          ...modelSearchHistoryEntries({ ...props, t, view: historyView }),
-        ]}
-        selectedKeys={modelSearchSelectionKeys({ ...props, t, view: historyView })}
-        onSelectionClick={selectTreeItem}
-      >
-        <div
-          className="grid grid-cols-1"
-          role="tree"
-          aria-multiselectable="true"
-          onClickCapture={selectTreeItem}
-          aria-label={t("projectFeatures")}
-          onFocusCapture={updateTreeTabStop}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              props.onFeaturePreselectionChange(null)
-              props.onModelTreeSelectionChange?.([])
-            }
-            moveTreeFocus(event)
-          }}
+      <WindowHeader>
+        <WindowTitle>{t("title")}</WindowTitle>
+      </WindowHeader>
+      <div data-slot="model-tree-content" className="min-h-0 overflow-auto p-2">
+        <ModelBrowserSearch
+          entries={[
+            ...modelSearchBodyEntries({ ...props, t, view: historyView }),
+            ...modelSearchOriginEntries({ ...props, t, view: historyView }),
+            ...modelSearchHistoryEntries({ ...props, t, view: historyView }),
+          ]}
+          selectedKeys={modelSearchSelectionKeys({ ...props, t, view: historyView })}
+          onSelectionClick={selectTreeItem}
         >
-          <ModelTreeWorkspaceItems {...props} t={t} />
-          <ModelTreePlanes {...props} t={t} view={historyView} />
-          <ModelTreeHistoryBranch {...props} t={t} view={historyView} />
-        </div>
-      </ModelBrowserSearch>
-      {deletion.confirmation}
+          <div
+            className="grid grid-cols-1"
+            role="tree"
+            aria-multiselectable="true"
+            onClickCapture={selectTreeItem}
+            aria-label={t("projectFeatures")}
+            onFocusCapture={updateTreeTabStop}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                props.onFeaturePreselectionChange(null)
+                props.onModelTreeSelectionChange?.([])
+              }
+              moveTreeFocus(event)
+            }}
+          >
+            <ModelTreeWorkspaceItems {...props} t={t} />
+            <ModelTreePlanes {...props} t={t} view={historyView} />
+            <ModelTreeHistoryBranch {...props} t={t} view={historyView} />
+          </div>
+        </ModelBrowserSearch>
+        {deletion.confirmation}
+      </div>
     </aside>
   )
 }

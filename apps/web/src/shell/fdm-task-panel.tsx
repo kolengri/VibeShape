@@ -2,6 +2,7 @@ import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts
 import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { useTranslations } from "@vibeshape/i18n"
 import { useLayoutEffect, useRef, useState } from "react"
+import { TaskPanelSurface } from "../components/task-panel-layout"
 import { createBrowserFeatureId } from "../document/document-controller"
 import { FdmForm } from "../features/fdm/fdm-form"
 import type { FdmToolKind } from "../features/fdm/fdm-form-fields"
@@ -69,7 +70,10 @@ export function FdmTaskPanel(
     tree("unnamedFeature"),
   )
   return (
-    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <TaskPanelSurface
+      aria-label={task("ariaLabel")}
+      trailingContent={editing && props.renderDelete(editing)}
+    >
       <FdmForm
         key={`${editing?.id ?? "create"}:${report.snapshot.revision}:${kind}`}
         kind={kind}
@@ -82,7 +86,6 @@ export function FdmTaskPanel(
         frameOptions={referenceFrameOptions(report.snapshot, report.rebuild, editing?.id)}
         {...featureTaskFormProps(props, mode)}
       />
-      {editing && props.renderDelete(editing)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

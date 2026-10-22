@@ -115,6 +115,24 @@ for (const mode of ["Lightweighting", "Generative Design"] as const) {
       })
     }
     await page.setViewportSize({ width: 512, height: 384 })
+    if (mode === "Generative Design") {
+      const footer = panel.locator('[data-slot="task-panel-footer"]')
+      await expect(
+        footer.getByRole("button", { name: "Generate alternatives", exact: true }),
+      ).toBeInViewport({ ratio: 1 })
+      await expect(footer.getByRole("button", { name: "Close", exact: true })).toBeInViewport({
+        ratio: 1,
+      })
+      const headerBounds = await panel.locator('[data-slot="task-panel-header"]').boundingBox()
+      const footerBounds = await footer.boundingBox()
+      if (!headerBounds || !footerBounds)
+        throw new Error("Generative task chrome must have bounds.")
+      expect(footerBounds.y).toBeGreaterThanOrEqual(headerBounds.y + headerBounds.height)
+      for (const button of await footer.getByRole("button").all()) {
+        expect(await button.evaluate((element) => element.getBoundingClientRect().height)).toBe(32)
+      }
+      expect(await footer.locator("p").count()).toBe(0)
+    }
     await panel
       .getByRole("combobox", { name: "Optimization method", exact: true })
       .scrollIntoViewIfNeeded()

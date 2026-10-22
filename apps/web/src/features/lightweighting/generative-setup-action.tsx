@@ -25,7 +25,7 @@ function setupAction(state: StudyState) {
 }
 
 function focusTarget(panel: HTMLElement, target: HTMLElement | null) {
-  const scroller = panel.querySelector<HTMLElement>("[data-generative-form]")
+  const scroller = panel.querySelector<HTMLElement>("[data-slot='task-panel-content']")
   if (!target || !scroller) return
   const fieldBounds = target.getBoundingClientRect()
   const scrollBounds = scroller.getBoundingClientRect()
@@ -103,12 +103,12 @@ export function GenerativeSetupAction({
       type="button"
       variant="outline"
       size="sm"
-      className="h-auto max-w-full whitespace-normal"
+      className="max-w-full"
       onClick={(event) =>
         performSetupAction(action, event.currentTarget.closest("section"), onPick)
       }
     >
-      {label}
+      <span className="min-w-0 truncate">{label}</span>
     </Button>
   )
 }

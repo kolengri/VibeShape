@@ -216,15 +216,15 @@ function renderPanel(
 afterEach(cleanup)
 
 describe("MeasurementTaskPanel", () => {
-  it("closes from a single header action while retaining measurement controls", async () => {
+  it("closes from a single footer action while retaining measurement controls", async () => {
     let closed = false
     renderPanel(controller(), featureId(0), undefined, () => {
       closed = true
     })
     const close = screen.getByRole("button", { name: "Close" })
-    const header = close.closest("header")
-    expect(header).not.toBeNull()
-    expect(screen.getByRole("heading", { name: "Measure" }).closest("header")).toBe(header)
+    expect(close.closest("[data-slot='task-panel-footer']")).not.toBeNull()
+    expect(close.closest("header")).toBeNull()
+    expect(screen.getByRole("heading", { name: "Measure" }).closest("header")).not.toBeNull()
     expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(1)
     expect(screen.getByRole("combobox", { name: "Body output" })).toBeTruthy()
     await userEvent.click(close)

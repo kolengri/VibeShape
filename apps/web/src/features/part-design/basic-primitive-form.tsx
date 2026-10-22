@@ -17,6 +17,7 @@ import {
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { Form, useStore } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { defaultLengthExpression } from "../../document/document-display-units"
 import { cadFormValidationLogic, useCadForm } from "./cad-form"
 import {
@@ -374,64 +375,72 @@ export function BasicPrimitiveForm(props: BasicPrimitiveFormProps) {
   )
 
   return (
-    <Form form={form} aria-label={copy.title} className="gap-0">
-      <form.FormError />
-      <PrimitiveParameterPanel
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={copy.submit}
-            ariaLabel={copy.title}
-            cancelLabel={copy.cancel}
-            disabled={disabled}
-            onCancel={onCancel}
-            previewStatus={previewStatus}
-          />
-        }
-        copy={copy}
-        disabled={disabled}
-        message={message}
-        fields={
-          <>
-            {primitiveKind === "pyramid" ? (
-              <form.Field name="sides">
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <PrimitiveParameterPanel
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={copy.submit}
+              ariaLabel={copy.title}
+              cancelLabel={copy.cancel}
+              disabled={disabled}
+              onCancel={onCancel}
+              previewStatus={previewStatus}
+            />
+          }
+          copy={copy}
+          disabled={disabled}
+          message={message}
+          fields={
+            <>
+              {primitiveKind === "pyramid" ? (
+                <form.Field name="sides">
+                  {(field) => (
+                    <TextField
+                      id="pyramid-sides"
+                      name={field.name}
+                      value={field.state.value}
+                      error={issues.sides}
+                      onBlur={field.handleBlur}
+                      type="number"
+                      min={3}
+                      max={64}
+                      step={1}
+                      required
+                      label={copy.sides}
+                      description={copy.sidesDescription}
+                      onChange={(event) => {
+                        clearSubmissionErrors()
+                        field.handleChange(event.currentTarget.value)
+                      }}
+                    />
+                  )}
+                </form.Field>
+              ) : null}
+              {dimensions.map((field) => lengthField(field, copy.expressionDescription))}
+            </>
+          }
+          centeredField={
+            ["cone", "pyramid"].includes(primitiveKind) ? (
+              <form.AppField name="centered">
                 {(field) => (
-                  <TextField
-                    id="pyramid-sides"
-                    name={field.name}
-                    value={field.state.value}
-                    error={issues.sides}
-                    onBlur={field.handleBlur}
-                    type="number"
-                    min={3}
-                    max={64}
-                    step={1}
-                    required
-                    label={copy.sides}
-                    description={copy.sidesDescription}
-                    onChange={(event) => {
-                      clearSubmissionErrors()
-                      field.handleChange(event.currentTarget.value)
-                    }}
+                  <field.CheckboxField
+                    label={copy.centered}
+                    onValueChange={clearSubmissionErrors}
                   />
                 )}
-              </form.Field>
-            ) : null}
-            {dimensions.map((field) => lengthField(field, copy.expressionDescription))}
-          </>
-        }
-        centeredField={
-          ["cone", "pyramid"].includes(primitiveKind) ? (
-            <form.AppField name="centered">
-              {(field) => (
-                <field.CheckboxField label={copy.centered} onValueChange={clearSubmissionErrors} />
-              )}
-            </form.AppField>
-          ) : null
-        }
-        placementFields={(["originX", "originY", "originZ"] as const).map((field) =>
-          lengthField(field, copy.positionDescription),
-        )}
-      />
+              </form.AppField>
+            ) : null
+          }
+          placementFields={(["originX", "originY", "originZ"] as const).map((field) =>
+            lengthField(field, copy.positionDescription),
+          )}
+        />
+      </TaskPanelContentProvider>
     </Form>
   )
 }

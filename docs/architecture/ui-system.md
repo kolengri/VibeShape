@@ -183,7 +183,7 @@ The app root owns one scoped activity provider and one notification provider. Sh
 - Follow [Internationalization](internationalization.md) for all product copy, accessible names, validation, status, and diagnostic messages.
 - Build the native or state-agnostic primitive before its TanStack Form adapter; the adapter imports the primitive, never the reverse.
 - Buttons that start Promise-like work become single-flight, expose an accessible pending state, and suppress accidental double activation. Error reporting remains owned by the command or form.
-- Task panels compose the shared compact lifecycle action group in their non-scrolling command header. The group owns only Cancel and Accept presentation; the task owns persistence, diagnostics, and disabled eligibility. Modeling commands remain registered shell commands rather than task-panel footer buttons.
+- Task panels compose the shared compact lifecycle action group in their non-scrolling footer. The group owns only Cancel and Accept presentation; the task owns persistence, diagnostics, and disabled eligibility. Modeling commands remain registered shell commands; the footer only completes or cancels the current task.
 - Use `AlertDialog`, not `Dialog`, for destructive confirmation.
 - Provide one tooltip provider at the application root.
 - Toolbar actions use button variants without losing native focus and keyboard behavior.
@@ -197,8 +197,9 @@ The app root owns one scoped activity provider and one notification provider. Sh
 - Layout state such as panel sizes and theme is a local UI preference, not domain state.
 - Add a visual harness or Storybook only if it pays for itself; command-flow E2E remains mandatory.
 
-The compact task sheet uses at most half of the available workspace height, with its contents
-scrolling inside that sheet. Header and History height are excluded from this budget so the drawing
+The compact task sheet fits content up to half of the available workspace height, with a 192 px
+minimum cap for fixed chrome and a 512 px upper cap, always bounded by the workspace. Its body
+scrolls inside that sheet. Header and History height are excluded from this budget so the drawing
 area remains usable on short windows.
 
 ## Direct manipulation and keyboard adapters
@@ -298,21 +299,42 @@ separately. See [the interaction audit](../product/direct-manipulation-and-short
 - high-contrast preset considered after the base accessibility audit;
 - self-hosted or system-first fonts so offline use never requires a third-party network.
 
+## Dialog layout
+
+`WindowHeader` and `WindowTitle` in `packages/ui` own the shared heading spacing and typography
+for dialogs, destructive confirmations, task windows, Model, and AI chat. Feature compositions
+provide content and functional actions without redefining title size or weight. The AI header
+collapses the retained chat column; the application-bar AI control reopens it without resetting
+the conversation, scroll position, or draft.
+
+Dialog and destructive-confirmation surfaces share a bordered header, a scrollable body, and a
+separate footer whenever they expose dialog-level actions. `DialogBody` and `AlertDialogBody` own
+scrolling; headers and footers remain reachable when content exceeds the viewport. Forms retain
+native submission through an enclosing form or an explicit HTML form association. Item-level
+controls remain beside the content they operate on. Titles use 16 px semibold text with a 24 px
+line height, wrap rather than overlap controls, and contain no decorative icons. Close controls
+remain independently named actions in the header.
+
 ## Task panel lifecycle controls
 
-The application-owned `TaskPanelHeader` places one lifecycle group at the command heading.
-`TaskPanelLifecycleActions` and `TaskPanelLifecycleButton` share icon size, action order, labels,
-tooltips, pending state, and disabled feedback. Feature parameter forms retain their TanStack
+Task windows use a separate command heading, scrollable parameter body, and non-scrolling lifecycle footer.
+Model-tree and task surfaces grow with content up to the available workspace height; the AI chat
+column always fills that height. Compact task sheets fit their content within the workspace-bounded compact-sheet cap.
+`TaskPanelLifecycleActions` and `TaskPanelLifecycleButton` share action order, labels, pending state,
+and disabled feedback. Task footers use 32 px text buttons; independent compact controls retain
+their icon presentation and tooltips. Feature parameter forms retain their TanStack
 adapter; assembly tasks retain native form submission and supply their existing task title/error
 through the assembly UI context. Neither composition changes document authority or saved data.
-Retained-feature repair supplies its replacement-body controls through the header-content provider,
-so the active feature form owns one command heading and keeps its native Save action inside the form.
+Retained-feature repair supplies its replacement-body controls through the task-content provider,
+so the active feature form owns one command heading and retains native submission from its footer.
 
 The lifecycle group locks cancellation while its asynchronous accept callback is pending and
 releases the lock on fulfillment or rejection. Forms also expose their own submission state.
 Manual automation reviews retain their original decision controller and use the accept renderer
 only to preserve a destructive confirmation trigger. Item deletion and navigation within a
-subtask remain separate from panel cancellation. Generate and analysis cancellation are
+subtask remain separate from panel cancellation. Edit-feature deletion controls and their
+explanations belong to the field scrollport, after parameter controls, so long dependency or
+repair details cannot displace the fixed lifecycle footer. Generate and analysis cancellation are
 computational actions, rather than additional Save/Close controls.
 
 ## Verification

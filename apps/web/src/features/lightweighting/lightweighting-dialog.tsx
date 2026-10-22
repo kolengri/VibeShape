@@ -7,14 +7,16 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react"
 import { ActionAvailability } from "../../components/action-availability"
-import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
+import { TaskPanelLifecycleButton } from "../../components/task-panel-lifecycle-button"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import type { WorkspaceTaskPreview } from "../../shell/workspace-task-context"
@@ -316,6 +318,7 @@ export function LightweightingTaskPanel({
 }) {
   const t = useTranslations("app.lightweighting")
   const g = useTranslations("app.generativeDesign")
+  const reasonId = useId()
   const panelCopy = generative
     ? { title: g("title"), description: g("description"), analyze: g("generate") }
     : { title: t("title"), description: t("description"), analyze: t("analyze") }
@@ -340,58 +343,108 @@ export function LightweightingTaskPanel({
     t,
     generative ? g("materialRequired") : undefined,
   )
+  const analyze = () => {
+    face.stopPicking()
+    void state.analyze()
+  }
   const analyzeActions = (
     <AnalysisActions
       state={state}
       disabledReason={reasons.analyze}
       label={panelCopy.analyze}
-      onAnalyze={() => {
-        face.stopPicking()
-        void state.analyze()
-      }}
+      onAnalyze={analyze}
     />
   )
   return (
     <section
       aria-label={panelCopy.title}
-      className={
-        generative
-          ? "@container flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden p-4 max-lg:grid max-lg:content-start max-lg:overflow-y-auto"
-          : "@container grid h-full min-h-0 min-w-0 grid-cols-1 content-start gap-4 overflow-y-auto p-4"
-      }
+      className="@container flex min-h-0 min-w-0 flex-col overflow-hidden"
     >
-      <TaskPanelHeader
+      <TaskPanelLayout
         title={panelCopy.title}
         description={panelCopy.description}
-        className="shrink-0 max-lg:static"
         actions={
-          <LightweightingLifecycleActions
+          <LightweightingTaskActions
             state={state}
             generative={generative}
             title={panelCopy.title}
-            applyReason={reasons.apply}
+            label={panelCopy.analyze}
+            reasons={reasons}
+            reasonId={reasonId}
+            onAnalyze={analyze}
             onClose={onClose}
           />
         }
-      />
-      <TaskPanelContent
-        state={state}
-        generative={generative}
-        inputsDisabled={inputsDisabled}
-        controller={controller}
-        face={face}
-        analyzeActions={analyzeActions}
-        mainViewport={onPreviewChange !== undefined}
-      />
-      {generative && (
-        <GenerativePanelFooter
+      >
+        <TaskPanelContent
+          applyReason={
+            <ApplyAvailabilityReason
+              state={state}
+              generative={generative}
+              reason={reasons.apply}
+              id={`${reasonId}-apply`}
+            />
+          }
+          setup={
+            <GenerativeSetupDetails
+              state={state}
+              disabled={disabled}
+              onPick={face.onPick}
+              reasons={reasons}
+              reasonId={reasonId}
+            />
+          }
           state={state}
-          disabled={disabled}
+          generative={generative}
+          inputsDisabled={inputsDisabled}
+          controller={controller}
+          face={face}
           analyzeActions={analyzeActions}
-          onPick={face.onPick}
+          mainViewport={onPreviewChange !== undefined}
+        />
+      </TaskPanelLayout>
+    </section>
+  )
+}
+
+function LightweightingTaskActions({
+  state,
+  generative,
+  title,
+  label,
+  reasons,
+  reasonId,
+  onAnalyze,
+  onClose,
+}: {
+  state: ReturnType<typeof useGenerativeDesignTask>
+  generative: boolean
+  title: string
+  label: string
+  reasons: { analyze: string | null; apply: string | null }
+  reasonId: string
+  onAnalyze: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-wrap items-end justify-end gap-2">
+      {generative && (
+        <AnalysisButtons
+          state={state}
+          label={label}
+          onAnalyze={onAnalyze}
+          describedBy={!state.canAnalyze && reasons.analyze ? `${reasonId}-analyze` : undefined}
         />
       )}
-    </section>
+      <LightweightingLifecycleActions
+        state={state}
+        generative={generative}
+        title={title}
+        applyReason={reasons.apply}
+        applyReasonId={`${reasonId}-apply`}
+        onClose={onClose}
+      />
+    </div>
   )
 }
 
@@ -400,12 +453,14 @@ function LightweightingLifecycleActions({
   generative,
   title,
   applyReason,
+  applyReasonId,
   onClose,
 }: {
   state: ReturnType<typeof useGenerativeDesignTask>
   generative: boolean
   title: string
   applyReason: string | null
+  applyReasonId: string
   onClose: () => void
 }) {
   const t = useTranslations("app.lightweighting")
@@ -415,16 +470,28 @@ function LightweightingLifecycleActions({
       cancelLabel={t("close")}
       {...(!generative || state.ready ? { acceptLabel: t("apply") } : {})}
       acceptDisabled={!state.canApply}
-      acceptDisabledReason={applyReason ?? undefined}
       acceptLoading={state.activity === "applying"}
       cancelDisabled={state.activity === "applying"}
       onAccept={state.apply}
       onCancel={onClose}
+      renderAccept={() => (
+        <TaskPanelLifecycleButton
+          kind="accept"
+          presentation="text"
+          label={t("apply")}
+          disabled={!state.canApply}
+          isLoading={state.activity === "applying"}
+          onClick={state.apply}
+          aria-describedby={!state.canApply && applyReason ? applyReasonId : undefined}
+        />
+      )}
     />
   )
 }
 
 function TaskPanelContent({
+  applyReason,
+  setup,
   state,
   generative,
   inputsDisabled,
@@ -433,6 +500,8 @@ function TaskPanelContent({
   analyzeActions,
   mainViewport,
 }: {
+  applyReason: ReactNode
+  setup: ReactNode
   state: ReturnType<typeof useGenerativeDesignTask>
   generative: boolean
   inputsDisabled: boolean
@@ -446,11 +515,7 @@ function TaskPanelContent({
   return (
     <div
       data-generative-form={generative || undefined}
-      className={
-        generative
-          ? "grid min-h-0 min-w-0 flex-1 grid-cols-1 content-start gap-2 overflow-y-auto max-lg:contents"
-          : "contents"
-      }
+      className={generative ? "grid min-w-0 grid-cols-1 content-start gap-2" : "contents"}
     >
       <fieldset
         disabled={inputsDisabled}
@@ -474,6 +539,8 @@ function TaskPanelContent({
         />
         {generative && <GenerativeDesignControls state={state} />}
       </fieldset>
+      {applyReason}
+      {generative && setup}
       {face.pickMessage && (
         <p role="status" className="text-xs text-muted-foreground">
           {face.pickMessage}
@@ -488,24 +555,91 @@ function TaskPanelContent({
   )
 }
 
-function GenerativePanelFooter({
+function ApplyAvailabilityReason({
+  state,
+  generative,
+  reason,
+  id,
+}: {
+  state: ReturnType<typeof useGenerativeDesignTask>
+  generative: boolean
+  reason: string | null
+  id: string
+}) {
+  if (generative && !state.ready) return null
+  if (state.canApply || !reason) return null
+  return (
+    <p id={id} className="text-xs text-muted-foreground">
+      {reason}
+    </p>
+  )
+}
+
+function GenerativeSetupDetails({
   state,
   disabled,
-  analyzeActions,
+  reasons,
+  reasonId,
   onPick,
 }: {
   state: ReturnType<typeof useGenerativeDesignTask>
   disabled: boolean
-  analyzeActions: ReactNode
+  reasons: { analyze: string | null; apply: string | null }
+  reasonId: string
   onPick: (target: LightweightingPickTarget) => void
 }) {
   const g = useTranslations("app.generativeDesign")
   return (
-    <footer className="grid shrink-0 grid-cols-1 gap-2 border-t pt-3">
-      {analyzeActions}
+    <div className="grid min-w-0 grid-cols-1 gap-2">
+      {!state.canAnalyze && reasons.analyze && (
+        <p id={`${reasonId}-analyze`} className="text-xs text-muted-foreground">
+          {reasons.analyze}
+        </p>
+      )}
       <GenerativeSetupAction state={state} disabled={disabled} onPick={onPick} />
       {state.canAnalyze && <p className="text-xs text-muted-foreground">{g("setupReady")}</p>}
-    </footer>
+    </div>
+  )
+}
+
+function AnalysisButtons({
+  state,
+  label,
+  onAnalyze,
+  describedBy,
+}: {
+  state: TaskState
+  label: string
+  onAnalyze: () => void
+  describedBy: string | undefined
+}) {
+  const t = useTranslations("app.lightweighting")
+  const pending = state.activity !== "idle" && state.activity !== "applying"
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        aria-describedby={describedBy}
+        isLoading={pending}
+        disabled={!state.canAnalyze}
+        className="min-w-20 max-w-full"
+        onClick={onAnalyze}
+      >
+        <span className="min-w-0 truncate">{label}</span>
+      </Button>
+      {pending && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="max-w-full"
+          onClick={state.cancel}
+        >
+          <span className="min-w-0 truncate">{t("cancelAnalysis")}</span>
+        </Button>
+      )}
+    </>
   )
 }
 
@@ -520,29 +654,18 @@ function AnalysisActions({
   label: string
   onAnalyze: () => void
 }) {
-  const t = useTranslations("app.lightweighting")
-  const pending = state.activity !== "idle" && state.activity !== "applying"
   return (
     <div className="grid grid-cols-1 gap-2">
       <ActionAvailability disabledReason={disabledReason} presentation="persistent">
         {({ describedBy }) => (
-          <Button
-            type="button"
-            aria-describedby={describedBy}
-            isLoading={pending}
-            disabled={!state.canAnalyze}
-            className="h-auto max-w-full whitespace-normal"
-            onClick={onAnalyze}
-          >
-            {label}
-          </Button>
+          <AnalysisButtons
+            state={state}
+            label={label}
+            onAnalyze={onAnalyze}
+            describedBy={describedBy}
+          />
         )}
       </ActionAvailability>
-      {pending && (
-        <Button type="button" variant="outline" onClick={state.cancel}>
-          {t("cancelAnalysis")}
-        </Button>
-      )}
     </div>
   )
 }

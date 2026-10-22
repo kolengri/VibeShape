@@ -276,6 +276,12 @@ describe("Generative Design workflow", () => {
       name: "Generate alternatives",
     }) as HTMLButtonElement
     expect(generateButton.disabled).toBe(true)
+    const setupAction = screen.getByRole("button", { name: "Choose the material" })
+    expect(generateButton.closest("[data-slot=task-panel-footer]")).not.toBeNull()
+    expect(setupAction.closest("[data-slot=task-panel-content]")).not.toBeNull()
+    const reason = document.getElementById(generateButton.getAttribute("aria-describedby") ?? "")
+    expect(reason?.closest("[data-slot=task-panel-content]")).not.toBeNull()
+    expect(reason?.closest("footer")).toBeNull()
     expect([...document.querySelectorAll("details")].every((details) => !details.open)).toBe(true)
     await userEvent.click(screen.getByRole("button", { name: "Choose the material" }))
     expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Material preset" }))
@@ -353,7 +359,7 @@ describe("Generative Design workflow", () => {
     const summary = screen.getByText("Material properties and references", { selector: "summary" })
     await userEvent.click(summary)
     const panel = screen.getByRole("region", { name: "Generative Design" })
-    const scroller = panel.querySelector<HTMLElement>("[data-generative-form]")
+    const scroller = panel.querySelector<HTMLElement>("[data-slot=task-panel-content]")
     if (!scroller) throw new Error("Missing generative form scroll container.")
     scroller.scrollTop = 400
     const field = screen.getByLabelText("Poisson’s ratio")

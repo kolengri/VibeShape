@@ -9,7 +9,7 @@ import {
   useFormContext,
 } from "@vibeshape/ui/integrations/tanstack-form"
 import { type ComponentProps, createContext, type ReactNode, useContext } from "react"
-import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { useReportApplicationError } from "../../shell/application-notices"
 
@@ -68,6 +68,7 @@ export function AssemblyTaskForm({
   return (
     <Form
       form={form}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
       onKeyDown={(event) => {
         if (
           event.key === "Escape" &&
@@ -107,28 +108,27 @@ function AssemblyTaskFormContent({
       {([submitting, canSubmit, invalid]) => {
         const pending = actions.pending || submitting
         return (
-          <>
-            <TaskPanelHeader
-              title={panel.title}
-              actions={
-                <TaskPanelLifecycleActions
-                  ariaLabel={panel.title}
-                  acceptLabel={t("apply")}
-                  acceptType="submit"
-                  acceptDisabled={pending || !canSubmit || !canApply}
-                  acceptLoading={pending}
-                  cancelLabel={t("cancel")}
-                  cancelDisabled={pending}
-                  onCancel={actions.onCancel}
-                />
-              }
-            />
+          <TaskPanelLayout
+            title={panel.title}
+            actions={
+              <TaskPanelLifecycleActions
+                ariaLabel={panel.title}
+                acceptLabel={t("apply")}
+                acceptType="submit"
+                acceptDisabled={pending || !canSubmit || !canApply}
+                acceptLoading={pending}
+                cancelLabel={t("cancel")}
+                cancelDisabled={pending}
+                onCancel={actions.onCancel}
+              />
+            }
+          >
             {panel.error && !appOwnsError && <Alert>{panel.error}</Alert>}
             <fieldset disabled={pending} className="grid min-w-0 gap-2">
               {children}
             </fieldset>
             {invalid && <FormError />}
-          </>
+          </TaskPanelLayout>
         )
       }}
     </form.Subscribe>

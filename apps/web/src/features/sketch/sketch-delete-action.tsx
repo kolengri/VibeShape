@@ -3,6 +3,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
+  AlertDialogBody,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -172,9 +173,11 @@ export function SketchDeleteAction({
       >
         <AlertDialogHeader>
           <AlertDialogTitle>{t("deleteSketchTitle", { sketch: sketchName })}</AlertDialogTitle>
-          <AlertDialogDescription>{t("deleteSketchDescription")}</AlertDialogDescription>
         </AlertDialogHeader>
-        {failed ? <Alert>{t("deleteSketchFailed")}</Alert> : null}
+        <AlertDialogBody>
+          <AlertDialogDescription>{t("deleteSketchDescription")}</AlertDialogDescription>
+          {failed ? <Alert>{t("deleteSketchFailed")}</Alert> : null}
+        </AlertDialogBody>
         <AlertDialogFooter>
           <AlertDialogCancel asChild>
             <Button type="button" variant="outline" disabled={pending}>

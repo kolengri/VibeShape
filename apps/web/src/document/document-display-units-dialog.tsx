@@ -8,6 +8,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -20,7 +21,7 @@ import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useState } from "react"
+import { type ReactNode, useState } from "react"
 import { type DocumentControllerState, setActiveProjectDisplayUnits } from "./document-controller"
 
 type UnitSettingsCopy = Readonly<{
@@ -45,6 +46,8 @@ function UnitSettingsForm({
   onSaved,
   pending,
   inline = false,
+  closeAction,
+  introduction,
 }: {
   baseRevision: number
   copy: UnitSettingsCopy
@@ -53,6 +56,8 @@ function UnitSettingsForm({
   onSaved: () => void
   pending: boolean
   inline?: boolean
+  closeAction?: ReactNode
+  introduction?: ReactNode
 }) {
   const t = useTranslations("app.unitSettings.options")
   const [message, setMessage] = useState<string | null>(null)
@@ -88,40 +93,47 @@ function UnitSettingsForm({
   })
 
   return (
-    <Form form={form} aria-label={copy.title} className="gap-4">
-      <form.AppField name="length">
-        {(field) => (
-          <field.NativeSelectField
-            disabled={pending}
-            label={copy.lengthLabel}
-            description={copy.lengthDescription}
-            required
-            onValueChange={() => setMessage(null)}
-          >
-            <option value="um">{t("um")}</option>
-            <option value="mm">{t("mm")}</option>
-            <option value="cm">{t("cm")}</option>
-            <option value="m">{t("m")}</option>
-            <option value="in">{t("in")}</option>
-            <option value="ft">{t("ft")}</option>
-          </field.NativeSelectField>
-        )}
-      </form.AppField>
-      <form.AppField name="angle">
-        {(field) => (
-          <field.NativeSelectField
-            disabled={pending}
-            label={copy.angleLabel}
-            description={copy.angleDescription}
-            required
-            onValueChange={() => setMessage(null)}
-          >
-            <option value="deg">{t("deg")}</option>
-            <option value="rad">{t("rad")}</option>
-          </field.NativeSelectField>
-        )}
-      </form.AppField>
-      {message ? <Alert>{message}</Alert> : null}
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
+      <DialogBody>
+        {introduction}
+        <form.AppField name="length">
+          {(field) => (
+            <field.NativeSelectField
+              disabled={pending}
+              label={copy.lengthLabel}
+              description={copy.lengthDescription}
+              required
+              onValueChange={() => setMessage(null)}
+            >
+              <option value="um">{t("um")}</option>
+              <option value="mm">{t("mm")}</option>
+              <option value="cm">{t("cm")}</option>
+              <option value="m">{t("m")}</option>
+              <option value="in">{t("in")}</option>
+              <option value="ft">{t("ft")}</option>
+            </field.NativeSelectField>
+          )}
+        </form.AppField>
+        <form.AppField name="angle">
+          {(field) => (
+            <field.NativeSelectField
+              disabled={pending}
+              label={copy.angleLabel}
+              description={copy.angleDescription}
+              required
+              onValueChange={() => setMessage(null)}
+            >
+              <option value="deg">{t("deg")}</option>
+              <option value="rad">{t("rad")}</option>
+            </field.NativeSelectField>
+          )}
+        </form.AppField>
+        {message ? <Alert>{message}</Alert> : null}
+      </DialogBody>
       <DialogFooter>
         {inline ? (
           <Button
@@ -143,6 +155,7 @@ function UnitSettingsForm({
           </DialogClose>
         )}
         <form.SubmitButton disabled={pending}>{copy.save}</form.SubmitButton>
+        {closeAction}
       </DialogFooter>
     </Form>
   )
@@ -224,42 +237,55 @@ export function DocumentDisplayUnitsSettings({
   controller,
   blocked,
   onPendingChange,
+  closeAction,
 }: {
   controller: DocumentControllerState
   blocked: boolean
   onPendingChange?: (pending: boolean) => void
+  closeAction: ReactNode
 }) {
   const t = useTranslations("app.unitSettings")
   const [pending, setPending] = useState(false)
   const copy = useUnitSettingsCopy()
   const settingsT = useTranslations("app.settings")
   const report = controller.report
-  if (!report) return <p className="text-xs text-muted-foreground">{t("readOnly")}</p>
+  if (!report)
+    return (
+      <>
+        <DialogBody>
+          <p className="text-xs text-muted-foreground">{t("readOnly")}</p>
+        </DialogBody>
+        <DialogFooter>{closeAction}</DialogFooter>
+      </>
+    )
   const writable = controller.status === "ready" && report.mode === "read-write" && !blocked
   return (
-    <div className="grid gap-3">
-      <div className="flex items-center gap-1 text-sm font-medium">
-        {copy.title}
-        <FieldHelp label={copy.title}>{copy.description}</FieldHelp>
-      </div>
-      {!writable ? (
-        <p className="text-xs text-muted-foreground">
-          {report.mode === "read-write" ? settingsT("projectBlocked") : t("readOnly")}
-        </p>
-      ) : null}
-      <UnitSettingsForm
-        key={report.snapshot.revision}
-        baseRevision={report.snapshot.revision}
-        copy={copy}
-        displayUnits={report.snapshot.displayUnits}
-        onPendingChange={(next) => {
-          setPending(next)
-          onPendingChange?.(next)
-        }}
-        onSaved={() => {}}
-        pending={pending || !writable}
-        inline
-      />
-    </div>
+    <UnitSettingsForm
+      key={report.snapshot.revision}
+      baseRevision={report.snapshot.revision}
+      copy={copy}
+      displayUnits={report.snapshot.displayUnits}
+      onPendingChange={(next) => {
+        setPending(next)
+        onPendingChange?.(next)
+      }}
+      onSaved={() => {}}
+      pending={pending || !writable}
+      inline
+      closeAction={closeAction}
+      introduction={
+        <>
+          <div className="flex items-center gap-1 text-sm font-medium">
+            {copy.title}
+            <FieldHelp label={copy.title}>{copy.description}</FieldHelp>
+          </div>
+          {!writable ? (
+            <p className="text-xs text-muted-foreground">
+              {report.mode === "read-write" ? settingsT("projectBlocked") : t("readOnly")}
+            </p>
+          ) : null}
+        </>
+      }
+    />
   )
 }

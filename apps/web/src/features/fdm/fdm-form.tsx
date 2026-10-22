@@ -4,6 +4,7 @@ import { Field, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { type Ref, useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import type { ExactBodyOption } from "../part-design/exact-body-options"
@@ -351,74 +352,79 @@ export function FdmForm(props: FdmFormProps) {
     )
   }
   return (
-    <Form form={form} aria-label={title} className="gap-0">
-      <form.FormError />
-      <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
-        {([values, pending]) => {
-          const parsed = parseFdmForm(
-            kind,
-            values,
-            props.options,
-            props.sketches,
-            props.variables,
-            state.displayUnits,
-            copy,
-          )
-          const issues = parsed.ok ? {} : parsed.issues
-          const disabled = Boolean(props.disabled || pending)
-          return (
-            <>
-              <Preview
-                feature={parsed.ok ? fdmFormFeature(mode, featureId, parsed) : null}
-                onChange={props.onPreviewChange}
-              />
-              <ParameterPanel
-                copy={{
-                  title: title,
-                  description: t("description"),
-                  cancel: t("cancel"),
-                }}
-                legend={t("parameters")}
-                disabled={disabled}
-                message={message}
-                actions={
-                  <TaskPanelFormActions
-                    acceptLabel={acceptLabel}
-                    ariaLabel={t("title")}
-                    cancelLabel={t("cancel")}
-                    disabled={disabled || !parsed.ok}
-                    onCancel={props.onCancel}
-                    previewStatus={props.previewStatus}
-                  />
-                }
-              >
-                <LocalizedSearchableSelectField
-                  ref={props.kindControlRef}
-                  label={t("kind")}
-                  description={t("flatCutDescription")}
-                  placeholder={t("kind")}
-                  value={kind}
-                  disabled={disabled || mode.kind === "edit"}
-                  onValueChange={(value) => {
-                    const selected = fdmToolKinds.find((tool) => tool === value)
-                    if (selected) props.onKindChange(selected)
-                  }}
-                  options={fdmToolKinds.map((tool) => ({
-                    value: tool,
-                    label: t(`tools.${tool}`),
-                    icon: <FdmToolIcon kind={tool} className="size-5 shrink-0" />,
-                  }))}
+    <Form
+      form={form}
+      aria-label={title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
+          {([values, pending]) => {
+            const parsed = parseFdmForm(
+              kind,
+              values,
+              props.options,
+              props.sketches,
+              props.variables,
+              state.displayUnits,
+              copy,
+            )
+            const issues = parsed.ok ? {} : parsed.issues
+            const disabled = Boolean(props.disabled || pending)
+            return (
+              <>
+                <Preview
+                  feature={parsed.ok ? fdmFormFeature(mode, featureId, parsed) : null}
+                  onChange={props.onPreviewChange}
                 />
-                {targetField(issues)}
-                {kind === "web" ? webFields(values, issues) : axisField()}
-                {specialFields()}
-                {dimensionFields(values)}
-                {issues.parameters && <FieldError>{issues.parameters}</FieldError>}
-              </ParameterPanel>
-            </>
-          )
-        }}
-      </form.Subscribe>
+                <ParameterPanel
+                  copy={{
+                    title: title,
+                    description: t("description"),
+                    cancel: t("cancel"),
+                  }}
+                  legend={t("parameters")}
+                  disabled={disabled}
+                  message={message}
+                  actions={
+                    <TaskPanelFormActions
+                      acceptLabel={acceptLabel}
+                      ariaLabel={t("title")}
+                      cancelLabel={t("cancel")}
+                      disabled={disabled || !parsed.ok}
+                      onCancel={props.onCancel}
+                      previewStatus={props.previewStatus}
+                    />
+                  }
+                >
+                  <LocalizedSearchableSelectField
+                    ref={props.kindControlRef}
+                    label={t("kind")}
+                    description={t("flatCutDescription")}
+                    placeholder={t("kind")}
+                    value={kind}
+                    disabled={disabled || mode.kind === "edit"}
+                    onValueChange={(value) => {
+                      const selected = fdmToolKinds.find((tool) => tool === value)
+                      if (selected) props.onKindChange(selected)
+                    }}
+                    options={fdmToolKinds.map((tool) => ({
+                      value: tool,
+                      label: t(`tools.${tool}`),
+                      icon: <FdmToolIcon kind={tool} className="size-5 shrink-0" />,
+                    }))}
+                  />
+                  {targetField(issues)}
+                  {kind === "web" ? webFields(values, issues) : axisField()}
+                  {specialFields()}
+                  {dimensionFields(values)}
+                  {issues.parameters && <FieldError>{issues.parameters}</FieldError>}
+                </ParameterPanel>
+              </>
+            )
+          }}
+        </form.Subscribe>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

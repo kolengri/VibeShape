@@ -7,7 +7,7 @@ import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useMemo, useRef } from "react"
 import { ActionAvailability } from "../../components/action-availability"
-import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
@@ -152,23 +152,21 @@ export function QuickLightweightingTaskPanel({
   useReportActivity(state.activity !== "idle")
   useLightweightingViewportPreview(state.ready, onPreviewChange, state.setPreviewReady)
   return (
-    <section
-      aria-label={t("title")}
-      className="grid h-full min-h-0 content-start gap-2 overflow-y-auto p-3"
-    >
-      <TaskPanelHeader
+    <section aria-label={t("title")} className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+      <TaskPanelLayout
         title={t("title")}
         description={t("description")}
         actions={<QuickLifecycleActions state={state} disabled={disabled} onClose={onClose} />}
-      />
-      <LightweightingSourceSelector
-        controller={controller}
-        state={state}
-        disabled={disabled || applying}
-      />
-      <QuickControls state={state} disabled={disabled || applying} />
-      <QuickPreview state={state} mainViewport={onPreviewChange !== undefined} />
-      <QuickActions state={state} disabled={disabled} />
+      >
+        <LightweightingSourceSelector
+          controller={controller}
+          state={state}
+          disabled={disabled || applying}
+        />
+        <QuickControls state={state} disabled={disabled || applying} />
+        <QuickPreview state={state} mainViewport={onPreviewChange !== undefined} />
+        <QuickActions state={state} disabled={disabled} />
+      </TaskPanelLayout>
     </section>
   )
 }

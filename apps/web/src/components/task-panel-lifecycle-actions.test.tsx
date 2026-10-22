@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { TaskPanelLifecycleActions } from "./task-panel-lifecycle-actions"
+import { TaskPanelLifecycleButton } from "./task-panel-lifecycle-button"
 
 class ResizeObserverMock {
   observe() {}
@@ -42,27 +43,37 @@ afterEach(cleanup)
 vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 
 describe("TaskPanelLifecycleActions", () => {
-  it("renders a compact labelled action group with icon-only buttons", () => {
+  it("renders visible text labels with standard small footer buttons", () => {
     renderActions()
 
     expect(screen.getByRole("group", { name: "Feature actions" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Cancel feature" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Accept feature" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Accept feature" }).textContent).toBe("")
+    expect(screen.getByRole("button", { name: "Accept feature" }).textContent).toBe(
+      "Accept feature",
+    )
+    expect(screen.getByRole("button", { name: "Cancel feature" }).textContent).toBe(
+      "Cancel feature",
+    )
     for (const button of screen.getAllByRole("button")) {
-      expect(button.getAttribute("data-size")).toBe("icon-xs")
+      expect(button.getAttribute("data-size")).toBe("sm")
     }
   })
 
-  it("shows each action label in its tooltip", async () => {
+  it("keeps direct lifecycle buttons as icons with their tooltip labels", async () => {
     const user = userEvent.setup()
-    renderActions()
+    render(<TaskPanelLifecycleButton kind="cancel" label="Cancel feature" />)
+
+    expect(screen.getByRole("button", { name: "Cancel feature" }).textContent).toBe("")
+    expect(screen.getByRole("button", { name: "Cancel feature" }).getAttribute("data-size")).toBe(
+      "icon-xs",
+    )
 
     await user.hover(screen.getByRole("button", { name: "Cancel feature" }))
     expect(await screen.findByRole("tooltip", { name: "Cancel feature" })).toBeTruthy()
 
     cleanup()
-    renderActions()
+    render(<TaskPanelLifecycleButton kind="accept" label="Accept feature" />)
     await user.hover(screen.getByRole("button", { name: "Accept feature" }))
     expect(await screen.findByRole("tooltip", { name: "Accept feature" })).toBeTruthy()
   })

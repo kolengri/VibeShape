@@ -1,7 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Alert } from "@vibeshape/ui/components/alert"
-import { FieldHelp } from "@vibeshape/ui/components/field-help"
+import { DialogBody, DialogFooter } from "@vibeshape/ui/components/dialog"
 import type { ReactNode } from "react"
 import {
   applyVariableTable,
@@ -11,12 +11,14 @@ import {
 } from "../../document/document-controller"
 import { referencedModelVariableNames, VariablesForm } from "./variables-form"
 
-type VariablesPanelProps = { controller: DocumentControllerState }
+type VariablesPanelProps = { controller: DocumentControllerState; closeAction: ReactNode }
 
 function VariablesPanelMessage({
   kind,
   status,
+  closeAction,
 }: {
+  closeAction: ReactNode
   kind: "error" | "loading"
   status: DocumentControllerState["status"]
 }) {
@@ -25,28 +27,26 @@ function VariablesPanelMessage({
   useReportActivity(!isError)
 
   return (
-    <section
-      className="min-h-0 overflow-auto bg-background p-3"
-      aria-labelledby="variables-title"
-      data-document-status={status}
-    >
-      <h1 id="variables-title" className="text-xs font-medium">
-        {t("title")}
-      </h1>
-      {isError ? (
-        <Alert className="mt-2">{t("loadFailed")}</Alert>
-      ) : (
-        <p className="mt-2 text-sm text-muted-foreground" role="status">
-          {t("loading")}
-        </p>
-      )}
-    </section>
+    <>
+      <DialogBody data-document-status={status}>
+        {isError ? (
+          <Alert className="mt-2">{t("loadFailed")}</Alert>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground" role="status">
+            {t("loading")}
+          </p>
+        )}
+      </DialogBody>
+      <DialogFooter>{closeAction}</DialogFooter>
+    </>
   )
 }
 
 function ReadyVariablesPanel({
   report,
+  closeAction,
 }: {
+  closeAction: ReactNode
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.variables")
@@ -91,55 +91,48 @@ function ReadyVariablesPanel({
   }
 
   return (
-    <section className="min-h-0 overflow-auto bg-background p-3" aria-labelledby="variables-title">
-      <div className="mx-auto grid max-w-6xl gap-2">
-        <div className="flex items-center gap-1">
-          <h1 id="variables-title" className="text-xs font-medium">
-            {t("title")}
-          </h1>
-          <FieldHelp label={t("title")}>{t("description")}</FieldHelp>
-        </div>
-        <VariablesForm
-          key={snapshot.revision}
-          baseRevision={snapshot.revision}
-          variables={snapshot.variables}
-          copy={copy}
-          createVariableId={createBrowserVariableId}
-          disabled={report.mode === "read-only"}
-          protectedVariableNames={protectedNames}
-          onApply={applyVariableTable}
-          onRename={renameVariable}
-        />
-      </div>
-    </section>
+    <VariablesForm
+      key={snapshot.revision}
+      baseRevision={snapshot.revision}
+      variables={snapshot.variables}
+      copy={copy}
+      createVariableId={createBrowserVariableId}
+      disabled={report.mode === "read-only"}
+      protectedVariableNames={protectedNames}
+      onApply={applyVariableTable}
+      onRename={renameVariable}
+      dialogCloseAction={closeAction}
+    />
   )
 }
 
-function LoadingVariablesPanel({ controller }: VariablesPanelProps) {
-  return <VariablesPanelMessage kind="loading" status={controller.status} />
+function LoadingVariablesPanel({ controller, closeAction }: VariablesPanelProps) {
+  return (
+    <VariablesPanelMessage kind="loading" status={controller.status} closeAction={closeAction} />
+  )
 }
 
-function ErrorVariablesPanel({ controller }: VariablesPanelProps) {
-  return <VariablesPanelMessage kind="error" status={controller.status} />
+function ErrorVariablesPanel({ controller, closeAction }: VariablesPanelProps) {
+  return <VariablesPanelMessage kind="error" status={controller.status} closeAction={closeAction} />
 }
 
-function ResolvedVariablesPanel({ controller }: VariablesPanelProps) {
+function ResolvedVariablesPanel({ controller, closeAction }: VariablesPanelProps) {
   return controller.report ? (
-    <ReadyVariablesPanel report={controller.report} />
+    <ReadyVariablesPanel report={controller.report} closeAction={closeAction} />
   ) : (
-    <VariablesPanelMessage kind="error" status={controller.status} />
+    <VariablesPanelMessage kind="error" status={controller.status} closeAction={closeAction} />
   )
 }
 
 const panelByStatus = {
   idle: LoadingVariablesPanel,
   loading: LoadingVariablesPanel,
-  library: () => null,
+  library: ({ closeAction }) => <DialogFooter>{closeAction}</DialogFooter>,
   ready: ResolvedVariablesPanel,
   error: ErrorVariablesPanel,
 } satisfies Record<DocumentControllerState["status"], (props: VariablesPanelProps) => ReactNode>
 
-export function VariablesPanel({ controller }: VariablesPanelProps) {
+export function VariablesPanel({ controller, closeAction }: VariablesPanelProps) {
   const Panel = panelByStatus[controller.status]
-  return <Panel controller={controller} />
+  return <Panel controller={controller} closeAction={closeAction} />
 }

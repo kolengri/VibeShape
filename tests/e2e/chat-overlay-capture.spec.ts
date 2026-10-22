@@ -2,6 +2,11 @@ import type {
   AssistantBridge,
   AssistantSnapshot,
 } from "../../packages/automation-api/src/assistant"
+import {
+  LOCAL_AUTOMATION_PATH,
+  type LocalConnection,
+} from "../../packages/automation-api/src/local-session"
+import { sessionIdSchema } from "../../packages/domain/src/identifiers"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
@@ -10,6 +15,44 @@ test("retains the canvas and hidden chat while explicitly attaching the current 
 }) => {
   test.setTimeout(120_000)
   await page.setViewportSize({ width: 1280, height: 800 })
+  const connection: LocalConnection = {
+    protocolVersion: 1,
+    token: "a".repeat(43),
+    actor: {
+      type: "mcp",
+      clientId: "org.vibeshape.chat-capture-test",
+      sessionId: sessionIdSchema.parse("0193f0b0-0000-7000-8000-000000000001"),
+    },
+    expiresAt: Date.now() + 3_600_000,
+    client: { name: "VibeShape assistant", version: "1" },
+  }
+  let paired = false
+  // Native chat also waits for its project-scoped CAD access bridge.
+  await page.route(`**${LOCAL_AUTOMATION_PATH}/*`, async (route) => {
+    const path = new URL(route.request().url()).pathname
+    let response: unknown
+    switch (path.slice(LOCAL_AUTOMATION_PATH.length)) {
+      case "/status":
+        response = { protocolVersion: 1, client: connection.client, paired }
+        break
+      case "/connect":
+      case "/resume":
+        paired = true
+        response = connection
+        break
+      case "/poll":
+        response = { protocolVersion: 1, work: null, cancelledRequestIds: [] }
+        break
+      case "/revoke":
+      case "/suspend":
+        paired = false
+        response = { protocolVersion: 1 }
+        break
+      default:
+        throw new Error(`Unexpected capture fixture request: ${path}`)
+    }
+    await route.fulfill({ json: response })
+  })
   await page.addInitScript(() => {
     let snapshot: AssistantSnapshot
     const state = { connects: 0, disconnects: 0 }
@@ -65,16 +108,25 @@ test("retains the canvas and hidden chat while explicitly attaching the current 
     "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
   )
   const originalBounds = await canvas.boundingBox()
+  if (!originalBounds) throw new Error("The viewport must remain measurable.")
   await canvas.evaluate((element) => {
     Object.assign(globalThis, { retainedViewportCanvas: element })
   })
   await page.getByRole("button", { name: "AI chat", exact: true }).click()
   const panel = page.getByRole("complementary", { name: "AI chat", exact: true })
-  await panel.getByRole("combobox", { name: "Agent", exact: true }).click()
+  await panel.getByRole("button", { name: "AI settings", exact: true }).click()
+  const settings = page.getByRole("dialog", { name: "AI settings", exact: true })
+  await settings.getByRole("combobox", { name: "Agent", exact: true }).click()
   await page.getByRole("option", { name: "Codex", exact: true }).click()
-  await panel.getByRole("button", { name: "Connect agent", exact: true }).click()
+  await settings.getByRole("button", { name: "Connect agent", exact: true }).click()
+  await expect(settings).toBeHidden()
   const message = panel.getByRole("textbox", { name: "Message", exact: true })
   await expect(message).toBeEnabled()
+  await expect
+    .poll(async () => (await canvas.boundingBox())?.width)
+    .toBeLessThan(originalBounds.width)
+  const openBounds = await canvas.boundingBox()
+  if (!openBounds) throw new Error("The viewport must remain measurable beside chat.")
   await message.fill("Inspect the highlighted corner")
   await message.evaluate((element) => {
     const browser = element.ownerDocument.defaultView
@@ -95,13 +147,13 @@ test("retains the canvas and hidden chat while explicitly attaching the current 
   expect(
     await thumbnail.evaluate((element) => Reflect.get(element, "naturalWidth")),
   ).toBeGreaterThan(100)
-  await panel.getByRole("button", { name: "Close chat", exact: true }).click()
+  await panel.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
   await expect(panel).not.toBeVisible()
   expect(await canvas.boundingBox()).toEqual(originalBounds)
   await page.getByRole("button", { name: "AI chat", exact: true }).click()
   await expect(message).toHaveValue("Inspect the highlighted corner")
   await expect(thumbnail).toHaveAttribute("src", first ?? "")
-  expect(await canvas.boundingBox()).toEqual(originalBounds)
+  expect(await canvas.boundingBox()).toEqual(openBounds)
   expect(
     await canvas.evaluate(
       (element) => element === Reflect.get(globalThis, "retainedViewportCanvas"),

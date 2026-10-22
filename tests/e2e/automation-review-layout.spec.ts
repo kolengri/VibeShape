@@ -100,9 +100,10 @@ test("long AI reviews keep consent controls visible and details scrollable in sh
       await page.screenshot({ path: test.info().outputPath("long-review-short-window.png") })
   }
   const details = review.getByRole("region", { name: "Proposed changes", exact: true })
+  const body = review.locator('[data-slot="task-panel-content"]')
   await details.focus()
   await page.keyboard.press("End")
-  await expect.poll(() => details.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
   await expect(
     review.getByText(
       "This review includes a destructive document change. Confirm it before applying.",

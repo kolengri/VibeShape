@@ -11,6 +11,7 @@ import {
 import { useFormatter } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { DialogBody, DialogFooter } from "@vibeshape/ui/components/dialog"
 import { CancelIcon, Check, Pencil, Trash2 } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
 import { TextField } from "@vibeshape/ui/components/text-field"
@@ -22,7 +23,7 @@ import {
 } from "@vibeshape/ui/components/tooltip"
 import { Form, validationMessage } from "@vibeshape/ui/integrations/tanstack-form"
 import { isInteger, isString } from "is-what"
-import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import { ActionAvailability } from "../../components/action-availability"
 import type { ApplyVariableTableResult } from "../../document/document-controller"
 import {
@@ -440,6 +441,49 @@ function VariablesSearchField({
   )
 }
 
+function VariablesFormNotices({
+  disabled,
+  readOnlyLabel,
+  message,
+}: {
+  disabled: boolean
+  readOnlyLabel: string
+  message: string | null
+}) {
+  return (
+    <>
+      {disabled ? (
+        <p className="rounded-md border border-diagnostic-warning/40 bg-panel-muted p-2 text-xs">
+          {readOnlyLabel}
+        </p>
+      ) : null}
+      {message ? <Alert>{message}</Alert> : null}
+    </>
+  )
+}
+
+function variablesFormLayout(closeAction: ReactNode, submitAction: ReactNode) {
+  if (!closeAction)
+    return {
+      className: "gap-3",
+      tableAction: submitAction,
+      content: (body: ReactNode) => body,
+    }
+  return {
+    className: "flex min-h-0 flex-1 flex-col overflow-hidden",
+    tableAction: null,
+    content: (body: ReactNode) => (
+      <>
+        <DialogBody>{body}</DialogBody>
+        <DialogFooter>
+          {closeAction}
+          {submitAction}
+        </DialogFooter>
+      </>
+    ),
+  }
+}
+
 export function VariablesForm({
   baseRevision,
   copy,
@@ -449,6 +493,7 @@ export function VariablesForm({
   onRename,
   protectedVariableNames = EMPTY_VARIABLE_NAMES,
   variables,
+  dialogCloseAction,
 }: {
   baseRevision: number
   copy: VariablesFormCopy
@@ -465,6 +510,7 @@ export function VariablesForm({
   ) => Promise<ApplyVariableTableResult>
   protectedVariableNames?: ReadonlySet<string>
   variables: readonly VariableDefinition[]
+  dialogCloseAction?: ReactNode
 }) {
   const formatter = useFormatter()
   const displayUnits = useDocumentDisplayUnits()
@@ -535,15 +581,21 @@ export function VariablesForm({
     variables,
   })
 
-  return (
-    <Form ref={formElementRef} form={form} className="gap-3" aria-label={copy.caption}>
+  const submitAction = (
+    <form.SubmitButton disabled={disabled || rename.rowId !== null || rename.pending}>
+      {copy.apply}
+    </form.SubmitButton>
+  )
+  const layout = variablesFormLayout(dialogCloseAction, submitAction)
+
+  const body = (
+    <>
       <form.FormError />
-      {disabled ? (
-        <p className="rounded-md border border-diagnostic-warning/40 bg-panel-muted p-2 text-xs">
-          {copy.readOnly}
-        </p>
-      ) : null}
-      {submitMessage ? <Alert>{submitMessage}</Alert> : null}
+      <VariablesFormNotices
+        disabled={disabled}
+        readOnlyLabel={copy.readOnly}
+        message={submitMessage}
+      />
       <form.AppField name="variables" mode="array">
         {(arrayField) => (
           <form.Subscribe
@@ -575,13 +627,7 @@ export function VariablesForm({
                       onValueChange={setSearchQuery}
                     />
                   }
-                  footerAction={
-                    <form.SubmitButton
-                      disabled={disabled || rename.rowId !== null || rename.pending}
-                    >
-                      {copy.apply}
-                    </form.SubmitButton>
-                  }
+                  footerAction={layout.tableAction}
                   onAdd={() => {
                     const id = createVariableId()
                     clearSubmissionErrors()
@@ -700,6 +746,11 @@ export function VariablesForm({
           </form.Subscribe>
         )}
       </form.AppField>
+    </>
+  )
+  return (
+    <Form ref={formElementRef} form={form} className={layout.className} aria-label={copy.caption}>
+      {layout.content(body)}
     </Form>
   )
 }

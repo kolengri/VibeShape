@@ -3,7 +3,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@vibeshape/ui/components/dialog"
@@ -33,22 +33,24 @@ export function VariablesDialog({
         closeLabel={t("actions.close")}
         showCloseButton={!pending}
         onCloseAutoFocus={onCloseAutoFocus}
-        aria-describedby={undefined}
       >
-        <DialogHeader className="sr-only">
+        <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
-        <VariablesPanel controller={controller} />
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={() => changeOpen(false)}
-          >
-            {t("actions.close")}
-          </Button>
-        </DialogFooter>
+        <VariablesPanel
+          controller={controller}
+          closeAction={
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={() => changeOpen(false)}
+            >
+              {t("actions.close")}
+            </Button>
+          }
+        />
       </DialogContent>
     </Dialog>
   )

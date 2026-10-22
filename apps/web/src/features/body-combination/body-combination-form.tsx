@@ -229,7 +229,11 @@ export function BodyCombinationForm({
     },
   })
   return (
-    <Form form={form} aria-label={copy.title} className="gap-0">
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
       <form.Subscribe selector={(state) => state.values.selected}>
         {(selected) => (
           <CombinationPreview

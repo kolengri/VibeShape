@@ -9,6 +9,7 @@ import type { ReferenceAxis } from "@vibeshape/domain/reference-frame"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -175,112 +176,121 @@ export function PatternForm({
     },
   })
   return (
-    <Form form={form} aria-label={copy.title} className="gap-0">
-      <form.FormError />
-      <form.Subscribe selector={(formState) => [formState.values, formState.isSubmitting] as const}>
-        {([values, pending]) => {
-          const parsed = parsePatternForm(
-            values,
-            variables,
-            state.displayUnits,
-            copy,
-            referenceAxis ?? undefined,
-          )
-          const fields = patternExpressionFields(values.kind, referenceAxis)
-          const description = {
-            count: copy.countDescription,
-            spacing: copy.spacingDescription,
-            angle: copy.angleDescription,
-            centerX: copy.centerDescription,
-            centerY: copy.centerDescription,
-            centerZ: copy.centerDescription,
-          }
-          return (
-            <>
-              {onPreviewChange && sourceAvailable && (
-                <PatternPreview
-                  values={values}
-                  variables={variables}
-                  units={state.displayUnits}
-                  copy={copy}
-                  mode={mode}
-                  featureId={featureId}
-                  referenceAxis={referenceAxis}
-                  onPreviewChange={onPreviewChange}
-                />
-              )}
-              <ParameterPanel
-                copy={copy}
-                legend={copy.parameters}
-                disabled={disabled || pending || !sourceAvailable}
-                message={panelMessage(state.message, sourceAvailable, previewStatus, copy)}
-                actions={
-                  <TaskPanelFormActions
-                    acceptLabel={copy.submit}
-                    ariaLabel={copy.title}
-                    cancelLabel={copy.cancel}
-                    disabled={disabled || !sourceAvailable || !parsed.ok || referenceAxis === null}
-                    onCancel={onCancel}
-                    previewStatus={previewStatus}
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <form.Subscribe
+          selector={(formState) => [formState.values, formState.isSubmitting] as const}
+        >
+          {([values, pending]) => {
+            const parsed = parsePatternForm(
+              values,
+              variables,
+              state.displayUnits,
+              copy,
+              referenceAxis ?? undefined,
+            )
+            const fields = patternExpressionFields(values.kind, referenceAxis)
+            const description = {
+              count: copy.countDescription,
+              spacing: copy.spacingDescription,
+              angle: copy.angleDescription,
+              centerX: copy.centerDescription,
+              centerY: copy.centerDescription,
+              centerZ: copy.centerDescription,
+            }
+            return (
+              <>
+                {onPreviewChange && sourceAvailable && (
+                  <PatternPreview
+                    values={values}
+                    variables={variables}
+                    units={state.displayUnits}
+                    copy={copy}
+                    mode={mode}
+                    featureId={featureId}
+                    referenceAxis={referenceAxis}
+                    onPreviewChange={onPreviewChange}
                   />
-                }
-              >
-                <form.AppField name="kind">
-                  {(field) => (
-                    <field.ChoiceField
-                      label={copy.kind}
-                      onValueChange={() => {
-                        state.clearSubmissionErrors()
-                      }}
-                      options={(["linear", "circular"] as const).map((kind) => ({
-                        value: kind,
-                        label: copy[kind],
-                      }))}
+                )}
+                <ParameterPanel
+                  copy={copy}
+                  legend={copy.parameters}
+                  disabled={disabled || pending || !sourceAvailable}
+                  message={panelMessage(state.message, sourceAvailable, previewStatus, copy)}
+                  actions={
+                    <TaskPanelFormActions
+                      acceptLabel={copy.submit}
+                      ariaLabel={copy.title}
+                      cancelLabel={copy.cancel}
+                      disabled={
+                        disabled || !sourceAvailable || !parsed.ok || referenceAxis === null
+                      }
+                      onCancel={onCancel}
+                      previewStatus={previewStatus}
                     />
-                  )}
-                </form.AppField>
-                <ReferenceAxisSelection
-                  options={referenceOptions}
-                  value={referenceAxis}
-                  selectedFace={selectedFace}
-                  onChange={setReference}
+                  }
                 >
-                  <form.AppField name="axis">
+                  <form.AppField name="kind">
                     {(field) => (
                       <field.ChoiceField
-                        label={copy.axis}
+                        label={copy.kind}
                         onValueChange={() => {
                           state.clearSubmissionErrors()
                         }}
-                        options={(["X", "Y", "Z"] as const).map((axis) => ({
-                          value: axis,
-                          label: axis,
+                        options={(["linear", "circular"] as const).map((kind) => ({
+                          value: kind,
+                          label: copy[kind],
                         }))}
                       />
                     )}
                   </form.AppField>
-                </ReferenceAxisSelection>
-                {fields.map((name) => (
-                  <form.AppField name={name} key={name}>
-                    {(field) => (
-                      <field.LengthExpressionField
-                        id={`pattern-${name}`}
-                        label={copy[name]}
-                        description={description[name]}
-                        error={parsed.ok ? undefined : parsed.issues[name]}
-                        suggestions={state.suggestions}
-                        onValueChange={() => {
-                          state.clearSubmissionErrors()
-                        }}
-                      />
-                    )}
-                  </form.AppField>
-                ))}
-              </ParameterPanel>
-            </>
-          )
-        }}
-      </form.Subscribe>
+                  <ReferenceAxisSelection
+                    options={referenceOptions}
+                    value={referenceAxis}
+                    selectedFace={selectedFace}
+                    onChange={setReference}
+                  >
+                    <form.AppField name="axis">
+                      {(field) => (
+                        <field.ChoiceField
+                          label={copy.axis}
+                          onValueChange={() => {
+                            state.clearSubmissionErrors()
+                          }}
+                          options={(["X", "Y", "Z"] as const).map((axis) => ({
+                            value: axis,
+                            label: axis,
+                          }))}
+                        />
+                      )}
+                    </form.AppField>
+                  </ReferenceAxisSelection>
+                  {fields.map((name) => (
+                    <form.AppField name={name} key={name}>
+                      {(field) => (
+                        <field.LengthExpressionField
+                          id={`pattern-${name}`}
+                          label={copy[name]}
+                          description={description[name]}
+                          error={parsed.ok ? undefined : parsed.issues[name]}
+                          suggestions={state.suggestions}
+                          onValueChange={() => {
+                            state.clearSubmissionErrors()
+                          }}
+                        />
+                      )}
+                    </form.AppField>
+                  ))}
+                </ParameterPanel>
+              </>
+            )
+          }}
+        </form.Subscribe>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

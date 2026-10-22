@@ -263,11 +263,23 @@ async function captureStudyLayouts(page: Page, testInfo: TestInfo) {
   await expect(form.getByRole("button", { name: "Save study", exact: true })).toBeInViewport()
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   await page.screenshot({ path: testInfo.outputPath("motion-ui-1024.png") })
-  await page.setViewportSize({ width: 2048, height: 1536 })
-  await page.evaluate("document.documentElement.style.zoom = '2'")
+  // A 512×384 CSS viewport models 200% page zoom on a 1024×768 display.
+  await page.setViewportSize({ width: 512, height: 384 })
+  const content = form.locator("[data-slot='task-panel-content']")
+  const footer = form.locator("[data-slot='task-panel-footer']")
+  await expect(form.getByRole("button", { name: "Save study", exact: true })).toBeInViewport()
+  expect(await content.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
+    true,
+  )
+  const footerBounds = await footer.boundingBox()
+  await content.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  expect(await footer.boundingBox()).toEqual(footerBounds)
+  await expect(form.getByRole("heading", { name: "Edit study", exact: true })).toBeInViewport()
   await expect(form.getByRole("button", { name: "Save study", exact: true })).toBeInViewport()
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
-  await page.screenshot({ path: testInfo.outputPath("motion-ui-zoom200.png") })
+  await page.screenshot({ path: testInfo.outputPath("motion-ui-zoom200-equivalent.png") })
 }
 
 test("authors seven named drive tracks with degree offsets and graphical key times", async ({
