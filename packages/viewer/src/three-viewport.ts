@@ -1746,7 +1746,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     })
     observer.observe(canvas)
     if (this.#orientationInsetOffsetElement) {
-      observer.observe(this.#orientationInsetOffsetElement)
+      observer.observe(this.#orientationInsetOffsetElement, { box: "border-box" })
     }
     return observer
   }
@@ -3733,10 +3733,18 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #orientationInsetPlacement() {
+    const element = this.#orientationInsetOffsetElement
+    const topOffset = element
+      ? Number.parseFloat(
+          element.ownerDocument.defaultView?.getComputedStyle(element).paddingTop ?? "0",
+        ) || 0
+      : 0
     return orientationInsetPlacement(
       this.#canvas.clientWidth,
       this.#canvas.clientHeight,
-      this.#orientationInsetOffsetElement?.clientWidth,
+      element?.clientWidth,
+      (element?.clientHeight ?? 0) - topOffset,
+      topOffset,
     )
   }
 

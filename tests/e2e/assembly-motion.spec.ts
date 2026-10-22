@@ -64,6 +64,12 @@ test("previews real assembly drives without saving, pauses and resets, applies o
     timeout: 60_000,
   })
   await expect(page.getByText("Unsaved motion preview", { exact: true })).toBeVisible()
+  const badge = await page.getByText("Unsaved motion preview", { exact: true }).boundingBox()
+  const toolbar = await page.locator("nav[data-sketch-mode]").boundingBox()
+  const tree = await page.locator(".workspace-panel--tree").boundingBox()
+  if (!badge || !toolbar || !tree) throw new Error("Motion preview chrome must be measurable.")
+  expect(badge.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height)
+  expect(badge.x).toBeGreaterThanOrEqual(tree.x + tree.width)
   const unsaved = await assembly(page)
   expect(unsaved.assembly).toEqual(baseline.assembly)
   expect(unsaved.revision).toBe(baseline.revision)

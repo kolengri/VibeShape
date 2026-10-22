@@ -10,7 +10,7 @@ test("opens model toolbar categories through named icon buttons", async ({ page 
   for (const label of ["Modify", "Primitives"]) {
     const trigger = page.getByRole("button", { name: label, exact: true })
     await expect(trigger).toHaveText("")
-    await expect(trigger.locator("svg")).toHaveCount(1)
+    await expect(trigger.locator('svg:not([data-slot="button-dropdown-indicator"])')).toHaveCount(1)
     await expect(trigger).toHaveAttribute("aria-haspopup", /^(menu|dialog)$/)
     await trigger.click()
     await expect(
@@ -52,21 +52,70 @@ for (const width of [800, 1024, 1440]) {
     const timelineBounds = await timeline.boundingBox()
     const chatBounds = await chat.boundingBox()
     if (!timelineBounds || !chatBounds) throw new Error("Chat and History must be visible.")
-    expect(timelineBounds.y - (chatBounds.y + chatBounds.height)).toBeCloseTo(8, 0)
     expect(timelineBounds.x).toBe(8)
-    expect(timelineBounds.width).toBe(width - 16)
+    expect(timelineBounds.x + timelineBounds.width).toBeCloseTo(chatBounds.x - 8, 0)
+    const toolbar = page.locator("nav[data-sketch-mode]")
+    const toolbarBounds = await toolbar.boundingBox()
+    const canvas = page.locator(".workspace-viewport canvas").first()
+    const canvasBounds = await canvas.boundingBox()
+    if (!toolbarBounds || !canvasBounds) throw new Error("Editor must have measurable bounds.")
+    expect(toolbarBounds.x + toolbarBounds.width).toBeCloseTo(chatBounds.x - 8, 0)
+    expect(canvasBounds.x + canvasBounds.width).toBeCloseTo(chatBounds.x, 0)
+    expect(chatBounds.y).toBeCloseTo(toolbarBounds.y, 0)
+    expect(chatBounds.y + chatBounds.height).toBeGreaterThan(
+      timelineBounds.y + timelineBounds.height,
+    )
+    if (width === 1440)
+      await page.screenshot({ path: test.info().outputPath("floating-tools-with-docked-chat.png") })
+    const originalCanvas = await canvas.elementHandle()
     await timeline.getByRole("treeitem", { name: "History", exact: true }).click()
     await expect
       .poll(async () => {
         const historyBounds = await timeline.boundingBox()
         const bounds = await chat.boundingBox()
         if (!historyBounds || !bounds) return false
-        return Math.abs(historyBounds.y - (bounds.y + bounds.height) - 8) <= 1
+        return historyBounds.x + historyBounds.width <= bounds.x - 7
       })
       .toBe(true)
     await chat.getByRole("button", { name: "Close chat", exact: true }).click()
     await expect(chat).toHaveCount(0)
     await expect(draft).toHaveValue("77")
+    await expect.poll(async () => (await toolbar.boundingBox())?.width).toBe(width - 16)
+    expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
+      true,
+    )
+  })
+}
+
+for (const theme of ["light", "dark"]) {
+  test(`fills the editor behind floating tools in ${theme} theme`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto("/")
+    await page.locator("html").evaluate((element, theme) => {
+      element.classList.toggle("dark", theme === "dark")
+    }, theme)
+    const canvas = page.locator(".workspace-viewport canvas").first()
+    const header = page.locator(".application-bar")
+    const footer = page.locator(".cad-shell > footer")
+    const bounds = await canvas.boundingBox()
+    const headerBounds = await header.boundingBox()
+    const footerBounds = await footer.boundingBox()
+    if (!bounds || !headerBounds || !footerBounds) throw new Error("Editor must be measurable.")
+    expect(bounds.x).toBe(0)
+    expect(bounds.width).toBe(1440)
+    expect(bounds.y).toBe(headerBounds.y + headerBounds.height)
+    expect(bounds.y + bounds.height).toBe(footerBounds.y)
+    const toolbar = page.locator("nav[data-sketch-mode]")
+    const toolbarBounds = await toolbar.boundingBox()
+    if (!toolbarBounds) throw new Error("Toolbar must be measurable.")
+    // The gap above the toolbar is rendered by the same interactive canvas.
+    expect(
+      await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, {
+        x: 720,
+        y: toolbarBounds.y - 4,
+      }),
+    ).toBe("CANVAS")
+    await page.screenshot({ path: test.info().outputPath(`floating-workspace-${theme}.png`) })
   })
 }
 
@@ -88,13 +137,17 @@ test("shows Thinking by the composer with the wordmark shimmer and respects redu
   await page.goto("/")
   await page.getByRole("button", { name: "AI chat", exact: true }).click()
   const chat = page.getByRole("complementary", { name: "AI chat", exact: true })
-  await chat.getByRole("combobox", { name: "Provider", exact: true }).click()
+  await chat.getByRole("button", { name: "Configure AI", exact: true }).click()
+  const settings = page.getByRole("dialog", { name: "AI settings", exact: true })
+  await settings.getByRole("combobox", { name: "Provider", exact: true }).click()
   await page.getByRole("option", { name: "Custom endpoint", exact: true }).click()
-  await chat
+  await settings
     .getByRole("textbox", { name: "Chat Completions endpoint URL", exact: true })
     .fill(endpoint)
-  await chat.getByRole("textbox", { name: "API model", exact: true }).fill("fixture-model")
-  await chat.getByRole("button", { name: "Connect and enable project access", exact: true }).click()
+  await settings.getByRole("textbox", { name: "API model", exact: true }).fill("fixture-model")
+  await settings
+    .getByRole("button", { name: "Connect and enable project access", exact: true })
+    .click()
   await chat.getByRole("textbox", { name: "Message", exact: true }).fill("Describe the project")
   await chat.getByRole("button", { name: "Send", exact: true }).click()
   const thinking = chat.getByRole("status").filter({ hasText: /^Thinking$/ })

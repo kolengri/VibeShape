@@ -111,7 +111,7 @@ The application bar's **Workspace layout settings** popover provides independent
 
 Panels are opaque by default. On desktop, explicitly lowering a panel's background opacity reveals the same 3D/sketch viewport beneath it; text, inputs, buttons, and focus indicators remain opaque. This is a user-controlled visibility option, not a decorative glass treatment. View controls stay inset into the unobscured central region, and panel interactions never fall through to the model. Resizing, hiding, and changing opacity preserve the mounted viewport and task form. Below 1024 px, the task panel remains the existing bottom sheet and both panel backgrounds stay opaque; desktop task width/visibility and opacity preferences are retained for the return to desktop.
 
-The Variables workspace remains inset with opaque panels so table controls cannot be covered. The rendered orientation axes follow the same safe-area offset as their DOM legend; observing that display-only offset schedules a redraw without replacing meshes, changing the camera, or rebuilding geometry.
+The Variables workspace keeps opaque panels so table controls cannot be covered. The rendered orientation axes follow the same horizontal and bottom safe-area offsets as their DOM legend; observing that display-only offset schedules a redraw without replacing meshes, changing the camera, or rebuilding geometry.
 
 Task-panel forms MUST fit the 280 px minimum without horizontal scrolling. Grid, fieldset, and flex descendants use explicit `min-width: 0`; long semantic selections and graphical-pick prompts truncate visually while retaining their complete accessible name and tooltip.
 
@@ -124,6 +124,7 @@ At widths below 1024 px, VibeShape MAY offer view, inspect, and export behavior,
 - Use the shadcn/ui `new-york` direction with Radix primitives.
 - Ship dark, light, and system themes; dark is the initial default for the CAD workspace, not a hard-coded requirement.
 - Use neutral or zinc foundational surfaces with one restrained primary accent.
+- The viewport fills the editor below the application bar and above the status bar, including the space beneath the command toolbar, model browser, task panel, History, and their gutters. These tools float over the same mounted canvas. AI chat occupies a separate right grid column: opening it narrows the complete editor, including the command toolbar, History, and status bar, without covering the canvas or discarding task inputs.
 - Present the command toolbar, model browser, task panel, assistant, and History as separate working regions with 8 px gutters, subtle borders, and 10 px corners. Keep internal controls compact and avoid nested cards. Resize gutters retain their full 8 px hit area and show their accent on hover, keyboard focus, and drag.
 - Do not use glassmorphism, large gradients, ornamental shadows, animated backgrounds, or oversized marketing typography in the editor.
 - Use elevation only for temporary layers such as menus, popovers, tooltips, dialogs, and drag previews.
@@ -699,7 +700,7 @@ Do not hide Apply, Cancel, errors, save state, or the active selection filter so
 
 The compact task-panel sheet opens automatically for a parameter-driven feature command and may be collapsed with a tooltip-labeled icon. Sketch support selection and active sketch editing start collapsed because their primary interaction belongs to the 3D or analytical canvas; the same icon opens the mounted accessible fallback without losing draft state. Collapsing changes presentation only: the mounted command form, buffered values, validation, preview state, and lifecycle actions are preserved.
 
-The compact sheet occupies a separate workspace row and is capped at half the viewport height. The model tree spans both rows, and the modeling canvas resizes above the sheet so a feature preview remains visible while its parameters are edited. Feature headers remain pinned during parameter scrolling so Apply and Cancel stay reachable.
+The compact sheet floats above the canvas and is capped at half the workspace height. The model tree remains beside it. The canvas continues beneath the sheet, while measured safe insets keep viewport controls and orientation axes in the unobscured area. Feature headers remain pinned during parameter scrolling so Apply and Cancel stay reachable.
 
 At the 1024 px authoring minimum, direct sketch creation, profile features, view controls, and history remain visible. Sketch modification commands collapse into one tooltip-labeled overflow menu and return to direct icon actions when the desktop width permits.
 

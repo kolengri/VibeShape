@@ -1,5 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useMemo } from "react"
+import { SAFE_VIEWPORT_LEFT } from "../../shell/viewport-chrome-styles"
 import { assemblyMotionCoordinates } from "./assembly-motion"
 import { AssemblyMotionPanel } from "./assembly-motion-panel"
 import { useAssemblyMotion } from "./use-assembly-motion"
@@ -58,7 +60,10 @@ export function AssemblyMotionPreviewBadge({ visible }: { visible: boolean }) {
   return visible ? (
     <p
       role="status"
-      className="pointer-events-none absolute top-3 left-3 rounded-md border bg-panel p-2 text-xs"
+      className={cn(
+        "pointer-events-none absolute top-3 left-3 rounded-md border bg-panel p-2 text-xs",
+        SAFE_VIEWPORT_LEFT,
+      )}
     >
       {t("motionPreviewBadge")}
     </p>

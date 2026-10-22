@@ -161,6 +161,24 @@ function WorkspacePanelSurface({
   root: RefObject<HTMLDivElement | null>
   taskActive: boolean
 }) {
+  useLayoutEffect(() => {
+    const element = root.current
+    const panel = element?.querySelector<HTMLElement>(".workspace-panel--task")
+    if (!element || !panel || !compact) return
+    const update = () => {
+      element.style.setProperty(
+        "--workspace-sheet-observed-height",
+        `${panel.getBoundingClientRect().height}px`,
+      )
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(panel)
+    return () => {
+      observer.disconnect()
+      element.style.removeProperty("--workspace-sheet-observed-height")
+    }
+  }, [compact, root])
   return (
     <div
       ref={root}
