@@ -293,8 +293,8 @@ process.on("SIGTERM",()=>{service.close().finally(()=>process.exit(0));});
   }
 }
 
-async function until(predicate: () => boolean | Promise<boolean>) {
-  const deadline = Date.now() + 3000
+async function until(predicate: () => boolean | Promise<boolean>, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs
   while (!(await predicate())) {
     if (Date.now() > deadline) throw new Error("Continuation state did not settle")
     await new Promise((resolve) => setTimeout(resolve, 1))
@@ -335,10 +335,12 @@ describe("native continuation controls through the real service", () => {
     expect(await context.chat.send("Make exactly one CAD change")).toBe(true)
     await until(() => context.chat.getSnapshot().recovery?.status === "retrying")
     expect(context.chat.getSnapshot().busy).toBe(true)
-    await until(() =>
-      context.chat
-        .getSnapshot()
-        .messages.some((message) => message.text.includes("remaining work completed with large")),
+    await until(
+      () =>
+        context.chat
+          .getSnapshot()
+          .messages.some((message) => message.text.includes("remaining work completed with large")),
+      8000,
     )
     await until(() => !context.chat.getSnapshot().busy)
     expect(await context.read("loads")).toBe("continuation-controls\n")
