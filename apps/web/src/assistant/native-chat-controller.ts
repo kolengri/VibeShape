@@ -529,6 +529,10 @@ export function createNativeChatController({
   function stoppedStartup(automatic: boolean) {
     return automatic && automation?.getSnapshot().recoveryBlocked === true
   }
+  function resumeAuthorizedRecovery(wasBlocked: boolean, blocked: boolean | undefined) {
+    if (wasBlocked && !blocked && state.snapshot?.status === "ready")
+      automaticRecoveryAllowed = true
+  }
   async function ensureAutomationConnection(at: number, automatic: boolean) {
     if (!automation) return isCurrent(at)
     if (!isCurrent(at)) return false
@@ -1243,8 +1247,11 @@ export function createNativeChatController({
       if (unsubscribe) return
       disposed = false
       unsubscribe = bridge.onEvent(event)
+      let wasRecoveryBlocked = automation?.getSnapshot().recoveryBlocked === true
       unsubscribeAutomation = automation?.subscribe(() => {
         const value = automation.getSnapshot()
+        resumeAuthorizedRecovery(wasRecoveryBlocked, value.recoveryBlocked)
+        wasRecoveryBlocked = value.recoveryBlocked === true
         publish({})
         if (value.recoveryBlocked && automaticRecoveryAllowed) void disconnect()
         else if (value.recoveryFailed) failAutomationRecovery()
