@@ -132,7 +132,13 @@ function sameViewerSketchPlaneProjection(
 export { createLatestFramePublisher } from "./latest-frame-publisher"
 export { viewerFaceOrdinal } from "./mesh-selection"
 
+import type { AppearanceColor } from "@vibeshape/domain/part-appearance"
+import type { ViewerMaterial } from "./viewer-appearance"
+
 export type ViewerMesh = Readonly<{
+  /** Authored visual data; geometry and picking identity remain independent. */
+  material?: ViewerMaterial
+  color?: AppearanceColor
   textureSource?: Omit<ViewerMesh, "textureSource">
   appearance?: "datum" | "model" | "preview" | "selection-source"
   /** Changes preview shading without granting committed picking authority. */
@@ -532,6 +538,10 @@ export type ViewerSketchProjectionBounds = Readonly<{
 export type { ViewerSection } from "./section-view"
 
 export type GeometryViewport = Readonly<{
+  selectionCandidatesAt?: (
+    point: Readonly<{ clientX: number; clientY: number }>,
+  ) => readonly ViewerSelection[]
+  selectFace?: (selection: ViewerSelection | null) => void
   cancelInteractions: () => void
   captureImage?: () => Promise<Blob>
   setSurfaceTextureBrush: (brush: ViewerSurfaceTextureBrush | null, active?: boolean) => void
@@ -1685,6 +1695,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     window.addEventListener("pointerup", this.#onTranslationPointerUpCapture, true)
     canvas.addEventListener("pointerup", this.#onPointerUp)
     canvas.addEventListener("pointerleave", this.#onPointerLeave)
+    canvas.addEventListener("contextmenu", this.#onSketchContextMenuCapture, true)
+    canvas.addEventListener("contextmenu", this.#onSketchContextMenuBubble)
     canvas.addEventListener("pointercancel", this.#cancelSurfaceTextureStroke)
     canvas.addEventListener("lostpointercapture", this.#cancelSurfaceTextureStroke)
     document.addEventListener("keydown", this.#surfaceTextureKeyDown, true)
@@ -1754,6 +1766,21 @@ class ThreeGeometryViewport implements GeometryViewport {
   setToolPlane(plane: ViewerToolPlane | null) {
     if (this.#disposed) return
     this.#toolPlaneDecoration.setPlane(plane)
+    this.#render()
+  }
+
+  selectionCandidatesAt(point: Readonly<{ clientX: number; clientY: number }>) {
+    return this.#disposed ? [] : this.#pickSelectionStack(point)
+  }
+
+  selectFace(selection: ViewerSelection | null) {
+    if (this.#disposed) return
+    const unchanged = sameSelection(selection, this.#selection)
+    this.#edgeSelection = null
+    this.#onEdgeSelectionChange(null)
+    this.#setSketchProfileSelections([])
+    this.#setSelection(selection)
+    if (unchanged) this.#onSelectionChange(selection)
     this.#render()
   }
 
@@ -2377,6 +2404,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   dispose() {
+    this.#canvas.removeEventListener("contextmenu", this.#onSketchContextMenuCapture, true)
+    this.#canvas.removeEventListener("contextmenu", this.#onSketchContextMenuBubble)
     this.#hoverPicking.cancel()
     this.#sectionDecoration.dispose()
     this.#toolPlaneDecoration.dispose()
@@ -2679,7 +2708,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#onSketchProfileCandidateStackChange([])
   }
 
-  #pickSelectionStack(event: PointerEvent, eligibleOnly = false): readonly ViewerSelection[] {
+  #pickSelectionStack(
+    event: Readonly<{ clientX: number; clientY: number }>,
+    eligibleOnly = false,
+  ): readonly ViewerSelection[] {
     if (!this.#prepareRaycaster(event)) return []
     const hits: ViewerSelectionHit[] = []
     for (const intersection of this.#raycaster.intersectObjects(this.#surfaceMeshes, false)) {
@@ -2760,7 +2792,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     return hits
   }
 
-  #prepareRaycaster(event: PointerEvent) {
+  #prepareRaycaster(event: Readonly<{ clientX: number; clientY: number }>) {
     const bounds = this.#canvas.getBoundingClientRect()
     if (bounds.width <= 0 || bounds.height <= 0) return false
     this.#pointer.set(
@@ -3816,8 +3848,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onSketchContextMenuCapture = () => {
-    // OrbitControls normally prevents the browser menu. The SVG's own context-menu
-    // owner must receive an uncancelled event so Radix can open the sketch actions.
+    // Let the editor's Radix menu receive an uncancelled event before restoring camera controls.
     this.#sketchContextMenuControlsEnabled = this.#controls.enabled
     this.#controls.enabled = false
   }

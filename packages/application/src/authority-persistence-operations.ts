@@ -50,9 +50,21 @@ import {
   applyDocumentV5ModelEvent,
   applyHistoryRemoveRetainingDependentsCommand,
   applyHistoryRepairCommand,
+  type DocumentV5CommandResult,
   prepareHistoryRepairModel,
   reduceDocumentV5Event,
 } from "@vibeshape/domain/document-v5-commands"
+import { projectDocumentSnapshotV6ToV5 } from "@vibeshape/domain/document-v6"
+import {
+  documentRestoredV6EventSchema,
+  documentV6MetadataCommandSchema,
+} from "@vibeshape/domain/document-v6-command-schemas"
+import {
+  applyDocumentV6MetadataCommand,
+  type DocumentV6CommandResult,
+  reduceDocumentV6Event,
+  wrapDocumentV6AuthoredResult,
+} from "@vibeshape/domain/document-v6-commands"
 import type { FeatureRecordV1 } from "@vibeshape/domain/feature-graph"
 import type { PartAllocation, PartRecord } from "@vibeshape/domain/parts"
 import { z } from "zod"
@@ -66,6 +78,7 @@ export type PartAllocationFactory = (
 ) => PartAllocation
 
 export const documentAuthoredCommandRequestSchema = z.union([
+  documentV6MetadataCommandSchema,
   documentV2MetadataCommandSchema,
   documentV3MetadataCommandSchema,
   documentUpgradeV3CommandSchema,
@@ -122,7 +135,28 @@ export function prepareAuthorityModelEvent(
   base: AuthoredDocumentSnapshot,
   event: VersionedDocumentEvent,
   createPart: PartAllocationFactory,
-) {
+):
+  | ReturnType<typeof applyDocumentV2ModelEvent>
+  | ReturnType<typeof applyDocumentV3ModelEvent>
+  | ReturnType<typeof applyDocumentV4ModelEvent>
+  | DocumentV5CommandResult
+  | DocumentV6CommandResult
+  | ReturnType<typeof authorityFailure> {
+  if (base.schemaVersion === 6) {
+    const result = prepareAuthorityModelEvent(
+      projectDocumentSnapshotV6ToV5(base),
+      event,
+      createPart,
+    )
+    if (!result.ok) return result
+    if (result.event.schemaVersion !== 5 || result.snapshot.schemaVersion !== 5)
+      return authorityFailure("invalid-event", "The V6 model projection lost repair authority.")
+    return wrapDocumentV6AuthoredResult(base, {
+      ok: true,
+      event: result.event,
+      snapshot: result.snapshot,
+    })
+  }
   const model = reduceVersionedDocumentEvent(modelProjection(base), event)
   if (!model.ok) return authorityFailure("invalid-event", draftDiagnosticCause(model.diagnostic))
   const allocationFactory: PartAllocationFactory =
@@ -160,14 +194,13 @@ export function prepareAuthorityRestore(
 ) {
   if (!target)
     return authorityFailure("history-unavailable", "There is no saved change in this direction.")
-  const schema =
-    base.schemaVersion === 5
-      ? documentRestoredV5EventSchema
-      : base.schemaVersion === 4
-        ? documentRestoredV4EventSchema
-        : base.schemaVersion === 3
-          ? documentRestoredV3EventSchema
-          : documentRestoredV2EventSchema
+  const { schema, reduce } = {
+    2: { schema: documentRestoredV2EventSchema, reduce: reduceDocumentV2Event },
+    3: { schema: documentRestoredV3EventSchema, reduce: reduceDocumentV3Event },
+    4: { schema: documentRestoredV4EventSchema, reduce: reduceDocumentV4Event },
+    5: { schema: documentRestoredV5EventSchema, reduce: reduceDocumentV5Event },
+    6: { schema: documentRestoredV6EventSchema, reduce: reduceDocumentV6Event },
+  }[base.schemaVersion]
   const event = schema.safeParse({
     ...request,
     schemaVersion: base.schemaVersion,
@@ -178,14 +211,7 @@ export function prepareAuthorityRestore(
   })
   if (!event.success)
     return authorityFailure("invalid-event", "The authored history request is invalid.")
-  const restored =
-    base.schemaVersion === 5
-      ? reduceDocumentV5Event(base, event.data, target)
-      : base.schemaVersion === 4
-        ? reduceDocumentV4Event(base, event.data, target)
-        : base.schemaVersion === 3
-          ? reduceDocumentV3Event(base, event.data, target)
-          : reduceDocumentV2Event(base, event.data, target)
+  const restored = reduce(base, event.data, target)
   if (!restored.ok) return authorityFailure("invalid-event", restored.diagnostic.message)
   return { ok: true as const, event: event.data, snapshot: restored.snapshot }
 }
@@ -223,7 +249,31 @@ export function prepareAuthorityMetadataCommand(
   command: unknown,
   options: { transactionId?: string | null } = {},
   createPart?: PartAllocationFactory,
-) {
+):
+  | ReturnType<typeof applyDocumentV2Command>
+  | ReturnType<typeof applyDocumentV3Command>
+  | ReturnType<typeof applyDocumentV4Command>
+  | DocumentV5CommandResult
+  | DocumentV6CommandResult
+  | ReturnType<typeof authorityFailure> {
+  const appearance = documentV6MetadataCommandSchema.safeParse(command)
+  if (appearance.success) return applyDocumentV6MetadataCommand(base, appearance.data, options)
+  if (base.schemaVersion === 6) {
+    const result = prepareAuthorityMetadataCommand(
+      projectDocumentSnapshotV6ToV5(base),
+      command,
+      options,
+      createPart,
+    )
+    if (!result.ok) return result
+    if (result.snapshot.schemaVersion !== 5 || result.event.schemaVersion !== 5)
+      return authorityFailure("invalid-event", "V6 authored edits must preserve repair authority.")
+    return wrapDocumentV6AuthoredResult(base, {
+      ok: true,
+      snapshot: result.snapshot,
+      event: result.event,
+    })
+  }
   const history = prepareHistoryCommand(base, command, options, createPart)
   if (history) return history
   const sourceCommand = documentV4CommandSchema.safeParse(command)

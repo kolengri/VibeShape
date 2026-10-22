@@ -29,6 +29,15 @@ Choose one model coordinate frame before authoring: identify the origin, princip
 
 Author sketches, primitive origins and feature axes in their intended locations when the advertised contracts support them. Add Placement only for a real downstream positioning or orientation requirement, and explain that purpose in the feature label. Check a sketch-line axis, supported datum or explicit primitive origin before creating geometry at zero and immediately moving it. Do not add repeated Placement features to make the model sit beside the origin or improve its viewport composition; use camera Fit instead. Do not remove an existing Placement until inspecting its consumers, references and exact before/after bounds proves that the design intent is preserved.
 
+## Manual editor operations
+
+The editor also offers planar **Press Pull** and saved part **Material and Color** through viewport
+selection actions. They currently have no named MCP authoring tools; do not invent tool names or
+substitute extrusion-distance editing for direct face editing. Existing MCP geometry/history edits
+preserve V6 part appearance by authored PartId, and native backups retain it. Appearance presets are
+visual metadata, not structural material or density assignments. Inspect the live schemas before
+claiming a new transport capability.
+
 ## Registered primitives
 
 Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete

@@ -1,3 +1,4 @@
+import { appearanceColorSchema } from "@vibeshape/domain/part-appearance"
 import {
   type BufferAttribute,
   type BufferGeometry,
@@ -161,6 +162,9 @@ export class ModelMeshPresentation {
         previous.edges.material = materials.edges
         previous.ownsMaterials = materials.owned
       }
+      if (previous.surface.material instanceof MeshStandardMaterial) {
+        this.#updateMaterial(previous.surface.material, source)
+      }
       refreshGeometry(previous.surface, source)
       if (previous.textureSource && source.textureSource) {
         refreshGeometry(previous.textureSource.surface, source.textureSource)
@@ -215,15 +219,40 @@ export class ModelMeshPresentation {
     return null
   }
 
-  #modelMaterial(source: ViewerMesh) {
-    return new MeshStandardMaterial({
-      color: new Color(viewerBodyColor(source.featureId)),
+  #updateMaterial(material: MeshStandardMaterial, source: ViewerMesh) {
+    const settings = this.#materialSettings(source)
+    const transparent = settings.opacity < 1
+    if (material.transparent !== transparent) material.needsUpdate = true
+    material.color.set(settings.color)
+    material.roughness = settings.roughness
+    material.metalness = settings.metalness
+    material.opacity = settings.opacity
+    material.transparent = transparent
+    material.depthWrite = !transparent
+  }
+
+  #materialSettings(source: ViewerMesh) {
+    const temporary = source.appearance === "preview" || source.appearance === "datum"
+    const appearance = temporary ? undefined : source.material
+    const settings = appearance ?? {
+      color: viewerBodyColor(source.featureId),
       roughness: 0.72,
       metalness: 0.04,
+      opacity: 1,
+    }
+    const color = temporary ? undefined : appearanceColorSchema.safeParse(source.color)
+    return {
+      ...settings,
+      color: color?.success ? color.data : settings.color,
+      opacity: source.appearance === "selection-source" ? 0.12 : settings.opacity,
+    }
+  }
+
+  #modelMaterial(source: ViewerMesh) {
+    const material = new MeshStandardMaterial({
       side: source.appearance === "preview" ? DoubleSide : FrontSide,
-      ...(source.appearance === "selection-source"
-        ? { transparent: true, opacity: 0.12, depthWrite: false }
-        : {}),
     })
+    this.#updateMaterial(material, source)
+    return material
   }
 }

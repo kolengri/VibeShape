@@ -41,6 +41,7 @@ import {
   readPatternFeatureParametersV2,
 } from "./part-design-pattern"
 import { readPlacementFeatureParameters } from "./part-design-placement"
+import { readPressPullFeatureParameters } from "./part-design-press-pull"
 import { readShellFeatureParameters } from "./part-design-shell"
 import {
   readSplitFeatureParameters,
@@ -149,6 +150,7 @@ function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation
   if (boolean) return boolean
   const target = [
     readThreadFeatureParameters,
+    readPressPullFeatureParameters,
     readShellFeatureParameters,
     readChamferFeatureParametersV3,
     readPlacementFeatureParameters,

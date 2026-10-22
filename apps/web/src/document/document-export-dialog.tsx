@@ -270,6 +270,8 @@ function ExportDialogTrigger({
 }
 
 type ExportContentProps = {
+  initialPartId?: string | undefined
+  meshOnly?: boolean | undefined
   controller: DocumentControllerState
   preferredFormat: GeometryExportFormat
   onClose: () => void
@@ -280,6 +282,8 @@ type ExportContentProps = {
 
 function useExportSession({
   controller,
+  initialPartId,
+  meshOnly,
   preferredFormat,
   onClose,
   onExported,
@@ -287,7 +291,7 @@ function useExportSession({
 }: ExportContentProps) {
   const t = useTranslations("app.export")
   const [showPreparation, setShowPreparation] = useState(false)
-  const [exportPart, setExportPart] = useState("all")
+  const [exportPart, setExportPart] = useState(() => initialPartId ?? "all")
   const meshQualityChoice = useViewerPreferences((state) => state.exportMeshQuality)
   const setMeshQualityChoice = useViewerPreferences((state) => state.actions.setExportMeshQuality)
   const [slicerPending, setSlicerPending] = useState(false)
@@ -316,10 +320,11 @@ function useExportSession({
   const preparationDisabled = exporting || !hasGeometry
   const pending = exporting || printPending
   const actionDisabled = preparationDisabled || printPending
-  const destination = useExportDestination(preferredFormat, handoff)
+  const destination = useExportDestination(preferredFormat, handoff, meshOnly)
 
   return {
     ...destination,
+    meshOnly,
     showPreparation,
     setShowPreparation,
     exportPart,
@@ -339,6 +344,7 @@ function useExportSession({
 function useExportDestination(
   preferredFormat: GeometryExportFormat,
   handoff: ReturnType<typeof useSlicerHandoff>,
+  meshOnly = false,
 ) {
   const rememberedDestination = useViewerPreferences((state) => state.exportDestination)
   const lastExportFormat = useViewerPreferences((state) => state.lastExportFormat)
@@ -346,7 +352,8 @@ function useExportDestination(
   const [destination, changeDestination] = useState<ExportDestination>(() =>
     handoff.native ? rememberedDestination : "file",
   )
-  const fileFormat = lastExportFormat ?? preferredFormat
+  const rememberedFormat = lastExportFormat ?? preferredFormat
+  const fileFormat = meshOnly && rememberedFormat === "step" ? "stl" : rememberedFormat
   const setDestination = (value: ExportDestination) => {
     changeDestination(value)
     if (handoff.native) actions.setExportDestination(value)
@@ -395,6 +402,7 @@ function ExportOriginalModelFields({
       {/* These selectors report operation failures separately, so empty error slots need no space. */}
       <div className="grid gap-2 [&_[data-slot=field-error]:not([role=alert])]:hidden">
         <DocumentExportOptions
+          meshOnly={session.meshOnly}
           destination={session.destination}
           onDestinationChange={session.setDestination}
           format={session.format}
@@ -508,6 +516,8 @@ function ExportDialogContent(props: ExportContentProps) {
 
 export function DocumentExportDialog({
   controller,
+  initialPartId,
+  meshOnly,
   preferredFormat,
   showTrigger = true,
   open: controlledOpen,
@@ -515,6 +525,8 @@ export function DocumentExportDialog({
   onCloseAutoFocus,
 }: {
   controller: DocumentControllerState
+  initialPartId?: string | undefined
+  meshOnly?: boolean | undefined
   preferredFormat?: GeometryExportFormat
   showTrigger?: boolean
   open?: boolean
@@ -547,6 +559,8 @@ export function DocumentExportDialog({
           <ExportDialogContent
             key={controller.authoredSnapshot?.id ?? controller.report?.snapshot.id}
             controller={controller}
+            initialPartId={initialPartId}
+            meshOnly={meshOnly}
             preferredFormat={preferredFormat ?? storedPreferredFormat}
             onClose={() => setOpen(false)}
             onSlicerOpened={(message) => {

@@ -40,6 +40,7 @@ export function DocumentExportFormatField({
 }
 
 export function DocumentExportOptions({
+  meshOnly = false,
   destination,
   onDestinationChange,
   format,
@@ -47,6 +48,7 @@ export function DocumentExportOptions({
   disabled,
   native,
 }: {
+  meshOnly?: boolean | undefined
   destination: ExportDestination
   onDestinationChange: (destination: ExportDestination) => void
   format: GeometryExportFormat
@@ -74,7 +76,7 @@ export function DocumentExportOptions({
           format={format}
           onFormatChange={onFormatChange}
           disabled={disabled}
-          meshOnly={destination === "slicer"}
+          meshOnly={meshOnly || destination === "slicer"}
         />
       </div>
       <p className="text-xs text-muted-foreground">

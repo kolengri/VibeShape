@@ -48,6 +48,7 @@ import {
 } from "./part-design-mirror"
 import { patternFeatureTypeHandler, patternFeatureTypeHandlerV2 } from "./part-design-pattern"
 import { placementFeatureTypeHandler } from "./part-design-placement"
+import { pressPullFeatureTypeHandler } from "./part-design-press-pull"
 import { shellFeatureTypeHandler, shellFeatureTypeHandlerV2 } from "./part-design-shell"
 import { splitFeatureTypeHandler, splitFeatureTypeHandlerV2 } from "./part-design-split"
 import { sweepFeatureTypeHandler } from "./part-design-sweep"
@@ -2025,6 +2026,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   mirrorFeatureTypeHandlerV3,
   patternFeatureTypeHandler,
   patternFeatureTypeHandlerV2,
+  pressPullFeatureTypeHandler,
   shellFeatureTypeHandler,
   shellFeatureTypeHandlerV2,
   splitFeatureTypeHandler,
