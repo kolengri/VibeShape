@@ -28,10 +28,15 @@ for (const width of [800, 1024, 1440]) {
     const form = page.getByRole("form", { name: "Create box", exact: true })
     const draft = form.getByRole("combobox", { name: "Width", exact: true })
     await draft.fill("77")
+    const canvas = page.locator(".workspace-viewport canvas").first()
+    const originalCanvas = await canvas.elementHandle()
     await page.getByRole("button", { name: "AI chat", exact: true }).click()
     const chat = page.getByRole("complementary", { name: "AI chat", exact: true })
     await expect(chat).toBeVisible()
     await expect(form).toBeVisible()
+    expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
+      true,
+    )
     await expect
       .poll(async () => {
         const taskBounds = await form.boundingBox()
@@ -56,7 +61,6 @@ for (const width of [800, 1024, 1440]) {
     expect(timelineBounds.x + timelineBounds.width).toBeCloseTo(chatBounds.x - 8, 0)
     const toolbar = page.locator("nav[data-sketch-mode]")
     const toolbarBounds = await toolbar.boundingBox()
-    const canvas = page.locator(".workspace-viewport canvas").first()
     const canvasBounds = await canvas.boundingBox()
     if (!toolbarBounds || !canvasBounds) throw new Error("Editor must have measurable bounds.")
     expect(toolbarBounds.x + toolbarBounds.width).toBeCloseTo(chatBounds.x - 8, 0)
@@ -67,7 +71,6 @@ for (const width of [800, 1024, 1440]) {
     )
     if (width === 1440)
       await page.screenshot({ path: test.info().outputPath("floating-tools-with-docked-chat.png") })
-    const originalCanvas = await canvas.elementHandle()
     await timeline.getByRole("treeitem", { name: "History", exact: true }).click()
     await expect
       .poll(async () => {
