@@ -75,7 +75,8 @@ On Windows, the helper runs beneath an inbox PowerShell/.NET supervisor assigned
 kill-on-close Job Object before launching the agent. Its descendants inherit job membership;
 leader exit, cancellation and host termination close the owning process and terminate the job.
 Jev waits for a private per-launch readiness receipt on stderr before sending ACP initialization;
-supervisor setup remains within the request's existing deadline.
+supervisor setup remains within the request's existing deadline. Setup cmdlets receive explicit
+pipeline input so they do not consume the open stdin stream reserved for ACP.
 The Windows local-agent connection probe allows up to 50 seconds within the configured request
 timeout, with a 60-second desktop deadline to include startup and cleanup. This accommodates
 cold PowerShell/.NET setup; API and other-platform probe budgets remain 20 seconds in Jev.
