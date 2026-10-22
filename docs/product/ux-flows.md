@@ -727,6 +727,9 @@ The left tree supports Shift range selection and Ctrl/Cmd toggle selection for a
 
 Variables opens a modal from its existing tree entry, retaining the model behind it and returning focus on close. Creating a sketch starts plane selection directly. Redundant Model/Sketch toolbar switches are omitted. Dragging the orientation inset orbits around the existing camera target; short axis clicks choose standard views. Cancellation restores ordinary navigation, and normal sketch-projection locks remain authoritative.
 
+The browser hides the Sketches group when the document has no sketches. Creating a sketch remains
+available in the top toolbar; the browser does not repeat that action in an empty-state panel.
+
 ### Direct part manipulation
 
 Placement exposes translation handles and an X/Y/Z rotation mode at the current draft pose. Split
