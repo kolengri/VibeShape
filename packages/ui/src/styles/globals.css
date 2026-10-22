@@ -15,6 +15,24 @@
   --icon-danger-fill: #f7e1de;
   --icon-success-stroke: #2e8065;
   --icon-success-fill: #deeee6;
+  --icon-material-top-start: #eff7ff;
+  --icon-material-top-end: #c8ddf2;
+  --icon-material-front-start: #b6d3ee;
+  --icon-material-front-end: #82afd8;
+  --icon-material-side-start: #7eacd3;
+  --icon-material-side-end: #5385b5;
+  --icon-geometry-ink: #5784b0;
+  --icon-geometry-recess: #547ca2;
+  --icon-text: #52657d;
+  --icon-indicator-check: #2e8065;
+  --icon-success-start: #eef8f2;
+  --icon-success-end: #c7e0d3;
+  --icon-danger-start: #fff1ef;
+  --icon-danger-end: #efcbc7;
+  --icon-warning-start: #fff2dd;
+  --icon-warning-end: #efcf99;
+  --icon-amber-start: #f9d9aa;
+  --icon-amber-end: #efb56b;
   --background: oklch(0.985 0.002 247.84);
   --foreground: oklch(0.18 0.006 285.89);
   --card: oklch(1 0 0);
@@ -52,6 +70,15 @@
 
 .dark {
   color-scheme: dark;
+  --icon-material-top-start: #f2f8ff;
+  --icon-material-top-end: #cfe2f6;
+  --icon-material-front-start: #c4ddf4;
+  --icon-material-front-end: #8ebce3;
+  --icon-material-side-start: #8bb6dc;
+  --icon-material-side-end: #6597c7;
+  --icon-geometry-ink: #9cc6eb;
+  --icon-text: #d2dfed;
+  --icon-indicator-check: #78b89e;
   --background: oklch(0.16 0.006 285.89);
   --foreground: oklch(0.94 0.004 286.32);
   --card: oklch(0.19 0.006 285.89);

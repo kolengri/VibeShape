@@ -25,6 +25,23 @@ const palette: Readonly<Record<string, string>> = {
   "#f7e1de": "danger-fill",
   "#2e8065": "success-stroke",
   "#deeee6": "success-fill",
+  "#eff7ff": "material-top-start",
+  "#c8ddf2": "material-top-end",
+  "#b6d3ee": "material-front-start",
+  "#82afd8": "material-front-end",
+  "#7eacd3": "material-side-start",
+  "#5385b5": "material-side-end",
+  "#5784b0": "geometry-ink",
+  "#547ca2": "geometry-recess",
+  "#52657d": "text",
+  "#eef8f2": "success-start",
+  "#c7e0d3": "success-end",
+  "#fff1ef": "danger-start",
+  "#efcbc7": "danger-end",
+  "#fff2dd": "warning-start",
+  "#efcf99": "warning-end",
+  "#f9d9aa": "amber-start",
+  "#efb56b": "amber-end",
 }
 const attributes: Readonly<Record<string, string>> = {
   "fill-rule": "fillRule",
@@ -32,6 +49,8 @@ const attributes: Readonly<Record<string, string>> = {
   "stroke-linecap": "strokeLinecap",
   "stroke-linejoin": "strokeLinejoin",
   "stroke-dasharray": "strokeDasharray",
+  "stroke-opacity": "strokeOpacity",
+  "stop-color": "stopColor",
 }
 const aliases = new Map<string, string>()
 const drawings: string[] = []
@@ -52,20 +71,37 @@ for (const icon of catalog) {
     .replace(/<\/svg>\s*$/, "")
     .replace(/<title>[^<]*<\/title>/, "")
     .replace(/<defs>\s*<\/defs>/, "")
-  if (/<\/?(?!g\b|path\b|rect\b|circle\b|ellipse\b)[a-z]/i.test(drawing))
+  if (
+    /<\/?(?!g\b|path\b|rect\b|circle\b|ellipse\b|defs\b|linearGradient\b|radialGradient\b|stop\b|mask\b)[a-z]/i.test(
+      drawing,
+    )
+  )
     throw new Error(`Unsupported SVG element: ${icon.id}`)
   drawing = drawing
-    .replace(/(fill|stroke)="(#[a-f0-9]{6})"/gi, (_, attribute: string, color: string) => {
-      const token = palette[color.toLowerCase()]
-      if (!token) throw new Error(`Unknown icon color ${color}: ${icon.id}`)
-      return `${attribute}="var(--icon-${token}, ${color})"`
-    })
     .replace(
-      /\b(fill-rule|stroke-width|stroke-linecap|stroke-linejoin|stroke-dasharray)=/g,
+      /(fill|stroke|stop-color)="(#[a-f0-9]{6})"/gi,
+      (_, attribute: string, color: string) => {
+        const token =
+          icon.id === "indicator-check" && color === "#2e8065"
+            ? "indicator-check"
+            : palette[color.toLowerCase()]
+        if (!token) throw new Error(`Unknown icon color ${color}: ${icon.id}`)
+        return `${attribute}="var(--icon-${token}, ${color})"`
+      },
+    )
+    .replace(
+      /\b(fill-rule|stroke-width|stroke-linecap|stroke-linejoin|stroke-dasharray|stroke-opacity|stop-color)=/g,
       (attribute) => `${attributes[attribute.slice(0, -1)]}=`,
     )
+    .replace(/style="mask-type:luminance"/g, 'style={{ maskType: "luminance" }}')
+    .replace(/id="([^"]+)"/g, (_, id: string) => `id={\`\${instanceId}-${id}\`}`)
+    .replace(
+      /(fill|stroke|mask)="url\(#([^)]+)\)"/g,
+      (_, attribute: string, id: string) => `${attribute}={\`url(#\${instanceId}-${id})\`}`,
+    )
+  const scoped = /\bid=\{/.test(drawing)
   drawings.push(
-    `export const ${name} = /* @__PURE__ */ coloredIcon(${JSON.stringify(icon.id)}, ${drawing})`,
+    `export const ${name} = /* @__PURE__ */ coloredIcon(${JSON.stringify(icon.id)}, ${scoped ? `(instanceId) => (<>${drawing}</>)` : drawing})`,
   )
 }
 const banner = "// Generated from packages/ui/src/icons/svg by bun run icons:generate.\n"

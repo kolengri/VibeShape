@@ -612,7 +612,7 @@
   {
     "id": "cancel",
     "label": "Cancel",
-    "legacy": ["X"]
+    "legacy": []
   },
   {
     "id": "add",
@@ -858,5 +858,10 @@
     "id": "stop",
     "label": "Stop",
     "legacy": []
+  },
+  {
+    "id": "close",
+    "label": "Close",
+    "legacy": ["X"]
   }
 ]

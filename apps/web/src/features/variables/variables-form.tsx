@@ -11,7 +11,7 @@ import {
 import { useFormatter } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
-import { Check, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
+import { CancelIcon, Check, Pencil, Trash2 } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import {
@@ -150,7 +150,7 @@ function VariableRowActions({
           title={copy.cancelRename}
           onClick={onCancelRename}
         >
-          <X aria-hidden="true" />
+          <CancelIcon aria-hidden="true" />
         </Button>
         <Button
           type="button"

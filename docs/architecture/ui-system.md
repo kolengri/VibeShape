@@ -118,7 +118,7 @@ VibeShape is a dense tool, not a marketing dashboard:
 - compact dimensions: 32–36 px command rows, 28–32 px panel controls, 12–14 px body text; a horizontally scrolling sketch toolbar reserves a separate native scrollbar lane below its controls;
 - smaller radius than consumer cards, while following one radius scale;
 - panels separated by borders and resizable separators, not nested cards;
-- no gradients or glassmorphism in the working area;
+- no gradients or glassmorphism on editor surfaces; Frosted icon materials remain confined to glyphs;
 - source-owned colored icons with shared optical sizing and palette; see [the icon contract](../product/icon-design.md);
 - the viewport remains visually dominant.
 

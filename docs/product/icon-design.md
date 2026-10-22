@@ -1,7 +1,7 @@
 # UI icon family
 
 VibeShape uses original colored SVG icons for commands, menus, object/history presentation, FDM
-tools and shared controls. The approved V5 family is the baseline. Brand marks and vendor logos
+tools and shared controls. The approved Frosted family is the baseline. Brand marks and vendor logos
 remain separate assets.
 
 ## Source and generation
@@ -10,12 +10,16 @@ remain separate assets.
 - `packages/ui/src/icons/catalog.json` owns stable IDs, English labels and legacy export aliases.
 - `scripts/generate-ui-icons.ts` produces `src/generated/colored-icons.tsx` and the public `icons.tsx` barrel.
 - `colored-icon.tsx` supplies a decorative SVG wrapper, host sizing and SVG props/ref support.
+  Each instance scopes its gradient and mask IDs with React `useId`; references must resolve inside
+  that SVG, including repeated icons in toolbars, menus and hidden panels.
 - `cad-icons.tsx` preserves the original CAD import surface as compatibility re-exports.
 
 Run `bun run icons:generate` after a source/catalog edit. `bun run icons:check` detects stale generated
 code and runs through `bun run lint`, including the existing CI lint step. Generated JSX uses shared `--icon-*` tokens with the
 approved source colors as fallbacks. It needs no runtime XML parser, external font, raster image,
 network asset request or SVG loader plugin. Pure factories allow unused drawings to be tree-shaken.
+Native gradients, luminance masks and material opacity remain editable in the SVG masters. Their
+JSX attributes and instance-local references are generated rather than patched in components.
 
 Import application icons through `@vibeshape/ui/components/icons`, or `#components/icons` inside
 shared UI. Do not introduce direct Lucide imports or another local action-glyph family. The separate
@@ -30,18 +34,28 @@ neighbors. Width, height or pixel area alone cannot establish optical equivalenc
 
 | Role | Shared tokens | Approved colors |
 | --- | --- | --- |
-| Geometry contour/material | `--icon-geometry-stroke`, `--icon-geometry-highlight`, `--icon-geometry-fill`, `--icon-geometry-shade` | `#326db2`, `#e4eef9`, `#bfd4ee`, `#8fb2dc` |
+| Top face | `--icon-material-top-start`, `--icon-material-top-end` | Light: `#eff7ff` → `#c8ddf2`; dark: `#f2f8ff` → `#cfe2f6` |
+| Front face | `--icon-material-front-start`, `--icon-material-front-end` | Light: `#b6d3ee` → `#82afd8`; dark: `#c4ddf4` → `#8ebce3` |
+| Side face | `--icon-material-side-start`, `--icon-material-side-end` | Light: `#7eacd3` → `#5385b5`; dark: `#8bb6dc` → `#6597c7` |
+| Construction / recess | `--icon-geometry-ink`, `--icon-geometry-recess` | Ink: light `#5784b0`, dark `#9cc6eb`; recess: `#547ca2` |
 | Action / operation | `--icon-action-stroke`, `--icon-action-highlight`, `--icon-action-fill` | `#cd7b24`, `#fae5c9`, `#f1bc77` |
 | Destructive / error | `--icon-danger-stroke`, `--icon-danger-fill` | `#ba534d`, `#f7e1de` |
 | Success / confirmation | `--icon-success-stroke`, `--icon-success-fill` | `#2e8065`, `#deeee6` |
 
-Keep the palette across light/dark themes; do not recolor artwork with enclosing text color. Host
+Use the shared light/dark material tokens; do not recolor artwork with enclosing text color. Host
 surfaces, focus rings, selected state and disabled opacity retain their existing ownership. Selection
 cannot rely on hue alone. Menu indicators use a simple green check; confirmation uses its full icon.
+Status surfaces use the shared success, danger, warning and amber gradient tokens. Neutral closing,
+dismissing and clearing use `CloseIcon` (also the legacy `X` export); explicit operation cancellation
+uses `CancelIcon` and retains red status semantics.
 
-At 20 px, filled contours are 1.125 px, primary strokes 1.3125 px and secondary strokes 0.875 px.
-Compensate for optical/nested transforms. Simplify narrow facets, tiny badges, doubled seams and
-glints that become noise. Folder variants share a single-layer silhouette and an interior plus.
+Describe volume through soft blue faces and tonal depth, with opaque amber working faces and action
+cues. Avoid perimeter outlines on filled controls, Chamfer and Pyramid. Retain only meaningful
+construction lines and dashed sketch planes. Section planes pass through the center of translucent
+cubes. The Frosted effect uses static gradients and opacity, without background refraction.
+
+Compensate functional lines for optical/nested transforms. Simplify narrow facets, tiny badges,
+doubled seams and glints that become noise. Folder variants share one silhouette and an interior plus.
 
 Distinct concepts need distinct silhouettes or operation cues. Descriptors retain semantic icon
 identities across toolbar, palette and shortcuts. History reads validated FDM parameters and shares

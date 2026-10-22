@@ -8,7 +8,7 @@ import type {
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { FieldError } from "@vibeshape/ui/components/field"
-import { Check, X } from "@vibeshape/ui/components/icons"
+import { CancelIcon, Check } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
@@ -339,7 +339,7 @@ function DimensionEditorActions({
             className="text-muted-foreground"
             onClick={onCancel}
           >
-            <X aria-hidden="true" />
+            <CancelIcon aria-hidden="true" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{t("dimensionCancel")}</TooltipContent>
