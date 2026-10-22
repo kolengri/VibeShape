@@ -201,10 +201,16 @@ Project thumbnails render the complete committed surface mesh through the shared
 preview renderer, with depth-tested surfaces, one fitted isometric camera, and no tessellation outlines.
 New thumbnails are 240 × 160 PNG images bounded to 128 KiB. The image payload validates its media
 type, PNG signature, dimensions, and chunk boundaries; the renderer-owned restricted SVG grammar
-remains readable for older records. Opening a project regenerates its preview at the current revision,
-without a semantic event or storage migration. Stale asynchronous renders are discarded; rendering or
+remains readable for older records. Opening a project generates its preview at the current revision,
+without a semantic event or storage migration. Successful generation is deduplicated by retained
+snapshot identity across editor remounts; a new revision or reopened runtime can generate a fresh
+preview. Stale asynchronous renders are discarded; rendering or
 preview persistence failures remain best effort and cannot block the authoritative viewport. Catalog
 count and aggregate-byte limits still apply. Model-preview MCP images retain their existing contract.
+
+Project-tab reconciliation reads validated project metadata without loading thumbnail records. The
+library still includes exact-revision previews by default. Opening an explicit project goes directly
+through that document's authoritative recovery path, without a whole-catalog preflight read.
 
 ## Multiple tabs
 

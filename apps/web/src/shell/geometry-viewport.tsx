@@ -1073,12 +1073,16 @@ function useSelectionCandidateEvents(active: boolean) {
   return { commit, onChange, onCommit, stack }
 }
 
+// Retained snapshots keep this deduplication alive across editor remounts without retaining projects.
+const completedProjectThumbnails = new WeakSet<
+  NonNullable<DocumentControllerState["report"]>["snapshot"]
+>()
+
 function useProjectThumbnail(
   controller: DocumentControllerState,
   meshes: readonly ViewerMesh[],
   enabled = true,
 ) {
-  const completedRevisionRef = useRef<string | null>(null)
   const retryCountRef = useRef(new Map<string, number>())
   const [retryAttempt, requestRetry] = useState(0)
 
@@ -1089,7 +1093,7 @@ function useProjectThumbnail(
     const snapshot = controller.report?.snapshot
     if (!enabled || controller.status !== "ready" || !snapshot || meshes.length === 0) return
     const revisionKey = `${snapshot.id}:${snapshot.revision}`
-    if (completedRevisionRef.current === revisionKey) return
+    if (completedProjectThumbnails.has(snapshot)) return
 
     const retry = () => {
       const retryCount = retryCountRef.current.get(revisionKey) ?? 0
@@ -1103,13 +1107,13 @@ function useProjectThumbnail(
         .then(async (thumbnail) => {
           if (cancelled) return
           if (!thumbnail) {
-            completedRevisionRef.current = revisionKey
+            completedProjectThumbnails.add(snapshot)
             return
           }
           const result = await saveActiveProjectThumbnail(snapshot.id, snapshot.revision, thumbnail)
           if (cancelled) return
           if (result.ok) {
-            completedRevisionRef.current = revisionKey
+            completedProjectThumbnails.add(snapshot)
             retryCountRef.current.delete(revisionKey)
           } else {
             retry()

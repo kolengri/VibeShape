@@ -942,10 +942,17 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  async listProjects(): Promise<PersistenceResult<readonly LocalProjectSummary[]>> {
+  async listProjects({
+    includeThumbnails = true,
+  }: {
+    includeThumbnails?: boolean
+  } = {}): Promise<PersistenceResult<readonly LocalProjectSummary[]>> {
     try {
       const projects = await authoritativeProjectCatalog(this.database)
-      return { ok: true, value: await summarizeProjects(this.database, projects) }
+      return {
+        ok: true,
+        value: await summarizeProjects(this.database, projects, includeThumbnails),
+      }
     } catch (error) {
       return { ok: false, diagnostic: classifyPersistenceError(error) }
     }
