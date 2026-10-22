@@ -279,7 +279,7 @@ describe("embedded project access", () => {
       automatic: true,
       signal: new AbortController().signal,
     })
-    await vi.advanceTimersByTimeAsync(3000)
+    await vi.advanceTimersByTimeAsync(15_000)
     expect(await connected).toBe(true)
     expect(connection.getSnapshot()).toMatchObject({
       connected: true,
@@ -363,7 +363,7 @@ describe("embedded project access", () => {
       mocks.request.mockClear()
       useNativeProject()
       await ready()
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
       expect(connection.getSnapshot()).toMatchObject({
         connected: false,
         recovering: true,
@@ -375,7 +375,7 @@ describe("embedded project access", () => {
       registered = true
       if (next === "Stop AI") await connection.disable()
       await connection.status()
-      await vi.advanceTimersByTimeAsync(10_000)
+      await vi.advanceTimersByTimeAsync(30_000)
       expect(connection.getSnapshot().connected).toBe(next === "registered")
       expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(
         next === "registered" ? 1 : 0,
@@ -430,10 +430,10 @@ describe("embedded project access", () => {
       error: false,
     })
     expect(connection.currentActor()).toBeNull()
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryAttempt: 1 })
     expect(mocks.request.mock.calls.some(([path]) => path === "/connect")).toBe(false)
-    await vi.advanceTimersByTimeAsync(2000)
+    await vi.advanceTimersByTimeAsync(10_000)
     expect(connection.getSnapshot()).toMatchObject({
       connected: true,
       recovering: false,
@@ -493,7 +493,7 @@ describe("embedded project access", () => {
       },
     })
     await ready()
-    await vi.advanceTimersByTimeAsync(23_000)
+    await vi.advanceTimersByTimeAsync(135_000)
     expect(connection.getSnapshot()).toMatchObject({
       connected: false,
       recovering: false,
@@ -559,12 +559,12 @@ describe("embedded project access", () => {
       outage = true
       await connection.status()
       expect(connection.getSnapshot()).toMatchObject({ available: false, client })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
       expect(connection.getSnapshot().recoveryAttempt).toBe(1)
       if (discovery === "restored") {
         outage = false
         await connection.status()
-        await vi.advanceTimersByTimeAsync(2000)
+        await vi.advanceTimersByTimeAsync(10_000)
         expect(connection.getSnapshot()).toMatchObject({
           connected: true,
           recovering: false,
@@ -576,7 +576,7 @@ describe("embedded project access", () => {
         expect(connects).toHaveLength(2)
         expect(connects.every((call) => call[4] === id)).toBe(true)
       } else {
-        await vi.advanceTimersByTimeAsync(22_000)
+        await vi.advanceTimersByTimeAsync(130_000)
         expect(connection.getSnapshot()).toMatchObject({
           connected: false,
           recovering: false,
@@ -608,8 +608,10 @@ describe("embedded project access", () => {
       })
       await vi.advanceTimersByTimeAsync(500)
       expect(connection.getSnapshot()).toMatchObject({ connected: false, recovering: true })
-      for (const [index, delay] of [1000, 2000, 4000, 8000, 8000].entries()) {
-        await vi.advanceTimersByTimeAsync(delay)
+      for (const [index, delay] of [5000, 10_000, 20_000, 40_000, 60_000].entries()) {
+        await vi.advanceTimersByTimeAsync(delay - 1)
+        expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(index)
+        await vi.advanceTimersByTimeAsync(1)
         expect(mocks.request.mock.calls.filter(([path]) => path === "/resume")).toHaveLength(
           index + 1,
         )
@@ -628,7 +630,7 @@ describe("embedded project access", () => {
       unavailable = false
       expect(await connection.retryRecovery({ automatic })).toBe(true)
       expect(await connection.retryRecovery()).toBe(false)
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
       expect(connection.getSnapshot()).toMatchObject({
         connected: true,
         error: false,
@@ -636,7 +638,7 @@ describe("embedded project access", () => {
         recoveryFailed: false,
       })
       unavailable = true
-      await vi.advanceTimersByTimeAsync(1500)
+      await vi.advanceTimersByTimeAsync(5500)
       expect(connection.getSnapshot().recoveryAttempt).toBe(1)
       await connection.disable()
       await vi.advanceTimersByTimeAsync(60_000)
@@ -685,7 +687,7 @@ describe("embedded project access", () => {
         if (path === "/poll") return { ok: false, status, data: {} }
         return original?.(path, ...args)
       })
-      await vi.advanceTimersByTimeAsync(30_000)
+      await vi.advanceTimersByTimeAsync(140_000)
       expect(connection.getSnapshot()).toMatchObject({
         connected: false,
         recovering: false,
@@ -727,7 +729,7 @@ describe("embedded project access", () => {
       await vi.advanceTimersByTimeAsync(1000)
       expect(mocks.execute).toHaveBeenCalledTimes(1)
       acknowledgement.resolve({ ok: false, status, data: {} })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
       expect(connection.getSnapshot()).toMatchObject({ connected: true, busy: false, error: false })
       expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(2)
       expect(mocks.execute).toHaveBeenCalledTimes(1)
@@ -898,7 +900,7 @@ describe("embedded project access", () => {
       mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
         path === "/status" && args[2] !== true ? validation.promise : original?.(path, ...args),
       )
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
       expect(mocks.request).toHaveBeenCalledWith("/status", {}, undefined, undefined, id)
       if (owner === "replacement owner") {
         useNativeProject()
