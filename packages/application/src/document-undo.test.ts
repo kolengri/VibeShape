@@ -1,13 +1,17 @@
 import { describe, expect, it } from "bun:test"
 import {
   applyDocumentCommand,
+  boxFeatureType,
   canonicalJson,
+  createLengthQuantity,
   type DocumentSnapshotV1,
+  featureRecordSchema,
   projectDocumentSnapshotV1ToV0,
   replayVersionedDocumentEvents,
   sessionIdSchema,
   type VersionedDocumentEvent,
 } from "@vibeshape/domain"
+import { pressPullFeatureType } from "@vibeshape/domain/part-design-press-pull"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import {
   createPersistentDocumentSession,
@@ -184,6 +188,92 @@ async function harness() {
 }
 
 describe("committed document undo", () => {
+  it("undoes and redoes Press Pull creation and distance edits as ordinary saved features", async () => {
+    const h = await harness()
+    const sourceId = id(500),
+      featureId = id(501)
+    const source = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: sourceId,
+      type: boxFeatureType.type,
+      parameters: {
+        width: createLengthQuantity(20),
+        depth: createLengthQuantity(12),
+        height: createLengthQuantity(10),
+        centered: false,
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    })
+    expect(
+      (
+        await h.session.commit(
+          h.command("org.vibeshape.feature.add", h.session.snapshot.revision, { feature: source }),
+        )
+      ).ok,
+    ).toBe(true)
+    const pressPull = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: featureId,
+      type: pressPullFeatureType.type,
+      parameters: {
+        targetBody: { schemaVersion: 0, featureId: sourceId, outputRole: "result" },
+        sourceContentHash: "a".repeat(64),
+        distance: createLengthQuantity(2),
+        face: {
+          schemaVersion: 1,
+          featureId: sourceId,
+          outputRole: "result",
+          kind: "face",
+          signature: {
+            kind: "face",
+            geometryClass: "PLANE",
+            measure: 240,
+            centroid: [0, 0, 10],
+            bounds: { min: [-10, -6, 10], max: [10, 6, 10] },
+            boundaryCount: 4,
+            adjacentGeometryClasses: [],
+          },
+        },
+      },
+      dependencies: [sourceId],
+      references: [],
+      suppressed: false,
+    })
+    expect(
+      (
+        await h.session.commit(
+          h.command("org.vibeshape.feature.add", h.session.snapshot.revision, {
+            feature: pressPull,
+          }),
+        )
+      ).ok,
+    ).toBe(true)
+    expect((await h.navigate("undo")).ok).toBe(true)
+    expect(h.session.snapshot.features).toEqual([source])
+    expect((await h.navigate("redo")).ok).toBe(true)
+    expect(h.session.snapshot.features).toEqual([source, pressPull])
+    const updated = {
+      ...pressPull,
+      parameters: { ...pressPull.parameters, distance: createLengthQuantity(-2) },
+    }
+    expect(
+      (
+        await h.session.commit(
+          h.command("org.vibeshape.feature.update", h.session.snapshot.revision, {
+            feature: updated,
+          }),
+        )
+      ).ok,
+    ).toBe(true)
+    expect((await h.navigate("undo")).ok).toBe(true)
+    expect(h.session.snapshot.features).toEqual([source, pressPull])
+    expect((await h.navigate("redo")).ok).toBe(true)
+    expect(h.session.snapshot.features).toEqual([source, updated])
+    await h.session.close()
+  })
+
   it("restores a multi-save batch with one publication and rebuild, preserving redo order", async () => {
     const h = await harness()
     await h.rename("Before batch")

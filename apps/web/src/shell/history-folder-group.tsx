@@ -16,7 +16,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { ChevronDown, FolderOpen, Trash2 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import { AuthoredItemRename, type AuthoredMetadataCommit } from "./authored-item-rename"
 import { HistoryFolderDialog } from "./history-folder-dialog"
 import { type HistoryViewRow, historyRefKey } from "./model-tree-history"
@@ -120,6 +120,7 @@ export function HistoryFolderGroup({
   onCommit,
   children,
   horizontal = false,
+  revealRequest,
 }: {
   authority: AuthoredDocumentSnapshot
   folder: HistoryFolder
@@ -128,9 +129,14 @@ export function HistoryFolderGroup({
   onCommit: AuthoredMetadataCommit
   children: ReactNode
   horizontal?: boolean
+  revealRequest?: Readonly<{ featureId: string; sequence: number }> | null | undefined
 }) {
   const t = useTranslations("app.authoredTree")
   const [expanded, setExpanded] = useState(true)
+  useEffect(() => {
+    if (revealRequest && folder.items.some((item) => item.id === revealRequest.featureId))
+      setExpanded(true)
+  }, [folder.items, revealRequest])
   const range = horizontal ? folderVisualRange(folder, rows) : null
   return (
     <div

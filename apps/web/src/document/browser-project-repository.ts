@@ -2,6 +2,7 @@ import type { DocumentId } from "@vibeshape/domain"
 import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import type { DocumentSnapshotV5 } from "@vibeshape/domain/document-v5"
+import type { DocumentSnapshotV6 } from "@vibeshape/domain/document-v6"
 import { commandIdSchema } from "@vibeshape/domain/identifiers"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import {
@@ -48,7 +49,7 @@ export class BrowserProjectRepository {
   }
 
   materializeAssemblySourceAssets(
-    authority: DocumentSnapshotV4 | DocumentSnapshotV5,
+    authority: DocumentSnapshotV4 | DocumentSnapshotV5 | DocumentSnapshotV6,
     ownedBlobs: readonly SourceAssetBlob[] = [],
   ) {
     return materializeAssemblySourceAssets(this.#database, authority, ownedBlobs)
@@ -79,26 +80,30 @@ export class BrowserProjectRepository {
       : exported
   }
 
-  async #exportAuthoredProject(documentId: DocumentId, version: 2 | 3 | 4 | 5) {
-    const exported =
-      version === 5
-        ? await this.versioned.exportPortableProjectV6(documentId)
-        : version === 4
-          ? await this.versioned.exportPortableProjectV5(documentId)
-          : version === 3
-            ? await this.versioned.exportPortableProjectV4(documentId)
-            : await this.versioned.exportPortableProjectV3(documentId)
+  async #exportAuthoredProject(documentId: DocumentId, version: 2 | 3 | 4 | 5 | 6) {
+    const exporters = {
+      2: () => this.versioned.exportPortableProjectV3(documentId),
+      3: () => this.versioned.exportPortableProjectV4(documentId),
+      4: () => this.versioned.exportPortableProjectV5(documentId),
+      5: () => this.versioned.exportPortableProjectV6(documentId),
+      6: () => this.versioned.exportPortableProjectV7(documentId),
+    }
+    const exported = await exporters[version]()
     if (!exported.ok) return exported
-    return "repairUpgradeRevision" in exported.value
-      ? { ok: true as const, value: { version: 6 as const, project: exported.value } }
-      : "sourceUpgradeRevision" in exported.value
-        ? { ok: true as const, value: { version: 5 as const, project: exported.value } }
-        : "textureUpgradeRevision" in exported.value
-          ? { ok: true as const, value: { version: 4 as const, project: exported.value } }
-          : { ok: true as const, value: { version: 3 as const, project: exported.value } }
+    return "appearanceUpgradeRevision" in exported.value
+      ? { ok: true as const, value: { version: 7 as const, project: exported.value } }
+      : "repairUpgradeRevision" in exported.value
+        ? { ok: true as const, value: { version: 6 as const, project: exported.value } }
+        : "sourceUpgradeRevision" in exported.value
+          ? { ok: true as const, value: { version: 5 as const, project: exported.value } }
+          : "textureUpgradeRevision" in exported.value
+            ? { ok: true as const, value: { version: 4 as const, project: exported.value } }
+            : { ok: true as const, value: { version: 3 as const, project: exported.value } }
   }
 
   copyPortableProject(source: BrowserPortableProject, copiedAt: string) {
+    if (source.version === 7)
+      return this.versioned.copyPortableProjectV7({ ...source.project, copiedAt })
     if (source.version === 6)
       return this.versioned.copyPortableProjectV6({ ...source.project, copiedAt })
     if (source.version === 5)

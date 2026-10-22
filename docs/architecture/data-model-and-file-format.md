@@ -128,6 +128,13 @@ preserves the full journal, adoption provenance, repair intent, and historical a
 older readers reject it. Historical schemas and formats remain unchanged. See
 [ADR-0103](../adr/0103-retained-history-repair-authority.md) for the deletion and repair contract.
 
+V6 authority adds authored visual appearance keyed by PartId, with a stable material preset and an
+optional validated sRGB hex color override. It preserves historical PartRecord and snapshot schemas,
+uses the ordinary revision-checked metadata command path, and restores appearance through saved
+Undo/Redo. Native format 7 preserves complete appearance history and its explicit adoption boundary.
+These visual settings make no physical material or density claims. See
+[ADR-0128](../adr/0128-saved-authored-part-appearance.md).
+
 A command contains:
 
 - `commandId`, `documentId`, and `baseRevision`;

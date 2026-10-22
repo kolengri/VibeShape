@@ -11,6 +11,7 @@ export type GeometryFeatureKind =
   | "torus"
   | "placement"
   | "mirror"
+  | "press-pull"
   | "shell"
   | "thread"
   | "imported"

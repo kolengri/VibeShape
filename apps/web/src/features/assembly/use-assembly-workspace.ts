@@ -146,7 +146,11 @@ function selectionRecords(
   return { instance, definition, activeId: instance ? instance.id : null }
 }
 function inspectionContext(context: AssemblyDocumentContext | null) {
-  return context?.authorityVersion === 4 || context?.authorityVersion === 5 ? context : null
+  return context?.authorityVersion === 4 ||
+    context?.authorityVersion === 5 ||
+    context?.authorityVersion === 6
+    ? context
+    : null
 }
 type StudyTask = { id: string | null; documentKey: string; revision: number }
 function assemblyDocumentKey(context: AssemblyDocumentContext | null) {

@@ -1,5 +1,6 @@
 import { openAuthorityDocumentSession } from "@vibeshape/application/authority-document-session"
 import { createAuthorityPersistenceAdapter } from "@vibeshape/application/authority-persistence-adapter"
+import { prepareAuthorityMetadataCommand } from "@vibeshape/application/authority-persistence-operations"
 import {
   createDisposableDocumentPreview,
   type DisposableDocumentPreview,
@@ -114,7 +115,6 @@ import {
   documentV2MetadataCommandSchema,
   documentV3MetadataCommandSchema,
 } from "@vibeshape/domain/document-v2-command-schemas"
-import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
 import { documentSnapshotV4Schema, promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
@@ -123,10 +123,13 @@ import {
   historyRepairCommandSchema,
 } from "@vibeshape/domain/document-v5-command-schemas"
 import { applyDocumentV5AuthoredCommand } from "@vibeshape/domain/document-v5-commands"
+import { documentV6MetadataCommandSchema } from "@vibeshape/domain/document-v6-command-schemas"
+import { applyDocumentV6AuthoredCommand } from "@vibeshape/domain/document-v6-commands"
 import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
 import type { MoveHistoryItemCommand } from "@vibeshape/domain/history-document-commands"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
+import type { SetPartAppearanceChange } from "@vibeshape/domain/part-appearance"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import type { SurfaceTextureLayer } from "@vibeshape/domain/surface-textures"
 import { readAuthoredVShape } from "@vibeshape/formats/vshape"
@@ -1289,7 +1292,11 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         async previewAssembly(target, baseRevision) {
           if (!sourceSessionAvailable() || active.snapshot.revision !== baseRevision)
             throw new Error("The paired history base changed during preview.")
-          if (target.authority.schemaVersion !== 4 && target.authority.schemaVersion !== 5)
+          if (
+            target.authority.schemaVersion !== 4 &&
+            target.authority.schemaVersion !== 5 &&
+            target.authority.schemaVersion !== 6
+          )
             return undefined
           const result = await inspectCapturedAssembly(
             { active, repository, authority: promoteDocumentSnapshotV4(target.authority) },
@@ -1664,7 +1671,12 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       signal: AbortSignal,
     ) {
       const authority = target.authority
-      if (authority.schemaVersion !== 4 && authority.schemaVersion !== 5) return null
+      if (
+        authority.schemaVersion !== 4 &&
+        authority.schemaVersion !== 5 &&
+        authority.schemaVersion !== 6
+      )
+        return null
       if (!authority.assembly.instances.length) return null
       const result = await inspectCapturedAssembly(
         { active, repository, authority: promoteDocumentSnapshotV4(authority) },
@@ -2031,14 +2043,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
           retryable: true,
         },
       }
-    const replayed =
-      base.schemaVersion === 5
-        ? applyDocumentV5AuthoredCommand(base, { ...command, schemaVersion: 3 })
-        : base.schemaVersion === 4
-          ? applyDocumentV4AuthoredCommand(base, { ...command, schemaVersion: 3 })
-          : base.schemaVersion === 3
-            ? applyDocumentV3Command(base, { ...command, schemaVersion: 3 })
-            : applyDocumentV2Command(base, command)
+    const replayed = prepareAuthorityMetadataCommand(base, command)
     if (!replayed.ok || canonicalJson(replayed.snapshot) !== canonicalJson(expected))
       return {
         ok: false as const,
@@ -2482,11 +2487,13 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         true,
       )
     const checked =
-      base.schemaVersion === 5
-        ? applyDocumentV5AuthoredCommand(base, input.command)
-        : base.schemaVersion === 4
-          ? applyDocumentV4AuthoredCommand(base, input.command)
-          : applyDocumentV3Command(base, input.command)
+      base.schemaVersion === 6
+        ? applyDocumentV6AuthoredCommand(base, input.command)
+        : base.schemaVersion === 5
+          ? applyDocumentV5AuthoredCommand(base, input.command)
+          : base.schemaVersion === 4
+            ? applyDocumentV4AuthoredCommand(base, input.command)
+            : applyDocumentV3Command(base, input.command)
     if (!checked.ok)
       return localFailure(
         "surface-texture-command-rejected",
@@ -2529,16 +2536,19 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
 
   async function commitAuthoredMetadata(
     baseRevision: number,
-    change: DocumentV2MetadataChange,
+    change: DocumentV2MetadataChange | SetPartAppearanceChange,
   ): Promise<DocumentMutationResult> {
     const active = session
     const blocked = authoredMetadataWriteBlock(active)
     if (!active || blocked) return authoredMetadataBlockedResult(blocked ?? "document-unavailable")
     const result = await commitActiveAuthoredCommand(
       active,
-      documentV2MetadataCommandSchema.parse({
+      (change.kind === "part.set-appearance"
+        ? documentV6MetadataCommandSchema
+        : documentV2MetadataCommandSchema
+      ).parse({
         kind: "org.vibeshape.document.metadata-command",
-        schemaVersion: 2,
+        schemaVersion: change.kind === "part.set-appearance" ? 6 : 2,
         commandId: browserUuidV7(),
         documentId: active.snapshot.id,
         baseRevision,
@@ -2603,6 +2613,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
           DocumentV2Command | DocumentV3Command,
           { kind: "org.vibeshape.document.metadata-command" }
         >
+      | ReturnType<typeof documentV6MetadataCommandSchema.parse>
       | ReturnType<typeof historyRemoveRetainingDependentsCommandSchema.parse>
       | ReturnType<typeof historyRepairCommandSchema.parse>,
   ) {
@@ -2720,7 +2731,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     const id = item.kind === "feature" ? item.feature.id : item.sketch.id
     const authority = state.authoredSnapshot
     return (
-      authority?.schemaVersion === 5 &&
+      (authority?.schemaVersion === 5 || authority?.schemaVersion === 6) &&
       authority.repairIntents.some(
         (intent) => intent.kind === item.kind && intent.authored.id === id,
       )
