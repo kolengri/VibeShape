@@ -264,29 +264,43 @@ describe("internal native connection recovery", () => {
     expect(f.prompts).toHaveLength(1)
   })
 
-  it("restores ACP recovery after explicitly enabling a retained stopped session", async () => {
-    const f = fixture()
-    f.automate({ connected: false, recoveryBlocked: true })
-    expect(await f.chat.connect(agent, undefined, { automatic: true })).toBe(false)
-    f.automate({ recoveryBlocked: false })
-    expect(f.chat.getSnapshot().projectAccessReady).toBe(false)
-    expect(await f.chat.send("Inspect before pairing")).toBe(false)
-    f.automate({ connected: true })
-    f.crash()
-    expect(f.chat.getSnapshot().recovery?.status).toBe("retrying")
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(f.connections).toHaveLength(2)
-    expect(f.chat.getSnapshot()).toMatchObject({
-      snapshot: { status: "ready", sessionToken: "connection-2" },
-      recovery: null,
-      projectAccessReady: true,
-    })
-    expect(f.prompts).toHaveLength(0)
-    f.automate({ connected: false, recoveryBlocked: true })
-    await vi.advanceTimersByTimeAsync(10_000)
-    expect(f.connections).toHaveLength(2)
-    expect(f.chat.getSnapshot().snapshot).toBeNull()
-  })
+  it.each(["during", "after"] as const)(
+    "restores ACP recovery after explicitly enabling a stopped session %s startup",
+    async (timing) => {
+      const f = fixture()
+      f.automate({ connected: false, recoveryBlocked: true })
+      let release = () => {}
+      if (timing === "during")
+        f.gate(
+          new Promise<void>((resolve) => {
+            release = resolve
+          }),
+        )
+      const connection = f.chat.connect(agent, undefined, { automatic: true })
+      await vi.advanceTimersByTimeAsync(0)
+      if (timing === "after") expect(await connection).toBe(false)
+      f.automate({ recoveryBlocked: false })
+      expect(f.chat.getSnapshot().projectAccessReady).toBe(false)
+      expect(await f.chat.send("Inspect before pairing")).toBe(false)
+      f.automate({ connected: true })
+      release()
+      expect(await connection).toBe(timing === "during")
+      f.crash()
+      expect(f.chat.getSnapshot().recovery?.status).toBe("retrying")
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(f.connections).toHaveLength(2)
+      expect(f.chat.getSnapshot()).toMatchObject({
+        snapshot: { status: "ready", sessionToken: "connection-2" },
+        recovery: null,
+        projectAccessReady: true,
+      })
+      expect(f.prompts).toHaveLength(0)
+      f.automate({ connected: false, recoveryBlocked: true })
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(f.connections).toHaveLength(2)
+      expect(f.chat.getSnapshot().snapshot).toBeNull()
+    },
+  )
 
   it("honors a new Stop AI while ACP is still starting after explicit Connect", async () => {
     const f = fixture()

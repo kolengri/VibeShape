@@ -530,7 +530,7 @@ export function createNativeChatController({
     return automatic && automation?.getSnapshot().recoveryBlocked === true
   }
   function resumeAuthorizedRecovery(wasBlocked: boolean, blocked: boolean | undefined) {
-    if (wasBlocked && !blocked && state.snapshot?.status === "ready")
+    if (wasBlocked && !blocked && (connecting !== null || state.snapshot?.status === "ready"))
       automaticRecoveryAllowed = true
   }
   async function ensureAutomationConnection(at: number, automatic: boolean) {
