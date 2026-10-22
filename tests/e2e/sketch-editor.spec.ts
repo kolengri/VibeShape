@@ -1882,7 +1882,9 @@ test.describe("full sketch editor", () => {
     await expect(manager).toHaveCount(0)
   })
 
-  test("keeps sketch lifecycle actions compact in the command header", async ({ page }) => {
+  test("keeps sketch lifecycle actions in the footer and modeling commands in the toolbar", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1024, height: 768 })
     await page.goto("/")
     await expect(
@@ -1899,8 +1901,9 @@ test.describe("full sketch editor", () => {
       name: "Open constraint manager",
       exact: true,
     })
-    const cancel = taskPanel.getByRole("button", { name: "Cancel", exact: true })
-    const finish = taskPanel.getByRole("button", { name: "Finish sketch", exact: true })
+    const footer = taskPanel.locator('[data-slot="task-panel-footer"]')
+    const cancel = footer.getByRole("button", { name: "Cancel", exact: true })
+    const finish = footer.getByRole("button", { name: "Finish sketch", exact: true })
     const extrude = toolbar.getByRole("button", { name: "Extrude", exact: true })
     const revolve = toolbar.getByRole("button", { name: "Revolve", exact: true })
     const [
@@ -1931,13 +1934,19 @@ test.describe("full sketch editor", () => {
 
     expect(Math.abs(cancelBounds.y - finishBounds.y)).toBeLessThanOrEqual(2)
     expect(diagnosticsBounds.width).toBeLessThanOrEqual(36)
-    expect(cancelBounds.width).toBeLessThanOrEqual(36)
-    expect(finishBounds.width).toBeLessThanOrEqual(36)
+    expect(cancelBounds.width).toBeGreaterThanOrEqual(80)
+    expect(finishBounds.width).toBeGreaterThanOrEqual(80)
+    expect(cancelBounds.height).toBe(32)
+    expect(finishBounds.height).toBe(32)
     expect(cancelBounds.x).toBeGreaterThanOrEqual(panelBounds.x)
     expect(finishBounds.x + finishBounds.width).toBeLessThanOrEqual(
       panelBounds.x + panelBounds.width,
     )
-    expect(finishBounds.y - panelBounds.y).toBeLessThanOrEqual(32)
+    expect(
+      panelBounds.y + panelBounds.height - finishBounds.y - finishBounds.height,
+    ).toBeLessThanOrEqual(16)
+    await expect(cancel).toHaveText("Cancel")
+    await expect(finish).toHaveText("Finish sketch")
     expect(extrudeBounds.width).toBeLessThanOrEqual(36)
     expect(revolveBounds.width).toBeLessThanOrEqual(36)
     expect(Math.abs(diagnosticsBounds.y - extrudeBounds.y)).toBeLessThanOrEqual(2)

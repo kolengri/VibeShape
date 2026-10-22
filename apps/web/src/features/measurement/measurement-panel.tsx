@@ -4,7 +4,7 @@ import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { type ReactNode, useState } from "react"
-import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import {
   formatDisplayArea,
@@ -145,8 +145,11 @@ export function MeasurementPanel({
 }: MeasurementPanelProps) {
   const t = useTranslations("app.shell.taskPanel.measurement")
   return (
-    <aside aria-label={t("title")} className="min-h-0 overflow-auto border-l bg-panel p-3">
-      <TaskPanelHeader
+    <aside
+      aria-label={t("title")}
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+    >
+      <TaskPanelLayout
         title={t("title")}
         description={t("description")}
         actions={
@@ -156,24 +159,25 @@ export function MeasurementPanel({
             onCancel={onClose}
           />
         }
-      />
-      {onAllOutputs ? (
-        <Button type="button" size="sm" variant="ghost" className="mt-3" onClick={onAllOutputs}>
-          {t("allOutputs")}
-        </Button>
-      ) : null}
-      {unavailable ? (
-        <p className="mt-4 text-sm text-muted-foreground" role="status">
-          {t(unavailableMessage)}
-        </p>
-      ) : (
-        <AvailableMeasurementPanel
-          view={view}
-          onPrevious={onPrevious}
-          onNext={onNext}
-          renderTopology={renderTopology}
-        />
-      )}
+      >
+        {onAllOutputs ? (
+          <Button type="button" size="sm" variant="ghost" className="mt-3" onClick={onAllOutputs}>
+            {t("allOutputs")}
+          </Button>
+        ) : null}
+        {unavailable ? (
+          <p className="mt-4 text-sm text-muted-foreground" role="status">
+            {t(unavailableMessage)}
+          </p>
+        ) : (
+          <AvailableMeasurementPanel
+            view={view}
+            onPrevious={onPrevious}
+            onNext={onNext}
+            renderTopology={renderTopology}
+          />
+        )}
+      </TaskPanelLayout>
     </aside>
   )
 }

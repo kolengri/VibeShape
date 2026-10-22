@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { vi } from "../../../../tests/unit/support/bun-test"
+import { TaskPanelLayout } from "../components/task-panel-layout"
 import { ResponsiveTaskPanel } from "./responsive-task-panel"
 
 function setCompactLayout(matches: boolean) {
@@ -47,13 +48,16 @@ describe("ResponsiveTaskPanel", () => {
         expandLabel="Open task panel"
       >
         <aside aria-label="Task panel">
-          <input aria-label="Radius" defaultValue="10 mm" />
+          <TaskPanelLayout title="Cylinder">
+            <input aria-label="Radius" defaultValue="10 mm" />
+          </TaskPanelLayout>
         </aside>
       </ResponsiveTaskPanel>
     )
     const { rerender } = render(panel("cylinder:first"))
     const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Radius" })
-    const scroller = screen.getByRole("complementary", { name: "Task panel" })
+    const scroller = input.closest<HTMLElement>("[data-slot='task-panel-content']")
+    if (!scroller) throw new Error("Expected the task field scrollport.")
     const content = input.closest(".responsive-task-panel__content")
     await user.clear(input)
     await user.type(input, "27 mm")

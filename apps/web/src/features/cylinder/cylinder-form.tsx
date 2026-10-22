@@ -287,7 +287,12 @@ export function CylinderForm({
   )
 
   return (
-    <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form
+      ref={formElementRef}
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
       {onPreviewChange ? (
         <form.Subscribe selector={(state) => state.values}>
           {(values) => (

@@ -11,7 +11,7 @@ import { Input } from "@vibeshape/ui/components/input"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
-import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { browserAuthoredUuid as browserUuidV7 } from "../../document/authored-document-session"
 import { assemblyMotionCoordinates, retimeAssemblyMotionStudy } from "./assembly-motion"
@@ -421,10 +421,9 @@ function StudyLifecycle({
       view.closeStudy()
   }
   return (
-    <TaskPanelHeader
+    <TaskPanelLayout
       title={t(session.existing ? "motionEditStudy" : "motionNewStudy")}
       description={t("motionStudyDescription")}
-      className="bg-panel py-2"
       actions={
         <TaskPanelLifecycleActions
           ariaLabel={t("motionStudies")}
@@ -440,7 +439,7 @@ function StudyLifecycle({
       }
     >
       {children}
-    </TaskPanelHeader>
+    </TaskPanelLayout>
   )
 }
 
@@ -456,7 +455,7 @@ export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
     solving = motion.pending || motion.playing
   return (
     <form
-      className="grid min-w-0 gap-2"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       aria-label={t("motionStudies")}
       onSubmit={(event) => event.preventDefault()}
       onInvalidCapture={(event) => {
@@ -481,40 +480,40 @@ export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
           setOptions={setOptions}
           disabled={busy}
         />
-      </StudyLifecycle>
-      <StudyFields view={view} session={session} draft={draft} disabled={busy || solving} />
-      <AssemblyMotionTrackEditor
-        study={draft}
-        view={view}
-        edit={session.edit}
-        disabled={busy || solving}
-      />
-      <details>
-        <summary className="font-medium cursor-pointer py-1 text-xs">
-          {t("motionExportOptions")}
-        </summary>
-        <StudyExport session={session} revision={task.revision} disabled={busy || solving} />
-      </details>
-      <StudyFailure view={view} session={session} error={error} />
-      {session.existing && (
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={busy}
-          onClick={async () => {
-            motion.reset()
-            if (
-              await view.mutations.apply(
-                [{ kind: "motion-study.remove", studyId: draft.id }],
-                task.revision,
+        <StudyFields view={view} session={session} draft={draft} disabled={busy || solving} />
+        <AssemblyMotionTrackEditor
+          study={draft}
+          view={view}
+          edit={session.edit}
+          disabled={busy || solving}
+        />
+        <details>
+          <summary className="font-medium cursor-pointer py-1 text-xs">
+            {t("motionExportOptions")}
+          </summary>
+          <StudyExport session={session} revision={task.revision} disabled={busy || solving} />
+        </details>
+        <StudyFailure view={view} session={session} error={error} />
+        {session.existing && (
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={async () => {
+              motion.reset()
+              if (
+                await view.mutations.apply(
+                  [{ kind: "motion-study.remove", studyId: draft.id }],
+                  task.revision,
+                )
               )
-            )
-              view.closeStudy()
-          }}
-        >
-          {t("motionDeleteStudy")}
-        </Button>
-      )}
+                view.closeStudy()
+            }}
+          >
+            {t("motionDeleteStudy")}
+          </Button>
+        )}
+      </StudyLifecycle>
     </form>
   )
 }

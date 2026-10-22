@@ -8,7 +8,7 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import type { ReactNode } from "react"
-import { TaskPanelHeader } from "../components/task-panel-header"
+import { TaskPanelLayout } from "../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import {
   createBrowserFeatureId,
@@ -108,8 +108,11 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
   )
   if (!mode || !props.authority)
     return (
-      <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
-        <TaskPanelHeader
+      <aside
+        aria-label={task("ariaLabel")}
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      >
+        <TaskPanelLayout
           title={copy.title}
           actions={
             <TaskPanelLifecycleActions
@@ -118,8 +121,9 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
               onCancel={props.onCloseTool}
             />
           }
-        />
-        <Alert>{t("unavailable")}</Alert>
+        >
+          <Alert>{t("unavailable")}</Alert>
+        </TaskPanelLayout>
       </aside>
     )
   const options = combinationInputOptions(props.authority, props.parts, mode)
@@ -128,7 +132,10 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
       ? `edit:${mode.feature.id}:${props.report.snapshot.revision}`
       : `create:${operation}:${props.report.snapshot.revision}`
   return (
-    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+    <aside
+      aria-label={task("ariaLabel")}
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+    >
       <BodyCombinationForm
         key={key}
         copy={copy}

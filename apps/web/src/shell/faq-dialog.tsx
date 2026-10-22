@@ -2,6 +2,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -72,34 +73,36 @@ export function FaqDialog({
           <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
-        <div className="grid min-w-0 gap-5 sm:grid-cols-[11rem_minmax(0,1fr)]">
-          <nav aria-label={t("navigation")} className="flex flex-wrap gap-1 sm:flex-col">
-            {pages.map((item) => (
-              <Button
-                size="content"
-                key={item}
-                type="button"
-                variant={item === page ? "secondary" : "ghost"}
-                className="justify-start text-left"
-                aria-current={item === page ? "page" : undefined}
-                onClick={() => setPage(item)}
-              >
-                {t(`${item}.title`)}
-              </Button>
-            ))}
-          </nav>
-          <article className="grid min-w-0 content-start gap-4 text-sm">
-            <h2 className="font-semibold">{t(`${page}.title`)}</h2>
-            {page === "mcp" ? (
-              <McpHelp endpoint={endpoint} />
-            ) : (
-              <>
-                <p>{t(`${page}.body`)}</p>
-                <p className="text-muted-foreground">{t(`${page}.detail`)}</p>
-              </>
-            )}
-          </article>
-        </div>
+        <DialogBody>
+          <div className="grid min-w-0 gap-5 sm:grid-cols-[11rem_minmax(0,1fr)]">
+            <nav aria-label={t("navigation")} className="flex flex-wrap gap-1 sm:flex-col">
+              {pages.map((item) => (
+                <Button
+                  size="content"
+                  key={item}
+                  type="button"
+                  variant={item === page ? "secondary" : "ghost"}
+                  className="justify-start text-left"
+                  aria-current={item === page ? "page" : undefined}
+                  onClick={() => setPage(item)}
+                >
+                  {t(`${item}.title`)}
+                </Button>
+              ))}
+            </nav>
+            <article className="grid min-w-0 content-start gap-4 text-sm">
+              <h2 className="font-semibold">{t(`${page}.title`)}</h2>
+              {page === "mcp" ? (
+                <McpHelp endpoint={endpoint} />
+              ) : (
+                <>
+                  <p>{t(`${page}.body`)}</p>
+                  <p className="text-muted-foreground">{t(`${page}.detail`)}</p>
+                </>
+              )}
+            </article>
+          </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )

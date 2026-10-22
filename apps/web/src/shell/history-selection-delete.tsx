@@ -2,6 +2,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
+  AlertDialogBody,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -86,13 +87,15 @@ function RemovalConfirmation({
       <AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("title", { count: request.names.length })}</AlertDialogTitle>
-          <AlertDialogDescription>{t("description")}</AlertDialogDescription>
         </AlertDialogHeader>
-        <RemovalNames label={t("selected")} names={request.names} remaining={remaining} />
-        <RemovalNames label={t("owners")} names={request.owners} remaining={remaining} />
-        <RemovalNames label={t("dependents")} names={request.dependents} remaining={remaining} />
-        {message && <Alert>{message}</Alert>}
-        {failure && <Alert>{failure}</Alert>}
+        <AlertDialogBody>
+          <AlertDialogDescription>{t("description")}</AlertDialogDescription>
+          <RemovalNames label={t("selected")} names={request.names} remaining={remaining} />
+          <RemovalNames label={t("owners")} names={request.owners} remaining={remaining} />
+          <RemovalNames label={t("dependents")} names={request.dependents} remaining={remaining} />
+          {message && <Alert>{message}</Alert>}
+          {failure && <Alert>{failure}</Alert>}
+        </AlertDialogBody>
         <AlertDialogFooter>
           <AlertDialogCancel asChild>
             <Button type="button" variant="outline" disabled={pending}>

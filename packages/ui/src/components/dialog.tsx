@@ -2,6 +2,7 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 import type * as React from "react"
 import { Button } from "#components/button"
 import { X as XIcon } from "#components/icons"
+import { WindowHeader, WindowTitle } from "#components/window-header"
 import { cn } from "#lib/cn"
 
 function Dialog(props: React.ComponentProps<typeof DialogPrimitive.Root>) {
@@ -52,7 +53,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100svh-2rem)] min-w-0 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-lg border bg-background p-6 shadow-lg outline-none",
+          "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100svh-2rem)] min-w-0 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border bg-background text-sm shadow-lg outline-none",
           "focus-visible:ring-[3px] focus-visible:ring-ring/50",
           className,
         )}
@@ -75,7 +76,7 @@ function DialogContent({
               type="button"
               size="icon"
               variant="ghost"
-              className="absolute top-3 right-3 text-muted-foreground"
+              className="absolute top-2 right-2 text-muted-foreground"
               aria-label={closeLabel}
             >
               <XIcon aria-hidden="true" />
@@ -87,11 +88,24 @@ function DialogContent({
   )
 }
 
-function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+function DialogHeader({ className, ...props }: React.ComponentProps<typeof WindowHeader>) {
+  return (
+    <WindowHeader
+      data-slot="dialog-header"
+      className={cn("gap-1.5 pr-14 text-left", className)}
+      {...props}
+    />
+  )
+}
+
+function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 text-left", className)}
+      data-slot="dialog-body"
+      className={cn(
+        "grid min-h-0 min-w-0 flex-1 gap-4 overflow-y-auto overscroll-contain p-4",
+        className,
+      )}
       {...props}
     />
   )
@@ -101,7 +115,11 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-footer"
-      className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+      className={cn(
+        "flex shrink-0 flex-wrap items-center justify-end gap-2 border-t bg-muted/30 px-4 py-3",
+        "[&>[data-slot=button]]:min-w-20",
+        className,
+      )}
       {...props}
     />
   )
@@ -109,11 +127,9 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
 
 function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
-    <DialogPrimitive.Title
-      data-slot="dialog-title"
-      className={cn("text-base leading-none font-semibold", className)}
-      {...props}
-    />
+    <WindowTitle asChild className={className}>
+      <DialogPrimitive.Title data-slot="dialog-title" {...props} />
+    </WindowTitle>
   )
 }
 
@@ -132,6 +148,7 @@ function DialogDescription({
 
 export {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,

@@ -11,15 +11,29 @@ import { cn } from "@vibeshape/ui/lib/cn"
 export function TaskPanelLifecycleButton({
   kind,
   label,
+  presentation = "icon",
   destructive = false,
   className,
   ...props
 }: Omit<ButtonProps, "children" | "size" | "variant"> & {
   kind: "accept" | "cancel"
   label: string
+  presentation?: "icon" | "text"
   destructive?: boolean
 }) {
   const Icon = kind === "accept" ? Check : X
+  if (presentation === "text")
+    return (
+      <Button
+        {...props}
+        aria-label={label}
+        size="sm"
+        variant={kind === "cancel" ? "outline" : destructive ? "destructive" : "default"}
+        className={cn("min-w-20 max-w-full", className)}
+      >
+        <span className="min-w-0 truncate">{label}</span>
+      </Button>
+    )
   return (
     <TooltipProvider>
       <Tooltip>

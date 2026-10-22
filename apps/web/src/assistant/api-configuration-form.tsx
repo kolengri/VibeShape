@@ -1,6 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { DialogBody, DialogFooter } from "@vibeshape/ui/components/dialog"
 import {
   Field,
   FieldDescription,
@@ -121,84 +122,104 @@ export function ApiConfigurationForm({
   const form = useApiConnectionForm(chat, connected)
   const locked = busy || connected || form.submitting
   return (
-    <form className="grid gap-2" onSubmit={form.submit} aria-busy={form.submitting || undefined}>
-      <SelectField
-        label={t("provider")}
-        value={form.choice}
-        disabled={busy || form.submitting}
-        onValueChange={form.choose}
-      >
-        <SelectOption value="choose" disabled>
-          {t("chooseProvider")}
-        </SelectOption>
-        {apiPresets.map((preset) => (
-          <SelectOption key={preset.id} value={preset.id}>
-            {t(`providers.${preset.id}`)}
-          </SelectOption>
-        ))}
-        <SelectOption value="custom">{t("customProvider")}</SelectOption>
-      </SelectField>
-      <p className="text-xs text-muted-foreground">{t("description")}</p>
-      <TextField
-        id={`${id}-model`}
-        label={t("model")}
-        error={form.invalidField("model") ? t("modelInvalid") : undefined}
-        required
-        value={form.model}
-        maxLength={128}
-        disabled={locked}
-        onChange={(event) => form.setModel(event.currentTarget.value)}
-      />
-      <ApiKeyField id={id} form={form} locked={locked} />
-      <details
-        open={form.advanced}
-        onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
-      >
-        <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-        <div className="mt-2 grid gap-2">
-          <TextField
-            id={`${id}-endpoint`}
-            label={t("endpoint")}
-            error={form.invalidField("endpoint") ? t("endpointInvalid") : undefined}
-            type="url"
-            required
-            value={form.endpoint}
-            maxLength={2048}
-            disabled={locked}
-            onChange={(event) => form.editEndpoint(event.currentTarget.value)}
-          />
-          <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
-            <span>{t("stream")}</span>
-            <input
-              type="checkbox"
-              checked={form.stream}
-              disabled={locked}
-              onChange={(event) => form.setStream(event.currentTarget.checked)}
-            />
-          </label>
-        </div>
-      </details>
-      {form.storageFailed && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {t("settingsNotSaved")}
-        </p>
-      )}
-      {form.failed && <Alert>{t("errors.tools-unavailable")}</Alert>}
-      {connected ? (
-        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={chat.disconnect}>
-          {t("disconnect")}
-        </Button>
-      ) : (
-        <Button
-          type="submit"
-          size="sm"
-          disabled={locked || !form.endpoint.trim() || !form.model.trim()}
-          isLoading={form.submitting}
+    <>
+      <DialogBody>
+        <form
+          id={id}
+          className="grid gap-3"
+          onSubmit={form.submit}
+          aria-busy={form.submitting || undefined}
         >
-          {t("connect")}
-        </Button>
-      )}
-    </form>
+          <SelectField
+            label={t("provider")}
+            value={form.choice}
+            disabled={busy || form.submitting}
+            onValueChange={form.choose}
+          >
+            <SelectOption value="choose" disabled>
+              {t("chooseProvider")}
+            </SelectOption>
+            {apiPresets.map((preset) => (
+              <SelectOption key={preset.id} value={preset.id}>
+                {t(`providers.${preset.id}`)}
+              </SelectOption>
+            ))}
+            <SelectOption value="custom">{t("customProvider")}</SelectOption>
+          </SelectField>
+          <p className="text-xs text-muted-foreground">{t("description")}</p>
+          <TextField
+            id={`${id}-model`}
+            label={t("model")}
+            error={form.invalidField("model") ? t("modelInvalid") : undefined}
+            required
+            value={form.model}
+            maxLength={128}
+            disabled={locked}
+            onChange={(event) => form.setModel(event.currentTarget.value)}
+          />
+          <ApiKeyField id={id} form={form} locked={locked} />
+          <details
+            open={form.advanced}
+            onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
+          >
+            <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
+            <div className="mt-2 grid gap-2">
+              <TextField
+                id={`${id}-endpoint`}
+                label={t("endpoint")}
+                error={form.invalidField("endpoint") ? t("endpointInvalid") : undefined}
+                type="url"
+                required
+                value={form.endpoint}
+                maxLength={2048}
+                disabled={locked}
+                onChange={(event) => form.editEndpoint(event.currentTarget.value)}
+              />
+              <label
+                className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}
+              >
+                <span>{t("stream")}</span>
+                <input
+                  type="checkbox"
+                  checked={form.stream}
+                  disabled={locked}
+                  onChange={(event) => form.setStream(event.currentTarget.checked)}
+                />
+              </label>
+            </div>
+          </details>
+          {form.storageFailed && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {t("settingsNotSaved")}
+            </p>
+          )}
+          {form.failed && <Alert>{t("errors.tools-unavailable")}</Alert>}
+        </form>
+      </DialogBody>
+      <DialogFooter>
+        {connected ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={chat.disconnect}
+          >
+            {t("disconnect")}
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            form={id}
+            size="sm"
+            disabled={locked || !form.endpoint.trim() || !form.model.trim()}
+            isLoading={form.submitting}
+          >
+            {t("connect")}
+          </Button>
+        )}
+      </DialogFooter>
+    </>
   )
 }
 

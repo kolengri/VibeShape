@@ -2,6 +2,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -50,6 +51,13 @@ export function SettingsDialog({
     { value: "about", label: t("about.title") },
   ]
   const preferences = useViewerPreferences((state) => state)
+  const closeAction = (
+    <DialogClose asChild>
+      <Button type="button" variant="outline" disabled={pending}>
+        {t("done")}
+      </Button>
+    </DialogClose>
+  )
   return (
     <Dialog
       open={open}
@@ -74,9 +82,9 @@ export function SettingsDialog({
         onCloseAutoFocus={onCloseAutoFocus}
         showCloseButton={!pending}
         closeLabel={t("close")}
-        className="flex max-w-3xl flex-col overflow-hidden p-4"
+        className="max-w-3xl"
       >
-        <DialogHeader className="shrink-0">
+        <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
@@ -85,16 +93,16 @@ export function SettingsDialog({
           onValueChange={(next) => {
             if (!pending) setCategory(next)
           }}
-          className="flex min-h-0 flex-col gap-4"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
-          <TabsList aria-label={t("title")} className="shrink-0">
+          <TabsList aria-label={t("title")} className="mx-4 mt-4 shrink-0">
             {categories.map(({ value, label }) => (
               <TabsTrigger key={value} value={value} disabled={pending}>
                 {label}
               </TabsTrigger>
             ))}
           </TabsList>
-          <div className="min-h-0 overflow-y-auto pr-1">
+          <DialogBody hidden={category === "project" || category === "printer"}>
             <TabsContent
               forceMount
               value="appearance"
@@ -137,22 +145,6 @@ export function SettingsDialog({
               </label>
               <p className="text-xs text-muted-foreground">{t("autoHideDescription")}</p>
               <WorkspaceLayoutSettings />
-            </TabsContent>
-            <TabsContent forceMount value="printer" hidden={category !== "printer"}>
-              <PrinterSettings />
-            </TabsContent>
-            <TabsContent
-              forceMount
-              value="project"
-              hidden={category !== "project"}
-              className="grid gap-3"
-            >
-              <h3 className="font-medium">{t("project")}</h3>
-              <DocumentDisplayUnitsSettings
-                controller={controller}
-                blocked={blocked}
-                onPendingChange={setPending}
-              />
             </TabsContent>
             <TabsContent
               forceMount
@@ -197,15 +189,32 @@ export function SettingsDialog({
                 </a>
               </Button>
             </TabsContent>
-          </div>
+          </DialogBody>
+          <TabsContent
+            forceMount
+            value="printer"
+            hidden={category !== "printer"}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
+            <PrinterSettings closeAction={closeAction} />
+          </TabsContent>
+          <TabsContent
+            forceMount
+            value="project"
+            hidden={category !== "project"}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
+            <DocumentDisplayUnitsSettings
+              controller={controller}
+              blocked={blocked}
+              onPendingChange={setPending}
+              closeAction={closeAction}
+            />
+          </TabsContent>
         </Tabs>
-        <DialogFooter className="shrink-0">
-          <DialogClose asChild>
-            <Button type="button" variant="outline" disabled={pending}>
-              {t("done")}
-            </Button>
-          </DialogClose>
-        </DialogFooter>
+        {category !== "project" && category !== "printer" ? (
+          <DialogFooter>{closeAction}</DialogFooter>
+        ) : null}
       </DialogContent>
     </Dialog>
   )

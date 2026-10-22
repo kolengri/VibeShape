@@ -5,7 +5,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { Trash2 } from "@vibeshape/ui/components/icons"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
-import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
@@ -55,7 +55,10 @@ export function SurfaceTextureTaskPanel({
   useTexturePanelKeyboard(gallery, setGallery, state)
   if (gallery && layer)
     return (
-      <aside aria-label={t("title")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+      <aside
+        aria-label={t("title")}
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      >
         <TextureGallery
           selected={layer.map}
           onSelect={(map) => update({ map })}
@@ -66,19 +69,18 @@ export function SurfaceTextureTaskPanel({
   return (
     <aside
       aria-label={t("title")}
-      className="flex h-full min-h-0 flex-col overflow-hidden border-l bg-panel"
+      className="flex min-h-0 flex-col overflow-hidden border-l bg-panel"
     >
       <form
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden"
         onSubmit={(event) => {
           event.preventDefault()
           void apply()
         }}
       >
-        <TaskPanelHeader
+        <TaskPanelLayout
           title={t("title")}
           description={t("description")}
-          className="shrink-0 border-b p-3"
           actions={
             <TaskPanelLifecycleActions
               ariaLabel={t("title")}
@@ -91,10 +93,14 @@ export function SurfaceTextureTaskPanel({
               onCancel={onClose}
             />
           }
+          footerContent={
+            <>
+              <TexturePreviewFooter visible={draft !== null} />
+              {error && <Alert>{error}</Alert>}
+            </>
+          }
         >
           {stale && <Alert>{t("stale")}</Alert>}
-        </TaskPanelHeader>
-        <div className="min-h-0 flex-1 overflow-auto p-4">
           <fieldset
             disabled={saving || uploading || stale || report?.mode !== "read-write"}
             className="grid gap-4"
@@ -113,11 +119,7 @@ export function SurfaceTextureTaskPanel({
               onUpload={upload}
             />
           </fieldset>
-        </div>
-        <div className="grid shrink-0 gap-2 border-t bg-panel p-3">
-          <TexturePreviewFooter visible={draft !== null} />
-          {error && <Alert>{error}</Alert>}
-        </div>
+        </TaskPanelLayout>
       </form>
     </aside>
   )

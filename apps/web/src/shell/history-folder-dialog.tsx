@@ -9,6 +9,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -136,61 +137,67 @@ function FolderForm({
   )
   const initialKeys = new Set(initialItems?.map(historyItemKey))
   return (
-    <Form form={form} aria-label={t(folder ? "editMembership" : "createFolder")}>
-      {!folder && (
-        <form.AppField name="name">
-          {(field) => (
-            <field.TextField
-              autoFocus
-              required
-              autoComplete="off"
-              disabled={pending || disabled}
-              label={t("folderName")}
-              description={t("nameDescription")}
-            />
-          )}
-        </form.AppField>
-      )}
-      {initialItems ? (
-        <div className="space-y-1 text-xs text-muted-foreground">
-          <p>{t("selectedItems", { count: initialItems.length })}</p>
-          <ul className="max-h-40 overflow-y-auto">
-            {rows
-              .filter((row) => initialKeys.has(historyItemKey(row.ref)))
-              .map((row) => (
-                <li key={historyItemKey(row.ref)}>{row.record.label || t("unnamedItem")}</li>
-              ))}
-          </ul>
-        </div>
-      ) : (
-        (["first", "last"] as const).map((key) => (
-          <form.Field key={key} name={key}>
+    <Form
+      form={form}
+      aria-label={t(folder ? "editMembership" : "createFolder")}
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
+      <DialogBody>
+        {!folder && (
+          <form.AppField name="name">
             {(field) => (
-              <SelectField
-                label={t(key === "first" ? "firstItem" : "lastItem")}
-                value={field.state.value}
-                onValueChange={field.handleChange}
-                onBlur={field.handleBlur}
+              <field.TextField
+                autoFocus
+                required
+                autoComplete="off"
                 disabled={pending || disabled}
-              >
-                {rows.map((row, index) => (
-                  <SelectOption
-                    key={historyItemKey(row.ref)}
-                    value={historyItemKey(row.ref)}
-                    disabled={occupied.has(historyItemKey(row.ref))}
-                  >
-                    {t("historyOption", {
-                      position: index + 1,
-                      name: row.record.label || t("unnamedItem"),
-                    })}
-                  </SelectOption>
-                ))}
-              </SelectField>
+                label={t("folderName")}
+                description={t("nameDescription")}
+              />
             )}
-          </form.Field>
-        ))
-      )}
-      {error && <Alert>{error}</Alert>}
+          </form.AppField>
+        )}
+        {initialItems ? (
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>{t("selectedItems", { count: initialItems.length })}</p>
+            <ul className="max-h-40 overflow-y-auto">
+              {rows
+                .filter((row) => initialKeys.has(historyItemKey(row.ref)))
+                .map((row) => (
+                  <li key={historyItemKey(row.ref)}>{row.record.label || t("unnamedItem")}</li>
+                ))}
+            </ul>
+          </div>
+        ) : (
+          (["first", "last"] as const).map((key) => (
+            <form.Field key={key} name={key}>
+              {(field) => (
+                <SelectField
+                  label={t(key === "first" ? "firstItem" : "lastItem")}
+                  value={field.state.value}
+                  onValueChange={field.handleChange}
+                  onBlur={field.handleBlur}
+                  disabled={pending || disabled}
+                >
+                  {rows.map((row, index) => (
+                    <SelectOption
+                      key={historyItemKey(row.ref)}
+                      value={historyItemKey(row.ref)}
+                      disabled={occupied.has(historyItemKey(row.ref))}
+                    >
+                      {t("historyOption", {
+                        position: index + 1,
+                        name: row.record.label || t("unnamedItem"),
+                      })}
+                    </SelectOption>
+                  ))}
+                </SelectField>
+              )}
+            </form.Field>
+          ))
+        )}
+        {error && <Alert>{error}</Alert>}
+      </DialogBody>
       <DialogFooter>
         <DialogClose asChild>
           <Button type="button" variant="outline" disabled={pending}>

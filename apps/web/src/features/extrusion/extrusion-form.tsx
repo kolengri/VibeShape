@@ -1145,7 +1145,7 @@ function ExtrusionFormView({ controller }: { controller: ExtrusionFormController
       ref={controller.formElementRef}
       form={form}
       aria-label={controller.copy.title}
-      className="gap-0"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
       <ExtrusionProfileSelectionSync
         profiles={controller.mode.profiles}

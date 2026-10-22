@@ -16,7 +16,6 @@ it("keeps required instructions and their description target mounted while optio
         instruction={
           <span id="body-instruction">Choose a replacement body before continuing.</span>
         }
-        actions={<button type="button">Cancel</button>}
       />
       <label htmlFor="replacement">Replacement body</label>
       <select id="replacement" aria-describedby="body-instruction">

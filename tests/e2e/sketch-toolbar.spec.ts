@@ -43,9 +43,10 @@ async function expectAssistantBelowToolbar(page: Page, toolbar: Locator) {
   if (!barBounds || !panelBounds || !workspaceBounds) {
     throw new Error("The toolbar, assistant, and workspace must remain measurable.")
   }
-  expect(panelBounds.y).toBe(barBounds.y + barBounds.height)
+  expect(panelBounds.y).toBeGreaterThanOrEqual(barBounds.y + barBounds.height)
+  expect(panelBounds.y).toBe(workspaceBounds.y)
   expect(workspaceBounds.y).toBeGreaterThanOrEqual(barBounds.y + barBounds.height)
-  await assistant.getByRole("button", { name: "Close chat", exact: true }).click()
+  await assistant.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
   await expect(assistant).toHaveCount(0)
 }
 

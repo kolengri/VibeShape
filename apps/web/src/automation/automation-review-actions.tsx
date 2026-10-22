@@ -3,6 +3,7 @@ import { documentCoreModule, featureCoreModule } from "@vibeshape/domain/modules
 import type { useTranslations } from "@vibeshape/i18n"
 import {
   AlertDialog,
+  AlertDialogBody,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -104,6 +105,7 @@ function DestructiveApply({
         <TaskPanelLifecycleButton
           kind="accept"
           label={label}
+          presentation="text"
           destructive
           type="button"
           disabled={disabled}
@@ -114,8 +116,10 @@ function DestructiveApply({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("destructiveTitle")}</AlertDialogTitle>
-          <AlertDialogDescription>{t("destructiveDescription")}</AlertDialogDescription>
         </AlertDialogHeader>
+        <AlertDialogBody>
+          <AlertDialogDescription>{t("destructiveDescription")}</AlertDialogDescription>
+        </AlertDialogBody>
         <AlertDialogFooter>
           <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
           <Button

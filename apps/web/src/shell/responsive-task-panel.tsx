@@ -69,7 +69,7 @@ export function ResponsiveTaskPanel({
     const element = content.current
     if (!element) return
     element.scrollTop = 0
-    for (const panel of element.querySelectorAll<HTMLElement>("aside, [role='complementary']")) {
+    for (const panel of element.querySelectorAll<HTMLElement>("[data-slot='task-panel-content']")) {
       panel.scrollTop = 0
     }
   }, [activeTaskKey, expansion.taskKey])
@@ -79,7 +79,10 @@ export function ResponsiveTaskPanel({
   const ActionIcon = panelExpanded ? PanelBottomClose : PanelBottomOpen
 
   return (
-    <div className="responsive-task-panel min-h-0" data-expanded={panelExpanded}>
+    <div
+      className="responsive-task-panel flex min-h-0 min-w-0 flex-col"
+      data-expanded={panelExpanded}
+    >
       <div className="responsive-task-panel__toggle relative z-20 border-b bg-panel px-2">
         <CompactModelTreeToggle />
         <TooltipProvider>
@@ -106,7 +109,7 @@ export function ResponsiveTaskPanel({
       </div>
       <div
         ref={content}
-        className="responsive-task-panel__content min-h-0 overflow-clip"
+        className="responsive-task-panel__content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         hidden={compact && !expanded}
         id={contentId}
       >

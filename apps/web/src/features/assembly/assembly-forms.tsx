@@ -2,7 +2,7 @@ import type { AssemblyMutation } from "@vibeshape/domain/assembly-authority"
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { createContext, type ReactNode, useContext, useState } from "react"
-import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { useReportApplicationError } from "../../shell/application-notices"
 
@@ -36,7 +36,7 @@ export function AssemblyTaskForm({
   if (!panel) throw new Error("Assembly task forms require an assembly task panel context.")
   return (
     <form
-      className="grid gap-2"
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden"
       onKeyDown={(event) => {
         if (event.key === "Escape" && !event.defaultPrevented && !actions.pending) {
           event.preventDefault()
@@ -58,7 +58,7 @@ export function AssemblyTaskForm({
         await actions.onApply(changes)
       }}
     >
-      <TaskPanelHeader
+      <TaskPanelLayout
         title={panel.title}
         actions={
           <TaskPanelLifecycleActions
@@ -72,12 +72,13 @@ export function AssemblyTaskForm({
             onCancel={actions.onCancel}
           />
         }
-      />
-      {panel.error && !appOwnsError && <Alert>{panel.error}</Alert>}
-      <fieldset disabled={actions.pending} className="grid min-w-0 gap-2">
-        {children}
-      </fieldset>
-      {invalid && <Alert>{invalidMessage ?? t("invalidParameters")}</Alert>}
+      >
+        {panel.error && !appOwnsError && <Alert>{panel.error}</Alert>}
+        <fieldset disabled={actions.pending} className="grid min-w-0 gap-2">
+          {children}
+        </fieldset>
+        {invalid && <Alert>{invalidMessage ?? t("invalidParameters")}</Alert>}
+      </TaskPanelLayout>
     </form>
   )
 }

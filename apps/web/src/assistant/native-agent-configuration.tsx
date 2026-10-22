@@ -3,6 +3,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { DialogBody, DialogFooter } from "@vibeshape/ui/components/dialog"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { type FormEvent, useId, useRef, useState } from "react"
@@ -134,41 +135,51 @@ export function NativeAgentConfiguration({
   const test = useAssistantConnectionTest(chat.testConnection)
   const pending = connecting || form.disconnecting || form.submitting || test.pending
   const locked = pending || connected
-  return (
-    <div className="grid gap-2">
-      <SelectField
-        label={t("agent")}
-        value={form.choice}
-        disabled={pending}
-        onValueChange={(value) => {
-          test.clear()
-          form.choose(value)
-        }}
-      >
-        <SelectOption value="choose" disabled>
-          {t("chooseAgent")}
+  const agentField = (
+    <SelectField
+      label={t("agent")}
+      value={form.choice}
+      disabled={pending}
+      onValueChange={(value) => {
+        test.clear()
+        form.choose(value)
+      }}
+    >
+      <SelectOption value="choose" disabled>
+        {t("chooseAgent")}
+      </SelectOption>
+      {agentPresets.map((preset) => (
+        <SelectOption key={preset.id} value={preset.id}>
+          {t(`agents.${preset.id}`)}
         </SelectOption>
-        {agentPresets.map((preset) => (
-          <SelectOption key={preset.id} value={preset.id}>
-            {t(`agents.${preset.id}`)}
-          </SelectOption>
-        ))}
-        <SelectOption value="jev">{t("agents.jev")}</SelectOption>
-        <SelectOption value="custom">{t("agents.custom")}</SelectOption>
-      </SelectField>
-      {form.choice === "jev" ? (
-        <JevAgentConfiguration
-          chat={chat}
-          connected={connected}
-          pending={pending}
-          disconnect={form.disconnect}
-          testing={test.pending}
-          testConnection={test.run}
-          clearTest={test.clear}
-        />
-      ) : (
+      ))}
+      <SelectOption value="jev">{t("agents.jev")}</SelectOption>
+      <SelectOption value="custom">{t("agents.custom")}</SelectOption>
+    </SelectField>
+  )
+  const feedback = <AssistantConnectionTestFeedback result={test.result} attempt={test.attempt} />
+  if (form.choice === "jev") {
+    return (
+      <JevAgentConfiguration
+        chat={chat}
+        connected={connected}
+        pending={pending}
+        disconnect={form.disconnect}
+        testing={test.pending}
+        testConnection={test.run}
+        clearTest={test.clear}
+        agentField={agentField}
+        feedback={feedback}
+      />
+    )
+  }
+  return (
+    <>
+      <DialogBody>
+        {agentField}
         <form
-          className="grid gap-2"
+          id={id}
+          className="grid gap-3"
           onInput={test.clear}
           onSubmit={(event) => {
             if (test.pending) event.preventDefault()
@@ -208,29 +219,32 @@ export function NativeAgentConfiguration({
               {t("settingsNotSaved")}
             </p>
           )}
-          <NativeAgentActions
-            connected={connected}
-            pending={pending}
-            disabled={!form.draft.command.trim()}
-            disconnect={form.disconnect}
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pending || !form.draft.command.trim()}
-            isLoading={test.pending}
-            onClick={async () => {
-              const agent = form.validate()
-              if (agent) await test.run(agent)
-            }}
-          >
-            {t("testConnection")}
-          </Button>
           <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
         </form>
-      )}
-      <AssistantConnectionTestFeedback result={test.result} attempt={test.attempt} />
-    </div>
+        {feedback}
+      </DialogBody>
+      <DialogFooter>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={pending || !form.draft.command.trim()}
+          isLoading={test.pending}
+          onClick={async () => {
+            const agent = form.validate()
+            if (agent) await test.run(agent)
+          }}
+        >
+          {t("testConnection")}
+        </Button>
+        <NativeAgentActions
+          form={id}
+          connected={connected}
+          pending={pending}
+          disabled={!form.draft.command.trim()}
+          disconnect={form.disconnect}
+        />
+      </DialogFooter>
+    </>
   )
 }

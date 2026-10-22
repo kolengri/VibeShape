@@ -3,6 +3,7 @@ import type { AssemblyInspection } from "@vibeshape/protocol"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { type ComponentType, useEffect } from "react"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { type DocumentControllerState, getProjectRuntime } from "../../document/document-controller"
 import { useReportApplicationError } from "../../shell/application-notices"
 import { assistantCheckpointForController } from "../../shell/assistant-checkpoint-display"
@@ -220,15 +221,9 @@ function AssemblyInspectionStatus({ view }: { view: AssemblyWorkspaceView }) {
     </>
   )
 }
-function IdleAssemblyPanelHeading({ error }: { error: string | null }) {
-  const t = useTranslations("app.assembly")
+function IdleAssemblyPanelError({ error }: { error: string | null }) {
   const appOwnsError = useReportApplicationError(error)
-  return (
-    <>
-      <h2 className="text-xs font-medium">{t("workspaceTitle")}</h2>
-      {error && !appOwnsError && <Alert>{error}</Alert>}
-    </>
-  )
+  return error && !appOwnsError ? <Alert>{error}</Alert> : null
 }
 
 function AssemblyPanel({
@@ -243,6 +238,17 @@ function AssemblyPanel({
   study: AssemblyMotionStudySession
 }) {
   const t = useTranslations("app.assembly")
+  const content = (
+    <>
+      <AssemblyPanelContent
+        view={view}
+        selectedPartId={selectedPartId}
+        motion={motion}
+        study={study}
+      />
+      <AssemblyInspectionStatus view={view} />
+    </>
+  )
   return (
     <ResponsiveTaskPanel
       activeTaskKey={view.panelKey}
@@ -250,17 +256,17 @@ function AssemblyPanel({
       expandLabel={t("expandPanel")}
     >
       <section
-        className="grid h-full min-h-0 min-w-0 content-start gap-2 overflow-y-auto p-3"
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden"
         aria-label={t("taskPanel")}
       >
-        {view.idle && <IdleAssemblyPanelHeading error={view.mutations.error} />}
-        <AssemblyPanelContent
-          view={view}
-          selectedPartId={selectedPartId}
-          motion={motion}
-          study={study}
-        />
-        <AssemblyInspectionStatus view={view} />
+        {view.idle ? (
+          <TaskPanelLayout title={t("workspaceTitle")}>
+            <IdleAssemblyPanelError error={view.mutations.error} />
+            {content}
+          </TaskPanelLayout>
+        ) : (
+          content
+        )}
       </section>
     </ResponsiveTaskPanel>
   )

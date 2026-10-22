@@ -413,7 +413,12 @@ export function BasicPrimitiveForm({
   )
 
   return (
-    <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form
+      ref={formElementRef}
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
       <form.Subscribe selector={(state) => [state.values, state.isDirty] as const}>
         {([values, dirty]) => (
           <PrimitiveValuesSync

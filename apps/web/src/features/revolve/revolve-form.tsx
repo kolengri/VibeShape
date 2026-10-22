@@ -742,7 +742,7 @@ function RevolveFormView({ controller }: { controller: RevolveFormController }) 
       ref={controller.formElementRef}
       form={form}
       aria-label={controller.copy.title}
-      className="gap-0"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
       <RevolveProfileSelectionSync
         profiles={controller.mode.profiles}

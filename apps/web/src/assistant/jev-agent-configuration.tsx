@@ -5,11 +5,12 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { DialogBody, DialogFooter } from "@vibeshape/ui/components/dialog"
 import { Field, FieldDescription, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { TextField } from "@vibeshape/ui/components/text-field"
-import { type FormEvent, useId, useRef, useState } from "react"
+import { type FormEvent, type ReactNode, useId, useRef, useState } from "react"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
 import { useAssistantSettingsSaved } from "./assistant-settings-dialog"
 import { agentPresetId, agentPresets } from "./connection-presets"
@@ -86,6 +87,8 @@ function configuration(
 }
 
 type JevConfigurationProps = {
+  agentField?: ReactNode
+  feedback?: ReactNode
   chat: Pick<ReturnType<typeof createNativeChatController>, "connect">
   connected: boolean
   pending: boolean
@@ -200,153 +203,163 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
   const fieldError = (name: string) => (invalidFields.includes(name) ? t("jev.invalid") : undefined)
   const apiKeyError = fieldError("apiKey")
   return (
-    <form
-      ref={formRef}
-      className="grid gap-2"
-      onInput={(event) => {
-        clearTest()
-        if (event.target instanceof HTMLInputElement) clearInvalidField(event.target.name)
-      }}
-      onSubmit={submit}
-      aria-label={t("jev.settings")}
-      aria-busy={pending || submitting || undefined}
-    >
-      <fieldset disabled={locked} className="grid min-w-0 gap-2">
-        <TextField
-          name="model"
-          error={fieldError("model")}
-          label={t("jev.model")}
-          description={t("jev.description")}
-          defaultValue={initial.model}
-          required
-          maxLength={128}
-        />
-        <Field data-invalid={Boolean(apiKeyError) || undefined}>
-          <FieldLabel htmlFor={`${id}-api-key`}>{t("jev.apiKey")}</FieldLabel>
-          <Input
-            id={`${id}-api-key`}
-            name="apiKey"
-            type="password"
-            autoComplete="off"
-            maxLength={4096}
-            aria-invalid={Boolean(apiKeyError) || undefined}
-            aria-describedby={
-              apiKeyError ? `${id}-key-notice ${id}-api-key-error` : `${id}-key-notice`
-            }
-          />
-          <FieldError id={`${id}-api-key-error`}>{apiKeyError}</FieldError>
-        </Field>
-        <FieldDescription id={`${id}-key-notice`}>{t("jev.keyNotice")}</FieldDescription>
-        <div className="grid gap-2">
-          <SelectField
-            label={t("jev.argumentModel")}
-            description={t("jev.argumentNotice")}
-            value={argumentChoice}
-            disabled={locked}
-            onValueChange={(value) => {
-              setArgumentChoice(value)
-              clearTest()
-            }}
-          >
-            <SelectOption value="none">{t("jev.noArgumentAgent")}</SelectOption>
-            {agentPresets.map((preset) => (
-              <SelectOption key={preset.id} value={preset.id}>
-                {t(`agents.${preset.id}`)}
-              </SelectOption>
-            ))}
-            {initial.argumentsAgent && agentPresetId(initial.argumentsAgent) === "custom" && (
-              <SelectOption value="saved">{t("jev.savedAgent")}</SelectOption>
-            )}
-            <SelectOption value="api">{t("jev.apiArgumentAgent")}</SelectOption>
-          </SelectField>
-          {argumentChoice === "api" && (
-            <>
-              <TextField
-                name="argumentsEndpoint"
-                error={fieldError("argumentsEndpoint")}
-                type="url"
-                label={t("jev.endpoint")}
-                defaultValue={initial.argumentsEndpoint}
-                maxLength={2048}
-              />
-              <TextField
-                name="argumentsModel"
-                error={fieldError("argumentsModel")}
-                label={t("jev.helperModel")}
-                defaultValue={initial.argumentsModel}
-                maxLength={128}
-              />
-              <TextField
-                name="argumentsApiKey"
-                error={fieldError("argumentsApiKey")}
+    <>
+      <DialogBody>
+        {props.agentField}
+        <form
+          id={id}
+          ref={formRef}
+          className="grid gap-2"
+          onInput={(event) => {
+            clearTest()
+            if (event.target instanceof HTMLInputElement) clearInvalidField(event.target.name)
+          }}
+          onSubmit={submit}
+          aria-label={t("jev.settings")}
+          aria-busy={pending || submitting || undefined}
+        >
+          <fieldset disabled={locked} className="grid min-w-0 gap-2">
+            <TextField
+              name="model"
+              error={fieldError("model")}
+              label={t("jev.model")}
+              description={t("jev.description")}
+              defaultValue={initial.model}
+              required
+              maxLength={128}
+            />
+            <Field data-invalid={Boolean(apiKeyError) || undefined}>
+              <FieldLabel htmlFor={`${id}-api-key`}>{t("jev.apiKey")}</FieldLabel>
+              <Input
+                id={`${id}-api-key`}
+                name="apiKey"
                 type="password"
-                label={t("jev.helperKey")}
                 autoComplete="off"
                 maxLength={4096}
+                aria-invalid={Boolean(apiKeyError) || undefined}
+                aria-describedby={
+                  apiKeyError ? `${id}-key-notice ${id}-api-key-error` : `${id}-key-notice`
+                }
               />
-            </>
+              <FieldError id={`${id}-api-key-error`}>{apiKeyError}</FieldError>
+            </Field>
+            <FieldDescription id={`${id}-key-notice`}>{t("jev.keyNotice")}</FieldDescription>
+            <div className="grid gap-2">
+              <SelectField
+                label={t("jev.argumentModel")}
+                description={t("jev.argumentNotice")}
+                value={argumentChoice}
+                disabled={locked}
+                onValueChange={(value) => {
+                  setArgumentChoice(value)
+                  clearTest()
+                }}
+              >
+                <SelectOption value="none">{t("jev.noArgumentAgent")}</SelectOption>
+                {agentPresets.map((preset) => (
+                  <SelectOption key={preset.id} value={preset.id}>
+                    {t(`agents.${preset.id}`)}
+                  </SelectOption>
+                ))}
+                {initial.argumentsAgent && agentPresetId(initial.argumentsAgent) === "custom" && (
+                  <SelectOption value="saved">{t("jev.savedAgent")}</SelectOption>
+                )}
+                <SelectOption value="api">{t("jev.apiArgumentAgent")}</SelectOption>
+              </SelectField>
+              {argumentChoice === "api" && (
+                <>
+                  <TextField
+                    name="argumentsEndpoint"
+                    error={fieldError("argumentsEndpoint")}
+                    type="url"
+                    label={t("jev.endpoint")}
+                    defaultValue={initial.argumentsEndpoint}
+                    maxLength={2048}
+                  />
+                  <TextField
+                    name="argumentsModel"
+                    error={fieldError("argumentsModel")}
+                    label={t("jev.helperModel")}
+                    defaultValue={initial.argumentsModel}
+                    maxLength={128}
+                  />
+                  <TextField
+                    name="argumentsApiKey"
+                    error={fieldError("argumentsApiKey")}
+                    type="password"
+                    label={t("jev.helperKey")}
+                    autoComplete="off"
+                    maxLength={4096}
+                  />
+                </>
+              )}
+            </div>
+            <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)}>
+              <summary className="cursor-pointer text-xs font-medium">{t("jev.advanced")}</summary>
+              <div className="mt-2 grid gap-2">
+                <TextField
+                  name="maxSteps"
+                  error={fieldError("maxSteps")}
+                  type="number"
+                  label={t("jev.maxSteps")}
+                  defaultValue={initial.maxSteps}
+                  min={1}
+                  max={48}
+                  required
+                />
+                <TextField
+                  name="minConfidence"
+                  error={fieldError("minConfidence")}
+                  type="number"
+                  label={t("jev.minConfidence")}
+                  defaultValue={initial.minConfidence}
+                  min={0}
+                  max={1}
+                  step="0.01"
+                  required
+                />
+                <TextField
+                  name="timeoutMs"
+                  error={fieldError("timeoutMs")}
+                  type="number"
+                  label={t("jev.timeoutMs")}
+                  defaultValue={initial.timeoutMs}
+                  min={1000}
+                  max={120000}
+                  required
+                />
+              </div>
+            </details>
+          </fieldset>
+          {failed && <Alert>{t("errors.request-failed")}</Alert>}
+          {storageFailed && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {t("settingsNotSaved")}
+            </p>
           )}
-        </div>
-        <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)}>
-          <summary className="cursor-pointer text-xs font-medium">{t("jev.advanced")}</summary>
-          <div className="mt-2 grid gap-2">
-            <TextField
-              name="maxSteps"
-              error={fieldError("maxSteps")}
-              type="number"
-              label={t("jev.maxSteps")}
-              defaultValue={initial.maxSteps}
-              min={1}
-              max={48}
-              required
-            />
-            <TextField
-              name="minConfidence"
-              error={fieldError("minConfidence")}
-              type="number"
-              label={t("jev.minConfidence")}
-              defaultValue={initial.minConfidence}
-              min={0}
-              max={1}
-              step="0.01"
-              required
-            />
-            <TextField
-              name="timeoutMs"
-              error={fieldError("timeoutMs")}
-              type="number"
-              label={t("jev.timeoutMs")}
-              defaultValue={initial.timeoutMs}
-              min={1000}
-              max={120000}
-              required
-            />
-          </div>
-        </details>
-      </fieldset>
-      {failed && <Alert>{t("errors.request-failed")}</Alert>}
-      {storageFailed && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {t("settingsNotSaved")}
-        </p>
-      )}
-      <NativeAgentActions
-        connected={connected}
-        pending={pending || submitting}
-        disconnect={disconnect}
-      />
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={pending || submitting}
-        isLoading={testing}
-        onClick={test}
-      >
-        {t("testConnection")}
-      </Button>
-      <p className="text-xs text-muted-foreground">{t("connectionTestNotice")}</p>
-      <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
-    </form>
+          <p className="text-xs text-muted-foreground">{t("connectionTestNotice")}</p>
+          <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
+        </form>
+        {props.feedback}
+      </DialogBody>
+      <DialogFooter>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={pending || submitting}
+          isLoading={testing}
+          onClick={test}
+        >
+          {t("testConnection")}
+        </Button>
+        <NativeAgentActions
+          form={id}
+          connected={connected}
+          pending={pending || submitting}
+          disconnect={disconnect}
+        />
+      </DialogFooter>
+    </>
   )
 }

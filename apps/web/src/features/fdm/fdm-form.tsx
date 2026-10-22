@@ -371,7 +371,12 @@ export function FdmForm(props: FdmFormProps) {
     )
   }
   return (
-    <Form ref={state.formElementRef} form={form} aria-label={title} className="gap-0">
+    <Form
+      ref={state.formElementRef}
+      form={form}
+      aria-label={title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
       <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
         {([values, pending]) => {
           const parsed = parseFdmForm(

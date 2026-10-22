@@ -254,13 +254,14 @@ describe("captured-source History task", () => {
     const user = userEvent.setup()
     const { onCloseTool } = renderFeatureTask()
     const close = screen.getByRole("button", { name: "Close" })
-    const header = close.closest("header")
-    expect(header).not.toBeNull()
-    expect(screen.getByRole("heading", { name: "Organic lightweighting" }).closest("header")).toBe(
-      header,
-    )
-    expect(screen.getByRole("button", { name: "Delete feature" }).closest("header")).not.toBe(
-      header,
+    const footer = close.closest("footer")
+    expect(footer).not.toBeNull()
+    expect(close.closest("header")).toBeNull()
+    expect(
+      screen.getByRole("heading", { name: "Organic lightweighting" }).closest("header"),
+    ).not.toBeNull()
+    expect(screen.getByRole("button", { name: "Delete feature" }).closest("footer")).not.toBe(
+      footer,
     )
     expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(1)
     await user.click(close)

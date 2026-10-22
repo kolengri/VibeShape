@@ -3,6 +3,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -201,7 +202,7 @@ function UiExtensionsManager({ copy }: { copy: UiExtensionsCopy }) {
     changeEntry,
   } = state
   return (
-    <div className="grid min-h-0 gap-4 overflow-y-auto pr-1">
+    <div className="grid gap-4">
       <div className="grid gap-2">
         <label className={fieldVariants({ orientation: "horizontal" })}>
           <span>{copy.installFile}</span>
@@ -288,13 +289,13 @@ export function UiExtensionsDialog({
       <DialogContent
         onCloseAutoFocus={onCloseAutoFocus}
         closeLabel={copy.close}
-        className="flex max-w-3xl flex-col overflow-hidden p-4"
+        className="max-w-3xl"
       >
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
-        {open && <UiExtensionsManager copy={copy} />}
+        <DialogBody>{open && <UiExtensionsManager copy={copy} />}</DialogBody>
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">{copy.close}</Button>

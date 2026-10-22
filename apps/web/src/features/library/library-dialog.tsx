@@ -3,6 +3,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -38,56 +39,58 @@ function LibraryTask({
   const selection = browser.selection
   return (
     <>
-      {!writable && (
-        <p role="status" className="rounded-md border p-3 text-sm">
-          {t("documentBlocked")}
-        </p>
-      )}
-      <div className="grid gap-5 lg:grid-cols-2">
-        <div className="grid content-start gap-4">
-          <LibraryBrowserPanel browser={browser} pending={action.pending} />
-          <LibrarySaveForm
-            sources={librarySources(controller)}
-            browser={browser}
-            action={action}
-            writable={writable}
-          />
+      <DialogBody>
+        {!writable && (
+          <p role="status" className="rounded-md border p-3 text-sm">
+            {t("documentBlocked")}
+          </p>
+        )}
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid content-start gap-4">
+            <LibraryBrowserPanel browser={browser} pending={action.pending} />
+            <LibrarySaveForm
+              sources={librarySources(controller)}
+              browser={browser}
+              action={action}
+              writable={writable}
+            />
+          </div>
+          <div className="grid content-start gap-4">
+            {selection ? (
+              <>
+                <LibraryItemSummary item={selection.item} version={selection.version.version} />
+                <LibraryInsertForm
+                  key={`${selection.item.id}:${selection.version.version}`}
+                  selection={selection}
+                  action={action}
+                  writable={writable}
+                />
+                <LibraryMetadataForm
+                  key={`${selection.item.id}:${selection.item.metadataRevision}`}
+                  selection={selection}
+                  browser={browser}
+                  action={action}
+                  writable={writable}
+                />
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("chooseItem")}</p>
+            )}
+            <LibraryReferences
+              controller={controller}
+              selection={selection}
+              action={action}
+              writable={writable}
+            />
+          </div>
         </div>
-        <div className="grid content-start gap-4">
-          {selection ? (
-            <>
-              <LibraryItemSummary item={selection.item} version={selection.version.version} />
-              <LibraryInsertForm
-                key={`${selection.item.id}:${selection.version.version}`}
-                selection={selection}
-                action={action}
-                writable={writable}
-              />
-              <LibraryMetadataForm
-                key={`${selection.item.id}:${selection.item.metadataRevision}`}
-                selection={selection}
-                browser={browser}
-                action={action}
-                writable={writable}
-              />
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t("chooseItem")}</p>
-          )}
-          <LibraryReferences
-            controller={controller}
-            selection={selection}
-            action={action}
-            writable={writable}
-          />
-        </div>
-      </div>
-      {action.error && <Alert>{t("operationError", { message: action.error })}</Alert>}
-      {action.notice && (
-        <p role="status" className="text-sm">
-          {action.notice}
-        </p>
-      )}
+        {action.error && <Alert>{t("operationError", { message: action.error })}</Alert>}
+        {action.notice && (
+          <p role="status" className="text-sm">
+            {action.notice}
+          </p>
+        )}
+      </DialogBody>
       <DialogFooter>
         <Button type="button" variant="outline" disabled={action.pending} onClick={onClose}>
           {t("close")}

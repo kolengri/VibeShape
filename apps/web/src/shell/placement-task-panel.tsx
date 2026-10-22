@@ -116,7 +116,10 @@ export function PlacementTaskPanel(props: PlacementPanelProps) {
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
       : `create:${mode.targetBody.featureId}:${mode.targetBody.outputRole}:${report.snapshot.revision}`
   return (
-    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside
+      aria-label={task("ariaLabel")}
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+    >
       <PlacementForm
         key={key}
         copy={copy}

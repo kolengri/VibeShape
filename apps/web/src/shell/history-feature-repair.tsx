@@ -3,7 +3,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { fieldVariants } from "@vibeshape/ui/components/field"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { createContext, type ReactNode, useContext, useId, useState } from "react"
-import { TaskPanelHeader, TaskPanelHeaderContentProvider } from "../components/task-panel-header"
+import { TaskPanelContentProvider, TaskPanelLayout } from "../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../document/document-controller"
 import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
@@ -103,7 +103,7 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
   )
   if (replacement)
     return (
-      <TaskPanelHeaderContentProvider
+      <TaskPanelContentProvider
         content={
           <>
             <p id={`${selectId}-description`} className="text-xs text-muted-foreground">
@@ -116,12 +116,12 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
         <replacementContext.Provider key={selectedBodyId} value={replacement}>
           {children(adaptedController)}
         </replacementContext.Provider>
-      </TaskPanelHeaderContentProvider>
+      </TaskPanelContentProvider>
     )
   return (
-    <div className="flex min-h-0 flex-col border-l bg-panel">
-      <section aria-label={t("title")} className="grid shrink-0 gap-2 border-b p-4">
-        <TaskPanelHeader
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-l bg-panel">
+      <section aria-label={t("title")} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TaskPanelLayout
           title={t("title")}
           instruction={<span id={`${selectId}-description`}>{t("description")}</span>}
           actions={
@@ -131,9 +131,10 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
               onCancel={onClose}
             />
           }
-        />
-        {controls}
-        {renderDelete(feature)}
+        >
+          {controls}
+          {renderDelete(feature)}
+        </TaskPanelLayout>
       </section>
     </div>
   )

@@ -4,6 +4,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -149,35 +150,37 @@ function TextTask({
     <form
       aria-label={t(target.group ? "editTitle" : "title")}
       noValidate
-      className="grid gap-4"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
       onSubmit={(event) => {
         event.preventDefault()
         void state.apply()
       }}
     >
-      <fieldset disabled={state.pending} aria-busy={state.pending} className="grid gap-4">
-        <legend className="sr-only">{t("parameters")}</legend>
-        <TextField
-          label={t("text")}
-          value={state.values.text}
-          required
-          error={textError ? t(textError) : undefined}
-          onChange={(event) => state.update("text", event.currentTarget.value)}
-        />
-        <TextDimensions state={state} />
-        <TextAlignment state={state} />
-        <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
-          <span>{t("kerning")}</span>
-          <input
-            type="checkbox"
-            className="accent-primary"
-            checked={state.values.kerning}
-            onChange={(event) => state.update("kerning", event.currentTarget.checked)}
+      <DialogBody>
+        <fieldset disabled={state.pending} aria-busy={state.pending} className="grid gap-4">
+          <legend className="sr-only">{t("parameters")}</legend>
+          <TextField
+            label={t("text")}
+            value={state.values.text}
+            required
+            error={textError ? t(textError) : undefined}
+            onChange={(event) => state.update("text", event.currentTarget.value)}
           />
-        </label>
-        <TextRegenerationNotice state={state} />
-      </fieldset>
-      {state.error && <Alert>{state.error}</Alert>}
+          <TextDimensions state={state} />
+          <TextAlignment state={state} />
+          <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+            <span>{t("kerning")}</span>
+            <input
+              type="checkbox"
+              className="accent-primary"
+              checked={state.values.kerning}
+              onChange={(event) => state.update("kerning", event.currentTarget.checked)}
+            />
+          </label>
+          <TextRegenerationNotice state={state} />
+        </fieldset>
+        {state.error && <Alert>{state.error}</Alert>}
+      </DialogBody>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           {t("cancel")}

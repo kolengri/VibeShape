@@ -5,6 +5,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -200,7 +201,9 @@ function ExportPreparation({
   disabled,
   panelDisabled,
   onBusyChange,
+  actionContainer,
 }: {
+  actionContainer: HTMLElement | null
   controller: DocumentControllerState
   available: boolean
   shown: boolean
@@ -230,6 +233,7 @@ function ExportPreparation({
       {shown ? (
         <div id={panelId}>
           <PrintPreparationPanel
+            actionContainer={actionContainer}
             key={`${controller.report?.snapshot.id}:${controller.report?.snapshot.revision}`}
             disabled={panelDisabled}
             onBusyChange={onBusyChange}
@@ -372,7 +376,7 @@ function ExportDialogHeader({ controller }: { controller: DocumentControllerStat
     "surfaceTextures" in authority &&
     authority.surfaceTextures.some(({ enabled }) => enabled)
   return (
-    <DialogHeader className="shrink-0 border-b px-5 py-4">
+    <DialogHeader>
       <DialogTitle>{t("title")}</DialogTitle>
       <DialogDescription>{t("description")}</DialogDescription>
       {hasTextures ? (
@@ -436,15 +440,17 @@ function ExportOriginalModelFields({
 function ExportDialogActions({
   session,
   onClose,
+  actionRef,
 }: {
   session: ExportSession
   onClose: () => void
+  actionRef: (element: HTMLDivElement | null) => void
 }) {
   const t = useTranslations("app.export")
   const { handoff, nativeDestination, format, activity } = session
   const slicerUnavailable = nativeDestination && (!handoff.native || !handoff.canSend)
   return (
-    <DialogFooter className="shrink-0 flex-row flex-wrap justify-end border-t px-5 py-3">
+    <DialogFooter ref={actionRef}>
       <Button type="button" variant="outline" disabled={session.pending} onClick={onClose}>
         {t("close")}
       </Button>
@@ -467,15 +473,13 @@ function ExportDialogActions({
 function ExportDialogContent(props: ExportContentProps) {
   const t = useTranslations("app.export")
   const session = useExportSession(props)
+  const [actionContainer, setActionContainer] = useState<HTMLDivElement | null>(null)
   return (
     <DialogContent
       onCloseAutoFocus={props.onCloseAutoFocus}
       closeLabel={t("closeLabel")}
       showCloseButton={false}
-      className={cn(
-        "flex flex-col gap-0 overflow-hidden p-0",
-        session.showPreparation ? "max-w-3xl" : "max-w-xl",
-      )}
+      className={session.showPreparation ? "max-w-3xl" : "max-w-xl"}
       onEscapeKeyDown={(event) => {
         if (session.pending) event.preventDefault()
       }}
@@ -484,10 +488,7 @@ function ExportDialogContent(props: ExportContentProps) {
       }}
     >
       <ExportDialogHeader controller={props.controller} />
-      <div
-        data-slot="export-dialog-body"
-        className="grid min-h-0 content-start gap-3 overflow-y-auto px-5 py-4"
-      >
+      <DialogBody data-slot="export-dialog-body" className="content-start gap-3">
         {!session.showPreparation ? (
           <ExportOriginalModelFields controller={props.controller} session={session} />
         ) : null}
@@ -498,10 +499,15 @@ function ExportDialogContent(props: ExportContentProps) {
           onShowChange={session.setShowPreparation}
           disabled={session.actionDisabled}
           panelDisabled={session.preparationDisabled}
+          actionContainer={actionContainer}
           onBusyChange={session.setPrintPending}
         />
-      </div>
-      <ExportDialogActions session={session} onClose={props.onClose} />
+      </DialogBody>
+      <ExportDialogActions
+        session={session}
+        onClose={props.onClose}
+        actionRef={setActionContainer}
+      />
     </DialogContent>
   )
 }
