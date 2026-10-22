@@ -19,6 +19,7 @@ function answer() {
   if (mode === "large") { text("x".repeat(150000)); text("y".repeat(150000)) }
   else if (mode === "invalid") text("not JSON")
   else if (mode === "probe") text('{"ok":true}')
+  else if (mode === "decision") text('{"action":"create_sketch"}')
   else { text('{"plane":"XZ",'); text('"geometry":{"width":20}}') }
   send({ id: promptId, result: { stopReason: mode === "cancelled" ? "cancelled" : "end_turn" } })
 }

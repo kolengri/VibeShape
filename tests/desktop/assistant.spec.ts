@@ -124,7 +124,7 @@ async function snapshot(page: Page, projectId?: string) {
 async function connectFixture(
   page: Page,
   receipt: string,
-  attachMcp = false,
+  attachMcp: boolean | "lazy" = false,
   longLabels = false,
   manyOptions = false,
 ) {
@@ -139,6 +139,7 @@ async function connectFixture(
         join(nativeTestRoot, "tests/desktop/fixtures/acp-agent.cjs"),
         receipt,
         ...(attachMcp ? ["--attach-mcp"] : []),
+        ...(attachMcp === "lazy" ? ["--lazy-mcp"] : []),
         ...(longLabels ? ["--long-labels"] : []),
         ...(manyOptions ? ["--many-options"] : []),
       ]),
@@ -570,8 +571,11 @@ test("embedded agent reads its project automatically and preserves explicit Stop
     const pairingRequest = page.waitForRequest(
       (request) => new URL(request.url()).pathname === "/__vibeshape/automation/connect",
     )
-    await connectFixture(page, receipt, true)
+    await connectFixture(page, receipt, "lazy")
     const scope = await snapshot(page)
+    expect(
+      (await agentRecords(receipt)).filter((entry) => entry.event === "mcp-attached"),
+    ).toHaveLength(0)
     await send(page, "mcp-info")
     await expect(transcript(page)).toContainText(`MCP project identity: ${scope.projectId}`)
     await expect(
@@ -605,6 +609,18 @@ test("embedded agent reads its project automatically and preserves explicit Stop
       (await agentRecords(receipt)).filter((entry) => entry.event === "mcp-read"),
     ).toHaveLength(1)
     await page.screenshot({ path: test.info().outputPath("native-explicit-stop-retained.png") })
+    await panel(page).getByRole("button", { name: "AI settings", exact: true }).click()
+    await settings(page).getByRole("button", { name: "Disconnect", exact: true }).click()
+    await expect(
+      settings(page).getByRole("textbox", { name: "ACP agent executable", exact: true }),
+    ).toBeEnabled()
+    await connectFixture(page, receipt, "lazy")
+    await send(page, "mcp-info")
+    await expect(transcript(page)).toContainText(`MCP project identity: ${scope.projectId}`)
+    await ready(page)
+    expect(
+      (await agentRecords(receipt)).filter((entry) => entry.event === "mcp-read"),
+    ).toHaveLength(2)
   } finally {
     await saveAgentReceipt(receipt)
     await fixture.cleanup()

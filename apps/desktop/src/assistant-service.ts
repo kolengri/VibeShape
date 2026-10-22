@@ -59,6 +59,7 @@ type Owner = {
   connection: acp.ClientConnection | null
   permissions: ReturnType<typeof createAssistantPermissions>
   questions: ReturnType<typeof createAssistantQuestions>
+  mcpQuestions: AssistantQuestionHost | undefined
   configRevision: number
   modeRevision: number
   mcp: acp.McpServerStdio[]
@@ -87,6 +88,7 @@ export type AssistantServiceOptions = {
   cwd: string
   applicationVersion: string
   getMcpSetup: (projectId: string, questions: AssistantQuestionHost) => Promise<DesktopMcpSetup>
+  releaseMcpSetup?: (projectId: string, questions: AssistantQuestionHost) => void
   onEvent: (event: AssistantEvent) => void
   isMcpClientAttached?: (projectId: string) => boolean | Promise<boolean>
   whenMcpClientReleased?: (projectId: string) => Promise<void>
@@ -233,17 +235,21 @@ export function createAssistantService(options: AssistantServiceOptions) {
     })
     return value
   }
-  function stop(owner: Owner, code?: AssistantErrorCode) {
-    if (owner.stopping) return owner.stopping
-    owner.stopping = stopping.get(owner.snapshot.projectId) ?? Promise.resolve()
-    owner.failureCode = code
-    owner.acceptingUpdates = false
+  function releaseAssistantResources(owner: Owner) {
     owner.toolTargets.clear()
     owner.externalTurn = null
     clearTimeout(owner.externalTimer)
     owner.permissions.cancel()
     owner.questions.cancel()
+    if (owner.mcpQuestions) options.releaseMcpSetup?.(owner.snapshot.projectId, owner.mcpQuestions)
     clearTimeout(owner.cancelTimer)
+  }
+  function stop(owner: Owner, code?: AssistantErrorCode) {
+    if (owner.stopping) return owner.stopping
+    owner.stopping = stopping.get(owner.snapshot.projectId) ?? Promise.resolve()
+    owner.failureCode = code
+    owner.acceptingUpdates = false
+    releaseAssistantResources(owner)
     const child = owner.process
     owner.process = null
     if (child) {
@@ -460,8 +466,12 @@ export function createAssistantService(options: AssistantServiceOptions) {
         owner.snapshot.status === "prompting" &&
         owner.snapshot.questionStatus === undefined,
     }
+    owner.mcpQuestions = questions
     const setup = desktopMcpSetupSchema.parse(await options.getMcpSetup(projectId, questions))
-    if (!isCurrent(owner) || disposed) throw new AssistantFailure("stale-session")
+    if (!isCurrent(owner) || disposed) {
+      options.releaseMcpSetup?.(projectId, questions)
+      throw new AssistantFailure("stale-session")
+    }
     const server = setup.mcpServers.vibeshape
     owner.mcp = [
       {
@@ -478,7 +488,11 @@ export function createAssistantService(options: AssistantServiceOptions) {
     input: Extract<AssistantRequest, { operation: "connect" }>["input"],
   ): Promise<AssistantResult> {
     const previous = owners.get(input.projectId)
-    if (previous) stop(previous)
+    if (previous) {
+      // Retire ownership before teardown so its terminal event cannot recover over the replacement.
+      owners.delete(input.projectId)
+      stop(previous)
+    }
     const state: AssistantSnapshot = {
       projectId: input.projectId,
       sessionToken: randomUUID(),
@@ -509,6 +523,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         (event) => questionEvent(owner, event),
         options.questionTimeoutMs ?? 300_000,
       ),
+      mcpQuestions: undefined,
       configRevision: 0,
       modeRevision: 0,
       mcp: [],

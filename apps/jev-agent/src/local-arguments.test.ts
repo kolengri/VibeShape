@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { killAssistantProcess } from "../../desktop/src/assistant-transport"
-import { createArgumentCompleter } from "./arguments"
+import { createArgumentCompleter, createDecisionResolver } from "./arguments"
 
 const script = fileURLToPath(
   new URL("../../../tests/desktop/fixtures/argument-agent.cjs", import.meta.url),
@@ -152,6 +152,33 @@ async function disposeArgumentHost(
 }
 
 describe("local ACP argument helper", () => {
+  it(
+    "resolves a low-confidence action through a fresh local helper without MCP authority",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "decision-test-"))
+      const receipt = join(directory, "receipt.jsonl")
+      try {
+        const resolve = createDecisionResolver({
+          agent: { command: process.execPath, args: [script, "decision", receipt] },
+        })
+        await expect(resolve(state, [tool], budget())).resolves.toEqual({
+          kind: "tool",
+          tool,
+          arguments: {},
+          needsArguments: true,
+        })
+        const log = await events(receipt)
+        expect(log.find((event) => event.method === "session/new").params.mcpServers).toEqual([])
+        expect(
+          log.find((event) => event.method === "session/prompt").params.prompt[0].text,
+        ).toContain("Select one next action")
+        await expect(stat(log[0].cwd)).rejects.toThrow()
+      } finally {
+        await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+      }
+    },
+    testTimeout,
+  )
   it(
     "uses a fresh isolated session, streams JSON, preserves selected values and cleans up",
     async () => {

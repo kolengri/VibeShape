@@ -4,7 +4,8 @@ import {
   type AssistantQuestionInput,
   assistantQuestionTool,
 } from "@vibeshape/automation-api/assistant"
-import type { Decide, Decision } from "./contracts"
+import { createArgumentCompleter, createDecisionResolver } from "./arguments"
+import type { CompleteArguments, Decide, Decision, ResolveDecision } from "./contracts"
 import { createController, type ToolPort, type ToolResult } from "./controller"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
@@ -43,6 +44,8 @@ function modelResult(revision = 0, id = documentId) {
 function fixture(
   options: {
     decide?: Decide
+    resolveDecision?: ResolveDecision
+    completeArguments?: CompleteArguments
     revisions?: number[]
     ids?: string[]
     failure?: boolean
@@ -96,6 +99,8 @@ function fixture(
   const controller = createController({
     port,
     decide,
+    resolveDecision: options.resolveDecision,
+    completeArguments: options.completeArguments,
     maxSteps: options.maxSteps ?? 4,
     minConfidence: 0.5,
     timeoutMs: options.timeoutMs ?? 1000,
@@ -468,7 +473,136 @@ describe("Jev CAD control loop", () => {
       expect(f.calls.filter((name) => name === "create_draft")).toHaveLength(1)
     }
   })
-  it("stops before dispatch for low confidence, missing arguments or an unknown tool", async () => {
+  it("resolves a low-confidence selection through the helper before normal validated dispatch", async () => {
+    const resolved: string[] = []
+    let decisions = 0
+    const f = fixture({
+      decide: async () => ({
+        kind: decisions++ === 0 ? "blocked" : "done",
+        confidence: decisions === 1 ? 0.1 : 1,
+      }),
+      resolveDecision: async (state, tools) => {
+        resolved.push(state.goal)
+        expect(state.history.at(-1)?.tool).toBe("model_info")
+        expect(tools).toEqual([tool])
+        return { kind: "tool", tool, arguments: { baseRevision: 0 }, needsArguments: false }
+      },
+    })
+    await expect(
+      f.controller.run("Create a cube", [], new AbortController().signal, async () => {}),
+    ).resolves.toContain("Jev ended")
+    expect(resolved).toEqual(["Create a cube"])
+    expect(f.calls).toEqual([
+      "read_agent_skill",
+      "model_info",
+      "model_info",
+      "create_draft",
+      "model_info",
+    ])
+  })
+  it("completes the fallback action with its own schema before dispatch", async () => {
+    const requests: string[] = []
+    const config = {
+      endpoint: "https://helper.example/v1/chat/completions",
+      model: "test-model",
+      apiKey: "test-key",
+      fetch: Object.assign(
+        async (_url: string | URL | Request, init?: RequestInit) => {
+          const context = JSON.parse(JSON.parse(String(init?.body)).messages[1].content)
+          requests.push(context.tool.name)
+          if (requests.length === 2) expect(context.tool.inputSchema).toEqual(tool.inputSchema)
+          return Response.json({
+            choices: [
+              {
+                message: {
+                  content:
+                    requests.length === 1 ? '{"action":"create_draft"}' : '{"baseRevision":0}',
+                },
+                finish_reason: "stop",
+              },
+            ],
+          })
+        },
+        { preconnect: () => {} },
+      ),
+    }
+    let decisions = 0
+    const f = fixture({
+      decide: async () => ({ kind: "done", confidence: decisions++ === 0 ? 0.1 : 1 }),
+      resolveDecision: createDecisionResolver(config),
+      completeArguments: createArgumentCompleter(config),
+    })
+    await f.controller.run("Create a cube", [], new AbortController().signal, async () => {})
+    expect(requests).toEqual(["select_next_action", "create_draft"])
+    expect(f.calls.filter((name) => name === "create_draft")).toHaveLength(1)
+  })
+  it.each(["unknown tool", "invalid arguments", "cancelled"])(
+    "rejects a helper decision with %s before dispatch",
+    async (failure) => {
+      const controller = new AbortController()
+      const f = fixture({
+        decide: async () => ({ kind: "blocked", confidence: 0.1 }),
+        resolveDecision: async () => {
+          if (failure === "cancelled") controller.abort()
+          return {
+            kind: "tool",
+            tool: failure === "unknown tool" ? { ...tool, name: "create_project" } : tool,
+            arguments:
+              failure === "invalid arguments" ? { baseRevision: "invalid" } : { baseRevision: 0 },
+            needsArguments: false,
+          }
+        },
+      })
+      await expect(
+        f.controller.run("Create", [], controller.signal, async () => {}),
+      ).rejects.toThrow()
+      expect(f.calls).not.toContain("create_draft")
+    },
+  )
+  it("rechecks the document revision after helper selection instead of applying stale arguments", async () => {
+    const f = fixture({
+      revisions: [0, 1],
+      maxSteps: 1,
+      decide: async () => ({ kind: "blocked", confidence: 0.1 }),
+      resolveDecision: async () => ({
+        kind: "tool",
+        tool,
+        arguments: { baseRevision: 0 },
+        needsArguments: false,
+      }),
+    })
+    await f.controller.run("Create", [], new AbortController().signal, async () => {})
+    expect(f.calls).not.toContain("create_draft")
+  })
+  it("keeps uncertain-write restrictions during helper escalation without replaying the write", async () => {
+    let decisions = 0
+    const f = fixture({
+      transportError: true,
+      decide: async () =>
+        decisions++ === 0
+          ? {
+              kind: "tool",
+              tool,
+              arguments: { baseRevision: 0 },
+              needsArguments: false,
+              confidence: 1,
+            }
+          : { kind: "blocked", confidence: 0.1 },
+      resolveDecision: async (state, tools) => {
+        expect(state.uncertainOutcome?.tool).toBe("create_draft")
+        expect(tools).toEqual([])
+        return { kind: "tool", tool, arguments: { baseRevision: 0 }, needsArguments: false }
+      },
+    })
+    await expect(
+      f.controller.run("Create", [], new AbortController().signal, async () => {}),
+    ).rejects.toThrow()
+    await expect(
+      f.controller.run("Continue", [], new AbortController().signal, async () => {}),
+    ).resolves.toContain("unknown outcome")
+    expect(f.calls.filter((name) => name === "create_draft")).toHaveLength(1)
+  })
+  it("stops before dispatch without a helper, with missing arguments or an unknown tool", async () => {
     const decisions: Decision[] = [
       { kind: "tool", tool, arguments: {}, needsArguments: false, confidence: 0.1 },
       { kind: "tool", tool, arguments: {}, needsArguments: true, confidence: 1 },

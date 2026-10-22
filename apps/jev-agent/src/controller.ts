@@ -10,10 +10,11 @@ import { z } from "zod"
 import type {
   CompleteArguments,
   Decide,
-  Decision,
   DecisionState,
+  NextAction,
   Observation,
   Photo,
+  ResolveDecision,
 } from "./contracts"
 import { JevFailure, jevOperation } from "./failure"
 import { readOnlyTool, toolTimeoutMs, validateToolInput } from "./tool-contract"
@@ -35,6 +36,7 @@ type ControllerOptions = {
   port: ToolPort
   decide: Decide
   completeArguments?: CompleteArguments | undefined
+  resolveDecision?: ResolveDecision | undefined
   maxSteps: number
   minConfidence: number
   timeoutMs: number
@@ -79,9 +81,7 @@ function appendHistory(state: DecisionState, observation: Observation) {
     state.history.shift()
 }
 
-function stopMessage(decision: Decision, minimum: number) {
-  if (decision.confidence < minimum)
-    return "Jev paused because its selected decision fell below JEV_MIN_CONFIDENCE. No further action was executed."
+function stopMessage(decision: NextAction) {
   if (decision.kind === "blocked")
     return "Jev could not choose a supported next step. Supply the missing design details or continue with a planning agent."
   if (decision.kind === "done")
@@ -190,7 +190,7 @@ export function createController(options: ControllerOptions) {
     return { ...result, failed }
   }
   async function resolveArguments(
-    decision: Extract<Decision, { kind: "tool" }>,
+    decision: Extract<NextAction, { kind: "tool" }>,
     tool: Tool,
     state: DecisionState,
     signal: AbortSignal,
@@ -215,7 +215,7 @@ export function createController(options: ControllerOptions) {
     state.photos = [...referencePhotos, ...previewPhotos].slice(0, 4)
   }
   async function act(
-    decision: Extract<Decision, { kind: "tool" }>,
+    decision: Extract<NextAction, { kind: "tool" }>,
     state: DecisionState,
     revision: number,
     signal: AbortSignal,
@@ -265,9 +265,21 @@ export function createController(options: ControllerOptions) {
       signal,
     )
     signal.throwIfAborted()
-    const stop = stopMessage(decision, options.minConfidence)
+    let next: NextAction = decision
+    if (decision.confidence < options.minConfidence) {
+      const resolveDecision = options.resolveDecision
+      if (!resolveDecision)
+        return "I need help choosing the next modeling step. Configure the Argument model in AI settings so I can continue or ask for the missing design details."
+      next = await jevOperation(
+        "The argument model could not resolve the next modeling step",
+        () => resolveDecision(state, eligible, timed(signal)),
+        signal,
+      )
+      signal.throwIfAborted()
+    }
+    const stop = stopMessage(next)
     if (stop) return stop
-    return decision.kind === "tool" ? act(decision, state, before.revision, signal, onTool) : null
+    return next.kind === "tool" ? act(next, state, before.revision, signal, onTool) : null
   }
   return {
     async run(

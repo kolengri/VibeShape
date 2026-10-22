@@ -135,6 +135,7 @@
 | [0123](0123-parallel-ci-and-reusable-test-inputs.md) | Accepted | Parallel CI and reusable test inputs |
 | [0124](0124-bun-project-typechecking.md) | Accepted | Bun project typechecking with cached workspace results |
 | [0125](0125-durable-saved-change-navigation.md) | Accepted | Durable saved-change navigation and atomic batch restore |
+| [0126](0126-explicit-native-assistant-project-access.md) | Accepted | Explicit native assistant connection establishes project access |
 
 Statuses:
 

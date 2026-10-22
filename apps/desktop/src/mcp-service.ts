@@ -24,6 +24,7 @@ type Client = {
   released: Promise<void>
   resolveReleased: () => void
   abort: AbortController
+  questions: AssistantQuestionHost | undefined
 }
 
 function reject(response: ServerResponse, status: number, message: string) {
@@ -43,6 +44,7 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
   })
   let client: Client | null = null
   let questions: AssistantQuestionHost | undefined
+  const assistantIdentity = { name: "VibeShape assistant", version: "1" }
   let disposed = false
   let requests = 0
   let removeDescriptor: (() => Promise<void>) | undefined
@@ -82,6 +84,8 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
   }
   async function invokeWhenReady(owner: Client, ...args: Parameters<typeof broker.invoke>) {
     const [operation, options] = args
+    if (!readinessOwnerCurrent(owner, options?.signal))
+      return localFailure("session-revoked", "The local automation session was revoked.")
     // Only the first safe identity read waits for normal renderer discovery. Never defer writes
     // across a grant, or wait after a previous grant was revoked by Stop AI.
     if (operation.tool === "model_info" && broker.sessionGeneration() === 0 && !broker.isPaired()) {
@@ -97,7 +101,7 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
     client = null
     owner.abort.abort()
     clearTimeout(owner.lease)
-    broker.setClient(null)
+    if (questions === owner.questions) broker.setClient(null)
     wakeReadiness()
     resources.clear()
     owner.resolveReleased()
@@ -140,7 +144,17 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
       },
     }
     const server = createLocalMcpAdapter(
-      projectId ? { ...broker, invoke: (...args) => invokeWhenReady(owner, ...args) } : broker,
+      projectId
+        ? {
+            ...broker,
+            // The private assistant owns its grant before a lazy MCP transport initializes.
+            setClient: (value) => {
+              if (questions === questionHost)
+                broker.setClient(questionHost ? assistantIdentity : value)
+            },
+            invoke: (...args) => invokeWhenReady(owner, ...args),
+          }
+        : broker,
       resources,
       projectId
         ? {
@@ -160,6 +174,7 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
       released,
       resolveReleased,
       abort: new AbortController(),
+      questions: questionHost,
     }
     // Reserve before connecting or reading the client's initialization response.
     client = owner
@@ -212,8 +227,19 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
     },
     authenticate,
     bindQuestions(host: AssistantQuestionHost) {
-      if (questions !== host) client?.abort.abort()
+      if (questions === host) return
+      client?.abort.abort()
+      broker.setClient(null)
       questions = host
+      broker.setClient(assistantIdentity)
+      wakeReadiness()
+    },
+    releaseQuestions(host: AssistantQuestionHost) {
+      if (questions !== host) return
+      questions = undefined
+      client?.abort.abort()
+      broker.setClient(null)
+      wakeReadiness()
     },
     isClientAttached() {
       return client !== null
@@ -284,6 +310,9 @@ export function createDesktopMcpService(origin: string) {
         (projectId ? projects.get(projectId)?.attachment : external)?.whenClientReleased() ??
         Promise.resolve()
       )
+    },
+    releaseProject(projectId: string, questions: AssistantQuestionHost) {
+      projects.get(projectId)?.attachment.releaseQuestions(questions)
     },
     async publishProject(projectId: string, path: string, questions?: AssistantQuestionHost) {
       const id = localDocumentSchema.shape.id.parse(projectId)

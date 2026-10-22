@@ -11,12 +11,15 @@ List tools and resources. Read `vibeshape://session` for the actual `editorUrl` 
 The native chat offers **Jev (TypeSafe)** as a separate bundled agent. Its settings distinguish the
 TypeSafe decision model from the **Argument model** helper. Choose Codex, Claude Code, OpenCode or
 the saved custom ACP agent to reuse its existing sign-in; API configuration remains an advanced
-option. The helper only fills JSON arguments in a separate session without the CAD MCP attachment;
+option. The helper fills JSON arguments and resolves low-confidence action selections in a separate session without the CAD MCP attachment;
 it is not another CAD agent or a replacement connection. Installed/authenticated availability must
 be checked with **Test connection**; selecting a preset does not establish access. No external Bun
 or custom executable path is required for the bundled Jev controller itself. API keys are entered in native settings and
-kept only for this project during the app session; never request them in chat or add them to project
-files. Reconnection reuses this project's key, not a key entered in another project. Jev uses the
+kept only in host memory during the app session; never request them in chat or add them to project
+files. Projects and reconnects share the cached TypeSafe key; helper keys remain exact-endpoint
+scoped. Tests do not replace cached keys, and restarting the app clears them. A low-confidence Jev
+selection goes to the configured helper for a supported next step or structured clarification,
+with ordinary tool validation and no replay of uncertain writes. Jev uses the
 same project-bound MCP attachment and authority rules as other embedded agents.
 
 For an already open macOS or Windows app, use **Settings → Connections → Connect an MCP client** and copy its
@@ -30,7 +33,10 @@ in-app ACP agent instead receives a separate project-bound MCP attachment automa
 configured agent connects. Its internal server name is project-specific; discover advertised tool
 names instead of assuming `vibeshape` is the namespace. Select the intended project, discover tools,
 and call `model_info`; no external MCP configuration or initial **Enable AI session** action is
-required for the embedded agent. Connecting the built-in chat authorizes validated changes to that project, without a second
+required for the embedded agent. Explicitly connecting the built-in chat establishes fresh project
+access, including after a previous Stop AI. The host registers the private assistant identity before
+lazy MCP initialization, and chat waits for project readiness before accepting modeling prompts.
+Connecting authorizes validated changes to that project, without a second
 Apply action. The same policy applies to the built-in browser API chat; external clients keep their
 separate pairing and approval policy. A copied external configuration still requires explicit **Enable AI session** approval;
 successful tool discovery alone does not grant document authority. Manual project navigation
@@ -47,7 +53,7 @@ session. Read `model_info` after recovery, inspect the saved revision and affect
 decide what remains. In the same authenticated local tab, `list_recoverable_drafts` can expose
 unapplied semantic intent; follow the explicit adoption procedure in
 [transactions](transactions.md). Never replay an uncertain write. Explicit Stop AI
-still prevents automatic reconnection and requires the person's intentional Enable action.
+still prevents automatic reconnection and requires the person's intentional Connect or Enable action.
 
 The embedded desktop chat retries temporary ACP and native project-connection failures up to five
 times before exposing manual retry. If transient model retries expire while ACP is still loading its session,
@@ -74,7 +80,7 @@ it does not spawn a local stdio agent or publish the browser's project as a reac
 
 Native connection state is retained per project, separately from external clients. **Stop AI**
 revokes that project's access and keeps it disabled across reload or reopening until the person
-chooses **Enable AI session**. Reconnecting the ACP process does not undo Stop. No tool can change
+chooses **Connect** in AI settings or **Enable AI session**. Automatic ACP recovery and New chat do not undo Stop. No tool can change
 the approval mode or restore a stopped connection.
 
 ## Jev ACP client
@@ -100,8 +106,11 @@ The native host has no default whole-turn ACP deadline, so waiting for review do
 after ten minutes. Stop and its bounded process-termination grace period remain available.
 Large tool arguments can be omitted from chat and result text summarized; use tool inspection for
 complete current evidence. Omitted arguments have no argument-derived chat target hints.
-The controller stops on uncertain writes, schema rejection, low selected-branch confidence or its
-step limit. Inspect the saved model before continuing; a `done` decision is not verification.
+The controller stops on uncertain writes, schema rejection or its step limit. Low selected-branch
+confidence routes to the configured argument helper before any tool dispatch. The helper selects
+from the current eligible tools, then completes the selected tool's arguments separately; it can
+choose `ask_user_question` for missing design details. Without a helper, configure one before
+continuing. Inspect the saved model after a failure; a `done` decision is not verification.
 After an uncertain dispatch, this process permits read-only inspection only. Inspect saved state
 and reconnect before authoring again; a saved revision alone cannot reconcile an unsaved draft.
 It does not support exact ACP session loading after process restart. Keep the native connection's

@@ -3,7 +3,7 @@ import { JEV_IMAGE_CONSTRAINTS } from "@vibeshape/automation-api/assistant-jev"
 import { assistantToolResultText } from "@vibeshape/automation-api/assistant-tool-targets"
 import { z } from "zod"
 import type { Configuration } from "./configuration"
-import type { CompleteArguments, Decide, Photo } from "./contracts"
+import type { CompleteArguments, Decide, Photo, ResolveDecision } from "./contracts"
 import { createController, type ToolEvent } from "./controller"
 import { JevFailure } from "./failure"
 import { connectMcp } from "./mcp"
@@ -46,6 +46,7 @@ export function promptContent(blocks: acp.ContentBlock[], images: boolean) {
 type Dependencies = {
   decide: Decide
   completeArguments?: CompleteArguments | undefined
+  resolveDecision?: ResolveDecision | undefined
   connect?: typeof connectMcp
 }
 type Session = {
@@ -150,6 +151,7 @@ export function createJevAgent(configuration: Configuration, dependencies: Depen
             port,
             decide: dependencies.decide,
             completeArguments: dependencies.completeArguments,
+            resolveDecision: dependencies.resolveDecision,
             maxSteps: configuration.maxSteps,
             minConfidence: configuration.minConfidence,
             timeoutMs: configuration.timeoutMs,

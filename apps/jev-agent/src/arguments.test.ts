@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { Tool } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
-import { createArgumentCompleter } from "./arguments"
+import { createArgumentCompleter, createDecisionResolver } from "./arguments"
 import type { DecisionState } from "./contracts"
 
 const tool: Tool = {
@@ -48,8 +48,60 @@ function fixture(
       apiKey,
       fetch: fakeFetch,
     }),
+    resolve: createDecisionResolver({
+      endpoint: "https://provider.example/v1/chat/completions",
+      model: "helper-pinned",
+      apiKey,
+      fetch: fakeFetch,
+    }),
   }
 }
+
+describe("low-confidence decision resolution", () => {
+  test("selects an advertised action from a compact catalog before argument completion", async () => {
+    const { resolve, calls } = fixture(() =>
+      completion(
+        JSON.stringify({
+          action: "create_sketch",
+        }),
+      ),
+    )
+    await expect(resolve(state, [tool], signal())).resolves.toEqual({
+      kind: "tool",
+      tool,
+      arguments: {},
+      needsArguments: true,
+    })
+    const request = JSON.parse(String(calls[0]?.init.body))
+    expect(request.messages[0].content).toContain("only an advertised tool")
+    const context = JSON.parse(request.messages[1].content)
+    expect(context.tool.description).toContain(
+      JSON.stringify({ name: tool.name, description: tool.description }),
+    )
+    expect(context.tool.description).not.toContain("inputSchema")
+    expect(context.state.history).toEqual(state.history)
+    expect(calls).toHaveLength(1)
+  })
+  test.each(["done", "blocked"])("supports the terminal action %s", async (action) => {
+    const { resolve } = fixture(() => completion(JSON.stringify({ action })))
+    await expect(resolve(state, [tool], signal())).resolves.toEqual({ kind: action })
+  })
+  test.each([
+    { action: "not_advertised" },
+    { action: "create_sketch", arguments: [] },
+    { action: "create_sketch", arguments: {}, confidence: 1 },
+  ])("rejects malformed or unsupported next actions", async (answer) => {
+    const { resolve } = fixture(() => completion(JSON.stringify(answer)))
+    await expect(resolve(state, [tool], signal())).rejects.toThrow()
+  })
+  test("preserves uncertain-write evidence for the helper", async () => {
+    const uncertainOutcome = { tool: "commit_draft", arguments: {}, result: { outcome: "unknown" } }
+    const { resolve, calls } = fixture(() => completion('{"action":"blocked"}'))
+    await resolve({ ...state, uncertainOutcome }, [], signal())
+    const request = JSON.parse(String(calls[0]?.init.body))
+    expect(JSON.parse(request.messages[1].content).state.uncertainOutcome).toEqual(uncertainOutcome)
+  })
+})
 
 describe("argument completion", () => {
   test("omits Authorization for a keyless helper", async () => {

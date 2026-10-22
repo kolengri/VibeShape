@@ -601,6 +601,7 @@ function installAssistant() {
       )
       return mcpSetup(path)
     },
+    releaseMcpSetup: (projectId, questions) => nativeMcp?.releaseProject(projectId, questions),
     async isMcpClientAttached(projectId?: string) {
       await assistantClosing
       return nativeMcp?.isClientAttached(projectId) ?? false
@@ -724,7 +725,9 @@ else {
       installNativeBridge()
       installMenu()
       focusEditor()
-      mainWindow?.webContents.once("did-finish-load", () => void checkForUpdates(true))
+      mainWindow?.webContents.once("did-finish-load", () => {
+        if (app.isPackaged) void checkForUpdates(true)
+      })
     })
     .catch((error: unknown) => {
       if (!quitting) {

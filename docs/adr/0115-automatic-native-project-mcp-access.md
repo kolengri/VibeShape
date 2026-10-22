@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-19
+- Partially superseded by: [ADR-0126](0126-explicit-native-assistant-project-access.md) for explicit connection after Stop AI
 - Partially superseded by: [ADR-0116](0116-connected-assistant-model-authority-and-checkpoints.md) for built-in chat model-write authorization
 - Partially supersedes: [ADR-0111](0111-native-project-assistant-and-handoffs.md) for embedded ACP
   pairing; [ADR-0100](0100-remembered-local-mcp-preferences.md) for native project preference scope

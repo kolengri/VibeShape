@@ -46,7 +46,7 @@ export function createNativeProjectChatRegistry(
         const configured = readAssistantPreferences(storage)?.agent
         if (configured) {
           attempted = true
-          void controller.connect(configured)
+          void controller.connect(configured, undefined, { automatic: true })
         }
       },
       async connect(agent: AssistantAgent, credentials?: AssistantJevCredentials) {
