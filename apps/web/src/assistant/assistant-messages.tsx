@@ -340,9 +340,13 @@ export function AssistantMessages({
   useEffect(() => {
     const previous = previousMessages.current
     previousMessages.current = messages
+    const latestUser = messages.filter((message) => message.role === "user").at(-1)
+    // Sending a new turn returns the reader to the live conversation.
+    if (previous && latestUser && !previous.some((message) => message.id === latestUser.id))
+      following.current = true
     // Checkpoint/display publications may clone the transcript without adding content.
     if (following.current && (!previous || !sameTranscript(previous, messages)))
-      end.current?.scrollIntoView({ block: "nearest" })
+      end.current?.scrollIntoView({ block: "end" })
   }, [messages])
   return (
     <div

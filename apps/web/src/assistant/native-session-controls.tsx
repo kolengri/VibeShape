@@ -54,13 +54,13 @@ function SessionSelector({
                 type="button"
                 size="xs"
                 variant="ghost"
-                className="w-full max-w-full min-w-0 justify-between text-muted-foreground"
+                className="max-w-full min-w-0 rounded-md bg-muted/50 text-muted-foreground [&_svg:not([role=img])]:size-3"
                 aria-label={label}
                 aria-description={selected}
                 aria-describedby={description ? descriptionId : undefined}
                 disabled={busy}
               >
-                <span className="truncate">{selected}</span>
+                <span className="max-w-36 truncate">{selected}</span>
                 <ChevronDown aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
@@ -131,10 +131,7 @@ function SessionChoices({
   }
   const locked = busy || pending || snapshot.status !== "ready"
   return (
-    <div
-      className="grid min-w-0 grid-cols-2 gap-1 @xs/composer:grid-cols-3"
-      aria-busy={pending || undefined}
-    >
+    <div className="flex min-w-0 flex-wrap items-center gap-1" aria-busy={pending || undefined}>
       {failure && !centralized && (
         <p role="alert" className="text-xs text-destructive">
           {failure}

@@ -68,7 +68,11 @@ modal; closing it preserves the current form and connection. Successful saving a
 the modal and restore focus to its trigger. Rejected or pending connections and settings-storage
 failures keep it open for correction. Agent-advertised mode, model, reasoning, collaboration and speed
 choices live in compact composer menus. Their chips show the confirmed selected
-value; hover or keyboard focus reveals the setting name and full value. A shared pending lock prevents
+value and wrap at their natural width; hover or keyboard focus reveals the setting name and full value.
+The message field grows with its content up to a bounded height, then scrolls internally. Attachment
+actions share a bottom row with the trailing send/stop actions. Sending a new user turn scrolls the
+transcript to the bottom and resumes following replies; reading older messages pauses following
+until another user turn or a manual return to the bottom. A shared pending lock prevents
 concurrent changes, and only currently advertised choices are offered. PNG/JPEG images are enabled on native
 Jev connections, including previously saved configurations, without a separate opt-in. The composer
 shows Jev's four-image limit and rejects unsupported formats or images exceeding its combined
