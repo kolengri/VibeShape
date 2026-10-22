@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
-import { Field, FieldDescription, FieldLabel } from "@vibeshape/ui/components/field"
+import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useState } from "react"
@@ -41,14 +41,20 @@ function ImportSourceFields({ state }: { state: ImportTaskState }) {
   return (
     <>
       <Field>
-        <FieldLabel htmlFor="import-source-file">{t("file")}</FieldLabel>
+        <FieldLabel
+          htmlFor="import-source-file"
+          description={t("fileDescription")}
+          descriptionId="import-file-description"
+        >
+          {t("file")}
+        </FieldLabel>
         <Input
           id="import-source-file"
+          aria-describedby="import-file-description"
           type="file"
           accept=".step,.stp,.brep,.stl,.3mf"
           onChange={(event) => state.chooseFile(event.currentTarget.files?.[0] ?? null)}
         />
-        <FieldDescription>{t("fileDescription")}</FieldDescription>
       </Field>
       {state.requiresUnits ? (
         <SelectField

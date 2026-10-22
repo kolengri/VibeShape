@@ -1,18 +1,35 @@
-import type { ComponentProps, ReactNode } from "react"
+import { Field, FieldLabel } from "@vibeshape/ui/components/field"
+import { type ComponentProps, type ReactNode, useId } from "react"
 
 type BooleanParameterFieldProps = Omit<ComponentProps<"input">, "type"> &
-  Readonly<{ label: ReactNode }>
+  Readonly<{ label: ReactNode; description?: ReactNode }>
 
-export function BooleanParameterField({ className, label, ...input }: BooleanParameterFieldProps) {
+export function BooleanParameterField({
+  className,
+  label,
+  description,
+  ...input
+}: BooleanParameterFieldProps) {
+  const generatedId = useId()
+  const inputId = input.id ?? generatedId
+  const descriptionId = `${inputId}-description`
   return (
-    <label className="flex items-center gap-2 text-sm font-medium">
+    <Field className="min-h-8" data-disabled={input.disabled || undefined}>
+      <FieldLabel htmlFor={inputId} description={description} descriptionId={descriptionId}>
+        {label}
+      </FieldLabel>
       <input
         {...input}
+        id={inputId}
         type="checkbox"
+        aria-describedby={
+          [input["aria-describedby"], description ? descriptionId : undefined]
+            .filter(Boolean)
+            .join(" ") || undefined
+        }
         className={className ?? "size-4 rounded border-input accent-primary"}
       />
-      {label}
-    </label>
+    </Field>
   )
 }
 

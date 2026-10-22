@@ -5,9 +5,11 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { Field, FieldDescription, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
+import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { TextField } from "@vibeshape/ui/components/text-field"
-import { type FormEvent, useRef, useState } from "react"
+import { type FormEvent, useId, useRef, useState } from "react"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
 import { useAssistantSettingsSaved } from "./assistant-settings-dialog"
 import { agentPresetId, agentPresets } from "./connection-presets"
@@ -177,6 +179,7 @@ function useJevConnectionForm({ chat, connected, pending, testConnection }: JevC
 
 export function JevAgentConfiguration(props: JevConfigurationProps) {
   const t = useTranslations("app.assistant")
+  const id = useId()
   const { connected, pending, testing, disconnect, clearTest } = props
   const {
     initial,
@@ -195,10 +198,11 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
     test,
   } = useJevConnectionForm(props)
   const fieldError = (name: string) => (invalidFields.includes(name) ? t("jev.invalid") : undefined)
+  const apiKeyError = fieldError("apiKey")
   return (
     <form
       ref={formRef}
-      className="grid gap-3"
+      className="grid gap-2"
       onInput={(event) => {
         clearTest()
         if (event.target instanceof HTMLInputElement) clearInvalidField(event.target.name)
@@ -207,29 +211,36 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
       aria-label={t("jev.settings")}
       aria-busy={pending || submitting || undefined}
     >
-      <p className="text-xs text-muted-foreground">{t("jev.description")}</p>
-      <fieldset disabled={locked} className="grid min-w-0 gap-3">
+      <fieldset disabled={locked} className="grid min-w-0 gap-2">
         <TextField
           name="model"
           error={fieldError("model")}
           label={t("jev.model")}
+          description={t("jev.description")}
           defaultValue={initial.model}
           required
           maxLength={128}
         />
-        <TextField
-          name="apiKey"
-          error={fieldError("apiKey")}
-          type="password"
-          label={t("jev.apiKey")}
-          autoComplete="off"
-          maxLength={4096}
-          description={t("jev.keyNotice")}
-        />
-        <div className="grid gap-3">
-          <p className="text-xs text-muted-foreground">{t("jev.argumentNotice")}</p>
+        <Field data-invalid={Boolean(apiKeyError) || undefined}>
+          <FieldLabel htmlFor={`${id}-api-key`}>{t("jev.apiKey")}</FieldLabel>
+          <Input
+            id={`${id}-api-key`}
+            name="apiKey"
+            type="password"
+            autoComplete="off"
+            maxLength={4096}
+            aria-invalid={Boolean(apiKeyError) || undefined}
+            aria-describedby={
+              apiKeyError ? `${id}-key-notice ${id}-api-key-error` : `${id}-key-notice`
+            }
+          />
+          <FieldError id={`${id}-api-key-error`}>{apiKeyError}</FieldError>
+        </Field>
+        <FieldDescription id={`${id}-key-notice`}>{t("jev.keyNotice")}</FieldDescription>
+        <div className="grid gap-2">
           <SelectField
             label={t("jev.argumentModel")}
+            description={t("jev.argumentNotice")}
             value={argumentChoice}
             disabled={locked}
             onValueChange={(value) => {
@@ -278,7 +289,7 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
         </div>
         <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)}>
           <summary className="cursor-pointer text-xs font-medium">{t("jev.advanced")}</summary>
-          <div className="mt-3 grid gap-3">
+          <div className="mt-2 grid gap-2">
             <TextField
               name="maxSteps"
               error={fieldError("maxSteps")}

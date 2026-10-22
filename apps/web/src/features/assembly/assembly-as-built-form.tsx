@@ -33,16 +33,19 @@ function InstanceChoice({
   value,
   onChange,
   exclude,
+  description,
 }: {
   assembly: AssemblyAuthority
   label: string
   value: string
   onChange: (value: string) => void
   exclude?: string
+  description?: string
 }) {
   return (
     <NativeSelectField
       label={label}
+      description={description}
       value={value}
       onChange={(event) => onChange(event.currentTarget.value)}
       required
@@ -77,10 +80,10 @@ export function AssemblyAsBuiltJointForm({ assembly, capture, selectedId, action
         asBuiltJointChanges(assembly, capture, { parentId, childId, kind }, browserAuthoredUuid)
       }
     >
-      <p className="text-sm text-muted-foreground">{t("asBuiltDescription")}</p>
       <InstanceChoice
         assembly={assembly}
         label={t("parentInstance")}
+        description={t("asBuiltDescription")}
         value={parentId}
         onChange={(value) => {
           setParentId(value)
@@ -129,10 +132,10 @@ export function AssemblyRigidGroupForm({ assembly, capture, selectedId, actions 
         rigidGroupChanges(assembly, capture, anchorId, [...members], browserAuthoredUuid)
       }
     >
-      <p className="text-sm text-muted-foreground">{t("rigidGroupDescription")}</p>
       <InstanceChoice
         assembly={assembly}
         label={t("rigidGroupAnchor")}
+        description={t("rigidGroupDescription")}
         value={anchorId}
         onChange={(value) => {
           setAnchorId(value)
@@ -140,9 +143,10 @@ export function AssemblyRigidGroupForm({ assembly, capture, selectedId, actions 
         }}
       />
       <fieldset className="grid gap-2">
-        <legend className="mb-2 text-xs font-medium">{t("rigidGroupMembers")}</legend>
+        <legend className="mb-1 text-xs font-medium">{t("rigidGroupMembers")}</legend>
         {assembly.instances.map((instance) => (
-          <Field key={instance.id} orientation="horizontal">
+          <Field key={instance.id} orientation="horizontal" className="min-h-8">
+            <FieldLabel htmlFor={`${id}-${instance.id}`}>{instance.name}</FieldLabel>
             <input
               id={`${id}-${instance.id}`}
               type="checkbox"
@@ -159,7 +163,6 @@ export function AssemblyRigidGroupForm({ assembly, capture, selectedId, actions 
                 })
               }}
             />
-            <FieldLabel htmlFor={`${id}-${instance.id}`}>{instance.name}</FieldLabel>
           </Field>
         ))}
       </fieldset>

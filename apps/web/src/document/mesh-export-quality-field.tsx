@@ -21,6 +21,7 @@ export function MeshExportQualityField({
     <div className="grid gap-2">
       <SelectField
         label={t("label")}
+        description={t("description")}
         value={value}
         disabled={disabled}
         onValueChange={(choice) => {
@@ -33,7 +34,6 @@ export function MeshExportQualityField({
           </SelectOption>
         ))}
       </SelectField>
-      <p className="text-xs text-muted-foreground">{t("description")}</p>
       {quality && (
         <p className="text-xs text-muted-foreground">
           {t("tolerance", {

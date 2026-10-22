@@ -2,6 +2,8 @@ import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { Field, FieldLabel, fieldVariants } from "@vibeshape/ui/components/field"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useMemo, useRef } from "react"
 import { ActionAvailability } from "../../components/action-availability"
@@ -46,10 +48,10 @@ function RangeControl({
     onEditingChange(id, gestures.current.size > 0)
   }
   return (
-    <div className="grid gap-2">
-      <label htmlFor={id} className="text-sm font-medium">
+    <Field>
+      <FieldLabel htmlFor={id} description={description} descriptionId={`${id}-description`}>
         {label}
-      </label>
+      </FieldLabel>
       <input
         id={id}
         type="range"
@@ -78,12 +80,9 @@ function RangeControl({
           gestures.current.clear()
           onEditingChange(id, false)
         }}
-        className="h-6 w-full cursor-pointer accent-primary disabled:cursor-default disabled:opacity-50"
+        className="h-8 w-full min-w-0 cursor-pointer accent-primary disabled:cursor-default disabled:opacity-50"
       />
-      <p id={`${id}-description`} className="text-xs text-muted-foreground">
-        {description}
-      </p>
-    </div>
+    </Field>
   )
 }
 
@@ -180,9 +179,17 @@ function QuickModeControls({ state, disabled }: { state: QuickState; disabled: b
   const change = (next: Partial<typeof state.settings>) =>
     state.changeSettings({ ...state.settings, ...next })
   return (
-    <fieldset className="grid gap-2">
-      <legend className="text-xs font-medium">{t("mode")}</legend>
-      <div className="grid grid-cols-2 gap-2">
+    <fieldset className={fieldVariants({ orientation: "horizontal" })} aria-label={t("mode")}>
+      <legend className="sr-only">{t("mode")}</legend>
+      <span className="inline-flex items-center gap-1 text-xs font-medium">
+        {t("mode")}
+        <FieldHelp label={t("mode")}>
+          {t(
+            state.settings.mode === "preserve-exterior" ? "preserveDescription" : "openDescription",
+          )}
+        </FieldHelp>
+      </span>
+      <div className="flex min-w-0 flex-wrap gap-1">
         <Button
           type="button"
           variant={state.settings.mode === "preserve-exterior" ? "secondary" : "outline"}
@@ -202,9 +209,6 @@ function QuickModeControls({ state, disabled }: { state: QuickState; disabled: b
           {t("openOrganic")}
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {t(state.settings.mode === "preserve-exterior" ? "preserveDescription" : "openDescription")}
-      </p>
     </fieldset>
   )
 }
@@ -214,7 +218,7 @@ function QuickControls({ state, disabled }: { state: QuickState; disabled: boole
   const change = (next: Partial<typeof state.settings>) =>
     state.changeSettings({ ...state.settings, ...next })
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-2">
       <QuickModeControls state={state} disabled={disabled} />
       <SelectField
         id="quick-cell-type"

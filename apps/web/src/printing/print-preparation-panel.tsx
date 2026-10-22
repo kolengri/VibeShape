@@ -9,7 +9,9 @@ import {
 } from "@vibeshape/protocol"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { fieldVariants } from "@vibeshape/ui/components/field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useEffect, useRef, useState } from "react"
 import {
   type ActiveDocumentExportResult,
@@ -229,10 +231,7 @@ export function PrintPreparationPanel({
           onChange={state.setMeshQualityChoice}
           disabled={disabled || pending || slicerPending}
         />
-        <fieldset
-          disabled={disabled || pending || slicerPending}
-          className="grid min-w-0 gap-3 sm:grid-cols-2"
-        >
+        <fieldset disabled={disabled || pending || slicerPending} className="grid min-w-0 gap-2">
           {numericFields.map((name) => (
             <form.AppField
               key={name}
@@ -249,14 +248,16 @@ export function PrintPreparationPanel({
           ))}
           <form.AppField name="supports">
             {(field) => (
-              <label className="flex items-center gap-2 text-sm">
+              <label
+                className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}
+              >
+                <span>{t("supports")}</span>
                 <input
                   type="checkbox"
                   className="accent-primary"
                   checked={field.state.value}
                   onChange={(event) => field.handleChange(event.currentTarget.checked)}
                 />
-                {t("supports")}
               </label>
             )}
           </form.AppField>

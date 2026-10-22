@@ -6,6 +6,7 @@ import type {
 } from "@vibeshape/domain"
 import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { Button } from "@vibeshape/ui/components/button"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -168,26 +169,21 @@ export function SplitForm(props: SplitFormProps) {
             >
               <form.Field name="plane">
                 {(field) => (
-                  <fieldset className="grid gap-2">
-                    <legend className="mb-2 text-xs font-medium">{copy.plane}</legend>
-                    {(["XY", "XZ", "YZ"] as const).map((plane) => (
-                      <label key={plane} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="radio"
-                          name="plane"
-                          value={plane}
-                          checked={field.state.value === plane}
-                          onBlur={field.handleBlur}
-                          onChange={() => {
-                            state.clearSubmissionErrors()
-                            field.handleChange(plane)
-                          }}
-                        />
-                        {plane}
-                      </label>
-                    ))}
-                    <p className="text-xs text-muted-foreground">{copy.planeDescription}</p>
-                  </fieldset>
+                  <ChoiceField
+                    name={field.name}
+                    label={copy.plane}
+                    description={copy.planeDescription}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onValueChange={(value) => {
+                      state.clearSubmissionErrors()
+                      field.handleChange(value as "XY" | "XZ" | "YZ")
+                    }}
+                    options={(["XY", "XZ", "YZ"] as const).map((plane) => ({
+                      value: plane,
+                      label: plane,
+                    }))}
+                  />
                 )}
               </form.Field>
             </ReferencePlaneSelection>

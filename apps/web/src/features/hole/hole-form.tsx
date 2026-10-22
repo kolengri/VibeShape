@@ -486,12 +486,12 @@ function HolePoints({
   const errorId = useId()
   return (
     <fieldset
-      className="grid min-w-0 gap-2"
+      className="grid min-w-0 gap-1"
       aria-label={copy.points}
       aria-invalid={Boolean(error) || undefined}
       aria-describedby={error ? errorId : undefined}
     >
-      <legend className="text-xs font-medium">{copy.points}</legend>
+      <legend className="mb-1 text-xs font-medium">{copy.points}</legend>
       <p className="text-xs text-muted-foreground">{copy.pointsDescription}</p>
       {points.length === 0 ? (
         <p className="text-xs text-muted-foreground">{copy.noPoints}</p>

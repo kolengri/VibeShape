@@ -21,14 +21,22 @@ function SourceField({
   sources,
   value,
   onChange,
+  description,
 }: {
   sources: readonly AssemblyPartSource[]
   value: string
   onChange: (value: string) => void
+  description?: string
 }) {
   const t = useTranslations("app.assembly")
   return (
-    <SelectField label={t("sourcePart")} value={value} onValueChange={onChange} required>
+    <SelectField
+      label={t("sourcePart")}
+      description={description}
+      value={value}
+      onValueChange={onChange}
+      required
+    >
       {sources.map(({ name, source }) => (
         <SelectOption key={source.partId} value={source.partId}>
           {name}
@@ -60,8 +68,12 @@ function CreateDefinitionForm({
       }}
     >
       <AssemblyNameField value={selected?.name ?? t("defaultDefinition")} />
-      <SourceField sources={sources} value={sourceId} onChange={setSourceId} />
-      <p className="text-xs text-muted-foreground">{t("frozenExplanation")}</p>
+      <SourceField
+        sources={sources}
+        value={sourceId}
+        onChange={setSourceId}
+        description={t("frozenExplanation")}
+      />
     </AssemblyTaskForm>
   )
 }
@@ -86,8 +98,12 @@ function DefinitionMetadataForm({
       ]}
     >
       <AssemblyNameField value={definition.name} />
-      <AssemblyPoseFields prefix="source" label={t("sourceFrame")} pose={definition.sourceFrame} />
-      <p className="text-xs text-muted-foreground">{t("frozenExplanation")}</p>
+      <AssemblyPoseFields
+        prefix="source"
+        label={t("sourceFrame")}
+        pose={definition.sourceFrame}
+        description={t("frozenExplanation")}
+      />
       <p className="text-xs text-muted-foreground">
         {t("pinRevision", { revision: definition.pinRevision })}
       </p>

@@ -1356,7 +1356,7 @@ function EmptyProfileFeatureTaskPanel({
     >
       <TaskPanelHeader
         title={title}
-        description={description}
+        instruction={description}
         actions={
           <TaskPanelLifecycleActions
             ariaLabel={title}
@@ -2471,7 +2471,7 @@ function ActiveSketchTaskPanel({
       <TaskPanelHeader
         className="border-b p-3"
         title={draft.label}
-        description={modeDescription}
+        instruction={modeDescription}
         actions={
           <TaskPanelLifecycleActions
             acceptDisabled={report.mode === "read-only"}
@@ -2513,7 +2513,7 @@ function SketchPlaneSelectionTaskPanel({
       <TaskPanelHeader
         className="border-b p-3"
         title={title}
-        description={description}
+        instruction={description}
         actions={
           <TaskPanelLifecycleActions
             ariaLabel={t("lifecycleActions")}

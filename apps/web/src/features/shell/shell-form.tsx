@@ -5,6 +5,7 @@ import type {
   VariableDefinition,
 } from "@vibeshape/domain"
 import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -290,46 +291,38 @@ export function ShellForm({
             </form.Field>
             <form.Field name="direction">
               {(field) => (
-                <fieldset className="grid gap-2">
-                  <legend className="mb-2 text-xs font-medium">{copy.direction}</legend>
-                  {(["inward", "outward"] as const).map((direction) => (
-                    <label key={direction} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="direction"
-                        checked={field.state.value === direction}
-                        onBlur={field.handleBlur}
-                        onChange={() => {
-                          state.clearSubmissionErrors()
-                          field.handleChange(direction)
-                        }}
-                      />
-                      {copy[direction]}
-                    </label>
-                  ))}
-                </fieldset>
+                <ChoiceField
+                  name={field.name}
+                  label={copy.direction}
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onValueChange={(value) => {
+                    state.clearSubmissionErrors()
+                    field.handleChange(value === "inward" ? "inward" : "outward")
+                  }}
+                  options={(["inward", "outward"] as const).map((direction) => ({
+                    value: direction,
+                    label: copy[direction],
+                  }))}
+                />
               )}
             </form.Field>
             <form.Field name="closed">
               {(field) => (
-                <fieldset className="grid gap-2">
-                  <legend className="mb-2 text-xs font-medium">{copy.cavity}</legend>
-                  {([false, true] as const).map((closed) => (
-                    <label key={String(closed)} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="closed"
-                        checked={field.state.value === closed}
-                        onBlur={field.handleBlur}
-                        onChange={() => {
-                          state.clearSubmissionErrors()
-                          field.handleChange(closed)
-                        }}
-                      />
-                      {closed ? copy.closedCavity : copy.openCavity}
-                    </label>
-                  ))}
-                </fieldset>
+                <ChoiceField
+                  name={field.name}
+                  label={copy.cavity}
+                  value={String(field.state.value)}
+                  onBlur={field.handleBlur}
+                  onValueChange={(value) => {
+                    state.clearSubmissionErrors()
+                    field.handleChange(value === "true")
+                  }}
+                  options={([false, true] as const).map((closed) => ({
+                    value: String(closed),
+                    label: closed ? copy.closedCavity : copy.openCavity,
+                  }))}
+                />
               )}
             </form.Field>
             <form.Subscribe selector={(formState) => formState.values.closed}>
@@ -337,8 +330,8 @@ export function ShellForm({
                 closed ? null : (
                   <form.Field name="openingIds">
                     {(field) => (
-                      <fieldset className="grid gap-2">
-                        <legend className="mb-2 text-xs font-medium">{copy.openings}</legend>
+                      <fieldset className="grid gap-1">
+                        <legend className="mb-1 text-xs font-medium">{copy.openings}</legend>
                         <p className="text-xs text-muted-foreground">{copy.openingsDescription}</p>
                         {evidence?.candidates.map((candidate, index) => (
                           <label

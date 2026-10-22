@@ -4,6 +4,7 @@ import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { useEffect, useId, useState } from "react"
+import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 
 export function TextureNumberField({
   label,
@@ -67,7 +68,7 @@ export function SurfaceTextureControls({
   const axisId = useId()
   const blendId = useId()
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-2">
       <TextureNumberField
         label={t("height")}
         value={layer.heightMm}
@@ -92,33 +93,28 @@ export function SurfaceTextureControls({
           ))}
         </NativeSelect>
       </Field>
-      <div className="grid grid-cols-2 gap-2">
-        <TextureNumberField
-          label={t("width")}
-          value={layer.sizeUMm}
-          min={0.02}
-          max={100_000}
-          onChange={(sizeUMm) => update({ sizeUMm, ...(linked ? { sizeVMm: sizeUMm } : {}) })}
-        />
-        <TextureNumberField
-          label={t("length")}
-          value={layer.sizeVMm}
-          min={0.02}
-          max={100_000}
-          onChange={(sizeVMm) => update({ sizeVMm, ...(linked ? { sizeUMm: sizeVMm } : {}) })}
-        />
-      </div>
-      <label className="flex items-center gap-2 text-xs">
-        <input
-          type="checkbox"
-          checked={linked}
-          onChange={(event) => {
-            setLinked(event.target.checked)
-            if (event.target.checked) update({ sizeVMm: layer.sizeUMm })
-          }}
-        />
-        {t("linkedSize")}
-      </label>
+      <TextureNumberField
+        label={t("width")}
+        value={layer.sizeUMm}
+        min={0.02}
+        max={100_000}
+        onChange={(sizeUMm) => update({ sizeUMm, ...(linked ? { sizeVMm: sizeUMm } : {}) })}
+      />
+      <TextureNumberField
+        label={t("length")}
+        value={layer.sizeVMm}
+        min={0.02}
+        max={100_000}
+        onChange={(sizeVMm) => update({ sizeVMm, ...(linked ? { sizeUMm: sizeVMm } : {}) })}
+      />
+      <BooleanParameterField
+        label={t("linkedSize")}
+        checked={linked}
+        onChange={(event) => {
+          setLinked(event.target.checked)
+          if (event.target.checked) update({ sizeVMm: layer.sizeUMm })
+        }}
+      />
       <TextureNumberField
         label={t("rotation")}
         value={layer.rotationDeg}
@@ -166,33 +162,28 @@ export function SurfaceTextureControls({
           </NativeSelect>
         </Field>
       )}
-      <details className="border-t pt-3">
+      <details className="border-t pt-2">
         <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-        <div className="mt-3 grid gap-3">
-          <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={layer.invert}
-              onChange={(event) => update({ invert: event.target.checked })}
-            />
-            {t("invert")}
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <TextureNumberField
-              label={t("offsetU")}
-              value={layer.offsetUMm}
-              min={-100_000}
-              max={100_000}
-              onChange={(offsetUMm) => update({ offsetUMm })}
-            />
-            <TextureNumberField
-              label={t("offsetV")}
-              value={layer.offsetVMm}
-              min={-100_000}
-              max={100_000}
-              onChange={(offsetVMm) => update({ offsetVMm })}
-            />
-          </div>
+        <div className="mt-2 grid gap-2">
+          <BooleanParameterField
+            label={t("invert")}
+            checked={layer.invert}
+            onChange={(event) => update({ invert: event.target.checked })}
+          />
+          <TextureNumberField
+            label={t("offsetU")}
+            value={layer.offsetUMm}
+            min={-100_000}
+            max={100_000}
+            onChange={(offsetUMm) => update({ offsetUMm })}
+          />
+          <TextureNumberField
+            label={t("offsetV")}
+            value={layer.offsetVMm}
+            min={-100_000}
+            max={100_000}
+            onChange={(offsetVMm) => update({ offsetVMm })}
+          />
           <TextureNumberField
             label={t("boundaryFade")}
             value={layer.boundaryFadeMm}
