@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test"
-import { projectAssemblyAuthority } from "@vibeshape/domain/assembly-authority"
+import {
+  assemblyMotionStudySchema,
+  projectAssemblyAuthority,
+} from "@vibeshape/domain/assembly-authority"
 import { solveAssemblyKinematics } from "@vibeshape/domain/assembly-kinematics"
 import { assemblyJointRecordSchema } from "@vibeshape/domain/assembly-mates"
 import { authoredTestId as id } from "../../test-support/authored-tree-fixture"
@@ -9,6 +12,7 @@ import {
   assemblyMotionCoordinates,
   assemblyMotionSamples,
   assemblyMotionUnits,
+  retimeAssemblyMotionStudy,
 } from "./assembly-motion"
 import { assemblyUiFixture } from "./assembly-test-fixture"
 
@@ -43,6 +47,46 @@ function firstCoordinate(input: ReturnType<typeof joint>) {
   if (!coordinate) throw new Error("The motion fixture requires a coordinate.")
   return coordinate
 }
+function studyWithTimes(duration: number, times: number[]) {
+  return assemblyMotionStudySchema.parse({
+    schemaVersion: 1,
+    id: id(810),
+    name: "Precision study",
+    duration,
+    tracks: [
+      {
+        id: id(811),
+        jointId: id(503),
+        coordinate: "angle",
+        keys: times.map((time, index) => ({ time, value: index / 10 })),
+      },
+    ],
+  })
+}
+describe("Motion study duration editing", () => {
+  it.each([
+    [5, [0, 1.9, 1.9000000000000001]],
+    [2, [0, Number.MIN_VALUE, 2]],
+  ] as const)("preserves unchanged duration %s and exact tight key times", (duration, times) => {
+    const study = studyWithTimes(duration, [...times])
+    expect(retimeAssemblyMotionStudy(study, duration)).toBe(study)
+  })
+  it("normalizes tiny imported durations when the scale would overflow", () => {
+    const study = studyWithTimes(1e-320, [0, 5e-321, 1e-320])
+    const retimed = retimeAssemblyMotionStudy(study, 0.001)
+    expect(retimed.tracks[0]?.keys.map(({ time }) => time)).toEqual([0, 0.0005, 0.001])
+    expect(assemblyMotionStudySchema.safeParse(retimed).success).toBe(true)
+    expect(retimed.tracks[0]?.keys.map(({ value }) => value)).toEqual([0, 0.1, 0.2])
+    expect(study.duration).toBe(1e-320)
+  })
+  it("keeps representable small times while leaving actual collisions invalid", () => {
+    const study = studyWithTimes(2, [0, Number.MIN_VALUE, 2])
+    expect(retimeAssemblyMotionStudy(study, 4).tracks[0]?.keys[1]?.time).toBe(Number.MIN_VALUE * 2)
+    const collapsed = retimeAssemblyMotionStudy(study, 0.001)
+    expect(assemblyMotionStudySchema.safeParse(collapsed).success).toBe(false)
+    expect(study.tracks[0]?.keys[1]?.time).toBe(Number.MIN_VALUE)
+  })
+})
 describe("Assembly motion coordinate authority", () => {
   it("converts project angle and length units without changing canonical limits", () => {
     const rotation = firstCoordinate(joint("revolute"))

@@ -102,6 +102,9 @@ function MotionMenu({ view }: { view: AssemblyWorkspaceView }) {
         <MotionStudyIcon aria-hidden="true" />
         {t("motionNewStudy")}
       </DropdownMenuItem>
+      {!driven.length && (
+        <p className="px-2 py-1 text-xs text-muted-foreground">{t("motionStudyEmpty")}</p>
+      )}
       {view.assembly.motionStudies?.map((study) => (
         <DropdownMenuItem
           key={study.id}
@@ -127,6 +130,36 @@ function MotionMenu({ view }: { view: AssemblyWorkspaceView }) {
         )
       })}
     </DropdownMenuGroup>
+  )
+}
+function MotionActions({ view }: { view: AssemblyWorkspaceView }) {
+  const t = useTranslations("app.assembly")
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <ToolbarButton asChild>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={t("motionStudies")}
+                dropdown
+                disabled={view.taskActionsDisabled}
+              >
+                <MotionStudyIcon aria-hidden="true" />
+                {t("motionStudies")}
+              </Button>
+            </ToolbarButton>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{t("motionStudies")}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="start" className="max-h-96 w-64 overflow-y-auto">
+        <MotionMenu view={view} />
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 function InstanceMenu({ view }: { view: AssemblyWorkspaceView }) {
@@ -241,7 +274,6 @@ function MoreActions({ view }: { view: AssemblyWorkspaceView }) {
       <DropdownMenuContent align="start" className="max-h-96 w-64 overflow-y-auto">
         <CreateMenu view={view} />
         <DropdownMenuSeparator />
-        <MotionMenu view={view} />
         <InstanceMenu view={view} />
         <DefinitionMenu view={view} />
       </DropdownMenuContent>
@@ -278,6 +310,7 @@ export function AssemblyToolbar({ view }: { view: AssemblyWorkspaceView }) {
         inspection={view.inspection.inspection}
         disabled={view.disabled || view.inspection.pending}
       />
+      <MotionActions view={view} />
       <MoreActions view={view} />
     </Toolbar>
   )

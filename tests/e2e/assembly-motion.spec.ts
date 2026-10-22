@@ -34,6 +34,7 @@ test("previews real assembly drives without saving, pauses and resets, applies o
   page,
 }) => {
   test.setTimeout(180_000)
+  await page.clock.install()
   await page.goto("/")
   await saved(page)
   await createSolids(page)
@@ -69,18 +70,21 @@ test("previews real assembly drives without saving, pauses and resets, applies o
 
   await panel(page).getByRole("spinbutton", { name: "Sweep start (deg)", exact: true }).fill("-10")
   await panel(page).getByRole("spinbutton", { name: "Sweep end (deg)", exact: true }).fill("10")
-  await panel(page).getByRole("button", { name: "Play one sweep", exact: true }).click()
+  // Hold the first real solved pose instead of racing its 200 ms playback interval.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000))
+  await panel(page).getByRole("button", { name: "Play animation", exact: true }).click()
   await expect(panel(page).getByText("Preview: -10 deg", { exact: true })).toBeVisible({
     timeout: 60_000,
   })
   await panel(page).getByRole("button", { name: "Pause", exact: true }).click()
+  await page.clock.resume()
   await expect(panel(page).getByRole("button", { name: "Pause", exact: true })).toHaveCount(0)
   expect((await assembly(page)).assembly).toEqual(baseline.assembly)
   await panel(page).getByRole("button", { name: "Reset preview", exact: true }).click()
   await expect(page.getByText("Unsaved motion preview", { exact: true })).toHaveCount(0)
   await expect(panel(page).getByRole("button", { name: "Apply", exact: true })).toBeDisabled()
   await panel(page).getByRole("spinbutton", { name: "Sweep start (deg)", exact: true }).fill("46")
-  await panel(page).getByRole("button", { name: "Play one sweep", exact: true }).click()
+  await panel(page).getByRole("button", { name: "Play animation", exact: true }).click()
   await expect(panel(page).getByRole("alert")).toContainText("Check track coordinates")
   await expect(panel(page).getByRole("button", { name: "Apply", exact: true })).toBeDisabled()
 

@@ -174,6 +174,7 @@ function MotionPlayback({
     <div className="flex flex-wrap gap-2">
       {motion.playing ? (
         <Button
+          key="pause"
           type="button"
           size="sm"
           variant="outline"
@@ -184,11 +185,12 @@ function MotionPlayback({
         </Button>
       ) : (
         <Button
+          key="play"
           type="button"
           size="sm"
           variant="outline"
           disabled={disabled || motion.pending || coordinate.min === coordinate.max}
-          onClick={input.play}
+          onClick={() => void input.play()}
         >
           {t("motionPlay")}
         </Button>
