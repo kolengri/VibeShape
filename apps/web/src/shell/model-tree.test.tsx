@@ -568,6 +568,34 @@ function timeline() {
   return within(screen.getByRole("region", { name: "Feature history" }))
 }
 
+describe("ModelTree sketch group", () => {
+  it("shows the group only while the committed document contains sketches", () => {
+    const emptyController = {
+      ...controller,
+      report: {
+        ...controllerReport,
+        snapshot: { ...controllerReport.snapshot, sketches: [] },
+      },
+    } as DocumentControllerState
+    const { rerenderTree } = renderTree({ controller: emptyController })
+
+    expect(browser().queryByRole("treeitem", { name: "Sketches" })).toBeNull()
+    expect(browser().queryByText("No sketches yet.")).toBeNull()
+    expect(browser().queryByRole("button", { name: "Create sketch" })).toBeNull()
+
+    rerenderTree({ controller })
+
+    expect(browser().getByRole("treeitem", { name: "Sketches" })).toBeTruthy()
+    expect(browser().getByRole("treeitem", { name: "Profile" })).toBeTruthy()
+    expect(browser().getByRole("button", { name: "Hide all sketches" })).toBeTruthy()
+
+    rerenderTree({ controller: emptyController })
+
+    expect(browser().queryByRole("treeitem", { name: "Sketches" })).toBeNull()
+    expect(browser().queryByRole("treeitem", { name: "Profile" })).toBeNull()
+  })
+})
+
 describe("ModelTree browser search", () => {
   it.each(["xy", "xz", "yz"] as const)(
     "finds the hidden %s origin plane and activates it with the keyboard",
