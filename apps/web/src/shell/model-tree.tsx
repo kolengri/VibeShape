@@ -1414,9 +1414,7 @@ function HistoryRowDetails({
 
 function historyRowLayout(timeline: boolean, compact: boolean) {
   if (!timeline) return undefined
-  return compact
-    ? "relative h-10 w-12 shrink-0 px-2 py-1"
-    : "relative w-64 shrink-0 border-r px-2 py-2"
+  return compact ? "relative size-8 shrink-0" : "relative w-64 shrink-0 border-r px-2 py-2"
 }
 
 function HistoryRepairTooltip({
@@ -1751,6 +1749,50 @@ function FeatureHistoryRow({
   )
 }
 
+function HistoryGroupHeader({
+  count,
+  expanded,
+  onDetailedChange,
+  onExpandedChange,
+}: {
+  count: number
+  expanded: boolean
+  onDetailedChange: () => void
+  onExpandedChange: (expanded: boolean) => void
+}) {
+  const t = useTranslations("app.shell.modelTree")
+  const { detailed } = useContext(HistoryPresentation)
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-1 px-2",
+        detailed ? "border-b" : "lg:flex-nowrap lg:border-r",
+      )}
+    >
+      <ModelTreeGroupItem
+        className="w-auto shrink-0"
+        expanded={expanded}
+        onExpandedChange={onExpandedChange}
+        title={t("items.history")}
+      />
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
+      <HistoryNavigationControls />
+      <div className="min-w-0 flex-1" />
+      {expanded && <HistoryFolderSelectionControls compact />}
+      <Button
+        size="xs"
+        variant="ghost"
+        aria-pressed={detailed}
+        disabled={!expanded}
+        onClick={onDetailedChange}
+      >
+        <ListFilter aria-hidden="true" className="size-3.5" />
+        {t("timelineDetails")}
+      </Button>
+    </div>
+  )
+}
+
 function HistoryGroup({
   expanded,
   onDetailedChange,
@@ -1857,7 +1899,10 @@ function HistoryGroup({
     )
   }
   return (
-    <div role="none">
+    <div
+      role="none"
+      className={cn(!detailed && "lg:grid lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center")}
+    >
       <HistoryFolderSelection
         controller={props.controller}
         authority={authority}
@@ -1865,30 +1910,12 @@ function HistoryGroup({
         disabled={metadataDisabled || !completeGraph || busy}
         onCommit={props.onAuthoredMetadata}
       >
-        <div className="flex min-w-0 flex-wrap items-center gap-1 border-b px-2">
-          <ModelTreeGroupItem
-            className="w-auto shrink-0"
-            expanded={expanded}
-            onExpandedChange={onExpandedChange}
-            title={t("items.history")}
-          />
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {view.rows.length}
-          </span>
-          <HistoryNavigationControls />
-          <div className="min-w-0 flex-1" />
-          {expanded && <HistoryFolderSelectionControls compact />}
-          <Button
-            size="xs"
-            variant="ghost"
-            aria-pressed={detailed}
-            disabled={!expanded}
-            onClick={onDetailedChange}
-          >
-            <ListFilter aria-hidden="true" className="size-3.5" />
-            {t("timelineDetails")}
-          </Button>
-        </div>
+        <HistoryGroupHeader
+          count={view.rows.length}
+          expanded={expanded}
+          onDetailedChange={onDetailedChange}
+          onExpandedChange={onExpandedChange}
+        />
         {expanded && (
           <fieldset className="contents">
             <legend className="sr-only">{t("items.history")}</legend>

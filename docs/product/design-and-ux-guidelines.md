@@ -79,7 +79,7 @@ The target reference canvas is 1440 × 900 CSS px. The supported authoring minim
 | Model tree | 240 px | 200–420 px |
 | Task panel | 320 px | 280–480 px |
 | Side-panel background opacity | 94% | 0–100%; compact sheets stay opaque |
-| Feature history | Compact bottom strip | Collapsible; Details reveals labels and source links |
+| Feature history | One bottom row on desktop, with 32 px operation slots | Collapsible; narrow layouts wrap controls above the track; Details reveals labels and source links |
 | Panel resize hit area | 8 px | At least 8 px |
 
 Panel sizes are user preferences. Double-clicking a separator restores its default. The thin resize separator has an equivalent keyboard path plus labeled collapse and reset controls that meet the pointer-target baseline. Edge pixels are never the only resize or restore mechanism.
