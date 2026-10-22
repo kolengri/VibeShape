@@ -24,9 +24,10 @@ Browser-only chat cannot launch the bundled local process.
    model to select one next action from the compact advertised catalog, then complete that tool's
    arguments separately. This can select `ask_user_question` for missing design details. The
    replacement goes through the same project, revision and schema checks; no tool has run yet.
-7. Record its result and repeat until the selected action is `done` or `blocked`, a tool fails,
-   cancellation arrives, or the step budget is exhausted. Without a helper, an uncertain selection
-   asks for argument-model configuration instead of reporting an internal threshold failure.
+7. Record its result and repeat until the selected action is `done` or `blocked`, a tool fails
+   with a diagnostic other than `command-no-op`, cancellation arrives, or the step budget is
+   exhausted. Without a helper, an uncertain selection asks for argument-model configuration
+   instead of reporting an internal threshold failure.
 
 Jev chooses actions rather than generating CAD code. Required closed parameters and optional closed
 parameters with an omission alternative can be selected in the same request as the tool. Open
@@ -35,10 +36,14 @@ This implementation does not yet generate numeric candidate grids or compile all
 Schema alternatives into questions.
 
 The normal MCP draft, preview, command-budget, revision, persistence and checkpoint policies remain
-authoritative. The controller cannot switch or create projects. A rejected or uncertain action stops
-the turn and is never automatically replayed. After an uncertain write, the process permits only
-read-only inspection. Inspect saved state and reconnect before authoring again; an unchanged saved
-revision does not establish the outcome of an unsaved draft operation. Native **Stop AI** still revokes project authority.
+authoritative. The controller cannot switch or create projects. A validated `command-no-op`
+diagnostic confirms that the feature already has the requested state. The controller retains the
+tool's diagnostic and continues with a fresh model read and decision, without replaying the action.
+Other rejected actions stop the turn and include the reported code and message when available.
+An uncertain action stops the turn and is never automatically replayed. After an uncertain write,
+the process permits only read-only inspection. Inspect saved state and reconnect before authoring
+again; an unchanged saved revision does not establish the outcome of an unsaved draft operation.
+Native **Stop AI** still revokes project authority.
 Jev's `done` is a stopping decision, not independent proof of geometric or manufacturing correctness.
 
 ## Configure and connect
@@ -49,6 +54,11 @@ failed connections and settings-storage failures leave it open for correction.
 Select **Agent → Jev (TypeSafe)**. Enter the TypeSafe API key and
 Jev model. The default model is the adapter's pinned `jev-1.14.0`; selecting it does not establish
 that the provider account has access to that model.
+
+Switching agents discards the previous agent's saved resume record and starts a fresh native
+session, including when returning from Jev to an earlier agent. Reconnecting to the same agent
+retains its advertised session-resume behavior. Provider-scoped model settings remain separate
+from session history and are preserved when switching back.
 
 Choose **Argument model → Codex / Claude Code / OpenCode** to reuse the installed ACP agent's
 existing sign-in. A previously saved custom ACP command is also available and selected when switching

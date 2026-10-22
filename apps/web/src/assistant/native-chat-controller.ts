@@ -127,6 +127,7 @@ export function createNativeChatController({
   }
 }) {
   let agentSession: AgentChatSession | undefined
+  let agentSessionOwned = false
   let state: ChatState = {
     messages: [],
     snapshot: null,
@@ -200,7 +201,12 @@ export function createNativeChatController({
     store: historyStore,
     current: () => ({ messages: state.messages, agentSession }),
     restored: (saved) => {
-      agentSession = saved.agentSession
+      // History retries cannot replace an adopted session or undo a deliberate clear.
+      if (!agentSessionOwned) agentSession = saved.agentSession
+      if (agent && agentSession && !matchingResume(agent)) {
+        agentSession = undefined
+        agentSessionOwned = true
+      }
       publish({ messages: saved.messages })
     },
     failed: (storageFailed) => {
@@ -278,8 +284,9 @@ export function createNativeChatController({
     return false
   }
   function rememberSession(snapshot: AssistantSnapshot) {
-    if (agent && snapshot.canResume && snapshot.sessionId) {
-      agentSession = { agent, sessionId: snapshot.sessionId }
+    if (agent && snapshot.sessionId) {
+      agentSession = snapshot.canResume ? { agent, sessionId: snapshot.sessionId } : undefined
+      agentSessionOwned = true
       save()
     }
   }
@@ -603,6 +610,11 @@ export function createNativeChatController({
     recoveryAttempt = 0
     publish({ configured: true })
     const resume = matchingResume(configuration)
+    if (agentSession && !resume) {
+      agentSession = undefined
+      agentSessionOwned = true
+      save()
+    }
     // Clear an earlier Stop at explicit Connect, before ACP startup can publish discovery.
     const access = automatic ? undefined : ensureAutomationConnection(at, false)
     const result = await bridge.connect({
@@ -1375,6 +1387,7 @@ export function createNativeChatController({
       await done
       if (!(await resetTranscript(at))) return
       agentSession = undefined
+      agentSessionOwned = true
       checkpoints?.clear()
       publish({ messages: [], error: null, storageFailed: false })
       if (agent) await connect(agent, undefined, { automatic: true })

@@ -1450,6 +1450,98 @@ describe("project-scoped agent chat", () => {
     expect(f.connects.at(-1)?.resumeSessionId).toBeUndefined()
     chat.dispose()
   })
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    "starts Codex fresh after nonresumable Jev (reload: %s, retry save: %s)",
+    async (reload, retrySave) => {
+      const f = fixture()
+      const disk = storage()
+      const codex = { command: "codex-acp", args: [] }
+      const jev = assistantJevAgentSchema.parse({ kind: "jev", settings: {} })
+      const bridge: AssistantBridge = {
+        ...f.bridge,
+        async connect(input) {
+          const result = await f.bridge.connect(input)
+          if (!result.ok) return result
+          return {
+            ...result,
+            value: { ...result.value, canResume: !("kind" in input.agent) },
+          }
+        },
+      }
+      let chat = createNativeChatController({ projectId, bridge, storage: disk })
+      chat.start()
+      try {
+        expect(await chat.connect(codex)).toBe(true)
+        await chat.flushHistory()
+        const store = historyStoreFor(disk)
+        if (retrySave) store.commitFailure = new Error("Temporary history write failure")
+        expect(await chat.connect(jev)).toBe(true)
+        expect(f.connects.at(-1)?.resumeSessionId).toBeUndefined()
+        await chat.flushHistory()
+        if (retrySave) {
+          expect(chat.getSnapshot().storageFailed).toBe(true)
+          store.commitFailure = undefined
+          await chat.retryHistory()
+          expect(chat.getSnapshot().storageFailed).toBe(false)
+        }
+        expect((await readChatHistory(projectId, disk))?.agentSession).toBeUndefined()
+        if (reload) {
+          chat.dispose()
+          chat = createNativeChatController({ projectId, bridge, storage: disk })
+          chat.start()
+        }
+        expect(await chat.connect(codex)).toBe(true)
+        expect(f.connects.at(-1)?.resumeSessionId).toBeUndefined()
+        const sessionId = f.snapshot().sessionId ?? undefined
+        expect(sessionId).toBeDefined()
+        expect(chat.getSnapshot().snapshot).toHaveProperty("sessionId", sessionId)
+        await chat.disconnect()
+        expect(await chat.connect(codex)).toBe(true)
+        expect(f.connects.at(-1)?.resumeSessionId).toBe(sessionId)
+      } finally {
+        chat.dispose()
+      }
+    },
+  )
+  it("recovers same-agent resume after initial history loading and agent startup both fail", async () => {
+    const f = fixture()
+    const disk = storage()
+    const codex = { command: "codex-acp", args: [] }
+    const seed = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+    seed.start()
+    expect(await seed.connect(codex)).toBe(true)
+    await seed.flushHistory()
+    const sessionId = f.snapshot().sessionId ?? undefined
+    expect(sessionId).toBeDefined()
+    seed.dispose()
+    const store = historyStoreFor(disk)
+    store.failure = new Error("Temporary history read failure")
+    let failStartup = true
+    const bridge: AssistantBridge = {
+      ...f.bridge,
+      connect: async (input) =>
+        failStartup ? { ok: false, code: "initialization-failed" } : f.bridge.connect(input),
+    }
+    const chat = createNativeChatController({ projectId, bridge, storage: disk })
+    chat.start()
+    try {
+      expect(await chat.connect(codex)).toBe(false)
+      expect(chat.getSnapshot().storageFailed).toBe(true)
+      store.failure = undefined
+      await chat.retryHistory()
+      expect(chat.getSnapshot().storageFailed).toBe(false)
+      failStartup = false
+      expect(await chat.connect(codex)).toBe(true)
+      expect(f.connects.at(-1)?.resumeSessionId).toBe(sessionId)
+    } finally {
+      chat.dispose()
+    }
+  })
   it.each(["reset", "reconnect"] as const)(
     "never reconnects disposed project A after its pending %s disconnect releases",
     async (action) => {

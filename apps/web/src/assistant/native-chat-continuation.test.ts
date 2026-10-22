@@ -13,12 +13,14 @@ import {
   assistantEventSchema,
   assistantResultSchema,
 } from "@vibeshape/automation-api/assistant"
+import { assistantJevAgentSchema } from "@vibeshape/automation-api/assistant-jev"
 import { createNativeChatController } from "./native-chat-controller"
 
 const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
 const fixture = String.raw`
 const fs = require("node:fs"), path = require("node:path");
 const recoveryMode = fs.existsSync(path.join(__dirname,"recovery-mode"));
+const jev = process.argv[2] === "--jev";
 let selectedModel = "small";
 const configs = () => [{id:"model",name:"Model",category:"model",type:"select",currentValue:selectedModel,options:[{value:"small",name:"Small"},{value:"large",name:"Large"}]}];
 const deferredAckWatch = fs.existsSync(path.join(__dirname,"defer-ack-watch"));
@@ -34,7 +36,7 @@ if (deferredAckWatch) {
  };
 }
 const input = require("node:readline").createInterface({ input: process.stdin });
-let sessionId = "continuation-controls";
+let sessionId = jev ? "jev-session" : "continuation-controls";
 let original;
 const send = value => process.stdout.write(JSON.stringify({jsonrpc:"2.0", ...value})+"\n");
 const reply = (id,result) => send({id,result});
@@ -55,7 +57,8 @@ input.on("line", line => {
    if (id === "question") text(result.action === "accept" && result.content.size === "Large" ? "question accepted" : "question declined");
    return;
  }
- if (method === "initialize") return reply(id,{protocolVersion:1,agentInfo:{name:"@agentclientprotocol/codex-acp",version:"2.2.2"},agentCapabilities:{loadSession:recoveryMode,promptCapabilities:{embeddedContext:true}},_meta:{steering:{supported:true}}});
+ if (method === "initialize") return reply(id,{protocolVersion:1,agentInfo:{name:"@agentclientprotocol/codex-acp",version:"2.2.2"},agentCapabilities:{loadSession:recoveryMode && !jev,promptCapabilities:{embeddedContext:true}},_meta:{steering:{supported:true}}});
+ if (method === "session/new" || method === "session/load") fs.appendFileSync(path.join(__dirname,"sessions"),(jev ? "jev" : "codex")+":"+method+"\n");
  if (method === "session/new") return reply(id,{sessionId,...(recoveryMode ? {configOptions:configs()} : {})});
  if (method === "session/load") {
    sessionId = params.sessionId;
@@ -138,6 +141,7 @@ import { createAssistantService } from ${JSON.stringify(servicePath)};
 const send = value => process.stdout.write(JSON.stringify(value)+"\\n");
 const service = createAssistantService({
  cwd: ${JSON.stringify(directory)}, applicationVersion: "0.1.6",
+ resolveLaunch: (_projectId, agent) => ({ok:true,launch:{agent:"kind" in agent ? {command:"node",args:[${JSON.stringify(script)},"--jev"]} : agent}}),
  getMcpSetup: async () => ({protocolVersion:1,mcpServers:{vibeshape:{command:"/unused",args:["/mcp.cjs","--descriptor","/descriptor.json"],env:{ELECTRON_RUN_AS_NODE:"1"}}}}),
  onEvent: event => send({event}), requestTimeoutMs:3000, promptTimeoutMs:10000,
 });
@@ -298,6 +302,33 @@ async function until(predicate: () => boolean | Promise<boolean>) {
 }
 
 describe("native continuation controls through the real service", () => {
+  it("starts a fresh Codex session after Jev and preserves provider settings and same-agent resume", async () => {
+    const context = await host({ recoveryMode: true })
+    const { chat, configuration: codex } = context
+    await chat.setConfigOption("model", "large")
+    const jev = assistantJevAgentSchema.parse({ kind: "jev", settings: {} })
+    expect(await chat.connect(jev)).toBe(true)
+    expect(chat.getSnapshot()).toMatchObject({
+      error: null,
+      snapshot: {
+        status: "ready",
+        canResume: false,
+        sessionId: "jev-session",
+        currentModelId: "small",
+      },
+    })
+    expect(await chat.connect(codex)).toBe(true)
+    expect(chat.getSnapshot()).toMatchObject({
+      error: null,
+      snapshot: { status: "ready", canResume: true, currentModelId: "large" },
+    })
+    await chat.disconnect()
+    expect(await chat.connect(codex)).toBe(true)
+    expect(await context.read("sessions")).toBe(
+      "codex:session/new\njev:session/new\ncodex:session/new\ncodex:session/load\n",
+    )
+    expect(chat.getSnapshot().snapshot?.currentModelId).toBe("large")
+  })
   it("recovers a crashed ACP process through session/load, restores its model, and reconciles an accepted write without replay", async () => {
     const context = await host({ recoveryMode: true })
     await context.chat.setConfigOption("model", "large")
