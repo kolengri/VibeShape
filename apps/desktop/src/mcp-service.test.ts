@@ -244,6 +244,88 @@ describe("app-owned native MCP attachment", () => {
     }
   }
 
+  it("pairs the connected assistant before lazy MCP initialization and preserves its grant on first use", async () => {
+    const context = await host()
+    const questions: AssistantQuestionHost = {
+      canInvoke: () => true,
+      request: async () => ({ action: "cancel" }),
+    }
+    const path = await context.service.publishProject(
+      projectId,
+      join(context.directory, `${projectId}.json`),
+      questions,
+    )
+    expect(context.service.isClientAttached(projectId)).toBe(false)
+    expect(await (await browser(context, "status", {}, projectId)).json()).toMatchObject({
+      client: { name: "VibeShape assistant", version: "1" },
+      paired: false,
+    })
+    const credential = await grant(context)
+    const descriptor = await readMcpDescriptor(path)
+    const native = await connect(
+      {
+        ...context,
+        descriptor,
+        headers: { ...context.headers, Authorization: `Bearer ${descriptor.token}` },
+      },
+      "lazy-provider",
+    )
+    expect(await (await browser(context, "status", {}, projectId)).json()).toMatchObject({
+      paired: true,
+    })
+    const pending = native.client.callTool({ name: "model_info", arguments: {} })
+    let delivered = await poll(context, credential.token)
+    let sequence = 1
+    await vi.waitFor(async () => {
+      if (!delivered.work) delivered = await poll(context, credential.token, ++sequence)
+      expect(delivered.work?.operation.tool).toBe("model_info")
+    })
+    await browser(context, "revoke", {}, projectId, credential.token)
+    expect(await pending).toMatchObject({
+      isError: true,
+      structuredContent: { result: { diagnostic: { code: "session-revoked" } } },
+    })
+    expect(await native.client.callTool({ name: "model_info", arguments: {} })).toMatchObject({
+      isError: true,
+      structuredContent: { result: { diagnostic: { code: "not-paired" } } },
+    })
+  })
+
+  it("releases lazy reservations by captured assistant owner and ignores a stale disconnect", async () => {
+    const context = await host()
+    const first: AssistantQuestionHost = {
+      canInvoke: () => true,
+      request: async () => ({ action: "cancel" }),
+    }
+    const second: AssistantQuestionHost = { ...first }
+    const path = join(context.directory, `${projectId}.json`)
+    await context.service.publishProject(projectId, path, first)
+    const old = await grant(context)
+    await context.service.publishProject(projectId, path, second)
+    expect(
+      (
+        await browser(
+          context,
+          "poll",
+          { protocolVersion: 1, sequence: 1, document, progress: null },
+          projectId,
+          old.token,
+        )
+      ).status,
+    ).toBe(401)
+    const current = await grant(context)
+    context.service.releaseProject(projectId, first)
+    expect(await (await browser(context, "status", {}, projectId)).json()).toMatchObject({
+      paired: true,
+    })
+    expect((await poll(context, current.token)).work).toBeNull()
+    context.service.releaseProject(projectId, second)
+    expect(await (await browser(context, "status", {}, projectId)).json()).toMatchObject({
+      client: null,
+      paired: false,
+    })
+  })
+
   it("waits for the initial native identity read to pair normally and executes it only once", async () => {
     const context = await host()
     const native = await project(context, projectId)

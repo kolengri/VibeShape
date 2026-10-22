@@ -60,13 +60,18 @@ and an optional **Argument model** selector for Codex, Claude Code, OpenCode or 
 ACP agent, using that agent's existing sign-in. The last saved custom command is reused without
 manual re-entry. Presets do not assert installed/authenticated availability; **Test connection**
 checks the selected helper with a small JSON inference. API fields appear only under the advanced
-API choice. The bundled Jev adapter does not ask for an executable or source path. Provider keys are connection-only and kept in host memory per project for the app
-session; only non-secret settings persist. Recovery reuses the same project's cached keys, never
-keys entered in another project. The form explains the difference between selecting CAD actions
+API choice. The bundled Jev adapter does not ask for an executable or source path. Provider keys are connection-only and kept in host memory across projects for the app
+session; only non-secret settings persist. Launches and recovery reuse the shared TypeSafe key and
+exact-endpoint helper keys. Probes do not replace cached credentials. Low-confidence Jev selections
+go to the configured helper for a supported action or a structured design question instead of
+ending the turn with a confidence-threshold diagnostic. The form explains the difference between selecting CAD actions
 and completing their open parameters. Connection configuration and credentials open in an **AI settings**
 modal; closing it preserves the current form and connection. Successful saving and connection close
 the modal and restore focus to its trigger. Rejected or pending connections and settings-storage
-failures keep it open for correction. Agent-advertised mode, model, reasoning, collaboration and speed
+failures keep it open for correction. Chat prompts become usable after both the agent and its
+project connection are ready. Explicit Connect
+restores project access after Stop AI; automatic startup, recovery and New chat preserve Stop.
+Agent-advertised mode, model, reasoning, collaboration and speed
 choices live in compact composer menus. Their chips show the confirmed selected
 value and wrap at their natural width; hover or keyboard focus reveals the setting name and full value.
 The message field grows with its content up to a bounded height, then scrolls internally. Attachment

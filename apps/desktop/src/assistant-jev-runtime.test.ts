@@ -19,31 +19,62 @@ function launch(result: ReturnType<ReturnType<typeof createAssistantLaunchResolv
 }
 
 describe("built-in Jev runtime authority", () => {
-  it("reuses project and endpoint credentials for probes without caching supplied probe keys", () => {
+  it("reuses app-session credentials for probes without caching supplied probe keys", () => {
     const resolve = createAssistantLaunchResolver({ executable, runtimeDirectory, env: {} })
     launch(
       resolve("project-a", helper(), { apiKey: "connect-key", argumentsApiKey: "connect-helper" }),
     )
     const probe = launch(
       resolve(
-        "project-a",
+        "project-b",
         helper(),
         { apiKey: "probe-key", argumentsApiKey: "probe-helper" },
         { testConnection: true },
       ),
     )
     expect(probe.agent.args).toEqual([join(runtimeDirectory, "jev.cjs"), "--test-connection"])
-    expect(probe.env?.TYPESAFE_API_KEY).toBe("probe-key")
-    expect(probe.env?.JEV_ARGUMENTS_API_KEY).toBe("probe-helper")
+    expect(probe.env).toMatchObject({
+      TYPESAFE_API_KEY: "probe-key",
+      JEV_ARGUMENTS_API_KEY: "probe-helper",
+    })
     const recovered = launch(resolve("project-a", helper(), {}, { testConnection: true }))
-    expect(recovered.env?.TYPESAFE_API_KEY).toBe("connect-key")
-    expect(recovered.env?.JEV_ARGUMENTS_API_KEY).toBe("connect-helper")
+    expect(recovered.env).toMatchObject({
+      TYPESAFE_API_KEY: "connect-key",
+      JEV_ARGUMENTS_API_KEY: "connect-helper",
+    })
     expect(
       launch(resolve("project-a", helper(secondEndpoint), {}, { testConnection: true })).env
         ?.JEV_ARGUMENTS_API_KEY,
     ).toBeUndefined()
-    launch(resolve("project-b", helper(), { apiKey: "only-probed" }, { testConnection: true }))
-    expect(resolve("project-b", helper())).toEqual({
+    launch(
+      resolve(
+        "project-b",
+        helper(secondEndpoint),
+        { apiKey: "only-probed", argumentsApiKey: "only-probed-helper" },
+        { testConnection: true },
+      ),
+    )
+    const connected = launch(resolve("project-b", helper(secondEndpoint)))
+    expect(connected.env).toMatchObject({ TYPESAFE_API_KEY: "connect-key" })
+    expect(connected.env).not.toHaveProperty("JEV_ARGUMENTS_API_KEY")
+    const recoveredAfterConnect = launch(resolve("project-a", helper()))
+    expect(recoveredAfterConnect.env).toMatchObject({
+      TYPESAFE_API_KEY: "connect-key",
+      JEV_ARGUMENTS_API_KEY: "connect-helper",
+    })
+  })
+
+  it("does not seed the app-session cache from a connection probe", () => {
+    const resolve = createAssistantLaunchResolver({ executable, runtimeDirectory, env: {} })
+    launch(
+      resolve(
+        "project-a",
+        helper(),
+        { apiKey: "only-probed", argumentsApiKey: "only-probed-helper" },
+        { testConnection: true },
+      ),
+    )
+    expect(resolve("project-a", helper())).toEqual({
       ok: false,
       code: "jev-configuration-required",
     })
@@ -51,6 +82,9 @@ describe("built-in Jev runtime authority", () => {
       ok: false,
       code: "jev-configuration-required",
     })
+    expect(
+      launch(resolve("project-b", helper(), { apiKey: "connect-key" })).env?.JEV_ARGUMENTS_API_KEY,
+    ).toBeUndefined()
   })
   it("resolves only the application runtime with explicit settings and a private environment", () => {
     const inherited = {
@@ -114,9 +148,24 @@ describe("built-in Jev runtime authority", () => {
   })
 
   it("preserves legacy executable configuration without attaching built-in credentials or flags", () => {
-    const resolve = createAssistantLaunchResolver({ executable, runtimeDirectory, env: {} })
+    const resolve = createAssistantLaunchResolver({
+      executable,
+      runtimeDirectory,
+      env: { TYPESAFE_API_KEY: "host-key", JEV_ARGUMENTS_API_KEY: "host-helper-key" },
+    })
+    launch(
+      resolve("project-a", helper(), { apiKey: "cached-key", argumentsApiKey: "cached-helper" }),
+    )
     const external = { command: "custom-acp", args: ["literal argument; $(exit 9)"] }
-    expect(resolve("project-a", external)).toEqual({ ok: true, launch: { agent: external } })
+    expect(
+      resolve("project-b", external, {
+        apiKey: "external-key",
+        argumentsApiKey: "external-helper",
+      }),
+    ).toEqual({ ok: true, launch: { agent: external } })
+    const recovered = launch(resolve("project-b", helper()))
+    expect(recovered.env?.TYPESAFE_API_KEY).toBe("cached-key")
+    expect(recovered.env?.JEV_ARGUMENTS_API_KEY).toBe("cached-helper")
   })
 
   it("returns a sanitized configuration error without a key or for invalid host credentials", () => {
@@ -190,36 +239,28 @@ describe("built-in Jev runtime authority", () => {
     expect(launch(resolve("project-a", agent())).env?.JEV_ARGUMENTS_ENDPOINT).toBeUndefined()
   })
 
-  it("isolates project keys and helper keys across interleaved descriptor-only recovery", () => {
+  it("reuses connection keys across project switches and descriptor-only recovery", () => {
     const resolve = createAssistantLaunchResolver({ executable, runtimeDirectory, env: {} })
     launch(resolve("project-a", helper(), { apiKey: "key-a", argumentsApiKey: "helper-a" }))
-    launch(resolve("project-b", helper(), { apiKey: "key-b", argumentsApiKey: "helper-b" }))
-    for (const [projectId, apiKey, helperKey] of [
-      ["project-a", "key-a", "helper-a"],
-      ["project-b", "key-b", "helper-b"],
-    ] as const) {
+    for (const projectId of ["project-b", "project-a", "project-c"]) {
       const recovered = launch(resolve(projectId, helper()))
-      expect(recovered.env?.TYPESAFE_API_KEY).toBe(apiKey)
-      expect(recovered.env?.JEV_ARGUMENTS_API_KEY).toBe(helperKey)
+      expect(recovered.env?.TYPESAFE_API_KEY).toBe("key-a")
+      expect(recovered.env?.JEV_ARGUMENTS_API_KEY).toBe("helper-a")
     }
-    expect(resolve("project-c", helper())).toEqual({
-      ok: false,
-      code: "jev-configuration-required",
-    })
-    expect(
-      launch(resolve("project-a", helper(secondEndpoint))).env?.JEV_ARGUMENTS_API_KEY,
-    ).toBeUndefined()
-    launch(resolve("project-a", helper(secondEndpoint), { argumentsApiKey: "helper-a-second" }))
-    expect(launch(resolve("project-a", helper())).env?.JEV_ARGUMENTS_API_KEY).toBe("helper-a")
-    expect(launch(resolve("project-a", helper(secondEndpoint))).env?.JEV_ARGUMENTS_API_KEY).toBe(
-      "helper-a-second",
-    )
     expect(
       launch(resolve("project-b", helper(secondEndpoint))).env?.JEV_ARGUMENTS_API_KEY,
     ).toBeUndefined()
+    launch(resolve("project-b", helper(secondEndpoint), { argumentsApiKey: "helper-second" }))
+    expect(launch(resolve("project-a", helper())).env?.JEV_ARGUMENTS_API_KEY).toBe("helper-a")
+    expect(launch(resolve("project-a", helper(secondEndpoint))).env?.JEV_ARGUMENTS_API_KEY).toBe(
+      "helper-second",
+    )
+    expect(
+      launch(resolve("project-b", helper(`${secondEndpoint}/`))).env?.JEV_ARGUMENTS_API_KEY,
+    ).toBeUndefined()
   })
 
-  it("keeps host defaults available without borrowing another project's explicit credentials", () => {
+  it("replaces shared connection keys across projects and overrides host defaults", () => {
     const resolve = createAssistantLaunchResolver({
       executable,
       runtimeDirectory,
@@ -229,15 +270,31 @@ describe("built-in Jev runtime authority", () => {
         JEV_ARGUMENTS_API_KEY: "host-helper-key",
       },
     })
-    launch(resolve("project-a", helper(), { apiKey: "key-a", argumentsApiKey: "helper-a" }))
-    const defaulted = launch(resolve("project-b", helper()))
+    const defaulted = launch(resolve("project-a", helper()))
     expect(defaulted.env?.TYPESAFE_API_KEY).toBe("host-key")
     expect(defaulted.env?.JEV_ARGUMENTS_API_KEY).toBe("host-helper-key")
+    launch(resolve("project-a", helper(), { apiKey: "key-a", argumentsApiKey: "helper-a" }))
+    launch(resolve("project-b", helper(), { apiKey: "key-b", argumentsApiKey: "helper-b" }))
     const recovered = launch(resolve("project-a", helper()))
-    expect(recovered.env?.TYPESAFE_API_KEY).toBe("key-a")
-    expect(recovered.env?.JEV_ARGUMENTS_API_KEY).toBe("helper-a")
+    expect(recovered.env?.TYPESAFE_API_KEY).toBe("key-b")
+    expect(recovered.env?.JEV_ARGUMENTS_API_KEY).toBe("helper-b")
     const otherEndpoint = launch(resolve("project-c", helper(secondEndpoint)))
-    expect(otherEndpoint.env?.TYPESAFE_API_KEY).toBe("host-key")
+    expect(otherEndpoint.env?.TYPESAFE_API_KEY).toBe("key-b")
     expect(otherEndpoint.env?.JEV_ARGUMENTS_API_KEY).toBeUndefined()
+  })
+
+  it("does not retain connection keys in a new runtime resolver", () => {
+    const resolve = createAssistantLaunchResolver({ executable, runtimeDirectory, env: {} })
+    launch(
+      resolve("project-a", helper(), { apiKey: "session-key", argumentsApiKey: "session-helper" }),
+    )
+    const fresh = createAssistantLaunchResolver({ executable, runtimeDirectory, env: {} })
+    expect(fresh("project-a", helper())).toEqual({
+      ok: false,
+      code: "jev-configuration-required",
+    })
+    expect(
+      launch(fresh("project-b", helper(), { apiKey: "fresh-key" })).env?.JEV_ARGUMENTS_API_KEY,
+    ).toBeUndefined()
   })
 })

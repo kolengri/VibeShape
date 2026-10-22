@@ -20,8 +20,13 @@ Browser-only chat cannot launch the bundled local process.
    object. Preserve the values and omissions Jev selected.
 5. Recheck project identity and revision. Discard a stale decision without executing it. Validate
    arguments against VibeShape's existing tool schemas and execute one MCP call.
-6. Record its result and repeat until Jev chooses `done` or `blocked`, confidence is below the
-   configured threshold, a tool fails, cancellation arrives, or the step budget is exhausted.
+6. When the selected branch falls below the confidence threshold, ask the configured argument
+   model to select one next action from the compact advertised catalog, then complete that tool's
+   arguments separately. This can select `ask_user_question` for missing design details. The
+   replacement goes through the same project, revision and schema checks; no tool has run yet.
+7. Record its result and repeat until the selected action is `done` or `blocked`, a tool fails,
+   cancellation arrives, or the step budget is exhausted. Without a helper, an uncertain selection
+   asks for argument-model configuration instead of reporting an internal threshold failure.
 
 Jev chooses actions rather than generating CAD code. Required closed parameters and optional closed
 parameters with an omission alternative can be selected in the same request as the tool. Open
@@ -49,8 +54,8 @@ Choose **Argument model → Codex / Claude Code / OpenCode** to reuse the instal
 existing sign-in. A previously saved custom ACP command is also available and selected when switching
 from that agent to Jev. The choices are launch presets, not a claim that an executable is installed
 or authenticated; use **Test connection** to check access. No helper API key is needed.
-Most CAD edits need this helper for dimensions and references. Jev selects the action; the helper
-fills only that action's open arguments. Each completion starts a fresh ACP process in a temporary
+Most CAD edits need this helper for dimensions and references. Jev normally selects the action;
+the helper fills its open arguments and resolves low-confidence action selections. Each request starts a fresh ACP process in a temporary
 empty working directory, without the project MCP attachment or client filesystem/terminal
 capabilities. Permission requests are declined. The helper inherits OS/configuration paths for its
 existing sign-in, but no TypeSafe or argument-provider keys. It retains the local agent's ordinary
@@ -106,11 +111,12 @@ does not claim to have verified provider access. Failures identify the stage and
 when available, without displaying provider bodies or credentials.
 
 Only the non-secret Jev settings persist as assistant preferences. After a successful connection,
-keys stay in host memory, scoped to the project, for the application session. A failed connection
+keys stay in host memory for the application session and are reused across projects. A failed connection
 keeps both password fields in the form for retry; only an accepted current connection clears them. They do not enter chat, localStorage,
-command arguments or files. Leaving a key blank reuses that project's cached key or the explicitly
-configured app environment key; keys entered in another project are never borrowed. Helper keys are
-scoped to both the project and exact endpoint, so another project or endpoint cannot replace them.
+command arguments or files. Leaving a key blank reuses the app-session key or the explicitly
+configured app environment key. Connecting with a new key replaces that shared cached key for
+future launches and reconnects. Helper keys remain scoped to the exact endpoint; switching an
+endpoint never forwards another endpoint's key. Test connection can use cached keys but never replaces them.
 Restarting the application requires re-entering keys unless its environment already supplies them. Credentials
 are not forwarded to the injected MCP child.
 
@@ -188,8 +194,9 @@ ACP JSON-RPC, so it is intended for an ACP client rather than an interactive ter
 - Incoming prompt text is bounded to 48 KB. At most four PNG/JPEG inputs are accepted, with a
   combined 512 KiB base64 budget. Fresh `render_preview` image blocks can join the next Jev request
   when images are enabled. Unsupported images are rejected rather than silently ignored.
-- The default confidence threshold is provisional, not calibrated on CAD tasks. It controls
-  escalation, never permission to bypass CAD validation. Set it deliberately for your workload.
+- The default confidence threshold is provisional, not calibrated on CAD tasks. It routes uncertain
+  selections to the configured argument model, never permission to bypass CAD validation. This
+  adds a selection request before ordinary argument completion; provider failures are not retried.
 - SDK transport retries are disabled. Provider failures do not produce replacement actions.
 - Chat display has its own budget: only the first tool update carries arguments, and only when
   their JSON fits 8 KiB. Larger arguments are omitted, so that call has no argument-derived target

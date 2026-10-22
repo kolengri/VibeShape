@@ -203,6 +203,8 @@ export function createLocalAutomationConnection(
         visibleAutomationRequest(path, body, token, keepalive, options.projectId)
     : visibleAutomationRequest
 
+  let automaticConnectionBlocked = savedConnectionBlocked()
+  let nativeStopped = automaticConnectionBlocked
   let snapshot: Snapshot = {
     available: false,
     connected: false,
@@ -213,12 +215,13 @@ export function createLocalAutomationConnection(
     busy: false,
     client: null,
     error: false,
+    ...(nativeProjectAccess
+      ? { recoveryBlocked: nativeStopped, recoveryFailed: false, recoveryAttempt: 0 }
+      : {}),
   }
   let pair: Pair | null = null
   let generation = 0
   let revokedThroughGeneration = -1
-  let automaticConnectionBlocked = savedConnectionBlocked()
-  let nativeStopped = automaticConnectionBlocked
   let connecting = false
   let disposed = false
   let restoreTimer: ReturnType<typeof setTimeout> | null = null
@@ -321,10 +324,21 @@ export function createLocalAutomationConnection(
     current.handle.dispose()
     if (pair === current) pair = null
   }
+  function publishDisconnected() {
+    if (!snapshot.connected && !snapshot.recovering && !nativeProjectAccess) return
+    publish({
+      ...snapshot,
+      connected: false,
+      recovering: false,
+      autoApply: false,
+      projectManagement: false,
+      busy: false,
+    })
+  }
   async function disconnect(preserveRecovery = false) {
     recoveryOwner.clear()
-    generation += 1
-    revokedThroughGeneration = generation
+    const at = ++generation
+    revokedThroughGeneration = at
     const saved = readResume()
     clearResume()
     if (restoreTimer) clearTimeout(restoreTimer)
@@ -332,17 +346,10 @@ export function createLocalAutomationConnection(
     nativeRecoveryPending = preserveRecovery
     const current = pair
     if (current) closeLocal(current)
-    if (snapshot.connected || snapshot.recovering)
-      publish({
-        ...snapshot,
-        connected: false,
-        recovering: false,
-        autoApply: false,
-        projectManagement: false,
-        busy: false,
-      })
+    publishDisconnected()
     const credential = current?.credential ?? saved
-    if (credential && !(await revokeCredential(credential))) publish({ ...snapshot, error: true })
+    if (credential && !(await revokeCredential(credential)) && generationCurrent(at))
+      publish({ ...snapshot, error: true })
   }
   async function disable() {
     nativeStopped = nativeProjectAccess
@@ -699,8 +706,11 @@ export function createLocalAutomationConnection(
     nativeRecoveryPending = false
     publish({ ...snapshot, error: false })
   }
+  function generationCurrent(at: number) {
+    return generation === at && !disposed
+  }
   function connectionAttemptCurrent(at: number) {
-    if (generation !== at || disposed) return false
+    if (!generationCurrent(at)) return false
     return !nativeProjectAccess || !automaticConnectionBlocked
   }
   function connectionStillCurrent(created: Handle, at: number) {
@@ -826,8 +836,15 @@ export function createLocalAutomationConnection(
       throw new LocalAutomationTransportError("The local bridge is temporarily unavailable.")
     const status = localStatusSchema.parse(response.data)
     if (!status.client) throw new LocalAutomationTransportError("The local MCP client is starting.")
-    if (saved.client && !sameClient(saved.client, status.client))
+    if (saved.client && !sameClient(saved.client, status.client)) {
+      if (
+        nativeProjectAccess &&
+        status.client.name === "VibeShape assistant" &&
+        status.client.version === "1"
+      )
+        throw new LocalAutomationSessionLostError("The private native assistant identity changed.")
       throw new Error("The approved local MCP client changed.")
+    }
   }
   async function recoveryFailure(
     error: unknown,
@@ -991,8 +1008,84 @@ export function createLocalAutomationConnection(
   function canRestartNativeRecovery() {
     return nativeProjectAccess && nativeRecoveryFailed && !disposed && !connecting && !pair
   }
+  function start() {
+    // React StrictMode restarts the same connection after effect cleanup.
+    disposed = false
+    window.addEventListener("beforeunload", onBeforeUnload)
+    window.addEventListener("pagehide", onPageHide)
+    window.addEventListener("pageshow", onPageShow)
+    scheduleStatus()
+  }
+  function waitForNativeConnection(signal: AbortSignal) {
+    return new Promise<boolean>((resolve) => {
+      const deadline = Date.now() + 30_000
+      const finish = (connected: boolean) => {
+        clearTimeout(timer)
+        listeners.delete(check)
+        signal.removeEventListener("abort", check)
+        resolve(connected)
+      }
+      const check = () => {
+        if (
+          disposed ||
+          signal.aborted ||
+          nativeStopped ||
+          nativeRecoveryFailed ||
+          (!snapshot.recovering && Date.now() >= deadline)
+        )
+          finish(false)
+        else if (snapshot.connected) finish(true)
+      }
+      // An active recovery episode owns its bounded retry budget.
+      const timer = setTimeout(check, 30_000)
+      listeners.add(check)
+      signal.addEventListener("abort", check, { once: true })
+      check()
+    })
+  }
+  async function prepareExplicitConnection(signal: AbortSignal) {
+    // Explicit Connect grants fresh project access; background recovery cannot undo Stop AI.
+    nativeStopped = false
+    automaticConnectionBlocked = false
+    nativeRecoveryAttempt = 0
+    nativeRecoveryFailed = false
+    nativeRecoveryPending = false
+    const at = generation + 1
+    await disconnect()
+    return connectionAttemptCurrent(at) && !signal.aborted
+  }
+  async function validateAutomaticConnection() {
+    if (automaticConnectionBlocked || nativeStopped) return false
+    const current = pair
+    if (current) await (current.polling ?? poll(current))
+    return true
+  }
+  function nativeConnectionCancelled(signal: AbortSignal) {
+    return signal.aborted || disposed || nativeStopped
+  }
+  async function ensureConnected({
+    automatic,
+    signal,
+  }: {
+    automatic: boolean
+    signal: AbortSignal
+  }) {
+    if (!nativeProjectAccess || disposed || signal.aborted) return false
+    const prepared = automatic
+      ? await validateAutomaticConnection()
+      : await prepareExplicitConnection(signal)
+    if (!prepared || nativeConnectionCancelled(signal)) return false
+    start()
+    // A discovery read captured before explicit Connect belongs to the previous generation.
+    await statusRequest
+    if (nativeConnectionCancelled(signal)) return false
+    const pending = waitForNativeConnection(signal)
+    void status()
+    return pending
+  }
   return {
     disconnect: () => disconnect(),
+    ensureConnected,
     async retryRecovery(options?: { automatic?: boolean }) {
       if (!canRestartNativeRecovery()) return false
       if (options?.automatic && (!nativeRecoveryRetryable || automaticConnectionBlocked))
@@ -1072,14 +1165,7 @@ export function createLocalAutomationConnection(
     },
     disable,
     status,
-    start() {
-      // React StrictMode restarts the same connection after effect cleanup.
-      disposed = false
-      window.addEventListener("beforeunload", onBeforeUnload)
-      window.addEventListener("pagehide", onPageHide)
-      window.addEventListener("pageshow", onPageShow)
-      scheduleStatus()
-    },
+    start,
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {
       listeners.add(listener)

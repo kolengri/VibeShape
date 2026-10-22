@@ -12,11 +12,6 @@ type LaunchResolution =
   | { ok: true; launch: AssistantProcessLaunch }
   | { ok: false; code: "jev-configuration-required" }
 
-type ProjectCredentials = {
-  apiKey: string | undefined
-  helperKeys: Map<string, string>
-}
-
 const launchCredentialsSchema = assistantJevCredentialsSchema.required({ apiKey: true })
 
 const operatingSystemVariables = new Set([
@@ -95,57 +90,31 @@ export function createAssistantLaunchResolver(options: {
   const hostApiKey = nonBlank(inherited.TYPESAFE_API_KEY)
   const hostArgumentsEndpoint = inherited.JEV_ARGUMENTS_ENDPOINT
   const hostArgumentsApiKey = nonBlank(inherited.JEV_ARGUMENTS_API_KEY)
-  const projects = new Map<string, ProjectCredentials>()
+  let cachedApiKey: string | undefined
+  const helperKeys = new Map<string, string>()
 
-  function helperKey(
-    endpoint: string | undefined,
-    supplied: string | undefined,
-    cached: ProjectCredentials,
-  ) {
+  function helperKey(endpoint: string | undefined, supplied: string | undefined) {
     const explicit = nonBlank(supplied)
     if (explicit) return explicit
     if (!endpoint) return undefined
     return (
-      cached.helperKeys.get(endpoint) ??
+      helperKeys.get(endpoint) ??
       (hostArgumentsEndpoint === endpoint ? hostArgumentsApiKey : undefined)
     )
   }
 
-  function selectCredentials(
-    projectId: string,
-    endpoint: string | undefined,
-    supplied: AssistantJevCredentials,
-  ) {
-    const cached = projects.get(projectId) ?? {
-      apiKey: undefined,
-      helperKeys: new Map<string, string>(),
-    }
+  function selectCredentials(endpoint: string | undefined, supplied: AssistantJevCredentials) {
     const selected = launchCredentialsSchema.safeParse({
-      apiKey: nonBlank(supplied.apiKey) ?? cached.apiKey ?? hostApiKey,
-      argumentsApiKey: helperKey(endpoint, supplied.argumentsApiKey, cached),
+      apiKey: nonBlank(supplied.apiKey) ?? cachedApiKey ?? hostApiKey,
+      argumentsApiKey: helperKey(endpoint, supplied.argumentsApiKey),
     })
     if (!selected.success) return null
     if (selected.data.argumentsApiKey && !endpoint) return null
     return selected.data
   }
 
-  function rememberCredentials(
-    projectId: string,
-    endpoint: string | undefined,
-    credentials: AssistantJevCredentials & { apiKey: string },
-  ) {
-    const cached = projects.get(projectId) ?? {
-      apiKey: undefined,
-      helperKeys: new Map<string, string>(),
-    }
-    cached.apiKey = credentials.apiKey
-    if (endpoint && credentials.argumentsApiKey)
-      cached.helperKeys.set(endpoint, credentials.argumentsApiKey)
-    projects.set(projectId, cached)
-  }
-
   return (
-    projectId: string,
+    _projectId: string,
     agent: AssistantAgent,
     supplied: AssistantJevCredentials = {},
     mode: { testConnection?: boolean } = {},
@@ -154,10 +123,13 @@ export function createAssistantLaunchResolver(options: {
     const descriptor = assistantJevAgentSchema.safeParse(agent)
     if (!descriptor.success) return { ok: false, code: "jev-configuration-required" }
     const settings = descriptor.data.settings
-    const credentials = selectCredentials(projectId, settings.argumentsEndpoint, supplied)
+    const credentials = selectCredentials(settings.argumentsEndpoint, supplied)
     if (!credentials) return { ok: false, code: "jev-configuration-required" }
-    if (!mode.testConnection)
-      rememberCredentials(projectId, settings.argumentsEndpoint, credentials)
+    if (!mode.testConnection) {
+      cachedApiKey = credentials.apiKey
+      if (settings.argumentsEndpoint && credentials.argumentsApiKey)
+        helperKeys.set(settings.argumentsEndpoint, credentials.argumentsApiKey)
+    }
     return {
       ok: true,
       launch: {

@@ -9,18 +9,23 @@ export type DecisionState = {
   photos: Photo[]
   uncertainOutcome?: Observation
 }
-export type Decision =
-  | { kind: "done"; confidence: number }
-  | { kind: "blocked"; confidence: number }
+export type NextAction =
+  | { kind: "done" }
+  | { kind: "blocked" }
   | {
       kind: "tool"
       tool: Tool
       arguments: Record<string, unknown>
       omitted?: string[]
       needsArguments: boolean
-      confidence: number
     }
+export type Decision = NextAction & { confidence: number }
 export type Decide = (state: DecisionState, tools: Tool[], signal: AbortSignal) => Promise<Decision>
+export type ResolveDecision = (
+  state: DecisionState,
+  tools: Tool[],
+  signal: AbortSignal,
+) => Promise<NextAction>
 export type CompleteArguments = (
   tool: Tool,
   state: DecisionState,

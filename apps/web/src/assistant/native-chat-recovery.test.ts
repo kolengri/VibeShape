@@ -119,6 +119,28 @@ function fixture(resumable = true) {
       for (const notify of automationListeners) notify()
       return true
     }),
+    ensureConnected: vi.fn(
+      ({ signal }: { automatic: boolean; signal: AbortSignal }) =>
+        new Promise<boolean>((resolve) => {
+          const check = () => {
+            if (
+              signal.aborted ||
+              automationState.recoveryBlocked ||
+              automationState.recoveryFailed ||
+              automationState.connected
+            ) {
+              automationListeners.delete(check)
+              signal.removeEventListener("abort", check)
+              resolve(
+                !signal.aborted && automationState.connected && !automationState.recoveryBlocked,
+              )
+            }
+          }
+          automationListeners.add(check)
+          signal.addEventListener("abort", check, { once: true })
+          check()
+        }),
+    ),
   }
   const chat = createNativeChatController({
     projectId,
@@ -145,6 +167,7 @@ function fixture(resumable = true) {
     prompts,
     disconnected,
     retryModel: automation.retryRecovery,
+    ensureModel: automation.ensureConnected,
     fail(code?: AssistantErrorCode) {
       failure = code
     },
@@ -174,6 +197,151 @@ function fixture(resumable = true) {
 }
 
 describe("internal native connection recovery", () => {
+  it("keeps ACP readiness pending through slow initial project pairing and publishes access changes", async () => {
+    const f = fixture()
+    f.automate({ connected: false })
+    const connection = f.chat.connect(agent)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(f.chat.getSnapshot()).toMatchObject({ connecting: true, projectAccessReady: false })
+    expect(await f.chat.send("Inspect this project")).toBe(false)
+    expect(f.prompts).toHaveLength(0)
+    f.automate({ connected: true })
+    expect(await connection).toBe(true)
+    expect(f.ensureModel).toHaveBeenCalledWith({
+      automatic: false,
+      signal: expect.any(AbortSignal),
+    })
+    expect(f.chat.getSnapshot()).toMatchObject({ connecting: false, projectAccessReady: true })
+    f.automate({ connected: false })
+    expect(f.chat.getSnapshot().projectAccessReady).toBe(false)
+    expect(await f.chat.send("Inspect while unpaired")).toBe(false)
+    f.automate({ connected: true })
+    expect(await f.chat.send("Inspect after pairing")).toBe(true)
+    expect(f.prompts).toHaveLength(1)
+  })
+
+  it.each(["cancel", "disconnect", "dispose"] as const)(
+    "does not complete or dispatch a pending initial pairing after %s",
+    async (action) => {
+      const f = fixture()
+      f.automate({ connected: false })
+      const connection = f.chat.connect(agent)
+      await vi.advanceTimersByTimeAsync(0)
+      await f.chat[action]()
+      f.automate({ connected: true })
+      expect(await connection).toBe(false)
+      expect(f.chat.getSnapshot().snapshot).toBeNull()
+      expect(f.prompts).toHaveLength(0)
+    },
+  )
+
+  it("keeps stopped startup metadata available for explicit Enable AI without granting project access", async () => {
+    const f = fixture()
+    f.automate({ connected: false, recoveryBlocked: true })
+    let release = () => {}
+    f.gate(
+      new Promise<void>((resolve) => {
+        release = resolve
+      }),
+    )
+    const connection = f.chat.connect(agent, undefined, { automatic: true })
+    await vi.advanceTimersByTimeAsync(0)
+    f.automate({ recoveryBlocked: true })
+    release()
+    expect(await connection).toBe(false)
+    expect(f.connections).toHaveLength(1)
+    expect(f.ensureModel).not.toHaveBeenCalled()
+    expect(f.chat.getSnapshot()).toMatchObject({
+      snapshot: { status: "ready" },
+      connecting: false,
+      projectAccessReady: false,
+    })
+    expect(await f.chat.send("Inspect while stopped")).toBe(false)
+    f.automate({ connected: true, recoveryBlocked: false })
+    expect(f.chat.getSnapshot().projectAccessReady).toBe(true)
+    expect(await f.chat.send("Inspect after Enable AI")).toBe(true)
+    expect(f.connections).toHaveLength(1)
+    expect(f.prompts).toHaveLength(1)
+  })
+
+  it.each(["during", "after"] as const)(
+    "restores ACP recovery after explicitly enabling a stopped session %s startup",
+    async (timing) => {
+      const f = fixture()
+      f.automate({ connected: false, recoveryBlocked: true })
+      let release = () => {}
+      if (timing === "during")
+        f.gate(
+          new Promise<void>((resolve) => {
+            release = resolve
+          }),
+        )
+      const connection = f.chat.connect(agent, undefined, { automatic: true })
+      await vi.advanceTimersByTimeAsync(0)
+      if (timing === "after") expect(await connection).toBe(false)
+      f.automate({ recoveryBlocked: false })
+      expect(f.chat.getSnapshot().projectAccessReady).toBe(false)
+      expect(await f.chat.send("Inspect before pairing")).toBe(false)
+      f.automate({ connected: true })
+      release()
+      expect(await connection).toBe(timing === "during")
+      f.crash()
+      expect(f.chat.getSnapshot().recovery?.status).toBe("retrying")
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(f.connections).toHaveLength(2)
+      expect(f.chat.getSnapshot()).toMatchObject({
+        snapshot: { status: "ready", sessionToken: "connection-2" },
+        recovery: null,
+        projectAccessReady: true,
+      })
+      expect(f.prompts).toHaveLength(0)
+      f.automate({ connected: false, recoveryBlocked: true })
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(f.connections).toHaveLength(2)
+      expect(f.chat.getSnapshot().snapshot).toBeNull()
+    },
+  )
+
+  it("honors a new Stop AI while ACP is still starting after explicit Connect", async () => {
+    const f = fixture()
+    f.automate({ connected: false })
+    let release = () => {}
+    f.gate(
+      new Promise<void>((resolve) => {
+        release = resolve
+      }),
+    )
+    const connection = f.chat.connect(agent)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.ensureModel).toHaveBeenCalledWith({
+      automatic: false,
+      signal: expect.any(AbortSignal),
+    })
+    f.automate({ recoveryBlocked: true })
+    release()
+    expect(await connection).toBe(false)
+    expect(f.chat.getSnapshot().snapshot).toBeNull()
+    expect(f.prompts).toHaveLength(0)
+  })
+
+  it("waits for a fresh grant on an idle reconnect even when automation is not recovering", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    f.automate({ connected: false })
+    f.crash()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(f.chat.getSnapshot().recovery?.status).toBe("retrying")
+    expect(await f.chat.send("Inspect before replacement pairing")).toBe(false)
+    f.automate({ connected: true })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.chat.getSnapshot().recovery).toBeNull()
+    expect(f.ensureModel).toHaveBeenLastCalledWith({
+      automatic: true,
+      signal: expect.any(AbortSignal),
+    })
+    expect(f.prompts).toHaveLength(0)
+  })
+
   it.each(["transient exhaustion", "permanent client change"] as const)(
     "handles %s after a slow ACP resume",
     async (failure) => {
@@ -413,6 +581,7 @@ describe("internal native connection recovery", () => {
     await f.chat.connect(agent)
     await f.chat.send("Do work")
     await f.chat.cancel()
+    f.automate({ connected: true })
     f.crash()
     await vi.advanceTimersByTimeAsync(60_000)
     expect(f.connections).toHaveLength(1)

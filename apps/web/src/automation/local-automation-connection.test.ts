@@ -202,6 +202,136 @@ describe("embedded project access", () => {
     connection = createLocalAutomationConnection({ projectId, accessPolicy: "native-project" })
   }
 
+  it("starts project discovery and waits through slow initial pairing without a status UI", async () => {
+    useNativeProject()
+    const pending = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/connect" ? pending.promise : original?.(path, ...args),
+    )
+    const ready = connection.ensureConnected({
+      automatic: false,
+      signal: new AbortController().signal,
+    })
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(connection.getSnapshot().connected).toBe(false)
+    pending.resolve(ok(credential))
+    expect(await ready).toBe(true)
+    expect(connection.currentActor()).toEqual(commandActorSchema.parse(credential.actor))
+  })
+
+  it("bounds native readiness while no assistant client is discoverable", async () => {
+    useNativeProject()
+    mocks.request.mockResolvedValue(ok({ protocolVersion: 1, client: null, paired: false }))
+    const pending = connection.ensureConnected({
+      automatic: false,
+      signal: new AbortController().signal,
+    })
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(await pending).toBe(false)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(mocks.createHandle).not.toHaveBeenCalled()
+  })
+
+  it("only explicit assistant Connect re-enables a stopped project for a replacement client", async () => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    await connection.disable()
+    const replacement = { name: "VibeShape assistant", version: "1" }
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/status") return ok({ protocolVersion: 1, client: replacement, paired: false })
+      if (path === "/connect") return ok({ ...credential, client: replacement })
+      return original?.(path, ...args)
+    })
+    expect(
+      await connection.ensureConnected({ automatic: true, signal: new AbortController().signal }),
+    ).toBe(false)
+    await connection.status()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(connection.getSnapshot().connected).toBe(false)
+    expect(
+      await connection.ensureConnected({ automatic: false, signal: new AbortController().signal }),
+    ).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      recoveryBlocked: false,
+      client: replacement,
+    })
+    expect(window.localStorage.getItem(`vibeshape-local-ai-preferences:${id}:disabled`)).toBe("0")
+  })
+
+  it("automatically replaces a legacy native resume identity with the private assistant identity", async () => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    connection.dispose()
+    const replacement = { name: "VibeShape assistant", version: "1" }
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/status") return ok({ protocolVersion: 1, client: replacement, paired: false })
+      if (path === "/connect") return ok({ ...credential, client: replacement })
+      return original?.(path, ...args)
+    })
+    useNativeProject()
+    const connected = connection.ensureConnected({
+      automatic: true,
+      signal: new AbortController().signal,
+    })
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(await connected).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      client: replacement,
+      recoveryBlocked: false,
+    })
+    expect(mocks.request.mock.calls.some(([path]) => path === "/resume")).toBe(false)
+  })
+
+  it("keeps Stop AI authoritative over an in-flight explicit project grant", async () => {
+    useNativeProject()
+    const pending = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/connect" ? pending.promise : original?.(path, ...args),
+    )
+    const ready = connection.ensureConnected({
+      automatic: false,
+      signal: new AbortController().signal,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    await connection.disable()
+    pending.resolve(ok(credential))
+    expect(await ready).toBe(false)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryBlocked: true })
+    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true, id)
+  })
+
+  it("ignores a stale disconnect failure after a newer explicit pairing succeeds", async () => {
+    useNativeProject()
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    const pending = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    let held = false
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/revoke" && !held) {
+        held = true
+        return pending.promise
+      }
+      return original?.(path, ...args)
+    })
+    const stale = connection.disconnect()
+    expect(
+      await connection.ensureConnected({ automatic: false, signal: new AbortController().signal }),
+    ).toBe(true)
+    pending.resolve({ ok: false, status: 500, data: null })
+    await stale
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, error: false })
+  })
+
   it.each(["registered", "Stop AI"] as const)(
     "retains native recovery before project attachment registration and respects %s",
     async (next) => {

@@ -2218,9 +2218,15 @@ describe("native ACP service", () => {
     })
     const first = ready(await context.connect())
     attached = true
+    const previousEvents = context.events.length
     const replacement = context.connect("normal", "project-a")
     expect(captured).toBe(true)
     expect(attached).toBe(true)
+    expect(
+      context.events
+        .slice(previousEvents)
+        .filter((event) => event.sessionToken === first.sessionToken),
+    ).toEqual([])
     attached = false
     release()
     expect(ready(await replacement)).toMatchObject({ projectId: "project-a", status: "ready" })
@@ -2439,9 +2445,9 @@ describe("built-in assistant launch resolution", () => {
     expect(calls).toEqual([
       { projectId: "project-a", apiKey: "key-a", helperKey: "helper-a", configured: true },
       { projectId: "project-b", apiKey: "key-b", helperKey: "helper-b", configured: true },
-      { projectId: "project-a", apiKey: "key-a", helperKey: "helper-a", configured: true },
+      { projectId: "project-a", apiKey: "key-b", helperKey: "helper-b", configured: true },
       { projectId: "project-b", apiKey: "key-b", helperKey: "helper-b", configured: true },
-      { projectId: "project-c", apiKey: undefined, helperKey: undefined, configured: false },
+      { projectId: "project-c", apiKey: "key-b", helperKey: "helper-b", configured: true },
     ])
     for (const secret of ["key-a", "key-b", "helper-a", "helper-b"])
       expect(JSON.stringify(context.events)).not.toContain(secret)

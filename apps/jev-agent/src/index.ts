@@ -6,7 +6,7 @@ import {
   assistantConnectionTestResultSchema,
 } from "@vibeshape/automation-api/assistant"
 import { createJevAgent } from "./agent"
-import { createArgumentCompleter } from "./arguments"
+import { createArgumentCompleter, createDecisionResolver } from "./arguments"
 import { readConfiguration } from "./configuration"
 import { createJevDecision } from "./decision"
 import { probeProviders } from "./provider-probe"
@@ -33,17 +33,23 @@ async function main() {
       fetch: typesafeFetch,
       timeout: configuration.timeoutMs,
     })
+    const argumentsConfig = configuration.argumentsAgent
+      ? { agent: configuration.argumentsAgent }
+      : configuration.argumentsEndpoint && configuration.argumentsModel
+        ? {
+            endpoint: configuration.argumentsEndpoint,
+            model: configuration.argumentsModel,
+            apiKey: configuration.argumentsApiKey ?? "",
+          }
+        : undefined
     const agent = createJevAgent(configuration, {
       decide: createJevDecision(typesafe, configuration.model),
-      completeArguments: configuration.argumentsAgent
-        ? createArgumentCompleter({ agent: configuration.argumentsAgent })
-        : configuration.argumentsEndpoint && configuration.argumentsModel
-          ? createArgumentCompleter({
-              endpoint: configuration.argumentsEndpoint,
-              model: configuration.argumentsModel,
-              apiKey: configuration.argumentsApiKey ?? "",
-            })
-          : undefined,
+      ...(argumentsConfig
+        ? {
+            completeArguments: createArgumentCompleter(argumentsConfig),
+            resolveDecision: createDecisionResolver(argumentsConfig),
+          }
+        : {}),
     })
     const connection = agent.app.connect(
       acp.ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin), {

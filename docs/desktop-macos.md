@@ -263,8 +263,10 @@ correct printer settings, slicing, or printing.
 For a single manual build, native acceptance and publication run, see
 [automated desktop releases](desktop-release.md).
 
-**VibeShape → Check for Updates…** checks public GitHub Releases. Startup also checks quietly;
-network failures and an empty desktop release channel do not interrupt launch. An available update
+**VibeShape → Check for Updates…** checks public GitHub Releases. Packaged applications also check
+quietly at startup. Source-checkout launches skip automatic checks so release dialogs cannot
+interrupt development or isolated native tests; the manual menu action remains available.
+Network failures and an empty desktop release channel do not interrupt launch. An available update
 offers an explicit download. The native Save dialog chooses its destination, progress belongs to the
 window, and a completed verified image can be revealed in Finder. Quit VibeShape before replacing
 the installed app. The checker never silently installs or opens downloaded software.

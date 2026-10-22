@@ -2,7 +2,7 @@
 
 The bundled native [Jev ACP controller](../jev-agent.md) is a distinct decision adapter
 over the native host's existing injected MCP attachment. It owns bounded action selection and
-optional argument completion, while the host retains project authority, schemas, exact previews,
+optional argument completion and low-confidence decision resolution, while the host retains project authority, schemas, exact previews,
 transactions and checkpoints. Its optional argument helper can reuse an installed ACP agent's
 existing sign-in through a fresh process without the project MCP attachment, client filesystem or
 terminal capabilities. Helper descriptors use the existing external-agent schema; TypeSafe/helper
@@ -14,8 +14,9 @@ agents through a narrow native bridge. Static web chat calls the person's compat
 directly and executes tools through the same browser-owned automation sessions. Neither path adds
 a hosted AI worker or bypasses reviewed commands. The Jev descriptor contains validated provider
 settings, while credentials enter through connection-only input and remain in the trusted host
-for the app session, with independent project caches and exact-endpoint helper keys. A different
-project's explicit key cannot change credential-less recovery. The host resolves the bundled
+for the app session, with a shared TypeSafe cache and exact-endpoint helper keys across projects.
+Explicit connection keys replace the shared cache for future launches; probes do not change it.
+Document authority and MCP credentials remain project-scoped. The host resolves the bundled
 executable and runtime; renderer settings do not choose a path for that built-in adapter. See [ADR-0111](../adr/0111-native-project-assistant-and-handoffs.md)
 and the [desktop connection workflow](../desktop-macos.md#ai-connections).
 
@@ -26,7 +27,11 @@ not exchange authority under asynchronous work. Manual reviews remain with their
 tab is selected. Each embedded native MCP attachment uses its own private credential and broker,
 which rejects a foreign document during consent and rejects project-management operations. The
 separately copied external MCP configuration retains its existing single-client, active-project
-scope. ACP readiness, MCP attachment and project authority remain distinct states. Connecting a built-in
+scope. ACP readiness, MCP attachment and project authority remain distinct states. The native chat
+coordinates those states before enabling prompt dispatch. A private host-owned assistant identity
+establishes project access before lazy MCP transport initialization; stale owners cannot retain it.
+Explicit Connect establishes fresh access, while automatic recovery and New chat preserve Stop AI.
+See [ADR-0126](../adr/0126-explicit-native-assistant-project-access.md). Connecting a built-in
 chat authorizes validated model writes under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md);
 external clients retain their separate approval policy.
 
@@ -485,7 +490,7 @@ The browser still needs an explicit local session with the bridge. The initial a
 The embedded native ACP assistant automatically establishes that session through its private
 project-bound attachment under [ADR-0115](../adr/0115-automatic-native-project-mcp-access.md). Its
 stable internal server name avoids collisions with external provider configuration. Native access is isolated per project. Connecting the built-in chat authorizes its validated model
-commits without separate Apply prompts under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md). Explicit Stop persists across reload until Enable AI session. This policy uses the
+commits without separate Apply prompts under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md). Explicit Stop persists across reload until deliberate Connect or Enable AI session. This policy uses the
 ordinary broker, credentials, exact previews, revisions and commit path; it grants no project
 management authority. External clients retain the initial pairing action below.
 

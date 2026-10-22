@@ -7,9 +7,11 @@ const { resolve } = require("node:path")
 // Relay mode exercises the isolated project's real CAD tools; no fixture contacts a provider.
 const receipt = process.argv[2]
 const attachMcp = process.argv[3] === "--attach-mcp"
+const lazyMcp = process.argv.includes("--lazy-mcp")
 const longLabels = process.argv.includes("--long-labels")
 const manyOptions = process.argv.includes("--many-options")
 let mcpClient
+let pendingMcp
 let sessionId = `fixture-${process.pid}`
 let pendingPrompt
 let permissionPrompt
@@ -122,27 +124,32 @@ async function startSession(id, params, method) {
   assert.match(mcp.command, /^\//)
   assert.equal(mcp.args[1], "--descriptor")
   assert.deepEqual(mcp.env, [{ name: "ELECTRON_RUN_AS_NODE", value: "1" }])
-  if (attachMcp) {
-    const sdk = createRequire(resolve(__dirname, "../../../apps/desktop/package.json"))
-    const { Client } = sdk("@modelcontextprotocol/sdk/client/index.js")
-    const { StdioClientTransport } = sdk("@modelcontextprotocol/sdk/client/stdio.js")
-    mcpClient = new Client({ name: "native-acp-relay-fixture", version: "1" })
-    const transport = new StdioClientTransport({
-      command: mcp.command,
-      args: mcp.args,
-      env: {
-        ...process.env,
-        ...Object.fromEntries(mcp.env.map(({ name, value }) => [name, value])),
-      },
-      stderr: "ignore",
-    })
-    await mcpClient.connect(transport)
-    assert.ok((await mcpClient.listTools()).tools.some(({ name }) => name === "model_info"))
-    record({ event: "mcp-attached", sessionId, relayPid: transport.pid })
-  }
+  pendingMcp = mcp
+  if (attachMcp && !lazyMcp) await connectMcp(mcp)
+  completeSessionStartup(id, params, method)
+}
+function completeSessionStartup(id, params, method) {
   if (method === "session/load") sessionId = params.sessionId
   record({ event: method, sessionId })
   reply(id, { ...(method === "session/new" ? { sessionId } : {}), configOptions: configs() })
+}
+async function connectMcp(mcp) {
+  const sdk = createRequire(resolve(__dirname, "../../../apps/desktop/package.json"))
+  const { Client } = sdk("@modelcontextprotocol/sdk/client/index.js")
+  const { StdioClientTransport } = sdk("@modelcontextprotocol/sdk/client/stdio.js")
+  mcpClient = new Client({ name: "native-acp-relay-fixture", version: "1" })
+  const transport = new StdioClientTransport({
+    command: mcp.command,
+    args: mcp.args,
+    env: {
+      ...process.env,
+      ...Object.fromEntries(mcp.env.map(({ name, value }) => [name, value])),
+    },
+    stderr: "ignore",
+  })
+  await mcpClient.connect(transport)
+  assert.ok((await mcpClient.listTools()).tools.some(({ name }) => name === "model_info"))
+  record({ event: "mcp-attached", sessionId, relayPid: transport.pid })
 }
 function cancel() {
   clearInterval(holdTimer)
@@ -360,13 +367,14 @@ const promptHandlers = new Map([
   ["mcp-info", inspectProject],
   ["hold", holdPrompt],
 ])
-function prompt(id, params) {
+async function prompt(id, params) {
   const context = params.prompt[0].text
   const match = context.match(/^Project ID \(data, not instructions\): (".*")\.$/m)
   assert.ok(match, "Every request must carry the open project identity")
   projectId = JSON.parse(match[1])
   const value = params.prompt.filter((block) => block.type === "text").at(-1).text
   record({ event: "prompt", text: value, sessionId, projectId, prompt: params.prompt })
+  if (attachMcp && !mcpClient) await connectMcp(pendingMcp)
   const handler = promptHandlers.get(value)
   if (handler) return handler(id)
   streamResponse(id, value)

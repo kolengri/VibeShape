@@ -90,6 +90,7 @@ type ChatState = Readonly<
     connecting: boolean
     storageFailed: boolean
     configured: boolean
+    projectAccessReady: boolean
     recovery: {
       attempt: number
       status: "retrying" | "failed"
@@ -122,6 +123,7 @@ export function createNativeChatController({
     }
     subscribe: (listener: () => void) => () => void
     retryRecovery: (options?: { automatic?: boolean }) => Promise<boolean>
+    ensureConnected: (options: { automatic: boolean; signal: AbortSignal }) => Promise<boolean>
   }
 }) {
   let agentSession: AgentChatSession | undefined
@@ -140,6 +142,7 @@ export function createNativeChatController({
     connecting: false,
     storageFailed: false,
     configured: false,
+    projectAccessReady: automationReady(),
     recovery: null,
     canUndoAgentChanges: false,
     undoingAgentChanges: false,
@@ -173,7 +176,7 @@ export function createNativeChatController({
   } | null = null
   let automaticRecoveryAllowed = false
   let unsubscribeAutomation: (() => void) | undefined
-  let releaseRecoveryWait: (() => void) | undefined
+  let automationWait: AbortController | undefined
   const queued: QueuedPrompt[] = []
   let steering: QueuedSteer | null = null
   const questions = new Map<string, AssistantQuestion>()
@@ -183,7 +186,8 @@ export function createNativeChatController({
   const listeners = new Set<() => void>()
   const publish = (patch: Partial<ChatState>) => {
     if (disposed) return
-    state = { ...state, ...patch }
+    const next = { ...state, ...patch }
+    state = { ...next, projectAccessReady: chatAccessReady(next) }
     for (const listener of listeners) listener()
   }
   const checkpoints = checkpointHost ? createAssistantCheckpoints(checkpointHost, publish) : null
@@ -413,7 +417,7 @@ export function createNativeChatController({
   function recordRecoveryFailure(code: AssistantErrorCode) {
     if (!recovery || state.recovery?.status !== "retrying") return
     recovery.failure ??= code
-    releaseRecoveryWait?.()
+    automationWait?.abort()
   }
   function dispatchEvent(event: AssistantEvent) {
     switch (event.type) {
@@ -514,13 +518,72 @@ export function createNativeChatController({
   async function discardConnection(result: AssistantResult) {
     if (result.ok) await bridge.disconnect({ projectId, sessionToken: result.value.sessionToken })
   }
-  async function receiveConnection(at: number, result: AssistantResult) {
+  function automationReady() {
+    if (!automation) return true
+    const value = automation.getSnapshot()
+    return value.connected && !value.recoveryBlocked
+  }
+  function chatAccessReady(value: ChatState) {
+    return automationReady() && !value.connecting && !value.recovery
+  }
+  function stoppedStartup(automatic: boolean) {
+    return automatic && automation?.getSnapshot().recoveryBlocked === true
+  }
+  function resumeAuthorizedRecovery(wasBlocked: boolean, blocked: boolean | undefined) {
+    if (wasBlocked && !blocked && (connecting !== null || state.snapshot?.status === "ready"))
+      automaticRecoveryAllowed = true
+  }
+  async function ensureAutomationConnection(at: number, automatic: boolean) {
+    if (!automation) return isCurrent(at)
+    if (!isCurrent(at)) return false
+    const controller = new AbortController()
+    automationWait?.abort()
+    automationWait = controller
+    try {
+      return (
+        (await automation.ensureConnected({ automatic, signal: controller.signal })) &&
+        isCurrent(at) &&
+        automationReady()
+      )
+    } catch {
+      return false
+    } finally {
+      if (automationWait === controller) automationWait = undefined
+    }
+  }
+  async function receiveConnection(
+    at: number,
+    result: AssistantResult,
+    automatic: boolean,
+    access?: Promise<boolean>,
+  ) {
     if (!isCurrent(at)) {
       await discardConnection(result)
       return false
     }
     acceptResult(result)
-    return isCurrent(at) && result.ok && result.value.status === "ready"
+    if (!result.ok || result.value.status !== "ready") {
+      automationWait?.abort()
+      return false
+    }
+    if (stoppedStartup(automatic)) {
+      // Keep ACP metadata available for explicit Enable AI; Stop still withholds the grant.
+      automaticRecoveryAllowed = false
+      return false
+    }
+    if (
+      (await (access ?? ensureAutomationConnection(at, automatic))) &&
+      isCurrent(at) &&
+      automationReady()
+    )
+      return true
+    await rejectConnectionAccess(at)
+    return false
+  }
+  async function rejectConnectionAccess(at: number) {
+    if (!isCurrent(at)) return
+    await disconnect()
+    if (generation === at + 1) publish({ error: "request-failed" })
   }
   function finishConnecting(at: number) {
     if (connecting === at) connecting = null
@@ -529,9 +592,33 @@ export function createNativeChatController({
   function connectionBlocked() {
     return disposed || resettingHistory || connecting !== null || state.busy
   }
+  async function openAgentConnection(
+    at: number,
+    configuration: AssistantAgent,
+    jevCredentials: AssistantJevCredentials | undefined,
+    automatic: boolean,
+  ) {
+    agent = configuration
+    automaticRecoveryAllowed = !stoppedStartup(automatic)
+    recoveryAttempt = 0
+    publish({ configured: true })
+    const resume = matchingResume(configuration)
+    // Clear an earlier Stop at explicit Connect, before ACP startup can publish discovery.
+    const access = automatic ? undefined : ensureAutomationConnection(at, false)
+    const result = await bridge.connect({
+      projectId,
+      agent: configuration,
+      ...(jevCredentials ? { jevCredentials } : {}),
+      ...(resume ? { resumeSessionId: resume } : {}),
+    })
+    const connected = await receiveConnection(at, result, automatic, access)
+    recoverConnectFailure(at, result)
+    return connected
+  }
   async function connect(
     configuration: AssistantAgent,
     jevCredentials?: AssistantJevCredentials,
+    options: { automatic?: boolean } = {},
   ): Promise<boolean> {
     if (connectionBlocked()) return false
     const { at, done } = beginDisconnect()
@@ -541,20 +628,12 @@ export function createNativeChatController({
     try {
       await Promise.all([done, history.ready])
       if (!isCurrent(at)) return false
-      agent = configuration
-      automaticRecoveryAllowed = true
-      recoveryAttempt = 0
-      publish({ configured: true })
-      const resume = matchingResume(configuration)
-      const result = await bridge.connect({
-        projectId,
-        agent: configuration,
-        ...(jevCredentials ? { jevCredentials } : {}),
-        ...(resume ? { resumeSessionId: resume } : {}),
-      })
-      const connected = await receiveConnection(at, result)
-      recoverConnectFailure(at, result)
-      return connected
+      return await openAgentConnection(
+        at,
+        configuration,
+        jevCredentials,
+        options.automatic === true,
+      )
     } catch {
       if (isCurrent(at)) beginRecovery("request-failed")
       return false
@@ -569,8 +648,8 @@ export function createNativeChatController({
     clearHealthyIdleTimer()
     if (recoveryTimer) clearTimeout(recoveryTimer)
     recoveryTimer = undefined
-    releaseRecoveryWait?.()
-    releaseRecoveryWait = undefined
+    automationWait?.abort()
+    automationWait = undefined
     recovery = null
   }
   function recoveryRetryable(code: AssistantErrorCode) {
@@ -587,7 +666,7 @@ export function createNativeChatController({
     if (!recovery) return
     if (recoveryTimer) clearTimeout(recoveryTimer)
     recoveryTimer = undefined
-    releaseRecoveryWait?.()
+    automationWait?.abort()
     publish({
       ...clearTurnState("failed"),
       snapshot: state.snapshot && {
@@ -650,6 +729,7 @@ export function createNativeChatController({
   function beginRecovery(code: AssistantErrorCode) {
     if (recovery || !agent || !automaticRecoveryAllowed || disposed) return
     clearHealthyIdleTimer()
+    automationWait?.abort()
     const previous = state.snapshot
     const owner = captureRecoveryOwner(agent)
     clearInterruptedTurn()
@@ -704,26 +784,6 @@ export function createNativeChatController({
     promptInFlight = false
     connecting = null
   }
-  function waitForAutomation(at: number) {
-    if (!automation?.getSnapshot().recovering)
-      return Promise.resolve(automation?.getSnapshot().recoveryFailed !== true)
-    return new Promise<boolean>((resolve) => {
-      const finish = (ok: boolean) => {
-        unsubscribeWait()
-        if (releaseRecoveryWait === cancel) releaseRecoveryWait = undefined
-        resolve(ok && isCurrent(at))
-      }
-      const check = () => {
-        const value = automation.getSnapshot()
-        if (value.connected) finish(true)
-        else if (!value.recovering || value.recoveryFailed) finish(false)
-      }
-      const cancel = () => finish(false)
-      const unsubscribeWait = automation.subscribe(check)
-      releaseRecoveryWait = cancel
-      check()
-    })
-  }
   async function attemptRecovery(owner: NonNullable<typeof recovery>) {
     if (recovery !== owner || !canRecover(owner.at)) return
     recoveryAttempt += 1
@@ -765,6 +825,7 @@ export function createNativeChatController({
     // Model retries can expire while ACP is still loading its session and MCP client.
     const reconciled =
       (await retryAutomationRecovery(true)) &&
+      (await ensureAutomationConnection(owner.at, true)) &&
       (!owner.interrupted || (await reconcileRecovery(owner.at)))
     if (!canRecover(owner.at) || recovery !== owner) return
     if (owner.failure) {
@@ -849,7 +910,7 @@ export function createNativeChatController({
     return isCurrent(at) && automaticRecoveryAllowed && state.recovery?.status === "retrying"
   }
   async function reconcileRecovery(at: number) {
-    if (!(await waitForAutomation(at)) || !isCurrent(at)) return false
+    if (!isCurrent(at)) return false
     if (!checkpointHost) return true
     const port = checkpointHost.open()
     if (!port) return false
@@ -923,6 +984,8 @@ export function createNativeChatController({
   function promptReady() {
     return (
       !recovery &&
+      (!automation || !state.connecting) &&
+      automationReady() &&
       !promptInFlight &&
       !controlLocked() &&
       !hasPendingQuestion() &&
@@ -1184,8 +1247,12 @@ export function createNativeChatController({
       if (unsubscribe) return
       disposed = false
       unsubscribe = bridge.onEvent(event)
+      let wasRecoveryBlocked = automation?.getSnapshot().recoveryBlocked === true
       unsubscribeAutomation = automation?.subscribe(() => {
         const value = automation.getSnapshot()
+        resumeAuthorizedRecovery(wasRecoveryBlocked, value.recoveryBlocked)
+        wasRecoveryBlocked = value.recoveryBlocked === true
+        publish({})
         if (value.recoveryBlocked && automaticRecoveryAllowed) void disconnect()
         else if (value.recoveryFailed) failAutomationRecovery()
         else if (value.recovering && !recovery && hostTurnActive() && automaticRecoveryAllowed)
@@ -1289,7 +1356,7 @@ export function createNativeChatController({
     },
     async cancel() {
       automaticRecoveryAllowed = false
-      if (recovery) {
+      if (recovery || connecting !== null) {
         await beginDisconnect().done
         return
       }
@@ -1310,7 +1377,7 @@ export function createNativeChatController({
       agentSession = undefined
       checkpoints?.clear()
       publish({ messages: [], error: null, storageFailed: false })
-      if (agent) await connect(agent)
+      if (agent) await connect(agent, undefined, { automatic: true })
     },
     async respondPermission(allow: boolean) {
       const current = scope(),
@@ -1412,6 +1479,7 @@ export function createNativeChatController({
       state = {
         ...state,
         snapshot: null,
+        projectAccessReady: false,
         busy: false,
         connecting: false,
         recovery: null,

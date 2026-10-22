@@ -148,7 +148,7 @@ function useNativeChat(projectId: string, bridge: AssistantBridge) {
   }
 }
 function nativeCanSend(state: NativeChatState) {
-  return !state.recovery && (state.snapshot?.status === "ready" || state.busy)
+  return state.projectAccessReady && (state.snapshot?.status === "ready" || state.busy)
 }
 
 function NativeRecoveryControls({ chat, state }: { chat: NativeChat; state: NativeChatState }) {
