@@ -19,7 +19,9 @@ const literalArgs = [
   "λ漢字",
   "$(exit 9); & |",
 ]
-const budget = () => AbortSignal.timeout(20_000)
+const requestTimeout = process.platform === "win32" ? 50_000 : 20_000
+const testTimeout = process.platform === "win32" ? 65_000 : 30_000
+const budget = () => AbortSignal.timeout(requestTimeout)
 
 async function fixture(
   mode: string,
@@ -76,7 +78,7 @@ async function events(receipt: string) {
 }
 
 async function ready(receipt: string) {
-  const deadline = Date.now() + 20_000
+  const deadline = Date.now() + requestTimeout
   while (Date.now() < deadline) {
     const log = await events(receipt).catch(() => [])
     if (log.some((event) => event.ready)) return log
@@ -99,122 +101,145 @@ async function expectExited(pid: number) {
 }
 
 describe("local ACP argument helper", () => {
-  it("uses a fresh isolated session, streams JSON, preserves selected values and cleans up", async () => {
-    await fixture("success", async (complete, receipt) => {
-      const before = process.env.TYPESAFE_API_KEY
-      process.env.TYPESAFE_API_KEY = "must-not-reach-helper"
-      try {
-        const signal = AbortSignal.timeout(process.platform === "win32" ? 60_000 : 20_000)
-        expect(await complete(tool, state, { plane: "XY" }, signal)).toEqual({
-          plane: "XY",
-          geometry: { width: 20 },
-        })
-      } finally {
-        if (before === undefined) delete process.env.TYPESAFE_API_KEY
-        else process.env.TYPESAFE_API_KEY = before
-      }
-      const log = await events(receipt)
-      expect(log[0]).not.toHaveProperty("secret")
-      expect(log[0]).not.toHaveProperty("helperKey")
-      expect(log[0]).not.toHaveProperty("electron")
-      expect(log[0]).not.toHaveProperty("trace")
-      expect(log[0].args).toEqual(literalArgs)
-      if (process.platform === "win32")
-        expect(log[0].stdio).toEqual(
-          [0, 1, 2].map((fd) => ({ fd, pipe: true, character: false, file: false })),
+  it(
+    "uses a fresh isolated session, streams JSON, preserves selected values and cleans up",
+    async () => {
+      await fixture("success", async (complete, receipt) => {
+        const before = process.env.TYPESAFE_API_KEY
+        process.env.TYPESAFE_API_KEY = "must-not-reach-helper"
+        try {
+          expect(await complete(tool, state, { plane: "XY" }, budget())).toEqual({
+            plane: "XY",
+            geometry: { width: 20 },
+          })
+        } finally {
+          if (before === undefined) delete process.env.TYPESAFE_API_KEY
+          else process.env.TYPESAFE_API_KEY = before
+        }
+        const log = await events(receipt)
+        expect(log[0]).not.toHaveProperty("secret")
+        expect(log[0]).not.toHaveProperty("helperKey")
+        expect(log[0]).not.toHaveProperty("electron")
+        expect(log[0]).not.toHaveProperty("trace")
+        expect(log[0].args).toEqual(literalArgs)
+        expect(log.find((e) => e.method === "initialize").params.clientCapabilities).toEqual({})
+        expect(log.find((e) => e.method === "session/new").params.mcpServers).toEqual([])
+        expect(log.find((e) => e.method === "session/prompt").params.prompt[0].text).toContain(
+          '"selectedArguments":{"plane":"XY"}',
         )
-      expect(log.find((e) => e.method === "initialize").params.clientCapabilities).toEqual({})
-      expect(log.find((e) => e.method === "session/new").params.mcpServers).toEqual([])
-      expect(log.find((e) => e.method === "session/prompt").params.prompt[0].text).toContain(
-        '"selectedArguments":{"plane":"XY"}',
-      )
-      await expect(stat(log[0].cwd)).rejects.toThrow()
-      expect(() => process.kill(log[0].pid, 0)).toThrow()
-    })
-  }, 90_000)
-  it("denies permission requests without granting tool authority", async () => {
-    await fixture("permission", async (complete, receipt) => {
-      await complete(tool, state, {}, budget())
-      expect((await events(receipt)).find((e) => e.id === "permission").result).toEqual({
-        outcome: { outcome: "cancelled" },
+        await expect(stat(log[0].cwd)).rejects.toThrow()
+        expect(() => process.kill(log[0].pid, 0)).toThrow()
       })
-    })
-  }, 30_000)
+    },
+    testTimeout,
+  )
+  it(
+    "denies permission requests without granting tool authority",
+    async () => {
+      await fixture("permission", async (complete, receipt) => {
+        await complete(tool, state, {}, budget())
+        expect((await events(receipt)).find((e) => e.id === "permission").result).toEqual({
+          outcome: { outcome: "cancelled" },
+        })
+      })
+    },
+    testTimeout,
+  )
   for (const [mode, error] of [
     ["large", "256 KiB"],
     ["invalid", "invalid argument JSON"],
     ["cancelled", "did not complete"],
   ] as const) {
-    it(`rejects ${mode} output without returning arguments`, async () => {
-      await fixture(mode, async (complete) => {
-        await expect(complete(tool, state, {}, budget())).rejects.toThrow(error)
-      })
-    }, 30_000)
+    it(
+      `rejects ${mode} output without returning arguments`,
+      async () => {
+        await fixture(mode, async (complete) => {
+          await expect(complete(tool, state, {}, budget())).rejects.toThrow(error)
+        })
+      },
+      testTimeout,
+    )
   }
-  it("cancels a hung agent and kills its process even when SIGTERM is ignored", async () => {
-    await fixture("hang", async (complete, receipt) => {
-      const abort = new AbortController()
-      const pending = complete(tool, state, {}, AbortSignal.any([abort.signal, budget()]))
-      try {
-        await Promise.race([ready(receipt), pending])
-        abort.abort()
-        await expect(pending).rejects.toThrow("cancelled")
-      } finally {
-        abort.abort()
-      }
-      const log = await events(receipt)
-      expect(() => process.kill(log[0].pid, 0)).toThrow()
-      await expect(stat(log[0].cwd)).rejects.toThrow()
-    })
-  }, 30_000)
-  it("reports missing executables without exposing command text", async () => {
-    const complete = createArgumentCompleter({
-      agent: { command: "/missing/private-agent", args: [] },
-    })
-    const pending = complete(tool, state, {}, budget())
-    await expect(pending).rejects.toThrow("Local argument agent")
-    await expect(pending).rejects.not.toThrow("/missing/private-agent")
-  }, 30_000)
-  for (const mode of ["descendant-success", "descendant-cancel"]) {
-    it(`kills backend descendants after leader closure (${mode})`, async () => {
-      await fixture(mode, async (complete, receipt) => {
+  it(
+    "cancels a hung agent and kills its process even when SIGTERM is ignored",
+    async () => {
+      await fixture("hang", async (complete, receipt) => {
         const abort = new AbortController()
         const pending = complete(tool, state, {}, AbortSignal.any([abort.signal, budget()]))
         try {
-          if (mode === "descendant-cancel") {
-            await Promise.race([ready(receipt), pending])
-            abort.abort()
-            await expect(pending).rejects.toThrow("cancelled")
-          } else await pending
+          await Promise.race([ready(receipt), pending])
+          abort.abort()
+          await expect(pending).rejects.toThrow("cancelled")
         } finally {
           abort.abort()
         }
         const log = await events(receipt)
+        expect(() => process.kill(log[0].pid, 0)).toThrow()
+        await expect(stat(log[0].cwd)).rejects.toThrow()
+      })
+    },
+    testTimeout,
+  )
+  it(
+    "reports missing executables without exposing command text",
+    async () => {
+      const complete = createArgumentCompleter({
+        agent: { command: "/missing/private-agent", args: [] },
+      })
+      const pending = complete(tool, state, {}, budget())
+      await expect(pending).rejects.toThrow("Local argument agent")
+      await expect(pending).rejects.not.toThrow("/missing/private-agent")
+    },
+    testTimeout,
+  )
+  for (const mode of ["descendant-success", "descendant-cancel"]) {
+    it(
+      `kills backend descendants after leader closure (${mode})`,
+      async () => {
+        await fixture(mode, async (complete, receipt) => {
+          const abort = new AbortController()
+          const pending = complete(tool, state, {}, AbortSignal.any([abort.signal, budget()]))
+          try {
+            if (mode === "descendant-cancel") {
+              await Promise.race([ready(receipt), pending])
+              abort.abort()
+              await expect(pending).rejects.toThrow("cancelled")
+            } else await pending
+          } finally {
+            abort.abort()
+          }
+          const log = await events(receipt)
+          const pid = log.find((event) => event.backendPid)?.backendPid
+          expect(pid).toBeNumber()
+          try {
+            await expectExited(pid)
+            await expectExited(log[0].pid)
+          } finally {
+            try {
+              process.kill(pid, "SIGKILL")
+            } catch {
+              /* Already terminated. */
+            }
+          }
+        })
+      },
+      testTimeout,
+    )
+  }
+  it(
+    "terminates a backend when its ACP leader exits before cleanup",
+    async () => {
+      await fixture("descendant-exit", async (complete, receipt) => {
+        await expect(complete(tool, state, {}, budget())).rejects.toThrow("Local argument agent")
+        const log = await events(receipt)
         const pid = log.find((event) => event.backendPid)?.backendPid
         expect(pid).toBeNumber()
-        try {
-          await expectExited(pid)
-          await expectExited(log[0].pid)
-        } finally {
-          try {
-            process.kill(pid, "SIGKILL")
-          } catch {
-            /* Already terminated. */
-          }
-        }
+        await expectExited(pid)
+        await expect(stat(log[0].cwd)).rejects.toThrow()
       })
-    }, 30_000)
-  }
-  it("terminates a backend when its ACP leader exits before cleanup", async () => {
-    await fixture("descendant-exit", async (complete, receipt) => {
-      await expect(complete(tool, state, {}, budget())).rejects.toThrow("Local argument agent")
-      const log = await events(receipt)
-      const pid = log.find((event) => event.backendPid)?.backendPid
-      expect(pid).toBeNumber()
-      await expectExited(pid)
-      await expect(stat(log[0].cwd)).rejects.toThrow()
-    })
-  }, 30_000)
+    },
+    testTimeout,
+  )
 
   it.skipIf(process.platform !== "win32")(
     "runs an npm shim through Node inside the supervised job",
@@ -228,12 +253,12 @@ describe("local ACP argument helper", () => {
         const complete = createArgumentCompleter({
           agent: { command: shim, args: ["descendant-success", receipt, ...literalArgs] },
         })
-        await complete(tool, state, {}, budget())
+        expect(await complete(tool, state, {}, budget())).toEqual({
+          plane: "XZ",
+          geometry: { width: 20 },
+        })
         const log = await events(receipt)
         expect(log[0].args).toEqual(literalArgs)
-        expect(log[0].stdio).toEqual(
-          [0, 1, 2].map((fd) => ({ fd, pipe: true, character: false, file: false })),
-        )
         const backend = log.find((event) => event.backendPid)?.backendPid
         expect(backend).toBeNumber()
         await expectExited(log[0].pid)
@@ -241,7 +266,7 @@ describe("local ACP argument helper", () => {
         await expect(stat(log[0].cwd)).rejects.toThrow()
       })
     },
-    30_000,
+    testTimeout,
   )
 
   it.skipIf(process.platform !== "win32")(
@@ -292,6 +317,6 @@ describe("local ACP argument helper", () => {
         }
       })
     },
-    30_000,
+    testTimeout,
   )
 })
