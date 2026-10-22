@@ -587,6 +587,34 @@ it("shows one compact model heading without repeating the project name", () => {
   expect(browser().getByRole("treeitem", { name: "Body 1" }).getAttribute("data-size")).toBe("sm")
 })
 
+describe("ModelTree sketch group", () => {
+  it("shows the group only while the committed document contains sketches", () => {
+    const emptyController = {
+      ...controller,
+      report: {
+        ...controllerReport,
+        snapshot: { ...controllerReport.snapshot, sketches: [] },
+      },
+    } as DocumentControllerState
+    const { rerenderTree } = renderTree({ controller: emptyController })
+
+    expect(browser().queryByRole("treeitem", { name: "Sketches" })).toBeNull()
+    expect(browser().queryByText("No sketches yet.")).toBeNull()
+    expect(browser().queryByRole("button", { name: "Create sketch" })).toBeNull()
+
+    rerenderTree({ controller })
+
+    expect(browser().getByRole("treeitem", { name: "Sketches" })).toBeTruthy()
+    expect(browser().getByRole("treeitem", { name: "Profile" })).toBeTruthy()
+    expect(browser().getByRole("button", { name: "Hide all sketches" })).toBeTruthy()
+
+    rerenderTree({ controller: emptyController })
+
+    expect(browser().queryByRole("treeitem", { name: "Sketches" })).toBeNull()
+    expect(browser().queryByRole("treeitem", { name: "Profile" })).toBeNull()
+  })
+})
+
 describe("ModelTree browser search", () => {
   it.each(["xy", "xz", "yz"] as const)(
     "finds the hidden %s origin plane and activates it with the keyboard",
@@ -1852,25 +1880,36 @@ describe("ModelTree workspace readiness", () => {
 })
 
 describe("ModelTree History failure", () => {
-  it("exposes a bounded status instead of a rollback claim when graph ordering fails", () => {
-    const invalidFeature = { ...feature, dependencies: [feature.id] }
-    const invalidController = {
-      ...controller,
-      report: {
-        ...controller.report,
-        snapshot: { features: [invalidFeature], revision: 7, sketches: [sketch] },
-      },
-    } as unknown as DocumentControllerState
-    const { container } = renderTree({
-      activeSketchId: sketchId,
-      activeWorkspace: "sketch",
-      controller: invalidController,
-    })
+  it.each([false, true])(
+    "keeps graph-failure status with the track when Details is %s",
+    (detailed) => {
+      const invalidFeature = { ...feature, dependencies: [feature.id] }
+      const invalidController = {
+        ...controller,
+        report: {
+          ...controller.report,
+          snapshot: { features: [invalidFeature], revision: 7, sketches: [sketch] },
+        },
+      } as unknown as DocumentControllerState
+      const { container } = renderTree(
+        {
+          activeSketchId: sketchId,
+          activeWorkspace: "sketch",
+          controller: invalidController,
+        },
+        detailed,
+      )
 
-    expect(screen.getByText(/History ordering is unavailable/).getAttribute("role")).toBe("status")
-    expect(screen.queryByText(/Rollback context/)).toBeNull()
-    expect(container.querySelector("[data-history-rolled-back='true']")).toBeNull()
-  })
+      const status = screen.getByText(/History ordering is unavailable/)
+      const track = container.querySelector("[data-history-track]")
+      const body = status.closest("fieldset")
+      expect(status.getAttribute("role")).toBe("status")
+      expect(body?.contains(track)).toBe(true)
+      expect(body?.classList.contains("contents")).toBe(false)
+      expect(screen.queryByText(/Rollback context/)).toBeNull()
+      expect(container.querySelector("[data-history-rolled-back='true']")).toBeNull()
+    },
+  )
 })
 
 describe("ModelTree folder selection descriptions", () => {

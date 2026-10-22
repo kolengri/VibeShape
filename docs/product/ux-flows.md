@@ -24,7 +24,7 @@ Desktop Model workspace layout:
 
 In sketch mode, the right panel shows constraints and dimensions while the viewport preserves the current camera, orbit, pan, and zoom. Normal to sketch explicitly aligns the view to the support plane. Orbit 3D view and its standard-view menu preserve sketch editing on the same support plane, including in isometric view. Primary input draws or selects, middle drag orbits, secondary drag pans, and wheel zooms. A near-edge-on plane requires a different viewing angle before placement; Normal to sketch is the explicit return path. In print mode, the model tree remains visible and the right panel becomes the analysis and export report.
 
-The browser heading shows the current project name. Variables remain directly accessible; Planes discloses XY/XZ/YZ and authored datum-plane selection and visibility controls. Parts, bodies, and sketches have distinct icons and counts. Empty Sketches offers the existing Create sketch command; its eye controls are grouped with sketches instead of masquerading as global model visibility.
+The browser heading shows the current project name. Variables remain directly accessible; Planes discloses XY/XZ/YZ and authored datum-plane selection and visibility controls. Parts, bodies, and sketches have distinct icons and counts. The Sketches group is hidden when the document has no sketches. Create sketch remains available in the top toolbar without a duplicate browser action. Sketch visibility controls are grouped with sketches.
 
 Each local project has a canonical `?project=<document UUID>` address. An explicit URL takes precedence over the last project preference. New/open/import and automation project switches update the address; reload and browser Back/Forward use the same guarded project transition. Active edits, saves, and AI work block navigation without losing their draft, and the address is restored to the actual project on rejection. Invalid IDs and missing local projects show a recoverable error rather than creating another project under that address. These URLs identify IndexedDB projects in the same browser profile; they are not cloud sharing links. Other query parameters and the hash are preserved.
 
@@ -670,10 +670,14 @@ the sketch. Linear dimensions use a straight dimension line with extension lines
 ticks. Their label offsets follow current geometry, including an in-flight drag and oblique camera
 projection; moving the text does not change the driving value or authored expression.
 
-The **Section view** icon beside the standard-view selector opens enable, plane, offset, and flip
-controls. XY, XZ, and YZ icon tiles select the plane with native radio keyboard behavior; changing
-planes recenters the offset on the model. Its accessible name and tooltip identify the icon, and
-its active state remains visible.
+The **Section view** icon beside the standard-view selector opens four icon-only choices (Off, XY,
+XZ, and YZ), offset, and flip controls. Choosing a plane immediately enables sectioning and recenters
+the offset on the model; Off disables it. The choices use native radio keyboard behavior and expose
+their names through accessible labels and tooltips. The selected choice and toolbar active state
+remain visible. The panel has no captions below the icons or explanatory footer. An icon toggle
+reverses the retained side. The shared length field shows units inside the offset value, accepts
+supported length units and expressions, and interprets bare numbers in project units. Valid edits
+preserve the entered expression; dragging the plane refreshes the field in project units.
 Drag the plane's viewport handle along its projected normal to change the same offset; numeric input
 is the keyboard equivalent. Pointer capture prevents accidental orbiting, and Escape or pointer
 cancellation restores the starting offset. Closed render meshes receive derived solid cut caps with

@@ -94,8 +94,9 @@ executable and arguments. Direct native executable commands retain their argumen
 For a bounded Windows startup investigation, `VIBESHAPE_ARGUMENT_TRACE` can point to a diagnostic
 JSON-lines file. It records supervisor stages, UTC times and numeric standard-handle metadata;
 it does not record agent text, arguments or credentials and is removed from the agent environment.
-Tracing is off by default. The Windows fixture enables it for one request to distinguish compilation,
-process startup and ACP transport delays.
+Tracing is off by default. Windows request and connection-probe fixtures enable it to distinguish
+compilation, process startup and ACP transport delays. A failed connection probe prints its supervisor
+trace and synthetic ACP fixture receipt before temporary-directory cleanup.
 The agent uses its own default model; Jev does not select or change that agent's model settings.
 
 **API connection (advanced)** retains the compatible endpoint, model name and optional key option.

@@ -2488,14 +2488,12 @@
     },
     "sectionView": {
       "title": "Section view",
-      "enabled": "Enable section view",
+      "disabled": "Disable section view",
       "axis": "Section plane",
       "planeLabel": "{plane} plane, normal {axis}",
-      "offset": "Section offset (mm)",
-      "invalid": "Enter a finite offset between −100,000 and 100,000 mm.",
-      "flip": "Keep the opposite side",
-      "description": "View only. The grid marks cut material; cavities stay open. History and exports are unchanged.",
-      "dragHint": "Drag the plane handle to move the section."
+      "offset": "Section offset",
+      "invalid": "Enter a length between −100,000 and 100,000 mm using a supported unit.",
+      "flip": "Keep the opposite side"
     },
     "mirror": {
       "title": "Mirror part",
