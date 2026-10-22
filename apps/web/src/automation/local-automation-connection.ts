@@ -924,7 +924,7 @@ export function createLocalAutomationConnection(
     }, recoveryDelay())
   }
   function recoveryDelay() {
-    return nativeProjectAccess ? Math.min(1000 * 2 ** nativeRecoveryAttempt, 8000) : 1000
+    return nativeProjectAccess ? Math.min(5000 * 2 ** nativeRecoveryAttempt, 60_000) : 1000
   }
   function nativeRecoveryFailure(error: unknown) {
     nativeRecoveryPending = true
