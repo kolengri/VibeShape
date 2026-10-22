@@ -19,7 +19,7 @@ import { type AssistantServiceOptions, createAssistantService } from "./assistan
 const fixture = String.raw`
 const readline = require("node:readline");
 const scenario = process.argv[2];
-let authenticated = false, pending, permissionPrompt, questionPrompt, selectedModel = "small", selectedEffort = "brief", configCalls = 0, attachedMcp, steerCalls = 0, targetTurns = 0;
+let authenticated = false, pending, permissionPrompt, questionPrompt, selectedModel = "small", selectedEffort = "brief", configCalls = 0, attachedMcp, steerCalls = 0, targetTurns = 0, historyPromptCalls = 0;
 let selectedBehavior = "ask", selectedDetail = "terse", settingCalls = [];
 const send = message => process.stdout.write(JSON.stringify({jsonrpc:"2.0",...message})+"\n");
 const reply = (id,result) => send({id,result});
@@ -94,11 +94,15 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    if (scenario === "bad-version") return reply(id,{protocolVersion:999});
    if (scenario === "client-version" && params.clientInfo.version !== "9.8.7") return send({id,error:{code:-32603,message:"Incorrect host version"}});
    if (process.env.ELECTRON_RUN_AS_NODE || params.clientCapabilities.fs || params.clientCapabilities.terminal) return process.exit(9);
-   return reply(id,{protocolVersion:1,agentCapabilities:{loadSession:scenario === "resume",promptCapabilities:{image:scenario !== "no-attachments",embeddedContext:scenario !== "no-attachments"}},authMethods:[{id:"login",name:"Log in"}],...(scenario.startsWith("steer") ? {agentInfo:{name:scenario === "steer-foreign" ? "unverified-agent" : "@agentclientprotocol/codex-acp",version:scenario === "steer-future" ? "2.2.3" : "2.2.2"},_meta:{steering:{supported:true}}} : {})});
+   return reply(id,{protocolVersion:1,agentCapabilities:{loadSession:scenario.startsWith("resume"),promptCapabilities:{image:scenario !== "no-attachments",embeddedContext:scenario !== "no-attachments"}},authMethods:[{id:"login",name:"Log in"}],...(scenario.startsWith("steer") ? {agentInfo:{name:scenario === "steer-foreign" ? "unverified-agent" : "@agentclientprotocol/codex-acp",version:scenario === "steer-future" ? "2.2.3" : "2.2.2"},_meta:{steering:{supported:true}}} : {})});
  }
  if (method === "authenticate") { authenticated = true; return reply(id,{}); }
  if (method === "session/new" || method === "session/load") {
    if (method === "session/load") sessionId = params.sessionId;
+   if (method === "session/load" && scenario === "resume-large") {
+     for (let index = 0; index < 3; index++) update({sessionUpdate:"user_message_chunk",content:{type:"text",text:"h".repeat(3*1024*1024)}});
+   }
+   if (method === "session/load" && scenario === "resume-oversized") return process.stdout.write(Buffer.alloc(32*1024*1024+1,120));
    if (scenario === "auth" && !authenticated) return send({id,error:{code:-32000,message:"private auth URL"}});
    // Match adapters that filter every configured name, including disabled global entries.
    const configuredLayers = [{mcp_servers:{vibeshape:{enabled:false}}}];
@@ -207,6 +211,7 @@ readline.createInterface({input:process.stdin}).on("line", line => {
  if (method !== "session/prompt") return send({id,error:{code:-32601,message:"Unknown method"}});
  if (!params.prompt[0].text.includes("VibeShape") || !params.prompt[0].text.includes("Project ID")) return process.exit(13);
  const prompt = params.prompt.filter(block=>block.type === "text").at(-1).text;
+ if (scenario === "resume-large" && (prompt !== "Continue after loading" || historyPromptCalls++ !== 0)) return process.exit(16);
  if (scenario.startsWith("reconnect") && prompt === "inspect-settings") { text(JSON.stringify({settingCalls,selectedBehavior,configs:reconnectConfigs()})); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "inspect-mcp") { text(JSON.stringify(attachedMcp)); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "inspect-attachments") { text(JSON.stringify(params.prompt)); return reply(id,{stopReason:"end_turn"}); }
@@ -225,7 +230,7 @@ readline.createInterface({input:process.stdin}).on("line", line => {
  if (prompt === "crash") { process.stderr.write("private provider credential"); process.exit(3); }
  if (prompt === "malformed") return process.stdout.write('[{"jsonrpc":"2.0","method":"invalid-batch"}]\n');
  if (prompt === "invalid-json") return process.stdout.write("not-json\n");
- if (prompt === "oversized") return text("x".repeat(1024*1024));
+ if (prompt === "oversized") return text("x".repeat(2*1024*1024));
  if (prompt === "permission" || prompt === "permission-always") {
    permissionPrompt = id;
    return send({id:"permission",method:"session/request_permission",params:{sessionId,toolCall:{toolCallId:"tool",title:"Run tool"},options:[{optionId:"yes",name:"Allow",kind:prompt === "permission-always" ? "allow_always" : "allow_once"},{optionId:"no",name:"Reject",kind:"reject_once"}]}});
@@ -2172,7 +2177,38 @@ describe("native ACP service", () => {
     })
   })
 
-  it("returns bounded diagnostics for launch, initialization, crash, malformed and oversized output", async () => {
+  it("loads attachment-sized history without publishing it as live output or replaying it as a prompt", async () => {
+    const context = await host()
+    const session = ready(await context.connect("resume-large", "project-a", "saved-session"))
+    expect(session).toMatchObject({
+      status: "ready",
+      sessionId: "saved-session",
+      canResume: true,
+    })
+    expect(context.events.some((event) => event.type === "text" || event.type === "thought")).toBe(
+      false,
+    )
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(session), text: "Continue after loading" },
+      }),
+    ).toMatchObject({ ok: true, value: { status: "ready", sessionId: "saved-session" } })
+    expect(context.events.some((event) => event.type === "completed")).toBe(true)
+  })
+
+  it("rejects an unterminated history frame above the SDK's bounded 32 MiB transport limit", async () => {
+    const context = await host()
+    expect(await context.connect("resume-oversized", "project-a", "saved-session")).toEqual({
+      ok: false,
+      code: "protocol-error",
+    })
+    expect(context.events.some((event) => event.type === "text" || event.type === "thought")).toBe(
+      false,
+    )
+  })
+
+  it("returns bounded diagnostics for launch, initialization, crash, malformed and oversized live output", async () => {
     const context = await host()
     expect(
       await context.service.handle({

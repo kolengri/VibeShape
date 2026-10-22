@@ -61,6 +61,8 @@ Stop AI and cancellation interrupt these waits. If transient model retries expir
 the pending ACP connection can finish and then restart the bounded model recovery phase. Wait for
 that recovery before reading the saved model; a successful ACP handshake alone does not establish
 model access. When the provider supports loading the exact previous session,
+archived ACP messages can be up to 32 MiB per frame; loading them does not replay old prompts or
+CAD commands. Model context compaction is separate from this archived history transfer. After loading,
 an interrupted turn resumes with instructions to reconcile the current model and recoverable intent
 before further changes. The interrupted prompt and uncertain writes are never replayed by the
 controller. If restoration is unsupported, authentication is required, or retries are exhausted,

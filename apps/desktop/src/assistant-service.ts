@@ -419,9 +419,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
           : Promise.resolve({ action: "decline" as const }),
       )
       .connect(
-        acp.ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout), {
-          maxMessageBytes: 1024 * 1024,
-        }),
+        // Session replay includes attachment-sized prompts; live output has its own budget.
+        acp.ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout)),
       )
     owner.connection = connection
     void connection.closed.then(() => {
