@@ -2219,7 +2219,7 @@ function WorldAxesLegend() {
     <div
       aria-label={t("worldAxes")}
       className={cn(
-        "pointer-events-none absolute bottom-2 left-2 size-20 rounded-md border border-border/70 bg-background/10 shadow-inner",
+        "pointer-events-none absolute bottom-2 left-2 aspect-square h-[clamp(0px,calc(100%_-_var(--workspace-chrome-top,0px)_-_var(--workspace-chrome-bottom,0px)_-_1rem),5rem)] rounded-md border border-border/70 bg-background/10 shadow-inner",
         SAFE_VIEWPORT_LEFT,
       )}
       role="img"
@@ -3693,7 +3693,7 @@ function GeometryViewport(props: GeometryViewportProps) {
       <div
         aria-hidden="true"
         data-viewport-orientation-offset
-        className="pointer-events-none absolute left-0 top-0 h-0 w-[var(--workspace-chrome-left,0px)]"
+        className="pointer-events-none absolute left-0 top-0 box-content h-[var(--workspace-chrome-bottom,0px)] w-[var(--workspace-chrome-left,0px)] pt-[var(--workspace-chrome-top,0px)]"
       />
       <GeometryViewportContextChrome
         viewControls={viewportAdditionalControls(props.viewControls, {

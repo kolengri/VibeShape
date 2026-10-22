@@ -2,6 +2,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection } from "@vibeshape/protocol"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { cn } from "@vibeshape/ui/lib/cn"
 import type {
   GeometryViewport,
   GeometryViewportOptions,
@@ -15,6 +16,7 @@ import {
 } from "../../printing/print-viewport-presentation"
 import { useBlockingViewport } from "../../shell/use-blocking-viewport"
 import { useViewerPreferences } from "../../shell/viewer-preferences"
+import { SAFE_VIEWPORT_REGION, SAFE_VIEWPORT_RIGHT } from "../../shell/viewport-chrome-styles"
 
 async function createAssemblyViewport(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
   const { createGeometryViewport } = await import("@vibeshape/viewer/three-viewport")
@@ -69,6 +71,9 @@ function useAssemblyViewportMount(
     const element = canvas.current
     if (!element) return
     void factory(element, {
+      orientationInsetOffsetElement:
+        element.parentElement?.querySelector<HTMLElement>("[data-viewport-orientation-offset]") ??
+        null,
       onSelectionChange: (selection) => {
         if (selection && !readOnlyRef.current) onSelect(selection.featureId)
       },
@@ -183,19 +188,28 @@ export function AssemblyViewport({
         type="button"
         variant="outline"
         size="sm"
-        className="absolute top-3 right-3"
+        className={cn("absolute top-3 right-3", SAFE_VIEWPORT_RIGHT)}
         disabled={!view.ready || view.failed}
         onClick={() => view.viewport.current?.fit()}
       >
         {t("fit")}
       </Button>
+      <div
+        aria-hidden="true"
+        data-viewport-orientation-offset
+        className="pointer-events-none absolute left-0 top-0 box-content h-[var(--workspace-chrome-bottom,0px)] w-[var(--workspace-chrome-left,0px)] pt-[var(--workspace-chrome-top,0px)]"
+      />
       <PrintViewportStatus
         profile={view.profile}
         visible={view.printBedVisible}
         report={view.printPresentation.report}
         count={view.meshCount}
       />
-      {view.failed && <Alert className="absolute inset-x-3 top-3">{t("viewportFailed")}</Alert>}
+      {view.failed && (
+        <Alert className={cn("absolute inset-x-3 top-3", SAFE_VIEWPORT_REGION)}>
+          {t("viewportFailed")}
+        </Alert>
+      )}
     </section>
   )
 }

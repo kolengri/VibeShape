@@ -54,9 +54,11 @@
   height: 100svh;
   min-height: 0;
   overflow: hidden;
+  isolation: isolate;
 }
 
 .cad-shell > .application-bar {
+  grid-column: 1 / -1;
   margin-inline: calc(-1 * var(--workspace-gap));
 }
 
@@ -66,7 +68,27 @@
   border-radius: var(--workspace-radius);
 }
 
+.cad-shell nav[data-sketch-mode] {
+  position: relative;
+  z-index: 30;
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.editor-model-area {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.cad-shell > footer {
+  position: relative;
+  grid-column: 1;
+  grid-row: 4;
+}
+
 .workspace-history {
+  position: relative;
+  z-index: 20;
   padding-top: var(--workspace-gap);
 }
 
@@ -90,17 +112,9 @@
 }
 
 .assistant-panel {
-  position: fixed;
-  z-index: 30;
-  top: calc(
-    var(--application-bar-height, 2.5rem) +
-    var(--command-bar-height) +
-    2 *
-    var(--workspace-gap)
-  );
-  right: var(--workspace-gap);
-  bottom: calc(1.5rem + 2 * var(--workspace-gap) + var(--workspace-history-height, 0px));
-  width: min(var(--assistant-width), calc(100vw - 16px));
+  grid-column: 2;
+  grid-row: 2 / -1;
+  min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--workspace-radius);
@@ -128,35 +142,31 @@
   --workspace-chrome-right: 0px;
   --workspace-solid-panel: var(--panel);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .workspace-viewport {
+  --workspace-chrome-left: calc(var(--workspace-tree-size) + 8px + var(--workspace-gap));
+  --workspace-chrome-right: calc(var(--workspace-task-size) + 8px + var(--workspace-gap));
+  --workspace-chrome-top: calc(var(--command-bar-height) + 2 * var(--workspace-gap));
+  --workspace-chrome-bottom: calc(var(--workspace-history-height, 0px) + var(--workspace-gap));
   z-index: 0;
   position: absolute;
-  inset: 0 calc(var(--workspace-task-size) + 8px) 0 calc(var(--workspace-tree-size) + 8px);
+  inset: calc(-1 * var(--workspace-chrome-top)) calc(-1 * var(--workspace-gap))
+    calc(-1 * var(--workspace-chrome-bottom)) calc(-1 * var(--workspace-gap));
   display: grid;
   min-height: 0;
   min-width: 0;
 }
 
 .cad-workspace-grid[data-task-active="false"] .workspace-viewport {
-  right: 0;
+  --workspace-chrome-right: var(--workspace-gap);
 }
 
-.cad-workspace-grid[data-transparent="true"] .workspace-viewport {
-  --workspace-chrome-left: calc(var(--workspace-tree-size) + 8px);
-  --workspace-chrome-right: calc(var(--workspace-task-size) + 8px);
-  inset: 0;
-}
-
-.cad-workspace-grid[data-task-active="false"] .workspace-viewport {
-  --workspace-chrome-right: 0px;
-}
-
-/* Keep the active task adjacent to chat while the shared History spans below both. */
-.cad-shell:has(.assistant-panel:not([hidden])) .cad-workspace-grid {
-  margin-right: calc(var(--assistant-width) + var(--workspace-gap));
+/* Chat owns a column outside the complete editor, including toolbar and History. */
+.cad-shell:has(.assistant-panel:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) var(--assistant-width);
+  column-gap: var(--workspace-gap);
 }
 
 @media (min-width: 64rem) {
@@ -254,8 +264,13 @@
   }
 
   .workspace-viewport {
-    right: 0;
-    bottom: var(--workspace-sheet-height);
+    --workspace-chrome-right: var(--workspace-gap);
+    --workspace-chrome-bottom: calc(
+      var(--workspace-history-height, 0px) +
+      var(--workspace-gap) +
+      var(--workspace-sheet-observed-height, 0px)
+    );
+    bottom: calc(-1 * (var(--workspace-history-height, 0px) + var(--workspace-gap)));
   }
 
   .workspace-panel--tree,
@@ -295,9 +310,13 @@
 }
 
 @media (width < 40rem) {
-  .workspace-viewport,
+  .workspace-viewport {
+    --workspace-chrome-left: var(--workspace-gap);
+  }
+
   .workspace-panel--task {
-    left: 0;
+    right: calc(-1 * var(--workspace-gap));
+    left: calc(-1 * var(--workspace-gap));
   }
 
   .workspace-panel--tree {

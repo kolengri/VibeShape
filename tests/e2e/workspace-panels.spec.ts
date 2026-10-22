@@ -153,7 +153,10 @@ for (const theme of ["light", "dark"] as const) {
       true,
     )
     await expect.poll(() => width(page.locator(".workspace-viewport"))).toBe(1440)
-    await expect(canvas).toHaveAttribute("data-orientation-inset", "256,8,80")
+    const historyHeight = await page
+      .locator(".workspace-history")
+      .evaluate((element) => element.clientHeight)
+    await expect(canvas).toHaveAttribute("data-orientation-inset", `264,${historyHeight + 16},80`)
     const panel = page.locator(".workspace-panel--tree")
     expect(
       await panel.evaluate(
@@ -179,7 +182,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.keyboard.press("Escape")
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
     await expect(page.locator(".cad-workspace-grid")).toHaveAttribute("data-transparent", "false")
-    await expect.poll(() => width(page.locator(".workspace-viewport"))).toBe(864)
+    await expect.poll(() => width(page.locator(".workspace-viewport"))).toBe(1440)
   })
 }
 
@@ -205,6 +208,15 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
     .boundingBox()
   if (!previewBounds || !planesBounds) throw new Error("Preview chrome must remain measurable")
   expect(previewBounds.y).toBeGreaterThan(planesBounds.y + planesBounds.height)
+  await expect
+    .poll(async () => {
+      const canvasBounds = await canvas.boundingBox()
+      const sheetBounds = await page.locator(".workspace-panel--task").boundingBox()
+      const inset = (await canvas.getAttribute("data-orientation-inset"))?.split(",").map(Number)
+      if (!canvasBounds || !sheetBounds || !inset) return false
+      return canvasBounds.y + canvasBounds.height - (inset[1] ?? 0) <= sheetBounds.y
+    })
+    .toBe(true)
   await expect(input).toHaveValue("77")
   await expect.poll(() => width(page.locator("#workspace-task"))).toBe(0)
   expect(await form.evaluate((element, original) => element === original, formElement)).toBe(true)
@@ -227,6 +239,17 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
   await page.screenshot({ path: test.info().outputPath("compact-full-width-task-390.png") })
   await page.setViewportSize({ width: 512, height: 384 })
   await expect.poll(() => width(page.locator(".workspace-viewport"))).toBe(512)
+  await expect
+    .poll(async () => {
+      const bounds = await canvas.boundingBox()
+      const toolbar = await page.locator("nav[data-sketch-mode]").boundingBox()
+      const sheet = await page.locator(".workspace-panel--task").boundingBox()
+      const inset = (await canvas.getAttribute("data-orientation-inset"))?.split(",").map(Number)
+      if (!bounds || !toolbar || !sheet || !inset) return false
+      const bottom = bounds.y + bounds.height - (inset[1] ?? 0)
+      return bottom - (inset[2] ?? 0) >= toolbar.y + toolbar.height && bottom <= sheet.y
+    })
+    .toBe(true)
   const settings = await openWorkspaceSettings(page)
   await expect(
     settings.getByRole("slider", { name: "Task panel width", exact: true }),
