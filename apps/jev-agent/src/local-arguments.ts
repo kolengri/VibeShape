@@ -8,6 +8,50 @@ import type { AssistantExternalAgent } from "@vibeshape/automation-api/assistant
 import { JevFailure } from "./failure"
 import { windowsArgumentLaunch } from "./windows-argument-process"
 
+const pendingCleanups = new Set<Promise<void>>()
+let terminating = false
+
+function killLocalAgent(child: ReturnType<typeof spawn> | undefined, signal: NodeJS.Signals) {
+  if (!child?.pid) return
+  try {
+    if (process.platform !== "win32") process.kill(-child.pid, signal)
+    // On Windows this is the job-owning supervisor, not the ACP leader.
+    else child.kill(signal)
+  } catch {
+    /* The process may already have exited. */
+  }
+}
+
+async function retireLocalAgent(child: ReturnType<typeof spawn> | undefined) {
+  if (!child?.pid) return
+  await new Promise<void>((resolve) => {
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      // Leader closure does not prove its backend descendants have exited.
+      killLocalAgent(child, "SIGKILL")
+      clearTimeout(force)
+      clearTimeout(deadline)
+      child.removeListener("close", finish)
+      resolve()
+    }
+    const force = setTimeout(() => killLocalAgent(child, "SIGKILL"), 300)
+    const deadline = setTimeout(finish, 1000)
+    child.once("close", finish)
+    killLocalAgent(child, "SIGTERM")
+  })
+}
+
+function localAgentFailure(error: unknown, signal: AbortSignal) {
+  if (error instanceof JevFailure) return error
+  return new JevFailure(
+    signal.aborted
+      ? "Argument completion was cancelled."
+      : "Local argument agent failed. Check its installation and existing sign-in.",
+  )
+}
+
 function localEnvironment() {
   const env: NodeJS.ProcessEnv = {}
   for (const key of [
@@ -54,35 +98,43 @@ function localEnvironment() {
 export async function requestLocalArguments(
   agent: AssistantExternalAgent,
   prompt: string,
-  signal: AbortSignal,
+  parentSignal: AbortSignal,
 ): Promise<string> {
-  signal.throwIfAborted()
-  const cwd = await mkdtemp(join(tmpdir(), "vibeshape-arguments-"))
+  parentSignal.throwIfAborted()
+  if (terminating) throw new JevFailure("Argument completion was cancelled.")
+  const interrupted = new AbortController()
+  const signal = AbortSignal.any([parentSignal, interrupted.signal])
+  let finishCleanup = () => {}
+  const cleanup = new Promise<void>((resolve) => {
+    finishCleanup = resolve
+  })
+  pendingCleanups.add(cleanup)
+  let directory: string | undefined
   let child: ReturnType<typeof spawn> | undefined
   let connection: acp.ClientConnection | undefined
   let abort: (() => void) | undefined
   let startupData: ((chunk: Buffer) => void) | undefined
   let rejectFailure: (reason: Error) => void = () => {}
-  const kill = (kind: NodeJS.Signals) => {
-    if (!child?.pid) return
-    try {
-      if (process.platform !== "win32") process.kill(-child.pid, kind)
-      // On Windows this is the job-owning supervisor, not the ACP leader.
-      else child.kill(kind)
-    } catch {
-      /* The process may already have exited. */
+  const onExit = () => killLocalAgent(child, "SIGKILL")
+  const stop = (code: number) => {
+    interrupted.abort()
+    onExit()
+    if (!terminating) {
+      terminating = true
+      // Exit only after every active helper has removed its working directory.
+      void Promise.allSettled(pendingCleanups).then(() => process.exit(code))
     }
   }
-  const onExit = () => kill("SIGKILL")
-  const onTerminate = () => {
-    onExit()
-    process.exit(143)
-  }
-  const onInterrupt = () => {
-    onExit()
-    process.exit(130)
-  }
+  const onTerminate = () => stop(143)
+  const onInterrupt = () => stop(130)
+  let response: string
   try {
+    process.once("exit", onExit)
+    process.on("SIGTERM", onTerminate)
+    process.on("SIGINT", onInterrupt)
+    signal.throwIfAborted()
+    const cwd = await mkdtemp(join(tmpdir(), "vibeshape-arguments-"))
+    directory = cwd
     signal.throwIfAborted()
     const env = localEnvironment()
     const launch =
@@ -98,9 +150,6 @@ export async function requestLocalArguments(
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     })
-    process.once("exit", onExit)
-    process.once("SIGTERM", onTerminate)
-    process.once("SIGINT", onInterrupt)
     const processHandle = child
     const failed = new Promise<never>((_, reject) => {
       rejectFailure = reject
@@ -190,7 +239,7 @@ export async function requestLocalArguments(
         throw new JevFailure("Local argument agent did not complete its response.")
       return text
     }
-    return await Promise.race([
+    response = await Promise.race([
       run(),
       failed,
       client.closed.then(() => {
@@ -198,38 +247,23 @@ export async function requestLocalArguments(
       }),
     ])
   } catch (error) {
-    if (error instanceof JevFailure) throw error
-    throw new JevFailure(
-      signal.aborted
-        ? "Argument completion was cancelled."
-        : "Local argument agent failed. Check its installation and existing sign-in.",
-    )
+    throw localAgentFailure(error, signal)
   } finally {
-    if (startupData) child?.stderr?.removeListener("data", startupData)
-    if (abort) signal.removeEventListener("abort", abort)
-    connection?.close()
-    if (child?.pid) {
-      await new Promise<void>((resolve) => {
-        let finished = false
-        const finish = () => {
-          if (finished) return
-          finished = true
-          // Leader closure does not prove its backend descendants have exited.
-          kill("SIGKILL")
-          clearTimeout(force)
-          clearTimeout(deadline)
-          child?.removeListener("close", finish)
-          resolve()
-        }
-        const force = setTimeout(() => kill("SIGKILL"), 300)
-        const deadline = setTimeout(finish, 1000)
-        child?.once("close", finish)
-        kill("SIGTERM")
-      })
+    try {
+      if (startupData) child?.stderr?.removeListener("data", startupData)
+      if (abort) signal.removeEventListener("abort", abort)
+      connection?.close()
+      await retireLocalAgent(child)
+      if (directory)
+        await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    } finally {
+      process.removeListener("exit", onExit)
+      process.removeListener("SIGTERM", onTerminate)
+      process.removeListener("SIGINT", onInterrupt)
+      pendingCleanups.delete(cleanup)
+      finishCleanup()
     }
-    process.removeListener("exit", onExit)
-    process.removeListener("SIGTERM", onTerminate)
-    process.removeListener("SIGINT", onInterrupt)
-    await rm(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
+  if (signal.aborted) throw new JevFailure("Argument completion was cancelled.")
+  return response
 }

@@ -70,6 +70,8 @@ assigns stdin/stdout/stderr and limits handle inheritance to those three streams
 evaluates the agent arguments. A blocked PowerShell or `Add-Type` policy
 fails the launch without an unsupervised fallback. Temporary-directory removal has bounded retries
 for asynchronous Windows handle release. Job termination is not a promise of synchronous OS reaping.
+On POSIX, SIGTERM/SIGINT cancel active helpers and wait for all their temporary-directory cleanup
+before Jev exits. Forced process termination can still leave temporary directories.
 Standard Windows npm `.cmd` launchers are resolved to their Node entrypoint before supervision;
 `node.exe` is selected beside the shim or from PATH. The wrapper itself is not executed. Launchers
 with another interpreter or interpreter options fail with guidance to configure an explicit

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test"
+import { spawn } from "node:child_process"
+import { once } from "node:events"
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { killAssistantProcess } from "../../desktop/src/assistant-transport"
 import { createArgumentCompleter } from "./arguments"
 
 const script = fileURLToPath(
@@ -98,6 +101,54 @@ async function expectExited(pid: number) {
     if (running) await Bun.sleep(10)
   }
   expect(running).toBe(false)
+}
+
+async function argumentHost(receipts: [string, ...string[]]) {
+  const directory = dirname(receipts[0])
+  const hostFile = join(directory, "host.ts")
+  const modulePath = fileURLToPath(new URL("./arguments.ts", import.meta.url)).replaceAll("\\", "/")
+  await writeFile(
+    hostFile,
+    `import { createArgumentCompleter } from ${JSON.stringify(modulePath)};\nvoid Promise.allSettled(${JSON.stringify(receipts)}.map(receipt => createArgumentCompleter({agent:{command:${JSON.stringify(process.execPath)},args:[${JSON.stringify(script)},"descendant-cancel",receipt]}})(${JSON.stringify(tool)},${JSON.stringify(state)},{},AbortSignal.timeout(60000)))).then(() => { process.exitCode = 1 });`,
+  )
+  const bundle = await Bun.build({
+    entrypoints: [hostFile],
+    target: "node",
+    format: "cjs",
+    packages: "bundle",
+  })
+  expect(bundle.success).toBe(true)
+  const output = bundle.outputs[0]
+  if (!output) throw new Error("Missing bundled argument host.")
+  const bundleFile = join(directory, "host.cjs")
+  await Bun.write(bundleFile, output)
+  const { nativeElectronExecutable } = await import("../../../tests/desktop/native-fixture")
+  const host = spawn(nativeElectronExecutable, [bundleFile], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    stdio: "ignore",
+    detached: process.platform !== "win32",
+  })
+  const exited = once(host, "close")
+  return { host, exited }
+}
+
+async function disposeArgumentHost(
+  host: ReturnType<typeof spawn>,
+  exited: Promise<unknown>,
+  receipts: readonly string[] = [],
+) {
+  if (host.exitCode === null && host.signalCode === null) host.kill("SIGKILL")
+  await exited.catch(() => {})
+  for (const path of receipts) {
+    const log = await events(path).catch(() => [])
+    if (!log.length) continue
+    try {
+      process.kill(-log[0].pid, "SIGKILL")
+    } catch {
+      /* Already terminated. */
+    }
+    await rm(log[0].cwd, { recursive: true, force: true })
+  }
 }
 
 describe("local ACP argument helper", () => {
@@ -269,51 +320,62 @@ describe("local ACP argument helper", () => {
     testTimeout,
   )
 
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    it.skipIf(process.platform === "win32")(
+      `cleans every active helper directory before host ${signal} exit`,
+      async () => {
+        await fixture("unused", async (_complete, receipt) => {
+          const receipts: [string, string] = [receipt, join(dirname(receipt), "second.jsonl")]
+          const { host, exited } = await argumentHost(receipts)
+          try {
+            const logs = await Promise.race([
+              Promise.all(receipts.map(ready)),
+              exited.then(() => {
+                throw new Error("Fixture host exited before readiness.")
+              }),
+            ])
+            for (const log of logs)
+              await writeFile(join(log[0].cwd, "helper-output.txt"), "Temporary helper output.")
+            const closed = once(host, "close", { signal: AbortSignal.timeout(5000) })
+            if (signal === "SIGTERM") await killAssistantProcess(host)
+            else host.kill(signal)
+            const [code, exitSignal] = await closed
+            expect(code).toBe(signal === "SIGTERM" ? 143 : 130)
+            expect(exitSignal).toBeNull()
+            for (const log of logs) {
+              await expectExited(log[0].pid)
+              await expectExited(log.find((event) => event.backendPid).backendPid)
+              await expect(stat(log[0].cwd)).rejects.toThrow()
+            }
+          } finally {
+            await disposeArgumentHost(host, exited, receipts)
+          }
+        })
+      },
+      testTimeout,
+    )
+  }
+
   it.skipIf(process.platform !== "win32")(
     "terminates the job when its host is killed",
     async () => {
       await fixture("unused", async (_complete, receipt) => {
-        const hostFile = join(dirname(receipt), "host.ts")
-        const modulePath = fileURLToPath(new URL("./arguments.ts", import.meta.url)).replaceAll(
-          "\\",
-          "/",
-        )
-        await writeFile(
-          hostFile,
-          `import { createArgumentCompleter } from ${JSON.stringify(modulePath)};\nvoid createArgumentCompleter({agent:${JSON.stringify({ command: process.execPath, args: [script, "descendant-cancel", receipt] })}})(${JSON.stringify(tool)},${JSON.stringify(state)},{},AbortSignal.timeout(60000)).catch(() => { process.exitCode = 1 });`,
-        )
-        const bundle = await Bun.build({
-          entrypoints: [hostFile],
-          target: "node",
-          format: "cjs",
-          packages: "bundle",
-        })
-        expect(bundle.success).toBe(true)
-        const output = bundle.outputs[0]
-        if (!output) throw new Error("Missing bundled argument host.")
-        const bundleFile = join(dirname(receipt), "host.cjs")
-        await Bun.write(bundleFile, output)
-        const { nativeElectronExecutable } = await import("../../../tests/desktop/native-fixture")
-        const host = Bun.spawn([nativeElectronExecutable, bundleFile], {
-          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-          stdout: "ignore",
-          stderr: "ignore",
-        })
+        const { host, exited } = await argumentHost([receipt])
         try {
           const log = await Promise.race([
             ready(receipt),
-            host.exited.then(() => {
+            exited.then(() => {
               throw new Error("Fixture host exited before readiness.")
             }),
           ])
           const backend = log.find((event) => event.backendPid)?.backendPid
           expect(backend).toBeNumber()
           host.kill("SIGKILL")
-          await host.exited
+          await exited
           await expectExited(log[0].pid)
           await expectExited(backend)
         } finally {
-          if (host.exitCode === null) host.kill("SIGKILL")
+          await disposeArgumentHost(host, exited)
         }
       })
     },
