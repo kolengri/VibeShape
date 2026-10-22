@@ -75,8 +75,7 @@ On Windows, the helper runs beneath an inbox PowerShell/.NET supervisor assigned
 kill-on-close Job Object before launching the agent. Its descendants inherit job membership;
 leader exit, cancellation and host termination close the owning process and terminate the job.
 Jev waits for a private per-launch readiness receipt on stderr before sending ACP initialization;
-supervisor setup remains within the request's existing deadline. Setup cmdlets receive explicit
-pipeline input so they do not consume the open stdin stream reserved for ACP.
+supervisor setup remains within the request's existing deadline.
 The Windows local-agent connection probe allows up to 50 seconds within the configured request
 timeout, with a 60-second desktop deadline to include startup and cleanup. This accommodates
 cold PowerShell/.NET setup; API and other-platform probe budgets remain 20 seconds in Jev.
@@ -95,9 +94,10 @@ executable and arguments. Direct native executable commands retain their argumen
 For a bounded Windows startup investigation, `VIBESHAPE_ARGUMENT_TRACE` can point to a diagnostic
 JSON-lines file. It records supervisor stages, UTC times and numeric standard-handle metadata;
 it does not record agent text, arguments or credentials and is removed from the agent environment.
+Tracing explicitly resolves `Add-Type` before compilation and records both intervals separately.
 Tracing is off by default. Windows request and connection-probe fixtures enable it to distinguish
-compilation, process startup and ACP transport delays. A failed connection probe prints its supervisor
-trace and synthetic ACP fixture receipt before temporary-directory cleanup.
+command resolution, compilation, process startup and ACP transport delays. The Windows connection-probe
+fixture prints its result, supervisor trace and synthetic ACP receipt before temporary-directory cleanup.
 The agent uses its own default model; Jev does not select or change that agent's model settings.
 
 **API connection (advanced)** retains the compatible endpoint, model name and optional key option.

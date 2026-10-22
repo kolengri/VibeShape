@@ -19,9 +19,13 @@ function Trace($stage) {
 Trace 'script-start'
 Trace ('runtime:' + $PSVersionTable.PSVersion + ':' + [Environment]::Version + ':' + [Environment]::Is64BitProcess)
 try {
+  if ($trace) {
+    Trace 'resolve-start'
+    $resolved = $ExecutionContext.InvokeCommand.GetCommand('Add-Type', [System.Management.Automation.CommandTypes]::Cmdlet)
+    Trace ('resolve-ready:' + ($null -ne $resolved))
+  }
   Trace 'compile-start'
-  # Explicit empty input keeps cmdlet setup from reading the open ACP stdin pipe.
-  @() | Add-Type -TypeDefinition @'
+  Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -205,7 +209,7 @@ public static class VibeShapeArgumentJob {
 }
 '@
   Trace 'compile-ready'
-  $launch = $env:VIBESHAPE_ARGUMENT_LAUNCH | ConvertFrom-Json
+  $launch = ConvertFrom-Json $env:VIBESHAPE_ARGUMENT_LAUNCH
   $result = [VibeShapeArgumentJob]::Run($launch.command, $launch.arguments, $launch.cwd, $launch.parentPid, $launch.ready)
   exit $result
 } catch {

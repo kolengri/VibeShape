@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import { spawn, spawnSync } from "node:child_process"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,7 +6,6 @@ import { fileURLToPath } from "node:url"
 import type { Fetch } from "@typesafe-ai/sdk"
 import { readConfiguration } from "./configuration"
 import { probeProviders } from "./provider-probe"
-import { windowsArgumentLaunch } from "./windows-argument-process"
 
 const configuration = (helper = false) =>
   readConfiguration({
@@ -34,124 +32,6 @@ const helperResponse = (content = '{"ok":true}') =>
     choices: [{ message: { content }, finish_reason: "stop" }],
   })
 
-async function bounded<T>(promise: Promise<T>, milliseconds: number) {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<"timeout">((resolve) => {
-        timer = setTimeout(() => resolve("timeout"), milliseconds)
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
-  }
-}
-async function supervisorReadiness(mode: string, environment: NodeJS.ProcessEnv) {
-  const cwd = await mkdtemp(join(tmpdir(), "supervisor-comparison-"))
-  const trace = join(cwd, "supervisor.jsonl")
-  let child: ReturnType<typeof spawn> | undefined
-  try {
-    const script = fileURLToPath(
-      new URL("../../../tests/desktop/fixtures/argument-agent.cjs", import.meta.url),
-    )
-    const launch = await windowsArgumentLaunch(
-      { command: process.execPath, args: [script, "probe", join(cwd, "receipt.jsonl")] },
-      { ...environment, VIBESHAPE_ARGUMENT_TRACE: trace },
-      cwd,
-    )
-    const index = launch.args.length - 1
-    const source = launch.args[index]
-    if (!source) throw new Error("Missing Windows supervisor source.")
-    // Change only Add-Type input; keep JSON parsing identical in both variants.
-    const original = source
-      .replace("@() | Add-Type", "Add-Type")
-      .replace(
-        "$env:VIBESHAPE_ARGUMENT_LAUNCH | ConvertFrom-Json",
-        "ConvertFrom-Json $env:VIBESHAPE_ARGUMENT_LAUNCH",
-      )
-    launch.args[index] =
-      mode === "original"
-        ? original
-        : original.replace("Add-Type -TypeDefinition", "@() | Add-Type -TypeDefinition")
-    const started = Date.now()
-    child = spawn(launch.command, launch.args, {
-      cwd,
-      env: launch.env,
-      shell: false,
-      windowsHide: true,
-      stdio: ["pipe", "pipe", "pipe"],
-    })
-    const processHandle = child
-    let tail = ""
-    const ready = new Promise<string>((resolve) => {
-      processHandle.stderr?.on("data", (chunk: Buffer) => {
-        tail = (tail + chunk.toString("utf8")).slice(-4096)
-        if (tail.includes(launch.ready)) resolve("ready")
-      })
-    })
-    processHandle.stdout?.resume()
-    processHandle.stdin?.on("error", () => {})
-    const exited = new Promise<string>((resolve) => {
-      processHandle.once("error", () => resolve("spawn-error"))
-      processHandle.once("exit", (code, signal) => resolve(`exit:${code}:${signal}`))
-    })
-    let status = await bounded(Promise.race([ready, exited]), 60_000)
-    const openStdinMs = Date.now() - started
-    if (status === "timeout") {
-      processHandle.stdin?.end()
-      status = `after-eof:${await bounded(Promise.race([ready, exited]), 5000)}`
-    }
-    console.info(
-      "Windows supervisor comparison:",
-      JSON.stringify({
-        mode,
-        status,
-        openStdinMs,
-        trace: await readFile(trace, "utf8").catch(() => "absent"),
-      }),
-    )
-    return status
-  } finally {
-    if (child?.pid && child.exitCode === null && child.signalCode === null) {
-      spawnSync(
-        join(environment.SystemRoot ?? "", "System32", "taskkill.exe"),
-        ["/pid", String(child.pid), "/t", "/f"],
-        {
-          stdio: "ignore",
-          windowsHide: true,
-          timeout: 5000,
-        },
-      )
-    }
-    await rm(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
-  }
-}
-
-test.skipIf(process.platform !== "win32")(
-  "compares Windows supervisor readiness while ACP stdin remains open",
-  async () => {
-    const environment: NodeJS.ProcessEnv = {}
-    for (const key of [
-      "PATH",
-      "SystemRoot",
-      "WINDIR",
-      "TMP",
-      "TEMP",
-      "USERPROFILE",
-      "APPDATA",
-      "LOCALAPPDATA",
-    ]) {
-      if (process.env[key] !== undefined) environment[key] = process.env[key]
-    }
-    for (const mode of ["original", "empty-pipeline"]) {
-      const status = await supervisorReadiness(mode, environment)
-      if (mode === "empty-pipeline") expect(status).toBe("ready")
-    }
-  },
-  150_000,
-)
-
 describe("read-only provider connection probe", () => {
   test("checks a local signed-in agent with an isolated JSON request after Jev succeeds", async () => {
     const directory = await mkdtemp(join(tmpdir(), "local-probe-"))
@@ -173,9 +53,9 @@ describe("read-only provider connection probe", () => {
         JEV_ARGUMENTS_AGENT: JSON.stringify(argumentsAgent),
       })
       const result = await probeProviders(config, { fetch: async () => jevResponse() })
-      if (!result.ok && tracing) {
-        console.error(
-          "Windows local provider probe failure:",
+      if (tracing) {
+        console.info(
+          "Windows local provider probe:",
           JSON.stringify({
             result,
             supervisor: await readFile(trace, "utf8").catch(() => "absent"),
