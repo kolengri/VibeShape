@@ -18,6 +18,18 @@ describe("Jev adapter boundaries", () => {
     ])
       expect(() => readConfiguration(env)).toThrow("Invalid Jev environment")
   })
+  it("validates local helper descriptors and excludes simultaneous API helpers", () => {
+    const agent = { command: "codex-acp", args: [] }
+    const env = { TYPESAFE_API_KEY: "test", JEV_ARGUMENTS_AGENT: JSON.stringify(agent) }
+    expect(readConfiguration(env).argumentsAgent).toEqual(agent)
+    for (const extra of [
+      { JEV_ARGUMENTS_AGENT: "not-json" },
+      { JEV_ARGUMENTS_AGENT: JSON.stringify({ kind: "jev", settings: {} }) },
+      { JEV_ARGUMENTS_ENDPOINT: "https://helper.test/completions", JEV_ARGUMENTS_MODEL: "helper" },
+      { JEV_ARGUMENTS_API_KEY: "unused-helper-key" },
+    ])
+      expect(() => readConfiguration({ ...env, ...extra })).toThrow("Invalid Jev environment")
+  })
   it("accepts a local helper and rejects credential-bearing or insecure remote URLs", () => {
     const env = {
       TYPESAFE_API_KEY: "test",

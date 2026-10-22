@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { assistantExternalAgentSchema } from "./assistant-agents"
 
 export const JEV_IMAGE_CONSTRAINTS = {
   mimeTypes: ["image/png", "image/jpeg"],
@@ -46,7 +47,7 @@ const endpoint = z
     }
   })
 
-// Persistable settings exclude credentials and executable paths.
+// Persistable settings exclude credentials; helper executables use the native agent contract.
 export const assistantJevSettingsSchema = z
   .strictObject({
     model: model.default("jev-1.14.0"),
@@ -54,10 +55,12 @@ export const assistantJevSettingsSchema = z
     maxSteps: z.number().int().min(1).max(48).default(24),
     minConfidence: z.number().min(0).max(1).default(0.5),
     timeoutMs: z.number().int().min(1000).max(120_000).default(60_000),
+    argumentsAgent: assistantExternalAgentSchema.optional(),
     argumentsEndpoint: endpoint.optional(),
     argumentsModel: model.optional(),
   })
   .refine((value) => Boolean(value.argumentsEndpoint) === Boolean(value.argumentsModel))
+  .refine((value) => !value.argumentsAgent || !value.argumentsEndpoint)
 
 export const assistantJevAgentSchema = z.strictObject({
   kind: z.literal("jev"),

@@ -50,6 +50,25 @@ function deferred<T = void>() {
   })
   return { promise, resolve }
 }
+async function openSettings(configuration: ReactNode) {
+  show(
+    <AssistantPanel
+      open
+      projectName="Bracket"
+      messages={[]}
+      busy={false}
+      canSend={false}
+      configuration={configuration}
+      error={null}
+      storageFailed={false}
+      onClose={() => {}}
+      onSend={async () => {}}
+      onCancel={async () => {}}
+      onReset={async () => {}}
+    />,
+  )
+  await userEvent.click(screen.getByRole("button", { name: "AI settings" }))
+}
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false)
@@ -68,6 +87,119 @@ afterEach(() => {
 })
 
 describe("assistant connection settings", () => {
+  it.each(["Jev (TypeSafe)", "Codex"])(
+    "closes settings after %s connects successfully and restores trigger focus",
+    async (agent) => {
+      const pending = deferred<boolean>()
+      const chat = {
+        connect: vi.fn().mockReturnValue(pending.promise),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      }
+      await openSettings(
+        <NativeAgentConfiguration chat={chat} connecting={false} connected={false} />,
+      )
+      await choose("Agent", agent)
+      const form = screen.getByRole("button", { name: "Connect agent" }).closest("form")
+      expect(form).toBeTruthy()
+      fireEvent.submit(form as HTMLFormElement)
+      fireEvent.submit(form as HTMLFormElement)
+      expect(chat.connect).toHaveBeenCalledTimes(1)
+      expect(screen.getByRole("dialog", { name: "AI settings" })).toBeTruthy()
+      expect(screen.getByRole("button", { name: "Connect agent" }).hasAttribute("disabled")).toBe(
+        true,
+      )
+      await act(async () => pending.resolve(true))
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "AI settings" }))
+    },
+  )
+
+  it.each(["Jev (TypeSafe)", "Codex"])(
+    "reports a false %s connection result, retains settings and clears the error on retry",
+    async (agent) => {
+      const retry = deferred<boolean>()
+      const chat = {
+        connect: vi.fn().mockResolvedValueOnce(false).mockReturnValue(retry.promise),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      }
+      await openSettings(
+        <NativeAgentConfiguration chat={chat} connecting={false} connected={false} />,
+      )
+      await choose("Agent", agent)
+      if (agent === "Jev (TypeSafe)")
+        fireEvent.change(screen.getByLabelText("TypeSafe API key", { exact: true }), {
+          target: { value: "retry-key" },
+        })
+      const connect = screen.getByRole("button", { name: "Connect agent" })
+      await userEvent.click(connect)
+      const dialog = screen.getByRole("dialog")
+      expect(within(dialog).getByRole("alert").textContent).toContain("Reconnect and try again")
+      expect(connect.hasAttribute("disabled")).toBe(false)
+      expect(screen.getByRole("combobox", { name: "Agent" }).textContent).toContain(agent)
+      if (agent === "Jev (TypeSafe)")
+        expect(
+          (screen.getByLabelText("TypeSafe API key", { exact: true }) as HTMLInputElement).value,
+        ).toBe("retry-key")
+      await userEvent.click(connect)
+      expect(within(dialog).queryByRole("alert")).toBeNull()
+      expect(connect.hasAttribute("disabled")).toBe(true)
+      await act(async () => retry.resolve(true))
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+      expect(chat.connect).toHaveBeenCalledTimes(2)
+    },
+  )
+
+  it("reports a false API connection result and retains credentials until retry succeeds", async () => {
+    saveApiPreferences({
+      endpoint: "https://api.example.test/v1/chat/completions",
+      model: "configured-model",
+      apiKey: "",
+      stream: true,
+    })
+    const retry = deferred<boolean>()
+    const chat = {
+      connect: vi.fn().mockResolvedValueOnce(false).mockReturnValue(retry.promise),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }
+    await openSettings(<ApiConfigurationForm chat={chat} busy={false} connected={false} />)
+    const key = screen.getByLabelText("API key (optional)", { exact: true }) as HTMLInputElement
+    fireEvent.change(key, { target: { value: "retry-api-key" } })
+    const connect = screen.getByRole("button", { name: "Connect and enable project access" })
+    await userEvent.click(connect)
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByRole("alert")).toBeTruthy()
+    expect(connect.hasAttribute("disabled")).toBe(false)
+    expect(key.value).toBe("retry-api-key")
+    await userEvent.click(connect)
+    expect(within(dialog).queryByRole("alert")).toBeNull()
+    expect(key.value).toBe("retry-api-key")
+    await act(async () => retry.resolve(true))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(chat.connect).toHaveBeenCalledTimes(2)
+  })
+
+  it("closes API settings only after the pending connection is accepted", async () => {
+    saveApiPreferences({
+      endpoint: "https://api.example.test/v1/chat/completions",
+      model: "configured-model",
+      apiKey: "",
+      stream: true,
+    })
+    const pending = deferred<boolean>()
+    const chat = {
+      connect: vi.fn().mockReturnValue(pending.promise),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }
+    await openSettings(<ApiConfigurationForm chat={chat} busy={false} connected={false} />)
+    const connect = screen.getByRole("button", { name: "Connect and enable project access" })
+    await userEvent.click(connect)
+    fireEvent.submit(connect.closest("form") as HTMLFormElement)
+    expect(chat.connect).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    await act(async () => pending.resolve(true))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+
   it("renders each advertised configuration once and keeps the confirmed reasoning value while a change is pending", async () => {
     const pending = deferred()
     const chat = {
@@ -491,6 +623,65 @@ describe("assistant connection settings", () => {
     expect(chat.disconnect).not.toHaveBeenCalled()
   })
 
+  it.each(["Codex", "Claude Code", "OpenCode"])(
+    "selects %s as a local argument helper without API fields",
+    async (name) => {
+      const chat = {
+        connect: vi.fn().mockResolvedValue(true),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      }
+      show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+      await choose("Agent", "Jev (TypeSafe)")
+      await choose("Argument model", name)
+      expect(screen.queryByLabelText("Argument model endpoint", { exact: true })).toBeNull()
+      expect(screen.queryByLabelText("Argument model API key", { exact: true })).toBeNull()
+      await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+      const commands: Record<string, string> = {
+        Codex: "codex-acp",
+        "Claude Code": "claude-agent-acp",
+        OpenCode: "opencode",
+      }
+      expect(chat.connect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          settings: expect.objectContaining({
+            argumentsAgent: { command: commands[name], args: name === "OpenCode" ? ["acp"] : [] },
+          }),
+        }),
+        {},
+      )
+      expect(readAssistantPreferences()?.agent).toEqual(chat.connect.mock.calls[0]?.[0])
+    },
+  )
+
+  it("reuses the saved custom agent as a helper and retains it when testing a connected form", async () => {
+    const original = { command: "/private/custom-acp", args: ["--acp", "literal argument"] }
+    saveAssistantPreferences({ version: 1, agent: original })
+    const chat = {
+      connect: vi.fn().mockResolvedValue(true),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      testConnection: vi
+        .fn()
+        .mockResolvedValue({ ok: true, checks: ["agent", "jev", "arguments"] }),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    expect(screen.getByRole("combobox", { name: "Argument model" }).textContent).toContain(
+      "Saved custom ACP agent",
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+    expect(chat.connect).toHaveBeenCalledWith(
+      expect.objectContaining({ settings: expect.objectContaining({ argumentsAgent: original }) }),
+      {},
+    )
+    cleanup()
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={true} />)
+    await userEvent.click(screen.getByRole("button", { name: "Test connection" }))
+    expect(chat.testConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ settings: expect.objectContaining({ argumentsAgent: original }) }),
+      {},
+    )
+  })
+
   it("retains both Jev keys after a reported connection failure and resends them on retry", async () => {
     let connected = false
     const chat = {
@@ -499,6 +690,7 @@ describe("assistant connection settings", () => {
     }
     show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
     await choose("Agent", "Jev (TypeSafe)")
+    await choose("Argument model", "API connection (advanced)")
     for (const [label, value] of [
       ["TypeSafe API key", "test-typesafe-key"],
       ["Argument model endpoint", "https://helper.test/v1/chat/completions"],
@@ -535,6 +727,7 @@ describe("assistant connection settings", () => {
     }
     show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
     await choose("Agent", "Jev (TypeSafe)")
+    await choose("Argument model", "API connection (advanced)")
     fireEvent.change(screen.getByLabelText("Argument model endpoint", { exact: true }), {
       target: { value: "https://helper.test/v1/chat/completions" },
     })

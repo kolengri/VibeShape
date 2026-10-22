@@ -1,10 +1,7 @@
 import type { AssistantAgent } from "@vibeshape/automation-api/assistant"
+import { assistantAgentPresets } from "@vibeshape/automation-api/assistant-agents"
 
-export const agentPresets = [
-  { id: "claude", command: "claude-agent-acp", args: [] },
-  { id: "codex", command: "codex-acp", args: [] },
-  { id: "opencode", command: "opencode", args: ["acp"] },
-] as const
+export const agentPresets = assistantAgentPresets
 
 export function agentPresetId(agent: AssistantAgent) {
   if ("kind" in agent) return "jev"

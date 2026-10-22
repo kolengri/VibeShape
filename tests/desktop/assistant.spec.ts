@@ -144,7 +144,7 @@ async function connectFixture(
       ]),
     )
   await settings(page).getByRole("button", { name: "Connect agent", exact: true }).click()
-  await settings(page).getByRole("button", { name: "Close AI settings", exact: true }).click()
+  await expect(settings(page)).toHaveCount(0)
   await ready(page)
 }
 
@@ -772,7 +772,7 @@ test("native ACP relay replacement and project channels preserve external generi
       .getByRole("textbox", { name: "Arguments (JSON array)", exact: true })
       .fill(JSON.stringify(agent.args))
     await settings(page).getByRole("button", { name: "Connect agent", exact: true }).click()
-    await settings(page).getByRole("button", { name: "Close AI settings", exact: true }).click()
+    await expect(settings(page)).toHaveCount(0)
     await ready(page)
     const first = scopeSchema.parse(await page.evaluate("globalThis.nativeChatSnapshot"))
     const input = { projectId: first.projectId, agent }

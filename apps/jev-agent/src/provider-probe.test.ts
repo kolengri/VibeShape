@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import type { Fetch } from "@typesafe-ai/sdk"
 import { readConfiguration } from "./configuration"
 import { probeProviders } from "./provider-probe"
@@ -29,6 +33,34 @@ const helperResponse = (content = '{"ok":true}') =>
   })
 
 describe("read-only provider connection probe", () => {
+  test("checks a local signed-in agent with an isolated JSON request after Jev succeeds", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "local-probe-"))
+    try {
+      const script = fileURLToPath(
+        new URL("../../../tests/desktop/fixtures/argument-agent.cjs", import.meta.url),
+      )
+      const argumentsAgent = {
+        command: process.execPath,
+        args: [script, "probe", join(directory, "receipt")],
+      }
+      const config = readConfiguration({
+        TYPESAFE_API_KEY: "test-key",
+        JEV_ARGUMENTS_AGENT: JSON.stringify(argumentsAgent),
+      })
+      expect(await probeProviders(config, { fetch: async () => jevResponse() })).toEqual({
+        ok: true,
+        checks: ["agent", "jev", "arguments"],
+      })
+      expect(
+        await probeProviders(
+          { ...config, argumentsAgent: { command: "/missing-agent", args: [] } },
+          { fetch: async () => jevResponse() },
+        ),
+      ).toEqual({ ok: false, code: "request-failed", stage: "arguments" })
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }, 65_000)
   test.each([false, true])(
     "validates the configured providers with minimal isolated requests (helper=%s)",
     async (helper) => {

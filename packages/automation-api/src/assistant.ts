@@ -1,5 +1,9 @@
 import { documentIdSchema, featureIdSchema, sketchIdSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
+import { assistantExternalAgentSchema } from "./assistant-agents"
+
+export { assistantExternalAgentSchema } from "./assistant-agents"
+
 import { assistantJevAgentSchema, assistantJevCredentialsSchema } from "./assistant-jev"
 import { utf8StringBytes } from "./query-byte-budget"
 
@@ -190,22 +194,6 @@ export function assistantQuestionAnswersMatch(
   })
 }
 
-export const assistantExternalAgentSchema = z.strictObject({
-  command: z
-    .string()
-    .trim()
-    .min(1)
-    .max(4096)
-    .refine((value) => !value.includes("\0")),
-  args: z
-    .array(
-      z
-        .string()
-        .max(4096)
-        .refine((value) => !value.includes("\0")),
-    )
-    .max(64),
-})
 export const assistantAgentSchema = z.union([assistantExternalAgentSchema, assistantJevAgentSchema])
 export const assistantConnectionTestSchema = z
   .strictObject({

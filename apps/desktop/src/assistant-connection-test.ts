@@ -126,9 +126,13 @@ export function createAssistantConnectionTests(options: AssistantServiceOptions)
     const fail = (code: AssistantErrorCode) => rejectFailure(new ProbeFailure(code))
     const abort = () => fail("stale-session")
     signal.addEventListener("abort", abort, { once: true })
+    const windowsHelper =
+      process.platform === "win32" &&
+      "kind" in input.agent &&
+      Boolean(input.agent.settings.argumentsAgent)
     const timer = setTimeout(
       () => fail("timeout"),
-      Math.min(options.connectionTestTimeoutMs ?? 30_000, 60_000),
+      Math.min(options.connectionTestTimeoutMs ?? (windowsHelper ? 60_000 : 30_000), 60_000),
     )
     try {
       const launch = resolveProbeLaunch(options, input)
@@ -143,7 +147,9 @@ export function createAssistantConnectionTests(options: AssistantServiceOptions)
         await waitForAssistantSpawn(processChild)
         if (finished) throw new ProbeFailure("stale-session")
         if ("kind" in input.agent) {
-          return providerResult(Boolean(input.agent.settings.argumentsEndpoint))
+          return providerResult(
+            Boolean(input.agent.settings.argumentsEndpoint || input.agent.settings.argumentsAgent),
+          )
         }
         const external = initializeProbeAgent(processChild, options.applicationVersion, fail)
         connection = external.connection

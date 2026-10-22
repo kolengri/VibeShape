@@ -9,8 +9,12 @@ List tools and resources. Read `vibeshape://session` for the actual `editorUrl` 
 ## Native desktop application
 
 The native chat offers **Jev (TypeSafe)** as a separate bundled agent. Its settings distinguish the
-TypeSafe decision model from an optional OpenAI-compatible argument model. No external Bun or
-custom executable path is required for this choice. API keys are entered in native settings and
+TypeSafe decision model from the **Argument model** helper. Choose Codex, Claude Code, OpenCode or
+the saved custom ACP agent to reuse its existing sign-in; API configuration remains an advanced
+option. The helper only fills JSON arguments in a separate session without the CAD MCP attachment;
+it is not another CAD agent or a replacement connection. Installed/authenticated availability must
+be checked with **Test connection**; selecting a preset does not establish access. No external Bun
+or custom executable path is required for the bundled Jev controller itself. API keys are entered in native settings and
 kept only for this project during the app session; never request them in chat or add them to project
 files. Reconnection reuses this project's key, not a key entered in another project. Jev uses the
 same project-bound MCP attachment and authority rules as other embedded agents.

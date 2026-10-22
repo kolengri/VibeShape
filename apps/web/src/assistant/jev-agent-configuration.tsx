@@ -4,18 +4,33 @@ import {
 } from "@vibeshape/automation-api/assistant-jev"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { type FormEvent, useRef, useState } from "react"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
+import { useAssistantSettingsSaved } from "./assistant-settings-dialog"
+import { agentPresetId, agentPresets } from "./connection-presets"
 import { NativeAgentActions } from "./native-agent-actions"
 import type { createNativeChatController } from "./native-chat-controller"
 
 function initialSettings() {
   const agent = readAssistantPreferences()?.agent
-  return agent && "kind" in agent ? agent.settings : assistantJevSettingsSchema.parse({})
+  return agent && "kind" in agent
+    ? agent.settings
+    : assistantJevSettingsSchema.parse(agent ? { argumentsAgent: agent } : {})
 }
 
-function configuration(data: FormData) {
+function argumentAgent(choice: string, initial: ReturnType<typeof initialSettings>) {
+  if (choice === "saved") return { argumentsAgent: initial.argumentsAgent }
+  const preset = agentPresets.find((entry) => entry.id === choice)
+  return preset ? { argumentsAgent: { command: preset.command, args: [...preset.args] } } : {}
+}
+
+function configuration(
+  data: FormData,
+  choice: string,
+  initial: ReturnType<typeof initialSettings>,
+) {
   const optional = (name: string) => {
     const value = data.get(name)
     return typeof value === "string" && value.trim() ? value.trim() : undefined
@@ -25,6 +40,7 @@ function configuration(data: FormData) {
   const apiKey = optional("apiKey")
   const argumentsApiKey = optional("argumentsApiKey")
   const settings = assistantJevSettingsSchema.safeParse({
+    ...argumentAgent(choice, initial),
     model: data.get("model"),
     images: true,
     maxSteps: Number(data.get("maxSteps")),
@@ -55,7 +71,17 @@ type JevConfigurationProps = {
 }
 
 function useJevConnectionForm({ chat, connected, pending, testConnection }: JevConfigurationProps) {
+  const onSaved = useAssistantSettingsSaved()
   const [initial] = useState(initialSettings)
+  const [argumentChoice, setArgumentChoice] = useState(() =>
+    initial.argumentsAgent
+      ? agentPresetId(initial.argumentsAgent) === "custom"
+        ? "saved"
+        : agentPresetId(initial.argumentsAgent)
+      : initial.argumentsEndpoint
+        ? "api"
+        : "none",
+  )
   const active = useRef(false)
   const formRef = useRef<HTMLFormElement>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -67,17 +93,22 @@ function useJevConnectionForm({ chat, connected, pending, testConnection }: JevC
     event.preventDefault()
     if (active.current || locked) return
     const form = event.currentTarget
-    const parsed = configuration(new window.FormData(form))
+    const parsed = configuration(new window.FormData(form), argumentChoice, initial)
     setInvalid(!parsed)
     if (!parsed) return
     active.current = true
     setSubmitting(true)
     setFailed(false)
-    setStorageFailed(!saveAssistantPreferences({ version: 1, agent: parsed.agent }))
+    const saved = saveAssistantPreferences({ version: 1, agent: parsed.agent })
+    setStorageFailed(!saved)
     try {
-      if (await chat.connect(parsed.agent, parsed.credentials))
+      const accepted = await chat.connect(parsed.agent, parsed.credentials)
+      setFailed(!accepted)
+      if (accepted) {
         for (const input of form.querySelectorAll<HTMLInputElement>('input[type="password"]'))
           input.value = ""
+        if (saved) onSaved?.()
+      }
     } catch {
       setFailed(true)
     } finally {
@@ -90,18 +121,41 @@ function useJevConnectionForm({ chat, connected, pending, testConnection }: JevC
     const data = new window.FormData(formRef.current)
     for (const input of formRef.current.querySelectorAll<HTMLInputElement>("input:disabled[name]"))
       data.set(input.name, input.value)
-    const parsed = configuration(data)
+    const parsed = configuration(data, argumentChoice, initial)
     setInvalid(!parsed)
     if (parsed) await testConnection(parsed.agent, parsed.credentials)
   }
-  return { initial, formRef, submitting, invalid, failed, storageFailed, locked, submit, test }
+  return {
+    initial,
+    argumentChoice,
+    setArgumentChoice,
+    formRef,
+    submitting,
+    invalid,
+    failed,
+    storageFailed,
+    locked,
+    submit,
+    test,
+  }
 }
 
 export function JevAgentConfiguration(props: JevConfigurationProps) {
   const t = useTranslations("app.assistant")
   const { connected, pending, testing, disconnect, clearTest } = props
-  const { initial, formRef, submitting, invalid, failed, storageFailed, locked, submit, test } =
-    useJevConnectionForm(props)
+  const {
+    initial,
+    argumentChoice,
+    setArgumentChoice,
+    formRef,
+    submitting,
+    invalid,
+    failed,
+    storageFailed,
+    locked,
+    submit,
+    test,
+  } = useJevConnectionForm(props)
   return (
     <form
       ref={formRef}
@@ -128,32 +182,53 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
           maxLength={4096}
           description={t("jev.keyNotice")}
         />
-        <details open={Boolean(initial.argumentsEndpoint)}>
-          <summary className="cursor-pointer text-xs font-medium">{t("jev.argumentModel")}</summary>
-          <div className="mt-3 grid gap-3">
-            <p className="text-xs text-muted-foreground">{t("jev.argumentNotice")}</p>
-            <TextField
-              name="argumentsEndpoint"
-              type="url"
-              label={t("jev.endpoint")}
-              defaultValue={initial.argumentsEndpoint}
-              maxLength={2048}
-            />
-            <TextField
-              name="argumentsModel"
-              label={t("jev.helperModel")}
-              defaultValue={initial.argumentsModel}
-              maxLength={128}
-            />
-            <TextField
-              name="argumentsApiKey"
-              type="password"
-              label={t("jev.helperKey")}
-              autoComplete="off"
-              maxLength={4096}
-            />
-          </div>
-        </details>
+        <div className="grid gap-3">
+          <p className="text-xs text-muted-foreground">{t("jev.argumentNotice")}</p>
+          <SelectField
+            label={t("jev.argumentModel")}
+            value={argumentChoice}
+            disabled={locked}
+            onValueChange={(value) => {
+              setArgumentChoice(value)
+              clearTest()
+            }}
+          >
+            <SelectOption value="none">{t("jev.noArgumentAgent")}</SelectOption>
+            {agentPresets.map((preset) => (
+              <SelectOption key={preset.id} value={preset.id}>
+                {t(`agents.${preset.id}`)}
+              </SelectOption>
+            ))}
+            {initial.argumentsAgent && agentPresetId(initial.argumentsAgent) === "custom" && (
+              <SelectOption value="saved">{t("jev.savedAgent")}</SelectOption>
+            )}
+            <SelectOption value="api">{t("jev.apiArgumentAgent")}</SelectOption>
+          </SelectField>
+          {argumentChoice === "api" && (
+            <>
+              <TextField
+                name="argumentsEndpoint"
+                type="url"
+                label={t("jev.endpoint")}
+                defaultValue={initial.argumentsEndpoint}
+                maxLength={2048}
+              />
+              <TextField
+                name="argumentsModel"
+                label={t("jev.helperModel")}
+                defaultValue={initial.argumentsModel}
+                maxLength={128}
+              />
+              <TextField
+                name="argumentsApiKey"
+                type="password"
+                label={t("jev.helperKey")}
+                autoComplete="off"
+                maxLength={4096}
+              />
+            </>
+          )}
+        </div>
         <details>
           <summary className="cursor-pointer text-xs font-medium">{t("jev.advanced")}</summary>
           <div className="mt-3 grid gap-3">

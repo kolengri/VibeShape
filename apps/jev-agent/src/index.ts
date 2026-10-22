@@ -35,8 +35,9 @@ async function main() {
     })
     const agent = createJevAgent(configuration, {
       decide: createJevDecision(typesafe, configuration.model),
-      completeArguments:
-        configuration.argumentsEndpoint && configuration.argumentsModel
+      completeArguments: configuration.argumentsAgent
+        ? createArgumentCompleter({ agent: configuration.argumentsAgent })
+        : configuration.argumentsEndpoint && configuration.argumentsModel
           ? createArgumentCompleter({
               endpoint: configuration.argumentsEndpoint,
               model: configuration.argumentsModel,

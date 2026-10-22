@@ -21,6 +21,11 @@ const launchCredentialsSchema = assistantJevCredentialsSchema.required({ apiKey:
 
 const operatingSystemVariables = new Set([
   "HOME",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "CODEX_HOME",
+  "CLAUDE_CONFIG_DIR",
   "LOGNAME",
   "USER",
   "USERNAME",
@@ -62,6 +67,7 @@ function jevEnvironment(
     JEV_MIN_CONFIDENCE: String(settings.minConfidence),
     JEV_TIMEOUT_MS: String(settings.timeoutMs),
   }
+  if (settings.argumentsAgent) env.JEV_ARGUMENTS_AGENT = JSON.stringify(settings.argumentsAgent)
   if (settings.argumentsEndpoint) {
     env.JEV_ARGUMENTS_ENDPOINT = settings.argumentsEndpoint
     env.JEV_ARGUMENTS_MODEL = settings.argumentsModel

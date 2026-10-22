@@ -56,13 +56,18 @@ retargeting it.
 ## Native Jev connection
 
 **Agent → Jev (TypeSafe)** is a distinct bundled native adapter, with TypeSafe model/key settings
-and a separate optional argument-model endpoint, model and key. It does not ask for an executable
-or source path. Provider keys are connection-only and kept in host memory per project for the app
+and an optional **Argument model** selector for Codex, Claude Code, OpenCode or the saved custom
+ACP agent, using that agent's existing sign-in. The last saved custom command is reused without
+manual re-entry. Presets do not assert installed/authenticated availability; **Test connection**
+checks the selected helper with a small JSON inference. API fields appear only under the advanced
+API choice. The bundled Jev adapter does not ask for an executable or source path. Provider keys are connection-only and kept in host memory per project for the app
 session; only non-secret settings persist. Recovery reuses the same project's cached keys, never
 keys entered in another project. The form explains the difference between selecting CAD actions
 and completing their open parameters. Connection configuration and credentials open in an **AI settings**
-modal; closing it preserves the current form and connection. Agent-advertised mode, model, reasoning,
-collaboration and speed choices live in compact composer menus. Their chips show the confirmed selected
+modal; closing it preserves the current form and connection. Successful saving and connection close
+the modal and restore focus to its trigger. Rejected or pending connections and settings-storage
+failures keep it open for correction. Agent-advertised mode, model, reasoning, collaboration and speed
+choices live in compact composer menus. Their chips show the confirmed selected
 value; hover or keyboard focus reveals the setting name and full value. A shared pending lock prevents
 concurrent changes, and only currently advertised choices are offered. PNG/JPEG images are enabled on native
 Jev connections, including previously saved configurations, without a separate opt-in. The composer

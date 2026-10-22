@@ -5,8 +5,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vibeshape/ui/components/dialog"
-import { type ReactNode, useCallback, useRef, useState } from "react"
+import { createContext, type ReactNode, useCallback, useContext, useRef, useState } from "react"
 import { createPortal } from "react-dom"
+
+const AssistantSettingsSavedContext = createContext<(() => void) | undefined>(undefined)
+
+export function useAssistantSettingsSaved() {
+  return useContext(AssistantSettingsSavedContext)
+}
 
 export function useAssistantSettings(chatOpen: boolean) {
   const [open, setOpen] = useState(false)
@@ -72,7 +78,12 @@ export function AssistantSettingsDialog({
   return (
     <>
       <div hidden ref={park} />
-      {createPortal(children, container)}
+      {createPortal(
+        <AssistantSettingsSavedContext.Provider value={() => onOpenChange(false)}>
+          {children}
+        </AssistantSettingsSavedContext.Provider>,
+        container,
+      )}
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           aria-modal="true"
