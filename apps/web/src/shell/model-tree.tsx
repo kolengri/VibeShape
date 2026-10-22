@@ -943,7 +943,6 @@ function ModelTreeGroupItem({
 
 type ModelTreeProps = {
   onSketchPreselectionChange?: ((id: SketchId | null) => void) | undefined
-  onCreateSketch?: (() => void) | undefined
   origin?:
     | Readonly<{
         selected: ViewerOriginPlane | null
@@ -2150,6 +2149,7 @@ function BodiesGroup({
 function SketchesGroup(props: ModelTreeHistoryBranchProps) {
   const [sketchesExpanded, setSketchesExpanded] = useState(true)
   const sketches = props.view.rows.filter((row) => row.kind === "sketch")
+  if (sketches.length === 0) return null
   return (
     <div role="none">
       <div className="flex min-w-0 items-center pr-1">
@@ -2197,25 +2197,6 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
               />
             </div>
           ))}
-          {sketches.length === 0 && (
-            <div className="grid gap-2 py-2 pl-14 pr-2">
-              <p className="text-xs text-muted-foreground">{props.t("noSketches")}</p>
-              {props.onCreateSketch && (
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={
-                    props.controller.status !== "ready" ||
-                    props.controller.report?.mode !== "read-write" ||
-                    Boolean(props.authoredMetadataBlocked)
-                  }
-                  onClick={props.onCreateSketch}
-                >
-                  {props.t("createSketch")}
-                </Button>
-              )}
-            </div>
-          )}
         </fieldset>
       )}
     </div>

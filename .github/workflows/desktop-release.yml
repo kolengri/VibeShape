@@ -47,6 +47,12 @@ jobs:
     with:
       source_ref: ${{ needs.preflight.outputs.source-commit }}
 
+  windows-native:
+    needs: preflight
+    uses: ./.github/workflows/windows-desktop.yml
+    with:
+      source_ref: ${{ needs.preflight.outputs.source-commit }}
+
   website:
     needs: preflight
     runs-on: ubuntu-24.04
@@ -68,7 +74,7 @@ jobs:
           bun run test:site
 
   build:
-    needs: [preflight, verify, website]
+    needs: [preflight, verify, windows-native, website]
     runs-on: macos-15
     timeout-minutes: 45
     permissions:
