@@ -1,6 +1,8 @@
 import type { SketchId } from "@vibeshape/domain"
 import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import { useTranslations } from "@vibeshape/i18n"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { SkipBack, SkipForward, StepBack, StepForward } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
@@ -209,6 +211,7 @@ export function HistoryNavigationControls() {
     disabled,
     seek,
   } = useHistoryNavigation()
+  useReportActivity(pending)
   const controls = [
     { key: "first", icon: SkipBack, target: 0, disabled: position === 0 },
     {
@@ -259,9 +262,13 @@ export function HistoryNavigationControls() {
       >
         {t("positionDescription", { position: value, total: items.length, item: description })}
       </span>
-      <span className={failed ? "text-xs text-destructive" : "sr-only"} role="status">
-        {failed ? t("failed") : pending ? t("pending") : ""}
-      </span>
+      {failed ? (
+        <Alert>{t("failed")}</Alert>
+      ) : (
+        <span className="sr-only" role="status">
+          {pending ? t("pending") : ""}
+        </span>
+      )}
     </fieldset>
   )
 }

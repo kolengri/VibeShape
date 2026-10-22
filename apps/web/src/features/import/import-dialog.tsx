@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -174,11 +175,7 @@ function ImportTask({
           {t("inspecting")}
         </p>
       )}
-      {state.message && (
-        <p role="alert" className="text-sm text-destructive">
-          {state.message}
-        </p>
-      )}
+      {state.message && <Alert>{state.message}</Alert>}
       <DialogFooter>
         <Button
           type="button"

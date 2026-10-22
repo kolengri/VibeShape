@@ -384,6 +384,10 @@ export class SectionViewDecoration {
     this.#options.render()
   }
 
+  cancelInteraction() {
+    this.#finish(true)
+  }
+
   dispose() {
     this.#finish(false)
     const canvas = this.#options.canvas

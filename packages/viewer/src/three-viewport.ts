@@ -532,6 +532,7 @@ export type ViewerSketchProjectionBounds = Readonly<{
 export type { ViewerSection } from "./section-view"
 
 export type GeometryViewport = Readonly<{
+  cancelInteractions: () => void
   captureImage?: () => Promise<Blob>
   setSurfaceTextureBrush: (brush: ViewerSurfaceTextureBrush | null, active?: boolean) => void
   clearSketchProjection: () => void
@@ -1718,6 +1719,10 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #setCameraUp(up: ViewerVector3) {
     if (this.#camera.up.equals(new Vector3(...up))) return
+    this.#replaceOrbitControls(up)
+  }
+
+  #replaceOrbitControls(up?: ViewerVector3) {
     const target = this.#controls.target.clone()
     const navigationElement = this.#sketchNavigationElement
     this.#removeSketchNavigationPointerGuard()
@@ -1726,7 +1731,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.removeEventListener("start", this.#onControlsStart)
     this.#controls.removeEventListener("end", this.#onControlsEnd)
     this.#controls.dispose()
-    this.#camera.up.set(...up)
+    if (up) this.#camera.up.set(...up)
     // OrbitControls caches its orbit-axis transform at construction.
     this.#controls = this.#createOrbitControls(target, enabled)
     this.#sketchNavigationElement = null
@@ -2266,6 +2271,19 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#disposed) return
     this.#sketchProjection = null
     this.#render()
+  }
+
+  cancelInteractions() {
+    if (this.#disposed) return
+    this.#orientationInteraction.cancel()
+    this.#sectionDecoration.cancelInteraction()
+    this.#cancelSurfaceTextureStroke()
+    this.#cancelTranslationGesture()
+    this.#onSketchNavigationBlur()
+    this.#onNavigationBlur()
+    this.#pointerDown = null
+    // A fresh controls instance drops OrbitControls' private active-pointer state.
+    this.#replaceOrbitControls()
   }
 
   setInteractionMode(mode: ViewerInteractionMode) {

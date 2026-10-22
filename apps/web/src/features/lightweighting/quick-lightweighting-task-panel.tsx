@@ -1,4 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useMemo, useRef } from "react"
@@ -148,6 +150,7 @@ export function QuickLightweightingTaskPanel({
   })
   useRegisterTaskSubmission(state.apply, "lightweighting:quick")
   const applying = state.activity === "applying"
+  useReportActivity(state.activity !== "idle")
   useLightweightingViewportPreview(state.ready, onPreviewChange, state.setPreviewReady)
   return (
     <section
@@ -302,11 +305,7 @@ function QuickPreview({ state, mainViewport }: { state: QuickState; mainViewport
             : t(state.activity)}
         </p>
       )}
-      {state.message && (
-        <p role="alert" className="text-sm text-destructive">
-          {state.message}
-        </p>
-      )}
+      {state.message && <Alert>{state.message}</Alert>}
       {state.ready && (
         <>
           <QuickLightweightingResults result={state.ready.result} />

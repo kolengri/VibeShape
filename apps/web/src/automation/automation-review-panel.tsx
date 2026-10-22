@@ -6,6 +6,7 @@ import type { SurfaceTextureReviewInput } from "@vibeshape/automation-host/surfa
 import type { CommandActor, DocumentCommand } from "@vibeshape/domain/commands"
 import { quantitySchema } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { TaskPanelHeader } from "../components/task-panel-header"
 import { useSurfaceTexturePreviewContext } from "../features/surface-texture/surface-texture-preview-context"
 import { AssemblyAutomationReviewPanel } from "./assembly-review-panel"
@@ -206,11 +207,7 @@ function ReviewDiagnostic({ review }: { review: AutomationReviewState }) {
   const diagnosticMessage = review.diagnostic
     ? (messages[review.diagnostic] ?? "applyFailed")
     : "applyFailed"
-  return (
-    <p className="mb-3 text-sm text-destructive" role="status">
-      {t(diagnosticMessage)}
-    </p>
-  )
+  return <Alert aria-live="polite">{t(diagnosticMessage)}</Alert>
 }
 
 function MetadataDetails({ metadata }: { metadata: NonNullable<DraftReviewInput["metadata"]> }) {
@@ -403,9 +400,7 @@ function CadReviewPanel({
         </section>
         <Measurements preview={input.preview} />
         {commands.some(isDestructiveCommand) ? (
-          <p className="mt-4 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-            {t("destructiveWarning")}
-          </p>
+          <Alert aria-live="polite">{t("destructiveWarning")}</Alert>
         ) : null}
       </section>
     </section>

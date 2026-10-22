@@ -6,15 +6,15 @@
   color: transparent;
   background-image: linear-gradient(
     110deg,
-    var(--muted-foreground) 30%,
+    var(--primary) 30%,
     var(--primary) 45%,
     var(--foreground) 50%,
     var(--primary) 55%,
-    var(--muted-foreground) 70%
+    var(--primary) 70%
   );
   background-size: 240% 100%;
   background-clip: text;
-  animation: application-print 2.4s ease-in-out infinite;
+  animation: application-print 1.4s ease-in-out infinite;
 }
 
 @keyframes application-print {

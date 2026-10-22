@@ -80,6 +80,37 @@ function fixture(failWrites = false) {
 }
 
 describe("local project URLs", () => {
+  it.each(["success", "failure", "rejection"])(
+    "reports pending navigation until %s settles",
+    async (outcome) => {
+      const f = fixture()
+      const states: boolean[] = []
+      const unsubscribe = f.navigation.subscribePending(() =>
+        states.push(f.navigation.getPendingSnapshot()),
+      )
+      let finish = () => {}
+      f.setOpen(async (id) => {
+        await new Promise<void>((resolve) => {
+          finish = resolve
+        })
+        if (outcome === "rejection") throw new Error("Opening failed")
+        if (outcome === "failure") return { ok: false, diagnostic: { code: "document-not-found" } }
+        f.setActive(id)
+        return { ok: true }
+      })
+      f.pop(second)
+      expect(f.navigation.getPendingSnapshot()).toBe(true)
+      expect(f.active()).toBe(first)
+      await settle()
+      expect(f.navigation.getPendingSnapshot()).toBe(true)
+      finish()
+      await settle()
+      expect(f.navigation.getPendingSnapshot()).toBe(false)
+      expect(states).toEqual([true, false])
+      unsubscribe()
+      f.stop()
+    },
+  )
   it("accepts only one schema-valid ID and provides a recovery URL preserving other state", () => {
     expect(readProjectUrl("https://cad.test/?theme=dark")).toEqual({ kind: "default" })
     for (const query of ["project=", "project=no", `project=${first}&project=${second}`])
@@ -178,6 +209,8 @@ describe("local project URLs", () => {
 
   it("cancels an older pending destination and serializes the newest request", async () => {
     const f = fixture()
+    const states: boolean[] = []
+    f.navigation.subscribePending(() => states.push(f.navigation.getPendingSnapshot()))
     let finish!: () => void
     let firstSignal: AbortSignal | undefined
     f.setOpen(async (id, signal) => {
@@ -196,6 +229,7 @@ describe("local project URLs", () => {
     await settle()
     f.pop(third)
     expect(firstSignal?.aborted).toBe(true)
+    expect(f.navigation.getPendingSnapshot()).toBe(true)
     finish()
     await settle()
     expect(f.opens).toEqual([second, third])
@@ -203,6 +237,7 @@ describe("local project URLs", () => {
     expect(new URL(f.href()).searchParams.get("project")).toBe(third)
     expect(f.errors).toEqual([])
     expect(f.writes).toEqual([])
+    expect(states).toEqual([true, false])
     f.stop()
   })
 
@@ -232,6 +267,7 @@ describe("local project URLs", () => {
     await settle()
     f.stop()
     expect(signal?.aborted).toBe(true)
+    expect(f.navigation.getPendingSnapshot()).toBe(false)
     finish()
     await settle()
     f.pop(third)

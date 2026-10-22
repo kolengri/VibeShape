@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { type DocumentControllerState, dismissProjectNavigationError } from "./document-controller"
 import { projectRecoveryUrl } from "./project-navigation"
@@ -10,9 +11,7 @@ export function ProjectNavigationNotice({ controller }: { controller: DocumentCo
 
   return (
     <div className="fixed left-1/2 top-12 z-50 w-full max-w-lg -translate-x-1/2 rounded-md border border-destructive bg-popover p-3 text-sm text-popover-foreground shadow-md">
-      <p role="alert" aria-label={t("label")}>
-        {t(error)}
-      </p>
+      <Alert aria-label={t("label")}>{t(error)}</Alert>
       <div className="mt-2 flex gap-2">
         {controller.status === "error" ? (
           <a

@@ -5,6 +5,7 @@ import { type HistoryFolder, historyItemKey } from "@vibeshape/domain/history-fo
 import { historyFolderIdSchema } from "@vibeshape/domain/identifiers"
 import { authoredItemNameSchema } from "@vibeshape/domain/parts"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -189,11 +190,7 @@ function FolderForm({
           </form.Field>
         ))
       )}
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      )}
+      {error && <Alert>{error}</Alert>}
       <DialogFooter>
         <DialogClose asChild>
           <Button type="button" variant="outline" disabled={pending}>

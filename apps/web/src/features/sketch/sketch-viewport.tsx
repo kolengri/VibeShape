@@ -102,6 +102,7 @@ import { mirrorSketchEntities } from "@vibeshape/domain/sketch-transform-edit"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
+import { useBlockingActivity } from "@vibeshape/ui/components/activity"
 import { Button, buttonVariants } from "@vibeshape/ui/components/button"
 import {
   ContextMenu,
@@ -328,6 +329,8 @@ type SketchSolveRequest = Readonly<{
 }>
 
 type SketchSolveScheduler = {
+  cancellationGeneration: number
+  baselineState: SolveState
   disposed: boolean
   inFlight: boolean
   latestRequest: SketchSolveRequest | null
@@ -513,6 +516,8 @@ const DEFAULT_REGULAR_POLYGON_SIDES = 6
 
 function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSolveScheduler {
   return {
+    cancellationGeneration: 0,
+    baselineState: { kind: "idle" },
     disposed: false,
     inFlight: false,
     latestRequest: null,
@@ -560,6 +565,23 @@ function clearSketchSolveTimer(scheduler: SketchSolveScheduler) {
   scheduler.timer = null
 }
 
+function settleSketchSolveRequest(
+  scheduler: SketchSolveScheduler,
+  request: SketchSolveRequest,
+  result: ActiveSketchSolveResult | null,
+  publish: (state: SolveState) => void,
+) {
+  if (result?.ok) scheduler.latestSolution = result.response.solution
+  const latestRequest = scheduler.latestRequest
+  if (!latestRequest || scheduler.disposed) return null
+  if (latestRequest.requestId !== request.requestId) return latestRequest
+  const state = solveStateForResult(request, result)
+  if (!request.dragTarget) scheduler.baselineState = state
+  publish(state)
+  scheduler.latestRequest = null
+  return null
+}
+
 async function drainLatestSketchSolve(
   scheduler: SketchSolveScheduler,
   publish: (state: SolveState) => void,
@@ -570,17 +592,13 @@ async function drainLatestSketchSolve(
     let request = scheduler.latestRequest
     while (request && !scheduler.disposed) {
       clearSketchSolveTimer(scheduler)
+      const generation = scheduler.cancellationGeneration
       const result = await executeSketchSolveRequest(scheduler, request)
-      if (result?.ok) scheduler.latestSolution = result.response.solution
-      const latestRequest = scheduler.latestRequest
-      if (!latestRequest || scheduler.disposed) return
-      if (latestRequest.requestId !== request.requestId) {
-        request = latestRequest
+      if (generation !== scheduler.cancellationGeneration) {
+        request = scheduler.latestRequest
         continue
       }
-      publish(solveStateForResult(request, result))
-      scheduler.latestRequest = null
-      return
+      request = settleSketchSolveRequest(scheduler, request, result, publish)
     }
   } finally {
     scheduler.inFlight = false
@@ -594,6 +612,7 @@ function resetInactiveSketchSolveScheduler(
   if (clearSolution) {
     scheduler.latestSketch = null
     scheduler.latestSolution = null
+    scheduler.baselineState = { kind: "idle" }
   }
   scheduler.latestRequest = null
   scheduler.nextRequestId += 1
@@ -634,7 +653,7 @@ function useSketchSolution(
   sketch: SketchRecord | null,
   solveSketch: SketchSolveFunction,
   dragTarget: SketchDragTarget | null,
-): SolveState {
+) {
   const [state, setState] = useState<SolveState>({ kind: "idle" })
   const stableDragTarget = useMemo(
     () =>
@@ -653,6 +672,23 @@ function useSketchSolution(
   const revision = controller.report?.snapshot.revision
   const rebuildOk = controller.report?.rebuild.ok === true
   scheduler.solveSketch = solveSketch
+
+  const cancelDrag = useCallback(() => {
+    scheduler.cancellationGeneration += 1
+    scheduler.latestRequest = null
+    scheduler.nextRequestId += 1
+    clearSketchSolveTimer(scheduler)
+    let baseline = currentSolveState(scheduler.baselineState, sketch)
+    if (
+      baseline.kind !== "idle" &&
+      sketch &&
+      authoredSketchSolveInputsChanged(baseline.sourceSketch, sketch)
+    ) {
+      baseline = { kind: "idle" }
+    }
+    scheduler.latestSolution = sketch ? solutionForSketch(baseline, sketch.id) : null
+    setState(baseline)
+  }, [scheduler, sketch])
 
   useEffect(() => {
     scheduler.disposed = false
@@ -693,7 +729,7 @@ function useSketchSolution(
     }
   }, [rebuildOk, revision, scheduler, sketch, solveSketch, stableDragTarget])
 
-  return state
+  return { cancelDrag, state }
 }
 
 function solutionForSketch(solveState: SolveState, sketchId: SketchRecord["id"]) {
@@ -2304,38 +2340,14 @@ function SketchExternalCurves({
   )
 }
 
-function SketchAvailableExternalGeometry({
-  bounds,
-  candidates,
-  onUse,
-}: Readonly<{
-  bounds: SketchBounds
-  candidates: readonly ExternalUseCandidate[]
-  onUse: (candidate: ExternalUseCandidate) => void
-}>) {
-  const t = useTranslations("app.sketch.viewport")
-  const viewportT = useTranslations("app.shell.viewport")
+function useExternalGeometryChooser() {
+  const blocking = useBlockingActivity() !== null
   const [chooser, setChooser] = useState<ExternalUseOverlapChooser | null>(null)
   const [chooserActiveIndex, setChooserActiveIndex] = useState(0)
-  const [focusedPreselection, setFocusedPreselection] = useState<ExternalUsePreselection | null>(
-    null,
-  )
-  const [hoveredPreselection, setHoveredPreselection] = useState<ExternalUsePreselection | null>(
-    null,
-  )
-  const chooserCandidate = chooser?.choices[chooserActiveIndex]
-  const preselection =
-    chooser && chooserCandidate
-      ? {
-          candidate: chooserCandidate,
-          clientX: chooser.clientX,
-          clientY: chooser.clientY,
-        }
-      : (hoveredPreselection ?? focusedPreselection)
   const chooserRef = useRef<HTMLDivElement>(null)
   const choiceRefs = useRef<Array<HTMLButtonElement | null>>([])
   useEffect(() => {
-    if (!chooser) return
+    if (!chooser || blocking) return
     choiceRefs.current[chooserActiveIndex]?.focus()
     const closeOnPointerDown = (event: globalThis.PointerEvent) => {
       if (chooserRef.current?.contains(event.target as Node)) return
@@ -2366,7 +2378,38 @@ function SketchAvailableExternalGeometry({
       document.removeEventListener("pointerdown", closeOnPointerDown, true)
       document.removeEventListener("keydown", handleChooserKeyDown, true)
     }
-  }, [chooser, chooserActiveIndex])
+  }, [blocking, chooser, chooserActiveIndex])
+  return { chooser, setChooser, chooserActiveIndex, setChooserActiveIndex, chooserRef, choiceRefs }
+}
+
+function SketchAvailableExternalGeometry({
+  bounds,
+  candidates,
+  onUse,
+}: Readonly<{
+  bounds: SketchBounds
+  candidates: readonly ExternalUseCandidate[]
+  onUse: (candidate: ExternalUseCandidate) => void
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  const viewportT = useTranslations("app.shell.viewport")
+  const { chooser, setChooser, chooserActiveIndex, setChooserActiveIndex, chooserRef, choiceRefs } =
+    useExternalGeometryChooser()
+  const [focusedPreselection, setFocusedPreselection] = useState<ExternalUsePreselection | null>(
+    null,
+  )
+  const [hoveredPreselection, setHoveredPreselection] = useState<ExternalUsePreselection | null>(
+    null,
+  )
+  const chooserCandidate = chooser?.choices[chooserActiveIndex]
+  const preselection =
+    chooser && chooserCandidate
+      ? {
+          candidate: chooserCandidate,
+          clientX: chooser.clientX,
+          clientY: chooser.clientY,
+        }
+      : (hoveredPreselection ?? focusedPreselection)
   const useCandidate = (candidate: ExternalUseCandidate, focusTarget?: SVGGElement) => {
     focusTarget?.ownerSVGElement?.focus()
     setFocusedPreselection(null)
@@ -3907,6 +3950,23 @@ function coordinateLeaderDrag(element: HTMLButtonElement) {
   }
 }
 
+function releaseSketchPointerCapture(element: Element | null, pointerId: number | undefined) {
+  if (pointerId !== undefined && element?.hasPointerCapture?.(pointerId)) {
+    element.releasePointerCapture(pointerId)
+  }
+}
+
+function useSketchBlockingCancellation(cancel: () => void) {
+  const blocking = useBlockingActivity() !== null
+  const cancelRef = useRef(cancel)
+  useLayoutEffect(() => {
+    cancelRef.current = cancel
+  }, [cancel])
+  useLayoutEffect(() => {
+    if (blocking) cancelRef.current()
+  }, [blocking])
+}
+
 function beginConstraintAnnotationDrag({
   bounds,
   cleanupRef,
@@ -3929,8 +3989,8 @@ function beginConstraintAnnotationDrag({
   if (!glyph.dimensional || event.button !== 0) return
   event.preventDefault()
   event.stopPropagation()
-  event.currentTarget.setPointerCapture?.(event.pointerId)
   cleanupRef.current?.()
+  event.currentTarget.setPointerCapture?.(event.pointerId)
   const moveLeader = coordinateLeaderDrag(event.currentTarget)
   suppressClickRef.current = false
   const overlayRectangle = event.currentTarget.parentElement?.getBoundingClientRect()
@@ -3979,6 +4039,12 @@ function beginConstraintAnnotationDrag({
     }
   }
   const cleanup = () => {
+    const drag = dragRef.current
+    dragRef.current = null
+    if (drag) {
+      drag.element.style.translate = ""
+      releaseSketchPointerCapture(drag.element, drag.pointerId)
+    }
     window.removeEventListener("pointermove", move)
     window.removeEventListener("pointerup", finish)
     window.removeEventListener("pointercancel", finish)
@@ -3990,14 +4056,12 @@ function beginConstraintAnnotationDrag({
     if (!drag || drag.pointerId !== finishEvent.pointerId) return
     const deltaX = drag.lastClientX - drag.clientX
     const deltaY = drag.lastClientY - drag.clientY
-    dragRef.current = null
-    drag.element.style.translate = ""
+    cleanup()
     if (Math.hypot(deltaX, deltaY) >= 3 && Number.isFinite(drag.scale) && drag.scale > 0) {
       onPositionChange(drag.id, constraintAnnotationDragPoint(drag, bounds, overlayRectangle), {
         origin: glyph.geometryOrigin ?? glyph.point,
       })
     }
-    cleanup()
   }
   cleanupRef.current = cleanup
   window.addEventListener("pointermove", move)
@@ -4483,6 +4547,10 @@ function useConstraintAnnotationInteraction({
   const dragCleanupRef = useRef<(() => void) | null>(null)
   const suppressClickRef = useRef(false)
   const scale = Math.min(viewport.width / bounds.width, viewport.height / bounds.height)
+  useSketchBlockingCancellation(() => {
+    if (dragRef.current) suppressClickRef.current = true
+    dragCleanupRef.current?.()
+  })
   useEffect(
     () => () => {
       dragCleanupRef.current?.()
@@ -7403,6 +7471,26 @@ function sketchCurveIdFromPointerTarget(
   return entity && entity.type !== "point" ? entity.id : null
 }
 
+function useSketchTrimPresentation() {
+  const [active, setActive] = useState(false)
+  const [previewDraft, setPreviewDraft] = useState<SketchRecord | null>(null)
+  const [preselectedEntityId, setPreselectedEntityId] = useState<SketchEntityId | null>(null)
+  const resetPresentation = useCallback(() => {
+    setActive(false)
+    setPreviewDraft(null)
+    setPreselectedEntityId(null)
+  }, [])
+  return {
+    active,
+    setActive,
+    previewDraft,
+    setPreviewDraft,
+    preselectedEntityId,
+    setPreselectedEntityId,
+    resetPresentation,
+  }
+}
+
 function useSketchTrimGesture({
   draft,
   editorTool,
@@ -7411,16 +7499,17 @@ function useSketchTrimGesture({
   editorTool: SketchEditorTool
 }>) {
   const gestureRef = useRef<SketchTrimGesture | null>(null)
+  const captureRef = useRef<SVGSVGElement | null>(null)
   const releasedPublishRef = useRef<((draft: SketchRecord) => void) | null>(null)
-  const [active, setActive] = useState(false)
-  const [previewDraft, setPreviewDraft] = useState<SketchRecord | null>(null)
-  const [preselectedEntityId, setPreselectedEntityId] = useState<SketchEntityId | null>(null)
-
-  const resetPresentation = useCallback(() => {
-    setActive(false)
-    setPreviewDraft(null)
-    setPreselectedEntityId(null)
-  }, [])
+  const {
+    active,
+    setActive,
+    previewDraft,
+    setPreviewDraft,
+    preselectedEntityId,
+    setPreselectedEntityId,
+    resetPresentation,
+  } = useSketchTrimPresentation()
   const {
     cancel: cancelTrimFrame,
     completeReleasedGesture,
@@ -7434,9 +7523,15 @@ function useSketchTrimGesture({
   })
 
   const start = useCallback(
-    (pointerId: number, entityId: SketchEntityId, point: SketchPoint2) => {
+    (
+      pointerId: number,
+      entityId: SketchEntityId,
+      point: SketchPoint2,
+      svg: SVGSVGElement | null,
+    ) => {
       const gesture = createSketchTrimGesture(draft, editorTool, pointerId, entityId, point)
       if (!gesture) return false
+      captureRef.current = svg
       gestureRef.current = gesture
       releasedPublishRef.current = null
       setActive(true)
@@ -7491,6 +7586,8 @@ function useSketchTrimGesture({
       const gesture = gestureRef.current
       if (!gesture || (pointerId !== undefined && gesture.pointerId !== pointerId)) return false
       if (releasedPublishRef.current) return true
+      releaseSketchPointerCapture(captureRef.current, gesture.pointerId)
+      captureRef.current = null
       gestureRef.current = null
       clearPointerUpdate()
       cancelTrimFrame()
@@ -7500,6 +7597,16 @@ function useSketchTrimGesture({
     },
     [cancelTrimFrame, clearPointerUpdate, resetPresentation],
   )
+
+  useSketchBlockingCancellation(() => {
+    releaseSketchPointerCapture(captureRef.current, gestureRef.current?.pointerId)
+    captureRef.current = null
+    gestureRef.current = null
+    releasedPublishRef.current = null
+    clearPointerUpdate()
+    cancelTrimFrame()
+    resetPresentation()
+  })
 
   useEffect(() => {
     const gesture = gestureRef.current
@@ -7612,7 +7719,8 @@ function consumeTrimCurveAction({
 }>) {
   if (editorTool !== "trim") return false
   const point = eventPoint(event)
-  if (event.button !== 0 || !point || !gesture.start(event.pointerId, entityId, point)) return true
+  if (event.button !== 0 || !point || !gesture.start(event.pointerId, entityId, point, svg))
+    return true
   if (event.nativeEvent.isTrusted) svg?.setPointerCapture?.(event.pointerId)
   event.preventDefault()
   return true
@@ -9096,16 +9204,51 @@ function offsetDraftFromCanvasPointer(input: {
   return result?.sketch ?? null
 }
 
+function useSketchPointDragWork() {
+  const captureRef = useRef<Readonly<{ element: Element; pointerId: number }> | null>(null)
+  const dragFrameRef = useRef<number | null>(null)
+  const dragSolveTimerRef = useRef<number | null>(null)
+  const queuedDragInputRef = useRef<SketchPointDragInput | null>(null)
+  const queuedDragSolveTargetRef = useRef<Readonly<{
+    point: SketchPoint2
+    pointId: SketchEntityId
+  }> | null>(null)
+  const clearQueuedDrag = useCallback(() => {
+    if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current)
+    if (dragSolveTimerRef.current !== null) window.clearTimeout(dragSolveTimerRef.current)
+    dragFrameRef.current = null
+    dragSolveTimerRef.current = null
+    queuedDragInputRef.current = null
+    queuedDragSolveTargetRef.current = null
+    const capture = captureRef.current
+    captureRef.current = null
+    releaseSketchPointerCapture(capture?.element ?? null, capture?.pointerId)
+  }, [])
+  useEffect(() => clearQueuedDrag, [clearQueuedDrag])
+  return {
+    captureRef,
+    dragFrameRef,
+    dragSolveTimerRef,
+    queuedDragInputRef,
+    queuedDragSolveTargetRef,
+    clearQueuedDrag,
+  }
+}
+
 function useSketchPointDrag({
   bounds,
   candidatesByInferenceId,
   draft,
   inferenceCandidateQuery,
   onDraftChange,
+  onDraggingPointCancel,
   onDraggingPointChange,
   onPreview,
   svgRef,
-}: Pick<SketchDrawingConfiguration, "draft" | "onDraftChange" | "onDraggingPointChange"> & {
+}: Pick<
+  SketchDrawingConfiguration,
+  "draft" | "onDraftChange" | "onDraggingPointCancel" | "onDraggingPointChange"
+> & {
   bounds: SketchBounds
   candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupBinding>
   inferenceCandidateQuery: SketchInferenceCandidateQuery<SketchInferencePoint>
@@ -9113,22 +9256,24 @@ function useSketchPointDrag({
   svgRef: RefObject<SVGSVGElement | null>
 }) {
   const [draggingPointId, setDraggingPointId] = useState<SketchEntityId | null>(null)
-  const dragFrameRef = useRef<number | null>(null)
   const dragRectangleRef = useRef<SketchViewportRectangle | null>(null)
-  const dragSolveTimerRef = useRef<number | null>(null)
   const lastDragPreviewRef = useRef<SketchPointDragPreview | null>(null)
-  const queuedDragInputRef = useRef<SketchPointDragInput | null>(null)
-  const queuedDragSolveTargetRef = useRef<Readonly<{
-    point: SketchPoint2
-    pointId: SketchEntityId
-  }> | null>(null)
-  useEffect(
-    () => () => {
-      if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current)
-      if (dragSolveTimerRef.current !== null) window.clearTimeout(dragSolveTimerRef.current)
-    },
-    [],
-  )
+  const {
+    captureRef,
+    dragFrameRef,
+    dragSolveTimerRef,
+    queuedDragInputRef,
+    queuedDragSolveTargetRef,
+    clearQueuedDrag,
+  } = useSketchPointDragWork()
+  const cancel = () => {
+    clearQueuedDrag()
+    if (draggingPointId) onDraggingPointCancel()
+    setDraggingPointId(null)
+    dragRectangleRef.current = null
+    lastDragPreviewRef.current = null
+  }
+  useSketchBlockingCancellation(cancel)
 
   const scheduleLiveSolve = useCallback(
     (pointId: SketchEntityId, point: SketchPoint2, policy: LiveDragSolvePolicy | null) => {
@@ -9204,11 +9349,7 @@ function useSketchPointDrag({
   )
   const finish = useCallback(() => {
     const finalPreview = flush()
-    if (dragSolveTimerRef.current !== null) {
-      window.clearTimeout(dragSolveTimerRef.current)
-      dragSolveTimerRef.current = null
-    }
-    queuedDragSolveTargetRef.current = null
+    clearQueuedDrag()
     if (draft && draggingPointId && finalPreview) {
       onDraggingPointChange(draggingPointId, finalPreview.point)
       const materialized = materializeExternalInference({
@@ -9227,7 +9368,15 @@ function useSketchPointDrag({
     setDraggingPointId(null)
     dragRectangleRef.current = null
     lastDragPreviewRef.current = null
-  }, [candidatesByInferenceId, draft, draggingPointId, flush, onDraftChange, onDraggingPointChange])
+  }, [
+    candidatesByInferenceId,
+    clearQueuedDrag,
+    draft,
+    draggingPointId,
+    flush,
+    onDraftChange,
+    onDraggingPointChange,
+  ])
   const start = useCallback(
     (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => {
       if (
@@ -9242,6 +9391,7 @@ function useSketchPointDrag({
       const rectangle = svgRef.current?.getBoundingClientRect()
       if (!rectangle) return
       if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
+      captureRef.current = { element: event.currentTarget, pointerId: event.pointerId }
       dragRectangleRef.current = {
         height: rectangle.height,
         left: rectangle.left,
@@ -10472,6 +10622,11 @@ function useSketchPlacementPresentation({
   const [inference, setInference] = useState<SketchPointInference | null>(null)
   const [pending, setPending] = useState<PendingGeometry | null>(null)
 
+  useSketchBlockingCancellation(() => {
+    setCursor(null)
+    setInference(null)
+  })
+
   useEffect(() => {
     setPending(null)
     setInference(null)
@@ -10633,6 +10788,7 @@ function useSketchTransformInteraction({
   const [originOverride, setOriginOverride] = useState<SketchPoint2 | null>(null)
   const [preview, setPreview] = useState<SketchTransformPreview>(identitySketchTransform)
   const rectangleRef = useRef<SketchViewportRectangle | null>(null)
+  const captureRef = useRef<Readonly<{ element: Element; pointerId: number }> | null>(null)
   const selectionKey = selectedEntityIds.join(":")
   const defaultOrigin = useMemo(
     () => (editorTool === "transform" ? safeSketchTransformOrigin(draft, selectedEntityIds) : null),
@@ -10641,11 +10797,16 @@ function useSketchTransformInteraction({
   const origin = originOverride ?? defaultOrigin
 
   const reset = () => {
+    const capture = captureRef.current
+    captureRef.current = null
+    releaseSketchPointerCapture(capture?.element ?? null, capture?.pointerId)
     setGesture(null)
     setOriginOverride(null)
     setPreview(identitySketchTransform)
     rectangleRef.current = null
   }
+
+  useSketchBlockingCancellation(reset)
 
   useEffect(() => {
     reset()
@@ -10742,6 +10903,9 @@ function useSketchTransformInteraction({
 
   const consumePointerUp = (event: PointerEvent<SVGSVGElement>) => {
     if (gesture?.pointerId !== event.pointerId) return false
+    const capture = captureRef.current
+    captureRef.current = null
+    releaseSketchPointerCapture(capture?.element ?? null, capture?.pointerId)
     setGesture(null)
     rectangleRef.current = null
     return true
@@ -10757,6 +10921,7 @@ function useSketchTransformInteraction({
     const rectangle = svgRef.current?.getBoundingClientRect()
     if (!rectangle || rectangle.width <= 0 || rectangle.height <= 0 || !origin) return
     if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
+    captureRef.current = { element: event.currentTarget, pointerId: event.pointerId }
     const viewportRectangle = {
       height: rectangle.height,
       left: rectangle.left,
@@ -11730,6 +11895,15 @@ function useSketchDrawingCanvas(
   return { geometry, ...viewport, bounds }
 }
 
+function useSketchPanGesture(svgRef: RefObject<SVGSVGElement | null>) {
+  const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
+  useSketchBlockingCancellation(() => {
+    releaseSketchPointerCapture(svgRef.current, panGesture?.pointerId)
+    setPanGesture(null)
+  })
+  return [panGesture, setPanGesture] as const
+}
+
 function SketchDrawing({
   configuration,
   projectionFrame,
@@ -11762,7 +11936,7 @@ function SketchDrawing({
     projectionFrame,
     spatial,
   )
-  const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
+  const [panGesture, setPanGesture] = useSketchPanGesture(svgRef)
   const { cursor, inference, pending, setCursor, setInference, setPending } =
     useSketchPlacementPresentation({ draft, editorTool, selectedEntityIds, sketchId: sketch.id })
   const dimensions = useSketchDimensionInteraction({
@@ -11828,6 +12002,7 @@ function SketchDrawing({
     draft,
     inferenceCandidateQuery: inferencePresentation.dragCandidateQuery,
     onDraftChange,
+    onDraggingPointCancel: configuration.onDraggingPointCancel,
     onDraggingPointChange,
     onPreview: handleDragPreview,
     svgRef,
@@ -12290,6 +12465,7 @@ type SketchDrawingConfiguration = Readonly<{
   editorTool: SketchEditorTool
   onConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onDraggingPointCancel: () => void
   onDraggingPointChange: (pointId: SketchEntityId | null, point?: SketchPoint2) => void
   onEditorToolChange: (tool: SketchEditorTool) => void
   onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
@@ -12963,6 +13139,7 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
     externalPointCandidates,
     onConstraintSelectionChange,
     onDraftChange,
+    onDraggingPointCancel,
     onDraggingPointChange,
     onEditorToolChange,
     onOriginPlaneVisibilityChange,
@@ -12995,6 +13172,7 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
       externalPointCandidates,
       onConstraintSelectionChange,
       onDraftChange,
+      onDraggingPointCancel,
       onDraggingPointChange,
       onEditorToolChange,
       onOriginPlaneVisibilityChange,
@@ -13050,7 +13228,16 @@ function useSketchViewportSolveModel({
     [activeSketch, dragState],
   )
   const onDraggingPointChange = useDraggingPointChange(activeSketch, setDragState)
-  const solveState = useSketchSolution(controller, activeSketch, solveSketch, dragTarget)
+  const { cancelDrag, state: solveState } = useSketchSolution(
+    controller,
+    activeSketch,
+    solveSketch,
+    dragTarget,
+  )
+  const onDraggingPointCancel = useCallback(() => {
+    if (dragState) cancelDrag()
+    setDragState(null)
+  }, [cancelDrag, dragState])
   useReleasedDragSettlement(activeSketch, dragState, solveState, setDragState)
   const activeSolveState = currentSolveState(solveState, activeSketch)
   const solution = solvedSolution(activeSolveState)
@@ -13079,6 +13266,7 @@ function useSketchViewportSolveModel({
   return {
     activeSketch,
     displaySolution,
+    onDraggingPointCancel,
     onDraggingPointChange,
     presentation,
     releasedDragTarget,
@@ -13170,19 +13358,25 @@ export function SketchViewport({
     onSelectionChange,
     onUndo,
   } = actions
-  const { activeSketch, displaySolution, onDraggingPointChange, presentation, releasedDragTarget } =
-    useSketchViewportSolveModel({
-      controller,
-      draft,
-      interactive,
-      onDisplayChange,
-      onFailedConstraintsChange,
-      onProfilesChange,
-      onReferenceDimensionLabelsChange,
-      sketch,
-      solveSketch,
-      supportFeatures,
-    })
+  const {
+    activeSketch,
+    displaySolution,
+    onDraggingPointCancel,
+    onDraggingPointChange,
+    presentation,
+    releasedDragTarget,
+  } = useSketchViewportSolveModel({
+    controller,
+    draft,
+    interactive,
+    onDisplayChange,
+    onFailedConstraintsChange,
+    onProfilesChange,
+    onReferenceDimensionLabelsChange,
+    sketch,
+    solveSketch,
+    supportFeatures,
+  })
   const drawingConfiguration = useStableSketchDrawingConfiguration({
     ariaLabel: presentation.drawingLabel,
     annotationSolution: displaySolution,
@@ -13194,6 +13388,7 @@ export function SketchViewport({
     editDimensionLabel: presentation.editDimensionLabel,
     editorTool,
     onConstraintSelectionChange,
+    onDraggingPointCancel,
     onDraggingPointChange,
     onEditorToolChange,
     onOriginPlaneVisibilityChange,

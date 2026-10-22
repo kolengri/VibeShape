@@ -88,6 +88,7 @@ import { SketchTextActionsProvider } from "./features/sketch/text/text-context"
 import { SketchTextDialog } from "./features/sketch/text/text-dialog"
 import { PROJECT_EDITOR_PANEL_ID, ProjectTabs, projectTabId } from "./project-tabs/project-tabs"
 import { ProjectTabsProvider } from "./project-tabs/project-tabs-provider"
+import { ApplicationActivity } from "./shell/application-activity"
 import { ApplicationBar } from "./shell/application-bar"
 import { ApplicationChromeProvider } from "./shell/application-header"
 import { currentAuthoredParts, selectedAuthoredBody } from "./shell/authored-tree-state"
@@ -1225,6 +1226,7 @@ export function App() {
 
   return (
     <ApplicationChromeProvider>
+      <ApplicationActivity status={controller.status} />
       <DocumentDisplayUnitsProvider
         displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
       >
@@ -1279,6 +1281,7 @@ function LocalizedProjectTabs({
         switchFailed: t("switchFailed"),
         listFailed: t("listFailed"),
         storageFailed: t("storageFailed"),
+        working: t("working"),
       }}
     />
   )

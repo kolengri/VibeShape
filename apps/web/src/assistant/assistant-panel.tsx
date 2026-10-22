@@ -1,5 +1,6 @@
 import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   AssistantThinkingIcon,
@@ -169,11 +170,11 @@ function AssistantDraftCaption({ display }: { display: AssistantPanelProps["draf
   const preview = useTranslations("app.shell.viewport")
   if (display?.application?.status === "error")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <Alert>
         {t("applyChangesFailed", {
           code: display.application.diagnostic ?? "automation-operation-failed",
         })}
-      </p>
+      </Alert>
     )
   return (
     <p className="text-xs text-muted-foreground">
@@ -310,11 +311,7 @@ function AssistantFeedback(
           />
         </div>
       )}
-      {props.error && !centralized && (
-        <p role="alert" className="text-sm text-destructive">
-          {props.error}
-        </p>
-      )}
+      {props.error && !centralized && <Alert>{props.error}</Alert>}
     </>
   )
 }

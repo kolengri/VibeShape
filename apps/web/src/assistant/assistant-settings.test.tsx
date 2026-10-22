@@ -87,6 +87,51 @@ afterEach(() => {
 })
 
 describe("assistant connection settings", () => {
+  it("reveals a collapsed advanced field rejected by connection testing", async () => {
+    const chat = {
+      connect: vi.fn(),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      testConnection: vi.fn(),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    const field = screen.getByRole("spinbutton", { name: "Decisions per turn" })
+    const details = field.closest("details")
+    if (!details) throw new Error("Advanced fields require a disclosure.")
+    await userEvent.click(screen.getByText("Jev advanced settings"))
+    fireEvent.change(field, { target: { value: "49" } })
+    await userEvent.click(screen.getByText("Jev advanced settings"))
+    expect(details.open).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: "Test connection" }))
+    expect(details.open).toBe(true)
+    expect(field.getAttribute("aria-invalid")).toBe("true")
+    expect(field.getAttribute("aria-describedby")).toContain(screen.getByRole("alert").id)
+    expect(chat.testConnection).not.toHaveBeenCalled()
+  })
+
+  it("shows configuration validation beside its field and clears it when corrected", async () => {
+    const chat = { connect: vi.fn(), disconnect: vi.fn().mockResolvedValue(undefined) }
+    show(<ApiConfigurationForm chat={chat} busy={false} connected={false} />)
+    await choose("Provider", "Custom endpoint")
+    const model = screen.getByRole("textbox", { name: "API model" })
+    const endpoint = screen.getByRole("textbox", { name: "Chat Completions endpoint URL" })
+    fireEvent.change(model, { target: { value: "invalid model" } })
+    fireEvent.change(endpoint, { target: { value: "http://api.example.test/v1/chat/completions" } })
+    await userEvent.click(screen.getByRole("button", { name: "Connect and enable project access" }))
+    for (const input of [model, endpoint]) {
+      expect(input.getAttribute("aria-invalid")).toBe("true")
+      const error = document.getElementById(input.getAttribute("aria-describedby") ?? "")
+      expect(error?.getAttribute("data-slot")).toBe("field-error")
+      expect(input.closest('[data-slot="field"]')?.contains(error)).toBe(true)
+    }
+    expect(chat.connect).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-slot="alert"]')).toBeNull()
+    expect(document.querySelector('[data-slot="notification"]')).toBeNull()
+    fireEvent.change(model, { target: { value: "valid-model" } })
+    expect(model.getAttribute("aria-invalid")).toBeNull()
+    expect(endpoint.getAttribute("aria-invalid")).toBe("true")
+  })
+
   it.each(["Jev (TypeSafe)", "Codex"])(
     "closes settings after %s connects successfully and restores trigger focus",
     async (agent) => {
@@ -478,6 +523,14 @@ describe("assistant connection settings", () => {
     })
     await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
     expect(screen.getByRole("alert").textContent).toContain("JSON array")
+    expect(
+      screen
+        .getByRole("textbox", { name: "Arguments (JSON array)" })
+        .getAttribute("aria-describedby"),
+    ).toContain(screen.getByRole("alert").id)
+    expect(
+      screen.getByRole("textbox", { name: "ACP agent executable" }).getAttribute("aria-invalid"),
+    ).toBeNull()
     expect(chat.connect).not.toHaveBeenCalled()
     fireEvent.change(screen.getByRole("textbox", { name: "Arguments (JSON array)" }), {
       target: { value: JSON.stringify(original.args) },
@@ -734,6 +787,11 @@ describe("assistant connection settings", () => {
     fireEvent.submit(screen.getByRole("form", { name: "Jev settings" }))
     expect(chat.connect).not.toHaveBeenCalled()
     expect(screen.getByRole("alert").textContent).toContain("both the argument endpoint and model")
+    expect(
+      screen
+        .getByLabelText("Argument model name", { exact: true })
+        .getAttribute("aria-describedby"),
+    ).toContain(screen.getByRole("alert").id)
     expect(readAssistantPreferences()?.agent).toEqual(original)
     await choose("Agent", "Custom ACP agent")
     expect(

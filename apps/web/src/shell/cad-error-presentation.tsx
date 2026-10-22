@@ -1,6 +1,7 @@
 import type { DocumentSnapshot } from "@vibeshape/domain"
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
 import { useLocale, useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 
 export type CadDiagnosticEntry = ModelDiagnosticsEvidence["entries"][number]
 export type CadErrorKind =
@@ -80,12 +81,7 @@ export function CadErrorPresentation({
   const kind = cadErrorKind(first)
   const labels = [...new Set([...contextLabels, ...relatedLabels(diagnostics, snapshot)])]
   return (
-    <section
-      className="mb-3 grid min-w-0 gap-2 rounded-md border border-destructive/40 bg-panel-muted p-3 text-xs text-destructive [overflow-wrap:anywhere]"
-      role="alert"
-      aria-live="polite"
-      aria-label={t("title")}
-    >
+    <Alert className="mb-3" aria-live="polite" aria-label={t("title")}>
       <p className="font-medium">{t(`cause.${kind}`)}</p>
       <p>{t(`nextStep.${kind}`)}</p>
       {labels.length > 0 ? (
@@ -107,6 +103,6 @@ export function CadErrorPresentation({
           )}
         </pre>
       </details>
-    </section>
+    </Alert>
   )
 }

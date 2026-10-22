@@ -1,5 +1,6 @@
 import type { AssemblyJointRecord } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
@@ -228,11 +229,7 @@ function MotionStatus({
       {!coordinate.driven && (
         <p className="text-xs text-muted-foreground">{t("motionDriveNotice")}</p>
       )}
-      {failure && (
-        <p role="alert" className="text-sm text-destructive">
-          {failure}
-        </p>
-      )}
+      {failure && <Alert>{failure}</Alert>}
     </>
   )
 }

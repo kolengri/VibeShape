@@ -1,4 +1,4 @@
-import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { useReportBlockingActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
 import { FilesIcon, NewProjectIcon, X } from "@vibeshape/ui/components/icons"
 import { Tabs, TabsList, TabsTrigger } from "@vibeshape/ui/components/tabs"
@@ -21,6 +21,7 @@ export type ProjectTabsCopy = Readonly<{
   switchFailed: string
   listFailed: string
   storageFailed: string
+  working: string
 }>
 
 export function ProjectTabs({
@@ -35,7 +36,7 @@ export function ProjectTabs({
   onOpenProjects?: () => Promise<ProjectSwitchResult>
 }) {
   const tabs = useProjectTabsController(controller, onOpenProjects)
-  useReportActivity(tabs.pending)
+  useReportBlockingActivity(tabs.pending, copy.working)
   const feedbackId = useId()
   const message = tabs.feedback ? copy[tabs.feedback] : null
   const centralized = useReportApplicationError(message, tabs.feedbackAttempt)

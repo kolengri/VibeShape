@@ -1,7 +1,8 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
-import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { TextField } from "@vibeshape/ui/components/text-field"
 import { type FormEvent, useId, useRef, useState } from "react"
 import { apiConfigurationSchema } from "./api-assistant-preferences"
 import { useApiAssistantSettings } from "./api-assistant-provider"
@@ -26,6 +27,9 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
   const [invalid, setInvalid] = useState(false)
   const [failed, setFailed] = useState(false)
   const [storageFailed, setStorageFailed] = useState(false)
+  const validation = apiConfigurationSchema.safeParse({ endpoint, model, apiKey, stream })
+  const invalidField = (name: "endpoint" | "model" | "apiKey") =>
+    invalid && !validation.success && validation.error.issues.some(({ path }) => path[0] === name)
   const changeEndpoint = (value: string) => {
     if (value.trim() !== endpoint) setApiKey("")
     setEndpoint(value)
@@ -53,6 +57,7 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
     const parsed = apiConfigurationSchema.safeParse({ endpoint, model, apiKey, stream })
     if (!parsed.success) {
       setInvalid(true)
+      if (parsed.error.issues.some(({ path }) => path[0] === "endpoint")) setAdvanced(true)
       return
     }
     setInvalid(false)
@@ -79,7 +84,7 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
     stream,
     choice,
     advanced,
-    invalid,
+    invalidField,
     failed,
     storageFailed,
     submitting,
@@ -125,44 +130,38 @@ export function ApiConfigurationForm({
         <SelectOption value="custom">{t("customProvider")}</SelectOption>
       </SelectField>
       <p className="text-xs text-muted-foreground">{t("description")}</p>
-      <label htmlFor={`${id}-model`} className="text-xs font-medium">
-        {t("model")}
-      </label>
-      <Input
+      <TextField
         id={`${id}-model`}
+        label={t("model")}
+        error={form.invalidField("model") ? t("modelInvalid") : undefined}
         required
         value={form.model}
         maxLength={128}
         disabled={locked}
         onChange={(event) => form.setModel(event.currentTarget.value)}
       />
-      <label htmlFor={`${id}-key`} className="text-xs font-medium">
-        {t("apiKey")}
-      </label>
-      <Input
+      <TextField
         id={`${id}-key`}
+        label={t("apiKey")}
+        description={t("keyMemory")}
+        error={form.invalidField("apiKey") ? t("apiKeyInvalid") : undefined}
         type="password"
         autoComplete="off"
         value={form.apiKey}
         maxLength={4096}
         disabled={locked}
         onChange={(event) => form.setApiKey(event.currentTarget.value)}
-        aria-describedby={`${id}-memory`}
       />
-      <p id={`${id}-memory`} className="text-xs text-muted-foreground">
-        {t("keyMemory")}
-      </p>
       <details
         open={form.advanced}
         onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
       >
         <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
         <div className="mt-3 grid gap-2">
-          <label htmlFor={`${id}-endpoint`} className="text-xs font-medium">
-            {t("endpoint")}
-          </label>
-          <Input
+          <TextField
             id={`${id}-endpoint`}
+            label={t("endpoint")}
+            error={form.invalidField("endpoint") ? t("endpointInvalid") : undefined}
             type="url"
             required
             value={form.endpoint}
@@ -181,21 +180,12 @@ export function ApiConfigurationForm({
           </label>
         </div>
       </details>
-      {form.invalid && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("errors.invalid-configuration")}
-        </p>
-      )}
       {form.storageFailed && (
         <p role="status" className="text-xs text-muted-foreground">
           {t("settingsNotSaved")}
         </p>
       )}
-      {form.failed && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("errors.tools-unavailable")}
-        </p>
-      )}
+      {form.failed && <Alert>{t("errors.tools-unavailable")}</Alert>}
       {connected ? (
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={chat.disconnect}>
           {t("disconnect")}

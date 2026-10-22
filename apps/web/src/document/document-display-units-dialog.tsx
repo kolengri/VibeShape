@@ -4,6 +4,7 @@ import {
   documentDisplayUnitsSchema,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -119,11 +120,7 @@ function UnitSettingsForm({
           </field.NativeSelectField>
         )}
       </form.AppField>
-      {message ? (
-        <p className="text-sm text-destructive" role="alert">
-          {message}
-        </p>
-      ) : null}
+      {message ? <Alert>{message}</Alert> : null}
       <DialogFooter>
         {inline ? (
           <Button

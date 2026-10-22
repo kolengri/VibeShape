@@ -13,6 +13,7 @@ import {
 } from "@vibeshape/domain"
 import type { PartId } from "@vibeshape/domain/identifiers"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   ChevronDown,
@@ -817,12 +818,12 @@ function SketchReferenceHealthSummary({
 }) {
   if (health?.status !== "broken") return null
   return (
-    <p className="ml-8 truncate px-2 text-[10px] text-destructive" role="status">
+    <Alert aria-live="polite">
       {t("brokenReferenceSummary", {
         direct: health.directBrokenReferenceIds.length,
         chained: health.transitiveBrokenReferenceIds.length,
       })}
-    </p>
+    </Alert>
   )
 }
 
@@ -1589,11 +1590,7 @@ function SketchHistoryRow({
       view={view}
       details={
         <>
-          {props.repairRequired && (
-            <p role="status" className="px-2 text-xs text-destructive">
-              {t("repairRequired")}
-            </p>
-          )}
+          {props.repairRequired && <Alert aria-live="polite">{t("repairRequired")}</Alert>}
           <SketchReferenceHealthSummary health={row.referenceHealth} t={t} />
           <SketchSupportHealthSummary health={row.supportHealth} t={t} />
         </>
@@ -1714,11 +1711,7 @@ function FeatureHistoryRow({
         ) : undefined,
       }}
       details={
-        props.repairRequired ? (
-          <p role="status" className="px-2 text-xs text-destructive">
-            {t("repairRequired")}
-          </p>
-        ) : undefined
+        props.repairRequired ? <Alert aria-live="polite">{t("repairRequired")}</Alert> : undefined
       }
       rolledBack={rolledBack}
       row={row}

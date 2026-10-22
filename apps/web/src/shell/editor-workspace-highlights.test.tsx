@@ -40,6 +40,7 @@ const port: GeometryViewportPort = {
   setSketchPlaneProjection: vi.fn(),
   setSketchNavigationElement: vi.fn(),
   setPointerOrbit: vi.fn(),
+  cancelInteractions: vi.fn(),
   setInteractionMode: vi.fn(),
   setFeaturePreselection: vi.fn(),
   setFeatureSelection: vi.fn(),

@@ -5,6 +5,7 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
@@ -303,11 +304,7 @@ function TreatmentFields({
           onChange={props.onPreviewChange}
         />
       )}
-      {fields.pickIssue && (
-        <p role="alert" className="text-xs text-destructive">
-          {fields.pickIssue}
-        </p>
-      )}
+      {fields.pickIssue && <Alert>{fields.pickIssue}</Alert>}
       <EdgeTreatmentControls
         values={values}
         onChange={fields.change}

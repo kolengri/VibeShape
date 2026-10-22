@@ -1,6 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { AcceptIcon, X } from "@vibeshape/ui/components/icons"
+import { AcceptIcon, ErrorIcon, X } from "@vibeshape/ui/components/icons"
 import {
   Notification,
   NotificationClose,
@@ -52,6 +52,9 @@ function ApplicationNotices({
             >
               {notice.tone === "success" && (
                 <AcceptIcon aria-hidden="true" className="size-5 shrink-0" />
+              )}
+              {notice.tone === "error" && (
+                <ErrorIcon aria-hidden="true" className="size-5 shrink-0" />
               )}
               <p className="min-w-0 flex-1 break-words text-sm">{notice.message}</p>
               <Tooltip>

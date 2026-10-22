@@ -1,3 +1,5 @@
+import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -31,6 +33,7 @@ function UiPluginFrame({
 }) {
   const iframe = useRef<HTMLIFrameElement>(null)
   const [status, setStatus] = useState<UiPanelStatus>("loading")
+  useReportActivity(status === "loading")
   useEffect(() => {
     if (!iframe.current) return
     const connection = mountUiPluginPanel({
@@ -47,11 +50,7 @@ function UiPluginFrame({
   return (
     <>
       {status === "loading" && <p role="status">{copy.panelLoading}</p>}
-      {status === "failed" && (
-        <p role="alert" className="text-sm text-destructive">
-          {copy.panelFailed}
-        </p>
-      )}
+      {status === "failed" && <Alert>{copy.panelFailed}</Alert>}
       <iframe
         sandbox="allow-scripts"
         referrerPolicy="no-referrer"
@@ -163,25 +162,20 @@ function UiPluginStoreStatus({
   copy: UiExtensionsCopy
 }) {
   const { snapshot, pending, reset, error } = state
+  useReportActivity(snapshot.status === "loading" || pending)
   return (
     <>
       {snapshot.status === "loading" && <p role="status">{copy.loading}</p>}
       {snapshot.error && (
         <section className="grid gap-2">
-          <p role="alert" className="text-sm text-destructive">
-            {copy.errors[snapshot.error]}
-          </p>
+          <Alert>{copy.errors[snapshot.error]}</Alert>
           <p className="text-sm">{copy.resetStoreDescription}</p>
           <Button variant="outline" disabled={pending} onClick={reset}>
             {copy.resetStore}
           </Button>
         </section>
       )}
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {copy.errors[error]}
-        </p>
-      )}
+      {error && <Alert>{copy.errors[error]}</Alert>}
       {snapshot.status === "ready" && snapshot.plugins.length === 0 && (
         <p className="text-sm text-muted-foreground">{copy.empty}</p>
       )}

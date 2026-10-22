@@ -1,3 +1,4 @@
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -111,11 +112,7 @@ function SemanticRenameForm({
           />
         )}
       </form.AppField>
-      {message ? (
-        <p className="text-sm text-destructive" role="alert">
-          {message}
-        </p>
-      ) : null}
+      {message ? <Alert>{message}</Alert> : null}
       <DialogFooter>
         <DialogClose asChild>
           <Button type="button" variant="outline" disabled={pending}>

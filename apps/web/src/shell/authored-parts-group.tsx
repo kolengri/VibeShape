@@ -1,6 +1,7 @@
 import type { ResolvedAuthoredPart } from "@vibeshape/application/authored-parts"
 import type { FeatureId, PartId } from "@vibeshape/domain/identifiers"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   ContextMenu,
@@ -130,14 +131,7 @@ function PartVisibilityButton({
 function PartVisibilityError({ message, attempt }: { message: string | null; attempt: number }) {
   const applicationOwnsError = useReportApplicationError(message, attempt)
   if (!message || applicationOwnsError) return null
-  return (
-    <p
-      role="alert"
-      className="fixed inset-x-4 bottom-4 z-50 rounded-md border border-destructive bg-popover p-3 text-sm text-destructive shadow-lg"
-    >
-      {message}
-    </p>
-  )
+  return <Alert className="fixed inset-x-4 bottom-4 z-50">{message}</Alert>
 }
 
 function PartVisibilityNotice({ message, attempt }: { message: string | null; attempt: number }) {

@@ -76,13 +76,13 @@ describe("application error notices", () => {
       </App>,
     )
     const error = screen.getByRole("alert")
-    expect(error.classList.contains("border-destructive")).toBe(true)
+    expect(error.classList.contains("border-destructive/40")).toBe(true)
     const success = screen
       .getByText("STEP download started", { exact: true })
       .closest('[data-slot="notification"]')
     expect(success?.getAttribute("role")).toBe("status")
     expect(success?.classList.contains("border-border")).toBe(true)
-    expect(success?.classList.contains("border-destructive")).toBe(false)
+    expect(success?.classList.contains("border-destructive/40")).toBe(false)
     const dismiss = within(success as HTMLElement).getByRole("button", {
       name: "Dismiss notification",
     })

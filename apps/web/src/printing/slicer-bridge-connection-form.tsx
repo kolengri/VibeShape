@@ -1,4 +1,5 @@
 import { slicerBridgeTokenSchema } from "@vibeshape/slicer-handoff/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import {
@@ -75,13 +76,10 @@ export function SlicerBridgeConnectionForm({
           </form.AppField>
         }
         status={
-          status ? (
-            <p
-              className={
-                status.failed ? "text-xs text-destructive" : "text-xs text-muted-foreground"
-              }
-              role={status.failed ? "alert" : "status"}
-            >
+          status?.failed ? (
+            <Alert>{status.message}</Alert>
+          ) : status ? (
+            <p className="text-xs text-muted-foreground" role="status">
               {status.message}
             </p>
           ) : null

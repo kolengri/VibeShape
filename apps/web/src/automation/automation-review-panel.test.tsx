@@ -264,7 +264,7 @@ describe("AutomationReviewPanel", () => {
   it("dismisses the persistent error when Close is activated", async () => {
     const dismiss = vi.spyOn(automationReviews, "dismiss").mockImplementation(() => undefined)
     renderPanel(review("error"))
-    expect(screen.getByRole("status").textContent).toContain("review expired")
+    expect(screen.getByRole("alert").textContent).toContain("review expired")
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
     expect(dismiss).toHaveBeenCalledWith("review-1")
   })

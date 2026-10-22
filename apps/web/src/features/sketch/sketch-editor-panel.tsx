@@ -10,6 +10,7 @@ import {
   setSketchDimensionValue,
   type VariableDefinition,
 } from "@vibeshape/domain"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import {
@@ -755,11 +756,7 @@ export function SketchEditorPanel({
           repairReferenceId={repairReferenceId}
         />
       </div>
-      {message ? (
-        <p className="mt-auto border-t pt-3 text-xs leading-4 text-destructive" role="alert">
-          {message}
-        </p>
-      ) : null}
+      {message ? <Alert className="mt-auto">{message}</Alert> : null}
     </div>
   )
 }

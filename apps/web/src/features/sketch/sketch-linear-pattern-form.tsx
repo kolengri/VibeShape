@@ -8,6 +8,7 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useMemo, useState } from "react"
 import {
@@ -218,11 +219,7 @@ export function SketchLinearPatternForm({
           ) : null
         }
       </form.Subscribe>
-      {message ? (
-        <p className="text-xs text-destructive" role="alert">
-          {message}
-        </p>
-      ) : null}
+      {message ? <Alert>{message}</Alert> : null}
       <SketchFormActions
         cancelLabel={t("cancel")}
         submit={

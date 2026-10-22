@@ -418,6 +418,7 @@ function renderViewport(
     setSketchPlaneProjection: vi.fn(),
     setSketchNavigationElement: vi.fn(),
     setPointerOrbit: vi.fn(),
+    cancelInteractions: vi.fn(),
     setInteractionMode: vi.fn(),
     setFeaturePreselection: vi.fn(),
     setFeatureSelection: vi.fn(),
@@ -2411,9 +2412,9 @@ describe("GeometryViewport", () => {
       kind: "primitive",
       meshes: [],
     })
-    expect(screen.getByText(label).getAttribute("role")).toBe(
-      status === "error" ? "alert" : "status",
-    )
+    expect(
+      screen.getByText(label).closest('[role="alert"], [role="status"]')?.getAttribute("role"),
+    ).toBe(status === "error" ? "alert" : "status")
   })
 
   it("owns the imperative viewer lifecycle and exposes fit for rebuilt terminal geometry", async () => {
