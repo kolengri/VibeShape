@@ -20,7 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vibeshape/ui/components/tooltip"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form, validationMessage } from "@vibeshape/ui/integrations/tanstack-form"
 import { isInteger, isString } from "is-what"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import { ActionAvailability } from "../../components/action-availability"
@@ -30,7 +30,8 @@ import {
   formatDisplayLength,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { VariableExpressionInput, variableExpressionSuggestions } from "./variable-expression-input"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { variableExpressionSuggestions } from "./variable-expression-input"
 import { VariablesTable, type VariablesTableCopy } from "./variables-table"
 
 const MAX_VARIABLES = 4_096
@@ -67,11 +68,12 @@ function issueMessages(
   error: { issues: readonly { path: readonly PropertyKey[] }[] },
   copy: VariablesFormCopy,
 ) {
-  const issues = new Map<string, string>()
+  const issues: Record<string, string> = {}
   for (const issue of error.issues) {
     const [index, field] = issue.path
     if (isInteger(index) && isString(field)) {
-      issues.set(`${index}.${field}`, field === "name" ? copy.invalidName : copy.invalidExpression)
+      issues[`variables[${index}].${field}`] =
+        field === "name" ? copy.invalidName : copy.invalidExpression
     }
   }
   return issues
@@ -249,13 +251,13 @@ function removalProps(
     : { removeDisabled }
 }
 
-function fieldErrorProps(issues: ReadonlyMap<string, string>, rowIndex: number) {
-  const props: { nameError?: string; expressionError?: string } = {}
-  const nameError = issues.get(`${rowIndex}.name`)
-  const expressionError = issues.get(`${rowIndex}.expression`)
-  if (nameError) props.nameError = nameError
-  if (expressionError) props.expressionError = expressionError
-  return props
+function fieldErrorProps(nameIssue: unknown, expressionIssue: unknown) {
+  const nameError = validationMessage(nameIssue)
+  const expressionError = validationMessage(expressionIssue)
+  return {
+    ...(nameError ? { nameError } : {}),
+    ...(expressionError ? { expressionError } : {}),
+  }
 }
 
 function evaluatedRow(
@@ -288,7 +290,6 @@ function invalidAttribute(error: string | undefined) {
 
 function useVariableFieldFocus(formElementRef: RefObject<HTMLFormElement | null>) {
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null)
-  const [invalidFieldName, setInvalidFieldName] = useState<string | null>(null)
   useEffect(() => {
     if (!focusedRowId) return
     const input = formElementRef.current?.querySelector<HTMLInputElement>(
@@ -297,12 +298,7 @@ function useVariableFieldFocus(formElementRef: RefObject<HTMLFormElement | null>
     input?.focus()
     input?.select()
   }, [focusedRowId, formElementRef])
-  useEffect(() => {
-    if (!invalidFieldName) return
-    formElementRef.current?.querySelector<HTMLElement>(`[name="${invalidFieldName}"]`)?.focus()
-    setInvalidFieldName(null)
-  }, [invalidFieldName, formElementRef])
-  return { focusedRowId, setFocusedRowId, setInvalidFieldName }
+  return { focusedRowId, setFocusedRowId }
 }
 
 type RenameValidation =
@@ -335,7 +331,8 @@ function useVariableRename({
   copy,
   onRename,
   setFocusedRowId,
-  setSubmitIssues,
+  setFieldError,
+  clearSubmissionErrors,
   setSubmitMessage,
   variables,
 }: {
@@ -347,7 +344,8 @@ function useVariableRename({
     name: string,
   ) => Promise<ApplyVariableTableResult>
   setFocusedRowId: (rowId: string | null) => void
-  setSubmitIssues: (issues: ReadonlyMap<string, string>) => void
+  setFieldError: (index: number, message: string | undefined) => void
+  clearSubmissionErrors: () => void
   setSubmitMessage: (message: string | null) => void
   variables: readonly VariableDefinition[]
 }) {
@@ -358,14 +356,16 @@ function useVariableRename({
   const [rowId, setRowId] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
-  const start = (nextRowId: VariableId) => {
-    setSubmitIssues(new Map())
+  const start = (nextRowId: VariableId, rowIndex: number) => {
+    clearSubmissionErrors()
+    setFieldError(rowIndex, undefined)
     setSubmitMessage(null)
     setRowId(nextRowId)
     setFocusedRowId(nextRowId)
   }
-  const cancel = () => {
-    setSubmitIssues(new Map())
+  const cancel = (rowIndex: number) => {
+    clearSubmissionErrors()
+    setFieldError(rowIndex, undefined)
     setSubmitMessage(null)
     setRowId(null)
     setFocusedRowId(null)
@@ -373,17 +373,13 @@ function useVariableRename({
   const confirm = async (variableId: VariableId, rowIndex: number, name: string) => {
     const validated = validateVariableRename(variables, variablesById, variableId, name, copy)
     if (!validated.ok) {
-      setSubmitIssues(
-        validated.fieldMessage
-          ? new Map([[`${rowIndex}.name`, validated.fieldMessage]])
-          : new Map(),
-      )
+      setFieldError(rowIndex, validated.fieldMessage)
       setSubmitMessage(validated.message)
       setFocusedRowId(variableId)
       return
     }
 
-    setSubmitIssues(new Map())
+    setFieldError(rowIndex, undefined)
     setSubmitMessage(null)
     setPending(true)
     try {
@@ -393,7 +389,7 @@ function useVariableRename({
         setRowId(null)
         setFocusedRowId(null)
       } else if (result.diagnostic.sourceCode === "variable-name-conflict") {
-        setSubmitIssues(new Map([[`${rowIndex}.name`, copy.renameConflict]]))
+        setFieldError(rowIndex, copy.renameConflict)
       }
     } finally {
       setPending(false)
@@ -476,14 +472,29 @@ export function VariablesForm({
   const [searchQuery, setSearchQuery] = useState("")
   const query = searchQuery.trim().toLowerCase()
   const nameQuery = query.replace(/^#/, "")
-  const { focusedRowId, setFocusedRowId, setInvalidFieldName } =
-    useVariableFieldFocus(formElementRef)
-  const [submitIssues, setSubmitIssues] = useState<ReadonlyMap<string, string>>(new Map())
+  const { focusedRowId, setFocusedRowId } = useVariableFieldFocus(formElementRef)
   const [submitMessage, setSubmitMessage] = useState<string | null>(null)
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: {
       variables: variables.map((variable) => ({ ...variable, persisted: true })),
     },
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = variableDefinitionsSchema.safeParse(
+          value.variables.map(({ id, name, expression }) => ({
+            schemaVersion: 0 as const,
+            id,
+            name,
+            expression,
+          })),
+        )
+        return parsed.success
+          ? undefined
+          : { form: copy.validationSummary, fields: issueMessages(parsed.error, copy) }
+      },
+    },
+    onSubmitInvalid: () => setSearchQuery(""),
     onSubmit: async ({ value }) => {
       const parsed = variableDefinitionsSchema.safeParse(
         value.variables.map(({ id, name, expression }) => ({
@@ -493,17 +504,7 @@ export function VariablesForm({
           expression,
         })),
       )
-      if (!parsed.success) {
-        setSearchQuery("")
-        setSubmitIssues(issueMessages(parsed.error, copy))
-        setSubmitMessage(copy.validationSummary)
-        const [index, field] = parsed.error.issues[0]?.path ?? []
-        if (isInteger(index) && isString(field)) {
-          setInvalidFieldName(`variables[${index}].${field}`)
-        }
-        return
-      }
-      setSubmitIssues(new Map())
+      if (!parsed.success) return
       setSubmitMessage(null)
       const result = await onApply(baseRevision, parsed.data)
       setSubmitMessage(submissionMessage(result, copy))
@@ -511,8 +512,16 @@ export function VariablesForm({
   })
 
   const clearSubmissionErrors = () => {
-    if (submitIssues.size > 0) setSubmitIssues(new Map())
     if (submitMessage) setSubmitMessage(null)
+  }
+
+  const setFieldError = (index: number, message: string | undefined) => {
+    form.setFieldMeta(`variables[${index}].name`, (meta) => ({
+      ...meta,
+      isTouched: true,
+      isBlurred: true,
+      errorMap: { ...meta.errorMap, onSubmit: message },
+    }))
   }
 
   const rename = useVariableRename({
@@ -520,13 +529,15 @@ export function VariablesForm({
     copy,
     onRename,
     setFocusedRowId,
-    setSubmitIssues,
+    setFieldError,
+    clearSubmissionErrors,
     setSubmitMessage,
     variables,
   })
 
   return (
     <Form ref={formElementRef} form={form} className="gap-3" aria-label={copy.caption}>
+      <form.FormError />
       {disabled ? (
         <p className="rounded-md border border-diagnostic-warning/40 bg-panel-muted p-2 text-xs">
           {copy.readOnly}
@@ -535,8 +546,10 @@ export function VariablesForm({
       {submitMessage ? <Alert>{submitMessage}</Alert> : null}
       <form.AppField name="variables" mode="array">
         {(arrayField) => (
-          <form.Subscribe selector={(formState) => formState.values.variables}>
-            {(rows) => {
+          <form.Subscribe
+            selector={(formState) => [formState.values.variables, formState.fieldMeta] as const}
+          >
+            {([rows, metadata]) => {
               const structural = variableDefinitionsSchema.safeParse(
                 rows.map(({ id, name, expression }) => ({
                   schemaVersion: 0 as const,
@@ -587,7 +600,10 @@ export function VariablesForm({
                     const hasStructuralIssue =
                       !structural.success &&
                       structural.error.issues.some((issue) => issue.path[0] === index)
-                    const errors = fieldErrorProps(submitIssues, index)
+                    const errors = fieldErrorProps(
+                      metadata[`variables[${index}].name`]?.errors[0],
+                      metadata[`variables[${index}].expression`]?.errors[0],
+                    )
                     const removal = removalProps(rows, index, protectedVariableNames, copy)
                     const rowRenaming = rename.rowId === row.id
                     const rowLocked = rename.rowId !== null && !rowRenaming
@@ -627,26 +643,19 @@ export function VariablesForm({
                         </form.Field>
                       ),
                       expressionField: (
-                        <form.Field name={`variables[${index}].expression`}>
+                        <form.AppField name={`variables[${index}].expression`}>
                           {(field) => (
-                            <VariableExpressionInput
-                              name={field.name}
-                              value={field.state.value}
+                            <field.VariableExpressionInput
                               disabled={disabled || rename.pending || rename.rowId !== null}
                               excludedSuggestionId={row.id}
                               suggestions={suggestions}
                               aria-label={copy.expressionInput}
                               aria-describedby={`${row.id}-expression-error`}
-                              aria-invalid={invalidAttribute(errors.expressionError)}
                               className="h-8 font-mono"
-                              onBlur={field.handleBlur}
-                              onValueChange={(value) => {
-                                clearSubmissionErrors()
-                                field.handleChange(value)
-                              }}
+                              onValueChange={clearSubmissionErrors}
                             />
                           )}
-                        </form.Field>
+                        </form.AppField>
                       ),
                       result: resultText(evaluation, displayUnits, (value) =>
                         formatter.number(value, { maximumFractionDigits: 6 }),
@@ -665,7 +674,7 @@ export function VariablesForm({
                             : {})}
                           onStartRename={() => {
                             setSearchQuery("")
-                            rename.start(row.id)
+                            rename.start(row.id, index)
                           }}
                           onCancelRename={() => {
                             if (committed) {
@@ -674,7 +683,7 @@ export function VariablesForm({
                                 name: committed.name,
                               })
                             }
-                            rename.cancel()
+                            rename.cancel(index)
                           }}
                           onConfirmRename={() => rename.confirm(row.id, index, row.name)}
                           onRemove={() => {

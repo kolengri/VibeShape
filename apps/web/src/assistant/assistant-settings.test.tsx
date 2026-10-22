@@ -108,6 +108,20 @@ describe("assistant connection settings", () => {
     expect(chat.testConnection).not.toHaveBeenCalled()
   })
 
+  it("rejects an empty required confidence instead of treating it as zero", async () => {
+    const chat = { connect: vi.fn(), disconnect: vi.fn().mockResolvedValue(undefined) }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    await userEvent.click(screen.getByText("Jev advanced settings"))
+    const confidence = screen.getByRole("spinbutton", {
+      name: "Minimum decision confidence",
+    })
+    fireEvent.change(confidence, { target: { value: "" } })
+    await userEvent.click(screen.getByRole("button", { name: "Connect agent" }))
+    expect(chat.connect).not.toHaveBeenCalled()
+    expect(confidence.getAttribute("aria-invalid")).toBe("true")
+  })
+
   it("shows configuration validation beside its field and clears it when corrected", async () => {
     const chat = { connect: vi.fn(), disconnect: vi.fn().mockResolvedValue(undefined) }
     show(<ApiConfigurationForm chat={chat} busy={false} connected={false} />)
@@ -145,8 +159,10 @@ describe("assistant connection settings", () => {
       await choose("Agent", agent)
       const form = screen.getByRole("button", { name: "Connect agent" }).closest("form")
       expect(form).toBeTruthy()
-      fireEvent.submit(form as HTMLFormElement)
-      fireEvent.submit(form as HTMLFormElement)
+      await act(async () => {
+        fireEvent.submit(form as HTMLFormElement)
+        fireEvent.submit(form as HTMLFormElement)
+      })
       expect(chat.connect).toHaveBeenCalledTimes(1)
       expect(screen.getByRole("dialog", { name: "AI settings" })).toBeTruthy()
       expect(screen.getByRole("button", { name: "Connect agent" }).hasAttribute("disabled")).toBe(
@@ -782,7 +798,9 @@ describe("assistant connection settings", () => {
     fireEvent.change(screen.getByLabelText("Argument model endpoint", { exact: true }), {
       target: { value: "https://helper.test/v1/chat/completions" },
     })
-    fireEvent.submit(screen.getByRole("form", { name: "Jev settings" }))
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("form", { name: "Jev settings" }))
+    })
     expect(chat.connect).not.toHaveBeenCalled()
     expect(screen.getByRole("alert").textContent).toContain("both the argument endpoint and model")
     expect(
@@ -895,6 +913,53 @@ describe("assistant connection settings", () => {
       apiKey: "",
       stream: true,
     })
+  })
+
+  it("clears endpoint-scoped keys before testing a changed Jev helper", async () => {
+    const chat = {
+      connect: vi.fn(),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      testConnection: vi.fn().mockResolvedValue({ ok: true, checks: ["jev"] }),
+    }
+    show(<NativeAgentConfiguration chat={chat} connecting={false} connected={false} />)
+    await choose("Agent", "Jev (TypeSafe)")
+    await choose("Argument model", "API connection (advanced)")
+    const endpoint = screen.getByLabelText("Argument model endpoint", { exact: true })
+    fireEvent.change(endpoint, { target: { value: "https://first.test/v1/chat/completions" } })
+    fireEvent.change(screen.getByLabelText("Argument model name", { exact: true }), {
+      target: { value: "helper" },
+    })
+    const key = screen.getByLabelText("Argument model API key", { exact: true }) as HTMLInputElement
+    fireEvent.change(key, { target: { value: "first-endpoint-key" } })
+    fireEvent.change(endpoint, { target: { value: "https://second.test/v1/chat/completions" } })
+    expect(key.value).toBe("")
+    await userEvent.click(screen.getByRole("button", { name: "Test connection" }))
+    expect(chat.testConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          argumentsEndpoint: "https://second.test/v1/chat/completions",
+        }),
+      }),
+      {},
+    )
+    expect(chat.connect).not.toHaveBeenCalled()
+  })
+
+  it("blocks programmatic API submission while an external operation owns the connection", async () => {
+    saveApiPreferences({
+      endpoint: "https://api.test/v1/chat/completions",
+      model: "model",
+      apiKey: "",
+      stream: true,
+    })
+    const chat = { connect: vi.fn(), disconnect: vi.fn().mockResolvedValue(undefined) }
+    show(<ApiConfigurationForm chat={chat} busy connected={false} />)
+    const connect = screen.getByRole("button", { name: "Connect and enable project access" })
+    await act(async () => {
+      fireEvent.submit(connect.closest("form") as HTMLFormElement)
+    })
+    expect(chat.connect).not.toHaveBeenCalled()
+    expect(connect.hasAttribute("disabled")).toBe(true)
   })
 
   it("uses only agent-advertised models and modes and reports their pending changes globally", async () => {

@@ -1,50 +1,15 @@
 import type { AssemblyAuthority } from "@vibeshape/domain/assembly-authority"
 import {
   type AssemblyInstanceRecord as AssemblyInstance,
-  assemblyInstanceRecordSchema as assemblyInstanceSchema,
+  assemblyInstanceRecordSchema,
 } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import { FieldHelp } from "@vibeshape/ui/components/field-help"
-import { useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
-import { AssemblyNameField, AssemblyPoseFields, formPose } from "./assembly-fields"
-import { type AssemblyFormActions, AssemblyTaskForm } from "./assembly-forms"
+import { AssemblyNameField, AssemblyPoseFields, formPose, poseFieldValues } from "./assembly-fields"
+import { type AssemblyFormActions, AssemblyTaskForm, useAssemblyForm } from "./assembly-forms"
 import { newAssemblyInstance } from "./assembly-model"
 
-function updatedInstance(data: FormData, instance: AssemblyInstance) {
-  const fields = { ...instance, name: String(data.get("name")) }
-  if (!instance.grounded)
-    return assemblyInstanceSchema.parse(
-      instance.schemaVersion === 2
-        ? {
-            ...fields,
-            initialFrame: formPose(data, "initial", instance.initialFrame),
-          }
-        : fields,
-    )
-  return assemblyInstanceSchema.parse({
-    ...fields,
-    worldFrame: formPose(data, "world", instance.worldFrame),
-  })
-}
-function InstancePoseFields({ instance }: { instance: AssemblyInstance }) {
-  const t = useTranslations("app.assembly")
-  return instance.grounded ? (
-    <AssemblyPoseFields prefix="world" label={t("worldFrame")} pose={instance.worldFrame} />
-  ) : instance.schemaVersion === 2 ? (
-    <AssemblyPoseFields
-      prefix="initial"
-      label={t("initialFrame")}
-      pose={instance.initialFrame}
-      description={t("generalFreePoseExplanation")}
-    />
-  ) : (
-    <div className="flex items-center gap-1 text-sm font-medium">
-      {t("worldFrame")}
-      <FieldHelp label={t("worldFrame")}>{t("attachedPoseExplanation")}</FieldHelp>
-    </div>
-  )
-}
 function ExistingInstanceForm({
   instance,
   actions,
@@ -52,19 +17,48 @@ function ExistingInstanceForm({
   instance: AssemblyInstance
   actions: AssemblyFormActions
 }) {
+  const t = useTranslations("app.assembly")
+  const pose = instance.grounded
+    ? instance.worldFrame
+    : instance.schemaVersion === 2
+      ? instance.initialFrame
+      : undefined
+  const form = useAssemblyForm({
+    defaultValues: { name: instance.name, pose: poseFieldValues(pose) },
+    actions,
+    build: (values) => [
+      {
+        kind: "instance.update",
+        instance: assemblyInstanceRecordSchema.parse({
+          ...instance,
+          name: values.name,
+          ...(instance.grounded
+            ? { worldFrame: formPose(values.pose, instance.worldFrame) }
+            : instance.schemaVersion === 2
+              ? { initialFrame: formPose(values.pose, instance.initialFrame) }
+              : {}),
+        }),
+      },
+    ],
+  })
   return (
-    <AssemblyTaskForm
-      actions={actions}
-      build={(data) => [{ kind: "instance.update", instance: updatedInstance(data, instance) }]}
-    >
-      <AssemblyNameField value={instance.name} />
-      <InstancePoseFields instance={instance} />
+    <AssemblyTaskForm form={form} actions={actions}>
+      <AssemblyNameField form={form} fields={{ name: "name" }} />
+      {pose ? (
+        <AssemblyPoseFields
+          form={form}
+          fields="pose"
+          label={t(instance.grounded ? "worldFrame" : "initialFrame")}
+          description={instance.grounded ? undefined : t("generalFreePoseExplanation")}
+        />
+      ) : (
+        <div className="flex items-center gap-1 text-sm font-medium">
+          {t("worldFrame")}
+          <FieldHelp label={t("worldFrame")}>{t("attachedPoseExplanation")}</FieldHelp>
+        </div>
+      )}
     </AssemblyTaskForm>
   )
-}
-function firstDefinitionId(assembly: AssemblyAuthority) {
-  const first = assembly.definitions[0]
-  return first ? first.id : ""
 }
 function NewInstanceForm({
   assembly,
@@ -74,48 +68,58 @@ function NewInstanceForm({
   actions: AssemblyFormActions
 }) {
   const t = useTranslations("app.assembly")
-  const [definitionId, setDefinitionId] = useState<string>(firstDefinitionId(assembly))
-  const definition = assembly.definitions.find(({ id }) => id === definitionId)
+  const initialDefinition = assembly.definitions[0]
+  const form = useAssemblyForm({
+    defaultValues: {
+      name: t("defaultInstance", { name: initialDefinition?.name ?? t("defaultDefinition") }),
+      definitionId: initialDefinition?.id ?? "",
+      world: poseFieldValues(),
+    },
+    actions,
+    build: (values) => {
+      const definition = assembly.definitions.find(({ id }) => id === values.definitionId)
+      if (!definition) throw new Error("Select an assembly definition.")
+      return [
+        {
+          kind: "instance.create",
+          instance: newAssemblyInstance(
+            definition,
+            values.name,
+            formPose(values.world),
+            undefined,
+            assembly.schemaVersion,
+          ),
+        },
+      ]
+    },
+  })
   return (
-    <AssemblyTaskForm
-      actions={actions}
-      build={(data) => {
-        if (!definition) throw new Error("Select an assembly definition.")
-        return [
-          {
-            kind: "instance.create",
-            instance: newAssemblyInstance(
-              definition,
-              String(data.get("name")),
-              formPose(data, "world"),
-              undefined,
-              assembly.schemaVersion,
-            ),
-          },
-        ]
-      }}
-    >
-      <AssemblyNameField
-        value={t("defaultInstance", { name: definition?.name ?? t("defaultDefinition") })}
-      />
-      <LocalizedSearchableSelectField
-        label={t("definition")}
-        placeholder={t("definition")}
-        value={definitionId}
-        onValueChange={setDefinitionId}
-        required
-        options={assembly.definitions.map(({ id, name, pinnedModels }, index) => ({
-          value: id,
-          label: name,
-          description: t("choiceSource", {
-            number: index + 1,
-            source:
-              [...new Set(pinnedModels.map(({ snapshot }) => snapshot.name))].join(", ") || name,
-          }),
-          keywords: [id],
-        }))}
-      />
-      <AssemblyPoseFields prefix="world" label={t("worldFrame")} />
+    <AssemblyTaskForm form={form} actions={actions}>
+      <AssemblyNameField form={form} fields={{ name: "name" }} />
+      <form.AppField name="definitionId">
+        {(field) => (
+          <LocalizedSearchableSelectField
+            label={t("definition")}
+            placeholder={t("definition")}
+            value={field.state.value}
+            onValueChange={field.handleChange}
+            onBlur={field.handleBlur}
+            required
+            options={assembly.definitions.map(({ id, name, pinnedModels }, index) => ({
+              value: id,
+              label: name,
+              description: t("choiceSource", {
+                number: index + 1,
+                source:
+                  [...new Set(pinnedModels.map(({ snapshot }) => snapshot.name))].join(", ") ||
+                  name,
+              }),
+              keywords: [id],
+            }))}
+          />
+        )}
+      </form.AppField>
+      <AssemblyPoseFields form={form} fields="world" label={t("worldFrame")} />
     </AssemblyTaskForm>
   )
 }

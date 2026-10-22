@@ -5,17 +5,14 @@ import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
-import { useId, useState } from "react"
+import { useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { useId } from "react"
 import { browserAuthoredUuid as browserUuidV7 } from "../../document/authored-document-session"
 import { useDocumentDisplayUnits } from "../../document/document-display-units"
 import { assemblyMotionCoordinates, assemblyMotionUnits } from "./assembly-motion"
 import { AssemblyMotionKeyTimeline } from "./assembly-motion-key-timeline"
 import type { AssemblyWorkspaceView } from "./use-assembly-workspace"
 
-function parsedNumber(raw: string | null, value: number) {
-  if (raw === null) return value
-  return raw.trim() ? Number(raw) : Number.NaN
-}
 function validNumber(
   value: number,
   min?: number,
@@ -40,7 +37,7 @@ function numberMessage(
   return pending ? pendingMessage : ""
 }
 
-export function AssemblyStudyNumber({
+function AssemblyStudyNumber({
   label,
   value,
   min,
@@ -61,63 +58,82 @@ export function AssemblyStudyNumber({
 }) {
   const t = useTranslations("app.assembly")
   const id = useId()
-  const [raw, setRaw] = useState<string | null>(null)
-  const parsed = parsedNumber(raw, value)
-  const invalid = !validNumber(parsed, min, max, validate)
-  const pending = raw !== null && !invalid && parsed !== value
-  const message = numberMessage(
-    invalid,
-    pending,
-    errorMessage ?? t("motionNumberInvalid"),
-    t("motionNumberPending"),
-  )
+  const form = useAppForm({ defaultValues: { raw: String(value) } })
   return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
-        ref={(node) => node?.setCustomValidity(message)}
-        id={id}
-        type="number"
-        step="any"
-        required
-        min={min}
-        max={max}
-        value={raw ?? String(value)}
-        aria-invalid={invalid || undefined}
-        aria-describedby={message ? `${id}-error` : undefined}
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => {
-          setRaw(event.currentTarget.value)
-          onDirty()
+    <form.AppForm>
+      <form.AppField
+        name="raw"
+        validators={{
+          onChange: ({ value: raw }) =>
+            validNumber(raw.trim() ? Number(raw) : Number.NaN, min, max, validate)
+              ? undefined
+              : (errorMessage ?? t("motionNumberInvalid")),
         }}
-        onBlur={() => {
-          if (raw !== null && !invalid) {
-            onCommit(parsed)
-            setRaw(null)
-          }
+      >
+        {(field) => {
+          const raw = field.state.value
+          const parsed = raw.trim() ? Number(raw) : Number.NaN
+          const invalid = !validNumber(parsed, min, max, validate)
+          const pending = !invalid && parsed !== value
+          const message = numberMessage(
+            invalid,
+            pending,
+            errorMessage ?? t("motionNumberInvalid"),
+            t("motionNumberPending"),
+          )
+          return (
+            <Field>
+              <FieldLabel htmlFor={id}>{label}</FieldLabel>
+              <Input
+                ref={(node) => node?.setCustomValidity(message)}
+                id={id}
+                name={field.name}
+                type="number"
+                step="any"
+                required
+                min={min}
+                max={max}
+                value={raw}
+                aria-invalid={invalid || undefined}
+                aria-describedby={message ? `${id}-error` : undefined}
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) => {
+                  field.handleChange(event.currentTarget.value)
+                  onDirty()
+                }}
+                onBlur={() => {
+                  field.handleBlur()
+                  if (!invalid && field.state.meta.isDirty) {
+                    onCommit(parsed)
+                    form.reset({ raw: String(parsed) })
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    event.currentTarget.blur()
+                  }
+                  if (event.key === "Escape" && field.state.meta.isDirty) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    form.reset({ raw: String(value) })
+                  }
+                }}
+              />
+              {message &&
+                (invalid ? (
+                  <FieldError id={`${id}-error`}>{message}</FieldError>
+                ) : (
+                  <span id={`${id}-error`} className="sr-only">
+                    {message}
+                  </span>
+                ))}
+            </Field>
+          )
         }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault()
-            event.stopPropagation()
-            event.currentTarget.blur()
-          }
-          if (event.key === "Escape" && raw !== null) {
-            event.preventDefault()
-            event.stopPropagation()
-            setRaw(null)
-          }
-        }}
-      />
-      {message &&
-        (invalid ? (
-          <FieldError id={`${id}-error`}>{message}</FieldError>
-        ) : (
-          <span id={`${id}-error`} className="sr-only">
-            {message}
-          </span>
-        ))}
-    </Field>
+      </form.AppField>
+    </form.AppForm>
   )
 }
 
@@ -169,75 +185,96 @@ function CopyTrack({
       option.coordinate.kind === track.coordinate &&
       !study.tracks.some((other) => `${other.jointId}:${other.coordinate}` === option.key),
   )
-  const [targetKey, setTargetKey] = useState("")
-  const [offset, setOffset] = useState(0)
-  const [error, setError] = useState(false)
-  const target = available.find(({ key }) => key === targetKey) ?? available[0]
-  if (!target || study.tracks.length >= 64) return null
-  const unit = assemblyMotionUnits(target.coordinate, units)
-  const copy = (button: HTMLButtonElement) => {
-    if (!button.form?.reportValidity()) return
-    const keys = track.keys.map((key) => ({ ...key, value: key.value + offset }))
-    if (
-      keys.some(
-        ({ value }) =>
-          !Number.isFinite(value) || value < target.coordinate.min || value > target.coordinate.max,
-      )
-    ) {
-      setError(true)
-      return
-    }
-    edit({
-      ...study,
-      tracks: [
-        ...study.tracks,
-        { id: browserUuidV7(), jointId: target.jointId, coordinate: track.coordinate, keys },
-      ],
-    })
-    setOffset(0)
-    setError(false)
-  }
+  const form = useAppForm({
+    defaultValues: { targetKey: available[0]?.key ?? "", offset: 0 },
+    onSubmit: ({ value, formApi }) => {
+      const target = available.find(({ key }) => key === value.targetKey) ?? available[0]
+      if (!target || study.tracks.length >= 64) return
+      const keys = track.keys.map((key) => ({ ...key, value: key.value + value.offset }))
+      if (
+        keys.some(
+          ({ value }) =>
+            !Number.isFinite(value) ||
+            value < target.coordinate.min ||
+            value > target.coordinate.max,
+        )
+      ) {
+        formApi.setErrorMap({ onSubmit: { form: t("motionCopyOutOfLimits"), fields: {} } })
+        return
+      }
+      edit({
+        ...study,
+        tracks: [
+          ...study.tracks,
+          { id: browserUuidV7(), jointId: target.jointId, coordinate: track.coordinate, keys },
+        ],
+      })
+      form.reset()
+    },
+  })
   return (
-    <details className="text-sm">
-      <summary className="font-medium text-xs cursor-pointer py-1">{t("motionCopyTrack")}</summary>
-      <div className="mt-2 grid gap-2">
-        <NativeSelectField
-          label={t("motionCopyTarget")}
-          value={target.key}
-          onChange={(event) => {
-            setTargetKey(event.currentTarget.value)
-            setError(false)
-          }}
-        >
-          {available.map((option) => (
-            <option key={option.key} value={option.key}>
-              {option.label}
-            </option>
-          ))}
-        </NativeSelectField>
-        <AssemblyStudyNumber
-          label={t(track.coordinate === "angle" ? "motionAngleOffset" : "motionValueOffset", {
-            unit: unit.unit,
-          })}
-          value={unit.display(offset)}
-          onDirty={() => {
-            edit(study)
-            setError(false)
-          }}
-          onCommit={(value) => setOffset(unit.canonical(value))}
-        />
-        <p className="text-xs text-muted-foreground">{t("motionCopyHint")}</p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={(event) => copy(event.currentTarget)}
-        >
-          {t("motionCopyApply")}
-        </Button>
-        {error && <Alert>{t("motionCopyOutOfLimits")}</Alert>}
-      </div>
-    </details>
+    <form.AppForm>
+      <form.Subscribe selector={(state) => state.values.targetKey}>
+        {(targetKey) => {
+          const target = available.find(({ key }) => key === targetKey) ?? available[0]
+          if (!target || study.tracks.length >= 64) return null
+          const unit = assemblyMotionUnits(target.coordinate, units)
+          return (
+            <details className="text-sm">
+              <summary className="font-medium text-xs cursor-pointer py-1">
+                {t("motionCopyTrack")}
+              </summary>
+              <div className="mt-2 grid gap-2">
+                <form.AppField name="targetKey">
+                  {(field) => (
+                    <NativeSelectField
+                      label={t("motionCopyTarget")}
+                      value={target.key}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.currentTarget.value)}
+                    >
+                      {available.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </NativeSelectField>
+                  )}
+                </form.AppField>
+                <form.AppField name="offset">
+                  {(field) => (
+                    <AssemblyStudyNumber
+                      label={t(
+                        track.coordinate === "angle" ? "motionAngleOffset" : "motionValueOffset",
+                        { unit: unit.unit },
+                      )}
+                      value={unit.display(field.state.value)}
+                      onDirty={() => {
+                        edit(study)
+                        form.setErrorMap({ onSubmit: undefined })
+                      }}
+                      onCommit={(value) => field.handleChange(unit.canonical(value))}
+                    />
+                  )}
+                </form.AppField>
+                <p className="text-xs text-muted-foreground">{t("motionCopyHint")}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={(event) => {
+                    if (event.currentTarget.form?.reportValidity()) return form.handleSubmit()
+                  }}
+                >
+                  {t("motionCopyApply")}
+                </Button>
+                <form.FormError />
+              </div>
+            </details>
+          )
+        }}
+      </form.Subscribe>
+    </form.AppForm>
   )
 }
 

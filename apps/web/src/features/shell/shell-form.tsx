@@ -6,9 +6,9 @@ import type {
 } from "@vibeshape/domain"
 import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
 import { ChoiceField } from "@vibeshape/ui/components/choice-field"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -177,8 +177,24 @@ export function ShellForm({
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const repair = shellInitialSelection(mode, evidence, allowSemanticRebinding).repair
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: shellInitialValues(mode, evidence, state.displayUnits, allowSemanticRebinding),
+    validators: {
+      onDynamic: ({ value }) => {
+        const feature = shellFormFeature(
+          mode,
+          featureId,
+          value,
+          evidence,
+          variables,
+          state.displayUnits,
+          copy,
+          allowSemanticRebinding,
+        )
+        return feature ? undefined : copy.validationSummary
+      },
+    },
     onSubmit: async ({ value }) => {
       const feature = shellFormFeature(
         mode,
@@ -190,10 +206,7 @@ export function ShellForm({
         copy,
         allowSemanticRebinding,
       )
-      if (!feature) {
-        state.setMessage(copy.validationSummary)
-        return
-      }
+      if (!feature) return
       state.setMessage(null)
       try {
         await submitFeatureMutation({
@@ -210,7 +223,8 @@ export function ShellForm({
     },
   })
   return (
-    <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       <form.Subscribe selector={(formState) => formState.values}>
         {(values) => (
           <ShellPickingSync
@@ -272,33 +286,25 @@ export function ShellForm({
                 {copy.unavailable}
               </p>
             )}
-            <form.Field name="thickness">
+            <form.AppField name="thickness">
               {(field) => (
-                <LengthExpressionField
+                <field.LengthExpressionField
                   id="shell-thickness"
-                  name="thickness"
                   label={copy.thickness}
                   description={copy.lengthDescription}
-                  value={field.state.value}
                   suggestions={state.suggestions}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
+                  onValueChange={() => {
                     state.clearSubmissionErrors()
-                    field.handleChange(value)
                   }}
                 />
               )}
-            </form.Field>
-            <form.Field name="direction">
+            </form.AppField>
+            <form.AppField name="direction">
               {(field) => (
-                <ChoiceField
-                  name={field.name}
+                <field.ChoiceField
                   label={copy.direction}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
+                  onValueChange={() => {
                     state.clearSubmissionErrors()
-                    field.handleChange(value === "inward" ? "inward" : "outward")
                   }}
                   options={(["inward", "outward"] as const).map((direction) => ({
                     value: direction,
@@ -306,7 +312,7 @@ export function ShellForm({
                   }))}
                 />
               )}
-            </form.Field>
+            </form.AppField>
             <form.Field name="closed">
               {(field) => (
                 <ChoiceField

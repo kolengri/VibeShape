@@ -8,17 +8,16 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
-import { Alert } from "@vibeshape/ui/components/alert"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useEffect, useMemo, useState } from "react"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
+import { useEffect, useMemo } from "react"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
   normalizeExpressionWithDisplayUnit,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
-import { SketchExpressionFormField } from "./sketch-expression-form-field"
 import { SketchFormActions } from "./sketch-form-actions"
 import type { SketchTransformPreview } from "./sketch-transform-manipulator"
 
@@ -117,7 +116,6 @@ export function SketchTransformForm({
 }>) {
   const t = useTranslations("app.sketch.transform")
   const displayUnits = useDocumentDisplayUnits()
-  const [message, setMessage] = useState<string | null>(null)
   const suggestions = useMemo(() => variableExpressionSuggestions(variables), [variables])
   const defaultValues = useMemo(
     () => defaultTransformFormValues(value, displayUnits),
@@ -132,21 +130,21 @@ export function SketchTransformForm({
       value.preview.translation.y,
     ],
   )
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues,
+    validators: {
+      onDynamic: ({ value }) =>
+        evaluateSketchTransformForm(value, variables, displayUnits) ? undefined : t("invalid"),
+    },
     onSubmit: ({ value: submitted }) => {
       const transform = evaluateSketchTransformForm(submitted, variables, displayUnits)
-      if (!transform) {
-        setMessage(t("invalid"))
-        return
-      }
-      setMessage(null)
+      if (!transform) return
       onApply(transform)
     },
   })
   useEffect(() => {
     form.reset(defaultValues)
-    setMessage(null)
   }, [defaultValues, form])
   const fields = [
     { label: t("originX"), name: "originX" },
@@ -165,20 +163,19 @@ export function SketchTransformForm({
     >
       <div className="grid gap-2">
         {fields.map(({ label, name }) => (
-          <form.Field key={name} name={name}>
+          <form.AppField key={name} name={name}>
             {(field) => (
-              <SketchExpressionFormField
-                field={field}
+              <field.VariableExpressionField
                 id={`sketch-transform-${name}`}
                 label={label}
                 suggestions={suggestions}
-                onValueChange={() => setMessage(null)}
+                inputClassName="font-mono tabular-nums"
               />
             )}
-          </form.Field>
+          </form.AppField>
         ))}
       </div>
-      {message ? <Alert>{message}</Alert> : null}
+      <form.FormError />
       <SketchFormActions
         cancelLabel={t("cancel")}
         submit={

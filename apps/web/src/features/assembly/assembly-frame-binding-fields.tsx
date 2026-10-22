@@ -7,10 +7,9 @@ import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import { topoRefSchema } from "@vibeshape/domain/topology"
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection, TopologyCandidate } from "@vibeshape/protocol"
-import { fieldVariants } from "@vibeshape/ui/components/field"
-import { cn } from "@vibeshape/ui/lib/cn"
+import { withFieldGroup } from "@vibeshape/ui/integrations/tanstack-form"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
-import { AssemblyNumberField, formNumber } from "./assembly-fields"
+import { AssemblyNumberField, formNumber, numberFieldValidators } from "./assembly-fields"
 
 function frameRecipe(candidate: TopologyCandidate): AssemblyFrameBinding["geometry"] | null {
   const kind = candidate.referenceGeometry?.kind
@@ -104,140 +103,163 @@ function bindingCandidateMatches(binding: AssemblyFrameBinding, option: BindingO
     canonicalJson(option.candidate.signature) === canonicalJson(binding.reference.signature)
   )
 }
-export function readAssemblyFrameBinding(
-  data: FormData,
-  prefix: string,
-  binding: AssemblyFrameBinding | undefined,
-) {
-  if (!binding) return undefined
+export function frameBindingValues(binding?: AssemblyFrameBinding) {
+  return {
+    reference: binding,
+    origin: {
+      X: String(binding?.originHint[0] ?? 0),
+      Y: String(binding?.originHint[1] ?? 0),
+      Z: String(binding?.originHint[2] ?? 0),
+    },
+    x: {
+      X: String(binding?.xDirection[0] ?? 1),
+      Y: String(binding?.xDirection[1] ?? 0),
+      Z: String(binding?.xDirection[2] ?? 0),
+    },
+    reversed: binding?.reversed ?? false,
+  }
+}
+export function readAssemblyFrameBinding(values: ReturnType<typeof frameBindingValues>) {
+  if (!values.reference) return undefined
   return assemblyFrameBindingSchema.parse({
-    ...binding,
-    originHint: ["X", "Y", "Z"].map((axis) => formNumber(data, `${prefix}.binding.origin.${axis}`)),
-    xDirection: ["X", "Y", "Z"].map((axis) => formNumber(data, `${prefix}.binding.x.${axis}`)),
-    reversed: data.get(`${prefix}.binding.reversed`) === "on",
+    ...values.reference,
+    originHint: [
+      formNumber(values.origin.X),
+      formNumber(values.origin.Y),
+      formNumber(values.origin.Z),
+    ],
+    xDirection: [formNumber(values.x.X), formNumber(values.x.Y), formNumber(values.x.Z)],
+    reversed: values.reversed,
   })
 }
-export function AssemblyFrameBindingFields({
-  prefix,
-  assembly,
-  inspection,
-  instanceId,
-  binding,
-  onChange,
-}: {
-  prefix: string
-  assembly: AssemblyAuthority
-  inspection?: AssemblyInspection | null | undefined
-  instanceId: string
-  binding: AssemblyFrameBinding | undefined
-  onChange: (binding: AssemblyFrameBinding | undefined) => void
-}) {
-  const t = useTranslations("app.assembly"),
-    options = bindingOptions(assembly, inspection, instanceId)
-  const selected = binding
-    ? options.find(
-        (option) =>
-          bindingSourceMatches(binding, option) && bindingCandidateMatches(binding, option),
-      )
-    : undefined
-  const value = binding ? (selected?.key ?? "unresolved") : "explicit"
-  return (
-    <fieldset className="grid gap-2">
-      <LocalizedSearchableSelectField
-        label={t(prefix === "parent" ? "parentBinding" : "childBinding")}
-        description={binding ? t("frameBindingExplanation") : undefined}
-        placeholder={t(prefix === "parent" ? "parentBinding" : "childBinding")}
-        value={value}
-        onValueChange={(key) => {
-          if (key === "explicit") {
-            onChange(undefined)
-            return
-          }
-          const option = options.find((o) => o.key === key)
-          if (!option) return
-          const definition = assembly.definitions.find(
-            (d) => d.id === option.occurrence.definitionId,
-          )
-          if (!definition) return
-          const { candidate } = option
-          const reference = topoRefSchema.parse({
-            schemaVersion: 0,
-            featureId: option.occurrence.selectedBody.featureId,
-            kind: candidate.kind,
-            ...(candidate.semanticRole ? { semanticRole: candidate.semanticRole } : {}),
-            ...(!candidate.semanticRole && candidate.lineageTokens[0]
-              ? { lineageToken: candidate.lineageTokens[0] }
-              : {}),
-            signature: candidate.signature,
-          })
-          onChange(
-            assemblyFrameBindingSchema.parse({
-              sourceIndex: option.occurrence.sourceIndex,
-              pinRevision: definition.pinRevision,
-              body: option.occurrence.selectedBody,
-              reference,
-              geometry: option.geometry,
-              originHint: candidate.signature.centroid,
-              xDirection: defaultX(candidate),
-              reversed: false,
-            }),
-          )
-        }}
-        options={[
-          { value: "explicit", label: t("explicitFrame") },
-          ...(binding && !selected
-            ? [{ value: "unresolved", label: t("unresolvedBinding"), disabled: true }]
-            : []),
-          ...options.map(({ key, candidate, occurrence }) => ({
-            value: key,
-            label: t("topologyOption", {
-              kind: candidate.signature.geometryClass,
-              source: occurrence.sourceIndex + 1,
-              label:
-                candidate.semanticRole ??
-                candidate.signature.centroid.map((v) => v.toFixed(2)).join(", "),
-            }),
-            description:
-              assembly.definitions.find((definition) => definition.id === occurrence.definitionId)
-                ?.name ?? occurrence.definitionId,
-          })),
-        ]}
-      />
-      {binding && (
-        <div key={value} className="grid gap-2">
-          <div className="grid gap-2">
-            {(["X", "Y", "Z"] as const).map((axis, index) => (
-              <AssemblyNumberField
-                key={axis}
-                name={`${prefix}.binding.origin.${axis}`}
-                label={t("originHintAxis", { axis })}
-                value={binding.originHint[index]}
-              />
-            ))}
-          </div>
-          <div className="grid gap-2">
-            {(["X", "Y", "Z"] as const).map((axis, index) => (
-              <AssemblyNumberField
-                key={axis}
-                name={`${prefix}.binding.x.${axis}`}
-                label={t("xDirectionAxis", { axis })}
-                value={binding.xDirection[index]}
-                min={-1}
-                max={1}
-              />
-            ))}
-          </div>
-          <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
-            <span>{t("reverseAxis")}</span>
-            <input
-              name={`${prefix}.binding.reversed`}
-              type="checkbox"
-              defaultChecked={binding.reversed}
-              className="size-4 accent-primary"
-            />
-          </label>
-        </div>
-      )}
-    </fieldset>
-  )
+function optionBinding(assembly: AssemblyAuthority, option: BindingOption) {
+  const { candidate, occurrence } = option
+  const definition = assembly.definitions.find((d) => d.id === occurrence.definitionId)
+  if (!definition) return undefined
+  return assemblyFrameBindingSchema.parse({
+    sourceIndex: occurrence.sourceIndex,
+    pinRevision: definition.pinRevision,
+    body: occurrence.selectedBody,
+    reference: topoRefSchema.parse({
+      schemaVersion: 0,
+      featureId: occurrence.selectedBody.featureId,
+      kind: candidate.kind,
+      ...(candidate.semanticRole ? { semanticRole: candidate.semanticRole } : {}),
+      ...(!candidate.semanticRole && candidate.lineageTokens[0]
+        ? { lineageToken: candidate.lineageTokens[0] }
+        : {}),
+      signature: candidate.signature,
+    }),
+    geometry: option.geometry,
+    originHint: candidate.signature.centroid,
+    xDirection: defaultX(candidate),
+    reversed: false,
+  })
 }
+function bindingSelection(binding: AssemblyFrameBinding | undefined, options: BindingOption[]) {
+  if (!binding) return { value: "explicit", unresolved: false }
+  const selected = options.find(
+    (option) => bindingSourceMatches(binding, option) && bindingCandidateMatches(binding, option),
+  )
+  return { value: selected ? selected.key : "unresolved", unresolved: !selected }
+}
+export const AssemblyFrameBindingFields = withFieldGroup({
+  defaultValues: frameBindingValues(),
+  props: {} as {
+    prefix: "parent" | "child"
+    assembly: AssemblyAuthority
+    inspection?: AssemblyInspection | null | undefined
+    instanceId: string
+  },
+  render: function AssemblyFrameBindingFields({ group, prefix, assembly, inspection, instanceId }) {
+    const t = useTranslations("app.assembly")
+    const options = bindingOptions(assembly, inspection, instanceId)
+    const label = t(prefix === "parent" ? "parentBinding" : "childBinding")
+    return (
+      <fieldset className="grid gap-2">
+        <group.AppField name="reference">
+          {(field) => {
+            const binding = field.state.value
+            const selection = bindingSelection(binding, options)
+            return (
+              <LocalizedSearchableSelectField
+                label={label}
+                description={binding ? t("frameBindingExplanation") : undefined}
+                placeholder={label}
+                value={selection.value}
+                onBlur={field.handleBlur}
+                onValueChange={(key) => {
+                  const option = options.find((option) => option.key === key)
+                  if (key !== "explicit" && !option) return
+                  const next = frameBindingValues(
+                    option ? optionBinding(assembly, option) : undefined,
+                  )
+                  field.handleChange(next.reference)
+                  group.setFieldValue("origin", next.origin)
+                  group.setFieldValue("x", next.x)
+                  group.setFieldValue("reversed", next.reversed)
+                }}
+                options={[
+                  { value: "explicit", label: t("explicitFrame") },
+                  ...(selection.unresolved
+                    ? [{ value: "unresolved", label: t("unresolvedBinding"), disabled: true }]
+                    : []),
+                  ...options.map(({ key, candidate, occurrence }) => ({
+                    value: key,
+                    label: t("topologyOption", {
+                      kind: candidate.signature.geometryClass,
+                      source: occurrence.sourceIndex + 1,
+                      label:
+                        candidate.semanticRole ??
+                        candidate.signature.centroid.map((v) => v.toFixed(2)).join(", "),
+                    }),
+                    description:
+                      assembly.definitions.find(
+                        (definition) => definition.id === occurrence.definitionId,
+                      )?.name ?? occurrence.definitionId,
+                  })),
+                ]}
+              />
+            )
+          }}
+        </group.AppField>
+        <group.Subscribe selector={(state) => state.values.reference}>
+          {(binding) =>
+            binding && (
+              <div className="grid gap-2">
+                {(["origin", "x"] as const).map((kind) => (
+                  <div key={kind} className="grid gap-2">
+                    {(["X", "Y", "Z"] as const).map((axis) => (
+                      <group.AppField
+                        key={axis}
+                        name={`${kind}.${axis}`}
+                        validators={numberFieldValidators(
+                          t("invalidParameters"),
+                          kind === "x" ? -1 : -100_000,
+                          kind === "x" ? 1 : 100_000,
+                        )}
+                      >
+                        {() => (
+                          <AssemblyNumberField
+                            label={t(kind === "origin" ? "originHintAxis" : "xDirectionAxis", {
+                              axis,
+                            })}
+                            min={kind === "x" ? -1 : -100_000}
+                            max={kind === "x" ? 1 : 100_000}
+                          />
+                        )}
+                      </group.AppField>
+                    ))}
+                  </div>
+                ))}
+                <group.AppField name="reversed">
+                  {(field) => <field.CheckboxField label={t("reverseAxis")} />}
+                </group.AppField>
+              </div>
+            )
+          }
+        </group.Subscribe>
+      </fieldset>
+    )
+  },
+})

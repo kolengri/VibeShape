@@ -63,6 +63,7 @@ function PickButton({
       variant="outline"
       disabled={props.disabled}
       aria-pressed={props.pick?.kind === kind}
+      aria-invalid={(kind === "edges" && Boolean(props.issues.references)) || undefined}
       onClick={(event) => props.onArm({ kind }, event.currentTarget)}
     >
       <Scan aria-hidden="true" />

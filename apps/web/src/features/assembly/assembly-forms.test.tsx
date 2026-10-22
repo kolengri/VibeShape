@@ -1,7 +1,15 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { webcrypto } from "node:crypto"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { assemblyJointSchema } from "@vibeshape/domain/assembly"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -9,7 +17,7 @@ import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import { authoredTestId as id } from "../../test-support/authored-tree-fixture"
 import { AssemblyDefinitionForm } from "./assembly-definition-form"
-import { AssemblyTaskPanelContext } from "./assembly-forms"
+import { AssemblyTaskPanelContext, useAssemblyForm } from "./assembly-forms"
 import { AssemblyInstanceForm } from "./assembly-instance-form"
 import { AssemblyJointForm } from "./assembly-joint-form"
 import { assemblyPoseFromEuler, identityAssemblyPose, newAssemblyInstance } from "./assembly-model"
@@ -56,6 +64,30 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Assembly forms", () => {
+  it("does not build or dispatch after a submitted assembly task unmounts", async () => {
+    const a = actions()
+    const build = vi.fn().mockReturnValue([])
+    const hook = renderHook(
+      () => useAssemblyForm({ defaultValues: { name: "Assembly" }, actions: a, build }),
+      {
+        wrapper: ({ children }) => (
+          <I18nProvider i18n={i18n} initialLocale="en">
+            {children}
+          </I18nProvider>
+        ),
+      },
+    )
+    let submission!: Promise<void>
+    act(() => {
+      submission = hook.result.current.handleSubmit()
+    })
+    hook.unmount()
+    await act(async () => {
+      await submission
+    })
+    expect(build).not.toHaveBeenCalled()
+    expect(a.onApply).not.toHaveBeenCalled()
+  })
   it.each([
     ["revolute", "Revolute", 18],
     ["cylindrical", "Cylindrical", 21],
@@ -111,8 +143,8 @@ describe("Assembly forms", () => {
     expect(screen.getByRole("button", { name: "Cancel" }).closest("header")).toBe(header)
     expect(screen.getAllByRole("button", { name: "Apply" })).toHaveLength(1)
     expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(1)
-    await userEvent.clear(screen.getByLabelText("Name"))
-    await userEvent.type(screen.getByLabelText("Name"), "Reusable bracket")
+    await userEvent.clear(screen.getByRole("textbox", { name: "Name" }))
+    await userEvent.type(screen.getByRole("textbox", { name: "Name" }), "Reusable bracket")
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
     await waitFor(() => expect(a.onApply).toHaveBeenCalledTimes(1))
     const changes = a.onApply.mock.calls[0]?.[0]
@@ -143,7 +175,9 @@ describe("Assembly forms", () => {
       />,
       "Edit definition",
     )
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Renamed" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Renamed" },
+    })
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
     expect(a.onApply).toHaveBeenCalledWith([
       {
@@ -235,14 +269,42 @@ describe("Assembly forms", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: "Drive (deg)" }), {
       target: { value: "45" },
     })
-    fireEvent.change(screen.getByLabelText("Z", { exact: true }), { target: { value: "0" } })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Z" }), {
+      target: { value: "0" },
+    })
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
     expect(a.onApply).not.toHaveBeenCalled()
-    fireEvent.change(screen.getByLabelText("Z", { exact: true }), { target: { value: "1" } })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Z" }), {
+      target: { value: "1" },
+    })
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Apply" }).disabled).toBe(false)
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
+    expect(a.onApply).toHaveBeenCalledTimes(1)
     expect(a.onApply.mock.calls[0]?.[0]).toMatchObject([
       { kind: "joint.update", joint: { id: joint.id, value: Math.PI / 4 } },
     ])
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+  it("discards validation from a hidden drive section when switching joint kind", async () => {
+    const f = assemblyUiFixture(),
+      a = actions()
+    setup(
+      <AssemblyJointForm assembly={f.assembly} selectedId={f.parent.id} actions={a} />,
+      "Add joint",
+    )
+    await choose("Joint type", "Revolute")
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Drive (deg)" }), {
+      target: { value: "1000" },
+    })
+    await userEvent.click(screen.getByRole("button", { name: "Apply" }))
+    expect(a.onApply).not.toHaveBeenCalled()
+    await choose("Joint type", "Fixed")
+    await userEvent.click(screen.getByRole("button", { name: "Apply" }))
+    expect(a.onApply).toHaveBeenCalledTimes(1)
+    expect(a.onApply.mock.calls[0]?.[0]?.[1]).toMatchObject({
+      kind: "joint.create",
+      joint: { kind: "fixed" },
+    })
   })
   it("edits a prismatic drive in millimeters and preserves its explicit axis", async () => {
     const f = assemblyUiFixture(),
@@ -281,9 +343,13 @@ describe("Assembly forms", () => {
     const f = assemblyUiFixture(),
       a = actions()
     setup(<AssemblyInstanceForm assembly={f.assembly} actions={a} />, "Add instance")
-    fireEvent.change(screen.getByLabelText("X (mm)"), { target: { value: "30" } })
-    fireEvent.change(screen.getByLabelText("Z (deg)"), { target: { value: "90" } })
-    fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Escape" })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "X (mm)" }), {
+      target: { value: "30" },
+    })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Z (deg)" }), {
+      target: { value: "90" },
+    })
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Name" }), { key: "Escape" })
     expect(a.onCancel).toHaveBeenCalledTimes(1)
     expect(a.onApply).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
@@ -302,16 +368,24 @@ describe("Assembly forms", () => {
     const f = assemblyUiFixture(),
       a = actions()
     setup(<AssemblyInstanceForm assembly={f.assembly} actions={a} />, "Add instance")
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Unsaved bracket" } })
-    fireEvent.change(screen.getByLabelText("X (mm)"), { target: { value: "30" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Unsaved bracket" },
+    })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "X (mm)" }), {
+      target: { value: "30" },
+    })
     const trigger = screen.getByRole("combobox", { name: "Definition" })
     await userEvent.click(trigger)
     await userEvent.type(screen.getByRole("combobox", { name: "Search options…" }), "missing")
     await userEvent.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull())
     expect(a.onCancel).not.toHaveBeenCalled()
-    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Unsaved bracket")
-    expect((screen.getByLabelText("X (mm)") as HTMLInputElement).value).toBe("30")
+    expect((screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe(
+      "Unsaved bracket",
+    )
+    expect((screen.getByRole("spinbutton", { name: "X (mm)" }) as HTMLInputElement).value).toBe(
+      "30",
+    )
     await waitFor(() => expect(document.activeElement).toBe(trigger))
     await userEvent.keyboard("{Escape}")
     expect(a.onCancel).toHaveBeenCalledTimes(1)
@@ -326,7 +400,9 @@ describe("Assembly forms", () => {
       <AssemblyInstanceForm assembly={f.assembly} instance={f.parent} actions={{ ...a, pending }} />
     )
     const { rerenderForm } = setup(form(false), "Edit instance")
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Edited base" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Edited base" },
+    })
     rerenderForm(form(true))
     const apply = screen.getByRole<HTMLButtonElement>("button", { name: "Apply" })
     const cancel = screen.getByRole<HTMLButtonElement>("button", { name: "Cancel" })
@@ -334,9 +410,10 @@ describe("Assembly forms", () => {
     expect(apply.getAttribute("aria-busy")).toBe("true")
     expect(cancel.disabled).toBe(true)
     expect(
-      (screen.getByLabelText("Name").closest("fieldset") as HTMLFieldSetElement).disabled,
+      (screen.getByRole("textbox", { name: "Name" }).closest("fieldset") as HTMLFieldSetElement)
+        .disabled,
     ).toBe(true)
-    fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Escape" })
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Name" }), { key: "Escape" })
     const nativeForm = apply.closest("form")
     if (!nativeForm) throw new Error("Assembly lifecycle actions must belong to their form.")
     fireEvent.submit(nativeForm)
@@ -347,7 +424,9 @@ describe("Assembly forms", () => {
     rerenderForm(form(false), "Apply failed")
     await userEvent.click(apply)
     await waitFor(() => expect(a.onApply).toHaveBeenCalledTimes(1))
-    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Edited base")
+    expect((screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe(
+      "Edited base",
+    )
     expect(a.onCancel).not.toHaveBeenCalled()
     expect(cancel.disabled).toBe(false)
     expect(apply.getAttribute("aria-busy")).not.toBe("true")

@@ -1,6 +1,7 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { assemblyJointRecordSchema } from "@vibeshape/domain/assembly-mates"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { useLayoutEffect, useMemo, useState } from "react"
@@ -115,7 +116,7 @@ describe("Assembly motion controls", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "Play animation" }))
     expect(value.value).toBe("0.75")
-    expect(screen.getByText("Solving motion preview…")).toBeTruthy()
+    await screen.findByText("Solving motion preview…")
     await act(async () => solve())
     expect(value.value).toBe("-0.5")
     await act(async () => {
@@ -136,6 +137,36 @@ describe("Assembly motion controls", () => {
     expect(value.value).toBe("0.750")
     expect(screen.queryByText("Preview: -0.5 in")).toBeNull()
     expect((screen.getByRole("button", { name: "Apply" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(ports.apply).not.toHaveBeenCalled()
+  })
+  it("rejects an out-of-range sweep before solving and plays a corrected range", async () => {
+    render(<Harness />)
+    const start = screen.getByRole<HTMLInputElement>("spinbutton", { name: "Sweep start (in)" })
+    await userEvent.click(start)
+    fireEvent.change(start, { target: { value: "4" } })
+    await userEvent.click(screen.getByRole("button", { name: "Play animation" }))
+    expect(start.value).toBe("4")
+    expect(start.getAttribute("aria-invalid")).toBe("true")
+    const error = screen.getByRole("alert")
+    expect(error.textContent).toBe(
+      "Check the names, finite coordinates, rotation angles, nonzero axis and ordered drive limits.",
+    )
+    expect(start.getAttribute("aria-describedby")).toBe(error.id)
+    expect(ports.preview).not.toHaveBeenCalled()
+    expect(ports.apply).not.toHaveBeenCalled()
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Apply" }).disabled).toBe(true)
+    fireEvent.change(start, { target: { value: "-0.5" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Play animation" }))
+    })
+    await screen.findByText("Preview: -0.5 in")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Pause" }))
+    })
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(ports.preview.mock.calls[0]?.[0]).toMatchObject([
+      { kind: "joint.update", joint: { translation: -12.7 } },
+    ])
     expect(ports.apply).not.toHaveBeenCalled()
   })
   it("makes Pause an independent enabled action while a sweep is running", async () => {
@@ -190,6 +221,7 @@ describe("Assembly motion controls", () => {
       }),
     )
     fireEvent.click(screen.getByRole("button", { name: "Preview coordinate" }))
+    await waitFor(() => expect(ports.preview).toHaveBeenCalledTimes(1))
     const signal = ports.preview.mock.calls[0]?.[3] as AbortSignal
     fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Coordinate (in)" }), {
       key: "Escape",

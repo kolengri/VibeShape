@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { SubmitButton } from "@vibeshape/ui/integrations/tanstack-form"
 
 export function NativeAgentActions({
   connected,
@@ -18,8 +19,8 @@ export function NativeAgentActions({
       {t("disconnect")}
     </Button>
   ) : (
-    <Button type="submit" size="sm" aria-busy={pending || undefined} disabled={pending || disabled}>
+    <SubmitButton size="sm" requireDirty={false} disabled={pending || disabled}>
       {t("connect")}
-    </Button>
+    </SubmitButton>
   )
 }

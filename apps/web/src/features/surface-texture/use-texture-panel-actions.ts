@@ -1,6 +1,7 @@
 import { surfaceTextureLayersSchema } from "@vibeshape/domain/surface-textures"
 import { useTranslations } from "@vibeshape/i18n"
 import { useBlockingActivity } from "@vibeshape/ui/components/activity"
+import { useStore } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
 import { replaceSurfaceTextureLayers } from "../../document/document-controller"
 import { readTextureImage } from "./read-texture-image"
@@ -11,10 +12,9 @@ type TextureDraftState = ReturnType<typeof useTextureDraft>
 export function useTexturePanelActions(state: TextureDraftState, onComplete: () => void) {
   const t = useTranslations("app.surfaceTexture")
   const preview = useSurfaceTexturePreviewContext()
-  const [saving, setSaving] = useState(false)
+  const saving = useStore(state.form.store, (form) => form.isSubmitting)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const busy = useRef(false)
   const uploadGeneration = useRef(0)
   const { draft, layer, update } = state
   const validated = draft ? surfaceTextureLayersSchema.safeParse(draft.layers) : null
@@ -34,10 +34,8 @@ export function useTexturePanelActions(state: TextureDraftState, onComplete: () 
     [setShowOriginal],
   )
   async function apply() {
-    if (!draft || !canApply || busy.current) return
+    if (!draft || !canApply) return
     if (state.isUnchanged()) return onComplete()
-    busy.current = true
-    setSaving(true)
     setError(null)
     try {
       const result = await replaceSurfaceTextureLayers(
@@ -49,9 +47,6 @@ export function useTexturePanelActions(state: TextureDraftState, onComplete: () 
       else setError(t("saveFailed"))
     } catch {
       setError(t("saveFailed"))
-    } finally {
-      busy.current = false
-      setSaving(false)
     }
   }
   async function upload(file: File) {

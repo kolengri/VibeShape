@@ -1,4 +1,4 @@
-import { useFormContext } from "@vibeshape/ui/integrations/tanstack-form"
+import { submitForm, useFormContext } from "@vibeshape/ui/integrations/tanstack-form"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { useRegisterTaskSubmission } from "../../editor-session/editor-session-provider"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
@@ -20,24 +20,13 @@ export function TaskPanelFormActions({
 }>) {
   const form = useFormContext()
   useRegisterTaskSubmission(async () => {
-    if (form.state.isSubmitting) {
-      // History joins a manual save instead of dropping navigation or submitting twice.
-      await new Promise<void>((resolve) => {
-        const subscription = form.store.subscribe((state) => {
-          if (!state.isSubmitting) {
-            subscription.unsubscribe()
-            resolve()
-          }
-        })
-      })
-      return
-    }
     if (
-      !disabled &&
-      form.state.canSubmit &&
-      (previewStatus === undefined || previewStatus === "ready")
+      form.state.isSubmitting ||
+      (!disabled &&
+        form.state.canSubmit &&
+        (previewStatus === undefined || previewStatus === "ready"))
     )
-      await form.handleSubmit()
+      await submitForm(form)
   })
 
   return (

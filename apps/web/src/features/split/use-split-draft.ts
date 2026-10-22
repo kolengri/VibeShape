@@ -1,8 +1,8 @@
 import { readSplitFeatureParametersV2 } from "@vibeshape/domain/part-design-split"
 import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
-import { useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { defaultLengthExpression } from "../../document/document-display-units"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import {
   type FeatureParameterFormProps,
   submitFeatureMutation,
@@ -36,8 +36,15 @@ export function useSplitDraft(input: SplitDraftInput) {
   const [featureId] = useState(() =>
     input.mode.kind === "edit" ? input.mode.feature.id : input.mode.createFeatureId(),
   )
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: splitFormValues(input.mode, input.sourceBounds, state.displayUnits),
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parseSplitForm(value, input.variables, state.displayUnits, input.copy)
+        return parsed.ok ? undefined : { form: input.copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: async ({ value }) => {
       if (
         !input.sourceBounds ||
@@ -46,12 +53,8 @@ export function useSplitDraft(input: SplitDraftInput) {
       )
         return
       const parsed = parseSplitForm(value, input.variables, state.displayUnits, input.copy)
-      if (!parsed.ok) {
-        state.setIssues(parsed.issues)
-        state.setMessage(input.copy.validationSummary)
-        return
-      }
-      state.setIssues({})
+      if (!parsed.ok) return
+
       state.setMessage(null)
       try {
         await submitFeatureMutation({
@@ -77,11 +80,6 @@ export function useSplitDraft(input: SplitDraftInput) {
     },
     [form, state.clearSubmissionErrors, state.displayUnits.length],
   )
-  const invalidOffset = Boolean(state.issues.offset)
-  useEffect(() => {
-    if (invalidOffset)
-      state.formElementRef.current?.querySelector<HTMLInputElement>('[name="offset"]')?.focus()
-  }, [invalidOffset, state.formElementRef])
   return {
     form,
     state,

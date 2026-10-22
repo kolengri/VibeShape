@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
+import { closeVariablesDialog } from "./variables-ui-support"
 
 test.describe("Box parameters", () => {
   test("creates and reopens a Box driven by a document variable", async ({ page }) => {
@@ -16,6 +17,7 @@ test.describe("Box parameters", () => {
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
+    await closeVariablesDialog(page)
 
     await invokeModelCommand(page, "Primitives", "Box")
     const boxForm = page.getByRole("form", { name: "Create box" })
@@ -28,7 +30,7 @@ test.describe("Box parameters", () => {
     await boxForm.getByRole("combobox", { name: "Origin X" }).fill("#width")
     await boxForm.getByRole("combobox", { name: "Origin Y" }).fill("-8 mm")
     await boxForm.getByRole("combobox", { name: "Origin Z" }).fill("5 mm")
-    await boxForm.getByRole("button", { name: "Create box" }).dblclick()
+    await boxForm.getByRole("button", { name: "Create box", exact: true }).dblclick()
 
     const boxTreeItem = page.getByRole("treeitem", { name: "Box 1", exact: true })
     await expect(boxTreeItem).toBeVisible()
@@ -109,6 +111,8 @@ test.describe("Box parameters", () => {
     await expect(committedName).toHaveValue("span")
     await expect(committedName).toBeDisabled()
 
+    await closeVariablesDialog(page)
+
     await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     const renamedEditForm = page.getByRole("form", { name: "Edit box" })
     await expect(renamedEditForm.getByRole("combobox", { name: "Width" })).toHaveValue("#span")
@@ -118,6 +122,7 @@ test.describe("Box parameters", () => {
     await page.reload()
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await expect(page.getByRole("textbox", { name: "Variable name" })).toHaveValue("span")
+    await closeVariablesDialog(page)
     await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     await expect(
       page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),

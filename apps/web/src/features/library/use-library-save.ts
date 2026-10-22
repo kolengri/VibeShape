@@ -1,6 +1,9 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { type FormEvent, useState } from "react"
+import { useIsMounted } from "@vibeshape/ui/hooks/use-is-mounted"
+import { useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { useEffect, useRef, useState } from "react"
 import { saveActiveLibraryDefinition } from "../../document/library-controller"
+import { libraryMetadataValidation } from "./library-fields"
 import {
   type LibrarySource,
   librarySaveState,
@@ -10,6 +13,11 @@ import {
 import type { LibraryAction } from "./use-library-action"
 import type { LibraryBrowser } from "./use-library-browser"
 
+export function useLibrarySubmissionGuard(action: LibraryAction, writable: boolean) {
+  const isMounted = useIsMounted()
+  return () => isMounted() && writable && !action.isPending()
+}
+
 export function useLibrarySave(
   sources: readonly LibrarySource[],
   browser: LibraryBrowser,
@@ -17,37 +25,98 @@ export function useLibrarySave(
   writable: boolean,
 ) {
   const t = useTranslations("app.library")
-  const [sourceKey, setSourceKey] = useState(sources[0]?.key ?? "")
-  const [publish, setPublish] = useState(false)
-  const state = librarySaveState(sources, sourceKey, publish, browser.selection)
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!writable || action.pending) return
-    const data = new FormData(event.currentTarget)
-    const metadata = parseLibraryMetadata(
-      String(data.get("name") ?? ""),
-      String(data.get("tags") ?? ""),
-    )
-    if (!metadata.success) return action.setError(t("invalidMetadata"))
-    const { source, target } = state
-    if (!source || state.disabled) return action.setError(t("chooseSourceAndItem"))
-    void action.run(
-      () =>
-        saveActiveLibraryDefinition({
-          source: { kind: source.kind, id: source.id },
-          ...(target ? { itemId: target.id } : {}),
-          expectedMetadataRevision: target?.metadataRevision ?? null,
-          ...metadata.data,
-        }),
-      (value) => {
-        if (!value) return
-        browser.setSelection(librarySelection(value))
-        browser.reload()
-        action.setNotice(
-          t("savedVersion", { name: value.item.name, version: value.version.version }),
+  const canSubmit = useLibrarySubmissionGuard(action, writable)
+  const [initial] = useState(() => {
+    const sourceKey = sources[0]?.key ?? ""
+    return { sourceKey, ...librarySaveState(sources, sourceKey, false, browser.selection) }
+  })
+  const resetKey = useRef(initial.formKey)
+  const form = useAppForm({
+    defaultValues: {
+      sourceKey: initial.sourceKey,
+      publishMode: "new",
+      name: initial.name,
+      tags: initial.tags.join(", "),
+    },
+    validators: {
+      onChange: ({ value, formApi }) =>
+        formApi.state.submissionAttempts > 0
+          ? libraryMetadataValidation(value, t("invalidMetadata"))
+          : undefined,
+      onSubmit: ({ value }) => {
+        const metadata = libraryMetadataValidation(value, t("invalidMetadata"))
+        if (metadata) return metadata
+        return librarySaveState(
+          sources,
+          value.sourceKey,
+          value.publishMode === "publish",
+          browser.selection,
+        ).disabled
+          ? t("chooseSourceAndItem")
+          : undefined
+      },
+    },
+    listeners: {
+      onChange: ({ fieldApi, formApi }) => {
+        if (fieldApi.name !== "sourceKey" && fieldApi.name !== "publishMode") return
+        const value = formApi.state.values
+        const state = librarySaveState(
+          sources,
+          value.sourceKey,
+          value.publishMode === "publish",
+          browser.selection,
+        )
+        if (state.formKey === resetKey.current) return
+        resetKey.current = state.formKey
+        formApi.reset(
+          { ...value, name: state.name, tags: state.tags.join(", ") },
+          { keepDefaultValues: true },
         )
       },
+    },
+    onSubmit: async ({ value }) => {
+      if (!canSubmit()) return
+      const metadata = parseLibraryMetadata(value.name, value.tags)
+      const { source, target, disabled } = librarySaveState(
+        sources,
+        value.sourceKey,
+        value.publishMode === "publish",
+        browser.selection,
+      )
+      if (!metadata.success || !source || disabled) return
+      await action.run(
+        () =>
+          saveActiveLibraryDefinition({
+            source: { kind: source.kind, id: source.id },
+            ...(target ? { itemId: target.id } : {}),
+            expectedMetadataRevision: target?.metadataRevision ?? null,
+            ...metadata.data,
+          }),
+        (saved) => {
+          if (!saved) return
+          browser.setSelection(librarySelection(saved))
+          browser.reload()
+          action.setNotice(
+            t("savedVersion", { name: saved.item.name, version: saved.version.version }),
+          )
+        },
+      )
+    },
+  })
+  useEffect(() => {
+    const value = form.state.values
+    const state = librarySaveState(
+      sources,
+      value.sourceKey,
+      value.publishMode === "publish",
+      browser.selection,
     )
-  }
-  return { state, sourceKey, setSourceKey, publish, setPublish, submit }
+    if (state.formKey === resetKey.current) return
+    resetKey.current = state.formKey
+    form.reset(
+      { ...value, name: state.name, tags: state.tags.join(", ") },
+      { keepDefaultValues: true },
+    )
+  }, [sources, browser.selection, form])
+  return form
 }
