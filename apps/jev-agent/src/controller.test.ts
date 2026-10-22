@@ -178,6 +178,17 @@ describe("Jev structured questions", () => {
     ["declined or expired", { action: "decline" }],
     ["invalid choice", { action: "accept", content: { material: "unknown" } }],
     ["missing answer", { action: "accept", content: {} }],
+    [
+      "no-op diagnostic without an accepted answer",
+      {
+        ok: false,
+        diagnostic: {
+          code: "command-no-op",
+          message: "The feature already has the requested state.",
+          retryable: false,
+        },
+      },
+    ],
   ])("stops dependent CAD after a %s question result", async (_name, value) => {
     const f = questionFixture()
     const original = f.port.call
@@ -223,6 +234,120 @@ describe("Jev structured questions", () => {
 })
 
 describe("Jev CAD control loop", () => {
+  it.each([false, true])(
+    "continues to exact preview after an unchanged shell update (envelope: %s)",
+    async (envelope) => {
+      const draftId = "0195b5ac-b216-7a2c-bc33-67a36a7f21ac"
+      const update: Tool = { name: "update_shell", inputSchema: { type: "object" } }
+      const preview: Tool = { name: "preview_draft", inputSchema: { type: "object" } }
+      const diagnostic = {
+        ok: false,
+        diagnostic: {
+          code: "command-no-op",
+          message: "The feature already has the requested state.",
+          retryable: false,
+        },
+      }
+      const value = envelope ? { result: diagnostic } : diagnostic
+      let decisions = 0
+      const f = fixture({
+        decide: async (state) => {
+          if (decisions++ === 0)
+            return {
+              kind: "tool",
+              tool: update,
+              arguments: {
+                draftId,
+                baseRevision: 0,
+                commandId: "0195b5ac-b217-7a2c-bc33-67a36a7f21ac",
+                featureId: "0195b5ac-b218-7a2c-bc33-67a36a7f21ac",
+                label: "Shell",
+                dependencies: [documentId],
+                references: [],
+                suppressed: false,
+                parameters: {
+                  targetBody: { schemaVersion: 0, featureId: documentId, outputRole: "result" },
+                  thickness: {
+                    schemaVersion: 0,
+                    dimension: "length",
+                    value: 2,
+                    unit: "mm",
+                    source: { value: 2, unit: "mm", expression: null },
+                  },
+                  direction: "inward",
+                  sourceContentHash: "a".repeat(64),
+                  openings: [],
+                },
+              },
+              needsArguments: false,
+              confidence: 1,
+            }
+          expect(state.uncertainOutcome).toBeUndefined()
+          expect(state.history.find((item) => item.tool === update.name)?.result).toEqual(value)
+          return decisions === 2
+            ? {
+                kind: "tool",
+                tool: preview,
+                arguments: { draftId },
+                needsArguments: false,
+                confidence: 1,
+              }
+            : { kind: "done", confidence: 1 }
+        },
+      })
+      f.port.tools = [update, preview]
+      const original = f.port.call
+      f.port.call = async (name, args, signal) => {
+        if (name !== update.name) return original(name, args, signal)
+        f.calls.push(name)
+        return { value, photos: [], failed: true }
+      }
+      const events: string[] = []
+      expect(
+        await f.controller.run(
+          "Hollow the cylinder",
+          [],
+          new AbortController().signal,
+          async (e) => {
+            events.push(`${e.name}:${e.status}`)
+          },
+        ),
+      ).toContain("ended the turn")
+      expect(f.calls.filter((name) => name === update.name)).toHaveLength(1)
+      expect(f.calls.indexOf(preview.name)).toBeGreaterThan(f.calls.indexOf(update.name))
+      expect(events).toContain("update_shell:failed")
+      expect(events).toContain("preview_draft:completed")
+    },
+  )
+  it.each([false, true])(
+    "stops on an actual rejection with its diagnostic (retryable: %s)",
+    async (retryable) => {
+      const f = fixture()
+      const original = f.port.call
+      f.port.call = async (name, args, signal) => {
+        if (name !== tool.name) return original(name, args, signal)
+        f.calls.push(name)
+        return {
+          value: {
+            result: {
+              ok: false,
+              diagnostic: { code: "stale-revision", message: "The model changed.", retryable },
+            },
+          },
+          photos: [],
+          failed: true,
+        }
+      }
+      const message = await f.controller.run(
+        "Create",
+        [],
+        new AbortController().signal,
+        async () => {},
+      )
+      expect(message).toContain("create_draft (stale-revision): The model changed.")
+      expect(f.calls.filter((name) => name === tool.name)).toHaveLength(1)
+    },
+  )
   it.each(["commit_draft", "undo_model"])(
     "keeps a manual %s review open beyond the ordinary operation budget",
     async (name) => {
