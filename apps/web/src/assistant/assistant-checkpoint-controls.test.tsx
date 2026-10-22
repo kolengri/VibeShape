@@ -18,7 +18,6 @@ function panel(props: Partial<Props> = {}) {
     <I18nProvider i18n={i18n} initialLocale="en">
       <AssistantPanel
         open
-        projectName="Saved project"
         messages={[]}
         busy={false}
         canSend

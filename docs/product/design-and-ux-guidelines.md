@@ -79,7 +79,7 @@ The target reference canvas is 1440 × 900 CSS px. The supported authoring minim
 | Model tree | 240 px | 200–420 px |
 | Task panel | 320 px | 280–480 px |
 | Side-panel background opacity | 94% | 0–100%; compact sheets stay opaque |
-| Feature history | Compact bottom strip | Collapsible; Details reveals labels and source links |
+| Feature history | One bottom row on desktop, with 32 px operation slots | Collapsible; narrow layouts wrap controls above the track; Details reveals labels and source links |
 | Panel resize hit area | 8 px | At least 8 px |
 
 Panel sizes are user preferences. Double-clicking a separator restores its default. The thin resize separator has an equivalent keyboard path plus labeled collapse and reset controls that meet the pointer-target baseline. Edge pixels are never the only resize or restore mechanism.
@@ -124,7 +124,7 @@ At widths below 1024 px, VibeShape MAY offer view, inspect, and export behavior,
 - Use the shadcn/ui `new-york` direction with Radix primitives.
 - Ship dark, light, and system themes; dark is the initial default for the CAD workspace, not a hard-coded requirement.
 - Use neutral or zinc foundational surfaces with one restrained primary accent.
-- Separate working regions with borders, contrast, and resizable separators rather than nested cards.
+- Present the command toolbar, model browser, task panel, assistant, and History as separate working regions with 8 px gutters, subtle borders, and 10 px corners. Keep internal controls compact and avoid nested cards. Resize gutters retain their full 8 px hit area and show their accent on hover, keyboard focus, and drag.
 - Do not use glassmorphism, large gradients, ornamental shadows, animated backgrounds, or oversized marketing typography in the editor.
 - Use elevation only for temporary layers such as menus, popovers, tooltips, dialogs, and drag previews.
 - Preserve the same semantic hierarchy in both themes; dark mode is not an inverted afterthought.
@@ -150,7 +150,7 @@ Button sizing is owned by the shared `Button` primitive:
 | Context | Text action | Icon action |
 |---|---|---|
 | Application bar, toolbar, viewport controls, forms, dialogs, and primary actions | `default` / `sm`: 32 px high, 12 px horizontal padding, 14 px text | `icon` / `icon-sm`: 32 × 32 px, 16 px icon |
-| Dense list and History rows, status bar, and inline sketch editors | `xs`: 24 px high, 12 px text | `icon-xs`: 24 × 24 px, 12 px icon |
+| Panel-header actions, browser group headings, dense list and History rows, status bar, and inline sketch editors | `xs`: 24 px high, 12 px text | `icon-xs`: 24 × 24 px, 12 px icon |
 | Multiline selection rows and visual library tiles | `content`: natural height, at least 32 px, wrapping text | Use the ordinary icon action beside the content |
 
 Actions in the same group MUST use the same size tier. Text length determines width; it must not
@@ -161,15 +161,16 @@ ordinary actions retain their height when disabled or pending. Spatial constrain
 their geometry-driven annotation placement and double-click editing contract. The `sm` and `icon-sm` names are
 compatibility aliases for the standard tier, not additional densities.
 
-The model browser uses one 32 px row and 14 px label tier for origin planes, authored datum planes,
-Parts and sketches. The owning row paints selection across labels and trailing controls; child
-hover fills must not mask that state. Compact chronological History retains its separate density.
+The model browser uses 24 px group headings with 12 px medium labels, and 32 px object rows with
+14 px labels for origin planes, authored datum planes, parts and sketches. The owning row paints
+selection across labels and trailing controls; child hover fills must not mask that state. Compact chronological History retains its separate density.
 
 ### Typography
 
 - Use the bundled system UI stack initially; CAD operation must not depend on network fonts.
 - Default editor text is 13 px with a 18 px line height.
-- Panel section headings and dialog body text are 14 px.
+- Editor panel and section headings use 12 px medium text, 24 px header actions, and 4–8 px internal gaps. Dialog body text remains 14 px.
+- Show the active project name only in the top project navigation; panel headings identify their purpose without repeating that name.
 - Application and dialog titles are 16–18 px; large display headings do not belong in the editor.
 - Labels use sentence case. Do not use all caps for navigation or section headings.
 - Numeric fields use tabular numerals. Monospace is reserved for expressions, IDs, file diagnostics, and command shortcuts.
@@ -178,7 +179,7 @@ hover fills must not mask that state. Compact chronological History retains its 
 
 ### Radius, Borders, and Shadows
 
-- Use one small radius scale: 3 px for dense controls, 4 px for panels and menus, and 6 px for dialogs.
+- Use one radius scale: 3 px for dense controls, 4 px for menus, 6 px for dialogs, and 10 px for the separate workspace panels and command toolbar.
 - Pills are reserved for compact statuses, filters, or segmented choices; ordinary buttons are not pills.
 - One-pixel semantic borders define panel and control boundaries.
 - Focus rings are independent of borders and remain visible against adjacent surfaces.
@@ -247,12 +248,15 @@ History reveals a selected entry once when the explicit selection changes. Manua
 MUST survive unrelated report, hover, panel and transcript updates. Re-expanding a selected row does
 not authorize a new scroll to it.
 
-**Section view** opens its existing enable, plane, offset, and flip controls from the same viewport
+**Section view** opens its mode, offset, and flip controls from the same viewport
 control group beside the standard-view selector. Its button highlights an active section; the panel
 closes with Escape and returns focus to its trigger.
-Three labeled XY, XZ, and YZ radio tiles show medium plane-orientation icons and support arrow-key
-selection. Cut material uses a subtle diagonal grid; holes remain unfilled. The grid follows the
-section plane and adapts to zoom without exposing display-triangle edges.
+Four icon-only radio tiles select Off, XY, XZ, or YZ and support arrow-key selection. Choosing a plane
+enables sectioning immediately; Off disables it. Accessible labels and tooltips identify the choices
+without captions or an explanatory footer. An icon toggle reverses the retained side. The offset
+uses the shared length expression field with inline units and project-unit defaults.
+Cut material uses a subtle diagonal grid; holes remain
+unfilled. The grid follows the section plane and adapts to zoom without exposing display-triangle edges.
 
 The alpha default is:
 

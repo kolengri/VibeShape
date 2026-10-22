@@ -44,7 +44,6 @@ mock.module("../document/document-controller", () => ({
   registerProjectActionGuard: work.register,
 }))
 mock.module("../document/document-export-dialog", () => ({ DocumentExportDialog: () => null }))
-mock.module("../document/document-rename-dialog", () => ({ DocumentRenameDialog: () => null }))
 mock.module("../automation/local-automation-connection", () => ({
   createLocalAutomationConnection: () => {
     const snapshot = work.local

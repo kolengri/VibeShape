@@ -14,10 +14,7 @@ async function saved(page: Page) {
 }
 
 async function rename(page: Page, name: string) {
-  await page
-    .locator("header")
-    .getByRole("button", { name: /^Rename / })
-    .click()
+  await openApplicationMenuItem(page, "Rename project")
   const dialog = page.getByRole("dialog", { name: "Rename project", exact: true })
   await dialog.getByRole("textbox", { name: "Project name", exact: true }).fill(name)
   await dialog.getByRole("button", { name: "Rename project", exact: true }).click()

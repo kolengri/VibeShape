@@ -17,9 +17,9 @@ export function GenerativeDesignControls({ state }: { state: StudyState }) {
   const fields = state.studyFields
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-2">
-      <legend className="mb-1 font-medium">{t("searchSpace")}</legend>
+      <legend className="mb-1 font-medium text-xs">{t("searchSpace")}</legend>
       <fieldset className="flex flex-wrap gap-2" aria-labelledby={`${id}-weight-target`}>
-        <legend className="mb-1 text-sm font-medium">
+        <legend className="mb-1 text-xs font-medium">
           <span className="inline-flex items-center gap-1">
             <span id={`${id}-weight-target`}>{t("weightTarget")}</span>
             <FieldHelp label={t("weightTarget")}>{t("targetHelp")}</FieldHelp>
@@ -68,7 +68,7 @@ export function GenerativeDesignControls({ state }: { state: StudyState }) {
           </p>
         </Field>
         <fieldset className="flex flex-wrap gap-2" aria-labelledby={`${id}-materials`}>
-          <legend className="mb-1 text-sm font-medium">
+          <legend className="mb-1 text-xs font-medium">
             <span className="inline-flex items-center gap-1">
               <span id={`${id}-materials`}>{t("additionalMaterials")}</span>
               <FieldHelp label={t("additionalMaterials")}>{t("materialsHelp")}</FieldHelp>
@@ -112,7 +112,7 @@ function GenerativeObstacleControls({ state }: { state: StudyState }) {
   const fields = state.studyFields
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-2" aria-labelledby={id}>
-      <legend className="mb-1 font-medium">
+      <legend className="mb-1 font-medium text-xs">
         <span className="inline-flex items-center gap-1">
           <span id={id}>{t("obstacles")}</span>
           <FieldHelp label={t("obstacles")}>{t("obstaclesHelp")}</FieldHelp>
@@ -123,7 +123,7 @@ function GenerativeObstacleControls({ state }: { state: StudyState }) {
           key={obstacle.id}
           className="grid min-w-0 grid-cols-1 gap-2 rounded-md border p-3"
         >
-          <legend className="px-1 text-sm font-medium">
+          <legend className="px-1 text-xs font-medium">
             {t("obstacle", { index: index + 1 })}
           </legend>
           {(["min", "max"] as const).map((bound) => (
@@ -202,12 +202,12 @@ export function GenerativeDesignResults({ state }: { state: StudyState }) {
   return (
     <section className="grid min-w-0 grid-cols-1 gap-2" aria-label={t("candidates")}>
       <div className="flex items-center gap-1">
-        <h3 className="font-medium">{t("candidates")}</h3>
+        <h3 className="font-medium text-xs">{t("candidates")}</h3>
         <FieldHelp label={t("candidates")}>{t("comparisonHelp")}</FieldHelp>
       </div>
       {state.study.candidates.map((candidate, index) => (
         <article key={candidate.id} className="grid gap-2 rounded-md border p-3">
-          <h4 className="text-sm font-medium">
+          <h4 className="text-xs font-medium">
             {t("candidate", { index: index + 1, material: candidate.materialName })}
           </h4>
           <dl className="grid grid-cols-1 gap-2 text-xs @xs:grid-cols-2">

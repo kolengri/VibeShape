@@ -46,7 +46,6 @@ export function BrowserProjectAssistant({
     <BrowserProjectChat
       key={project.id}
       projectId={project.id}
-      projectName={project.name}
       draftDisplay={draftDisplay}
       open={open}
       onClose={onClose}
@@ -57,14 +56,12 @@ export function BrowserProjectAssistant({
 
 function BrowserProjectChat({
   projectId,
-  projectName,
   draftDisplay,
   open,
   onClose,
   onCaptureView,
 }: {
   projectId: string
-  projectName: string
   draftDisplay?: AssistantDraftDisplay | undefined
   open: boolean
   onClose: () => void
@@ -79,7 +76,6 @@ function BrowserProjectChat({
   return (
     <AssistantPanel
       open={open}
-      projectName={projectName}
       messages={state.messages}
       draftDisplay={draftDisplay}
       onToolHighlight={onToolHighlight}

@@ -222,8 +222,8 @@ function VariablesTaskPanel() {
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <h2 className="text-sm font-medium">{t("variables.title")}</h2>
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+      <h2 className="text-xs font-medium">{t("variables.title")}</h2>
       <p className="mt-2 leading-5 text-muted-foreground">{t("variables.description")}</p>
       <ul className="mt-4 grid gap-2 border-t pt-4 text-muted-foreground">
         <li>{t("variables.reference")}</li>
@@ -772,7 +772,7 @@ function ExtrusionTaskPanel({
   )
   const profileLabel = profileLabels.join(", ")
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       {previewStatus === "error" && diagnostics ? (
         <CadErrorPresentation
           diagnostics={diagnostics}
@@ -888,7 +888,7 @@ function RevolveTaskPanel({
   const copy = useRevolveFormCopy(mode.kind)
   const task = featureTaskContext(mode, snapshot.revision)
   return (
-    <aside aria-label={panelT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={panelT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <RevolveForm
         angleRequest={angleRequest}
         axisLineLabel={axisLineLabel}
@@ -942,7 +942,7 @@ function BoxTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <BoxForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -982,7 +982,7 @@ function DatumPlaneTaskPanel({
   const task = featureTaskContext(mode, snapshot.revision)
   const t = useTranslations("app.shell.taskPanel")
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <DatumPlaneForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -1024,7 +1024,7 @@ function CylinderTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <CylinderForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -1068,7 +1068,7 @@ function BooleanTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <BooleanForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -1352,7 +1352,7 @@ function EmptyProfileFeatureTaskPanel({
   return (
     <aside
       aria-label={panelT("ariaLabel")}
-      className="grid min-h-0 content-start gap-4 overflow-auto border-l bg-panel p-4"
+      className="grid min-h-0 content-start gap-2 overflow-auto border-l bg-panel p-3"
     >
       <TaskPanelHeader
         title={title}
@@ -1669,7 +1669,7 @@ function ActiveBasicPrimitiveTaskPanel({
   if (!mode) return null
   const task = featureTaskContext(mode, report.snapshot.revision)
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <BasicPrimitiveForm
         key={`${primitiveKind}:${task.key}`}
         primitiveKind={primitiveKind}
@@ -1909,7 +1909,7 @@ function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
   const copy = edgeTreatmentCopy(t, operation, mode.kind)
 
   return (
-    <aside aria-label={taskT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={taskT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <EdgeTreatmentForm
         key={`${operation}:${task.key}`}
         baseRevision={report.snapshot.revision}
@@ -2014,7 +2014,7 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
     pointLabel: (ordinal) => t("pointLabel", { ordinal }),
   }
   return (
-    <aside aria-label={taskT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={taskT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <HoleForm
         key={`hole:${task.key}`}
         baseRevision={report.snapshot.revision}
@@ -2089,7 +2089,7 @@ function ImportedSourceTaskPanel(props: ActiveTaskPanelProps) {
   )
   if (!feature) return null
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <TaskPanelHeader
         title={feature.label ?? treeT("unnamedFeature")}
         description={t("capturedSource.description")}
@@ -2469,7 +2469,7 @@ function ActiveSketchTaskPanel({
     >
       <SketchConstraintManagerPopover actions={panelActions} copy={copy} state={panelState} />
       <TaskPanelHeader
-        className="border-b p-4"
+        className="border-b p-3"
         title={draft.label}
         instruction={modeDescription}
         actions={
@@ -2485,7 +2485,7 @@ function ActiveSketchTaskPanel({
       >
         <p className="text-xs font-medium text-primary">{t("modeLabel")}</p>
       </TaskPanelHeader>
-      <div className="min-h-0 overflow-auto p-4">
+      <div className="min-h-0 overflow-auto p-3">
         <SketchEditorPanel copy={copy} state={panelState} actions={panelActions} />
       </div>
     </aside>
@@ -2511,7 +2511,7 @@ function SketchPlaneSelectionTaskPanel({
       className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l bg-panel"
     >
       <TaskPanelHeader
-        className="border-b p-4"
+        className="border-b p-3"
         title={title}
         instruction={description}
         actions={
@@ -2522,7 +2522,7 @@ function SketchPlaneSelectionTaskPanel({
           />
         }
       />
-      <div className="min-h-0 overflow-auto p-4">
+      <div className="min-h-0 overflow-auto p-3">
         <fieldset className="grid grid-cols-3 gap-2">
           <legend className="sr-only">{t("plane")}</legend>
           <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("xy")}>
@@ -2553,8 +2553,8 @@ function SelectedSketchTaskPanel({
 }) {
   const t = useTranslations("app.shell.taskPanel.sketch")
   return (
-    <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <h2 className="text-sm font-medium">{sketch.label}</h2>
+    <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
+      <h2 className="text-xs font-medium">{sketch.label}</h2>
       <p className="mt-2 text-xs leading-4 text-muted-foreground">
         {t("savedDescription", { plane: sketch.plane.toUpperCase() })}
       </p>

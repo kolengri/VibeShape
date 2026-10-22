@@ -26,7 +26,7 @@ export function ImportReviewPanel({
     >
       <TaskPanelHeader
         title={t("title")}
-        className="border-b p-4"
+        className="border-b p-3"
         actions={<ReviewActions review={review} t={actions} ready={previewReady} />}
       />
       <div className="grid min-h-0 gap-3 overflow-auto p-4">

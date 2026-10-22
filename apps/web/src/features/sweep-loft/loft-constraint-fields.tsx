@@ -196,14 +196,14 @@ function EndFields({
   const id = useId()
   return (
     <fieldset className="grid gap-3">
-      <legend className="mb-2 text-sm font-medium">{title}</legend>
+      <legend className="mb-2 text-xs font-medium">{title}</legend>
       {values.map((value, index) => {
         const key = value.support ? loftSupportKey(value.support) : ""
         const update = (changes: Partial<LoftEndValues>) =>
           onChange(values.map((old, row) => (row === index ? { ...old, ...changes } : old)))
         return (
           <fieldset key={index} className="grid gap-2 rounded-md border p-3">
-            <legend>{copy.endConstraint(index + 1)}</legend>
+            <legend className="text-xs font-medium">{copy.endConstraint(index + 1)}</legend>
             <TrackPicker
               value={value.segmentTrack}
               count={count}
@@ -327,10 +327,10 @@ export function LoftConstraintFields({
       {values.constrained && (
         <>
           <fieldset className="grid gap-3">
-            <legend className="mb-2 text-sm font-medium">{copy.outerTracks}</legend>
+            <legend className="mb-2 text-xs font-medium">{copy.outerTracks}</legend>
             {values.outerCorrespondence.map((track, index) => (
               <fieldset key={index} className="grid gap-2 rounded-md border p-3">
-                <legend>{copy.track(index + 1)}</legend>
+                <legend className="text-xs font-medium">{copy.track(index + 1)}</legend>
                 {sections.map((section, sectionIndex) => (
                   <DirectedSegmentField
                     key={section.sketchId}
@@ -421,7 +421,7 @@ function LoftRailFields({
           })
         return (
           <fieldset key={index} className="grid gap-2 rounded-md border p-3">
-            <legend>{copy.rail(index + 1)}</legend>
+            <legend className="text-xs font-medium">{copy.rail(index + 1)}</legend>
             <TrackPicker
               value={rail.vertexTrack}
               count={values.outerCorrespondence.length}
@@ -489,7 +489,7 @@ function LoftGuideFields({
             aria-label={copy.guide(index + 1)}
             className="grid gap-2 rounded-md border p-3"
           >
-            <legend>
+            <legend className="text-xs font-medium">
               <span className="inline-flex items-center gap-1">
                 {copy.guide(index + 1)}
                 <FieldHelp label={copy.guide(index + 1)}>{copy.guideContinuity}</FieldHelp>

@@ -9,10 +9,7 @@ test.use({ autoCreateProject: false })
 const chooser = (page: Page) => page.getByRole("heading", { name: "Projects", exact: true })
 const projectId = (page: Page) => new URL(page.url()).searchParams.get("project")
 const openChooser = async (page: Page) => {
-  await page
-    .getByRole("navigation", { name: "Open projects", exact: true })
-    .getByRole("button", { name: "Open project…", exact: true })
-    .click()
+  await openApplicationMenuItem(page, "Projects")
   await expect(chooser(page)).toBeVisible()
   expect(projectId(page)).toBeNull()
 }
@@ -62,10 +59,7 @@ test("opens saved cards and deep links, imports backups and deletes from the sha
   await saved(page)
   const originalId = projectId(page)
   expect(originalId).not.toBeNull()
-  await page
-    .locator("header")
-    .getByRole("button", { name: /^Rename / })
-    .click()
+  await openApplicationMenuItem(page, "Rename project")
   const rename = page.getByRole("dialog", { name: "Rename project", exact: true })
   await rename.getByRole("textbox", { name: "Project name", exact: true }).fill("Landing bracket")
   await rename.getByRole("button", { name: "Rename project", exact: true }).click()

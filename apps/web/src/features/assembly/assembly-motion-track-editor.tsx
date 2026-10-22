@@ -195,7 +195,7 @@ function CopyTrack({
   }
   return (
     <details className="text-sm">
-      <summary className="cursor-pointer py-1">{t("motionCopyTrack")}</summary>
+      <summary className="font-medium text-xs cursor-pointer py-1">{t("motionCopyTrack")}</summary>
       <div className="mt-2 grid gap-2">
         <NativeSelectField
           label={t("motionCopyTarget")}
@@ -283,7 +283,7 @@ function TrackCard({
   }
   return (
     <fieldset className="grid min-w-0 gap-2 rounded-md border p-3">
-      <legend className="px-1 text-sm font-medium">
+      <legend className="px-1 text-xs font-medium">
         {t("motionTrackNumber", { number: index + 1 })}
       </legend>
       <NativeSelectField
@@ -338,13 +338,13 @@ function TrackCard({
             onChange={(keys) => update({ ...track, keys })}
           />
           <details>
-            <summary className="cursor-pointer py-1 text-sm">
+            <summary className="font-medium cursor-pointer py-1 text-xs">
               {t("motionEditKeys", { count: track.keys.length })}
             </summary>
             <div className="mt-2 grid gap-2">
               {track.keys.map((key, keyIndex) => (
                 <fieldset key={`${track.id}:${keyIndex}`} className="grid gap-2 border-b pb-3">
-                  <legend className="text-xs text-muted-foreground">
+                  <legend className="font-medium text-xs text-muted-foreground">
                     {t("motionKeyNumber", { number: keyIndex + 1 })}
                   </legend>
                   <div
@@ -474,7 +474,7 @@ export function AssemblyMotionTrackEditor({ study, view, edit, disabled }: Edito
   }
   return (
     <fieldset disabled={disabled} className="grid min-w-0 gap-2">
-      <legend className="mb-1 text-sm font-medium">{t("motionTracks")}</legend>
+      <legend className="mb-1 text-xs font-medium">{t("motionTracks")}</legend>
       <p className="text-xs text-muted-foreground">{t("motionTimelineHint")}</p>
       {study.tracks.map((track, index) => (
         <TrackCard

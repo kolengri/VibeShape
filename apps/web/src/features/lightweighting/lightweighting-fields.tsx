@@ -269,7 +269,7 @@ export function LightweightingParameters({
   const advanced = (
     <>
       <fieldset className="grid min-w-0 grid-cols-1 gap-2" aria-labelledby={preservationLabelId}>
-        <legend className="mb-1 font-medium">
+        <legend className="mb-1 font-medium text-xs">
           <span className="inline-flex items-center gap-1">
             <span id={preservationLabelId}>{t("preservation")}</span>
             <FieldHelp label={t("preservation")}>{t("preservationDescription")}</FieldHelp>
@@ -293,7 +293,7 @@ export function LightweightingParameters({
         />
       </fieldset>
       <fieldset className="grid min-w-0 grid-cols-1 gap-2">
-        <legend className="mb-1 font-medium">{t("constraints")}</legend>
+        <legend className="mb-1 font-medium text-xs">{t("constraints")}</legend>
         <div className="grid grid-cols-1 gap-2">
           {numeric("safetyFactor", 1)}
           {numeric("maxDisplacementMm", 0)}
@@ -311,7 +311,7 @@ export function LightweightingParameters({
         <ObjectiveControls fields={fields} onChange={onChange} />
       )}
       <fieldset className="grid min-w-0 grid-cols-1 gap-2">
-        <legend className="mb-1 font-medium">{t("material")}</legend>
+        <legend className="mb-1 font-medium text-xs">{t("material")}</legend>
         <LightweightingMaterialSelector fields={fields} onChange={onChange} compact={compact}>
           <div className="grid grid-cols-1 gap-2">
             {numeric("youngModulusMpa", 0)}
@@ -322,7 +322,9 @@ export function LightweightingParameters({
         </LightweightingMaterialSelector>
       </fieldset>
       <fieldset className="grid min-w-0 grid-cols-1 gap-2">
-        <legend className="mb-1 font-medium">{compact ? g("fixedFaces") : t("support")}</legend>
+        <legend className="mb-1 font-medium text-xs">
+          {compact ? g("fixedFaces") : t("support")}
+        </legend>
         <p className="text-xs text-muted-foreground">{t("supportDescription")}</p>
         <FacePicker
           id="lightweighting-support-pick"
@@ -335,11 +337,13 @@ export function LightweightingParameters({
         />
       </fieldset>
       <fieldset className="grid min-w-0 grid-cols-1 gap-2">
-        <legend className="mb-1 font-medium">{compact ? g("loadedFaces") : t("loadCases")}</legend>
+        <legend className="mb-1 font-medium text-xs">
+          {compact ? g("loadedFaces") : t("loadCases")}
+        </legend>
         <p className="text-xs text-muted-foreground">{t("loadDescription")}</p>
         {fields.loadCases.map((load, index) => (
           <fieldset key={load.id} className="grid min-w-0 grid-cols-1 gap-2 rounded-md border p-3">
-            <legend className="px-1 text-sm font-medium">
+            <legend className="px-1 text-xs font-medium">
               {t("loadCase", { index: index + 1 })}
             </legend>
             {compact ? (

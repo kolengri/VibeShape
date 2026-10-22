@@ -5,7 +5,6 @@ import {
   getProjectActionBlock,
   getProjectActiveWorkBlock,
 } from "../document/document-controller"
-import { DocumentRenameDialog } from "../document/document-rename-dialog"
 import { ApplicationHeader } from "./application-header"
 import { useReportApplicationError } from "./application-notices"
 import { useAutomationConnections } from "./automation-status"
@@ -89,7 +88,6 @@ export function ApplicationBar({
         {projectNavigation ?? (
           <span className="min-w-0 truncate text-muted-foreground">{documentName}</span>
         )}
-        <DocumentRenameDialog controller={controller} />
       </div>
       <div className="col-span-2 flex min-w-0 items-center justify-end gap-1 sm:shrink-0">
         {children}

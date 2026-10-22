@@ -147,8 +147,9 @@ the model to send another command. Saved batches expose **View before** / **View
 the existing internal checkpoint. These controls remain hidden while the agent is busy and do not
 move the transcript when the person is reading earlier messages. Inspection locks do not open
 connection settings, and control/display changes do not trigger transcript following without new
-message content. The chat header contains the chat title, project name, and actions without a
-working-status label. Hiding chat preserves its mounted transcript, draft,
+message content. The compact chat header contains the chat title and actions in one row. The project
+name remains in the top project navigation; working status stays in the composer. Hiding chat preserves
+its mounted transcript, draft,
 attachment reads, scroll position, settings and active connection. The header AI chat toggle reopens
 the same panel; show/hide and message updates do not resize or remount the viewport canvas.
 
@@ -194,10 +195,16 @@ failures retain their specific diagnostics.
 
 ## Application menu
 
-The VibeShape menu groups global actions into Project (files, local projects, and geometry export),
+The VibeShape menu groups global actions into Project (New project, Rename project, Projects, local
+files, and geometry export),
 Workspace (settings and command palette), AI (connection and session controls when available), and
-Help (FAQ, MCP setup, and keyboard shortcuts). The header retains the project name, rename action,
-save status, and the Model / Assembly mode switch. Mode selection stays above the command toolbar
+Help (FAQ, MCP setup, and keyboard shortcuts). The header retains project tabs, save status, and the
+Model / Assembly mode switch. Create, open, and rename actions live in the application menu instead
+of repeated header buttons. Double-clicking the active project title or pressing F2 while its tab
+is focused opens the same revision-checked rename dialog as Rename project in the menu. Rename
+is unavailable for read-only documents or while project actions are blocked. Closing the dialog
+restores focus to its originating tab or the application-menu trigger. Mode selection stays above
+the command toolbar
 and is unavailable while a feature or sketch is being edited or the document is saving.
 The status bar exposes local **AI access** as an outlined button. It stays disabled with
 the visible **MCP client not connected** explanation until a client is available. An active
@@ -663,10 +670,14 @@ the sketch. Linear dimensions use a straight dimension line with extension lines
 ticks. Their label offsets follow current geometry, including an in-flight drag and oblique camera
 projection; moving the text does not change the driving value or authored expression.
 
-The **Section view** icon beside the standard-view selector opens enable, plane, offset, and flip
-controls. XY, XZ, and YZ icon tiles select the plane with native radio keyboard behavior; changing
-planes recenters the offset on the model. Its accessible name and tooltip identify the icon, and
-its active state remains visible.
+The **Section view** icon beside the standard-view selector opens four icon-only choices (Off, XY,
+XZ, and YZ), offset, and flip controls. Choosing a plane immediately enables sectioning and recenters
+the offset on the model; Off disables it. The choices use native radio keyboard behavior and expose
+their names through accessible labels and tooltips. The selected choice and toolbar active state
+remain visible. The panel has no captions below the icons or explanatory footer. An icon toggle
+reverses the retained side. The shared length field shows units inside the offset value, accepts
+supported length units and expressions, and interprets bare numbers in project units. Valid edits
+preserve the entered expression; dragging the plane refreshes the field in project units.
 Drag the plane's viewport handle along its projected normal to change the same offset; numeric input
 is the keyboard equivalent. Pointer capture prevents accidental orbiting, and Escape or pointer
 cancellation restores the starting offset. Closed render meshes receive derived solid cut caps with

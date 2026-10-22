@@ -255,7 +255,7 @@ export function HistoryNavigationControls() {
       <span
         role="status"
         aria-label={t("positionLabel")}
-        className="truncate text-xs tabular-nums text-muted-foreground"
+        className="max-w-32 truncate text-xs tabular-nums text-muted-foreground"
       >
         {t("positionDescription", { position: value, total: items.length, item: description })}
       </span>

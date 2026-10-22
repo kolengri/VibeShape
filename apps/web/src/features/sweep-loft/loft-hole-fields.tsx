@@ -21,7 +21,7 @@ export function LoftHoleFields({
   if (!sections.some(({ holeBoundaryEntityIds }) => holeBoundaryEntityIds.length)) return null
   return (
     <fieldset className="grid gap-3" aria-label={t("title")}>
-      <legend className="text-sm font-medium">
+      <legend className="text-xs font-medium">
         <span className="inline-flex items-center gap-1">
           {t("title")}
           <FieldHelp label={t("title")}>{t("description")}</FieldHelp>

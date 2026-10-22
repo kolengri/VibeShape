@@ -169,7 +169,7 @@ function DrivenJointFields({
   return (
     <>
       <fieldset className="grid gap-2">
-        <legend className="mb-2 text-sm font-medium">{t("jointAxis")}</legend>
+        <legend className="mb-2 text-xs font-medium">{t("jointAxis")}</legend>
         <div className="grid gap-2">
           {(["X", "Y", "Z"] as const).map((axis, index) => (
             <AssemblyNumberField
@@ -230,7 +230,7 @@ function CylindricalJointFields({
   return (
     <>
       <fieldset className="grid gap-2">
-        <legend className="text-sm font-medium">{t("jointAxis")}</legend>
+        <legend className="text-xs font-medium">{t("jointAxis")}</legend>
         <div className="grid gap-2">
           {(["X", "Y", "Z"] as const).map((axis, index) => (
             <AssemblyNumberField

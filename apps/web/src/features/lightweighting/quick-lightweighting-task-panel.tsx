@@ -151,7 +151,7 @@ export function QuickLightweightingTaskPanel({
   return (
     <section
       aria-label={t("title")}
-      className="grid h-full min-h-0 content-start gap-2 overflow-y-auto p-4"
+      className="grid h-full min-h-0 content-start gap-2 overflow-y-auto p-3"
     >
       <TaskPanelHeader
         title={t("title")}

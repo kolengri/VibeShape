@@ -120,7 +120,7 @@ function CandidateFallback({ props }: { props: TreatmentControlsProps }) {
       className="sr-only rounded-md border p-2 focus-within:not-sr-only"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary className="cursor-pointer text-xs">{t("keyboardChoices")}</summary>
+      <summary className="font-medium cursor-pointer text-xs">{t("keyboardChoices")}</summary>
       <div className="mt-2 grid max-h-48 gap-1 overflow-y-auto">
         {choices.length === 0 && (
           <p role="status" className="text-xs text-muted-foreground">
@@ -338,7 +338,7 @@ function SelectionHeading({
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   return (
     <>
-      <legend className="text-sm font-medium">
+      <legend className="text-xs font-medium">
         {v3 ? t("selectedTargets") : props.copy.selectedEdges}
       </legend>
       <p className="text-xs text-muted-foreground">
@@ -411,7 +411,7 @@ function ChamferControls({ props }: { props: TreatmentControlsProps }) {
   const values = props.values
   return (
     <fieldset className="grid gap-2">
-      <legend className="text-sm font-medium">{t("chamferControls")}</legend>
+      <legend className="text-xs font-medium">{t("chamferControls")}</legend>
       <NativeSelectField
         label={t("modeLabel")}
         value={values.mode}

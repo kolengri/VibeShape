@@ -72,7 +72,7 @@ export function AssemblyPoseFields({
       aria-labelledby={labelId}
       aria-describedby={descriptionId}
     >
-      <legend className="mb-1 text-sm font-medium">
+      <legend className="mb-1 text-xs font-medium">
         <span className="inline-flex items-center gap-1">
           <span id={labelId}>{label}</span>
           <FieldHelp label={label} descriptionId={descriptionId}>

@@ -6,7 +6,10 @@ const modelBrowserRow = cn(
   "focus-visible:ring-2 focus-visible:ring-inset",
 )
 export const modelBrowserChildRow = cn(modelBrowserRow, "pl-8")
-export const modelBrowserGroupRow = cn(modelBrowserRow, "w-full pr-9")
+export const modelBrowserGroupRow = cn(
+  "min-w-0 w-full justify-start gap-2 rounded-sm px-2 pr-9 text-xs font-medium",
+  "focus-visible:ring-2 focus-visible:ring-inset",
+)
 export const modelBrowserSelectedRow = "bg-accent text-accent-foreground hover:bg-accent"
 export const modelBrowserHighlightedRow =
   "bg-accent hover:bg-accent after:pointer-events-none after:absolute after:inset-0 after:z-10 after:rounded-[inherit] after:ring-1 after:ring-primary after:ring-inset"

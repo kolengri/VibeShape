@@ -19,7 +19,7 @@ export function GenerativeFdmControls({
     state.changeStudyFields({ ...fields, fdm: { ...fields.fdm, ...next } })
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-2">
-      <legend className="mb-1 font-medium">{t("title")}</legend>
+      <legend className="mb-1 font-medium text-xs">{t("title")}</legend>
       <SelectField
         id="generative-fdm-supports"
         label={t("supportMode")}

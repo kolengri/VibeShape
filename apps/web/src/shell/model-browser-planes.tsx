@@ -87,7 +87,7 @@ export function ModelBrowserPlanes({
           tabIndex={-1}
           aria-expanded={expanded}
           variant="ghost"
-          size="sm"
+          size="xs"
           className={cn(modelBrowserGroupRow, "flex-1")}
           onClick={() => setExpanded(!expanded)}
         >

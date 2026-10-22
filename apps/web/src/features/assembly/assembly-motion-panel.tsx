@@ -116,7 +116,7 @@ function MotionCoordinateFields({
   return (
     <fieldset disabled={disabled} className="grid min-w-0 gap-2">
       <fieldset className="flex min-w-0 flex-wrap gap-2">
-        <legend className="mb-1 text-sm font-medium">{t("motionCoordinate")}</legend>
+        <legend className="mb-1 text-xs font-medium">{t("motionCoordinate")}</legend>
         {assemblyMotionCoordinates(joint).map((item) => (
           <Button
             key={item.kind}
