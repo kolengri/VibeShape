@@ -34,14 +34,18 @@ async function scrollBodiesToEnd(contents: readonly Locator[]) {
   }
 }
 
-async function expectViewportAboveTask(page: Page, task: Locator) {
+async function expectViewportControlsAboveTask(page: Page, task: Locator) {
   await expect
     .poll(async () => {
-      const viewport = await layoutBounds(page.locator(".workspace-viewport"))
+      const canvas = page.locator(".workspace-viewport canvas").first()
+      const viewport = await layoutBounds(canvas)
       const panel = await layoutBounds(task)
-      return Math.abs(viewport.y + viewport.height - panel.y)
+      const inset = (await canvas.getAttribute("data-orientation-inset"))?.split(",").map(Number)
+      if (!inset || inset[1] === undefined) return false
+      const clearBottom = viewport.y + viewport.height - inset[1]
+      return clearBottom <= panel.y + 1 && panel.y - clearBottom <= 16
     })
-    .toBeLessThanOrEqual(1)
+    .toBe(true)
 }
 
 test("keeps task chrome reachable at a 200% equivalent viewport", async ({ page }) => {
@@ -132,7 +136,7 @@ for (const width of [1280, 960]) {
     expect(await footer.boundingBox()).toEqual(footerBounds)
     await expect(tree.getByRole("heading", { name: "Model", exact: true })).toBeInViewport()
     await expect(footer.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport()
-    if (width < 1024) await expectViewportAboveTask(page, task)
+    if (width < 1024) await expectViewportControlsAboveTask(page, task)
     await setAdditionalRows([fields, treeContent], false)
     await expect
       .poll(async () => (await task.boundingBox())?.height)

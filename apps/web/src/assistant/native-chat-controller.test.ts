@@ -264,8 +264,8 @@ function fixture(steeringEnabled = false) {
   }
 }
 
-async function until(predicate: () => boolean) {
-  const deadline = Date.now() + 2000
+async function until(predicate: () => boolean, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs
   while (!predicate()) {
     if (Date.now() >= deadline) throw new Error("Expected controller transition did not complete")
     await new Promise((resolve) => setTimeout(resolve, 1))
@@ -298,7 +298,7 @@ describe("queued native steering", () => {
       type: "error",
       code: "agent-exited",
     })
-    await until(() => f.connects.length === 2 && !chat.getSnapshot().connecting)
+    await until(() => f.connects.length === 2 && !chat.getSnapshot().connecting, 7000)
     expect(f.connects[1]?.agent).toEqual(jev)
     expect(f.connects[1]).not.toHaveProperty("jevCredentials")
     chat.dispose()
@@ -1149,7 +1149,7 @@ describe("project-scoped agent chat", () => {
       })
       await chat.enqueue("Unsent dependent work")
       f.emit({ ...scope, type: "error", code: "agent-exited" })
-      await until(() => f.connects.length === 2 && chat.getSnapshot().recovery === null)
+      await until(() => f.connects.length === 2 && chat.getSnapshot().recovery === null, 7000)
       expect(f.connects[1]?.resumeSessionId).toBe("session-1")
       expect(f.prompts).toHaveLength(1)
       expect(chat.getSnapshot()).toMatchObject({

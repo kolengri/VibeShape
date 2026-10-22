@@ -287,7 +287,7 @@ describe("internal native connection recovery", () => {
       expect(await connection).toBe(timing === "during")
       f.crash()
       expect(f.chat.getSnapshot().recovery?.status).toBe("retrying")
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
       expect(f.connections).toHaveLength(2)
       expect(f.chat.getSnapshot()).toMatchObject({
         snapshot: { status: "ready", sessionToken: "connection-2" },
@@ -329,7 +329,7 @@ describe("internal native connection recovery", () => {
     await f.chat.connect(agent)
     f.automate({ connected: false })
     f.crash()
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(f.chat.getSnapshot().recovery?.status).toBe("retrying")
     expect(await f.chat.send("Inspect before replacement pairing")).toBe(false)
     f.automate({ connected: true })
@@ -355,7 +355,7 @@ describe("internal native connection recovery", () => {
         }),
       )
       f.automate({ connected: false, recovering: true, recoveryAttempt: 1 })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
       f.automate({ recovering: false, recoveryFailed: true, recoveryAttempt: 5, error: true })
       expect(f.chat.getSnapshot().recovery?.status).toBe("retrying")
       if (failure === "permanent client change") f.retryModel.mockResolvedValue(false)
@@ -382,7 +382,7 @@ describe("internal native connection recovery", () => {
     const f = fixture()
     f.fail("launch-failed")
     await f.chat.connect(agent)
-    await vi.advanceTimersByTimeAsync(30_000)
+    await vi.advanceTimersByTimeAsync(135_000)
     expect(f.connections).toHaveLength(6)
     expect(f.chat.getSnapshot()).toMatchObject({
       configured: true,
@@ -396,7 +396,7 @@ describe("internal native connection recovery", () => {
     await f.chat.send("Original")
     await f.chat.enqueue("Unsent next")
     f.crash()
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(f.prompts).toHaveLength(2)
     f.finish(1)
     await vi.advanceTimersByTimeAsync(0)
@@ -419,7 +419,7 @@ describe("internal native connection recovery", () => {
       configured: true,
       recovery: { attempt: 1, status: "retrying" },
     })
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(f.connections).toHaveLength(2)
     expect(f.connections[1]).toEqual({ projectId, agent, resumeSessionId: "provider-session" })
     expect(f.prompts).toHaveLength(1)
@@ -448,7 +448,7 @@ describe("internal native connection recovery", () => {
     await f.chat.connect(agent)
     f.fail("agent-exited")
     f.disconnectEvent()
-    for (const [index, delay] of [1000, 2000, 4000, 8000, 8000].entries()) {
+    for (const [index, delay] of [5000, 10_000, 20_000, 40_000, 60_000].entries()) {
       await vi.advanceTimersByTimeAsync(delay - 1)
       expect(f.connections).toHaveLength(index + 1)
       await vi.advanceTimersByTimeAsync(1)
@@ -463,7 +463,7 @@ describe("internal native connection recovery", () => {
     f.fail()
     expect(await f.chat.retryRecovery()).toBe(true)
     expect(await f.chat.retryRecovery()).toBe(false)
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(f.chat.getSnapshot().recovery).toBeNull()
     await vi.advanceTimersByTimeAsync(30_000)
     f.disconnectEvent()
@@ -473,7 +473,7 @@ describe("internal native connection recovery", () => {
   it("keeps the same five-attempt episode across idle connection flapping until a healthy idle window", async () => {
     const f = fixture()
     await f.chat.connect(agent)
-    for (const delay of [1000, 2000, 4000, 8000, 8000]) {
+    for (const delay of [5000, 10_000, 20_000, 40_000, 60_000]) {
       f.crash()
       await vi.advanceTimersByTimeAsync(delay)
       expect(f.chat.getSnapshot().recovery).toBeNull()
@@ -497,7 +497,7 @@ describe("internal native connection recovery", () => {
         }),
       )
       f.crash()
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
       await f.chat[action]()
       release()
       await vi.advanceTimersByTimeAsync(90_000)
@@ -534,7 +534,7 @@ describe("internal native connection recovery", () => {
     await f.chat.send("Do work")
     f.requireAuthentication()
     f.crash()
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(f.chat.getSnapshot()).toMatchObject({
       error: "authentication-required",
       busy: false,
@@ -552,7 +552,7 @@ describe("internal native connection recovery", () => {
     await f.chat.connect(agent)
     await f.chat.send("Do work")
     f.automate({ connected: false, recovering: true })
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(5000)
     f.automate({ recovering: false, recoveryBlocked: true })
     await vi.advanceTimersByTimeAsync(60_000)
     expect(f.connections).toHaveLength(2)
@@ -565,12 +565,12 @@ describe("internal native connection recovery", () => {
     await f.chat.connect(agent)
     await f.chat.send("Do work")
     f.automate({ connected: false, recovering: true })
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(5000)
     f.crash()
     await vi.advanceTimersByTimeAsync(0)
     expect(f.chat.getSnapshot().recovery).toMatchObject({ attempt: 2, status: "retrying" })
     f.automate({ connected: true, recovering: false })
-    await vi.advanceTimersByTimeAsync(2000)
+    await vi.advanceTimersByTimeAsync(10_000)
     expect(f.connections).toHaveLength(3)
     expect(f.prompts).toHaveLength(2)
     expect(f.chat.getSnapshot().recovery).toBeNull()
@@ -593,13 +593,13 @@ describe("internal native connection recovery", () => {
     await f.chat.connect(agent)
     await f.chat.send("Do work")
     f.automate({ connected: false, recovering: true })
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(f.prompts).toHaveLength(1)
     f.automate({ connected: true, recovering: false })
     await vi.advanceTimersByTimeAsync(0)
     expect(f.prompts).toHaveLength(2)
     f.automate({ connected: false, recovering: true })
-    await vi.advanceTimersByTimeAsync(2000)
+    await vi.advanceTimersByTimeAsync(10_000)
     f.automate({ recovering: false, recoveryFailed: true, error: true, recoveryAttempt: 5 })
     await vi.advanceTimersByTimeAsync(90_000)
     expect(f.prompts).toHaveLength(2)
