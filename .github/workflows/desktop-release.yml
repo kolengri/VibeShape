@@ -158,7 +158,9 @@ jobs:
           # A build-only rerun skips preflight, including after a successful publication.
           RELEASE_TAG_COMMIT="$(git ls-remote origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}" | tail -n 1 | cut -f 1)"
           export RELEASE_TAG_COMMIT
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
+          release_api_url="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json apiUrl --jq .apiUrl)"
+          test -n "$release_api_url"
+          gh api "$release_api_url" > "$RUNNER_TEMP/release.json"
           python3 ops/desktop-release/release.py stage
           # A full rerun may rebuild this same draft; both acceptance jobs run again below.
           gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber \
@@ -208,7 +210,9 @@ jobs:
           # Existing tags are authoritative; target_commitish is only a tag-creation hint.
           RELEASE_TAG_COMMIT="$(git ls-remote origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}" | tail -n 1 | cut -f 1)"
           export RELEASE_TAG_COMMIT
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
+          release_api_url="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json apiUrl --jq .apiUrl)"
+          test -n "$release_api_url"
+          gh api "$release_api_url" > "$RUNNER_TEMP/release.json"
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases" > "$RUNNER_TEMP/published-releases.json"
           python3 ops/desktop-release/release.py verify
 
