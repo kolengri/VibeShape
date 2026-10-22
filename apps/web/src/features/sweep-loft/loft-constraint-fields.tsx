@@ -1,8 +1,11 @@
 import type { SketchProfileSelector } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
+import { fieldVariants } from "@vibeshape/ui/components/field"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { Input } from "@vibeshape/ui/components/input"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { useId } from "react"
+import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import {
   emptyLoftPath,
   type LoftConstraintValues,
@@ -57,7 +60,7 @@ function TrackPicker({
 }) {
   const id = useId()
   return (
-    <label htmlFor={id} className="grid gap-2 text-sm">
+    <label htmlFor={id} className={fieldVariants({ orientation: "horizontal" })}>
       <span>{label}</span>
       <NativeSelect
         id={id}
@@ -114,7 +117,7 @@ function DirectedSegmentField({
   const value = entity && point ? `${entity}:${point}` : ""
   const id = useId()
   return (
-    <label htmlFor={id} className="grid gap-2 text-sm">
+    <label htmlFor={id} className={fieldVariants({ orientation: "horizontal" })}>
       <span>{copy.label}</span>
       <NativeSelect
         id={id}
@@ -208,7 +211,10 @@ function EndFields({
               copy={copy}
               onChange={(segmentTrack) => update({ segmentTrack })}
             />
-            <label htmlFor={`${id}-${index}-continuity`} className="grid gap-2 text-sm">
+            <label
+              htmlFor={`${id}-${index}-continuity`}
+              className={fieldVariants({ orientation: "horizontal" })}
+            >
               <span>{copy.continuity}</span>
               <NativeSelect
                 id={`${id}-${index}-continuity`}
@@ -222,7 +228,10 @@ function EndFields({
                 <option value="G2">G2</option>
               </NativeSelect>
             </label>
-            <label htmlFor={`${id}-${index}-support`} className="grid gap-2 text-sm">
+            <label
+              htmlFor={`${id}-${index}-support`}
+              className={fieldVariants({ orientation: "horizontal" })}
+            >
               <span>{copy.supportFace}</span>
               <NativeSelect
                 id={`${id}-${index}-support`}
@@ -309,17 +318,14 @@ export function LoftConstraintFields({
   const count = values.outerCorrespondence.length
   return (
     <>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={values.constrained}
-          onChange={(event) => onChange({ constrained: event.currentTarget.checked })}
-        />
-        {copy.constrained}
-      </label>
+      <BooleanParameterField
+        label={copy.constrained}
+        description={copy.constraintsDescription}
+        checked={values.constrained}
+        onChange={(event) => onChange({ constrained: event.currentTarget.checked })}
+      />
       {values.constrained && (
         <>
-          <p className="text-xs text-muted-foreground">{copy.constraintsDescription}</p>
           <fieldset className="grid gap-3">
             <legend className="mb-2 text-sm font-medium">{copy.outerTracks}</legend>
             {values.outerCorrespondence.map((track, index) => (
@@ -478,9 +484,21 @@ function LoftGuideFields({
             guides: values.guides.map((old, row) => (row === index ? { ...old, ...changes } : old)),
           })
         return (
-          <fieldset key={index} className="grid gap-2 rounded-md border p-3">
-            <legend>{copy.guide(index + 1)}</legend>
-            <label htmlFor={`${id}-${index}-name`} className="grid gap-2 text-sm">
+          <fieldset
+            key={index}
+            aria-label={copy.guide(index + 1)}
+            className="grid gap-2 rounded-md border p-3"
+          >
+            <legend>
+              <span className="inline-flex items-center gap-1">
+                {copy.guide(index + 1)}
+                <FieldHelp label={copy.guide(index + 1)}>{copy.guideContinuity}</FieldHelp>
+              </span>
+            </legend>
+            <label
+              htmlFor={`${id}-${index}-name`}
+              className={fieldVariants({ orientation: "horizontal" })}
+            >
               <span>{copy.guideName}</span>
               <Input
                 id={`${id}-${index}-name`}
@@ -496,7 +514,6 @@ function LoftGuideFields({
               copy={copy}
               onChange={(segmentTrack) => update({ segmentTrack })}
             />
-            <p className="text-xs text-muted-foreground">{copy.guideContinuity}</p>
             <LoftPathFields
               value={guide.path}
               paths={paths}

@@ -199,7 +199,7 @@ export function SketchLinearPatternForm({
       form={form}
       variant="panel"
     >
-      <div className="grid grid-cols-2 gap-2">{renderFields(fields.slice(0, 3))}</div>
+      <div className="grid gap-2">{renderFields(fields.slice(0, 3))}</div>
       <form.Field name="secondDirection">
         {(field) => (
           <TanStackBooleanParameterField
@@ -213,9 +213,7 @@ export function SketchLinearPatternForm({
       </form.Field>
       <form.Subscribe selector={(state) => state.values.secondDirection}>
         {(secondDirection) =>
-          secondDirection ? (
-            <div className="grid grid-cols-2 gap-2">{renderFields(fields.slice(3))}</div>
-          ) : null
+          secondDirection ? <div className="grid gap-2">{renderFields(fields.slice(3))}</div> : null
         }
       </form.Subscribe>
       {message ? (

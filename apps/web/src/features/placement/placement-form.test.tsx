@@ -70,7 +70,7 @@ describe("Placement form", () => {
     setup(save(), changes, { source: [], targets: [] })
     const old = changes.mock.calls.at(-1)?.[0]?.translationGizmo
     await userEvent.click(
-      screen.getByText(messages.app.placement.alignmentTitle, { selector: "summary" }),
+      screen.getByText(messages.app.placement.alignmentTitle, { selector: "summary span" }),
     )
     await userEvent.click(
       screen.getByRole("button", { name: messages.app.placement.alignmentPickFaces }),

@@ -41,6 +41,9 @@ A runtime change accepts only an available locale, updates `<html lang>` and `<h
 - Application copy lives under the `app` top-level namespace.
 - A shared package that needs its own copy owns a distinct top-level namespace such as `ui`.
 - `mergeMessages` rejects duplicate top-level namespaces instead of silently overwriting one catalog with another.
+- The application merges the shared UI English catalog under `ui`. Its `FieldHelpProvider` supplies
+  locale-aware rich formatting for contextual help names; standalone controls format the same
+  source catalog through `createTranslator` without requiring application state.
 - Keys describe stable meaning and location, not the current English wording.
 - Domain IDs, command IDs, diagnostic codes, units, file-format names, and persisted enum values are not translated.
 

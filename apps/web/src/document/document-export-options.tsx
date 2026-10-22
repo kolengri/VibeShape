@@ -57,7 +57,7 @@ export function DocumentExportOptions({
   const t = useTranslations("app.export")
   return (
     <>
-      <div className="grid items-start gap-3 sm:grid-cols-2">
+      <div className="grid items-start gap-2">
         <NativeSelectField
           label={t("destination.label")}
           value={destination}

@@ -7,6 +7,8 @@ import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import { topoRefSchema } from "@vibeshape/domain/topology"
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection, TopologyCandidate } from "@vibeshape/protocol"
+import { fieldVariants } from "@vibeshape/ui/components/field"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import { AssemblyNumberField, formNumber } from "./assembly-fields"
 
@@ -143,6 +145,7 @@ export function AssemblyFrameBindingFields({
     <fieldset className="grid gap-2">
       <LocalizedSearchableSelectField
         label={t(prefix === "parent" ? "parentBinding" : "childBinding")}
+        description={binding ? t("frameBindingExplanation") : undefined}
         placeholder={t(prefix === "parent" ? "parentBinding" : "childBinding")}
         value={value}
         onValueChange={(key) => {
@@ -202,8 +205,7 @@ export function AssemblyFrameBindingFields({
       />
       {binding && (
         <div key={value} className="grid gap-2">
-          <p className="text-xs text-muted-foreground">{t("frameBindingExplanation")}</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid gap-2">
             {(["X", "Y", "Z"] as const).map((axis, index) => (
               <AssemblyNumberField
                 key={axis}
@@ -213,7 +215,7 @@ export function AssemblyFrameBindingFields({
               />
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid gap-2">
             {(["X", "Y", "Z"] as const).map((axis, index) => (
               <AssemblyNumberField
                 key={axis}
@@ -225,14 +227,14 @@ export function AssemblyFrameBindingFields({
               />
             ))}
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+            <span>{t("reverseAxis")}</span>
             <input
               name={`${prefix}.binding.reversed`}
               type="checkbox"
               defaultChecked={binding.reversed}
               className="size-4 accent-primary"
             />
-            {t("reverseAxis")}
           </label>
         </div>
       )}

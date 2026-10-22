@@ -483,8 +483,8 @@ function HolePoints({
   const points = sketch?.entities.filter((entity) => entity.type === "point") ?? []
   const missing = selected.filter((id) => !points.some((point) => point.id === id))
   return (
-    <fieldset className="grid min-w-0 gap-2" aria-label={copy.points}>
-      <legend className="text-sm font-medium">{copy.points}</legend>
+    <fieldset className="grid min-w-0 gap-1" aria-label={copy.points}>
+      <legend className="mb-1 text-xs font-medium">{copy.points}</legend>
       <p className="text-xs text-muted-foreground">{copy.pointsDescription}</p>
       {points.length === 0 ? (
         <p className="text-xs text-muted-foreground">{copy.noPoints}</p>

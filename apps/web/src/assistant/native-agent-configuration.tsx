@@ -2,6 +2,7 @@ import { assistantAgentSchema } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
+import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { type FormEvent, useId, useRef, useState } from "react"
@@ -127,7 +128,7 @@ export function NativeAgentConfiguration({
   const pending = connecting || form.disconnecting || form.submitting || test.pending
   const locked = pending || connected
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-2">
       <SelectField
         label={t("agent")}
         value={form.choice}
@@ -160,7 +161,7 @@ export function NativeAgentConfiguration({
         />
       ) : (
         <form
-          className="grid gap-3"
+          className="grid gap-2"
           onInput={test.clear}
           onSubmit={(event) => {
             if (test.pending) event.preventDefault()
@@ -174,26 +175,26 @@ export function NativeAgentConfiguration({
             onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
           >
             <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-            <div className="mt-3 grid gap-2">
-              <label htmlFor={`${id}-command`} className="text-xs font-medium">
-                {t("executable")}
-              </label>
-              <Input
-                id={`${id}-command`}
-                value={form.draft.command}
-                disabled={locked}
-                onChange={(event) => form.edit("command", event.currentTarget.value)}
-                placeholder={t("executablePlaceholder")}
-              />
-              <label htmlFor={`${id}-args`} className="text-xs font-medium">
-                {t("arguments")}
-              </label>
-              <Input
-                id={`${id}-args`}
-                value={form.draft.args}
-                disabled={locked}
-                onChange={(event) => form.edit("args", event.currentTarget.value)}
-              />
+            <div className="mt-2 grid gap-2">
+              <Field>
+                <FieldLabel htmlFor={`${id}-command`}>{t("executable")}</FieldLabel>
+                <Input
+                  id={`${id}-command`}
+                  value={form.draft.command}
+                  disabled={locked}
+                  onChange={(event) => form.edit("command", event.currentTarget.value)}
+                  placeholder={t("executablePlaceholder")}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`${id}-args`}>{t("arguments")}</FieldLabel>
+                <Input
+                  id={`${id}-args`}
+                  value={form.draft.args}
+                  disabled={locked}
+                  onChange={(event) => form.edit("args", event.currentTarget.value)}
+                />
+              </Field>
             </div>
           </details>
           {form.invalid && (

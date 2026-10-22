@@ -406,6 +406,7 @@
         "radix-ui": "catalog:",
         "react-resizable-panels": "catalog:",
         "tailwind-merge": "catalog:",
+        "use-intl": "catalog:",
       },
       "devDependencies": {
         "@testing-library/dom": "10.4.1",

@@ -174,7 +174,7 @@ function setup(
   }
 }
 function change(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } })
+  fireEvent.change(screen.getByLabelText(label, { selector: "input" }), { target: { value } })
 }
 async function pickFaces() {
   await userEvent.click(screen.getByRole("button", { name: "Pick support faces" }))

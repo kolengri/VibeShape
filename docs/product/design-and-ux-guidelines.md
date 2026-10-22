@@ -423,9 +423,23 @@ Every editable field has:
 - current value and optional expression source;
 - validation text connected programmatically to the input;
 - `aria-invalid` when invalid;
-- a stable position while errors appear.
+- an adjacent error row that appears only when validation has a message.
 
 Placeholder text is an example, never the only label or required instruction.
+
+Optional field explanations use an information icon beside the persistent label. Section-level
+help belongs beside its heading. Activate the icon by click, tap, Enter, or Space to open a
+non-modal popover; Escape closes it and restores focus to the icon. Keep the explanation
+programmatically connected to the input even while the popover is closed. Help buttons are
+separate from labels so opening help never toggles a checkbox or submits a form. Validation,
+required selection instructions, warnings, and permission consequences remain visible.
+
+Parameter forms use compact horizontal rows: labels occupy two fifths of the available row and
+controls three fifths, with an 8 px column gap. Ordinary controls are 32 px high and neighboring
+rows have an 8 px gap. Long labels wrap; input values retain their available width. Empty error
+rows reserve no space. Repeated selection lists, tables, textareas, and compound editors may use
+the full row. Avoid redundant visible section titles when the form heading and field labels already
+provide the context; retain accessible group names. Apply the same layout to settings and dialogs.
 
 ### Numeric Behavior
 

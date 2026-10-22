@@ -1,6 +1,7 @@
 import type { FeatureRecord } from "@vibeshape/domain"
 import { metricThreadPresets } from "@vibeshape/domain/part-design-thread"
 import { referenceAxisSchema } from "@vibeshape/domain/reference-frame"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
@@ -209,6 +210,7 @@ export function ThreadForm({
               >
                 <LocalizedSearchableSelectField
                   label={copy.metricSize}
+                  description={copy.metricSizeDescription}
                   placeholder={copy.metricSize}
                   value={metricSize}
                   onValueChange={(value) => {
@@ -227,61 +229,50 @@ export function ThreadForm({
                     })),
                   ]}
                 />
-                <p className="text-xs text-muted-foreground">{copy.metricSizeDescription}</p>
                 <form.Field name="kind">
                   {(field) => (
-                    <fieldset className="grid gap-2">
-                      <legend className="mb-2 text-xs font-medium">{copy.kind}</legend>
-                      {(["external", "internal"] as const).map((kind) => (
-                        <label key={kind} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="kind"
-                            value={kind}
-                            checked={field.state.value === kind}
-                            onBlur={field.handleBlur}
-                            onChange={() => {
-                              state.clearSubmissionErrors()
-                              field.handleChange(kind)
-                            }}
-                          />
-                          {copy[kind]}
-                        </label>
-                      ))}
-                    </fieldset>
+                    <ChoiceField
+                      name={field.name}
+                      label={copy.kind}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onValueChange={(value) => {
+                        state.clearSubmissionErrors()
+                        field.handleChange(value === "external" ? "external" : "internal")
+                      }}
+                      options={(["external", "internal"] as const).map((kind) => ({
+                        value: kind,
+                        label: copy[kind],
+                      }))}
+                    />
                   )}
                 </form.Field>
                 {threadCoreFields.map(expressionField)}
                 <details
-                  className="grid gap-3"
+                  className="grid gap-2"
                   open={advancedExpanded || advancedInvalid}
                   onToggle={(event) => setAdvancedExpanded(event.currentTarget.open)}
                 >
-                  <summary className="cursor-pointer py-2 text-sm font-medium">
+                  <summary className="cursor-pointer py-1 text-xs font-medium">
                     {copy.advanced}
                   </summary>
-                  <div className="grid gap-3 pt-3">
+                  <div className="grid gap-2 pt-1">
                     <form.Field name="axis">
                       {(field) => (
-                        <fieldset className="grid gap-2">
-                          <legend className="mb-2 text-xs font-medium">{copy.axis}</legend>
-                          {(["X", "Y", "Z"] as const).map((axis) => (
-                            <label key={axis} className="flex items-center gap-2 text-sm">
-                              <input
-                                type="radio"
-                                name="axis"
-                                value={axis}
-                                checked={field.state.value === axis}
-                                onBlur={field.handleBlur}
-                                onChange={() => {
-                                  state.clearSubmissionErrors()
-                                  field.handleChange(axis)
-                                }}
-                              />
-                              {axis}
-                            </label>
-                          ))}
-                        </fieldset>
+                        <ChoiceField
+                          name={field.name}
+                          label={copy.axis}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onValueChange={(value) => {
+                            state.clearSubmissionErrors()
+                            field.handleChange(value as "X" | "Y" | "Z")
+                          }}
+                          options={(["X", "Y", "Z"] as const).map((axis) => ({
+                            value: axis,
+                            label: axis,
+                          }))}
+                        />
                       )}
                     </form.Field>
                     {axisOptions && (
@@ -300,25 +291,20 @@ export function ThreadForm({
                     )}
                     <form.Field name="handedness">
                       {(field) => (
-                        <fieldset className="grid gap-2">
-                          <legend className="mb-2 text-xs font-medium">{copy.handedness}</legend>
-                          {(["right", "left"] as const).map((handedness) => (
-                            <label key={handedness} className="flex items-center gap-2 text-sm">
-                              <input
-                                type="radio"
-                                name="handedness"
-                                value={handedness}
-                                checked={field.state.value === handedness}
-                                onBlur={field.handleBlur}
-                                onChange={() => {
-                                  state.clearSubmissionErrors()
-                                  field.handleChange(handedness)
-                                }}
-                              />
-                              {copy[handedness]}
-                            </label>
-                          ))}
-                        </fieldset>
+                        <ChoiceField
+                          name={field.name}
+                          label={copy.handedness}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onValueChange={(value) => {
+                            state.clearSubmissionErrors()
+                            field.handleChange(value === "right" ? "right" : "left")
+                          }}
+                          options={(["right", "left"] as const).map((handedness) => ({
+                            value: handedness,
+                            label: copy[handedness],
+                          }))}
+                        />
                       )}
                     </form.Field>
                     {threadAdvancedFields

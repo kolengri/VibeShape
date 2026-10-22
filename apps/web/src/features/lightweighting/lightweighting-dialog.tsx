@@ -448,13 +448,13 @@ function TaskPanelContent({
       data-generative-form={generative || undefined}
       className={
         generative
-          ? "grid min-h-0 min-w-0 flex-1 grid-cols-1 content-start gap-4 overflow-y-auto max-lg:contents"
+          ? "grid min-h-0 min-w-0 flex-1 grid-cols-1 content-start gap-2 overflow-y-auto max-lg:contents"
           : "contents"
       }
     >
       <fieldset
         disabled={inputsDisabled}
-        className="grid min-w-0 grid-cols-1 gap-4"
+        className="grid min-w-0 grid-cols-1 gap-2"
         aria-busy={pending}
       >
         <legend className="sr-only">{t("settings")}</legend>

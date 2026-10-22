@@ -33,6 +33,7 @@ export function LightweightingAlgorithmControls({
     <LightweightingNumberField
       id={`lightweighting-algorithm-${key}`}
       label={t(key)}
+      description={key === "cellPeriodMm" ? t("resolutionHelp") : undefined}
       value={settings[key]}
       onChange={(value) => update({ [key]: value })}
       min={min}
@@ -40,13 +41,25 @@ export function LightweightingAlgorithmControls({
     />
   )
   return (
-    <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-      <legend className="mb-2 font-medium">{t("method")}</legend>
+    <fieldset className="grid min-w-0 grid-cols-1 gap-2" aria-label={t("method")}>
       <SelectField
         id="lightweighting-method"
         label={t("method")}
         value={settings.kind}
-        aria-describedby="lightweighting-method-help"
+        description={
+          <>
+            <span className="block">
+              {t(
+                settings.kind === "adaptive-lattice"
+                  ? "latticeHelp"
+                  : settings.kind === "simp"
+                    ? "simpHelp"
+                    : "greedyHelp",
+              )}
+            </span>
+            {settings.kind !== "greedy" && <span className="block">{t("verificationHelp")}</span>}
+          </>
+        }
         onValueChange={(kind) => {
           if (kind === "greedy" || kind === "simp" || kind === "adaptive-lattice") update({ kind })
         }}
@@ -55,15 +68,6 @@ export function LightweightingAlgorithmControls({
         <SelectOption value="simp">{t("simp")}</SelectOption>
         <SelectOption value="adaptive-lattice">{t("adaptiveLattice")}</SelectOption>
       </SelectField>
-      <p id="lightweighting-method-help" className="text-xs text-muted-foreground">
-        {t(
-          settings.kind === "adaptive-lattice"
-            ? "latticeHelp"
-            : settings.kind === "simp"
-              ? "simpHelp"
-              : "greedyHelp",
-        )}
-      </p>
       {settings.kind === "simp" && (
         <>
           {study ? (
@@ -71,7 +75,7 @@ export function LightweightingAlgorithmControls({
           ) : (
             numeric("volumePercent", 10, 100)
           )}
-          <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2">
             {numeric("filterRadiusMm", 0.01)}
             {numeric("penalty", 1, 5)}
           </div>
@@ -103,14 +107,13 @@ export function LightweightingAlgorithmControls({
             <SelectOption value="strain-energy">{t("strainEnergy")}</SelectOption>
             <SelectOption value="von-mises">{t("vonMises")}</SelectOption>
           </SelectField>
-          <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2">
             {numeric("cellPeriodMm", 0.01)}
             {numeric("gamma", 0.1, 8)}
             {numeric("minWallThicknessMm", 0.01)}
             {numeric("maxWallThicknessMm", 0.01)}
             {numeric("skinThicknessMm", 0)}
           </div>
-          <p className="text-xs text-muted-foreground">{t("resolutionHelp")}</p>
           {Number.isFinite(Number(fields.cellSizeMm)) && Number(fields.cellSizeMm) > 0 && (
             <p className="text-xs text-muted-foreground">
               {t("resolutionValues", {
@@ -121,9 +124,6 @@ export function LightweightingAlgorithmControls({
             </p>
           )}
         </>
-      )}
-      {settings.kind !== "greedy" && (
-        <p className="text-xs text-muted-foreground">{t("verificationHelp")}</p>
       )}
     </fieldset>
   )

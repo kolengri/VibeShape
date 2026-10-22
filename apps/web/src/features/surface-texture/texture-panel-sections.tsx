@@ -206,23 +206,21 @@ export function TextureRegionControls({ state }: { state: TextureDraftState }) {
       {(state.pickMode === "paint" || state.pickMode === "erase") && (
         <>
           <p className="text-xs text-muted-foreground">{t("paintHint")}</p>
-          <div className="grid grid-cols-2 gap-2">
-            <TextureNumberField
-              label={t("brushRadius")}
-              value={state.radiusMm}
-              min={0.1}
-              max={1000}
-              onChange={state.setRadiusMm}
-            />
-            <TextureNumberField
-              label={t("hardness")}
-              value={state.hardness}
-              min={0}
-              max={1}
-              step={0.05}
-              onChange={state.setHardness}
-            />
-          </div>
+          <TextureNumberField
+            label={t("brushRadius")}
+            value={state.radiusMm}
+            min={0.1}
+            max={1000}
+            onChange={state.setRadiusMm}
+          />
+          <TextureNumberField
+            label={t("hardness")}
+            value={state.hardness}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={state.setHardness}
+          />
         </>
       )}
       {layer.mask.strokes.length >= 2048 && (

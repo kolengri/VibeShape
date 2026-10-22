@@ -1,7 +1,9 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { Field, FieldDescription, FieldLabel, fieldVariants } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { type FormEvent, useId, useRef, useState } from "react"
 import { apiConfigurationSchema } from "./api-assistant-preferences"
 import { useApiAssistantSettings } from "./api-assistant-provider"
@@ -107,7 +109,7 @@ export function ApiConfigurationForm({
   const form = useApiConnectionForm(chat, connected)
   const locked = busy || connected || form.submitting
   return (
-    <form className="grid gap-3" onSubmit={form.submit} aria-busy={form.submitting || undefined}>
+    <form className="grid gap-2" onSubmit={form.submit} aria-busy={form.submitting || undefined}>
       <SelectField
         label={t("provider")}
         value={form.choice}
@@ -125,59 +127,57 @@ export function ApiConfigurationForm({
         <SelectOption value="custom">{t("customProvider")}</SelectOption>
       </SelectField>
       <p className="text-xs text-muted-foreground">{t("description")}</p>
-      <label htmlFor={`${id}-model`} className="text-xs font-medium">
-        {t("model")}
-      </label>
-      <Input
-        id={`${id}-model`}
-        required
-        value={form.model}
-        maxLength={128}
-        disabled={locked}
-        onChange={(event) => form.setModel(event.currentTarget.value)}
-      />
-      <label htmlFor={`${id}-key`} className="text-xs font-medium">
-        {t("apiKey")}
-      </label>
-      <Input
-        id={`${id}-key`}
-        type="password"
-        autoComplete="off"
-        value={form.apiKey}
-        maxLength={4096}
-        disabled={locked}
-        onChange={(event) => form.setApiKey(event.currentTarget.value)}
-        aria-describedby={`${id}-memory`}
-      />
-      <p id={`${id}-memory`} className="text-xs text-muted-foreground">
-        {t("keyMemory")}
-      </p>
+      <Field>
+        <FieldLabel htmlFor={`${id}-model`}>{t("model")}</FieldLabel>
+        <Input
+          id={`${id}-model`}
+          required
+          value={form.model}
+          maxLength={128}
+          disabled={locked}
+          onChange={(event) => form.setModel(event.currentTarget.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`${id}-key`}>{t("apiKey")}</FieldLabel>
+        <Input
+          id={`${id}-key`}
+          type="password"
+          autoComplete="off"
+          value={form.apiKey}
+          maxLength={4096}
+          disabled={locked}
+          onChange={(event) => form.setApiKey(event.currentTarget.value)}
+          aria-describedby={`${id}-memory`}
+        />
+      </Field>
+      <FieldDescription id={`${id}-memory`}>{t("keyMemory")}</FieldDescription>
       <details
         open={form.advanced}
         onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
       >
         <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-        <div className="mt-3 grid gap-2">
-          <label htmlFor={`${id}-endpoint`} className="text-xs font-medium">
-            {t("endpoint")}
-          </label>
-          <Input
-            id={`${id}-endpoint`}
-            type="url"
-            required
-            value={form.endpoint}
-            maxLength={2048}
-            disabled={locked}
-            onChange={(event) => form.editEndpoint(event.currentTarget.value)}
-          />
-          <label className="flex items-center gap-2 text-xs">
+        <div className="mt-2 grid gap-2">
+          <Field>
+            <FieldLabel htmlFor={`${id}-endpoint`}>{t("endpoint")}</FieldLabel>
+            <Input
+              id={`${id}-endpoint`}
+              type="url"
+              required
+              value={form.endpoint}
+              maxLength={2048}
+              disabled={locked}
+              onChange={(event) => form.editEndpoint(event.currentTarget.value)}
+            />
+          </Field>
+          <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+            <span>{t("stream")}</span>
             <input
               type="checkbox"
               checked={form.stream}
               disabled={locked}
               onChange={(event) => form.setStream(event.currentTarget.checked)}
             />
-            {t("stream")}
           </label>
         </div>
       </details>

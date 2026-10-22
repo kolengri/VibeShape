@@ -1,8 +1,9 @@
 import { type AssemblyRigidPose, assemblyRigidPoseSchema } from "@vibeshape/domain/assembly"
 import { useTranslations } from "@vibeshape/i18n"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { Input } from "@vibeshape/ui/components/input"
-import { useId } from "react"
+import { type ReactNode, useId } from "react"
 import { assemblyEulerDegrees, assemblyPoseFromEuler, identityAssemblyPose } from "./assembly-model"
 
 export function AssemblyNumberField({
@@ -11,20 +12,25 @@ export function AssemblyNumberField({
   value = 0,
   min = -100_000,
   max = 100_000,
+  description,
 }: {
   label: string
   name: string
   value?: number | undefined
   min?: number
   max?: number
+  description?: ReactNode
 }) {
   const id = useId()
   return (
     <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id} description={description} descriptionId={`${id}-description`}>
+        {label}
+      </FieldLabel>
       <Input
         id={id}
         name={name}
+        aria-describedby={description ? `${id}-description` : undefined}
         type="number"
         defaultValue={value}
         min={min}
@@ -49,17 +55,33 @@ export function AssemblyPoseFields({
   prefix,
   label,
   pose = identityAssemblyPose,
+  description,
 }: {
   prefix: string
   label: string
   pose?: AssemblyRigidPose | undefined
+  description?: ReactNode
 }) {
   const t = useTranslations("app.assembly")
   const rotation = assemblyEulerDegrees(pose)
+  const descriptionId = useId()
+  const labelId = useId()
   return (
-    <fieldset className="grid min-w-0 gap-2">
-      <legend className="mb-2 text-sm font-medium">{label}</legend>
-      <div className="grid grid-cols-3 gap-2">
+    <fieldset
+      className="grid min-w-0 gap-2"
+      aria-labelledby={labelId}
+      aria-describedby={descriptionId}
+    >
+      <legend className="mb-1 text-sm font-medium">
+        <span className="inline-flex items-center gap-1">
+          <span id={labelId}>{label}</span>
+          <FieldHelp label={label} descriptionId={descriptionId}>
+            {description}
+            <span className="block">{t("rotationOrder")}</span>
+          </FieldHelp>
+        </span>
+      </legend>
+      <div className="grid gap-2">
         {(["x", "y", "z"] as const).map((axis, index) => (
           <AssemblyNumberField
             key={axis}
@@ -79,7 +101,6 @@ export function AssemblyPoseFields({
           />
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">{t("rotationOrder")}</p>
     </fieldset>
   )
 }

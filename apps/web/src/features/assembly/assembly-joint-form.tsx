@@ -7,8 +7,9 @@ import {
 } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection } from "@vibeshape/protocol"
-import { Field, FieldLabel } from "@vibeshape/ui/components/field"
+import { Field, FieldLabel, fieldVariants } from "@vibeshape/ui/components/field"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useId, useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import { browserAuthoredUuid } from "../../document/authored-document-session"
@@ -169,7 +170,7 @@ function DrivenJointFields({
     <>
       <fieldset className="grid gap-2">
         <legend className="mb-2 text-sm font-medium">{t("jointAxis")}</legend>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid gap-2">
           {(["X", "Y", "Z"] as const).map((axis, index) => (
             <AssemblyNumberField
               key={axis}
@@ -182,12 +183,13 @@ function DrivenJointFields({
       </fieldset>
       <AssemblyNumberField
         name="drive"
+        description={t("driveLimitsExplanation")}
         label={t(label)}
         value={driven.value / scale}
         min={-bound}
         max={bound}
       />
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2">
         <AssemblyNumberField
           name="minimum"
           label={t("minimum")}
@@ -203,7 +205,6 @@ function DrivenJointFields({
           max={bound}
         />
       </div>
-      <p className="text-xs text-muted-foreground">{t("driveLimitsExplanation")}</p>
     </>
   )
 }
@@ -230,7 +231,7 @@ function CylindricalJointFields({
     <>
       <fieldset className="grid gap-2">
         <legend className="text-sm font-medium">{t("jointAxis")}</legend>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid gap-2">
           {(["X", "Y", "Z"] as const).map((axis, index) => (
             <AssemblyNumberField
               key={axis}
@@ -279,14 +280,14 @@ function CylindricalCoordinateField({
   const limits = joint?.[config.limits] ?? { min: -bound * scale, max: bound * scale }
   return (
     <fieldset className="grid gap-2">
-      <label className="flex items-center gap-2 text-sm">
+      <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+        <span>{t(config.lockLabel)}</span>
         <input
           name={driven}
           type="checkbox"
           defaultChecked={joint?.[driven] ?? false}
           className="size-4 accent-primary"
         />
-        {t(config.lockLabel)}
       </label>
       <AssemblyNumberField
         name={kind}
@@ -295,7 +296,7 @@ function CylindricalCoordinateField({
         min={-bound}
         max={bound}
       />
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2">
         <AssemblyNumberField
           name={`${kind}.minimum`}
           label={t("minimum")}
@@ -377,7 +378,8 @@ function ChildCreationFields(props: ChildProps) {
   const id = useId()
   return (
     <>
-      <Field orientation="horizontal">
+      <Field orientation="horizontal" className="min-h-8">
+        <FieldLabel htmlFor={id}>{t("createChild")}</FieldLabel>
         <input
           id={id}
           type="checkbox"
@@ -385,7 +387,6 @@ function ChildCreationFields(props: ChildProps) {
           className="size-4 accent-primary"
           onChange={(event) => props.update({ creating: event.currentTarget.checked })}
         />
-        <FieldLabel htmlFor={id}>{t("createChild")}</FieldLabel>
       </Field>
       {props.options.creating ? <NewChildFields {...props} /> : <ExistingChildField {...props} />}
     </>
@@ -514,7 +515,8 @@ export function AssemblyJointForm({
       <AssemblyPoseFields prefix="child" label={t("childFrame")} pose={frames.childFrame} />
       {assembly.schemaVersion === 2 &&
         (options.kind === "revolute" || options.kind === "prismatic") && (
-          <label className="flex items-center gap-2 text-sm">
+          <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+            <span>{t("lockDrive")}</span>
             <input
               name="driven"
               type="checkbox"
@@ -526,7 +528,6 @@ export function AssemblyJointForm({
               }
               className="size-4 accent-primary"
             />
-            {t("lockDrive")}
           </label>
         )}
       <JointDriveFields

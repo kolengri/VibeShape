@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
@@ -240,7 +241,10 @@ export function DocumentDisplayUnitsSettings({
   const writable = controller.status === "ready" && report.mode === "read-write" && !blocked
   return (
     <div className="grid gap-3">
-      <p className="text-xs text-muted-foreground">{copy.description}</p>
+      <div className="flex items-center gap-1 text-sm font-medium">
+        {copy.title}
+        <FieldHelp label={copy.title}>{copy.description}</FieldHelp>
+      </div>
       {!writable ? (
         <p className="text-xs text-muted-foreground">
           {report.mode === "read-write" ? settingsT("projectBlocked") : t("readOnly")}

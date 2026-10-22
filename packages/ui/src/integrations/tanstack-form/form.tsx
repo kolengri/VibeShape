@@ -24,7 +24,7 @@ export const { useAppForm, withFieldGroup, withForm } = createFormHook({
   formComponents,
 })
 
-const formVariants = cva("grid gap-4", {
+const formVariants = cva("grid gap-2", {
   variants: {
     variant: {
       bare: undefined,

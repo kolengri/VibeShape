@@ -6,6 +6,7 @@ import type {
 } from "@vibeshape/domain"
 import { readPatternFeatureParametersV2 } from "@vibeshape/domain/part-design-pattern"
 import type { ReferenceAxis } from "@vibeshape/domain/reference-frame"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
@@ -224,25 +225,20 @@ export function PatternForm({
               >
                 <form.Field name="kind">
                   {(field) => (
-                    <fieldset className="grid gap-2">
-                      <legend className="mb-2 text-xs font-medium">{copy.kind}</legend>
-                      {(["linear", "circular"] as const).map((kind) => (
-                        <label key={kind} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="kind"
-                            value={kind}
-                            checked={field.state.value === kind}
-                            onBlur={field.handleBlur}
-                            onChange={() => {
-                              state.clearSubmissionErrors()
-                              field.handleChange(kind)
-                            }}
-                          />
-                          {copy[kind]}
-                        </label>
-                      ))}
-                    </fieldset>
+                    <ChoiceField
+                      name={field.name}
+                      label={copy.kind}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onValueChange={(value) => {
+                        state.clearSubmissionErrors()
+                        field.handleChange(value === "linear" ? "linear" : "circular")
+                      }}
+                      options={(["linear", "circular"] as const).map((kind) => ({
+                        value: kind,
+                        label: copy[kind],
+                      }))}
+                    />
                   )}
                 </form.Field>
                 <ReferenceAxisSelection
@@ -253,25 +249,20 @@ export function PatternForm({
                 >
                   <form.Field name="axis">
                     {(field) => (
-                      <fieldset className="grid gap-2">
-                        <legend className="mb-2 text-xs font-medium">{copy.axis}</legend>
-                        {(["X", "Y", "Z"] as const).map((axis) => (
-                          <label key={axis} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="radio"
-                              name="axis"
-                              value={axis}
-                              checked={field.state.value === axis}
-                              onBlur={field.handleBlur}
-                              onChange={() => {
-                                state.clearSubmissionErrors()
-                                field.handleChange(axis)
-                              }}
-                            />
-                            {axis}
-                          </label>
-                        ))}
-                      </fieldset>
+                      <ChoiceField
+                        name={field.name}
+                        label={copy.axis}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onValueChange={(value) => {
+                          state.clearSubmissionErrors()
+                          field.handleChange(value as "X" | "Y" | "Z")
+                        }}
+                        options={(["X", "Y", "Z"] as const).map((axis) => ({
+                          value: axis,
+                          label: axis,
+                        }))}
+                      />
                     )}
                   </form.Field>
                 </ReferenceAxisSelection>

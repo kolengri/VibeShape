@@ -127,6 +127,17 @@ it("restores the coupon feature with its authored dimensions", () => {
   })
 })
 
+it("connects an unavailable target error to its full-width selector", async () => {
+  const f = setup(undefined, "corner-relief")
+  await userEvent.click(screen.getByRole("button", { name: "Create" }))
+  const target = screen.getByRole("combobox", { name: messages.app.fdm.target })
+  await waitFor(() => expect(target.getAttribute("aria-invalid")).toBe("true"))
+  const error = document.getElementById(target.getAttribute("aria-describedby") ?? "")
+  expect(error?.getAttribute("role")).toBe("alert")
+  expect(error?.textContent).toBe(messages.app.fdm.unavailable)
+  expect(f.onSave).not.toHaveBeenCalled()
+})
+
 it("limits wall extension to Web and clears the incompatible setting when choosing Rib", async () => {
   setup(undefined, "web")
   await userEvent.click(screen.getByRole("checkbox", { name: "Extend lines to cavity walls" }))

@@ -179,6 +179,7 @@ function ExportPartSelection({
     <div className="grid gap-2">
       <SelectField
         label={t("parts.label")}
+        description={t("parts.description")}
         value={value}
         onValueChange={onChange}
         disabled={disabled}
@@ -190,7 +191,6 @@ function ExportPartSelection({
           </SelectOption>
         ))}
       </SelectField>
-      <p className="text-xs text-muted-foreground">{t("parts.description")}</p>
     </div>
   )
 }
@@ -406,7 +406,7 @@ function ExportOriginalModelFields({
           native={handoff.native !== undefined}
         />
       </div>
-      <div className="grid items-start gap-3 sm:grid-cols-2 [&>*:only-child]:col-span-full">
+      <div className="grid items-start gap-2 [&>*:only-child]:col-span-full">
         <ExportPartSelection
           controller={controller}
           value={session.exportPart}

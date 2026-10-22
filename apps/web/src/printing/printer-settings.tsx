@@ -1,7 +1,10 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { printerProfileSchema } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
+import { fieldVariants } from "@vibeshape/ui/components/field"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useState } from "react"
 import { useViewerPreferences } from "../shell/viewer-preferences"
 
@@ -35,14 +38,16 @@ export function PrinterSettings() {
     },
   })
   return (
-    <section className="grid gap-3 border-t pt-4" aria-label={t("title")}>
-      <h3 className="font-medium">{t("title")}</h3>
-      <p className="text-xs text-muted-foreground">{t("description")}</p>
+    <section className="grid gap-2 border-t pt-4" aria-label={t("title")}>
+      <div className="flex items-center gap-1">
+        <h3 className="font-medium">{t("title")}</h3>
+        <FieldHelp label={t("title")}>{t("description")}</FieldHelp>
+      </div>
       <Form form={form} aria-label={t("form")} onChange={() => setError(false)}>
         <form.AppField name="name">
           {(field) => <field.TextField label={t("name")} maxLength={128} />}
         </form.AppField>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-2">
           {dimensions.map((name) => (
             <form.AppField key={name} name={name}>
               {(field) => (
@@ -63,7 +68,8 @@ export function PrinterSettings() {
         ) : null}
         <form.SubmitButton requireDirty={false}>{t("apply")}</form.SubmitButton>
       </Form>
-      <label className="flex items-center gap-2 text-sm">
+      <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+        <span>{t("showBed")}</span>
         <input
           type="checkbox"
           className="accent-primary"
@@ -71,9 +77,9 @@ export function PrinterSettings() {
           disabled={!profile}
           onChange={(event) => preferences.actions.setPrintBedVisible(event.currentTarget.checked)}
         />
-        {t("showBed")}
       </label>
-      <label className="flex items-center gap-2 text-sm">
+      <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+        <span>{t("showGrid")}</span>
         <input
           type="checkbox"
           className="accent-primary"
@@ -82,7 +88,6 @@ export function PrinterSettings() {
             preferences.actions.setGroundGridVisible(event.currentTarget.checked)
           }
         />
-        {t("showGrid")}
       </label>
       {profile ? (
         <Button

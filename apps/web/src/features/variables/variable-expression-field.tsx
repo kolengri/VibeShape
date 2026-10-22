@@ -1,4 +1,4 @@
-import { Field, FieldDescription, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
+import { Field, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import type { ComponentProps, ReactNode } from "react"
 import {
   VariableExpressionInput,
@@ -41,7 +41,12 @@ export function VariableExpressionField({
 
   return (
     <Field data-invalid={Boolean(error) || undefined}>
-      <FieldLabel htmlFor={id} required={Boolean(required)}>
+      <FieldLabel
+        htmlFor={id}
+        required={Boolean(required)}
+        description={description}
+        descriptionId={descriptionId}
+      >
         {label}
       </FieldLabel>
       <VariableExpressionInput
@@ -54,7 +59,6 @@ export function VariableExpressionField({
         aria-invalid={error ? true : undefined}
         className={inputClassName}
       />
-      {description ? <FieldDescription id={descriptionId}>{description}</FieldDescription> : null}
       <FieldError id={errorId} reserveSpace={reserveErrorSpace}>
         {error}
       </FieldError>

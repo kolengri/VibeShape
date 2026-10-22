@@ -5,7 +5,10 @@ import {
 import type { AssemblyJointRecord } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { Field, FieldLabel, fieldVariants } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
+import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 import { TaskPanelHeader } from "../../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
@@ -66,24 +69,24 @@ export function AssemblyPlaybackSettings({
   const id = useId()
   return (
     <fieldset disabled={disabled} className="grid gap-2 text-sm">
-      <label className="flex items-center gap-2">
+      <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+        <span>{t("motionReverse")}</span>
         <input
           type="checkbox"
           checked={value.reverse ?? false}
           onChange={(event) => onChange({ ...value, reverse: event.currentTarget.checked })}
         />
-        {t("motionReverse")}
       </label>
-      <label className="flex items-center gap-2">
+      <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+        <span>{t("motionLoop")}</span>
         <input
           type="checkbox"
           checked={value.loop ?? false}
           onChange={(event) => onChange({ ...value, loop: event.currentTarget.checked })}
         />
-        {t("motionLoop")}
       </label>
-      <label htmlFor={`${id}-speed`}>
-        {t("motionSpeed")}
+      <Field>
+        <FieldLabel htmlFor={`${id}-speed`}>{t("motionSpeed")}</FieldLabel>
         <Input
           id={`${id}-speed`}
           type="number"
@@ -93,9 +96,9 @@ export function AssemblyPlaybackSettings({
           value={value.speed ?? 1}
           onChange={(event) => onChange({ ...value, speed: Number(event.currentTarget.value) })}
         />
-      </label>
-      <label htmlFor={`${id}-count`}>
-        {t("motionSampleCount")}
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`${id}-count`}>{t("motionSampleCount")}</FieldLabel>
         <Input
           id={`${id}-count`}
           type="number"
@@ -105,7 +108,7 @@ export function AssemblyPlaybackSettings({
           value={value.count ?? 13}
           onChange={(event) => onChange({ ...value, count: Number(event.currentTarget.value) })}
         />
-      </label>
+      </Field>
     </fieldset>
   )
 }
@@ -205,29 +208,26 @@ function StudyExport({
   }
   return (
     <fieldset disabled={disabled || busy || !session.motion.samples.length} className="grid gap-2">
-      <label>
-        {t("motionTraceInstance")}
-        <select
-          className="h-9 w-full rounded-md border bg-background px-2"
-          value={target}
-          onChange={(event) => setTarget(event.currentTarget.value)}
-        >
-          <option value="">—</option>
-          {occurrences.map(({ instanceId, sourceIndex }) => (
-            <option key={`${instanceId}:${sourceIndex}`} value={`${instanceId}:${sourceIndex}`}>
-              {instanceId} · {sourceIndex}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label htmlFor={pointId}>
-        {t("motionTracePoint")}
+      <NativeSelectField
+        label={t("motionTraceInstance")}
+        value={target}
+        onChange={(event) => setTarget(event.currentTarget.value)}
+      >
+        <option value="">—</option>
+        {occurrences.map(({ instanceId, sourceIndex }) => (
+          <option key={`${instanceId}:${sourceIndex}`} value={`${instanceId}:${sourceIndex}`}>
+            {instanceId} · {sourceIndex}
+          </option>
+        ))}
+      </NativeSelectField>
+      <Field>
+        <FieldLabel htmlFor={pointId}>{t("motionTracePoint")}</FieldLabel>
         <Input
           id={pointId}
           value={point}
           onChange={(event) => setPoint(event.currentTarget.value)}
         />
-      </label>
+      </Field>
       <Button type="button" variant="outline" onClick={() => void run("json")}>
         {t("motionExportJson")}
       </Button>
@@ -270,14 +270,14 @@ function StudyFields({
     inputId = useId()
   return (
     <fieldset disabled={disabled} className="grid gap-2">
-      <label htmlFor={`${inputId}-name`}>
-        {t("motionStudyName")}
+      <Field>
+        <FieldLabel htmlFor={`${inputId}-name`}>{t("motionStudyName")}</FieldLabel>
         <Input
           id={`${inputId}-name`}
           value={draft.name}
           onChange={(event) => session.edit({ ...draft, name: event.currentTarget.value })}
         />
-      </label>
+      </Field>
       <AssemblyStudyNumber
         label={t("motionDuration")}
         value={draft.duration}
@@ -305,25 +305,31 @@ function StudyPlayback({
   disabled: boolean
 }) {
   const t = useTranslations("app.assembly")
+  const seekId = useId()
   return (
     <>
-      <label>
-        {t("motionSeek")}
-        <input
-          className="w-full"
-          type="range"
-          min={0}
-          max={draft.duration}
-          step="any"
-          value={motion.value ?? 0}
-          disabled={disabled}
-          onChange={(event) => {
-            if (event.currentTarget.form?.reportValidity())
-              void motion.preview(Number(event.currentTarget.value))
-          }}
-        />
-        <output>{motion.value ?? 0}</output>
-      </label>
+      <Field>
+        <FieldLabel htmlFor={seekId}>{t("motionSeek")}</FieldLabel>
+        <div className="flex min-w-0 items-center gap-2">
+          <input
+            id={seekId}
+            className="h-8 w-full min-w-0"
+            type="range"
+            min={0}
+            max={draft.duration}
+            step="any"
+            value={motion.value ?? 0}
+            disabled={disabled}
+            onChange={(event) => {
+              if (event.currentTarget.form?.reportValidity())
+                void motion.preview(Number(event.currentTarget.value))
+            }}
+          />
+          <output htmlFor={seekId} className="shrink-0 tabular-nums">
+            {motion.value ?? 0}
+          </output>
+        </div>
+      </Field>
       <details>
         <summary className="cursor-pointer py-1 text-sm">{t("motionPlaybackOptions")}</summary>
         <AssemblyPlaybackSettings
@@ -452,7 +458,7 @@ export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
     solving = motion.pending || motion.playing
   return (
     <form
-      className="grid min-w-0 gap-3"
+      className="grid min-w-0 gap-2"
       aria-label={t("motionStudies")}
       onSubmit={(event) => event.preventDefault()}
       onInvalidCapture={(event) => {

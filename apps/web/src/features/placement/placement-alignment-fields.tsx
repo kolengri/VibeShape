@@ -1,6 +1,7 @@
 import type { DocumentDisplayUnits, VariableDefinition } from "@vibeshape/domain"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
@@ -168,10 +169,14 @@ export function PlacementAlignmentFields({
   }
   return (
     <details open={available || undefined}>
-      <summary className="cursor-pointer text-xs font-medium">{t("alignmentTitle")}</summary>
+      <summary className="cursor-pointer text-xs font-medium" aria-label={t("alignmentTitle")}>
+        <span className="inline-flex items-center gap-1">
+          <span>{t("alignmentTitle")}</span>
+          <FieldHelp label={t("alignmentTitle")}>{t("alignmentDescription")}</FieldHelp>
+        </span>
+      </summary>
       <fieldset className="mt-2 grid gap-3 rounded-md border p-3">
         <legend className="sr-only">{t("alignmentTitle")}</legend>
-        <p className="text-xs text-muted-foreground">{t("alignmentDescription")}</p>
         <Button
           type="button"
           size="sm"

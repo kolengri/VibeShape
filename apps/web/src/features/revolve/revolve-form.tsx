@@ -27,6 +27,7 @@ import {
 import type { BodyReference } from "@vibeshape/domain/body-reference"
 import { Button } from "@vibeshape/ui/components/button"
 import { ChoiceField } from "@vibeshape/ui/components/choice-field"
+import { fieldVariants } from "@vibeshape/ui/components/field"
 import { Scan } from "@vibeshape/ui/components/icons"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
@@ -399,47 +400,52 @@ function RevolveAxisField({
   value: RevolveAxis
 }>) {
   return (
-    <fieldset className="grid min-w-0 gap-2" disabled={disabled}>
-      <legend className="text-sm font-medium">{copy.axis}</legend>
-      <div className="flex min-w-0 gap-2">
-        {(["x", "y"] as const).map((axis) => {
-          const selected = value.kind === "origin-axis" && value.axis === axis
-          const label = axis === "x" ? copy.axisX : copy.axisY
-          return (
-            <Button
-              key={axis}
-              type="button"
-              className="min-w-0 flex-1"
-              size="sm"
-              variant={selected ? "secondary" : "outline"}
-              aria-label={label}
-              aria-pressed={selected}
-              onClick={() => {
-                onSelectionRequest?.()
-                onChange({ kind: "origin-axis", axis })
-              }}
-            >
-              {axis.toUpperCase()}
-            </Button>
-          )
-        })}
-      </div>
-      <Button
-        size="content"
-        type="button"
-        className="w-full min-w-0 justify-start overflow-hidden border-dashed text-left"
-        variant={selectionActive ? "secondary" : "outline"}
-        aria-label={copy.axisSelectHint}
-        aria-pressed={selectionActive}
-        {...(onSelectionRequest ? { onClick: onSelectionRequest } : {})}
-      >
-        <Scan className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span
-          className={cn("min-w-0 truncate", axisLineLabel ? undefined : "text-muted-foreground")}
+    <fieldset className={fieldVariants({ orientation: "horizontal" })} disabled={disabled}>
+      <legend className="sr-only">{copy.axis}</legend>
+      <span className="text-xs font-medium" aria-hidden="true">
+        {copy.axis}
+      </span>
+      <div className="grid min-w-0 gap-1">
+        <div className="flex min-w-0 gap-1">
+          {(["x", "y"] as const).map((axis) => {
+            const selected = value.kind === "origin-axis" && value.axis === axis
+            const label = axis === "x" ? copy.axisX : copy.axisY
+            return (
+              <Button
+                key={axis}
+                type="button"
+                className="min-w-0 flex-1"
+                size="sm"
+                variant={selected ? "secondary" : "outline"}
+                aria-label={label}
+                aria-pressed={selected}
+                onClick={() => {
+                  onSelectionRequest?.()
+                  onChange({ kind: "origin-axis", axis })
+                }}
+              >
+                {axis.toUpperCase()}
+              </Button>
+            )
+          })}
+        </div>
+        <Button
+          size="content"
+          type="button"
+          className="w-full min-w-0 justify-start overflow-hidden border-dashed text-left"
+          variant={selectionActive ? "secondary" : "outline"}
+          aria-label={copy.axisSelectHint}
+          aria-pressed={selectionActive}
+          {...(onSelectionRequest ? { onClick: onSelectionRequest } : {})}
         >
-          {axisLineLabel ?? copy.axisSelectHint}
-        </span>
-      </Button>
+          <Scan className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span
+            className={cn("min-w-0 truncate", axisLineLabel ? undefined : "text-muted-foreground")}
+          >
+            {axisLineLabel ?? copy.axisSelectHint}
+          </span>
+        </Button>
+      </div>
     </fieldset>
   )
 }

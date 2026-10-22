@@ -4,9 +4,11 @@ import {
 } from "@vibeshape/automation-api/assistant-jev"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { Field, FieldDescription, FieldLabel } from "@vibeshape/ui/components/field"
+import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { TextField } from "@vibeshape/ui/components/text-field"
-import { type FormEvent, useRef, useState } from "react"
+import { type FormEvent, useId, useRef, useState } from "react"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
 import { useAssistantSettingsSaved } from "./assistant-settings-dialog"
 import { agentPresetId, agentPresets } from "./connection-presets"
@@ -142,6 +144,7 @@ function useJevConnectionForm({ chat, connected, pending, testConnection }: JevC
 
 export function JevAgentConfiguration(props: JevConfigurationProps) {
   const t = useTranslations("app.assistant")
+  const id = useId()
   const { connected, pending, testing, disconnect, clearTest } = props
   const {
     initial,
@@ -159,33 +162,37 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
   return (
     <form
       ref={formRef}
-      className="grid gap-3"
+      className="grid gap-2"
       onInput={clearTest}
       onSubmit={submit}
       aria-label={t("jev.settings")}
       aria-busy={pending || submitting || undefined}
     >
-      <p className="text-xs text-muted-foreground">{t("jev.description")}</p>
-      <fieldset disabled={locked} className="grid min-w-0 gap-3">
+      <fieldset disabled={locked} className="grid min-w-0 gap-2">
         <TextField
           name="model"
           label={t("jev.model")}
+          description={t("jev.description")}
           defaultValue={initial.model}
           required
           maxLength={128}
         />
-        <TextField
-          name="apiKey"
-          type="password"
-          label={t("jev.apiKey")}
-          autoComplete="off"
-          maxLength={4096}
-          description={t("jev.keyNotice")}
-        />
-        <div className="grid gap-3">
-          <p className="text-xs text-muted-foreground">{t("jev.argumentNotice")}</p>
+        <Field>
+          <FieldLabel htmlFor={`${id}-api-key`}>{t("jev.apiKey")}</FieldLabel>
+          <Input
+            id={`${id}-api-key`}
+            name="apiKey"
+            type="password"
+            autoComplete="off"
+            maxLength={4096}
+            aria-describedby={`${id}-key-notice`}
+          />
+        </Field>
+        <FieldDescription id={`${id}-key-notice`}>{t("jev.keyNotice")}</FieldDescription>
+        <div className="grid gap-2">
           <SelectField
             label={t("jev.argumentModel")}
+            description={t("jev.argumentNotice")}
             value={argumentChoice}
             disabled={locked}
             onValueChange={(value) => {
@@ -231,7 +238,7 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
         </div>
         <details>
           <summary className="cursor-pointer text-xs font-medium">{t("jev.advanced")}</summary>
-          <div className="mt-3 grid gap-3">
+          <div className="mt-2 grid gap-2">
             <TextField
               name="maxSteps"
               type="number"

@@ -4,6 +4,7 @@ import {
   assemblyInstanceRecordSchema as assemblyInstanceSchema,
 } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import { AssemblyNameField, AssemblyPoseFields, formPose } from "./assembly-fields"
@@ -31,12 +32,17 @@ function InstancePoseFields({ instance }: { instance: AssemblyInstance }) {
   return instance.grounded ? (
     <AssemblyPoseFields prefix="world" label={t("worldFrame")} pose={instance.worldFrame} />
   ) : instance.schemaVersion === 2 ? (
-    <>
-      <p className="text-xs text-muted-foreground">{t("generalFreePoseExplanation")}</p>
-      <AssemblyPoseFields prefix="initial" label={t("initialFrame")} pose={instance.initialFrame} />
-    </>
+    <AssemblyPoseFields
+      prefix="initial"
+      label={t("initialFrame")}
+      pose={instance.initialFrame}
+      description={t("generalFreePoseExplanation")}
+    />
   ) : (
-    <p className="text-xs text-muted-foreground">{t("attachedPoseExplanation")}</p>
+    <div className="flex items-center gap-1 text-sm font-medium">
+      {t("worldFrame")}
+      <FieldHelp label={t("worldFrame")}>{t("attachedPoseExplanation")}</FieldHelp>
+    </div>
   )
 }
 function ExistingInstanceForm({

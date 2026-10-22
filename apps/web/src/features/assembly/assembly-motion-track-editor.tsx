@@ -1,7 +1,9 @@
 import type { AssemblyMotionStudy, AssemblyMotionTrack } from "@vibeshape/domain/assembly-authority"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
+import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { useId, useState } from "react"
 import { browserAuthoredUuid as browserUuidV7 } from "../../document/authored-document-session"
 import { useDocumentDisplayUnits } from "../../document/document-display-units"
@@ -69,8 +71,8 @@ export function AssemblyStudyNumber({
     t("motionNumberPending"),
   )
   return (
-    <div className="grid min-w-0 gap-1 text-xs">
-      <label htmlFor={id}>{label}</label>
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
         ref={(node) => node?.setCustomValidity(message)}
         id={id}
@@ -107,11 +109,11 @@ export function AssemblyStudyNumber({
         }}
       />
       {message && (
-        <span id={`${id}-error`} className={invalid ? "text-destructive" : "sr-only"}>
+        <span id={`${id}-error`} className={invalid ? "col-start-2 text-destructive" : "sr-only"}>
           {message}
         </span>
       )}
-    </div>
+    </Field>
   )
 }
 
@@ -195,23 +197,20 @@ function CopyTrack({
     <details className="text-sm">
       <summary className="cursor-pointer py-1">{t("motionCopyTrack")}</summary>
       <div className="mt-2 grid gap-2">
-        <label className="grid gap-1 text-xs">
-          {t("motionCopyTarget")}
-          <select
-            className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm"
-            value={target.key}
-            onChange={(event) => {
-              setTargetKey(event.currentTarget.value)
-              setError(false)
-            }}
-          >
-            {available.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <NativeSelectField
+          label={t("motionCopyTarget")}
+          value={target.key}
+          onChange={(event) => {
+            setTargetKey(event.currentTarget.value)
+            setError(false)
+          }}
+        >
+          {available.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </NativeSelectField>
         <AssemblyStudyNumber
           label={t(track.coordinate === "angle" ? "motionAngleOffset" : "motionValueOffset", {
             unit: unit.unit,
@@ -283,51 +282,44 @@ function TrackCard({
     })
   }
   return (
-    <fieldset className="grid min-w-0 gap-3 rounded-md border p-3">
+    <fieldset className="grid min-w-0 gap-2 rounded-md border p-3">
       <legend className="px-1 text-sm font-medium">
         {t("motionTrackNumber", { number: index + 1 })}
       </legend>
-      <label className="grid min-w-0 gap-1 text-xs">
-        {t("motionCoordinate")}
-        <select
-          className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm"
-          value={`${track.jointId}:${track.coordinate}`}
-          onChange={(event) => {
-            const option = options.find(({ key }) => key === event.currentTarget.value)
-            if (option)
-              update({
-                ...track,
-                jointId: option.jointId,
-                coordinate: option.coordinate.kind,
-                keys: track.keys.map((key) => ({
-                  ...key,
-                  value:
-                    option.coordinate.kind === track.coordinate
-                      ? key.value
-                      : option.coordinate.value,
-                })),
-              })
-          }}
-        >
-          {!selected && (
-            <option value={`${track.jointId}:${track.coordinate}`}>
-              {t("motionMissingJoint")}
-            </option>
-          )}
-          {options.map((option) => (
-            <option
-              key={option.key}
-              value={option.key}
-              disabled={study.tracks.some(
-                (other) =>
-                  other.id !== track.id && `${other.jointId}:${other.coordinate}` === option.key,
-              )}
-            >
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <NativeSelectField
+        label={t("motionCoordinate")}
+        value={`${track.jointId}:${track.coordinate}`}
+        onChange={(event) => {
+          const option = options.find(({ key }) => key === event.currentTarget.value)
+          if (option)
+            update({
+              ...track,
+              jointId: option.jointId,
+              coordinate: option.coordinate.kind,
+              keys: track.keys.map((key) => ({
+                ...key,
+                value:
+                  option.coordinate.kind === track.coordinate ? key.value : option.coordinate.value,
+              })),
+            })
+        }}
+      >
+        {!selected && (
+          <option value={`${track.jointId}:${track.coordinate}`}>{t("motionMissingJoint")}</option>
+        )}
+        {options.map((option) => (
+          <option
+            key={option.key}
+            value={option.key}
+            disabled={study.tracks.some(
+              (other) =>
+                other.id !== track.id && `${other.jointId}:${other.coordinate}` === option.key,
+            )}
+          >
+            {option.label}
+          </option>
+        ))}
+      </NativeSelectField>
       {coordinate && unit ? (
         <>
           <p className="text-xs text-muted-foreground">
@@ -349,7 +341,7 @@ function TrackCard({
             <summary className="cursor-pointer py-1 text-sm">
               {t("motionEditKeys", { count: track.keys.length })}
             </summary>
-            <div className="mt-2 grid gap-3">
+            <div className="mt-2 grid gap-2">
               {track.keys.map((key, keyIndex) => (
                 <fieldset key={`${track.id}:${keyIndex}`} className="grid gap-2 border-b pb-3">
                   <legend className="text-xs text-muted-foreground">
@@ -357,7 +349,7 @@ function TrackCard({
                   </legend>
                   <div
                     key={`${track.coordinate}:${track.keys.length}`}
-                    className="grid min-w-0 grid-cols-2 gap-2"
+                    className="grid min-w-0 gap-2"
                   >
                     <AssemblyStudyNumber
                       label={t("motionKeyTime")}
@@ -481,8 +473,8 @@ export function AssemblyMotionTrackEditor({ study, view, edit, disabled }: Edito
     })
   }
   return (
-    <fieldset disabled={disabled} className="grid min-w-0 gap-3">
-      <legend className="mb-2 text-sm font-medium">{t("motionTracks")}</legend>
+    <fieldset disabled={disabled} className="grid min-w-0 gap-2">
+      <legend className="mb-1 text-sm font-medium">{t("motionTracks")}</legend>
       <p className="text-xs text-muted-foreground">{t("motionTimelineHint")}</p>
       {study.tracks.map((track, index) => (
         <TrackCard

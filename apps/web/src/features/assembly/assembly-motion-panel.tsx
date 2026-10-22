@@ -114,9 +114,9 @@ function MotionCoordinateFields({
   const { unit, display } = input
   const bounds = { min: unit.display(coordinate.min), max: unit.display(coordinate.max) }
   return (
-    <fieldset disabled={disabled} className="grid min-w-0 gap-3">
+    <fieldset disabled={disabled} className="grid min-w-0 gap-2">
       <fieldset className="flex min-w-0 flex-wrap gap-2">
-        <legend className="mb-2 text-sm font-medium">{t("motionCoordinate")}</legend>
+        <legend className="mb-1 text-sm font-medium">{t("motionCoordinate")}</legend>
         {assemblyMotionCoordinates(joint).map((item) => (
           <Button
             key={item.kind}
@@ -146,7 +146,7 @@ function MotionCoordinateFields({
       <Button type="submit" variant="outline" size="sm">
         {t("motionPreview")}
       </Button>
-      <div className="grid min-w-0 grid-cols-2 gap-2">
+      <div className="grid min-w-0 gap-2">
         <MotionNumber
           label={t("motionRangeStart", { unit: unit.unit })}
           value={input.start}
@@ -254,7 +254,7 @@ export function AssemblyMotionPanel({
   }
   return (
     <form
-      className="grid min-w-0 gap-4"
+      className="grid min-w-0 gap-2"
       onSubmit={(event) => {
         event.preventDefault()
         if (!busy && !motion.playing && !motion.pending) void input.preview()

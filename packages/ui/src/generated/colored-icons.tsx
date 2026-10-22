@@ -6498,3 +6498,26 @@ export const StopIcon = /* @__PURE__ */ coloredIcon(
     />
   </g>,
 )
+
+export const InformationIcon = /* @__PURE__ */ coloredIcon(
+  "information",
+  <g transform="scale(4)">
+    <circle
+      cx="32"
+      cy="32"
+      r="25"
+      fill="var(--icon-geometry-fill, #bfd4ee)"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="3.6"
+    />
+    <path
+      d="M29 29h4v17h4M27 46h6"
+      fill="none"
+      stroke="var(--icon-geometry-stroke, #326db2)"
+      strokeWidth="4.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="32" cy="19" r="2.8" fill="var(--icon-geometry-stroke, #326db2)" />
+  </g>,
+)

@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { fieldVariants } from "@vibeshape/ui/components/field"
 import {
   SectionPlaneXyIcon,
   SectionPlaneXzIcon,
@@ -94,10 +95,11 @@ export function SectionViewControls({
       <PopoverContent
         align="end"
         collisionPadding={8}
-        className="grid max-h-[var(--radix-popover-content-available-height)] w-64 gap-3 overflow-y-auto p-3 text-xs"
+        className="grid max-h-[var(--radix-popover-content-available-height)] w-64 gap-2 overflow-y-auto p-3 text-xs"
         aria-label={t("title")}
       >
-        <label className="flex items-center gap-2">
+        <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+          <span>{t("enabled")}</span>
           <input
             type="checkbox"
             className="accent-primary"
@@ -112,7 +114,6 @@ export function SectionViewControls({
               onChange({ axis, offset: center, flipped })
             }}
           />
-          {t("enabled")}
         </label>
         <fieldset className="grid gap-2">
           <legend className="mb-2 font-medium">{t("axis")}</legend>
@@ -162,7 +163,8 @@ export function SectionViewControls({
             }
           }}
         />
-        <label className="flex items-center gap-2">
+        <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+          <span>{t("flip")}</span>
           <input
             type="checkbox"
             className="accent-primary"
@@ -172,7 +174,6 @@ export function SectionViewControls({
               if (section) onChange({ ...section, flipped: event.currentTarget.checked })
             }}
           />
-          {t("flip")}
         </label>
         <p className="text-muted-foreground">{t("dragHint")}</p>
         <p className="text-muted-foreground">{t("description")}</p>

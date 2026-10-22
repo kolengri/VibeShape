@@ -9,15 +9,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vibeshape/ui/components/dialog"
+import { fieldVariants } from "@vibeshape/ui/components/field"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { TextField } from "@vibeshape/ui/components/text-field"
+import { cn } from "@vibeshape/ui/lib/cn"
 import type { SketchTextOutlineError } from "./text-model"
 import { type SketchTextTarget, type SketchTextTask, useSketchTextTask } from "./use-sketch-text"
 
 function TextDimensions({ state }: { state: SketchTextTask }) {
   const t = useTranslations("app.sketchText")
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-2">
       {(["height", "tracking", "originX", "originY"] as const).map((field) => {
         const error = state.fieldErrors[field]
         return (
@@ -39,7 +41,7 @@ function TextDimensions({ state }: { state: SketchTextTask }) {
 function TextAlignment({ state }: { state: SketchTextTask }) {
   const t = useTranslations("app.sketchText")
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-2">
       <SelectField
         label={t("horizontal")}
         value={state.values.horizontal}
@@ -88,16 +90,16 @@ function TextRegenerationNotice({ state }: { state: SketchTextTask }) {
       {state.constraints > 0 && (
         <div className="grid gap-2 rounded-md border p-3">
           <p className="text-sm">{t("attachedConstraints", { count: state.constraints })}</p>
-          <label className="flex items-start gap-2 text-sm">
+          <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+            <span>{t("removeConstraints")}</span>
             <input
               type="checkbox"
-              className="mt-0.5 accent-primary"
+              className="accent-primary"
               checked={state.values.removeAttachedConstraints}
               onChange={(event) =>
                 state.update("removeAttachedConstraints", event.currentTarget.checked)
               }
             />
-            {t("removeConstraints")}
           </label>
         </div>
       )}
@@ -163,14 +165,14 @@ function TextTask({
         />
         <TextDimensions state={state} />
         <TextAlignment state={state} />
-        <label className="flex items-center gap-2 text-sm">
+        <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+          <span>{t("kerning")}</span>
           <input
             type="checkbox"
             className="accent-primary"
             checked={state.values.kerning}
             onChange={(event) => state.update("kerning", event.currentTarget.checked)}
           />
-          {t("kerning")}
         </label>
         <TextRegenerationNotice state={state} />
       </fieldset>

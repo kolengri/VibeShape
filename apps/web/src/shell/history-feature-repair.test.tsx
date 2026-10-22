@@ -142,6 +142,10 @@ describe("explicit retained body input repair", () => {
   it("waits for explicit selection, preserves authored expression and submits the original feature identity", async () => {
     const { onSave } = setup()
     const picker = screen.getByRole("combobox", { name: "Replacement body" })
+    const description = document.getElementById(picker.getAttribute("aria-describedby") ?? "")
+    expect(description?.textContent).toBe(messages.app.historyFeatureRepair.description)
+    expect(description?.closest("[role=dialog]")).toBeNull()
+    expect(description?.closest("header")).not.toBeNull()
     expect((picker as HTMLSelectElement).value).toBe("")
     expect(screen.queryByRole("button", { name: "Update placement" })).toBeNull()
     expect(screen.getByRole("button", { name: "Delete retained feature" })).toBeTruthy()
