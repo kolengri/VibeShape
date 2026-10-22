@@ -16,7 +16,8 @@ full-width compound content. Empty error slots are omitted by standard field com
 Help triggers have distinct contextual names, such as “Help for Width”, while the popover is named
 by its subject. `FieldHelpProvider` binds this shared `ui` catalog copy to the application locale;
 isolated shared controls use the same English source catalog. This avoids adding a second control
-with the input's exact accessible label.
+with the input's exact accessible label. The help trigger uses a focusable button role with Enter and
+Space activation so native disabled fieldsets lock editing while keeping guidance available.
 `TaskPanelHeader.description` is optional help. Required next actions and persistent description
 targets use its `instruction` prop, which stays visible and mounted independently of any popover.
 

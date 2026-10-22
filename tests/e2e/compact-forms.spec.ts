@@ -98,3 +98,39 @@ test("assembly pose controls remain readable in a narrow task panel", async ({ p
     expect(bounds.width).toBeGreaterThan(100)
   }
 })
+
+test("disabled parameter fieldsets keep help available without unlocking inputs", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await invokeModelCommand(page, "Primitives", "Box")
+  const form = page.getByRole("form", { name: "Create box", exact: true })
+  const width = form.getByRole("combobox", { name: "Width", exact: true })
+  await expect(form.getByRole("button", { name: "Create box", exact: true })).toBeEnabled()
+  // Isolate the native fieldset contract without racing a transient pending operation.
+  await width.evaluate((input) => {
+    const fieldset = input.closest("fieldset")
+    if (!fieldset) throw new Error("The parameter must belong to a fieldset.")
+    fieldset.disabled = true
+  })
+  await expect(width).toBeDisabled()
+  const help = form.getByRole("button", { name: "Help for Width", exact: true })
+  const nextHelp = form.getByRole("button", { name: "Help for Depth", exact: true })
+  await help.focus()
+  await page.keyboard.press("Tab")
+  await expect(nextHelp).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
+  await expect(help).toBeFocused()
+  for (const key of ["Enter", "Space"]) {
+    await help.press(key)
+    const guidance = page.getByRole("dialog", { name: "Width", exact: true })
+    await expect(guidance).toContainText("#width")
+    await guidance.press("Escape")
+    await expect(help).toBeFocused()
+  }
+  await help.click()
+  await expect(page.getByRole("dialog", { name: "Width", exact: true })).toBeVisible()
+  await expect(width).toBeDisabled()
+  await expect(width).toHaveValue("20 mm")
+  await expect(form).toBeVisible()
+})

@@ -33,15 +33,25 @@ export function FieldHelp({
   const formatLabel = useContext(HelpLabelContext)
   return (
     <Popover>
-      <PopoverTrigger
-        type="button"
-        data-slot="field-help"
-        aria-labelledby={labelId}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <InformationIcon className="size-4" aria-hidden="true" />
-        <span id={labelId} className="sr-only">
-          {formatLabel(label)}
+      <PopoverTrigger asChild>
+        {/* biome-ignore lint/a11y/useSemanticElements: Native buttons inherit disabled fieldsets; guidance must remain interactive. */}
+        <span
+          role="button"
+          tabIndex={0}
+          data-slot="field-help"
+          aria-labelledby={labelId}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault()
+              if (!event.repeat) event.currentTarget.click()
+            }
+          }}
+          className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <InformationIcon className="size-4" aria-hidden="true" />
+          <span id={labelId} className="sr-only">
+            {formatLabel(label)}
+          </span>
         </span>
       </PopoverTrigger>
       {descriptionId ? (
