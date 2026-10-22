@@ -136,6 +136,8 @@
 | [0124](0124-bun-project-typechecking.md) | Accepted | Bun project typechecking with cached workspace results |
 | [0125](0125-durable-saved-change-navigation.md) | Accepted | Durable saved-change navigation and atomic batch restore |
 | [0126](0126-explicit-native-assistant-project-access.md) | Accepted | Explicit native assistant connection establishes project access |
+| [0127](0127-exact-planar-press-pull.md) | Accepted | Exact planar-face Press Pull with stable body topology references |
+| [0128](0128-saved-authored-part-appearance.md) | Accepted | V6 authored part appearance and portable material/color metadata |
 
 Statuses:
 

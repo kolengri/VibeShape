@@ -17,6 +17,7 @@
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.worker.json tsconfig.test.json"
   },
   "dependencies": {
+    "@vibeshape/domain": "workspace:*",
     "three": "catalog:",
     "zod": "catalog:"
   },

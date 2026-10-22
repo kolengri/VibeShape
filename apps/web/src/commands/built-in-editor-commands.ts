@@ -61,6 +61,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     createSketch: () => void
     createSubtract: () => void
     measure?: () => void
+    pressPull?: () => void
     surfaceTexture?: () => void
     redoSketch: () => void
     setSketchCameraMode: (mode: SketchCameraMode) => void
@@ -76,6 +77,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     activeSketchTool: ActiveSketchTool | null
     controller: DocumentControllerState
     extrusionAvailable: boolean
+    pressPullAvailable?: boolean
     selectedExactPartId?: PartId | null
     partCombinationAvailable?: boolean
     selectionAvailable?: boolean
@@ -157,6 +159,15 @@ const contextualPartDescriptors: readonly EditorCommandDescriptor[] = [
 ]
 
 const descriptors: readonly EditorCommandDescriptor[] = [
+  {
+    group: "modeling",
+    icon: "extrude",
+    id: editorCommandIds.pressPull,
+    labelKey: "pressPull",
+    ownerModuleId: partDesignOwner,
+    shortcut: { key: "q" },
+    toolbarGroup: "model-primary",
+  },
   ...contextualPartDescriptors,
   {
     group: "modeling",
@@ -940,6 +951,20 @@ const contextualPartHandlers: readonly EditorCommandHandler<BuiltInEditorCommand
 ]
 
 const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
+  {
+    execute: ({ actions }) => actions.pressPull?.(),
+    getEligibility: (context) => {
+      const eligibility = writableDocumentEligibility(context)
+      if (!eligibility.enabled) return eligibility
+      return context.actions.pressPull && context.state.pressPullAvailable
+        ? editorCommandEnabled()
+        : editorCommandDisabled("selectPlanarFace")
+    },
+    id: editorCommandIds.pressPull,
+    isActive: ({ state }) => state.activePartDesignCommand === "press-pull",
+    isToolbarVisible: ({ state }) => state.workspace === "model" && !state.activeSketchTool,
+    ownerModuleId: partDesignOwner,
+  },
   {
     execute: ({ actions }) => actions.generativeDesign?.(),
     getEligibility: (context) =>

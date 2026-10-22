@@ -7,10 +7,12 @@ import {
   type PortableProjectV4,
   type PortableProjectV5,
   type PortableProjectV6,
+  type PortableProjectV7,
   portableProjectV3PayloadSchema,
   portableProjectV4PayloadSchema,
   portableProjectV5PayloadSchema,
   portableProjectV6PayloadSchema,
+  portableProjectV7PayloadSchema,
 } from "@vibeshape/persistence"
 import { copyPortableProjectV2, portableProjectV2FromArchive } from "./versioned-project-file"
 
@@ -20,6 +22,7 @@ export type BrowserPortableProject =
   | Readonly<{ version: 4; project: PortableProjectV4 }>
   | Readonly<{ version: 5; project: PortableProjectV5 }>
   | Readonly<{ version: 6; project: PortableProjectV6 }>
+  | Readonly<{ version: 7; project: PortableProjectV7 }>
 
 type PortableResult =
   | Readonly<{ ok: true; value: BrowserPortableProject }>
@@ -30,7 +33,8 @@ export function portableProjectFromArchive(archive: AuthoredVShapeProject): Port
     archive.version !== 3 &&
     archive.version !== 4 &&
     archive.version !== 5 &&
-    archive.version !== 6
+    archive.version !== 6 &&
+    archive.version !== 7
   ) {
     const converted = portableProjectV2FromArchive(archive)
     return converted.ok
@@ -43,25 +47,40 @@ export function portableProjectFromArchive(archive: AuthoredVShapeProject): Port
     historyMode: manifest.historyMode,
     promotionRevision: manifest.promotionRevision,
     upgradeRevision: manifest.upgradeRevision,
-    ...(archive.version === 4 || archive.version === 5 || archive.version === 6
-      ? { textureUpgradeRevision: archive.project.manifest.textureUpgradeRevision }
+    ...("textureUpgradeRevision" in manifest
+      ? { textureUpgradeRevision: manifest.textureUpgradeRevision }
       : {}),
-    ...(archive.version === 5 || archive.version === 6
-      ? { sourceUpgradeRevision: archive.project.manifest.sourceUpgradeRevision }
+    ...("sourceUpgradeRevision" in manifest
+      ? { sourceUpgradeRevision: manifest.sourceUpgradeRevision }
       : {}),
-    ...(archive.version === 6
-      ? { repairUpgradeRevision: archive.project.manifest.repairUpgradeRevision }
+    ...("repairUpgradeRevision" in manifest
+      ? { repairUpgradeRevision: manifest.repairUpgradeRevision }
+      : {}),
+    ...("appearanceUpgradeRevision" in manifest
+      ? { appearanceUpgradeRevision: manifest.appearanceUpgradeRevision }
       : {}),
     migrationDiagnostic: manifest.migrationDiagnostic,
     unavailableRecords: manifest.unavailableRecords,
   }
-  return archive.version === 6
-    ? { ok: true, value: { version: 6, project: portableProjectV6PayloadSchema.parse(value) } }
-    : archive.version === 5
-      ? { ok: true, value: { version: 5, project: portableProjectV5PayloadSchema.parse(value) } }
-      : archive.version === 4
-        ? { ok: true, value: { version: 4, project: portableProjectV4PayloadSchema.parse(value) } }
-        : { ok: true, value: { version: 3, project: portableProjectV3PayloadSchema.parse(value) } }
+  return parseAuthoredPortableProject(archive.version, value)
+}
+
+function parseAuthoredPortableProject(version: 3 | 4 | 5 | 6 | 7, value: unknown): PortableResult {
+  return version === 7
+    ? { ok: true, value: { version: 7, project: portableProjectV7PayloadSchema.parse(value) } }
+    : version === 6
+      ? { ok: true, value: { version: 6, project: portableProjectV6PayloadSchema.parse(value) } }
+      : version === 5
+        ? { ok: true, value: { version: 5, project: portableProjectV5PayloadSchema.parse(value) } }
+        : version === 4
+          ? {
+              ok: true,
+              value: { version: 4, project: portableProjectV4PayloadSchema.parse(value) },
+            }
+          : {
+              ok: true,
+              value: { version: 3, project: portableProjectV3PayloadSchema.parse(value) },
+            }
 }
 
 type CopyInput = {
@@ -83,7 +102,12 @@ export function copyBrowserPortableProject(input: CopyInput): PortableResult {
 
 function copyAuthoredProject(
   input: CopyInput,
-  source: PortableProjectV3 | PortableProjectV4 | PortableProjectV5 | PortableProjectV6,
+  source:
+    | PortableProjectV3
+    | PortableProjectV4
+    | PortableProjectV5
+    | PortableProjectV6
+    | PortableProjectV7,
 ): PortableResult {
   if (source.historyMode !== "complete" || (source.seed && source.seed.schemaVersion !== 1))
     return {
@@ -117,7 +141,12 @@ function copyAuthoredProject(
 }
 
 function copiedPortableProject(
-  source: PortableProjectV3 | PortableProjectV4 | PortableProjectV5 | PortableProjectV6,
+  source:
+    | PortableProjectV3
+    | PortableProjectV4
+    | PortableProjectV5
+    | PortableProjectV6
+    | PortableProjectV7,
   copied: Extract<ReturnType<typeof copyCompleteDocumentAuthorityHistory>, { ok: true }>,
 ): PortableResult {
   const payload = {
@@ -143,20 +172,28 @@ function copiedPortableProject(
     ...("repairUpgradeRevision" in source
       ? { repairUpgradeRevision: source.repairUpgradeRevision }
       : {}),
+    ...("appearanceUpgradeRevision" in source
+      ? { appearanceUpgradeRevision: source.appearanceUpgradeRevision }
+      : {}),
     migrationDiagnostic: null,
     unavailableRecords: [],
   }
-  return source.snapshot.schemaVersion === 5
-    ? { ok: true, value: { version: 6, project: portableProjectV6PayloadSchema.parse(payload) } }
-    : source.snapshot.schemaVersion === 4
-      ? { ok: true, value: { version: 5, project: portableProjectV5PayloadSchema.parse(payload) } }
-      : source.snapshot.schemaVersion === 3
+  return source.snapshot.schemaVersion === 6
+    ? { ok: true, value: { version: 7, project: portableProjectV7PayloadSchema.parse(payload) } }
+    : source.snapshot.schemaVersion === 5
+      ? { ok: true, value: { version: 6, project: portableProjectV6PayloadSchema.parse(payload) } }
+      : source.snapshot.schemaVersion === 4
         ? {
             ok: true,
-            value: { version: 4, project: portableProjectV4PayloadSchema.parse(payload) },
+            value: { version: 5, project: portableProjectV5PayloadSchema.parse(payload) },
           }
-        : {
-            ok: true,
-            value: { version: 3, project: portableProjectV3PayloadSchema.parse(payload) },
-          }
+        : source.snapshot.schemaVersion === 3
+          ? {
+              ok: true,
+              value: { version: 4, project: portableProjectV4PayloadSchema.parse(payload) },
+            }
+          : {
+              ok: true,
+              value: { version: 3, project: portableProjectV3PayloadSchema.parse(payload) },
+            }
 }

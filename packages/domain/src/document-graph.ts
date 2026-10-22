@@ -78,6 +78,7 @@ import {
   readPatternFeatureParametersV2,
 } from "./part-design-pattern"
 import { placementFeatureType, readPlacementFeatureParameters } from "./part-design-placement"
+import { pressPullFeatureType, readPressPullFeatureParameters } from "./part-design-press-pull"
 import {
   readShellFeatureParameters,
   shellFeatureType,
@@ -253,6 +254,7 @@ const bodySelectionParameterReaders = new Map<string, BodySelectionParameterRead
   [featureTypeKey(patternFeatureType.type), readPatternFeatureParameters],
   [featureTypeKey(patternFeatureTypeV2.type), readPatternFeatureParametersV2],
   [featureTypeKey(chamferFeatureTypeV3.type), readChamferFeatureParametersV3],
+  [featureTypeKey(pressPullFeatureType.type), readPressPullFeatureParameters],
   [featureTypeKey(shellFeatureType.type), readShellFeatureParameters],
   [featureTypeKey(shellFeatureTypeV2.type), readShellFeatureParameters],
   [featureTypeKey(splitFeatureType.type), readSplitFeatureParameters],

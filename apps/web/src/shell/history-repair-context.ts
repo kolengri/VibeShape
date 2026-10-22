@@ -25,7 +25,7 @@ export function historySketchForEditing(controller: DocumentControllerState, ske
   let record =
     (authority ? authoredHistorySketch(authority, sketchId) : undefined) ??
     controller.report?.snapshot.sketches.find(({ id }) => id === sketchId)
-  if (!record || authority?.schemaVersion !== 5) return record
+  if (!record || (authority?.schemaVersion !== 5 && authority?.schemaVersion !== 6)) return record
   const survivingFeatures = new Set(authority.features.map(({ id }) => id))
   const missingProducers = new Set(
     record.externalReferences?.flatMap((reference) =>
@@ -51,7 +51,7 @@ export function historyRepairTaskContext(
   const authority = controller.authoredSnapshot
   if (
     !report ||
-    authority?.schemaVersion !== 5 ||
+    (authority?.schemaVersion !== 5 && authority?.schemaVersion !== 6) ||
     !tool ||
     !("featureId" in tool) ||
     !tool.featureId

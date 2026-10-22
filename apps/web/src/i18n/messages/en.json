@@ -376,7 +376,8 @@
         "selectProfile": "Select a closed sketch profile first.",
         "selectSolid": "Create an eligible solid first.",
         "selectHolePoints": "Create and finish a sketch with at least one point first.",
-        "selectTwoSolids": "Create at least two eligible solids first."
+        "selectTwoSolids": "Create at least two eligible solids first.",
+        "selectPlanarFace": "Select a current planar face of an exact solid."
       },
       "items": {
         "openShortcutHelp": {
@@ -743,6 +744,10 @@
         "generativeDesign": {
           "label": "Generative Design",
           "keywords": "generative|design|alternatives|optimization|pareto|lightweighting"
+        },
+        "pressPull": {
+          "label": "Press Pull",
+          "keywords": "offset face|push|pull|extend|cut|planar face"
         }
       }
     },
@@ -3993,6 +3998,86 @@
     "searchableSelect": {
       "search": "Search options…",
       "empty": "No matching options"
+    },
+    "pressPull": {
+      "title": "Press Pull",
+      "editTitle": "Edit Press Pull",
+      "description": "Extend or cut an exact body using its selected planar face.",
+      "create": "Apply Press Pull",
+      "update": "Update Press Pull",
+      "cancel": "Cancel",
+      "parameters": "Parameters",
+      "distance": "Distance",
+      "lengthDescription": "Positive distances extend outward; negative distances cut inward. The complete trimmed face, including holes, is swept along its normal.",
+      "unavailable": "The selected face is unavailable or the source body changed. Cancel and reselect a planar face.",
+      "validationSummary": "Enter a nonzero distance and select a current planar face.",
+      "invalidExpression": "Enter a valid length expression.",
+      "invalidDimension": "Distance must be a length.",
+      "invalidRange": "Distance magnitude must be between 0.001 and 100000 mm.",
+      "staleRevision": "The document changed. Reopen Press Pull and try again.",
+      "saveFailed": "Press Pull could not be saved.",
+      "previewFailed": "Press Pull could not produce one valid solid. Adjust the distance.",
+      "featureLabel": "Press Pull {number}"
+    },
+    "viewportContext": {
+      "label": "Selection actions",
+      "selectOther": "Select Other…",
+      "face": "{name} · Face {number}",
+      "createSketch": "Create Sketch",
+      "extrude": "Extrude",
+      "offsetPlane": "Offset Plane",
+      "shell": "Shell",
+      "editFeature": "Edit Feature",
+      "editProfileSketch": "Edit Profile Sketch",
+      "appearance": "Appearance",
+      "properties": "Properties",
+      "saveMesh": "Save As Mesh…",
+      "delete": "Delete",
+      "hide": "Hide",
+      "show": "Show",
+      "findBrowser": "Find in Browser",
+      "findTimeline": "Find in Timeline",
+      "pressPull": "Press Pull",
+      "measure": "Measure",
+      "clear": "Clear Selection",
+      "noSelection": "Select a model body.",
+      "selectFace": "Select a planar face.",
+      "selectPart": "Select an authored part.",
+      "noProfiles": "This feature has no profile sketch.",
+      "noOverlaps": "No other faces at this position.",
+      "unavailable": "Current geometry is unavailable.",
+      "stale": "The document changed. Close the menu and select again.",
+      "failed": "The action could not be completed.",
+      "unnamed": "Unnamed body",
+      "name": "Name",
+      "feature": "Source feature",
+      "output": "Body output",
+      "wholeOutput": "Whole feature output",
+      "propertiesDescription": "Authored identity and current geometry measurements. Appearance presets describe visual presentation only.",
+      "resetAppearance": "Default appearance",
+      "appearanceDescription": "Visual appearance; physical material properties are unchanged.",
+      "editAppearance": "Material and Color…",
+      "material": "Material preset",
+      "color": "Color",
+      "resetColor": "Use material color",
+      "appearanceFor": "Appearance of {name}",
+      "cancel": "Cancel",
+      "apply": "Apply",
+      "materials": {
+        "aluminum-satin": "Aluminum — Satin",
+        "steel-brushed": "Steel — Brushed",
+        "stainless-steel": "Stainless Steel",
+        "brass": "Brass",
+        "copper": "Copper",
+        "chrome": "Chrome",
+        "anodized-black": "Anodized Black",
+        "abs-white": "ABS — White",
+        "abs-black": "ABS — Black",
+        "abs-grey": "ABS — Grey",
+        "polycarbonate-clear": "Polycarbonate — Clear",
+        "nylon-natural": "Nylon — Natural"
+      },
+      "close": "Close"
     }
   }
 }

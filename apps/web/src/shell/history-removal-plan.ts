@@ -27,7 +27,7 @@ function removalRecords(authority: AuthoredDocumentSnapshot) {
 
 function removalContext(authority: AuthoredDocumentSnapshot) {
   const parts =
-    authority.schemaVersion === 5
+    authority.schemaVersion === 5 || authority.schemaVersion === 6
       ? [...authority.parts, ...authority.suspendedParts]
       : authority.parts
   return {

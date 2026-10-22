@@ -10,6 +10,7 @@ import { reduceDocumentUpgradedV2Event } from "./document-v2-migration"
 import { reduceDocumentV3Event } from "./document-v3-commands"
 import { reduceDocumentV4Event } from "./document-v4-commands"
 import { reduceDocumentV5Event } from "./document-v5-commands"
+import { reduceDocumentV6Event } from "./document-v6-commands"
 import { reduceVersionedDocumentEvent } from "./versioned-document-commands"
 
 export type DocumentAuthorityResult =
@@ -28,6 +29,15 @@ export function reduceDocumentAuthorityEvent(
       diagnostic: domainDiagnostic(
         "invalid-event",
         "The document event version or payload is unsupported.",
+      ),
+    }
+  if (event.data.schemaVersion === 6) return reduceDocumentV6Event(snapshot, event.data, target)
+  if (snapshot?.schemaVersion === 6)
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        "invalid-event",
+        "Historical events cannot mutate V6 appearance authority.",
       ),
     }
   if (event.data.schemaVersion === 5) return reduceDocumentV5Event(snapshot, event.data, target)
