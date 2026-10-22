@@ -29,6 +29,7 @@ import {
 } from "./part-design-mirror"
 import { readPatternFeatureParameters, readPatternFeatureParametersV2 } from "./part-design-pattern"
 import { readPlacementFeatureParameters } from "./part-design-placement"
+import { readPressPullFeatureParameters } from "./part-design-press-pull"
 import { readShellFeatureParameters } from "./part-design-shell"
 import { readSplitFeatureParameters, readSplitFeatureParametersV2 } from "./part-design-split"
 import { booleanBodyDependencyIds, readBooleanFeatureParametersV2 } from "./part-design-subtract"
@@ -50,6 +51,7 @@ const edgeModifierTypes = new Set(
   ),
 )
 const exactTargetReaders = [
+  (feature: FeatureRecord) => readPressPullFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readChamferFeatureParametersV3(feature)?.targetBody,
   (feature: FeatureRecord) => {
     const parameters = readFdmFeatureParameters(feature)

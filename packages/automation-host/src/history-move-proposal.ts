@@ -15,6 +15,8 @@ import { applyDocumentV2ModelEvent } from "@vibeshape/domain/document-v2-command
 import { applyDocumentV3ModelEvent } from "@vibeshape/domain/document-v3-commands"
 import { applyDocumentV4ModelEvent } from "@vibeshape/domain/document-v4-commands"
 import { applyDocumentV5ModelEvent } from "@vibeshape/domain/document-v5-commands"
+import { projectDocumentSnapshotV6ToV5 } from "@vibeshape/domain/document-v6"
+import { wrapDocumentV6AuthoredResult } from "@vibeshape/domain/document-v6-commands"
 import {
   type MoveHistoryItemCommand,
   moveHistoryItemCommandSchema,
@@ -44,6 +46,11 @@ export function prepareAuthoredHistoryMove(
   const moved = applyVersionedDocumentCommand(projectAuthoredDocumentSnapshotToV1(base), command)
   if (!moved.ok) return moved
   switch (base.schemaVersion) {
+    case 6:
+      return wrapDocumentV6AuthoredResult(
+        base,
+        applyDocumentV5ModelEvent(projectDocumentSnapshotV6ToV5(base), moved.event, []),
+      )
     case 5:
       return applyDocumentV5ModelEvent(base, moved.event, [])
     case 4:

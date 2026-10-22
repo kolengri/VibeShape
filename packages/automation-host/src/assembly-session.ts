@@ -243,7 +243,7 @@ export function createAssemblyAutomationSession(configuration: AssemblySessionCo
       })),
     })
     if (!receipt.ok) return receipt
-    const revisionIncrements = { 2: 3, 3: 2, 4: 1, 5: 1 }
+    const revisionIncrements = { 2: 3, 3: 2, 4: 1, 5: 1, 6: 1 }
     if (
       receipt.value.revision !==
       record.state.baseRevision + revisionIncrements[record.snapshot.schemaVersion]
@@ -344,7 +344,11 @@ export function createAssemblyAutomationSession(configuration: AssemblySessionCo
     const unavailable = current()
     if (unavailable) return unavailable
     const authority = snapshot()
-    if (authority.schemaVersion !== 4 && authority.schemaVersion !== 5)
+    if (
+      authority.schemaVersion !== 4 &&
+      authority.schemaVersion !== 5 &&
+      authority.schemaVersion !== 6
+    )
       return localFailure(
         "assembly-operation-failed",
         "The document has no persisted assembly study.",

@@ -33,6 +33,7 @@ export const editorCommandIds = {
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
   measure: "org.vibeshape.editor.measurements.measure",
+  pressPull: "org.vibeshape.editor.part-design.press-pull",
   surfaceTexture: "org.vibeshape.editor.surface-texture",
   sketchDimension: "org.vibeshape.editor.sketch.tool.dimension",
   sketchConstraintCoincident: "org.vibeshape.editor.sketch.constraint.coincident",
@@ -227,6 +228,7 @@ export type EditorCommandIcon =
   | "sketch-visibility"
 
 export type EditorCommandLabelKey =
+  | "pressPull"
   | "quickLightweighting"
   | "generativeDesign"
   | "lightweighting"
@@ -320,6 +322,7 @@ export type EditorCommandLabelKey =
   | "workspaceSketch"
 
 export type EditorCommandDisabledReason =
+  | "selectPlanarFace"
   | "activeFeature"
   | "activeSketch"
   | "documentUnavailable"

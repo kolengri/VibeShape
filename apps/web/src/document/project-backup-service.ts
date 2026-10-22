@@ -4,6 +4,7 @@ import {
   writeVShapeV4,
   writeVShapeV5,
   writeVShapeV6,
+  writeVShapeV7,
 } from "@vibeshape/formats/vshape"
 import { VibeShapeDatabase } from "@vibeshape/persistence"
 import type { BrowserPortableProject } from "./authored-project-file"
@@ -34,6 +35,7 @@ async function encodeProjectBackup(
     4: writeVShapeV4,
     5: writeVShapeV5,
     6: writeVShapeV6,
+    7: writeVShapeV7,
   }
   const archived = await writers[portable.version]({
     ...portable.project,

@@ -3142,6 +3142,20 @@ function renderModelEdges(
 }
 
 describe("ordinary model-edge viewport bridge", () => {
+  it("preserves external control focus on hover and transfers it on an explicit viewport click", async () => {
+    const edge = modelEdge("1")
+    const { port } = renderModelEdges({ candidates: [edge], onSelect: vi.fn() })
+    await waitFor(() => expect(port.setEdgeCandidates).toHaveBeenCalled())
+    render(<button type="button">History operation</button>)
+    const control = screen.getByRole("button", { name: "History operation" })
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    act(() => control.focus())
+    fireEvent.pointerEnter(viewport)
+    expect(document.activeElement).toBe(control)
+    fireEvent.pointerDown(viewport)
+    expect(document.activeElement).toBe(viewport)
+  })
+
   it("initializes current edge inputs after meshes when the renderer resolves asynchronously", async () => {
     const initial = modelEdge("1")
     const current = modelEdge("2")

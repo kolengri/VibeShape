@@ -130,7 +130,7 @@ function setup() {
             ? applyDocumentV3Command(snapshot, { ...command, schemaVersion: 3 })
             : applyDocumentV2Command(snapshot, command),
     ).snapshot
-    expect(snapshot).toEqual(expected)
+    expect(snapshot).toEqual<unknown>(expected)
     return {
       documentId: snapshot.id,
       commandId: command.commandId,

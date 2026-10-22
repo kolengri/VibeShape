@@ -26,6 +26,7 @@ import { applyDocumentV2Command } from "@vibeshape/domain/document-v2-commands"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
 import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
 import { applyDocumentV5AuthoredCommand } from "@vibeshape/domain/document-v5-commands"
+import { applyDocumentV6AuthoredCommand } from "@vibeshape/domain/document-v6-commands"
 import { type DraftId, draftIdSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
 import type { DraftReviewInput } from "./draft-review"
@@ -167,6 +168,8 @@ export async function prepareMetadataProposal(
 function applyAuthoredMetadata(snapshot: AuthoredDocumentSnapshot, command: MetadataCommand) {
   const textureCommand = { ...command, schemaVersion: 3 }
   switch (snapshot.schemaVersion) {
+    case 6:
+      return applyDocumentV6AuthoredCommand(snapshot, textureCommand)
     case 5:
       return applyDocumentV5AuthoredCommand(snapshot, textureCommand)
     case 4:

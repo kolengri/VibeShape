@@ -71,6 +71,7 @@ import {
   modifyingSolidTargetFeatures,
 } from "./features/part-design/part-design-tool"
 import { initialProfileFeatureSelection } from "./features/part-design/profile-feature-selection"
+import { pressPullToolFromSelection } from "./features/press-pull/press-pull-selection"
 import {
   compatibleSketchConstraintToolsForSelection,
   selectedSketchLineId,
@@ -501,6 +502,15 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         acknowledgeExtrusionDistance: sessionActions.acknowledgeExtrusionDistance,
         acknowledgeRevolveAngle: sessionActions.acknowledgeRevolveAngle,
         closeTool: sessionActions.closeActiveTool,
+        clearSelection: () => {
+          sessionActions.setSelection(null)
+          sessionActions.setSelectedOriginPlane(null)
+          sessionActions.setSketchSelectedProfile(null)
+          sessionActions.setSketchProfiles([])
+          sessionActions.setFeaturePreselection(null)
+          sessionActions.setBodyPreselection(null)
+          sessionActions.setSketchPreselection(null)
+        },
         completeTool: () => sessionActions.completeActiveTool(partDesignToolGeneration),
         beginSketchSupportReplacement: sessionActions.beginSketchSupportReplacement,
         createFdm: () => sessionActions.startPartDesignTool({ kind: "create-fdm" }),
@@ -785,6 +795,7 @@ function resolveEditorApplicationCommands(
       return body ? [`${body.featureId}:${body.outputRole}`] : []
     }),
   )
+  const pressPullTool = pressPullToolFromSelection(controller.report, session.selection)
   return resolveBuiltInEditorCommands({
     actions: {
       ...dialogs,
@@ -816,6 +827,9 @@ function resolveEditorApplicationCommands(
       createSketch: workspaceActions.createSketch,
       createSubtract: workspaceActions.createSubtract,
       measure: workspaceActions.measure,
+      pressPull: () => {
+        if (pressPullTool) sessionActions.startPartDesignTool(pressPullTool)
+      },
       surfaceTexture: () => workspaceActions.surfaceTexture(),
       redoSketch: workspaceActions.redoSketchDraft,
       setSketchCameraMode: sessionActions.setSketchCameraMode,
@@ -831,6 +845,7 @@ function resolveEditorApplicationCommands(
       activeSketchTool: session.sketch.activeSketchTool,
       controller,
       extrusionAvailable: profileCommandAvailable,
+      pressPullAvailable: pressPullTool !== null,
       selectedExactPartId: selectedPart?.part.id ?? null,
       partCombinationAvailable: combinationBodies.size >= 2,
       selectionAvailable: [
@@ -854,12 +869,14 @@ function resolveEditorApplicationCommands(
 }
 
 function EditorWorkspaceComposition({
+  commands,
   navigationCommand,
   controller,
   session,
   sessionActions,
   workspaceActions,
 }: Readonly<{
+  commands: readonly ResolvedEditorCommand[]
   controller: ReturnType<typeof useDocumentController>
   session: EditorApplicationSession
   sessionActions: EditorSessionActions
@@ -877,6 +894,7 @@ function EditorWorkspaceComposition({
   )
   return (
     <EditorWorkspace
+      commands={commands}
       viewControls={
         isActiveSketchEditorTool(session.sketch.activeSketchTool) && navigationCommand ? (
           <SketchNavigationControl command={navigationCommand} />
@@ -1129,6 +1147,7 @@ function EditorApplication({
       active={lightweightingWorkspaceActive(session)}
     >
       <EditorWorkspaceComposition
+        commands={modelCommands}
         navigationCommand={navigationCommand}
         controller={controller}
         session={session}

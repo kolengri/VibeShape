@@ -63,7 +63,7 @@ function authoredHistoryRepairKeys(
   authority: AuthoredDocumentSnapshot | null,
 ): ReadonlySet<string> {
   return new Set(
-    authority?.schemaVersion === 5
+    authority?.schemaVersion === 5 || authority?.schemaVersion === 6
       ? authority.repairIntents.map((intent) => `${intent.kind}:${intent.authored.id}`)
       : [],
   )

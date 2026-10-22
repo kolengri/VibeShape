@@ -9,6 +9,7 @@ import { authoredDocumentSnapshotSchema } from "@vibeshape/domain/document-v2"
 import { applyDocumentV3Command } from "@vibeshape/domain/document-v3-commands"
 import { applyDocumentV4AuthoredCommand } from "@vibeshape/domain/document-v4-commands"
 import { applyDocumentV5AuthoredCommand } from "@vibeshape/domain/document-v5-commands"
+import { applyDocumentV6AuthoredCommand } from "@vibeshape/domain/document-v6-commands"
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
 import {
   MAX_SURFACE_TEXTURE_LAYERS_PER_FEATURE,
@@ -176,11 +177,13 @@ export function prepareSurfaceTextureProposal(
     },
   })
   const applied =
-    snapshot.schemaVersion === 5
-      ? applyDocumentV5AuthoredCommand(snapshot, command)
-      : snapshot.schemaVersion === 4
-        ? applyDocumentV4AuthoredCommand(snapshot, command)
-        : applyDocumentV3Command(snapshot, command)
+    snapshot.schemaVersion === 6
+      ? applyDocumentV6AuthoredCommand(snapshot, command)
+      : snapshot.schemaVersion === 5
+        ? applyDocumentV5AuthoredCommand(snapshot, command)
+        : snapshot.schemaVersion === 4
+          ? applyDocumentV4AuthoredCommand(snapshot, command)
+          : applyDocumentV3Command(snapshot, command)
   if (!applied.ok)
     throw new SurfaceTexturePreparationError(
       "surface-texture-command-rejected",

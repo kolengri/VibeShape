@@ -65,6 +65,32 @@ it("opens shortcut help through its registered handler even while the document i
   expect(context.actions.createSketch).not.toHaveBeenCalled()
 })
 
+it("shares Press Pull eligibility and activation across toolbar, palette, context menu, and Q", () => {
+  const pressPull = vi.fn()
+  const context = commandContext({ pressPullAvailable: true })
+  const resolve = (state: BuiltInEditorCommandContext["state"]) =>
+    resolveBuiltInEditorCommands({
+      ...context,
+      actions: { ...context.actions, pressPull },
+      state,
+    }).find((command) => command.descriptor.id === editorCommandIds.pressPull)
+  const enabled = resolve(context.state)
+  expect(enabled?.eligibility).toEqual({ enabled: true })
+  expect(enabled?.descriptor.shortcut).toEqual({ key: "q" })
+  expect(enabled?.toolbarVisible).toBe(true)
+  enabled?.invoke()
+  expect(pressPull).toHaveBeenCalledTimes(1)
+  const absent = resolve({ ...context.state, pressPullAvailable: false })
+  expect(absent?.eligibility).toEqual({ enabled: false, reason: "selectPlanarFace" })
+  absent?.invoke()
+  expect(pressPull).toHaveBeenCalledTimes(1)
+  const saving = resolve({
+    ...context.state,
+    controller: { ...readyController(), saveStatus: "saving" },
+  })
+  expect(saving?.eligibility).toEqual({ enabled: false, reason: "saving" })
+})
+
 function readyController(featureCount = 0) {
   return {
     status: "ready",

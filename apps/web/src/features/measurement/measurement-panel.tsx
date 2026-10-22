@@ -1,5 +1,6 @@
 import type { ModelBodyMeasurementView } from "@vibeshape/automation-api/queries"
 import { cubicMillimetersToVolume } from "@vibeshape/domain"
+import type { ModelBodyMeasurementEntry } from "@vibeshape/domain/model-body-measurements"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
@@ -54,12 +55,13 @@ type MeasurementPanelProps = Readonly<{
   onClose: () => void
 }>
 
-function ShapeMeasurements({ entry }: Readonly<{ entry: Entry }>) {
+export function BodyShapeMeasurements({
+  shape,
+}: Readonly<{ shape: ModelBodyMeasurementEntry["shape"] }>) {
   const t = useTranslations("app.shell.taskPanel.measurement")
   const formatter = useFormatter()
   const { length } = useDocumentDisplayUnits()
   const number = (value: number) => formatter.number(value, { maximumFractionDigits: 4 })
-  const { shape } = entry
   const rows = [
     {
       label: t("volume"),
@@ -95,7 +97,7 @@ function ShapeMeasurements({ entry }: Readonly<{ entry: Entry }>) {
 function MeasurementResult({ entry }: Readonly<{ entry: Entry | undefined }>) {
   const t = useTranslations("app.shell.taskPanel.measurement")
   if (!entry) return <p className="mt-4 text-sm text-muted-foreground">{t("empty")}</p>
-  return <ShapeMeasurements entry={entry} />
+  return <BodyShapeMeasurements shape={entry.shape} />
 }
 
 function MeasurementPaging({

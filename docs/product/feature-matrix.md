@@ -75,6 +75,12 @@ Export offers all parts or one authored part. Display-hidden parts remain export
 
 The first product viewport displays terminal authoritative meshes and selectable translucent Datum Plane reference geometry from a successful document rebuild through raw Three.js `0.185.1` and WebGL2. It provides shaded faces, derived feature edges, Z-up orthographic orbit/pan/zoom, automatic fit, an explicit Fit view action, responsive sizing, localized states, face preselection, exact rendered-face selection, accessible selection summaries, deterministic GPU disposal, and independent feature/datum visibility. Color-coded XY, XZ, and YZ origin planes remain visible by default, can be toggled independently, and can be selected before **Create sketch** so the command enters editing directly on that support. Command-first creation still supports viewport picking and the synchronized accessible select. A model face takes pointer-selection priority over an origin plane, and hiding a selected origin plane clears the transient selection. Rendered face IDs remain transient; persistent face and datum support use semantic `TopoRef` records. A compact icon-only camera control with accessible labels and tooltips exposes isometric, front, back, left, right, top, and bottom views while preserving the current orbit target, orthographic scale, and camera distance; the same control remains available while a sketch is orbited in 3D context. Perspective switching, body/edge/vertex picking, selection filters, general stable-selection repair, display-mode switching, clipping, and render-performance budgets remain open P0/P1 work.
 
+The viewport context menu and Properties button provide selection actions, exact body properties,
+selected-part STL/3MF export, dependency-aware deletion, Browser/Timeline reveal, and saved visual
+materials with custom colors. Planar Press Pull is a registered, editable exact operation (Q), with
+signed extend/cut distance and ordinary preview/Undo. Curved-face direct offset is not implemented.
+See [selection actions](ux-flows.md#viewport-selection-actions).
+
 ## Sketcher
 
 | Capability | P0 | P1 | P2 |

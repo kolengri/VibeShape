@@ -37,6 +37,8 @@ import {
   portableProjectV5ImportSchema,
   portableProjectV6CopySchema,
   portableProjectV6ImportSchema,
+  portableProjectV7CopySchema,
+  portableProjectV7ImportSchema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -858,7 +860,8 @@ export class VersionedLocalDocumentRepository {
   async exportPortableProjectV6(input: unknown) {
     const exported = await exportDocumentAuthority(this.database, input)
     if (!exported.ok) return exported
-    return "repairUpgradeRevision" in exported.value
+    return "repairUpgradeRevision" in exported.value &&
+      !("appearanceUpgradeRevision" in exported.value)
       ? { ok: true as const, value: exported.value }
       : {
           ok: false as const,
@@ -881,6 +884,32 @@ export class VersionedLocalDocumentRepository {
         }
   }
 
+  async exportPortableProjectV7(input: unknown) {
+    const exported = await exportDocumentAuthority(this.database, input)
+    if (!exported.ok) return exported
+    return "appearanceUpgradeRevision" in exported.value
+      ? { ok: true as const, value: exported.value }
+      : {
+          ok: false as const,
+          diagnostic: createPersistenceDiagnostic(
+            "invalid-input",
+            "V7 export requires V6 appearance authority.",
+          ),
+        }
+  }
+  async copyPortableProjectV7(input: unknown) {
+    const parsed = portableProjectV7CopySchema.safeParse(input)
+    return parsed.success
+      ? this.copyPortableProjectV3(parsed.data)
+      : {
+          ok: false as const,
+          diagnostic: createPersistenceDiagnostic(
+            "invalid-input",
+            "The V7 portable copy is invalid.",
+          ),
+        }
+  }
+
   async importPortableProjectV3(
     inputValue: unknown,
   ): Promise<PersistenceResult<PortableProjectImportReport>> {
@@ -889,6 +918,7 @@ export class VersionedLocalDocumentRepository {
         portableProjectV3ImportSchema,
         portableProjectV5ImportSchema,
         portableProjectV6ImportSchema,
+        portableProjectV7ImportSchema,
       ])
       .safeParse(inputValue)
     if (!input.success)
@@ -922,6 +952,7 @@ export class VersionedLocalDocumentRepository {
         portableProjectV3CopySchema,
         portableProjectV5CopySchema,
         portableProjectV6CopySchema,
+        portableProjectV7CopySchema,
       ])
       .safeParse(inputValue)
     if (!input.success)

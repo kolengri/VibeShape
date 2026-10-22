@@ -74,7 +74,11 @@ export function nextDocumentNavigation(
   if (!before) return state
   if (event?.type === "org.vibeshape.document.restored")
     return restoredNavigation(state, before, event, checkpointRestore, previous !== undefined)
-  if (before.schemaVersion !== after.schemaVersion && after.schemaVersion !== 5) {
+  if (
+    before.schemaVersion !== after.schemaVersion &&
+    after.schemaVersion !== 5 &&
+    after.schemaVersion !== 6
+  ) {
     state.undo = []
     state.redo = []
   }

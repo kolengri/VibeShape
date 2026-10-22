@@ -51,6 +51,7 @@ import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
+import { pressPullFeatureType } from "./part-design-press-pull"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { sweepFeatureType } from "./part-design-sweep"
@@ -456,6 +457,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     mirrorFeatureTypeV3,
     patternFeatureType,
     patternFeatureTypeV2,
+    pressPullFeatureType,
     shellFeatureType,
     shellFeatureTypeV2,
     splitFeatureType,

@@ -1,3 +1,10 @@
+export type ViewerMaterial = Readonly<{
+  color: string
+  roughness: number
+  metalness: number
+  opacity: number
+}>
+
 const viewerBodyPalette = [
   "#9aaec1",
   "#7ca5c7",
@@ -20,5 +27,5 @@ function stableColorIndex(featureId: string) {
  * Maps a terminal feature identity to a stable display-only body color.
  */
 export function viewerBodyColor(featureId: string) {
-  return viewerBodyPalette[stableColorIndex(featureId)]
+  return viewerBodyPalette[stableColorIndex(featureId)] ?? viewerBodyPalette[0]
 }

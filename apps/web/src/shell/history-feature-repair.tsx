@@ -33,7 +33,7 @@ type Props = {
 
 function retainedFeatureRepairIntent(controller: DocumentControllerState, featureId: FeatureId) {
   const authority = currentAuthoredSnapshot(controller)
-  if (authority?.schemaVersion !== 5) return undefined
+  if (authority?.schemaVersion !== 5 && authority?.schemaVersion !== 6) return undefined
   return authority.repairIntents.find(
     (item) => item.kind === "feature" && item.authored.id === featureId,
   )

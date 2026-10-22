@@ -959,7 +959,11 @@ type ModelTreeProps = {
   highlightedFeatureIds?: readonly FeatureRecord["id"][] | undefined
   highlightedSketchIds?: readonly SketchId[] | undefined
   selectedResultFeatureId?: string | null | undefined
-  revealRequest?: Readonly<{ featureId: FeatureRecord["id"]; sequence: number }> | null
+  revealRequest?: Readonly<{
+    featureId: FeatureRecord["id"]
+    sequence: number
+    destination?: "browser" | "timeline"
+  }> | null
   onRevealFeature?: ((featureId: FeatureRecord["id"]) => void) | undefined
   surface?: "browser" | "timeline"
   onHistoryReturnToEnd?: (() => Promise<boolean>) | undefined
@@ -2024,6 +2028,7 @@ function HistoryGroup({
                       key={group.folder.id}
                       folder={group.folder}
                       horizontal
+                      revealRequest={props.revealRequest}
                       authority={authority}
                       rows={view.rows}
                       disabled={metadataDisabled || !completeGraph || busy}
@@ -2447,6 +2452,20 @@ function ModelTimeline(props: ModelTreeHistoryBranchProps) {
   const root = useRef<HTMLElement>(null)
   const revealedSelection = useRef<string | null>(null)
   const documentId = props.controller.report?.snapshot.id
+  const revealRequest = props.revealRequest?.destination === "timeline" ? props.revealRequest : null
+  useEffect(() => {
+    if (revealRequest) setExpanded(true)
+  }, [revealRequest])
+  useEffect(() => {
+    const request = revealRequest
+    if (!request || !expanded) return
+    const frame = requestAnimationFrame(() => {
+      const row = findModelTreeRow(root.current, "data-history-id", request.featureId)
+      row?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+      row?.querySelector<HTMLElement>('[role="treeitem"]')?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [revealRequest, expanded])
   useEffect(() => {
     ensureTreeTabStop(root.current)
   }, [expanded, props.view.rows])
@@ -2497,6 +2516,7 @@ function ModelTimeline(props: ModelTreeHistoryBranchProps) {
           >
             <HistoryGroup
               {...props}
+              revealRequest={revealRequest}
               expanded={expanded}
               onExpandedChange={setExpanded}
               onDetailedChange={() => setDetailed((value) => !value)}

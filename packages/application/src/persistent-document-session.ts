@@ -1184,7 +1184,8 @@ export class PersistentDocumentSession {
     const authority = this.authoredSnapshot
     if (
       !draftSketch &&
-      authority?.schemaVersion === 5 &&
+      authority &&
+      "repairIntents" in authority &&
       authority.repairIntents.some(
         (intent) => intent.kind === "sketch" && intent.authored.id === sketchId,
       )
