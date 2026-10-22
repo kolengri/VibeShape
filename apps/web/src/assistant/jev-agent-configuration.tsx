@@ -1,15 +1,15 @@
 import {
+  type AssistantJevCredentials,
+  type AssistantJevSettings,
   assistantJevCredentialsSchema,
   assistantJevSettingsSchema,
 } from "@vibeshape/automation-api/assistant-jev"
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
-import { Field, FieldDescription, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
-import { Input } from "@vibeshape/ui/components/input"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { TextField } from "@vibeshape/ui/components/text-field"
-import { type FormEvent, useId, useRef, useState } from "react"
+import { SelectOption } from "@vibeshape/ui/components/select-field"
+import { Form, useAppForm, withFieldGroup } from "@vibeshape/ui/integrations/tanstack-form"
+import { useState } from "react"
 import { readAssistantPreferences, saveAssistantPreferences } from "./assistant-preferences"
 import { useAssistantSettingsSaved } from "./assistant-settings-dialog"
 import { agentPresetId, agentPresets } from "./connection-presets"
@@ -29,6 +29,18 @@ function argumentAgent(choice: string, initial: ReturnType<typeof initialSetting
   return preset ? { argumentsAgent: { command: preset.command, args: [...preset.args] } } : {}
 }
 
+type JevFormValues = {
+  argumentChoice: string
+  model: string
+  apiKey: string
+  argumentsEndpoint: string
+  argumentsModel: string
+  argumentsApiKey: string
+  maxSteps: string
+  minConfidence: string
+  timeoutMs: string
+}
+
 function configurationFieldErrors(
   settings: ReturnType<typeof assistantJevSettingsSchema.safeParse>,
   credentials: ReturnType<typeof assistantJevCredentialsSchema.safeParse>,
@@ -45,43 +57,80 @@ function configurationFieldErrors(
   return fields
 }
 
-function configuration(
-  data: FormData,
-  choice: string,
-  initial: ReturnType<typeof initialSettings>,
-) {
-  const optional = (name: string) => {
-    const value = data.get(name)
-    return typeof value === "string" && value.trim() ? value.trim() : undefined
-  }
-  const argumentsEndpoint = optional("argumentsEndpoint")
-  const argumentsModel = optional("argumentsModel")
-  const apiKey = optional("apiKey")
-  const argumentsApiKey = optional("argumentsApiKey")
-  const settings = assistantJevSettingsSchema.safeParse({
-    ...argumentAgent(choice, initial),
-    model: data.get("model"),
-    images: true,
-    maxSteps: Number(data.get("maxSteps")),
-    minConfidence: Number(data.get("minConfidence")),
-    timeoutMs: Number(data.get("timeoutMs")),
+function optional(value: string) {
+  return value.trim() || undefined
+}
+
+function argumentApiSettings(
+  data: JevFormValues,
+): Pick<AssistantJevSettings, "argumentsEndpoint" | "argumentsModel"> {
+  if (data.argumentChoice !== "api") return {}
+  const argumentsEndpoint = optional(data.argumentsEndpoint)
+  const argumentsModel = optional(data.argumentsModel)
+  return {
     ...(argumentsEndpoint ? { argumentsEndpoint } : {}),
     ...(argumentsModel ? { argumentsModel } : {}),
-  })
-  const credentials = assistantJevCredentialsSchema.safeParse({
+  }
+}
+
+function configurationCredentials(data: JevFormValues): AssistantJevCredentials {
+  const apiKey = optional(data.apiKey)
+  const argumentsApiKey = data.argumentChoice === "api" ? optional(data.argumentsApiKey) : undefined
+  return {
     ...(apiKey ? { apiKey } : {}),
     ...(argumentsApiKey ? { argumentsApiKey } : {}),
-  })
+  }
+}
 
+function configuration(data: JevFormValues, initial: AssistantJevSettings) {
+  const argumentApi = argumentApiSettings(data)
+  const credentialValues = configurationCredentials(data)
+  const settings = assistantJevSettingsSchema.safeParse({
+    ...argumentAgent(data.argumentChoice, initial),
+    model: data.model,
+    images: true,
+    maxSteps: Number(data.maxSteps),
+    minConfidence: data.minConfidence.trim() ? Number(data.minConfidence) : Number.NaN,
+    timeoutMs: Number(data.timeoutMs),
+    ...argumentApi,
+  })
+  const credentials = assistantJevCredentialsSchema.safeParse(credentialValues)
   return {
     value:
-      settings.success && credentials.success && (!argumentsApiKey || argumentsEndpoint)
+      settings.success &&
+      credentials.success &&
+      (!credentialValues.argumentsApiKey || argumentApi.argumentsEndpoint)
         ? {
             agent: { kind: "jev" as const, settings: settings.data },
             credentials: credentials.data,
           }
         : null,
-    fields: configurationFieldErrors(settings, credentials, argumentsEndpoint, argumentsApiKey),
+    fields: configurationFieldErrors(
+      settings,
+      credentials,
+      argumentApi.argumentsEndpoint,
+      credentialValues.argumentsApiKey,
+    ),
+  }
+}
+
+function initialArgumentChoice(initial: AssistantJevSettings) {
+  if (!initial.argumentsAgent) return initial.argumentsEndpoint ? "api" : "none"
+  const preset = agentPresetId(initial.argumentsAgent)
+  return preset === "custom" ? "saved" : preset
+}
+
+function initialFormValues(initial: AssistantJevSettings): JevFormValues {
+  return {
+    argumentChoice: initialArgumentChoice(initial),
+    model: initial.model,
+    apiKey: "",
+    argumentsEndpoint: initial.argumentsEndpoint ?? "",
+    argumentsModel: initial.argumentsModel ?? "",
+    argumentsApiKey: "",
+    maxSteps: String(initial.maxSteps),
+    minConfidence: String(initial.minConfidence),
+    timeoutMs: String(initial.timeoutMs),
   }
 }
 
@@ -97,41 +146,73 @@ type JevConfigurationProps = {
   clearTest: () => void
 }
 
-function useJevConnectionForm({ chat, connected, pending, testConnection }: JevConfigurationProps) {
+function useJevConnectionForm({
+  chat,
+  connected,
+  pending,
+  testConnection,
+  clearTest,
+}: JevConfigurationProps) {
+  const t = useTranslations("app.assistant")
   const onSaved = useAssistantSettingsSaved()
   const [initial] = useState(initialSettings)
-  const [argumentChoice, setArgumentChoice] = useState(() =>
-    initial.argumentsAgent
-      ? agentPresetId(initial.argumentsAgent) === "custom"
-        ? "saved"
-        : agentPresetId(initial.argumentsAgent)
-      : initial.argumentsEndpoint
-        ? "api"
-        : "none",
-  )
-  const active = useRef(false)
-  const formRef = useRef<HTMLFormElement>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [invalidFields, setInvalidFields] = useState<readonly string[]>([])
   const [advanced, setAdvanced] = useState(false)
   const [failed, setFailed] = useState(false)
   const [storageFailed, setStorageFailed] = useState(false)
-  const locked = connected || pending || submitting
-  function validate(data: FormData) {
-    const validation = configuration(data, argumentChoice, initial)
-    setInvalidFields(validation.fields)
-    if (validation.fields.some((name) => ["maxSteps", "minConfidence", "timeoutMs"].includes(name)))
-      setAdvanced(true)
-    return validation.value
+  const validate = (value: JevFormValues) => {
+    const parsed = configuration(value, initial)
+    return parsed.value
+      ? undefined
+      : {
+          fields: Object.fromEntries(parsed.fields.map((name) => [name, t("jev.invalid")])),
+        }
   }
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (active.current || locked) return
-    const form = event.currentTarget
-    const parsed = validate(new window.FormData(form))
-    if (!parsed) return
-    active.current = true
-    setSubmitting(true)
+  const form = useAppForm({
+    defaultValues: initialFormValues(initial),
+    onSubmitMeta: "connect" as "connect" | "test",
+    validators: {
+      onSubmit: ({ value }) => validate(value),
+      onChange: ({ value, formApi }) =>
+        formApi.state.submissionAttempts > 0 ? validate(value) : undefined,
+    },
+    listeners: {
+      onChange: ({ formApi, fieldApi }) => {
+        clearTest()
+        if (fieldApi.name === "argumentsEndpoint")
+          formApi.setFieldValue("argumentsApiKey", "", { dontRunListeners: true })
+        if (fieldApi.name === "argumentChoice") {
+          formApi.setFieldValue("argumentsEndpoint", initial.argumentsEndpoint ?? "", {
+            dontRunListeners: true,
+          })
+          formApi.setFieldValue("argumentsModel", initial.argumentsModel ?? "", {
+            dontRunListeners: true,
+          })
+          formApi.setFieldValue("argumentsApiKey", "", { dontRunListeners: true })
+        }
+      },
+    },
+    onSubmitInvalid: ({ formApi }) => {
+      if (
+        (["maxSteps", "minConfidence", "timeoutMs"] as const).some(
+          (name) => formApi.getFieldMeta(name)?.errors.length,
+        )
+      )
+        setAdvanced(true)
+    },
+    onSubmit: async ({ value, meta }): Promise<void> => {
+      if (pending || (connected && meta === "connect")) return
+      const parsed = configuration(value, initial).value
+      if (!parsed) return
+      if (meta === "test") {
+        await testConnection(parsed.agent, parsed.credentials)
+        return
+      }
+      await connect(parsed)
+    },
+  })
+  async function connect(
+    parsed: NonNullable<ReturnType<typeof configuration>["value"]>,
+  ): Promise<void> {
     setFailed(false)
     const saved = saveAssistantPreferences({ version: 1, agent: parsed.agent })
     setStorageFailed(!saved)
@@ -139,214 +220,223 @@ function useJevConnectionForm({ chat, connected, pending, testConnection }: JevC
       const accepted = await chat.connect(parsed.agent, parsed.credentials)
       setFailed(!accepted)
       if (accepted) {
-        for (const input of form.querySelectorAll<HTMLInputElement>('input[type="password"]'))
-          input.value = ""
+        form.setFieldValue("apiKey", "", { dontRunListeners: true })
+        form.setFieldValue("argumentsApiKey", "", { dontRunListeners: true })
         if (saved) onSaved?.()
       }
     } catch {
       setFailed(true)
-    } finally {
-      active.current = false
-      setSubmitting(false)
     }
   }
-  async function test() {
-    if (!formRef.current || active.current || pending) return
-    const data = new window.FormData(formRef.current)
-    for (const input of formRef.current.querySelectorAll<HTMLInputElement>("input:disabled[name]"))
-      data.set(input.name, input.value)
-    const parsed = validate(data)
-    if (parsed) await testConnection(parsed.agent, parsed.credentials)
-  }
-  return {
-    initial,
-    argumentChoice,
-    setArgumentChoice,
-    formRef,
-    submitting,
-    invalidFields,
-    advanced,
-    setAdvanced,
-    clearInvalidField: (name: string) =>
-      setInvalidFields((fields) => fields.filter((field) => field !== name)),
-    failed,
-    storageFailed,
-    locked,
-    submit,
-    test,
-  }
+  return { form, initial, advanced, setAdvanced, failed, storageFailed }
 }
+
+const JevIdentityFields = withFieldGroup({
+  defaultValues: { model: "", apiKey: "" },
+  render: function JevIdentityFields({ group }) {
+    const t = useTranslations("app.assistant")
+    return (
+      <>
+        <group.AppField name="model">
+          {(field) => (
+            <field.TextField
+              label={t("jev.model")}
+              description={t("jev.description")}
+              required
+              maxLength={128}
+            />
+          )}
+        </group.AppField>
+        <group.AppField name="apiKey">
+          {(field) => (
+            <field.TextField
+              label={t("jev.apiKey")}
+              description={t("jev.keyNotice")}
+              type="password"
+              autoComplete="off"
+              maxLength={4096}
+            />
+          )}
+        </group.AppField>
+      </>
+    )
+  },
+})
+
+const JevArgumentFields = withFieldGroup({
+  defaultValues: {
+    argumentChoice: "",
+    argumentsEndpoint: "",
+    argumentsModel: "",
+    argumentsApiKey: "",
+  },
+  props: { locked: false, hasSavedAgent: false },
+  render: function JevArgumentFields({ group, locked, hasSavedAgent }) {
+    const t = useTranslations("app.assistant")
+    return (
+      <group.Subscribe selector={(state) => state.values.argumentChoice}>
+        {(argumentChoice) => (
+          <div className="grid gap-2">
+            <group.AppField name="argumentChoice">
+              {(field) => (
+                <field.SelectField
+                  label={t("jev.argumentModel")}
+                  description={t("jev.argumentNotice")}
+                  disabled={locked}
+                >
+                  <SelectOption value="none">{t("jev.noArgumentAgent")}</SelectOption>
+                  {agentPresets.map((preset) => (
+                    <SelectOption key={preset.id} value={preset.id}>
+                      {t(`agents.${preset.id}`)}
+                    </SelectOption>
+                  ))}
+                  {hasSavedAgent && (
+                    <SelectOption value="saved">{t("jev.savedAgent")}</SelectOption>
+                  )}
+                  <SelectOption value="api">{t("jev.apiArgumentAgent")}</SelectOption>
+                </field.SelectField>
+              )}
+            </group.AppField>
+            {argumentChoice === "api" && (
+              <>
+                <group.AppField name="argumentsEndpoint">
+                  {(field) => (
+                    <field.TextField type="url" label={t("jev.endpoint")} maxLength={2048} />
+                  )}
+                </group.AppField>
+                <group.AppField name="argumentsModel">
+                  {(field) => <field.TextField label={t("jev.helperModel")} maxLength={128} />}
+                </group.AppField>
+                <group.AppField name="argumentsApiKey">
+                  {(field) => (
+                    <field.TextField
+                      type="password"
+                      label={t("jev.helperKey")}
+                      autoComplete="off"
+                      maxLength={4096}
+                    />
+                  )}
+                </group.AppField>
+              </>
+            )}
+          </div>
+        )}
+      </group.Subscribe>
+    )
+  },
+})
+
+const JevAdvancedFields = withFieldGroup({
+  defaultValues: { maxSteps: "", minConfidence: "", timeoutMs: "" },
+  props: {} as { open: boolean; onOpenChange: (open: boolean) => void },
+  render: function JevAdvancedFields({ group, open, onOpenChange }) {
+    const t = useTranslations("app.assistant")
+    return (
+      <details open={open} onToggle={(event) => onOpenChange(event.currentTarget.open)}>
+        <summary className="cursor-pointer text-xs font-medium">{t("jev.advanced")}</summary>
+        <div className="mt-2 grid gap-2">
+          <group.AppField name="maxSteps">
+            {(field) => (
+              <field.TextField type="number" label={t("jev.maxSteps")} min={1} max={48} required />
+            )}
+          </group.AppField>
+          <group.AppField name="minConfidence">
+            {(field) => (
+              <field.TextField
+                type="number"
+                label={t("jev.minConfidence")}
+                min={0}
+                max={1}
+                step="0.01"
+                required
+              />
+            )}
+          </group.AppField>
+          <group.AppField name="timeoutMs">
+            {(field) => (
+              <field.TextField
+                type="number"
+                label={t("jev.timeoutMs")}
+                min={1000}
+                max={120000}
+                required
+              />
+            )}
+          </group.AppField>
+        </div>
+      </details>
+    )
+  },
+})
 
 export function JevAgentConfiguration(props: JevConfigurationProps) {
   const t = useTranslations("app.assistant")
-  const id = useId()
+  const { form, initial, advanced, setAdvanced, failed, storageFailed } =
+    useJevConnectionForm(props)
   const { connected, pending, testing, disconnect, clearTest } = props
-  const {
-    initial,
-    argumentChoice,
-    setArgumentChoice,
-    formRef,
-    submitting,
-    invalidFields,
-    advanced,
-    setAdvanced,
-    clearInvalidField,
-    failed,
-    storageFailed,
-    locked,
-    submit,
-    test,
-  } = useJevConnectionForm(props)
-  const fieldError = (name: string) => (invalidFields.includes(name) ? t("jev.invalid") : undefined)
-  const apiKeyError = fieldError("apiKey")
   return (
-    <form
-      ref={formRef}
-      className="grid gap-2"
-      onInput={(event) => {
-        clearTest()
-        if (event.target instanceof HTMLInputElement) clearInvalidField(event.target.name)
-      }}
-      onSubmit={submit}
-      aria-label={t("jev.settings")}
-      aria-busy={pending || submitting || undefined}
-    >
-      <fieldset disabled={locked} className="grid min-w-0 gap-2">
-        <TextField
-          name="model"
-          error={fieldError("model")}
-          label={t("jev.model")}
-          description={t("jev.description")}
-          defaultValue={initial.model}
-          required
-          maxLength={128}
-        />
-        <Field data-invalid={Boolean(apiKeyError) || undefined}>
-          <FieldLabel htmlFor={`${id}-api-key`}>{t("jev.apiKey")}</FieldLabel>
-          <Input
-            id={`${id}-api-key`}
-            name="apiKey"
-            type="password"
-            autoComplete="off"
-            maxLength={4096}
-            aria-invalid={Boolean(apiKeyError) || undefined}
-            aria-describedby={
-              apiKeyError ? `${id}-key-notice ${id}-api-key-error` : `${id}-key-notice`
-            }
-          />
-          <FieldError id={`${id}-api-key-error`}>{apiKeyError}</FieldError>
-        </Field>
-        <FieldDescription id={`${id}-key-notice`}>{t("jev.keyNotice")}</FieldDescription>
-        <div className="grid gap-2">
-          <SelectField
-            label={t("jev.argumentModel")}
-            description={t("jev.argumentNotice")}
-            value={argumentChoice}
-            disabled={locked}
-            onValueChange={(value) => {
-              setArgumentChoice(value)
-              clearTest()
+    <form.Subscribe selector={(state) => state.isSubmitting}>
+      {(submitting) => {
+        const working = pending || submitting
+        const locked = connected || working
+        return (
+          <Form
+            form={form}
+            onInput={clearTest}
+            aria-label={t("jev.settings")}
+            aria-busy={working || undefined}
+            onSubmitCapture={(event) => {
+              if (!locked) return
+              event.preventDefault()
+              event.stopPropagation()
             }}
           >
-            <SelectOption value="none">{t("jev.noArgumentAgent")}</SelectOption>
-            {agentPresets.map((preset) => (
-              <SelectOption key={preset.id} value={preset.id}>
-                {t(`agents.${preset.id}`)}
-              </SelectOption>
-            ))}
-            {initial.argumentsAgent && agentPresetId(initial.argumentsAgent) === "custom" && (
-              <SelectOption value="saved">{t("jev.savedAgent")}</SelectOption>
+            <fieldset disabled={locked} className="grid min-w-0 gap-2">
+              <JevIdentityFields form={form} fields={{ model: "model", apiKey: "apiKey" }} />
+              <JevArgumentFields
+                form={form}
+                fields={{
+                  argumentChoice: "argumentChoice",
+                  argumentsEndpoint: "argumentsEndpoint",
+                  argumentsModel: "argumentsModel",
+                  argumentsApiKey: "argumentsApiKey",
+                }}
+                locked={locked}
+                hasSavedAgent={initialArgumentChoice(initial) === "saved"}
+              />
+              <JevAdvancedFields
+                form={form}
+                fields={{
+                  maxSteps: "maxSteps",
+                  minConfidence: "minConfidence",
+                  timeoutMs: "timeoutMs",
+                }}
+                open={advanced}
+                onOpenChange={setAdvanced}
+              />
+            </fieldset>
+            {failed && <Alert>{t("errors.request-failed")}</Alert>}
+            {storageFailed && (
+              <p role="status" className="text-xs text-muted-foreground">
+                {t("settingsNotSaved")}
+              </p>
             )}
-            <SelectOption value="api">{t("jev.apiArgumentAgent")}</SelectOption>
-          </SelectField>
-          {argumentChoice === "api" && (
-            <>
-              <TextField
-                name="argumentsEndpoint"
-                error={fieldError("argumentsEndpoint")}
-                type="url"
-                label={t("jev.endpoint")}
-                defaultValue={initial.argumentsEndpoint}
-                maxLength={2048}
-              />
-              <TextField
-                name="argumentsModel"
-                error={fieldError("argumentsModel")}
-                label={t("jev.helperModel")}
-                defaultValue={initial.argumentsModel}
-                maxLength={128}
-              />
-              <TextField
-                name="argumentsApiKey"
-                error={fieldError("argumentsApiKey")}
-                type="password"
-                label={t("jev.helperKey")}
-                autoComplete="off"
-                maxLength={4096}
-              />
-            </>
-          )}
-        </div>
-        <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)}>
-          <summary className="cursor-pointer text-xs font-medium">{t("jev.advanced")}</summary>
-          <div className="mt-2 grid gap-2">
-            <TextField
-              name="maxSteps"
-              error={fieldError("maxSteps")}
-              type="number"
-              label={t("jev.maxSteps")}
-              defaultValue={initial.maxSteps}
-              min={1}
-              max={48}
-              required
-            />
-            <TextField
-              name="minConfidence"
-              error={fieldError("minConfidence")}
-              type="number"
-              label={t("jev.minConfidence")}
-              defaultValue={initial.minConfidence}
-              min={0}
-              max={1}
-              step="0.01"
-              required
-            />
-            <TextField
-              name="timeoutMs"
-              error={fieldError("timeoutMs")}
-              type="number"
-              label={t("jev.timeoutMs")}
-              defaultValue={initial.timeoutMs}
-              min={1000}
-              max={120000}
-              required
-            />
-          </div>
-        </details>
-      </fieldset>
-      {failed && <Alert>{t("errors.request-failed")}</Alert>}
-      {storageFailed && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {t("settingsNotSaved")}
-        </p>
-      )}
-      <NativeAgentActions
-        connected={connected}
-        pending={pending || submitting}
-        disconnect={disconnect}
-      />
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={pending || submitting}
-        isLoading={testing}
-        onClick={test}
-      >
-        {t("testConnection")}
-      </Button>
-      <p className="text-xs text-muted-foreground">{t("connectionTestNotice")}</p>
-      <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
-    </form>
+            <NativeAgentActions connected={connected} pending={working} disconnect={disconnect} />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={working}
+              isLoading={testing}
+              onClick={() => form.handleSubmit("test")}
+            >
+              {t("testConnection")}
+            </Button>
+            <p className="text-xs text-muted-foreground">{t("connectionTestNotice")}</p>
+            <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
+          </Form>
+        )
+      }}
+    </form.Subscribe>
   )
 }

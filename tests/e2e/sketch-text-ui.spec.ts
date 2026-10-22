@@ -218,11 +218,12 @@ test("authors editable text, cancels errors, preserves group identity through Un
   await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
     timeout: 60_000,
   })
-  await viewport
-    .getByRole("combobox", { name: "Select saved profile", exact: true })
-    .selectOption({ label: "Sketch 1 · Profile 1" })
   await toolbar.getByRole("button", { name: "Extrude", exact: true }).click()
   const extrusion = page.getByRole("form", { name: "Extrude profile", exact: true })
+  await expect(extrusion).toBeVisible()
+  await expect(
+    extrusion.getByRole("button", { name: "Remove Sketch 1 · Profile 1", exact: true }),
+  ).toBeVisible()
   await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 60_000 })
   await extrusion.getByRole("button", { name: "Create extrusion", exact: true }).click()
   await expect(extrusion).not.toBeVisible()

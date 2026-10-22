@@ -58,13 +58,13 @@ function LibraryTask({
             <>
               <LibraryItemSummary item={selection.item} version={selection.version.version} />
               <LibraryInsertForm
-                key={`${selection.item.id}:${selection.version.version}`}
+                key={`insert:${selection.item.id}:${selection.version.version}`}
                 selection={selection}
                 action={action}
                 writable={writable}
               />
               <LibraryMetadataForm
-                key={`${selection.item.id}:${selection.item.metadataRevision}`}
+                key={`metadata:${selection.item.id}:${selection.item.metadataRevision}`}
                 selection={selection}
                 browser={browser}
                 action={action}

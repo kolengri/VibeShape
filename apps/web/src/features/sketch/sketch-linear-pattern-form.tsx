@@ -8,17 +8,15 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
-import { Alert } from "@vibeshape/ui/components/alert"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useMemo, useState } from "react"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
+import { useMemo } from "react"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
-import { SketchExpressionFormField } from "./sketch-expression-form-field"
 import { SketchFormActions } from "./sketch-form-actions"
 import {
   evaluateSketchPatternExpression,
@@ -142,17 +140,17 @@ export function SketchLinearPatternForm({
 }>) {
   const t = useTranslations("app.sketch.linearPattern")
   const displayUnits = useDocumentDisplayUnits()
-  const [message, setMessage] = useState<string | null>(null)
   const suggestions = useMemo(() => variableExpressionSuggestions(variables), [variables])
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: defaultValues(initialValue, displayUnits),
+    validators: {
+      onDynamic: ({ value }) =>
+        evaluateLinearSketchPatternForm(value, variables, displayUnits) ? undefined : t("invalid"),
+    },
     onSubmit: ({ value }) => {
       const definition = evaluateLinearSketchPatternForm(value, variables, displayUnits)
-      if (!definition) {
-        setMessage(t("invalid"))
-        return
-      }
-      setMessage(null)
+      if (!definition) return
       onApply(definition)
     },
   })
@@ -160,7 +158,6 @@ export function SketchLinearPatternForm({
     field: keyof LinearSketchPatternFormValues,
     value: LinearSketchPatternFormValues[typeof field],
   ) => {
-    setMessage(null)
     onPreview(
       evaluateLinearSketchPatternForm(
         { ...form.state.values, [field]: value },
@@ -179,19 +176,19 @@ export function SketchLinearPatternForm({
   ] as const
   const renderFields = (items: readonly (typeof fields)[number][]) =>
     items.map(({ label, name }) => (
-      <form.Field key={name} name={name}>
+      <form.AppField key={name} name={name}>
         {(field) => (
-          <SketchExpressionFormField
-            field={field}
+          <field.VariableExpressionField
             id={`sketch-linear-pattern-${name}`}
             label={label}
             suggestions={suggestions}
+            inputClassName="font-mono tabular-nums"
             onValueChange={(nextValue) => {
               updatePreview(name, nextValue)
             }}
           />
         )}
-      </form.Field>
+      </form.AppField>
     ))
   return (
     <Form
@@ -201,23 +198,22 @@ export function SketchLinearPatternForm({
       variant="panel"
     >
       <div className="grid gap-2">{renderFields(fields.slice(0, 3))}</div>
-      <form.Field name="secondDirection">
+      <form.AppField name="secondDirection">
         {(field) => (
-          <TanStackBooleanParameterField
-            field={field}
+          <field.CheckboxField
             label={t("secondDirection")}
-            onBeforeChange={() => {
-              updatePreview("secondDirection", !field.state.value)
+            onValueChange={(checked) => {
+              updatePreview("secondDirection", checked)
             }}
           />
         )}
-      </form.Field>
+      </form.AppField>
       <form.Subscribe selector={(state) => state.values.secondDirection}>
         {(secondDirection) =>
           secondDirection ? <div className="grid gap-2">{renderFields(fields.slice(3))}</div> : null
         }
       </form.Subscribe>
-      {message ? <Alert>{message}</Alert> : null}
+      <form.FormError />
       <SketchFormActions
         cancelLabel={t("cancel")}
         submit={

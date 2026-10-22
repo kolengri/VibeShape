@@ -34,6 +34,35 @@ Base form controls are uncontrolled by default through native attributes such as
 
 VibeShape's TanStack Form adapter is exported from `@vibeshape/ui/integrations/tanstack-form`. Its `validationMessage` export is the shared validation-error formatter for separate feature-owned adapters, including CAD reference fields. Feature code uses the adapter for form state while remaining free to use base components for isolated native forms, search fields, file inputs, and progressive enhancement.
 
+Product forms use registered `form.AppField` components rather than passing handwritten field-API
+shapes through visual controls. The shared registration includes text, textarea, checkbox, native
+select, Radix select, and string-valued choice fields. `formHookOptions` and `createFormHook` let an
+application extend this registration while reusing the same contexts and shared form components;
+CAD expression and geometry-reference adapters belong to `apps/web`, not `packages/ui`.
+
+Reusable typed sections, including library metadata and assembly poses, use `withFieldGroup` with
+explicit field-path mappings at their call sites. Keep the section independent of its parent form
+and preserve its inferred value types.
+
+Validation belongs to TanStack validators. Existing domain parsers return
+`{ form: summary, fields: issues }`; `form.FormError` renders the summary and `useFieldError`
+supplies field errors after blur or a submission attempt. Coupled CAD fields use the native
+`revalidateLogic()` strategy with `validators.onDynamic`: validate on submission first, then
+revalidate the complete form on changes so a corrected value clears errors on related fields.
+Do not mirror field issues in React state or add a second validation scheduler. Command failures, stale revisions, connection status, and preview diagnostics
+remain with their owning application workflow.
+
+`Form` provides context, prevents repeated native submissions throughout asynchronous validation and
+submission, and focuses the first enabled invalid control once per failed attempt. Native forms and
+programmatic task navigation share `submitForm(form)`, which joins an existing submission until it
+settles instead of starting another mutation. Submission owners use the shared `useIsMounted` hook
+to reject work whose task was dismissed during validation. It defaults to
+`noValidate` so TanStack owns validation and its accessible feedback. A workflow with native numeric
+edit buffers may explicitly set `noValidate={false}` and must also check native validity before
+programmatic submission. `SubmitButton` derives dirty, validity, and pending state from the store;
+use `requireDirty={false}` for actions that are valid without edits. External operation state may
+still disable conflicting controls.
+
 Form integration follows one discoverable form-kit layout: shared contexts at the integration root, field adapters under `fields/`, form-owned controls under `components/`, and a single public `index.ts`. Reusable visual structure belongs to base `Field` primitives rather than being repeated in each adapter.
 
 ## Asynchronous action controls
@@ -128,7 +157,7 @@ The foundation includes:
 - a source-owned portaled `Popover` composition and an application-level, state-agnostic variable-expression combobox that preserves native input value ownership, caret position, and accessible listbox semantics;
 - native `Input` plus native `NativeSelect`, with state-agnostic `TextField` and `NativeSelectField` compositions that own labels, descriptions, and stable validation relationships;
 - shared `Field`, `FieldLabel`, `FieldDescription`, and `FieldError` compositions for consistent form layout;
-- a TanStack Form integration exposing `Form`, `useAppForm`, `TextField`, `NativeSelectField`, and `SubmitButton` adapters;
+- a TanStack Form integration exposing typed registered fields, shared validation feedback and focus, composable hook registrations, and a single-flight submit control;
 - state-agnostic primitive and sketch-dimension fields with separate TanStack Form adapters that preserve raw Quantity expressions, share variable completion through explicit value callbacks, publish transient draft state outside base controls, and submit through the shared single-flight action contract;
 - a specialized SVG sketch canvas that receives one schema-valid analytical draft, delegates mutations, click-targeted analytical curve modification, and deterministic point, bounded-intersection, direction inference, and regular-polygon construction to pure domain operations, preserves retained curve identity while repairing detached endpoint dependencies, represents a split circle as complementary equal-radius arcs without redundant SolveSpace equations, persists accepted inference and polygon design intent as ordinary constraints, coalesces drag samples to one inference/render update per animation frame, exposes entity and stable-region selection, renders constraint and authored-dimension glyphs, and keeps solved display geometry disposable;
 - Bun and Testing Library coverage for the base and integrated layers.

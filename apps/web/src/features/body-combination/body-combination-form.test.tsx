@@ -97,7 +97,11 @@ describe("Compound and Union form", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       messages.app.bodyCombination.invalidSelection,
     )
-    await userEvent.click(screen.getByRole("button", { name: "Add part Part 1" }))
+    const firstPart = screen.getByRole("button", { name: "Add part Part 1" })
+    const selectionError = screen.getByRole("alert")
+    expect(firstPart.getAttribute("aria-describedby")?.split(" ")).toContain(selectionError.id)
+    expect(document.activeElement).toBe(firstPart)
+    await userEvent.click(firstPart)
     await userEvent.click(screen.getByRole("button", { name: "Add part Part 2" }))
     await userEvent.click(screen.getByRole("button", { name: "Move Part 2 earlier" }))
     await userEvent.click(screen.getByRole("button", { name: "Create" }))

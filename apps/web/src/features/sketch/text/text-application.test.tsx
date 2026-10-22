@@ -164,8 +164,10 @@ describe("editable sketch text application", () => {
     )
     const dialog = await openText()
     const form = within(dialog).getByRole("form", { name: "Add sketch text" })
-    fireEvent.submit(form)
-    fireEvent.submit(form)
+    await act(async () => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
     expect(font.load).toHaveBeenCalledTimes(1)
     expect(
       (within(dialog).getByRole("button", { name: "Apply text" }) as HTMLButtonElement).disabled,
@@ -184,6 +186,8 @@ describe("editable sketch text application", () => {
     fireEvent.change(height, { target: { value: "0" } })
     await userEvent.click(within(dialog).getByRole("button", { name: "Apply text" }))
     expect(within(dialog).getByText(messages.app.sketchText.invalidHeight)).toBeTruthy()
+    expect(height.getAttribute("aria-invalid")).toBe("true")
+    expect(document.activeElement).toBe(height)
     expect(font.load).not.toHaveBeenCalled()
     fireEvent.change(height, { target: { value: "10" } })
     await userEvent.click(within(dialog).getByRole("button", { name: "Apply text" }))

@@ -1,13 +1,9 @@
 import { assemblyDefinitionSchema } from "@vibeshape/domain/assembly"
-import type {
-  AssemblyMutation,
-  PinnedAssemblyDefinition,
-} from "@vibeshape/domain/assembly-authority"
+import type { PinnedAssemblyDefinition } from "@vibeshape/domain/assembly-authority"
 import { useTranslations } from "@vibeshape/i18n"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { useState } from "react"
-import { AssemblyNameField, AssemblyPoseFields, formPose } from "./assembly-fields"
-import { type AssemblyFormActions, AssemblyTaskForm } from "./assembly-forms"
+import { SelectOption } from "@vibeshape/ui/components/select-field"
+import { AssemblyNameField, AssemblyPoseFields, formPose, poseFieldValues } from "./assembly-fields"
+import { type AssemblyFormActions, AssemblyTaskForm, useAssemblyForm } from "./assembly-forms"
 import { type AssemblyPartSource, createAssemblyDefinitionChanges } from "./assembly-model"
 
 type Props = {
@@ -17,63 +13,74 @@ type Props = {
   selectedPartId: string | null
   actions: AssemblyFormActions
 }
-function SourceField({
-  sources,
-  value,
-  onChange,
-  description,
-}: {
-  sources: readonly AssemblyPartSource[]
-  value: string
-  onChange: (value: string) => void
-  description?: string
-}) {
-  const t = useTranslations("app.assembly")
-  return (
-    <SelectField
-      label={t("sourcePart")}
-      description={description}
-      value={value}
-      onValueChange={onChange}
-      required
-    >
-      {sources.map(({ name, source }) => (
-        <SelectOption key={source.partId} value={source.partId}>
-          {name}
-        </SelectOption>
-      ))}
-    </SelectField>
-  )
-}
 function initialSourceId(sources: readonly AssemblyPartSource[], selectedPartId: string | null) {
-  if (selectedPartId) return selectedPartId
-  const first = sources[0]
-  return first ? first.source.partId : ""
+  return selectedPartId ?? sources[0]?.source.partId ?? ""
 }
-function CreateDefinitionForm({
+function SourceDefinitionForm({
+  definition,
   sources,
   selectedPartId,
   actions,
-}: Omit<Props, "mode" | "definition">) {
+}: Omit<Props, "mode">) {
   const t = useTranslations("app.assembly")
-  const [sourceId, setSourceId] = useState(initialSourceId(sources, selectedPartId))
+  const sourceId = initialSourceId(sources, selectedPartId)
   const selected = sources.find(({ source }) => source.partId === sourceId)
+  const form = useAssemblyForm({
+    defaultValues: { name: definition?.name ?? selected?.name ?? t("defaultDefinition"), sourceId },
+    actions,
+    build: ({ name, sourceId }) => {
+      const selected = sources.find(({ source }) => source.partId === sourceId)
+      if (!selected) throw new Error("Select an available source Part.")
+      return definition
+        ? [
+            {
+              kind: "definition.relink",
+              definition: assemblyDefinitionSchema.parse({
+                schemaVersion: 1,
+                id: definition.id,
+                name,
+                sources: [selected.source],
+                sourceFrame: definition.sourceFrame,
+              }),
+            },
+          ]
+        : createAssemblyDefinitionChanges(selected, name, t("defaultInstance", { name }))
+    },
+  })
   return (
-    <AssemblyTaskForm
-      actions={actions}
-      build={(data) => {
-        if (!selected) throw new Error("Select an available source Part.")
-        const name = String(data.get("name"))
-        return createAssemblyDefinitionChanges(selected, name, t("defaultInstance", { name }))
-      }}
-    >
-      <AssemblyNameField value={selected?.name ?? t("defaultDefinition")} />
-      <SourceField
-        sources={sources}
-        value={sourceId}
-        onChange={setSourceId}
-        description={t("frozenExplanation")}
-      />
+    <AssemblyTaskForm form={form} actions={actions}>
+      <AssemblyNameField form={form} fields={{ name: "name" }} />
+      <form.AppField
+        name="sourceId"
+        validators={{
+          onChange: ({ value }) =>
+            sources.some(({ source }) => source.partId === value)
+              ? undefined
+              : t("invalidParameters"),
+        }}
+      >
+        {(field) => (
+          <field.SelectField
+            label={t("sourcePart")}
+            description={definition ? undefined : t("frozenExplanation")}
+            required
+          >
+            {sources.map(({ name, source }) => (
+              <SelectOption key={source.partId} value={source.partId}>
+                {name}
+              </SelectOption>
+            ))}
+          </field.SelectField>
+        )}
+      </form.AppField>
+      {definition && (
+        <>
+          <p className="text-xs text-muted-foreground">{t("relinkExplanation")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("pinRevision", { revision: definition.pinRevision })}
+          </p>
+        </>
+      )}
     </AssemblyTaskForm>
   )
 }
@@ -85,23 +92,25 @@ function DefinitionMetadataForm({
   actions: AssemblyFormActions
 }) {
   const t = useTranslations("app.assembly")
+  const form = useAssemblyForm({
+    defaultValues: { name: definition.name, source: poseFieldValues(definition.sourceFrame) },
+    actions,
+    build: (values) => [
+      {
+        kind: "definition.update",
+        definitionId: definition.id,
+        name: values.name,
+        sourceFrame: formPose(values.source, definition.sourceFrame),
+      },
+    ],
+  })
   return (
-    <AssemblyTaskForm
-      actions={actions}
-      build={(data) => [
-        {
-          kind: "definition.update",
-          definitionId: definition.id,
-          name: String(data.get("name")),
-          sourceFrame: formPose(data, "source", definition.sourceFrame),
-        },
-      ]}
-    >
-      <AssemblyNameField value={definition.name} />
+    <AssemblyTaskForm form={form} actions={actions}>
+      <AssemblyNameField form={form} fields={{ name: "name" }} />
       <AssemblyPoseFields
-        prefix="source"
+        form={form}
+        fields="source"
         label={t("sourceFrame")}
-        pose={definition.sourceFrame}
         description={t("frozenExplanation")}
       />
       <p className="text-xs text-muted-foreground">
@@ -110,48 +119,20 @@ function DefinitionMetadataForm({
     </AssemblyTaskForm>
   )
 }
-function RelinkDefinitionForm({
-  definition,
-  sources,
-  selectedPartId,
-  actions,
-}: Omit<Props, "mode" | "definition"> & { definition: PinnedAssemblyDefinition }) {
-  const t = useTranslations("app.assembly")
-  const [sourceId, setSourceId] = useState(initialSourceId(sources, selectedPartId))
-  const build = (data: FormData): readonly AssemblyMutation[] => {
-    const selected = sources.find(({ source }) => source.partId === sourceId)
-    if (!selected) throw new Error("Select an available source Part.")
-    return [
-      {
-        kind: "definition.relink",
-        definition: assemblyDefinitionSchema.parse({
-          schemaVersion: 1,
-          id: definition.id,
-          name: String(data.get("name")),
-          sources: [selected.source],
-          sourceFrame: definition.sourceFrame,
-        }),
-      },
-    ]
-  }
-  return (
-    <AssemblyTaskForm actions={actions} build={build}>
-      <AssemblyNameField value={definition.name} />
-      <SourceField sources={sources} value={sourceId} onChange={setSourceId} />
-      <p className="text-xs text-muted-foreground">{t("relinkExplanation")}</p>
-      <p className="text-xs text-muted-foreground">
-        {t("pinRevision", { revision: definition.pinRevision })}
-      </p>
-    </AssemblyTaskForm>
-  )
-}
 export function AssemblyDefinitionForm(props: Props) {
-  if (props.mode === "create") return <CreateDefinitionForm {...props} />
-  const definition = props.definition
-  if (!definition) return null
+  if (props.mode === "create")
+    return (
+      <SourceDefinitionForm
+        key="create"
+        sources={props.sources}
+        selectedPartId={props.selectedPartId}
+        actions={props.actions}
+      />
+    )
+  if (!props.definition) return null
   return props.mode === "metadata" ? (
-    <DefinitionMetadataForm definition={definition} actions={props.actions} />
+    <DefinitionMetadataForm definition={props.definition} actions={props.actions} />
   ) : (
-    <RelinkDefinitionForm {...props} definition={definition} />
+    <SourceDefinitionForm key="relink" {...props} />
   )
 }

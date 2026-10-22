@@ -1,27 +1,35 @@
 import type { AssemblyLibraryItem } from "@vibeshape/domain/assembly-library"
 import { useTranslations } from "@vibeshape/i18n"
-import { TextField } from "@vibeshape/ui/components/text-field"
+import { withFieldGroup } from "@vibeshape/ui/integrations/tanstack-form"
+import { parseLibraryMetadata } from "./library-model"
 
-export function LibraryMetadataFields({
-  name,
-  tags = [],
-}: {
-  name: string
-  tags?: readonly string[]
-}) {
-  const t = useTranslations("app.library")
-  return (
-    <div className="grid gap-3">
-      <TextField name="name" label={t("name")} defaultValue={name} required maxLength={128} />
-      <TextField
-        name="tags"
-        label={t("tags")}
-        defaultValue={tags.join(", ")}
-        description={t("tagsHelp")}
-      />
-    </div>
-  )
+export function libraryMetadataValidation(values: { name: string; tags: string }, message: string) {
+  const parsed = parseLibraryMetadata(values.name, values.tags)
+  if (parsed.success) return undefined
+  const fields: Partial<Record<"name" | "tags", string>> = {}
+  for (const issue of parsed.error.issues) {
+    const field = issue.path[0]
+    if (field === "name" || field === "tags") fields[field] = message
+  }
+  return { fields }
 }
+
+export const LibraryMetadataFields = withFieldGroup({
+  defaultValues: { name: "", tags: "" },
+  render: function LibraryMetadataFields({ group }) {
+    const t = useTranslations("app.library")
+    return (
+      <div className="grid gap-3">
+        <group.AppField name="name">
+          {(field) => <field.TextField label={t("name")} required maxLength={128} />}
+        </group.AppField>
+        <group.AppField name="tags">
+          {(field) => <field.TextField label={t("tags")} description={t("tagsHelp")} />}
+        </group.AppField>
+      </div>
+    )
+  },
+})
 export function LibraryItemSummary({
   item,
   version,

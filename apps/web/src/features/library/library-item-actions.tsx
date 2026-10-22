@@ -1,17 +1,16 @@
 import { authoredItemNameSchema } from "@vibeshape/domain/parts"
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { TextField } from "@vibeshape/ui/components/text-field"
-import { useState } from "react"
+import { SelectOption } from "@vibeshape/ui/components/select-field"
+import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import {
   insertLocalLibraryVersion,
   updateLocalLibraryMetadata,
 } from "../../document/library-controller"
-import { LibraryMetadataFields } from "./library-fields"
+import { LibraryMetadataFields, libraryMetadataValidation } from "./library-fields"
 import { type LibrarySelection, parseLibraryMetadata } from "./library-model"
 import type { LibraryAction } from "./use-library-action"
 import type { LibraryBrowser } from "./use-library-browser"
+import { useLibrarySubmissionGuard } from "./use-library-save"
 
 export function LibraryMetadataForm({
   selection,
@@ -25,50 +24,69 @@ export function LibraryMetadataForm({
   writable: boolean
 }) {
   const t = useTranslations("app.library")
+  const canSubmit = useLibrarySubmissionGuard(action, writable)
+  const form = useAppForm({
+    defaultValues: { name: selection.item.name, tags: selection.item.tags.join(", ") },
+    validators: {
+      onChange: ({ value, formApi }) =>
+        formApi.state.submissionAttempts > 0
+          ? libraryMetadataValidation(value, t("invalidMetadata"))
+          : undefined,
+      onSubmit: ({ value }) => libraryMetadataValidation(value, t("invalidMetadata")),
+    },
+    onSubmit: async ({ value }) => {
+      if (!canSubmit()) return
+      const metadata = parseLibraryMetadata(value.name, value.tags)
+      if (!metadata.success) return
+      await action.run(
+        () =>
+          updateLocalLibraryMetadata({
+            itemId: selection.item.id,
+            expectedMetadataRevision: selection.item.metadataRevision,
+            ...metadata.data,
+          }),
+        (item) => {
+          if (!item) return
+          browser.setSelection({ ...selection, item })
+          browser.reload()
+          action.setNotice(t("metadataSaved"))
+        },
+      )
+    },
+  })
   return (
-    <form
-      aria-label={t("metadataTitle")}
-      className="grid gap-3 rounded-md border p-3"
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (!writable || action.pending) return
-        const data = new FormData(event.currentTarget)
-        const metadata = parseLibraryMetadata(
-          String(data.get("name") ?? ""),
-          String(data.get("tags") ?? ""),
-        )
-        if (!metadata.success) return action.setError(t("invalidMetadata"))
-        void action.run(
-          () =>
-            updateLocalLibraryMetadata({
-              itemId: selection.item.id,
-              expectedMetadataRevision: selection.item.metadataRevision,
-              ...metadata.data,
-            }),
-          (item) => {
-            if (!item) return
-            browser.setSelection({ ...selection, item })
-            browser.reload()
-            action.setNotice(t("metadataSaved"))
-          },
-        )
-      }}
-    >
-      <fieldset
-        disabled={!writable || action.pending}
-        aria-busy={action.pending}
-        className="grid gap-3"
-      >
-        <legend className="mb-3 text-sm font-semibold">{t("metadataTitle")}</legend>
-        <LibraryMetadataFields name={selection.item.name} tags={selection.item.tags} />
-        <Button type="submit" variant="outline" isLoading={action.pending}>
-          {t("saveMetadata")}
-        </Button>
-      </fieldset>
-    </form>
+    <Form form={form} aria-label={t("metadataTitle")} className="grid gap-3 rounded-md border p-3">
+      <form.Subscribe selector={(state) => state.isSubmitting}>
+        {(submitting) => (
+          <fieldset
+            disabled={!writable || action.pending || submitting}
+            aria-busy={action.pending || submitting}
+            className="grid gap-3"
+          >
+            <legend className="mb-3 text-sm font-semibold">{t("metadataTitle")}</legend>
+            <LibraryMetadataFields form={form} fields={{ name: "name", tags: "tags" }} />
+            <form.FormError />
+            <form.SubmitButton variant="outline" requireDirty={false}>
+              {t("saveMetadata")}
+            </form.SubmitButton>
+          </fieldset>
+        )}
+      </form.Subscribe>
+    </Form>
   )
 }
+
+function insertionValidation(
+  values: { definitionName: string; instanceName: string },
+  message: string,
+) {
+  const fields: Partial<Record<"definitionName" | "instanceName", string>> = {}
+  for (const field of ["definitionName", "instanceName"] as const) {
+    if (!authoredItemNameSchema.safeParse(values[field]).success) fields[field] = message
+  }
+  return Object.keys(fields).length ? { fields } : undefined
+}
+
 export function LibraryInsertForm({
   selection,
   action,
@@ -79,75 +97,73 @@ export function LibraryInsertForm({
   writable: boolean
 }) {
   const t = useTranslations("app.library")
-  const [mode, setMode] = useState<"copy" | "reference">("copy")
+  const canSubmit = useLibrarySubmissionGuard(action, writable)
+  const form = useAppForm({
+    defaultValues: {
+      mode: "copy" as "copy" | "reference",
+      definitionName: selection.item.name,
+      instanceName: t("defaultInstance", { name: selection.item.name }),
+    },
+    validators: {
+      onChange: ({ value, formApi }) =>
+        formApi.state.submissionAttempts > 0
+          ? insertionValidation(value, t("invalidNames"))
+          : undefined,
+      onSubmit: ({ value }) => insertionValidation(value, t("invalidNames")),
+    },
+    onSubmit: async ({ value }) => {
+      if (!canSubmit()) return
+      const definitionName = authoredItemNameSchema.safeParse(value.definitionName)
+      const instanceName = authoredItemNameSchema.safeParse(value.instanceName)
+      if (!definitionName.success || !instanceName.success) return
+      await action.run(
+        () =>
+          insertLocalLibraryVersion({
+            itemId: selection.item.id,
+            version: selection.version.version,
+            mode: value.mode,
+            definitionName: definitionName.data,
+            instanceName: instanceName.data,
+          }),
+        () => action.setNotice(t("inserted")),
+        false,
+      )
+    },
+  })
   return (
-    <form
-      aria-label={t("insertTitle")}
-      className="grid gap-3 rounded-md border p-3"
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (!writable || action.pending) return
-        const data = new FormData(event.currentTarget)
-        const definitionName = authoredItemNameSchema.safeParse(
-          String(data.get("definitionName") ?? ""),
-        )
-        const instanceName = authoredItemNameSchema.safeParse(
-          String(data.get("instanceName") ?? ""),
-        )
-        if (!definitionName.success || !instanceName.success)
-          return action.setError(t("invalidNames"))
-        void action.run(
-          () =>
-            insertLocalLibraryVersion({
-              itemId: selection.item.id,
-              version: selection.version.version,
-              mode,
-              definitionName: definitionName.data,
-              instanceName: instanceName.data,
-            }),
-          () => action.setNotice(t("inserted")),
-          false,
-        )
-      }}
-    >
-      <fieldset
-        disabled={!writable || action.pending}
-        aria-busy={action.pending}
-        className="grid gap-3"
-      >
-        <legend className="mb-3 text-sm font-semibold">{t("insertTitle")}</legend>
-        <SelectField
-          label={t("insertMode")}
-          value={mode}
-          onValueChange={(value) => {
-            if (value === "copy" || value === "reference") setMode(value)
-          }}
-        >
-          <SelectOption value="copy">{t("copy")}</SelectOption>
-          <SelectOption value="reference">{t("reference")}</SelectOption>
-        </SelectField>
-        <p className="text-xs text-muted-foreground">
-          {t(mode === "copy" ? "copyExplanation" : "referenceExplanation")}
-        </p>
-        <TextField
-          name="definitionName"
-          label={t("definitionName")}
-          defaultValue={selection.item.name}
-          required
-          maxLength={128}
-        />
-        <TextField
-          name="instanceName"
-          label={t("instanceName")}
-          defaultValue={t("defaultInstance", { name: selection.item.name })}
-          required
-          maxLength={128}
-        />
-        <Button type="submit" isLoading={action.pending}>
-          {t(mode === "copy" ? "insertCopy" : "insertReference")}
-        </Button>
-      </fieldset>
-    </form>
+    <Form form={form} aria-label={t("insertTitle")} className="grid gap-3 rounded-md border p-3">
+      <form.Subscribe selector={(state) => [state.values.mode, state.isSubmitting] as const}>
+        {([mode, submitting]) => (
+          <fieldset
+            disabled={!writable || action.pending || submitting}
+            aria-busy={action.pending || submitting}
+            className="grid gap-3"
+          >
+            <legend className="mb-3 text-sm font-semibold">{t("insertTitle")}</legend>
+            <form.AppField name="mode">
+              {(field) => (
+                <field.SelectField label={t("insertMode")}>
+                  <SelectOption value="copy">{t("copy")}</SelectOption>
+                  <SelectOption value="reference">{t("reference")}</SelectOption>
+                </field.SelectField>
+              )}
+            </form.AppField>
+            <p className="text-xs text-muted-foreground">
+              {t(mode === "copy" ? "copyExplanation" : "referenceExplanation")}
+            </p>
+            <form.AppField name="definitionName">
+              {(field) => <field.TextField label={t("definitionName")} required maxLength={128} />}
+            </form.AppField>
+            <form.AppField name="instanceName">
+              {(field) => <field.TextField label={t("instanceName")} required maxLength={128} />}
+            </form.AppField>
+            <form.FormError />
+            <form.SubmitButton requireDirty={false}>
+              {t(mode === "copy" ? "insertCopy" : "insertReference")}
+            </form.SubmitButton>
+          </fieldset>
+        )}
+      </form.Subscribe>
+    </Form>
   )
 }
