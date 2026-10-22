@@ -1,8 +1,16 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
-import { Field, FieldDescription, FieldLabel, fieldVariants } from "@vibeshape/ui/components/field"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  fieldVariants,
+} from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { TextField } from "@vibeshape/ui/components/text-field"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type FormEvent, useId, useRef, useState } from "react"
 import { apiConfigurationSchema } from "./api-assistant-preferences"
@@ -28,6 +36,9 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
   const [invalid, setInvalid] = useState(false)
   const [failed, setFailed] = useState(false)
   const [storageFailed, setStorageFailed] = useState(false)
+  const validation = apiConfigurationSchema.safeParse({ endpoint, model, apiKey, stream })
+  const invalidField = (name: "endpoint" | "model" | "apiKey") =>
+    invalid && !validation.success && validation.error.issues.some(({ path }) => path[0] === name)
   const changeEndpoint = (value: string) => {
     if (value.trim() !== endpoint) setApiKey("")
     setEndpoint(value)
@@ -55,6 +66,7 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
     const parsed = apiConfigurationSchema.safeParse({ endpoint, model, apiKey, stream })
     if (!parsed.success) {
       setInvalid(true)
+      if (parsed.error.issues.some(({ path }) => path[0] === "endpoint")) setAdvanced(true)
       return
     }
     setInvalid(false)
@@ -81,7 +93,7 @@ function useApiConnectionForm(chat: Connection, connected: boolean) {
     stream,
     choice,
     advanced,
-    invalid,
+    invalidField,
     failed,
     storageFailed,
     submitting,
@@ -127,49 +139,34 @@ export function ApiConfigurationForm({
         <SelectOption value="custom">{t("customProvider")}</SelectOption>
       </SelectField>
       <p className="text-xs text-muted-foreground">{t("description")}</p>
-      <Field>
-        <FieldLabel htmlFor={`${id}-model`}>{t("model")}</FieldLabel>
-        <Input
-          id={`${id}-model`}
-          required
-          value={form.model}
-          maxLength={128}
-          disabled={locked}
-          onChange={(event) => form.setModel(event.currentTarget.value)}
-        />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${id}-key`}>{t("apiKey")}</FieldLabel>
-        <Input
-          id={`${id}-key`}
-          type="password"
-          autoComplete="off"
-          value={form.apiKey}
-          maxLength={4096}
-          disabled={locked}
-          onChange={(event) => form.setApiKey(event.currentTarget.value)}
-          aria-describedby={`${id}-memory`}
-        />
-      </Field>
-      <FieldDescription id={`${id}-memory`}>{t("keyMemory")}</FieldDescription>
+      <TextField
+        id={`${id}-model`}
+        label={t("model")}
+        error={form.invalidField("model") ? t("modelInvalid") : undefined}
+        required
+        value={form.model}
+        maxLength={128}
+        disabled={locked}
+        onChange={(event) => form.setModel(event.currentTarget.value)}
+      />
+      <ApiKeyField id={id} form={form} locked={locked} />
       <details
         open={form.advanced}
         onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
       >
         <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
         <div className="mt-2 grid gap-2">
-          <Field>
-            <FieldLabel htmlFor={`${id}-endpoint`}>{t("endpoint")}</FieldLabel>
-            <Input
-              id={`${id}-endpoint`}
-              type="url"
-              required
-              value={form.endpoint}
-              maxLength={2048}
-              disabled={locked}
-              onChange={(event) => form.editEndpoint(event.currentTarget.value)}
-            />
-          </Field>
+          <TextField
+            id={`${id}-endpoint`}
+            label={t("endpoint")}
+            error={form.invalidField("endpoint") ? t("endpointInvalid") : undefined}
+            type="url"
+            required
+            value={form.endpoint}
+            maxLength={2048}
+            disabled={locked}
+            onChange={(event) => form.editEndpoint(event.currentTarget.value)}
+          />
           <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
             <span>{t("stream")}</span>
             <input
@@ -181,21 +178,12 @@ export function ApiConfigurationForm({
           </label>
         </div>
       </details>
-      {form.invalid && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("errors.invalid-configuration")}
-        </p>
-      )}
       {form.storageFailed && (
         <p role="status" className="text-xs text-muted-foreground">
           {t("settingsNotSaved")}
         </p>
       )}
-      {form.failed && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("errors.tools-unavailable")}
-        </p>
-      )}
+      {form.failed && <Alert>{t("errors.tools-unavailable")}</Alert>}
       {connected ? (
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={chat.disconnect}>
           {t("disconnect")}
@@ -211,5 +199,40 @@ export function ApiConfigurationForm({
         </Button>
       )}
     </form>
+  )
+}
+
+function ApiKeyField({
+  id,
+  form,
+  locked,
+}: {
+  id: string
+  form: ReturnType<typeof useApiConnectionForm>
+  locked: boolean
+}) {
+  const t = useTranslations("app.assistant.api")
+  const keyInvalid = form.invalidField("apiKey")
+  return (
+    <>
+      <Field data-invalid={keyInvalid || undefined} data-disabled={locked || undefined}>
+        <FieldLabel htmlFor={`${id}-key`}>{t("apiKey")}</FieldLabel>
+        <Input
+          id={`${id}-key`}
+          type="password"
+          autoComplete="off"
+          value={form.apiKey}
+          maxLength={4096}
+          disabled={locked}
+          onChange={(event) => form.setApiKey(event.currentTarget.value)}
+          aria-invalid={keyInvalid || undefined}
+          aria-describedby={keyInvalid ? `${id}-memory ${id}-key-error` : `${id}-memory`}
+        />
+        <FieldError id={`${id}-key-error`}>
+          {keyInvalid ? t("apiKeyInvalid") : undefined}
+        </FieldError>
+      </Field>
+      <FieldDescription id={`${id}-memory`}>{t("keyMemory")}</FieldDescription>
+    </>
   )
 }

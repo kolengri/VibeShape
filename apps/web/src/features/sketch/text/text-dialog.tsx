@@ -1,5 +1,6 @@
 import type { SketchRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -176,11 +177,7 @@ function TextTask({
         </label>
         <TextRegenerationNotice state={state} />
       </fieldset>
-      {state.error && (
-        <p role="alert" className="text-sm text-destructive">
-          {state.error}
-        </p>
-      )}
+      {state.error && <Alert>{state.error}</Alert>}
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           {t("cancel")}

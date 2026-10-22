@@ -1,4 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import type { ReactNode } from "react"
 import {
@@ -20,6 +22,7 @@ function VariablesPanelMessage({
 }) {
   const t = useTranslations("app.variables")
   const isError = kind === "error"
+  useReportActivity(!isError)
 
   return (
     <section
@@ -30,12 +33,13 @@ function VariablesPanelMessage({
       <h1 id="variables-title" className="text-xs font-medium">
         {t("title")}
       </h1>
-      <p
-        className={isError ? "mt-2 text-sm text-destructive" : "mt-2 text-sm text-muted-foreground"}
-        role={isError ? "alert" : "status"}
-      >
-        {t(isError ? "loadFailed" : "loading")}
-      </p>
+      {isError ? (
+        <Alert className="mt-2">{t("loadFailed")}</Alert>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground" role="status">
+          {t("loading")}
+        </p>
+      )}
     </section>
   )
 }

@@ -9,6 +9,7 @@ import type {
 } from "./three-viewport"
 
 const originalThree = { ...(await import("three")) }
+const renderedCameras: import("three").Camera[] = []
 mock.module("three", () => ({
   ...originalThree,
   WebGLRenderer: class {
@@ -24,6 +25,7 @@ mock.module("three", () => ({
     setScissor() {}
     clearDepth() {}
     render(scene: import("three").Scene, camera: import("three").Camera) {
+      if (!renderedCameras.includes(camera)) renderedCameras.push(camera)
       scene.updateMatrixWorld(true)
       camera.updateMatrixWorld()
     }
@@ -61,6 +63,7 @@ afterEach(() => {
 })
 
 function fixture(options: GeometryViewportOptions = {}) {
+  renderedCameras.length = 0
   const frames = new Map<number, FrameRequestCallback>()
   let next = 0
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
@@ -141,8 +144,66 @@ function fixture(options: GeometryViewportOptions = {}) {
     pointer("pointerup", x, y)
     flush()
   }
-  return { viewport: current, canvas, flush, pointer, click }
+  const camera = renderedCameras[0]
+  if (!camera) throw new Error("The viewport must render its model camera.")
+  return { viewport: current, canvas, camera, flush, pointer, click }
 }
+
+it("cancels an inset drag that began before a blocking operation and permits a new gesture", () => {
+  const f = fixture()
+  const inset = f.canvas.dataset.orientationInset?.split(",").map(Number)
+  if (inset?.length !== 3) throw new Error("The orientation inset requires a placement.")
+  const [left = 0, bottom = 0, size = 0] = inset
+  const x = left + size / 2
+  const y = f.canvas.clientHeight - bottom - size / 2
+  f.pointer("pointerdown", x, y)
+  f.pointer("pointermove", x + 20, y + 10)
+  f.flush()
+  f.viewport.cancelInteractions()
+  f.flush()
+  const pose = f.camera.quaternion.toArray()
+  f.pointer("pointermove", x + 60, y + 30)
+  f.pointer("pointerup", x + 60, y + 30)
+  f.flush()
+  expect(f.camera.quaternion.toArray()).toEqual(pose)
+  expect(f.canvas.hasPointerCapture(1)).toBe(false)
+  f.pointer("pointerdown", x, y)
+  f.pointer("pointermove", x - 30, y - 10)
+  f.pointer("pointerup", x - 30, y - 10)
+  f.flush()
+  expect(f.camera.quaternion.toArray()).not.toEqual(pose)
+})
+
+it("cancels and restores an active section drag before accepting another gesture", () => {
+  const changed = vi.fn()
+  const f = fixture({ onSectionChange: changed })
+  f.viewport.setStandardView("isometric")
+  f.viewport.setSection({ axis: "z", offset: 0, flipped: false })
+  f.flush()
+  const handle = f.canvas.dataset.sectionGizmoHandle?.split(",").map(Number)
+  if (handle?.length !== 2) throw new Error("The section needs a drag handle.")
+  const [x = 0, y = 0] = handle
+  f.pointer("pointerdown", x, y)
+  expect(f.canvas.dataset.sectionDragging).toBe("true")
+  f.pointer("pointermove", x + 10, y - 20)
+  f.flush()
+  expect(changed).toHaveBeenCalled()
+  f.viewport.cancelInteractions()
+  f.flush()
+  expect(changed).toHaveBeenLastCalledWith({ axis: "z", offset: 0, flipped: false })
+  const calls = changed.mock.calls.length
+  f.pointer("pointermove", x + 70, y - 40)
+  f.pointer("pointerup", x + 70, y - 40)
+  f.flush()
+  expect(changed).toHaveBeenCalledTimes(calls)
+  expect(f.canvas.dataset.sectionDragging).toBeUndefined()
+  f.pointer("pointerdown", x, y)
+  expect(f.canvas.dataset.sectionDragging).toBe("true")
+  f.pointer("pointermove", x + 15, y - 15)
+  f.flush()
+  expect(changed.mock.calls.length).toBeGreaterThan(calls)
+  f.pointer("pointerup", x + 15, y - 15)
+})
 
 describe("ordinary viewport edge selection integration", () => {
   it("prioritizes a visible edge, clears a face before emitting it, and clears edges before face/background callbacks", () => {

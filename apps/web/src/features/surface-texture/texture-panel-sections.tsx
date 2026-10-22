@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Eye, EyeOff, Trash2 } from "@vibeshape/ui/components/icons"
@@ -223,11 +224,7 @@ export function TextureRegionControls({ state }: { state: TextureDraftState }) {
           />
         </>
       )}
-      {layer.mask.strokes.length >= 2048 && (
-        <p role="alert" className="text-xs text-destructive">
-          {t("paintLimit")}
-        </p>
-      )}
+      {layer.mask.strokes.length >= 2048 && <Alert>{t("paintLimit")}</Alert>}
       <div className="flex gap-1">
         <Button
           type="button"

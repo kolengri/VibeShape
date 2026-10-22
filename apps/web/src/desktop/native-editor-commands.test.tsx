@@ -1,6 +1,7 @@
 import "../../../../tests/unit/support/dom"
 import { afterEach, expect, it } from "bun:test"
 import type { DesktopCommand, DesktopHostBridge } from "@vibeshape/automation-api/desktop-host"
+import { ActivityProvider, useReportBlockingActivity } from "@vibeshape/ui/components/activity"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { editorCommandIds, type ResolvedEditorCommand } from "../commands/editor-command"
 
@@ -10,7 +11,7 @@ const { NativeApplicationCommandBridge, NativeEditorCommandBridge } = await impo
 )
 
 const commandListeners = new Set<(command: DesktopCommand) => void>()
-const state = vi.fn()
+const state = vi.fn((_value: Parameters<DesktopHostBridge["updateCommandState"]>[0]) => {})
 const editText = vi.fn(async (_action: "undo" | "redo") => {})
 const host: DesktopHostBridge = {
   protocolVersion: 1,
@@ -62,6 +63,99 @@ async function emit(id: DesktopCommand) {
     for (const listener of commandListeners) listener(id)
   })
 }
+
+function BlockingOwner({ active }: { active: boolean }) {
+  useReportBlockingActivity(active, "Working")
+  return null
+}
+
+it("disables both native command scopes until all blocking owners settle", async () => {
+  window.vibeshapeDesktop = host
+  const undo = vi.fn()
+  const box = vi.fn()
+  const application = vi.fn()
+  const commands = [command("documentUndo", undo), command("createBox", box)]
+  const view = (first: boolean, second: boolean) => (
+    <ActivityProvider>
+      <input aria-label="Blocked native text" />
+      <NativeEditorCommandBridge commands={commands} />
+      <NativeApplicationCommandBridge exportAvailable onCommand={application} />
+      <BlockingOwner active={first} />
+      <BlockingOwner active={second} />
+    </ActivityProvider>
+  )
+  const result = render(view(false, false))
+  await emit("undo")
+  await emit("createBox")
+  await emit("settings")
+  expect(undo).toHaveBeenCalledTimes(1)
+  expect(box).toHaveBeenCalledTimes(1)
+  expect(application).toHaveBeenCalledTimes(1)
+  const staleListeners = [...commandListeners]
+  result.rerender(view(true, true))
+  const latest = (scope: "editor" | "application") =>
+    state.mock.calls
+      .map(([value]) => value)
+      .reverse()
+      .find((value) => value.scope === scope)
+  expect(latest("editor")).toEqual({ scope: "editor", enabled: [] })
+  expect(latest("application")).toEqual({ scope: "application", enabled: [] })
+  act(() => {
+    document.querySelector("input")?.focus()
+  })
+  expect(latest("editor")).toEqual({ scope: "editor", enabled: [] })
+  for (const id of ["undo", "redo", "createBox", "settings", "projects", "export"] as const)
+    await emit(id)
+  await act(async () => {
+    for (const listener of staleListeners) {
+      listener("undo")
+      listener("settings")
+    }
+  })
+  expect(undo).toHaveBeenCalledTimes(1)
+  expect(box).toHaveBeenCalledTimes(1)
+  expect(application).toHaveBeenCalledTimes(1)
+  expect(editText).not.toHaveBeenCalled()
+  result.rerender(view(false, true))
+  expect(latest("editor")).toEqual({ scope: "editor", enabled: [] })
+  expect(latest("application")).toEqual({ scope: "application", enabled: [] })
+  await emit("createBox")
+  expect(box).toHaveBeenCalledTimes(1)
+  act(() => {
+    document.querySelector("input")?.blur()
+  })
+  result.rerender(view(false, false))
+  expect(latest("editor")?.enabled).toEqual(expect.arrayContaining(["undo", "createBox"]))
+  expect(latest("application")?.enabled).toEqual(expect.arrayContaining(["settings", "export"]))
+  await emit("undo")
+  await emit("createBox")
+  await emit("settings")
+  expect(undo).toHaveBeenCalledTimes(2)
+  expect(box).toHaveBeenCalledTimes(2)
+  expect(application).toHaveBeenCalledTimes(2)
+})
+
+it("drops a queued native action when blocking begins before invocation", async () => {
+  window.vibeshapeDesktop = host
+  const invoke = vi.fn()
+  const commands = [command("createBox", invoke)]
+  const view = (blocking: boolean) => (
+    <ActivityProvider>
+      <NativeEditorCommandBridge commands={commands} />
+      <BlockingOwner active={blocking} />
+    </ActivityProvider>
+  )
+  const result = render(view(false))
+  act(() => {
+    for (const listener of commandListeners) listener("createBox")
+    result.rerender(view(true))
+  })
+  await act(async () => {})
+  expect(invoke).not.toHaveBeenCalled()
+  result.rerender(view(false))
+  await emit("createBox")
+  expect(invoke).toHaveBeenCalledTimes(1)
+})
 
 it("uses registered eligibility and sketch history while preserving text undo", async () => {
   window.vibeshapeDesktop = host

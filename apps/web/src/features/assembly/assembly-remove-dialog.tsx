@@ -1,6 +1,7 @@
 import { assemblyDefinitionIdSchema, assemblyInstanceIdSchema } from "@vibeshape/domain/assembly"
 import type { AssemblyMutation } from "@vibeshape/domain/assembly-authority"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
   AlertDialogContent,
@@ -64,11 +65,7 @@ export function AssemblyRemoveDialog({
             onChange={(event) => setCascade(event.currentTarget.checked)}
           />
         </Field>
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {error && <Alert>{error}</Alert>}
         <AlertDialogFooter>
           <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
             {t("cancel")}

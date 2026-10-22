@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { printerProfileSchema } from "@vibeshape/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { fieldVariants } from "@vibeshape/ui/components/field"
 import { FieldHelp } from "@vibeshape/ui/components/field-help"
@@ -61,11 +62,7 @@ export function PrinterSettings() {
             </form.AppField>
           ))}
         </div>
-        {error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {t("invalid")}
-          </p>
-        ) : null}
+        {error ? <Alert>{t("invalid")}</Alert> : null}
         <form.SubmitButton requireDirty={false}>{t("apply")}</form.SubmitButton>
       </Form>
       <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>

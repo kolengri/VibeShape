@@ -7,6 +7,8 @@ import {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import type { PrinterProfile } from "@vibeshape/protocol"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   DropdownMenu,
@@ -95,6 +97,7 @@ import {
   useSectionViewportFactory,
   useSectionViewportSynchronization,
 } from "./section-viewport-presentation"
+import { useBlockingViewport } from "./use-blocking-viewport"
 import { useViewportCapture } from "./viewport-capture"
 import {
   SAFE_VIEWPORT_CENTER,
@@ -879,6 +882,7 @@ function useViewportRenderer(
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<GeometryViewportPort | null>(null)
+  useBlockingViewport(viewportRef)
   const modelEdges = useModelEdgeViewport(edgeSelection, meshes)
   const latest = useLatestViewportInputs({
     controller,
@@ -1140,10 +1144,6 @@ function ViewportMessage({
   title: string
 }) {
   if (!message) return null
-  const className =
-    message.kind === "error"
-      ? "mt-2 text-sm text-destructive"
-      : "mt-2 text-sm text-muted-foreground"
   return (
     <div
       className={cn(
@@ -1153,9 +1153,13 @@ function ViewportMessage({
     >
       <div className="max-w-sm rounded-md bg-background/85 p-3 shadow-sm backdrop-blur-sm">
         <p className="text-sm font-medium">{title}</p>
-        <p className={className} role={message.kind === "error" ? "alert" : "status"}>
-          {message.text}
-        </p>
+        {message.kind === "error" ? (
+          <Alert className="mt-2">{message.text}</Alert>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground" role="status">
+            {message.text}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -1388,6 +1392,7 @@ function hasExtrusionErrorDetails(preview: FeaturePreviewState | undefined) {
 
 function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }) {
   const t = useTranslations("app.shell.viewport")
+  useReportActivity(preview?.status === "loading")
   const messageKey = previewMessageKey(preview)
   if (!messageKey) return null
   const failed = preview?.status === "error"
@@ -1395,17 +1400,19 @@ function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }
   return (
     <div
       className={cn(
-        "pointer-events-none absolute left-3 top-14 rounded-md border bg-background/90 px-3 py-2 shadow-sm backdrop-blur-sm",
+        "pointer-events-none absolute left-3 top-14 max-w-sm",
+        (!failed || detailedExtrusionError) &&
+          "rounded-md border bg-background/90 px-3 py-2 shadow-sm backdrop-blur-sm",
         SAFE_VIEWPORT_LEFT,
       )}
     >
-      <p
-        className={failed ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
-        role={failed && !detailedExtrusionError ? "alert" : "status"}
-        aria-live="polite"
-      >
-        {detailedExtrusionError ? <ExtrusionErrorHint /> : t(messageKey)}
-      </p>
+      {failed && !detailedExtrusionError ? (
+        <Alert aria-live="polite">{t(messageKey)}</Alert>
+      ) : (
+        <p className="text-xs text-muted-foreground" role="status">
+          {detailedExtrusionError ? <ExtrusionErrorHint /> : t(messageKey)}
+        </p>
+      )}
     </div>
   )
 }

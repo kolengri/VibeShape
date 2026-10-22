@@ -11,7 +11,7 @@ const notificationVariants = cva(
   "pointer-events-auto flex items-start gap-2 rounded-md border bg-popover p-3 text-popover-foreground shadow-lg",
   {
     variants: {
-      tone: { error: "border-destructive", success: "border-border" },
+      tone: { error: "border-destructive/40", success: "border-border" },
     },
     defaultVariants: { tone: "error" },
   },

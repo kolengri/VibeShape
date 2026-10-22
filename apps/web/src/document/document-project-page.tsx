@@ -1,7 +1,8 @@
 import { VSHAPE_MAX_ARCHIVE_BYTES, VSHAPE_MEDIA_TYPE } from "@vibeshape/formats/vshape"
 import { useTranslations } from "@vibeshape/i18n"
 import type { LocalProjectSummary } from "@vibeshape/persistence"
-import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { useReportActivity, useReportBlockingActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { FilesIcon } from "@vibeshape/ui/components/icons"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -122,14 +123,9 @@ function ProjectFileFeedback({ feedback }: { feedback: ProjectFeedback | null })
   const t = useTranslations("app.projectFile")
   const centralized = useReportApplicationError(feedback?.kind === "error" ? t(feedback.key) : null)
   if (!feedback || (feedback.kind === "error" && centralized)) return null
+  if (feedback.kind === "error") return <Alert>{t(feedback.key)}</Alert>
   return (
-    <p
-      className={
-        feedback.kind === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"
-      }
-      role={feedback.kind === "error" ? "alert" : "status"}
-      aria-live={feedback.kind === "status" ? "polite" : undefined}
-    >
+    <p className="text-sm text-muted-foreground" role="status">
       {t(feedback.key)}
     </p>
   )
@@ -234,7 +230,11 @@ export function DocumentProjectPage({
   const { library, loadProjects, retryProjects } = useProjectLibrary(controller.status)
   const [switchingDocumentId, setSwitchingDocumentId] = useState<string | null>(null)
   const [duplicatingDocumentId, setDuplicatingDocumentId] = useState<string | null>(null)
-  useReportActivity(activity !== "idle" || library.status === "loading")
+  useReportActivity(library.status === "loading")
+  useReportBlockingActivity(
+    activity !== "idle",
+    t("activity", { activity: activity === "opening-file" ? "openingFile" : activity }),
+  )
   const available = projectLibraryIsAvailable(controller.status)
   const disabled = !available || blockedReason !== null || activity !== "idle"
 

@@ -4,6 +4,7 @@ import type {
 } from "@vibeshape/automation-api/assistant"
 import type { AssistantJevCredentials } from "@vibeshape/automation-api/assistant-jev"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { useRef, useState } from "react"
 import { useReportApplicationSuccess } from "../shell/application-notices"
 
@@ -64,12 +65,12 @@ export function AssistantConnectionTestFeedback({
   useReportApplicationSuccess(success, attempt)
   if (!result || result.ok) return null
   return (
-    <p role="alert" className="text-xs text-destructive">
+    <Alert>
       {t("connectionTestFailed", {
         stage: result.stage,
         httpStatus: result.httpStatus === undefined ? "none" : String(result.httpStatus),
         reason: t(`errors.${result.code}`),
       })}
-    </p>
+    </Alert>
   )
 }

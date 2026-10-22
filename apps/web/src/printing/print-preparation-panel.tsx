@@ -7,6 +7,7 @@ import {
   type PrintPreparationSettings,
   printPreparationSettingsSchema,
 } from "@vibeshape/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { fieldVariants } from "@vibeshape/ui/components/field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
@@ -266,12 +267,7 @@ export function PrintPreparationPanel({
         </form.SubmitButton>
       </Form>
       {error && !appOwnsError ? (
-        <p
-          role="alert"
-          className="fixed inset-x-4 bottom-4 z-50 break-words rounded-md border border-destructive bg-popover p-3 text-sm text-destructive shadow-lg"
-        >
-          {error}
-        </p>
+        <Alert className="fixed inset-x-4 bottom-4 z-50">{error}</Alert>
       ) : null}
       <PrintPreparationOutput state={state} disabled={disabled} onBusyChange={onBusyChange} />
     </section>

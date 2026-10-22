@@ -1,5 +1,6 @@
 import type { AssemblyMutation } from "@vibeshape/domain/assembly-authority"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { createContext, type ReactNode, useContext, useState } from "react"
 import { TaskPanelHeader } from "../../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
@@ -72,19 +73,11 @@ export function AssemblyTaskForm({
           />
         }
       />
-      {panel.error && !appOwnsError && (
-        <p role="alert" className="text-sm text-destructive">
-          {panel.error}
-        </p>
-      )}
+      {panel.error && !appOwnsError && <Alert>{panel.error}</Alert>}
       <fieldset disabled={actions.pending} className="grid min-w-0 gap-2">
         {children}
       </fieldset>
-      {invalid && (
-        <p role="alert" className="text-sm text-destructive">
-          {invalidMessage ?? t("invalidParameters")}
-        </p>
-      )}
+      {invalid && <Alert>{invalidMessage ?? t("invalidParameters")}</Alert>}
     </form>
   )
 }

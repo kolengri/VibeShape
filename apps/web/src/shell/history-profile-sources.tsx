@@ -1,5 +1,6 @@
 import { canonicalJson, type SketchProfileSelector } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Link2, PenLine } from "@vibeshape/ui/components/icons"
 import { useId, useState } from "react"
@@ -88,11 +89,7 @@ export function HistoryProfileSources({
         )
       })}
       <span className="sr-only">{dependencyDescription}</span>
-      {openingBlocked && (
-        <span role="alert" className="px-2 text-xs text-muted-foreground">
-          {t("sourceProfileEditBlocked")}
-        </span>
-      )}
+      {openingBlocked && <Alert>{t("sourceProfileEditBlocked")}</Alert>}
     </div>
   )
 }

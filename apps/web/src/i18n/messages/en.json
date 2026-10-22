@@ -14,6 +14,7 @@
       "label": "Available variables"
     },
     "projectFile": {
+      "activity": "{activity, select, creating {Creating project…} deleting {Deleting project…} duplicating {Duplicating project…} openingFile {Opening project file…} switching {Opening project…} other {Working…}}",
       "trigger": "Project…",
       "title": "Projects",
       "description": "Edits are saved automatically in this browser. Save a .vshape file to keep an editable project outside this browser.",
@@ -1957,6 +1958,7 @@
         "importSketch": "Import sketch…",
         "library": "Library…",
         "extensions": "Plugins…",
+        "openingProjects": "Opening projects…",
         "projectCreationFailed": "Could not create a project. The current project remains open.",
         "projectNavigationFailed": "Finish or cancel the current edit and wait for saving to complete, then open Projects again."
       },
@@ -3758,6 +3760,7 @@
       }
     },
     "projectTabs": {
+      "working": "Opening project…",
       "label": "Open projects",
       "newProject": "New project",
       "openProjects": "Open project…",
@@ -3903,6 +3906,9 @@
         "endpoint": "Chat Completions endpoint URL",
         "model": "API model",
         "apiKey": "API key (optional)",
+        "modelInvalid": "Enter a model ID with up to 128 characters and no spaces.",
+        "endpointInvalid": "Enter a full HTTPS URL, or a loopback HTTP URL, without credentials, a query or a fragment.",
+        "apiKeyInvalid": "Enter an API key with up to 4096 characters and no line breaks.",
         "keyMemory": "The key stays in memory until this app is closed or reloaded. Endpoint and model settings are remembered on this device.",
         "stream": "Stream responses (SSE)",
         "connect": "Connect and enable project access",

@@ -1,5 +1,6 @@
 import type { SketchId, SketchRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -173,11 +174,7 @@ export function SketchDeleteAction({
           <AlertDialogTitle>{t("deleteSketchTitle", { sketch: sketchName })}</AlertDialogTitle>
           <AlertDialogDescription>{t("deleteSketchDescription")}</AlertDialogDescription>
         </AlertDialogHeader>
-        {failed ? (
-          <p className="text-sm text-destructive" role="alert">
-            {t("deleteSketchFailed")}
-          </p>
-        ) : null}
+        {failed ? <Alert>{t("deleteSketchFailed")}</Alert> : null}
         <AlertDialogFooter>
           <AlertDialogCancel asChild>
             <Button type="button" variant="outline" disabled={pending}>

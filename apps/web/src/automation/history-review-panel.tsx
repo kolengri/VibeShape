@@ -1,5 +1,6 @@
 import type { HistoryReviewInput } from "@vibeshape/automation-host/history-session"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import type { ReactNode } from "react"
 
 export function HistoryAutomationReviewPanel({
@@ -65,7 +66,7 @@ export function HistoryAutomationReviewPanel({
           <p className="mt-2 text-xs">{t("historyPartCount", { count: input.partCount })}</p>
           <p className="mt-2 text-xs">{t("historyGeometryCount", { succeeded, failed })}</p>
           {!input.preview.valid ? (
-            <p className="mt-2 text-xs text-destructive">{t("historyGeometryInvalid")}</p>
+            <Alert aria-live="polite">{t("historyGeometryInvalid")}</Alert>
           ) : null}
           {input.preview.assembly ? (
             <>

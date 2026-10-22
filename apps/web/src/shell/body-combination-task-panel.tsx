@@ -6,6 +6,7 @@ import {
   readUnionFeatureParameters,
 } from "@vibeshape/domain/part-design-body-combination"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import type { ReactNode } from "react"
 import { TaskPanelHeader } from "../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
@@ -118,9 +119,7 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
             />
           }
         />
-        <p role="alert" className="text-sm">
-          {t("unavailable")}
-        </p>
+        <Alert>{t("unavailable")}</Alert>
       </aside>
     )
   const options = combinationInputOptions(props.authority, props.parts, mode)

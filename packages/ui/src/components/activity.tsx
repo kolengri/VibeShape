@@ -1,7 +1,7 @@
 import * as React from "react"
 
 function createActivityStore() {
-  const pending = new Set<symbol>()
+  const pending = new Map<symbol, string | null>()
   const listeners = new Set<() => void>()
   const notify = () => {
     for (const listener of listeners) listener()
@@ -12,9 +12,10 @@ function createActivityStore() {
       return () => listeners.delete(listener)
     },
     getSnapshot: () => pending.size > 0,
-    begin() {
+    getBlockingSnapshot: () => [...pending.values()].find((label) => label !== null) ?? null,
+    begin(label: string | null) {
       const token = Symbol()
-      pending.add(token)
+      pending.set(token, label)
       notify()
       return () => {
         if (pending.delete(token)) notify()
@@ -36,9 +37,29 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
 export function useReportActivity(active: boolean) {
   const store = React.useContext(ActivityContext)
   React.useEffect(() => {
-    if (active) return store?.begin()
+    if (active) return store?.begin(null)
   }, [active, store])
   return store !== null
+}
+
+/** Blocks interaction only for work whose owner cannot safely accept more input. */
+export function useReportBlockingActivity(active: boolean, label: string) {
+  const store = React.useContext(ActivityContext)
+  React.useLayoutEffect(() => {
+    if (active) return store?.begin(label)
+  }, [active, label, store])
+  return store !== null
+}
+
+const noBlockingActivity = () => null
+
+export function useBlockingActivity() {
+  const store = React.useContext(ActivityContext)
+  return React.useSyncExternalStore(
+    store?.subscribe ?? subscribeIdle,
+    store?.getBlockingSnapshot ?? noBlockingActivity,
+    noBlockingActivity,
+  )
 }
 
 export function useActivityPending() {

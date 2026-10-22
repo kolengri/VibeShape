@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button, type ButtonProps } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -393,11 +394,7 @@ function AutoApplyConsentContent({
         <p>{t("autoApplyReset")}</p>
         <p>{t("stopAiDescription")}</p>
       </section>
-      {failed ? (
-        <p role="alert" className="shrink-0 text-sm text-destructive">
-          {t("autoApplyBusy")}
-        </p>
-      ) : null}
+      {failed ? <Alert className="shrink-0">{t("autoApplyBusy")}</Alert> : null}
       <DialogFooter className="shrink-0">
         <DialogClose asChild>
           <Button type="button" variant="outline">

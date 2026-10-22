@@ -1,6 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { checkPrintVolume } from "@vibeshape/print-analysis"
 import type { PrinterProfile, PrintPreparationResult } from "@vibeshape/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import type { GeometryViewport, ViewerMesh } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -95,11 +96,7 @@ export function PrintPreparationPreview({
       <div className="relative h-72 min-w-0 overflow-hidden rounded-md border bg-background">
         <canvas ref={canvasRef} className="h-full w-full" aria-label={t("previewLabel")} />
       </div>
-      {failed ? (
-        <p role="alert" className="text-sm text-destructive">
-          {t("previewFailed")}
-        </p>
-      ) : null}
+      {failed ? <Alert>{t("previewFailed")}</Alert> : null}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"

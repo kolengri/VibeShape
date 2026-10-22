@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { nativeMeshFormatSchema } from "@vibeshape/slicer-handoff/native"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { useReportApplicationError } from "../shell/application-notices"
@@ -108,14 +109,7 @@ function HandoffNotice({ status, attempt }: { status: Handoff["status"]; attempt
       </p>
     )
   if (appOwnsError) return null
-  return (
-    <p
-      role="alert"
-      className="fixed inset-x-4 bottom-4 z-50 break-words rounded-md border border-destructive bg-popover p-3 text-sm text-destructive shadow-lg"
-    >
-      {message}
-    </p>
-  )
+  return <Alert className="fixed inset-x-4 bottom-4 z-50">{message}</Alert>
 }
 
 export function SlicerHandoffOptions({ handoff, disabled }: Controls) {

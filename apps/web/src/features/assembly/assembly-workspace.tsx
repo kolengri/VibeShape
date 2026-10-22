@@ -1,5 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection } from "@vibeshape/protocol"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { type ComponentType, useEffect } from "react"
 import { type DocumentControllerState, getProjectRuntime } from "../../document/document-controller"
 import { useReportApplicationError } from "../../shell/application-notices"
@@ -204,6 +206,7 @@ function AssemblyPanelContent({
 }
 function AssemblyInspectionStatus({ view }: { view: AssemblyWorkspaceView }) {
   const t = useTranslations("app.assembly")
+  useReportActivity(view.inspection.pending)
   return (
     <>
       {view.inspection.pending && (
@@ -212,9 +215,7 @@ function AssemblyInspectionStatus({ view }: { view: AssemblyWorkspaceView }) {
         </p>
       )}
       {view.inspection.diagnostic && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("inspectionFailed", { reason: view.inspection.diagnostic })}
-        </p>
+        <Alert>{t("inspectionFailed", { reason: view.inspection.diagnostic })}</Alert>
       )}
     </>
   )
@@ -225,11 +226,7 @@ function IdleAssemblyPanelHeading({ error }: { error: string | null }) {
   return (
     <>
       <h2 className="text-xs font-medium">{t("workspaceTitle")}</h2>
-      {error && !appOwnsError && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+      {error && !appOwnsError && <Alert>{error}</Alert>}
     </>
   )
 }

@@ -1,5 +1,6 @@
 import type { FeatureRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   DropdownMenu,
@@ -194,11 +195,7 @@ function FeatureHistoryMenu({
         {model.blocked ? (
           <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">{blockedReason}</p>
         ) : null}
-        {model.actionFailed ? (
-          <p role="alert" className="max-w-64 px-2 py-1.5 text-xs text-destructive">
-            {t("historyActionFailed")}
-          </p>
-        ) : null}
+        {model.actionFailed ? <Alert className="max-w-64">{t("historyActionFailed")}</Alert> : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )

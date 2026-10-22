@@ -1,5 +1,6 @@
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { LocalProjectSummary } from "@vibeshape/persistence"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Copy } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
@@ -334,14 +335,14 @@ export function ProjectLibrary({
 
   if (library.status === "error") {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 p-3">
-        <p className="text-sm text-destructive" role="alert">
-          {t("loadFailed")}
-        </p>
-        <Button type="button" size="sm" variant="outline" onClick={onRetry}>
-          {t("retry")}
-        </Button>
-      </div>
+      <Alert>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p>{t("loadFailed")}</p>
+          <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+            {t("retry")}
+          </Button>
+        </div>
+      </Alert>
     )
   }
 

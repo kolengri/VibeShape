@@ -60,8 +60,12 @@ const {
 } = await import("@vibeshape/domain")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { DOCUMENT_PROTOCOL_VERSION } = await import("@vibeshape/protocol")
+const { ActivityProvider, useReportBlockingActivity } = await import(
+  "@vibeshape/ui/components/activity"
+)
 const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
-const { useEffect, useState } = await import("react")
+const ReactRuntime = await import("react")
+const { Suspense, useEffect, useState } = ReactRuntime
 const { DocumentDisplayUnitsProvider } = await import("../../document/document-display-units")
 const { i18n } = await import("../../i18n")
 const { externalSketchContextGeometry } = await import("./external-sketch-points")
@@ -196,6 +200,8 @@ function solveResult(
 const noOperation = () => undefined
 
 type SketchViewportTestProps = Readonly<{
+  blocking?: boolean
+  otherBlocking?: boolean
   interactive?: boolean
   overlay?: boolean
   spatial?: boolean
@@ -309,30 +315,39 @@ function viewportActions(props: SketchViewportTestProps) {
   } satisfies React.ComponentProps<typeof SketchViewport>["actions"]
 }
 
+function BlockingOwner({ active }: { active: boolean }) {
+  useReportBlockingActivity(active, "Working")
+  return null
+}
+
 function viewportElement(props: SketchViewportTestProps) {
   return (
-    <SketchProjectionProvider>
-      <ProjectionProbe
-        {...(props.cameraProjection ? { cameraProjection: props.cameraProjection } : {})}
-        {...(props.onProjectionChange ? { onChange: props.onProjectionChange } : {})}
-      />
-      <I18nProvider i18n={i18n} initialLocale="en">
-        <DocumentDisplayUnitsProvider
-          displayUnits={props.displayUnits ?? { length: "mm", angle: "deg" }}
-        >
-          <TooltipProvider delayDuration={0}>
-            <SketchViewport
-              {...(props.interactive === undefined ? {} : { interactive: props.interactive })}
-              {...(props.overlay === undefined ? {} : { overlay: props.overlay })}
-              {...(props.spatial === undefined ? {} : { spatial: props.spatial })}
-              solveSketch={props.solveSketch}
-              state={viewportState(props)}
-              actions={viewportActions(props)}
-            />
-          </TooltipProvider>
-        </DocumentDisplayUnitsProvider>
-      </I18nProvider>
-    </SketchProjectionProvider>
+    <ActivityProvider>
+      <BlockingOwner active={props.blocking ?? false} />
+      <BlockingOwner active={props.otherBlocking ?? false} />
+      <SketchProjectionProvider>
+        <ProjectionProbe
+          {...(props.cameraProjection ? { cameraProjection: props.cameraProjection } : {})}
+          {...(props.onProjectionChange ? { onChange: props.onProjectionChange } : {})}
+        />
+        <I18nProvider i18n={i18n} initialLocale="en">
+          <DocumentDisplayUnitsProvider
+            displayUnits={props.displayUnits ?? { length: "mm", angle: "deg" }}
+          >
+            <TooltipProvider delayDuration={0}>
+              <SketchViewport
+                {...(props.interactive === undefined ? {} : { interactive: props.interactive })}
+                {...(props.overlay === undefined ? {} : { overlay: props.overlay })}
+                {...(props.spatial === undefined ? {} : { spatial: props.spatial })}
+                solveSketch={props.solveSketch}
+                state={viewportState(props)}
+                actions={viewportActions(props)}
+              />
+            </TooltipProvider>
+          </DocumentDisplayUnitsProvider>
+        </I18nProvider>
+      </SketchProjectionProvider>
+    </ActivityProvider>
   )
 }
 
@@ -531,6 +546,387 @@ afterEach(() => {
 })
 
 describe("SketchViewport", () => {
+  it.each(["distance", "radius"] as const)(
+    "cancels an active %s annotation drag when overlapping blockers begin",
+    (kind) => {
+      vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+        left: 0,
+        top: 0,
+        width: 800,
+        height: 600,
+        right: 800,
+        bottom: 600,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      })
+      const fixture = lineSketchFixture("b395", [{ start: { x: 0, y: 0 }, end: { x: 30, y: 0 } }])
+      const line = requiredSketchEntity(fixture, "line")
+      const withCircle = appendSketchCircle(fixture, {
+        center: { kind: "new", point: { x: 5, y: 4 } },
+        perimeterPoint: { x: 15, y: 4 },
+        construction: false,
+        createEntityId: sequentialIdFactory(sketchEntityIdSchema.parse, "b396"),
+      }).sketch
+      const circle = requiredSketchEntity(withCircle, "circle")
+      const target = sketchRecordSchema.parse({
+        ...withCircle,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: sketchConstraintIdSchema.parse("0195b5ac-b397-7a2c-8c33-000000000001"),
+            ...(kind === "distance"
+              ? {
+                  type: kind,
+                  firstPointId: line.startPointId,
+                  secondPointId: line.endPointId,
+                  value: createLengthQuantity(30),
+                }
+              : { type: kind, curveId: circle.id, value: createLengthQuantity(10) }),
+          },
+        ],
+      })
+      const onDraftChange = vi.fn()
+      const props = {
+        draft: target,
+        sketch: target,
+        onDraftChange,
+        solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      }
+      const view = renderViewport(props)
+      const label = screen.getByRole("button", {
+        name: kind === "distance" ? "Edit dimension 30 mm" : "Edit dimension 10 mm",
+      })
+      const release = vi.fn()
+      Object.assign(label, {
+        setPointerCapture: vi.fn(),
+        hasPointerCapture: () => true,
+        releasePointerCapture: release,
+      })
+      const original = label.getAttribute("style")
+      fireEvent.pointerDown(label, { button: 0, pointerId: 9, clientX: 400, clientY: 300 })
+      fireEvent.pointerMove(window, { pointerId: 9, clientX: 424, clientY: 270 })
+      expect(label.getAttribute("style")).not.toBe(original)
+      view.rerender(viewportElement({ ...props, blocking: true, otherBlocking: true }))
+      expect(release).toHaveBeenCalledWith(9)
+      expect(label.style.translate).toBe("")
+      const cancelled = label.getAttribute("style")
+      fireEvent.pointerMove(window, { pointerId: 9, clientX: 500, clientY: 200 })
+      fireEvent.pointerUp(window, { pointerId: 9, clientX: 500, clientY: 200 })
+      expect(label.getAttribute("style")).toBe(cancelled)
+      view.rerender(viewportElement({ ...props, otherBlocking: true }))
+      fireEvent.pointerMove(window, { pointerId: 9, clientX: 600, clientY: 100 })
+      expect(label.getAttribute("style")).toBe(cancelled)
+      view.rerender(viewportElement(props))
+      fireEvent.pointerDown(label, { button: 0, pointerId: 10, clientX: 400, clientY: 300 })
+      fireEvent.pointerMove(window, { pointerId: 10, clientX: 424, clientY: 270 })
+      fireEvent.pointerUp(window, { pointerId: 10, clientX: 424, clientY: 270 })
+      expect(label.getAttribute("style")).not.toBe(cancelled)
+      expect(onDraftChange).not.toHaveBeenCalled()
+    },
+  )
+
+  it("discards queued point-drag work when blocking begins without committing it", () => {
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame")
+    const onDraftChange = vi.fn()
+    const props = {
+      draft: sketch,
+      sketch,
+      onDraftChange,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    }
+    const view = renderViewport(props)
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const point = document.querySelector(`circle[data-sketch-entity-id="${pointEntities[0]?.id}"]`)
+    if (!point) throw new Error("The drag fixture requires a point.")
+    fireEvent.pointerDown(point, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { pointerId: 1, clientX: 600, clientY: 180 })
+    expect(frames).toHaveLength(1)
+    view.rerender(viewportElement({ ...props, blocking: true }))
+    expect(cancelFrame).toHaveBeenCalled()
+    expect(drawing.getAttribute("data-sketch-dragging-point-id")).toBeNull()
+    act(() => {
+      for (const frame of frames.splice(0)) frame(0)
+    })
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeNull()
+    view.rerender(viewportElement(props))
+    fireEvent.pointerDown(point, { pointerId: 2 })
+    fireEvent.pointerMove(drawing, { pointerId: 2, clientX: 600, clientY: 180 })
+    fireEvent.pointerUp(drawing, { pointerId: 2 })
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
+  })
+
+  it("discards a cancelled point drag's pending solve and continuation", async () => {
+    let resolveDrag: ((result: ActiveSketchSolveResult) => void) | undefined
+    const solveSketch = vi
+      .fn(async () => solveResult())
+      .mockImplementationOnce(async () => solveResult())
+      .mockImplementationOnce(
+        () =>
+          new Promise<ActiveSketchSolveResult>((resolve) => {
+            resolveDrag = resolve
+          }),
+      )
+    const onDraftChange = vi.fn()
+    const props = { draft: sketch, sketch, onDraftChange, solveSketch }
+    const view = renderViewport(props)
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const point = pointEntities[0]
+    if (!point) throw new Error("The cancellation fixture requires a point.")
+    const selector = `circle[data-sketch-entity-id="${point.id}"]`
+    const element = document.querySelector(selector)
+    if (!element) throw new Error("The dragged point must be rendered.")
+    const originalX = element.getAttribute("cx")
+    const originalY = element.getAttribute("cy")
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    fireEvent.pointerDown(element, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { pointerId: 1, clientX: 600, clientY: 180 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The point drag must queue its preview frame.")
+    act(() => frame(0))
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeTruthy()
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+
+    view.rerender(viewportElement({ ...props, blocking: true }))
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeNull()
+    expect(document.querySelector(selector)?.getAttribute("cx")).toBe(originalX)
+    expect(document.querySelector(selector)?.getAttribute("cy")).toBe(originalY)
+    await act(async () => resolveDrag?.(solveResult(new Map([[point.id, { x: 99, y: 99 }]]))))
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(3))
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeNull()
+    expect(document.querySelector(selector)?.getAttribute("cx")).toBe(originalX)
+    expect(document.querySelector(selector)?.getAttribute("cy")).toBe(originalY)
+    expect(solveSketch).toHaveBeenLastCalledWith(
+      7,
+      expect.anything(),
+      expect.objectContaining({
+        draggedPoints: [],
+        continuation: expect.objectContaining({
+          points: expect.arrayContaining([
+            expect.objectContaining({ entityId: point.id, x: point.x, y: point.y }),
+          ]),
+        }),
+      }),
+    )
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+    expect(onDraftChange).not.toHaveBeenCalled()
+  })
+
+  it("clears a shared drag transition overtaken by blocking activity", async () => {
+    const solveSketch = vi.fn(async () => solveResult())
+    const onDraftChange = vi.fn()
+    const props = { draft: sketch, sketch, onDraftChange, solveSketch }
+    let holdTransition = () => {}
+    let release: (() => void) | undefined
+    let held = true
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const suspended = vi.fn()
+    function Barrier() {
+      suspended()
+      if (held) throw pending
+      return <span>Transition resumed</span>
+    }
+    function Harness({ blocking = false }: { blocking?: boolean }) {
+      const [hold, setHold] = useState(false)
+      useEffect(() => {
+        holdTransition = () => setHold(true)
+      }, [])
+      return (
+        <Suspense fallback={<span>Pending transition</span>}>
+          {hold ? <Barrier /> : null}
+          {viewportElement({ ...props, blocking })}
+        </Suspense>
+      )
+    }
+    const view = render(<Harness />)
+    await screen.findByText("Fully constrained")
+    const originalStartTransition = ReactRuntime.startTransition
+    vi.spyOn(ReactRuntime, "startTransition").mockImplementation((scope) =>
+      originalStartTransition(() => {
+        holdTransition()
+        return scope()
+      }),
+    )
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const element = document.querySelector(
+      `circle[data-sketch-entity-id="${pointEntities[0]?.id}"]`,
+    )
+    if (!element) throw new Error("The transition fixture requires a point.")
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    fireEvent.pointerDown(element, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { pointerId: 1, clientX: 600, clientY: 180 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The point drag must queue its preview frame.")
+    act(() => frame(0))
+    await waitFor(() => expect(suspended).toHaveBeenCalled())
+    expect(solveSketch).toHaveBeenCalledTimes(1)
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeTruthy()
+    view.rerender(<Harness blocking />)
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeNull()
+    await act(async () => {
+      held = false
+      release?.()
+    })
+    await screen.findByText("Transition resumed")
+    expect(solveSketch).toHaveBeenCalledTimes(1)
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeNull()
+    expect(onDraftChange).not.toHaveBeenCalled()
+  })
+
+  it("rejects a cancellation baseline from an older authored draft", async () => {
+    const point = pointEntities[0]
+    if (!point) throw new Error("The authored-baseline fixture requires a point.")
+    let resolveEdited: ((result: ActiveSketchSolveResult) => void) | undefined
+    const editedPosition = { x: 10, y: 12 }
+    const edited = moveSketchPoint(sketch, point.id, editedPosition)
+    const solveSketch = vi
+      .fn(async () => solveResult(new Map([[point.id, editedPosition]])))
+      .mockImplementationOnce(async () => solveResult())
+      .mockImplementationOnce(
+        () =>
+          new Promise<ActiveSketchSolveResult>((resolve) => {
+            resolveEdited = resolve
+          }),
+      )
+    const onDraftChange = vi.fn()
+    const props = { draft: sketch, sketch, onDraftChange, solveSketch }
+    const view = renderViewport(props)
+    await screen.findByText("Fully constrained")
+    const editedProps = { ...props, draft: edited }
+    view.rerender(viewportElement(editedProps))
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const selector = `circle[data-sketch-entity-id="${point.id}"]`
+    const element = document.querySelector(selector)
+    if (!element) throw new Error("The edited point must be rendered.")
+    expect(element.getAttribute("cx")).toBe("10")
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const liveTimer = vi.spyOn(window, "setTimeout")
+    fireEvent.pointerDown(element, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { pointerId: 1, clientX: 600, clientY: 180 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The edited point drag must queue its preview frame.")
+    act(() => frame(0))
+    const liveIndex = liveTimer.mock.calls.findIndex(([, delay]) => delay === 32)
+    const liveSolve = liveTimer.mock.calls[liveIndex]?.[0]
+    if (typeof liveSolve !== "function")
+      throw new Error("The point drag must schedule its live solve.")
+    const liveTimerId = liveTimer.mock.results[liveIndex]?.value
+    if (typeof liveTimerId !== "number")
+      throw new Error("The browser live-solve timer must have a numeric identifier.")
+    window.clearTimeout(liveTimerId)
+    act(() => {
+      liveSolve()
+    })
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeTruthy()
+    view.rerender(viewportElement({ ...editedProps, blocking: true }))
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeNull()
+    expect(document.querySelector(selector)?.getAttribute("cx")).toBe("10")
+    await act(async () => resolveEdited?.(solveResult(new Map([[point.id, { x: 99, y: 99 }]]))))
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(3))
+    expect(solveSketch).toHaveBeenLastCalledWith(
+      7,
+      edited,
+      expect.objectContaining({ continuation: null, draggedPoints: [] }),
+    )
+    expect(document.querySelector(selector)?.getAttribute("cx")).toBe("10")
+    expect(document.querySelector("[data-sketch-drag-overlay]")).toBeNull()
+    expect(onDraftChange).not.toHaveBeenCalled()
+  })
+
+  it("cancels active trim work when blocking begins and permits a subsequent gesture", () => {
+    const fixture = lineSketchFixture("b398", [
+      { start: { x: -10, y: 0 }, end: { x: 10, y: 0 } },
+      { start: { x: -3, y: -10 }, end: { x: -3, y: 10 } },
+      { start: { x: 3, y: -10 }, end: { x: 3, y: 10 } },
+    ])
+    const line = requiredSketchEntity(fixture, "line")
+    const onDraftChange = vi.fn()
+    const props = {
+      draft: fixture,
+      sketch: fixture,
+      onDraftChange,
+      editorTool: "trim" as const,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    }
+    const view = renderViewport(props)
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const target = document.querySelector(`[data-sketch-entity-id="${line.id}"]`)
+    if (!target) throw new Error("The trim fixture requires a line.")
+    fireEvent.pointerDown(target, { clientX: 400, clientY: 300, pointerId: 3 })
+    expect(drawing.getAttribute("data-sketch-trim-gesture")).toBe("active")
+    view.rerender(viewportElement({ ...props, blocking: true }))
+    fireEvent.pointerUp(drawing, { pointerId: 3 })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(drawing.getAttribute("data-sketch-trim-gesture")).toBeNull()
+    expect(document.querySelectorAll('[data-sketch-entity-type="line"]')).toHaveLength(3)
+    view.rerender(viewportElement(props))
+    fireEvent.pointerDown(target, { clientX: 400, clientY: 300, pointerId: 4 })
+    fireEvent.pointerUp(drawing, { pointerId: 4 })
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
+  })
+
+  it("cancels a transform preview and canvas pan when blocking begins", () => {
+    const fixture = lineSketchFixture("b399", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = requiredSketchEntity(fixture, "line")
+    const onDraftChange = vi.fn()
+    const props = {
+      draft: fixture,
+      sketch: fixture,
+      onDraftChange,
+      editorTool: "transform" as const,
+      selectedEntityIds: [line.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    }
+    const view = renderViewport(props)
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const handle = document.querySelector('[data-sketch-transform-handle="move-x"]')
+    if (!handle) throw new Error("The transform fixture requires its horizontal handle.")
+    fireEvent.pointerDown(handle, { clientX: 400, clientY: 300, pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 480, clientY: 300, pointerId: 1 })
+    expect(document.querySelector("[data-sketch-transform-preview]")).toBeTruthy()
+    view.rerender(viewportElement({ ...props, blocking: true }))
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 300, pointerId: 1 })
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+    expect(document.querySelector("[data-sketch-transform-preview]")).toBeNull()
+    expect(onDraftChange).not.toHaveBeenCalled()
+    view.rerender(viewportElement(props))
+    fireEvent.pointerDown(drawing, { button: 2, clientX: 400, clientY: 300, pointerId: 2 })
+    fireEvent.pointerMove(drawing, { buttons: 2, clientX: 440, clientY: 340, pointerId: 2 })
+    const panned = drawing.getAttribute("viewBox")
+    view.rerender(viewportElement({ ...props, blocking: true }))
+    fireEvent.pointerMove(drawing, { buttons: 2, clientX: 540, clientY: 440, pointerId: 2 })
+    expect(drawing.getAttribute("viewBox")).toBe(panned)
+  })
+
   it.each([false, true])("places a circle at the origin with Shift suppression %s", (shiftKey) => {
     const empty = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()

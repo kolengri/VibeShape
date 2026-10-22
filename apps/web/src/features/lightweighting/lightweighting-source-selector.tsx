@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { availableLightweightingParts, type LightweightingSource } from "./lightweighting-model"
@@ -39,11 +40,7 @@ export function LightweightingSourceSelector({
           {t("noParts")}
         </p>
       )}
-      {state.partId && !state.source && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("partUnavailable")}
-        </p>
-      )}
+      {state.partId && !state.source && <Alert>{t("partUnavailable")}</Alert>}
     </>
   )
 }

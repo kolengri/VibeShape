@@ -229,7 +229,9 @@ describe("VariablesForm", () => {
     expect(search.value).toBe("")
     expect(screen.getAllByRole("combobox", { name: copy.expressionInput })).toHaveLength(2)
     expect(expression.getAttribute("aria-invalid")).toBe("true")
-    expect(screen.getByText(copy.validationSummary).getAttribute("role")).toBe("alert")
+    expect(
+      screen.getByText(copy.validationSummary).closest('[role="alert"]')?.getAttribute("role"),
+    ).toBe("alert")
     expect(onApply).not.toHaveBeenCalled()
   })
 

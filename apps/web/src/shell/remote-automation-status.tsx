@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -93,11 +94,7 @@ export function RemoteAutomationStatus({
             onClose={() => setOpen(false)}
             onFailed={setFailed}
           />
-          {failed || current.error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {t("failed")}
-            </p>
-          ) : null}
+          {failed || current.error ? <Alert>{t("failed")}</Alert> : null}
         </DialogContent>
       </Dialog>
     </div>
@@ -187,11 +184,7 @@ export function RemoteAutomationConsentDialog({
             }}
           />
         ) : null}
-        {failed ? (
-          <p role="alert" className="text-sm text-destructive">
-            {t("failed")}
-          </p>
-        ) : null}
+        {failed ? <Alert>{t("failed")}</Alert> : null}
       </DialogContent>
     </Dialog>
   )

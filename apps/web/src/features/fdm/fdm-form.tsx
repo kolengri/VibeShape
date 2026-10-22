@@ -188,9 +188,7 @@ export function FdmForm(props: FdmFormProps) {
               {field.state.value
                 .filter((id) => !lines.some((line) => line.id === id))
                 .map((id) => (
-                  <p key={id} className="text-xs text-destructive">
-                    {t("missingLine", { id })}
-                  </p>
+                  <FieldError key={id}>{t("missingLine", { id })}</FieldError>
                 ))}
               {issues.sketchId && <FieldError>{issues.sketchId}</FieldError>}
             </Field>

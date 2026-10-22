@@ -6,7 +6,7 @@ import {
 } from "@vibeshape/domain/reference-frame"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { fieldVariants } from "@vibeshape/ui/components/field"
+import { FieldError, fieldVariants } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { type ReactNode, useId, useState } from "react"
@@ -203,32 +203,60 @@ function ExplicitReferenceSupportFields({
     </div>
   )
 }
+function ReferenceSourceField({
+  kind,
+  value,
+  onChange,
+  source,
+  choices,
+}: Pick<Props, "kind" | "value" | "onChange"> & {
+  source: ReturnType<typeof referenceSource>
+  choices: Choices
+}) {
+  const t = useTranslations("app.referenceFrame")
+  return (
+    <label className={fieldVariants({ orientation: "horizontal" })}>
+      {t("source")}
+      <select
+        className="h-8 min-w-0 rounded-md border bg-background px-2 text-sm"
+        value={source}
+        onChange={(event) => selectReference(event.target.value, kind, value, choices, onChange)}
+      >
+        <option value="origin">{t("origin")}</option>
+        {source === "selected" && <option value="selected">{t("selectedReference")}</option>}
+        {choices.map(({ key, label }) => (
+          <option key={key} value={key}>
+            {label}
+          </option>
+        ))}
+        <option value="explicit">{t("explicit")}</option>
+      </select>
+    </label>
+  )
+}
+
 function ReferenceSupportFields({ kind, options, value, selectedFace, onChange }: Props) {
   const t = useTranslations("app.referenceFrame")
   // Preview replaces rendered source meshes and can clear the viewport selection.
   const [startingFace] = useState(selectedFace)
   const choices: Choices = kind === "plane" ? options.planes : options.axes
   const source = referenceSource(value, choices)
+  const invalid = value === null
+  const errorId = useId()
   return (
-    <fieldset className="grid gap-2 border-t pt-3">
+    <fieldset
+      className="grid gap-2 border-t pt-3"
+      aria-invalid={invalid || undefined}
+      aria-describedby={invalid ? errorId : undefined}
+    >
       <legend className="text-xs font-medium">{t(kind === "plane" ? "plane" : "axis")}</legend>
-      <label className={fieldVariants({ orientation: "horizontal" })}>
-        {t("source")}
-        <select
-          className="h-9 min-w-0 rounded-md border bg-background px-2"
-          value={source}
-          onChange={(event) => selectReference(event.target.value, kind, value, choices, onChange)}
-        >
-          <option value="origin">{t("origin")}</option>
-          {source === "selected" && <option value="selected">{t("selectedReference")}</option>}
-          {choices.map(({ key, label }) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-          <option value="explicit">{t("explicit")}</option>
-        </select>
-      </label>
+      <ReferenceSourceField
+        kind={kind}
+        value={value}
+        onChange={onChange}
+        source={source}
+        choices={choices}
+      />
       {kind === "plane" && (
         <SelectedPlanarFaceButton
           options={options}
@@ -240,11 +268,7 @@ function ReferenceSupportFields({ kind, options, value, selectedFace, onChange }
       {source === "explicit" && (
         <ExplicitReferenceSupportFields kind={kind} value={value} onChange={onChange} />
       )}
-      {value === null && (
-        <p role="alert" className="text-xs text-destructive">
-          {t("invalid")}
-        </p>
-      )}
+      {invalid && <FieldError id={errorId}>{t("invalid")}</FieldError>}
     </fieldset>
   )
 }

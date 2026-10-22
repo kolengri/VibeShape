@@ -4,6 +4,7 @@ import {
 } from "@vibeshape/domain/assembly-authority"
 import type { AssemblyJointRecord } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel, fieldVariants } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
@@ -243,7 +244,7 @@ function StudyExport({
       >
         {t("motionExportPng")}
       </Button>
-      {error && <p role="alert">{t("motionExportFailed", { reason: t(error) })}</p>}
+      {error && <Alert>{t("motionExportFailed", { reason: t(error) })}</Alert>}
     </fieldset>
   )
 }
@@ -370,18 +371,13 @@ function StudyPlayback({
 }
 function StudyFailure({ view, session, error }: StudyPanelProps & { error: string | null }) {
   const t = useTranslations("app.assembly")
-  if (view.mutations.error)
-    return (
-      <p role="alert" className="text-sm text-destructive">
-        {t("motionStudySaveFailed")}
-      </p>
-    )
+  if (view.mutations.error) return <Alert>{t("motionStudySaveFailed")}</Alert>
   const key = assemblyMotionFailureKey(session.motion.error)
   if (!error && !key) return null
   return (
-    <p role="alert" className="text-sm text-destructive">
+    <Alert>
       {t("motionStudyInvalid", { reason: error ?? t(key ?? "motionStudyInvalidDetails") })}
-    </p>
+    </Alert>
   )
 }
 function StudyLifecycle({
