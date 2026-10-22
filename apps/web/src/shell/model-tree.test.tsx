@@ -568,6 +568,25 @@ function timeline() {
   return within(screen.getByRole("region", { name: "Feature history" }))
 }
 
+it("shows one compact model heading without repeating the project name", () => {
+  if (!controller.report) throw new Error("Expected a loaded document")
+  renderTree({
+    controller: {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { ...controller.report.snapshot, name: "Project name belongs in navigation" },
+      },
+    },
+  })
+  const heading = browser().getByRole("heading", { name: "Model" })
+  expect(heading.classList.contains("text-xs")).toBe(true)
+  expect(heading.closest("header")?.textContent).toBe("Model")
+  expect(browser().queryByText("Project name belongs in navigation")).toBeNull()
+  expect(browser().getByRole("treeitem", { name: "Bodies" }).getAttribute("data-size")).toBe("xs")
+  expect(browser().getByRole("treeitem", { name: "Body 1" }).getAttribute("data-size")).toBe("sm")
+})
+
 describe("ModelTree sketch group", () => {
   it("shows the group only while the committed document contains sketches", () => {
     const emptyController = {
@@ -1861,25 +1880,36 @@ describe("ModelTree workspace readiness", () => {
 })
 
 describe("ModelTree History failure", () => {
-  it("exposes a bounded status instead of a rollback claim when graph ordering fails", () => {
-    const invalidFeature = { ...feature, dependencies: [feature.id] }
-    const invalidController = {
-      ...controller,
-      report: {
-        ...controller.report,
-        snapshot: { features: [invalidFeature], revision: 7, sketches: [sketch] },
-      },
-    } as unknown as DocumentControllerState
-    const { container } = renderTree({
-      activeSketchId: sketchId,
-      activeWorkspace: "sketch",
-      controller: invalidController,
-    })
+  it.each([false, true])(
+    "keeps graph-failure status with the track when Details is %s",
+    (detailed) => {
+      const invalidFeature = { ...feature, dependencies: [feature.id] }
+      const invalidController = {
+        ...controller,
+        report: {
+          ...controller.report,
+          snapshot: { features: [invalidFeature], revision: 7, sketches: [sketch] },
+        },
+      } as unknown as DocumentControllerState
+      const { container } = renderTree(
+        {
+          activeSketchId: sketchId,
+          activeWorkspace: "sketch",
+          controller: invalidController,
+        },
+        detailed,
+      )
 
-    expect(screen.getByText(/History ordering is unavailable/).getAttribute("role")).toBe("status")
-    expect(screen.queryByText(/Rollback context/)).toBeNull()
-    expect(container.querySelector("[data-history-rolled-back='true']")).toBeNull()
-  })
+      const status = screen.getByText(/History ordering is unavailable/)
+      const track = container.querySelector("[data-history-track]")
+      const body = status.closest("fieldset")
+      expect(status.getAttribute("role")).toBe("status")
+      expect(body?.contains(track)).toBe(true)
+      expect(body?.classList.contains("contents")).toBe(false)
+      expect(screen.queryByText(/Rollback context/)).toBeNull()
+      expect(container.querySelector("[data-history-rolled-back='true']")).toBeNull()
+    },
+  )
 })
 
 describe("ModelTree folder selection descriptions", () => {

@@ -20,7 +20,7 @@ export function LoftHoleFields({
   if (!sections.some(({ holeBoundaryEntityIds }) => holeBoundaryEntityIds.length)) return null
   return (
     <fieldset className="grid gap-3">
-      <legend className="text-sm font-medium">{t("title")}</legend>
+      <legend className="text-xs font-medium">{t("title")}</legend>
       <p className="text-xs text-muted-foreground">{t("description")}</p>
       {tracks.map((track, trackIndex) => (
         <div key={trackIndex} className="grid gap-2 rounded border p-2">

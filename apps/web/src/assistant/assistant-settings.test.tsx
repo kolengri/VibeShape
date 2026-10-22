@@ -54,7 +54,6 @@ async function openSettings(configuration: ReactNode) {
   show(
     <AssistantPanel
       open
-      projectName="Bracket"
       messages={[]}
       busy={false}
       canSend={false}
@@ -357,7 +356,6 @@ describe("assistant connection settings", () => {
     show(
       <AssistantPanel
         open
-        projectName="Bracket"
         messages={[]}
         busy={false}
         canSend
@@ -905,7 +903,6 @@ describe("compact chat actions", () => {
       <ApplicationNoticesProvider>
         <AssistantPanel
           open
-          projectName="Bracket"
           messages={[]}
           busy={false}
           canSend={false}
@@ -942,7 +939,6 @@ describe("compact chat actions", () => {
       <ApplicationNoticesProvider>
         <AssistantPanel
           open
-          projectName="Bracket"
           messages={[]}
           busy={false}
           canSend
@@ -968,7 +964,6 @@ describe("compact chat actions", () => {
     show(
       <AssistantPanel
         open
-        projectName="Bracket"
         messages={[{ id: "one", role: "user", text: "Saved" }]}
         busy={false}
         canSend
@@ -1029,7 +1024,6 @@ describe("compact chat actions", () => {
     show(
       <AssistantPanel
         open
-        projectName="Bracket"
         messages={[]}
         busy
         canSend

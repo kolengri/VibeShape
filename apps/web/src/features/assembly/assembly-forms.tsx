@@ -77,7 +77,7 @@ export function AssemblyTaskForm({
           {panel.error}
         </p>
       )}
-      <fieldset disabled={actions.pending} className="grid min-w-0 gap-4">
+      <fieldset disabled={actions.pending} className="grid min-w-0 gap-2">
         {children}
       </fieldset>
       {invalid && (

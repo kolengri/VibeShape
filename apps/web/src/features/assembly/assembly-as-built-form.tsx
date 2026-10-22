@@ -140,7 +140,7 @@ export function AssemblyRigidGroupForm({ assembly, capture, selectedId, actions 
         }}
       />
       <fieldset className="grid gap-2">
-        <legend className="mb-2 text-sm font-medium">{t("rigidGroupMembers")}</legend>
+        <legend className="mb-2 text-xs font-medium">{t("rigidGroupMembers")}</legend>
         {assembly.instances.map((instance) => (
           <Field key={instance.id} orientation="horizontal">
             <input

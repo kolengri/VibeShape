@@ -39,6 +39,8 @@
 }
 
 .cad-shell {
+  --workspace-gap: 0.5rem;
+  --workspace-radius: 0.625rem;
   --application-bar-height: 5rem;
   --command-bar-height: 2.25rem;
   --assistant-width: clamp(208px, 40vw, 420px);
@@ -47,9 +49,25 @@
   grid-template-rows:
     var(--application-bar-height, 2.5rem) var(--command-bar-height)
     minmax(0, 1fr) 1.5rem;
+  row-gap: var(--workspace-gap);
+  padding: 0 var(--workspace-gap) var(--workspace-gap);
   height: 100svh;
   min-height: 0;
   overflow: hidden;
+}
+
+.cad-shell > .application-bar {
+  margin-inline: calc(-1 * var(--workspace-gap));
+}
+
+.cad-shell nav[data-sketch-mode],
+.workspace-history > section {
+  border: 1px solid var(--border);
+  border-radius: var(--workspace-radius);
+}
+
+.workspace-history {
+  padding-top: var(--workspace-gap);
 }
 
 .cad-shell:has(nav[data-sketch-mode="true"]) {
@@ -74,10 +92,19 @@
 .assistant-panel {
   position: fixed;
   z-index: 30;
-  top: calc(var(--application-bar-height, 2.5rem) + var(--command-bar-height));
-  right: 0;
-  bottom: calc(1.5rem + var(--workspace-history-height, 0px));
+  top: calc(
+    var(--application-bar-height, 2.5rem) +
+    var(--command-bar-height) +
+    2 *
+    var(--workspace-gap)
+  );
+  right: var(--workspace-gap);
+  bottom: calc(1.5rem + 2 * var(--workspace-gap) + var(--workspace-history-height, 0px));
   width: min(var(--assistant-width), calc(100vw - 16px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--workspace-radius);
+  box-shadow: none;
 }
 
 .application-bar[data-unified-chrome] {
@@ -129,7 +156,7 @@
 
 /* Keep the active task adjacent to chat while the shared History spans below both. */
 .cad-shell:has(.assistant-panel:not([hidden])) .cad-workspace-grid {
-  margin-right: var(--assistant-width);
+  margin-right: calc(var(--assistant-width) + var(--workspace-gap));
 }
 
 @media (min-width: 64rem) {
@@ -144,6 +171,21 @@
   min-width: 0;
   overflow: hidden;
   pointer-events: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--workspace-radius);
+}
+
+.workspace-panel--tree > aside {
+  border-right: 0;
+}
+
+.workspace-panel--task aside {
+  border-left: 0;
+}
+
+.cad-workspace-grid
+  [data-slot="resizable-handle"]:not(:hover, :focus-visible, [data-separator="active"]) {
+  background: transparent;
 }
 
 .workspace-panel--tree {

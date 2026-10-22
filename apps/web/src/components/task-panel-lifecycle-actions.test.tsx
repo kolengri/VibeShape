@@ -49,6 +49,9 @@ describe("TaskPanelLifecycleActions", () => {
     expect(screen.getByRole("button", { name: "Cancel feature" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Accept feature" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Accept feature" }).textContent).toBe("")
+    for (const button of screen.getAllByRole("button")) {
+      expect(button.getAttribute("data-size")).toBe("icon-xs")
+    }
   })
 
   it("shows each action label in its tooltip", async () => {

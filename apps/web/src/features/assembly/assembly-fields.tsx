@@ -58,7 +58,7 @@ export function AssemblyPoseFields({
   const rotation = assemblyEulerDegrees(pose)
   return (
     <fieldset className="grid min-w-0 gap-2">
-      <legend className="mb-2 text-sm font-medium">{label}</legend>
+      <legend className="mb-2 text-xs font-medium">{label}</legend>
       <div className="grid grid-cols-3 gap-2">
         {(["x", "y", "z"] as const).map((axis, index) => (
           <AssemblyNumberField

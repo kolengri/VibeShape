@@ -69,7 +69,7 @@ export function AssemblyInterference({
   const allAvailable = allInspectionAvailable(assembly.instances.length)
   return (
     <section className="grid gap-3 border-t pt-3" aria-label={t("interference")}>
-      <h3 className="text-sm font-semibold">{t("interference")}</h3>
+      <h3 className="text-xs font-medium">{t("interference")}</h3>
       <SelectField
         label={t("compareWith")}
         value={compareId}

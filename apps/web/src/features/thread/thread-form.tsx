@@ -257,7 +257,7 @@ export function ThreadForm({
                   open={advancedExpanded || advancedInvalid}
                   onToggle={(event) => setAdvancedExpanded(event.currentTarget.open)}
                 >
-                  <summary className="cursor-pointer py-2 text-sm font-medium">
+                  <summary className="cursor-pointer py-2 text-xs font-medium">
                     {copy.advanced}
                   </summary>
                   <div className="grid gap-3 pt-3">

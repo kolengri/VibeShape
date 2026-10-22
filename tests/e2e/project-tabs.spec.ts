@@ -12,11 +12,11 @@ async function saved(page: Page) {
     { timeout: 30_000 },
   )
 }
-async function rename(page: Page, name: string) {
-  await page
-    .locator("header")
-    .getByRole("button", { name: /^Rename / })
-    .click()
+async function rename(page: Page, name: string, via: "tab" | "menu" | "keyboard" = "tab") {
+  const activeTab = projectTabs(page).getByRole("tab", { selected: true })
+  if (via === "menu") await openApplicationMenuItem(page, "Rename project")
+  else if (via === "keyboard") await activeTab.press("F2")
+  else await activeTab.dblclick()
   const dialog = page.getByRole("dialog", { name: "Rename project", exact: true })
   await dialog.getByRole("textbox", { name: "Project name", exact: true }).fill(name)
   await dialog.getByRole("button", { name: "Rename project", exact: true }).click()
@@ -29,7 +29,7 @@ async function rename(page: Page, name: string) {
 }
 async function newProject(page: Page, name: string) {
   const previous = projectId(page)
-  await projectTabs(page).getByRole("button", { name: "New project", exact: true }).click()
+  await openApplicationMenuItem(page, "New project")
   await expect.poll(() => projectId(page)).not.toBe(previous)
   await saved(page)
   await rename(page, name)
@@ -49,7 +49,8 @@ test("keeps project tabs, geometry isolation and guarded URLs through switching,
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
   await saved(page)
-  await rename(page, "Tabs bracket")
+  await rename(page, "Bracket draft", "menu")
+  await rename(page, "Tabs bracket", "keyboard")
   const firstId = projectId(page)
   await primitive(page, "Box")
   await newProject(page, "Tabs enclosure")
@@ -90,7 +91,7 @@ test("keeps project tabs, geometry isolation and guarded URLs through switching,
   await tabs.getByRole("button", { name: "Close Tabs bracket", exact: true }).click()
   await expect(tabs.getByRole("tab", { name: "Tabs bracket", exact: true })).toHaveCount(0)
   expect(projectId(page)).toBe(secondId)
-  await tabs.getByRole("button", { name: "Open project…", exact: true }).click()
+  await openApplicationMenuItem(page, "Projects")
   const library = page.getByRole("main")
   await expect(library.getByRole("heading", { name: "Projects", exact: true })).toBeVisible()
   await library.getByRole("button", { name: /^Open Tabs bracket, revision / }).click()
@@ -140,6 +141,15 @@ test("retains an active draft when switching or closing its project tab is block
   const form = page.getByRole("form", { name: "Create box", exact: true })
   const width = form.getByRole("combobox", { name: "Width", exact: true })
   await width.fill("37 mm")
+  await page.getByRole("button", { name: "Application menu", exact: true }).click()
+  await expect(page.getByRole("menuitem", { name: "New project", exact: true })).toBeDisabled()
+  await expect(page.getByRole("menuitem", { name: "Rename project", exact: true })).toBeDisabled()
+  await page.keyboard.press("Escape")
+  const activeTab = tabs.getByRole("tab", { name: "Draft source", exact: true })
+  await activeTab.dblclick()
+  await activeTab.press("F2")
+  await expect(page.getByRole("dialog", { name: "Rename project", exact: true })).toHaveCount(0)
+  await expect(width).toHaveValue("37 mm")
   await tabs.getByRole("tab", { name: "Draft target", exact: true }).click()
   await expect(
     page.getByRole("region", { name: "Notifications", exact: true }).getByRole("alert"),

@@ -53,7 +53,7 @@ export function LightweightingAlgorithmDetails({
         </>
       )}
       <details>
-        <summary className="cursor-pointer font-medium">{t("parameters")}</summary>
+        <summary className="text-xs cursor-pointer font-medium">{t("parameters")}</summary>
         <dl className="grid gap-1 py-2">
           {settings.kind === "adaptive-lattice" && (
             <div>

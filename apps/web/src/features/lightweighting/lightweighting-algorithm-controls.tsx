@@ -41,7 +41,7 @@ export function LightweightingAlgorithmControls({
   )
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-      <legend className="mb-2 font-medium">{t("method")}</legend>
+      <legend className="text-xs mb-2 font-medium">{t("method")}</legend>
       <SelectField
         id="lightweighting-method"
         label={t("method")}

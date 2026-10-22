@@ -484,7 +484,7 @@ function HolePoints({
   const missing = selected.filter((id) => !points.some((point) => point.id === id))
   return (
     <fieldset className="grid min-w-0 gap-2" aria-label={copy.points}>
-      <legend className="text-sm font-medium">{copy.points}</legend>
+      <legend className="text-xs font-medium">{copy.points}</legend>
       <p className="text-xs text-muted-foreground">{copy.pointsDescription}</p>
       {points.length === 0 ? (
         <p className="text-xs text-muted-foreground">{copy.noPoints}</p>
