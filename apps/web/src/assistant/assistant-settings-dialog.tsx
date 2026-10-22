@@ -56,7 +56,11 @@ export function AssistantSettingsDialog({
   returnFocus: () => void
   children: ReactNode
 }) {
-  const [container] = useState(() => document.createElement("div"))
+  const [container] = useState(() => {
+    const element = document.createElement("div")
+    element.className = "flex min-h-0 flex-1 flex-col overflow-hidden"
+    return element
+  })
   const parking = useRef<HTMLDivElement | null>(null)
   const dialog = useRef<HTMLDivElement | null>(null)
   // Keep connection controls and unsent credentials mounted when Radix closes its portal.
@@ -97,7 +101,7 @@ export function AssistantSettingsDialog({
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
-          <div ref={dock} />
+          <div ref={dock} className="flex min-h-0 flex-1 flex-col overflow-hidden" />
         </DialogContent>
       </Dialog>
     </>

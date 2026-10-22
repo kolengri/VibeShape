@@ -27,13 +27,22 @@ function FormActionsHarness({
   return (
     <TooltipProvider>
       <Form form={form} aria-label="Feature form">
-        <TaskPanelFormActions
-          acceptLabel="Create feature"
-          ariaLabel="Feature actions"
-          cancelLabel="Cancel"
-          onCancel={vi.fn()}
-          {...(previewStatus ? { previewStatus } : {})}
-        />
+        <ParameterPanel
+          copy={{ title: "Feature", description: "Edit feature parameters.", cancel: "Cancel" }}
+          legend="Feature parameters"
+          actions={
+            <TaskPanelFormActions
+              acceptLabel="Create feature"
+              ariaLabel="Feature actions"
+              cancelLabel="Cancel"
+              onCancel={vi.fn()}
+              {...(previewStatus ? { previewStatus } : {})}
+            />
+          }
+        >
+          <label htmlFor="feature-name">Feature name</label>
+          <input id="feature-name" name="name" defaultValue="Feature" />
+        </ParameterPanel>
       </Form>
     </TooltipProvider>
   )
@@ -49,12 +58,32 @@ const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
 const { Form, useAppForm } = await import("@vibeshape/ui/integrations/tanstack-form")
 const { useRegisterTaskSubmission } = await import("../../editor-session/editor-session-provider")
 const { TaskPanelFormActions } = await import("./task-panel-form-actions")
+const { ParameterPanel } = await import("./parameter-panel")
 
 vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 
 afterEach(cleanup)
 
 describe("TaskPanelFormActions", () => {
+  it("retains native form ownership and Enter submission with lifecycle actions in the footer", async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn(async () => undefined)
+    render(<FormActionsHarness onSubmit={onSubmit} previewStatus="ready" />)
+
+    const form = screen.getByRole<HTMLFormElement>("form", { name: "Feature form" })
+    const accept = screen.getByRole<HTMLButtonElement>("button", { name: "Create feature" })
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Feature name" })
+    expect(accept.form).toBe(form)
+    expect(input.closest("[data-slot='task-panel-content']")).not.toBeNull()
+    expect(accept.closest("[data-slot='task-panel-footer']")).not.toBeNull()
+    expect(accept.closest("[data-slot='task-panel-content']")).toBeNull()
+    expect(accept.closest("[data-slot='task-panel-header']")).toBeNull()
+
+    await user.click(input)
+    await user.keyboard("{Enter}")
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
   it.each(["idle", "loading", "error"] as const)(
     "blocks submission while the exact preview is %s",
     async (previewStatus) => {

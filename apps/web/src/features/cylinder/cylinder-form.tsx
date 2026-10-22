@@ -8,6 +8,7 @@ import {
 } from "@vibeshape/domain"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
@@ -271,58 +272,63 @@ export function CylinderForm({
   )
 
   return (
-    <Form form={form} aria-label={copy.title} className="gap-0">
-      <form.FormError />
-      {onPreviewChange ? (
-        <form.Subscribe selector={(state) => state.values}>
-          {(values) => (
-            <CylinderPreviewSync
-              copy={copy}
-              displayUnit={displayUnits.length}
-              featureId={featureId}
-              mode={mode}
-              onPreviewChange={onPreviewChange}
-              values={values}
-              variables={variables}
-            />
-          )}
-        </form.Subscribe>
-      ) : null}
-      <PrimitiveParameterPanel
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={copy.submit}
-            ariaLabel={copy.title}
-            cancelLabel={copy.cancel}
-            disabled={disabled}
-            onCancel={onCancel}
-            previewStatus={previewStatus}
-          />
-        }
-        copy={copy}
-        disabled={disabled}
-        message={message}
-        fields={
-          <>
-            {dimensionField("radius", copy.radius)}
-            {dimensionField("height", copy.height)}
-          </>
-        }
-        centeredField={
-          <form.AppField name="centered">
-            {(field) => (
-              <field.CheckboxField label={copy.centered} onValueChange={clearSubmissionErrors} />
+    <Form
+      form={form}
+      aria-label={copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        {onPreviewChange ? (
+          <form.Subscribe selector={(state) => state.values}>
+            {(values) => (
+              <CylinderPreviewSync
+                copy={copy}
+                displayUnit={displayUnits.length}
+                featureId={featureId}
+                mode={mode}
+                onPreviewChange={onPreviewChange}
+                values={values}
+                variables={variables}
+              />
             )}
-          </form.AppField>
-        }
-        placementFields={
-          <>
-            {originField("originX", copy.originX)}
-            {originField("originY", copy.originY)}
-            {originField("originZ", copy.originZ)}
-          </>
-        }
-      />
+          </form.Subscribe>
+        ) : null}
+        <PrimitiveParameterPanel
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={copy.submit}
+              ariaLabel={copy.title}
+              cancelLabel={copy.cancel}
+              disabled={disabled}
+              onCancel={onCancel}
+              previewStatus={previewStatus}
+            />
+          }
+          copy={copy}
+          disabled={disabled}
+          message={message}
+          fields={
+            <>
+              {dimensionField("radius", copy.radius)}
+              {dimensionField("height", copy.height)}
+            </>
+          }
+          centeredField={
+            <form.AppField name="centered">
+              {(field) => (
+                <field.CheckboxField label={copy.centered} onValueChange={clearSubmissionErrors} />
+              )}
+            </form.AppField>
+          }
+          placementFields={
+            <>
+              {originField("originX", copy.originX)}
+              {originField("originY", copy.originY)}
+              {originField("originZ", copy.originZ)}
+            </>
+          }
+        />
+      </TaskPanelContentProvider>
     </Form>
   )
 }

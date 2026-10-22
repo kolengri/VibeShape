@@ -5,8 +5,10 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@vibeshape/ui/components/dialog"
@@ -54,28 +56,38 @@ export function ModelPropertiesDialog({
           <DialogTitle>{t("properties")}</DialogTitle>
           <DialogDescription>{t("propertiesDescription")}</DialogDescription>
         </DialogHeader>
-        <dl className="grid gap-2 text-sm">
-          <div>
-            <dt className="text-muted-foreground">{t("name")}</dt>
-            <dd className="break-words">{part?.part.name ?? feature?.label ?? t("unnamed")}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">{t("feature")}</dt>
-            <dd className="break-words">
-              {feature?.label ?? feature?.type.typeId ?? t("unavailable")}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">{t("output")}</dt>
-            <dd className="break-words font-mono text-xs">{body.outputRole ?? t("wholeOutput")}</dd>
-          </div>
-        </dl>
+        <DialogBody>
+          <dl className="grid gap-2 text-sm">
+            <div>
+              <dt className="text-muted-foreground">{t("name")}</dt>
+              <dd className="break-words">{part?.part.name ?? feature?.label ?? t("unnamed")}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">{t("feature")}</dt>
+              <dd className="break-words">
+                {feature?.label ?? feature?.type.typeId ?? t("unavailable")}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">{t("output")}</dt>
+              <dd className="break-words font-mono text-xs">
+                {body.outputRole ?? t("wholeOutput")}
+              </dd>
+            </div>
+          </dl>
+          {entry ? (
+            <BodyShapeMeasurements shape={entry.shape} />
+          ) : (
+            <Alert>{t("unavailable")}</Alert>
+          )}
+        </DialogBody>
         {onAppearance ? (
-          <Button type="button" variant="outline" onClick={onAppearance}>
-            {t("editAppearance")}
-          </Button>
+          <DialogFooter>
+            <Button type="button" variant="outline" size="sm" onClick={onAppearance}>
+              {t("editAppearance")}
+            </Button>
+          </DialogFooter>
         ) : null}
-        {entry ? <BodyShapeMeasurements shape={entry.shape} /> : <Alert>{t("unavailable")}</Alert>}
       </DialogContent>
     </Dialog>
   )

@@ -1,9 +1,10 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { DialogBody, DialogFooter } from "@vibeshape/ui/components/dialog"
 import { SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useRef, useState } from "react"
+import { useId, useRef, useState } from "react"
 import { type ApiConfiguration, apiConfigurationSchema } from "./api-assistant-preferences"
 import { useApiAssistantSettings } from "./api-assistant-provider"
 import type { createApiChatController } from "./api-chat-controller"
@@ -121,13 +122,16 @@ export function ApiConfigurationForm({
     editEndpoint,
     rememberCustom,
   } = useApiConnectionForm(chat, busy, connected)
+  const id = useId()
   return (
     <form.Subscribe selector={(state) => state.isSubmitting}>
       {(submitting) => {
         const locked = busy || connected || submitting
         return (
           <Form
+            id={id}
             form={form}
+            className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
             aria-busy={submitting || undefined}
             onSubmitCapture={(event) => {
               if (!locked) return
@@ -135,104 +139,113 @@ export function ApiConfigurationForm({
               event.stopPropagation()
             }}
           >
-            <form.AppField name="provider">
-              {(field) => (
-                <field.SelectField
-                  label={t("provider")}
-                  disabled={busy || submitting}
-                  onValueChange={chooseProvider}
-                >
-                  <SelectOption value="choose" disabled>
-                    {t("chooseProvider")}
-                  </SelectOption>
-                  {apiPresets.map((preset) => (
-                    <SelectOption key={preset.id} value={preset.id}>
-                      {t(`providers.${preset.id}`)}
+            <DialogBody className="gap-3">
+              <form.AppField name="provider">
+                {(field) => (
+                  <field.SelectField
+                    label={t("provider")}
+                    disabled={busy || submitting}
+                    onValueChange={chooseProvider}
+                  >
+                    <SelectOption value="choose" disabled>
+                      {t("chooseProvider")}
                     </SelectOption>
-                  ))}
-                  <SelectOption value="custom">{t("customProvider")}</SelectOption>
-                </field.SelectField>
-              )}
-            </form.AppField>
-            <p className="text-xs text-muted-foreground">{t("description")}</p>
-            <form.AppField name="model">
-              {(field) => (
-                <field.TextField
-                  label={t("model")}
-                  required
-                  maxLength={128}
-                  disabled={locked}
-                  onValueChange={rememberCustom}
-                />
-              )}
-            </form.AppField>
-            <form.AppField name="apiKey">
-              {(field) => (
-                <field.TextField
-                  label={t("apiKey")}
-                  description={t("keyMemory")}
-                  type="password"
-                  autoComplete="off"
-                  maxLength={4096}
-                  disabled={locked}
-                />
-              )}
-            </form.AppField>
-            <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)}>
-              <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-              <div className="mt-2 grid gap-2">
-                <form.AppField name="endpoint">
-                  {(field) => (
-                    <field.TextField
-                      label={t("endpoint")}
-                      type="url"
-                      required
-                      maxLength={2048}
-                      disabled={locked}
-                      onValueChange={editEndpoint}
-                    />
-                  )}
-                </form.AppField>
-                <form.AppField name="stream">
-                  {(field) => (
-                    <field.CheckboxField
-                      label={t("stream")}
-                      disabled={locked}
-                      onValueChange={rememberCustom}
-                    />
-                  )}
-                </form.AppField>
-              </div>
-            </details>
-            {storageFailed && (
-              <p role="status" className="text-xs text-muted-foreground">
-                {t("settingsNotSaved")}
-              </p>
-            )}
-            {failed && <Alert>{t("errors.tools-unavailable")}</Alert>}
-            {connected ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={chat.disconnect}
-              >
-                {t("disconnect")}
-              </Button>
-            ) : (
-              <form.Subscribe
-                selector={(state) =>
-                  Boolean(state.values.endpoint.trim() && state.values.model.trim())
-                }
-              >
-                {(complete) => (
-                  <form.SubmitButton size="sm" requireDirty={false} disabled={locked || !complete}>
-                    {t("connect")}
-                  </form.SubmitButton>
+                    {apiPresets.map((preset) => (
+                      <SelectOption key={preset.id} value={preset.id}>
+                        {t(`providers.${preset.id}`)}
+                      </SelectOption>
+                    ))}
+                    <SelectOption value="custom">{t("customProvider")}</SelectOption>
+                  </field.SelectField>
                 )}
-              </form.Subscribe>
-            )}
+              </form.AppField>
+              <p className="text-xs text-muted-foreground">{t("description")}</p>
+              <form.AppField name="model">
+                {(field) => (
+                  <field.TextField
+                    label={t("model")}
+                    required
+                    maxLength={128}
+                    disabled={locked}
+                    onValueChange={rememberCustom}
+                  />
+                )}
+              </form.AppField>
+              <form.AppField name="apiKey">
+                {(field) => (
+                  <field.TextField
+                    label={t("apiKey")}
+                    description={t("keyMemory")}
+                    type="password"
+                    autoComplete="off"
+                    maxLength={4096}
+                    disabled={locked}
+                  />
+                )}
+              </form.AppField>
+              <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)}>
+                <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
+                <div className="mt-2 grid gap-2">
+                  <form.AppField name="endpoint">
+                    {(field) => (
+                      <field.TextField
+                        label={t("endpoint")}
+                        type="url"
+                        required
+                        maxLength={2048}
+                        disabled={locked}
+                        onValueChange={editEndpoint}
+                      />
+                    )}
+                  </form.AppField>
+                  <form.AppField name="stream">
+                    {(field) => (
+                      <field.CheckboxField
+                        label={t("stream")}
+                        disabled={locked}
+                        onValueChange={rememberCustom}
+                      />
+                    )}
+                  </form.AppField>
+                </div>
+              </details>
+              {storageFailed && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  {t("settingsNotSaved")}
+                </p>
+              )}
+              {failed && <Alert>{t("errors.tools-unavailable")}</Alert>}
+            </DialogBody>
+            <DialogFooter>
+              {connected ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={chat.disconnect}
+                >
+                  {t("disconnect")}
+                </Button>
+              ) : (
+                <form.Subscribe
+                  selector={(state) =>
+                    Boolean(state.values.endpoint.trim() && state.values.model.trim())
+                  }
+                >
+                  {(complete) => (
+                    <form.SubmitButton
+                      form={id}
+                      size="sm"
+                      requireDirty={false}
+                      disabled={locked || !complete}
+                    >
+                      {t("connect")}
+                    </form.SubmitButton>
+                  )}
+                </form.Subscribe>
+              )}
+            </DialogFooter>
           </Form>
         )
       }}

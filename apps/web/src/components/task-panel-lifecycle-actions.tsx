@@ -44,21 +44,6 @@ function useLifecycleAcceptance(
   }
 }
 
-function lifecycleActionLayout(
-  label: string | undefined,
-  disabled: boolean,
-  reason: string | undefined,
-) {
-  const showReason = Boolean(label) && disabled && Boolean(reason)
-  return showReason
-    ? {
-        group: "w-full grid-cols-[minmax(0,1fr)_1.5rem_1.5rem]",
-        cancel: "col-start-2",
-        accept: "col-start-3",
-      }
-    : { group: "w-fit grid-flow-col auto-cols-[1.5rem]", cancel: undefined, accept: undefined }
-}
-
 function TaskPanelAcceptAction({
   label,
   disabled,
@@ -67,7 +52,6 @@ function TaskPanelAcceptAction({
   type,
   onAccept,
   renderAccept,
-  className,
 }: {
   label: string
   disabled: boolean
@@ -76,13 +60,12 @@ function TaskPanelAcceptAction({
   type: "button" | "submit"
   onAccept: TaskPanelLifecycleActionsProps["onAccept"]
   renderAccept: TaskPanelLifecycleActionsProps["renderAccept"]
-  className: string | undefined
 }) {
   return (
     <ActionAvailability
       disabledReason={disabled ? reason : undefined}
       presentation="persistent"
-      reasonClassName="col-span-full"
+      reasonClassName="basis-full break-words"
     >
       {({ describedBy }) =>
         renderAccept ? (
@@ -91,11 +74,11 @@ function TaskPanelAcceptAction({
           <TaskPanelLifecycleButton
             kind="accept"
             label={label}
+            presentation="text"
             aria-describedby={describedBy}
             disabled={disabled}
             isLoading={loading}
             type={type}
-            className={className}
             {...(onAccept ? { onClick: onAccept } : {})}
           />
         )
@@ -104,7 +87,7 @@ function TaskPanelAcceptAction({
   )
 }
 
-/** Compact, consistently labelled Cancel and Accept actions for task panels. */
+/** Text-labelled lifecycle controls for the task footer. */
 export function TaskPanelLifecycleActions({
   acceptDisabled = false,
   acceptDisabledReason,
@@ -121,15 +104,14 @@ export function TaskPanelLifecycleActions({
 }: TaskPanelLifecycleActionsProps) {
   const acceptance = useLifecycleAcceptance(onAccept, onCancel)
   const loading = acceptLoading || acceptance.loading
-  const layout = lifecycleActionLayout(acceptLabel, acceptDisabled, acceptDisabledReason)
   return (
-    <fieldset className={cn("grid gap-1", layout.group, className)}>
+    <fieldset className={cn("flex min-w-0 flex-1 flex-wrap justify-end gap-2", className)}>
       <legend className="sr-only">{ariaLabel}</legend>
       <TaskPanelLifecycleButton
         kind="cancel"
         label={cancelLabel}
+        presentation="text"
         disabled={cancelDisabled || loading}
-        className={layout.cancel}
         type="button"
         onClick={acceptance.cancel}
       />
@@ -142,7 +124,6 @@ export function TaskPanelLifecycleActions({
           type={acceptType}
           onAccept={onAccept ? acceptance.accept : undefined}
           renderAccept={renderAccept}
-          className={layout.accept}
         />
       ) : null}
     </fieldset>

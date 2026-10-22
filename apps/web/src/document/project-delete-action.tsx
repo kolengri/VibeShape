@@ -3,6 +3,7 @@ import type { LocalProjectSummary } from "@vibeshape/persistence"
 import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
+  AlertDialogBody,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -96,11 +97,13 @@ export function ProjectDeleteAction({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("title", { name: project.name })}</AlertDialogTitle>
+        </AlertDialogHeader>
+        <AlertDialogBody>
           <AlertDialogDescription>
             {t("description", { revision: project.headRevision })}
           </AlertDialogDescription>
-        </AlertDialogHeader>
-        {failed ? <Alert>{t("failed")}</Alert> : null}
+          {failed ? <Alert>{t("failed")}</Alert> : null}
+        </AlertDialogBody>
         <AlertDialogFooter>
           <AlertDialogCancel asChild>
             <Button type="button" variant="outline" disabled={pending}>

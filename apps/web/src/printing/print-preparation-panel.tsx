@@ -12,7 +12,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { fieldVariants } from "@vibeshape/ui/components/field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import {
   type ActiveDocumentExportResult,
   prepareActiveDocumentPrint,
@@ -25,6 +25,7 @@ import {
 } from "../document/mesh-export-quality-field"
 import { useReportApplicationError } from "../shell/application-notices"
 import { useViewerPreferences } from "../shell/viewer-preferences"
+import { type ActionContainer, OptionalActionPortal } from "./optional-action-portal"
 import { PreparedPrintPreview } from "./prepared-print-preview"
 import { placePreparedPrintFace } from "./print-face-placement"
 import { SlicerHandoffPanel } from "./slicer-handoff-panel"
@@ -190,13 +191,16 @@ export function PrintPreparationPanel({
   onBusyChange,
   prepare = prepareActiveDocumentPrint,
   limitations,
+  actionContainer,
 }: {
+  actionContainer?: ActionContainer
   disabled: boolean
   onBusyChange: (busy: boolean) => void
   prepare?: PrintPreparationPort
   limitations?: string
 }) {
   const t = useTranslations("app.printPreparation")
+  const formId = useId()
   const state = usePrintPreparation(onBusyChange, prepare)
   const appOwnsError = useReportApplicationError(state.error, state.errorAttempt)
   const {
@@ -209,6 +213,15 @@ export function PrintPreparationPanel({
     setSlicerMessage,
     slicerPending,
   } = state
+  const prepareAction = (
+    <form.SubmitButton
+      form={formId}
+      requireDirty={false}
+      disabled={disabled || pending || slicerPending}
+    >
+      {t("prepare")}
+    </form.SubmitButton>
+  )
   return (
     <section className="grid gap-4 border-t pt-4" aria-label={t("title")}>
       <div className="grid gap-1">
@@ -217,6 +230,7 @@ export function PrintPreparationPanel({
         <p className="text-xs text-muted-foreground">{limitations ?? t("limitations")}</p>
       </div>
       <Form
+        id={formId}
         form={form}
         aria-label={t("settings")}
         onChange={() => {
@@ -262,14 +276,17 @@ export function PrintPreparationPanel({
             )}
           </form.AppField>
         </fieldset>
-        <form.SubmitButton requireDirty={false} disabled={disabled || pending || slicerPending}>
-          {t("prepare")}
-        </form.SubmitButton>
+        <OptionalActionPortal container={actionContainer}>{prepareAction}</OptionalActionPortal>
       </Form>
       {error && !appOwnsError ? (
         <Alert className="fixed inset-x-4 bottom-4 z-50">{error}</Alert>
       ) : null}
-      <PrintPreparationOutput state={state} disabled={disabled} onBusyChange={onBusyChange} />
+      <PrintPreparationOutput
+        state={state}
+        disabled={disabled}
+        onBusyChange={onBusyChange}
+        actionContainer={actionContainer}
+      />
     </section>
   )
 }
@@ -278,7 +295,9 @@ function PrintPreparationOutput({
   state,
   disabled,
   onBusyChange,
+  actionContainer,
 }: {
+  actionContainer?: ActionContainer
   state: ReturnType<typeof usePrintPreparation>
   disabled: boolean
   onBusyChange: (busy: boolean) => void
@@ -299,7 +318,20 @@ function PrintPreparationOutput({
   const printerProfile = useViewerPreferences((state) => state.printerProfile)
   const report = prepared?.printPreparation?.report
   const busy = disabled || pending || slicerPending
-  return prepared?.printPreparation && report ? (
+  if (!prepared?.printPreparation || !report) return null
+  const downloadAction = (
+    <Button
+      type="button"
+      disabled={busy}
+      onClick={() => {
+        downloadDocumentExport(prepared)
+        setDownloaded(true)
+      }}
+    >
+      {t("download")}
+    </Button>
+  )
+  return (
     <>
       <PreparedPrintPreview
         result={prepared.printPreparation}
@@ -316,22 +348,14 @@ function PrintPreparationOutput({
       />
       <PrintPreparationReport report={report} supports={form.state.values.supports} />
       <p className="text-xs text-muted-foreground">{t("verify")}</p>
-      <Button
-        type="button"
-        disabled={busy}
-        onClick={() => {
-          downloadDocumentExport(prepared)
-          setDownloaded(true)
-        }}
-      >
-        {t("download")}
-      </Button>
+      <OptionalActionPortal container={actionContainer}>{downloadAction}</OptionalActionPortal>
       {downloaded ? (
         <p role="status" className="text-sm">
           {t("downloaded")}
         </p>
       ) : null}
       <SlicerHandoffPanel
+        actionContainer={actionContainer}
         disabled={busy}
         onBusyChange={(busy) => {
           setSlicerPending(busy)
@@ -359,7 +383,7 @@ function PrintPreparationOutput({
         </p>
       ) : null}
     </>
-  ) : null
+  )
 }
 
 function PrintPreparationReport({

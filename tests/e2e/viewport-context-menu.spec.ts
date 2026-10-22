@@ -89,7 +89,14 @@ test("right click targets a body, saves its material and color, and restores the
   await page.getByRole("menuitem", { name: "Material and Color…", exact: true }).click()
   await expect(appearance.getByLabel("Color", { exact: true })).toHaveValue("#c6a24a")
   await expect(appearance.getByRole("combobox", { name: "Material preset" })).toHaveValue("brass")
-  await page.setViewportSize({ width: 512, height: 450 })
+  await page.setViewportSize({ width: 512, height: 384 })
+  const appearanceFooter = appearance.locator("[data-slot=dialog-footer]")
+  const appearanceBounds = await appearanceFooter.boundingBox()
+  await appearance.locator("[data-slot=dialog-body]").evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  expect(await appearanceFooter.boundingBox()).toEqual(appearanceBounds)
+  await expect(appearance.locator("[data-slot=dialog-header]")).toBeInViewport()
   await expect(appearance.getByRole("button", { name: "Apply", exact: true })).toBeInViewport()
 })
 
@@ -108,7 +115,21 @@ test("context actions open properties and target mesh export, reveal history, an
       .locator("..")
       .locator("dd"),
   ).toHaveText("8,000 mm³")
+  await page.setViewportSize({ width: 512, height: 384 })
+  const propertiesFooter = properties.locator("[data-slot=dialog-footer]")
+  const propertiesBounds = await propertiesFooter.boundingBox()
+  const propertiesBody = properties.locator("[data-slot=dialog-body]")
+  expect(
+    await propertiesBody.evaluate((element) => element.scrollHeight - element.clientHeight),
+  ).toBeGreaterThan(0)
+  await propertiesBody.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  expect(await propertiesFooter.boundingBox()).toEqual(propertiesBounds)
+  await expect(properties.locator("[data-slot=dialog-header]")).toBeInViewport()
+  await expect(propertiesFooter.getByRole("button")).toBeInViewport()
   await properties.getByRole("button", { name: "Close", exact: true }).click()
+  await page.setViewportSize({ width: 1024, height: 900 })
   menu = await openContext(page)
   await menu.getByRole("menuitem", { name: "Save As Mesh…", exact: true }).click()
   const exporting = page.getByRole("dialog", { name: "Export model", exact: true })
@@ -131,8 +152,21 @@ test("context actions open properties and target mesh export, reveal history, an
   await menu.getByRole("menuitem", { name: "Press Pull", exact: true }).click()
   const pull = page.getByRole("form", { name: "Press Pull", exact: true })
   await pull.getByRole("combobox", { name: "Distance", exact: true }).fill("5 mm")
+  await page.setViewportSize({ width: 512, height: 384 })
+  const pullFooter = pull.locator("[data-slot=task-panel-footer]")
+  const pullFooterBounds = await pullFooter.boundingBox()
+  await pull.locator("[data-slot=task-panel-content]").evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  expect(await pullFooter.boundingBox()).toEqual(pullFooterBounds)
+  await expect(pull.locator("[data-slot=task-panel-header]")).toBeInViewport()
+  await expect(
+    pullFooter.getByRole("button", { name: "Apply Press Pull", exact: true }),
+  ).toBeInViewport()
+  await expect(pull.getByRole("combobox", { name: "Distance", exact: true })).toHaveValue("5 mm")
   await pull.getByRole("button", { name: "Apply Press Pull", exact: true }).click()
   await expect(pull).not.toBeVisible()
+  await page.setViewportSize({ width: 1024, height: 900 })
   await expect(page.getByRole("treeitem", { name: "Press Pull 1", exact: true })).toBeVisible()
   menu = await openContext(page)
   await menu.getByRole("menuitem", { name: "Properties", exact: true }).click()

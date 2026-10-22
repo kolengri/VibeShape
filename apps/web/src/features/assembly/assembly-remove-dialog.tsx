@@ -4,6 +4,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
+  AlertDialogBody,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -48,24 +49,26 @@ export function AssemblyRemoveDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("removeTitle", { name: removal.name })}</AlertDialogTitle>
+        </AlertDialogHeader>
+        <AlertDialogBody>
           <AlertDialogDescription>
             {t(general ? "removeGeneralExplanation" : "removeExplanation")}
           </AlertDialogDescription>
-        </AlertDialogHeader>
-        <Field orientation="horizontal" className="min-h-8">
-          <FieldLabel htmlFor={id}>
-            {t(general ? "cascadeGeneralRemoval" : "cascadeRemoval")}
-          </FieldLabel>
-          <input
-            id={id}
-            type="checkbox"
-            checked={cascade}
-            disabled={pending}
-            className="size-4 accent-primary"
-            onChange={(event) => setCascade(event.currentTarget.checked)}
-          />
-        </Field>
-        {error && <Alert>{error}</Alert>}
+          <Field orientation="horizontal" className="min-h-8">
+            <FieldLabel htmlFor={id}>
+              {t(general ? "cascadeGeneralRemoval" : "cascadeRemoval")}
+            </FieldLabel>
+            <input
+              id={id}
+              type="checkbox"
+              checked={cascade}
+              disabled={pending}
+              className="size-4 accent-primary"
+              onChange={(event) => setCascade(event.currentTarget.checked)}
+            />
+          </Field>
+          {error && <Alert>{error}</Alert>}
+        </AlertDialogBody>
         <AlertDialogFooter>
           <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
             {t("cancel")}

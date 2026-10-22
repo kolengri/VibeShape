@@ -4,6 +4,7 @@ import { readLoftFeatureParametersV3 } from "@vibeshape/domain/part-design-loft-
 import { readSweepFeatureParameters } from "@vibeshape/domain/part-design-sweep"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { ReactNode } from "react"
+import { TaskPanelSurface } from "../components/task-panel-layout"
 import {
   createBrowserFeatureId,
   type DocumentControllerState,
@@ -190,7 +191,10 @@ export function SweepLoftTaskPanel(props: Props) {
       }),
   )
   return (
-    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <TaskPanelSurface
+      aria-label={task("ariaLabel")}
+      trailingContent={mode.kind === "edit" && props.renderDelete(mode.feature)}
+    >
       <SweepLoftForm
         key={key}
         copy={copy}
@@ -202,7 +206,6 @@ export function SweepLoftTaskPanel(props: Props) {
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />
-      {mode.kind === "edit" && props.renderDelete(mode.feature)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

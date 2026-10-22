@@ -3,6 +3,7 @@ import {
   readMirrorFeatureParametersV3,
 } from "@vibeshape/domain/part-design-mirror"
 import { useTranslations } from "@vibeshape/i18n"
+import { TaskPanelSurface } from "../components/task-panel-layout"
 import { MirrorForm, type MirrorFormCopy } from "../features/mirror/mirror-form"
 import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
 import { type BodyFeatureTaskPanelProps, bodyFeatureTaskMode } from "./body-feature-task-mode"
@@ -53,7 +54,10 @@ export function MirrorTaskPanel(props: BodyFeatureTaskPanelProps) {
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
       : `create:${report.snapshot.revision}`
   return (
-    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <TaskPanelSurface
+      aria-label={task("ariaLabel")}
+      trailingContent={mode.kind === "edit" && props.renderDelete(mode.feature)}
+    >
       <MirrorForm
         key={key}
         copy={copy}
@@ -67,7 +71,6 @@ export function MirrorTaskPanel(props: BodyFeatureTaskPanelProps) {
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />
-      {mode.kind === "edit" && props.renderDelete(mode.feature)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

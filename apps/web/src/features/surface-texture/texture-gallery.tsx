@@ -7,6 +7,7 @@ import { Input } from "@vibeshape/ui/components/input"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useEffect, useRef, useState } from "react"
 import { z } from "zod"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 
 type Pattern = Extract<SurfaceTextureMap, { kind: "builtin" }>["pattern"]
 const patterns: readonly Pattern[] = ["noise", "ridges", "dots", "knurling", "hexagons", "wood"]
@@ -93,72 +94,78 @@ export function TextureGallery({
     }
   }
   return (
-    <section aria-label={t("gallery")} className="grid gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xs font-medium">{t("gallery")}</h2>
-        <Button type="button" size="sm" onClick={onDone}>
-          {t("done")}
-        </Button>
-      </div>
-      <Input
-        aria-label={t("search")}
-        placeholder={t("search")}
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={filter === "all" ? "secondary" : "ghost"}
-          aria-pressed={filter === "all"}
-          onClick={() => setFilter("all")}
-        >
-          {t("all")}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={filter === "favorites" ? "secondary" : "ghost"}
-          aria-pressed={filter === "favorites"}
-          onClick={() => setFilter("favorites")}
-        >
-          {t("favorites")}
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground">{t("galleryHint")}</p>
-      <div className="grid grid-cols-2 gap-3">
-        {shown.map((pattern) => (
-          <div key={pattern} className="relative">
-            <Button
-              size="content"
-              type="button"
-              variant="ghost"
-              className={cn(
-                "w-full flex-col gap-2",
-                selected.kind === "builtin" && selected.pattern === pattern && "ring-2 ring-ring",
-              )}
-              aria-pressed={selected.kind === "builtin" && selected.pattern === pattern}
-              onClick={() => onSelect({ kind: "builtin", pattern })}
-            >
-              <TextureThumbnail map={{ kind: "builtin", pattern }} />
-              <span className="text-xs">{t(`patterns.${pattern}`)}</span>
-            </Button>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="secondary"
-              className="absolute right-2 top-2 aria-pressed:ring-2 aria-pressed:ring-ring"
-              aria-label={t("favoritePattern", { pattern: t(`patterns.${pattern}`) })}
-              aria-pressed={favorites.includes(pattern)}
-              onClick={() => toggleFavorite(pattern)}
-            >
-              <Star aria-hidden="true" />
-            </Button>
-          </div>
-        ))}
-      </div>
-      {shown.length === 0 && <p className="text-xs text-muted-foreground">{t("noTextures")}</p>}
+    <section
+      aria-label={t("gallery")}
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+    >
+      <TaskPanelLayout
+        title={t("gallery")}
+        actions={
+          <Button type="button" size="sm" className="min-w-20 max-w-full" onClick={onDone}>
+            {t("done")}
+          </Button>
+        }
+      >
+        <Input
+          aria-label={t("search")}
+          placeholder={t("search")}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={filter === "all" ? "secondary" : "ghost"}
+            aria-pressed={filter === "all"}
+            onClick={() => setFilter("all")}
+          >
+            {t("all")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={filter === "favorites" ? "secondary" : "ghost"}
+            aria-pressed={filter === "favorites"}
+            onClick={() => setFilter("favorites")}
+          >
+            {t("favorites")}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">{t("galleryHint")}</p>
+        <div className="grid grid-cols-2 gap-3">
+          {shown.map((pattern) => (
+            <div key={pattern} className="relative">
+              <Button
+                size="content"
+                type="button"
+                variant="ghost"
+                className={cn(
+                  "w-full flex-col gap-2",
+                  selected.kind === "builtin" && selected.pattern === pattern && "ring-2 ring-ring",
+                )}
+                aria-pressed={selected.kind === "builtin" && selected.pattern === pattern}
+                onClick={() => onSelect({ kind: "builtin", pattern })}
+              >
+                <TextureThumbnail map={{ kind: "builtin", pattern }} />
+                <span className="text-xs">{t(`patterns.${pattern}`)}</span>
+              </Button>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="secondary"
+                className="absolute right-2 top-2 aria-pressed:ring-2 aria-pressed:ring-ring"
+                aria-label={t("favoritePattern", { pattern: t(`patterns.${pattern}`) })}
+                aria-pressed={favorites.includes(pattern)}
+                onClick={() => toggleFavorite(pattern)}
+              >
+                <Star aria-hidden="true" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        {shown.length === 0 && <p className="text-xs text-muted-foreground">{t("noTextures")}</p>}
+      </TaskPanelLayout>
     </section>
   )
 }

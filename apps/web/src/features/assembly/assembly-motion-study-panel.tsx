@@ -15,7 +15,7 @@ import {
   withFieldGroup,
 } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useId, useRef, useState } from "react"
-import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { browserAuthoredUuid as browserUuidV7 } from "../../document/authored-document-session"
 import { formNumber, numberFieldValidators } from "./assembly-fields"
@@ -543,7 +543,7 @@ function StudyEditor(props: ReadyStudyPanelProps) {
     <Form
       form={form}
       noValidate={false}
-      className="grid min-w-0 gap-2"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
       aria-label={t("motionStudies")}
       onInvalidCapture={(event) => {
         let ancestor = event.target instanceof HTMLElement ? event.target.parentElement : null
@@ -553,10 +553,9 @@ function StudyEditor(props: ReadyStudyPanelProps) {
         }
       }}
     >
-      <TaskPanelHeader
+      <TaskPanelLayout
         title={t(session.existing ? "motionEditStudy" : "motionNewStudy")}
         description={t("motionStudyDescription")}
-        className="bg-panel py-2"
         actions={
           <TaskPanelLifecycleActions
             ariaLabel={t("motionStudies")}
@@ -579,47 +578,47 @@ function StudyEditor(props: ReadyStudyPanelProps) {
             <AssemblyPlaybackSettings form={form} fields="playback" disabled={playbackDisabled} />
           }
         />
-      </TaskPanelHeader>
-      <StudyFields
-        form={form}
-        fields={{ name: "name", duration: "duration" }}
-        session={session}
-        draft={draft}
-        disabled={editingDisabled}
-      />
-      <AssemblyMotionTrackEditor
-        study={draft}
-        view={view}
-        edit={session.edit}
-        disabled={editingDisabled}
-      />
-      <details>
-        <summary className="font-medium cursor-pointer py-1 text-xs">
-          {t("motionExportOptions")}
-        </summary>
-        <StudyExport session={session} revision={task.revision} disabled={editingDisabled} />
-      </details>
-      <form.FormError />
-      <StudyFailure view={view} session={session} error={null} />
-      {session.existing && (
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={busy}
-          onClick={async () => {
-            motion.reset()
-            if (
-              await view.mutations.apply(
-                [{ kind: "motion-study.remove", studyId: draft.id }],
-                task.revision,
+        <StudyFields
+          form={form}
+          fields={{ name: "name", duration: "duration" }}
+          session={session}
+          draft={draft}
+          disabled={editingDisabled}
+        />
+        <AssemblyMotionTrackEditor
+          study={draft}
+          view={view}
+          edit={session.edit}
+          disabled={editingDisabled}
+        />
+        <details>
+          <summary className="font-medium cursor-pointer py-1 text-xs">
+            {t("motionExportOptions")}
+          </summary>
+          <StudyExport session={session} revision={task.revision} disabled={editingDisabled} />
+        </details>
+        <form.FormError />
+        <StudyFailure view={view} session={session} error={null} />
+        {session.existing && (
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={async () => {
+              motion.reset()
+              if (
+                await view.mutations.apply(
+                  [{ kind: "motion-study.remove", studyId: draft.id }],
+                  task.revision,
+                )
               )
-            )
-              view.closeStudy()
-          }}
-        >
-          {t("motionDeleteStudy")}
-        </Button>
-      )}
+                view.closeStudy()
+            }}
+          >
+            {t("motionDeleteStudy")}
+          </Button>
+        )}
+      </TaskPanelLayout>
     </Form>
   )
 }

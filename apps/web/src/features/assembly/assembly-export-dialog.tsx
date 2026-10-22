@@ -10,6 +10,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -140,7 +141,13 @@ function AssemblyExportStatus({ view }: { view: ExportView }) {
     </>
   )
 }
-function AssemblyPrintPreparation({ view }: { view: ExportView }) {
+function AssemblyPrintPreparation({
+  view,
+  actionContainer,
+}: {
+  view: ExportView
+  actionContainer: HTMLElement | null
+}) {
   const t = useTranslations("app.assembly")
   return (
     <>
@@ -156,6 +163,7 @@ function AssemblyPrintPreparation({ view }: { view: ExportView }) {
       <p className="text-xs text-muted-foreground">{t("printSourceLimit")}</p>
       {view.showPreparation && (
         <PrintPreparationPanel
+          actionContainer={actionContainer}
           key={view.scope}
           disabled={view.preparationDisabled}
           onBusyChange={view.setPrintPending}
@@ -197,6 +205,7 @@ function AssemblyExportContent(props: ExportSelection) {
   const t = useTranslations("app.assembly")
   const common = useTranslations("app.export")
   const view = useAssemblyExportSelection(props)
+  const [actionContainer, setActionContainer] = useState<HTMLDivElement | null>(null)
   return (
     <DialogContent
       closeLabel={t("cancel")}
@@ -207,14 +216,16 @@ function AssemblyExportContent(props: ExportSelection) {
         <DialogTitle>{t("exportAssembly")}</DialogTitle>
         <DialogDescription>{t("exportDescription")}</DialogDescription>
       </DialogHeader>
-      {view.showPreparation ? (
-        <AssemblyExportScope view={view} instances={props.instances} />
-      ) : (
-        <AssemblyExportOptions view={view} instances={props.instances} />
-      )}
-      <AssemblyExportStatus view={view} />
-      <AssemblyPrintPreparation view={view} />
-      <DialogFooter>
+      <DialogBody>
+        {view.showPreparation ? (
+          <AssemblyExportScope view={view} instances={props.instances} />
+        ) : (
+          <AssemblyExportOptions view={view} instances={props.instances} />
+        )}
+        <AssemblyExportStatus view={view} />
+        <AssemblyPrintPreparation view={view} actionContainer={actionContainer} />
+      </DialogBody>
+      <DialogFooter ref={setActionContainer}>
         <DialogClose asChild>
           <Button type="button" variant="outline">
             {t("closeExport")}

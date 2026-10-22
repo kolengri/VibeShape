@@ -31,6 +31,7 @@ import { Scan } from "@vibeshape/ui/components/icons"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultAngleExpression,
@@ -710,42 +711,47 @@ function RevolveAngleField({ controller }: { controller: RevolveFormController }
 function RevolveFormView({ controller }: { controller: RevolveFormController }) {
   const { form } = controller
   return (
-    <Form form={form} aria-label={controller.copy.title} className="gap-0">
-      <form.FormError />
-      <RevolveProfileSelectionSync
-        profiles={controller.mode.profiles}
-        supportReference={controller.mode.supportReference ?? null}
-        onChange={controller.applyProfileSelection}
-      />
-      <RevolveAxisSelectionSync
-        axisSelection={controller.axisSelection}
-        onChange={controller.applyAxisSelection}
-      />
-      <RevolvePreviewField controller={controller} />
-      <RevolveParameterPanel
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={controller.copy.submit}
-            ariaLabel={controller.copy.title}
-            cancelLabel={controller.copy.cancel}
-            disabled={controller.disabled}
-            onCancel={controller.onCancel}
-            previewStatus={controller.previewStatus}
-          />
-        }
-        copy={controller.copy}
-        disabled={controller.disabled}
-        message={controller.message}
-        profileLabels={controller.profileLabels ?? [controller.profileLabel]}
-        onProfileRemove={controller.onProfileRemove}
-        onProfilesClear={controller.onProfilesClear}
-        profileSelectionActive={controller.profileSelectionActive}
-        onProfileSelectionRequest={controller.onProfileSelectionRequest}
-        operationField={<RevolveOperationField controller={controller} />}
-        targetField={<RevolveTargetField controller={controller} />}
-        axisField={<RevolveAxisFormField controller={controller} />}
-        angleField={<RevolveAngleField controller={controller} />}
-      />
+    <Form
+      form={form}
+      aria-label={controller.copy.title}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
+    >
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <RevolveProfileSelectionSync
+          profiles={controller.mode.profiles}
+          supportReference={controller.mode.supportReference ?? null}
+          onChange={controller.applyProfileSelection}
+        />
+        <RevolveAxisSelectionSync
+          axisSelection={controller.axisSelection}
+          onChange={controller.applyAxisSelection}
+        />
+        <RevolvePreviewField controller={controller} />
+        <RevolveParameterPanel
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={controller.copy.submit}
+              ariaLabel={controller.copy.title}
+              cancelLabel={controller.copy.cancel}
+              disabled={controller.disabled}
+              onCancel={controller.onCancel}
+              previewStatus={controller.previewStatus}
+            />
+          }
+          copy={controller.copy}
+          disabled={controller.disabled}
+          message={controller.message}
+          profileLabels={controller.profileLabels ?? [controller.profileLabel]}
+          onProfileRemove={controller.onProfileRemove}
+          onProfilesClear={controller.onProfilesClear}
+          profileSelectionActive={controller.profileSelectionActive}
+          onProfileSelectionRequest={controller.onProfileSelectionRequest}
+          operationField={<RevolveOperationField controller={controller} />}
+          targetField={<RevolveTargetField controller={controller} />}
+          axisField={<RevolveAxisFormField controller={controller} />}
+          angleField={<RevolveAngleField controller={controller} />}
+        />
+      </TaskPanelContentProvider>
     </Form>
   )
 }

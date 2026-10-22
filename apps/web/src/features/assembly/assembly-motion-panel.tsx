@@ -5,7 +5,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { Form, useAppForm, useFieldError } from "@vibeshape/ui/integrations/tanstack-form"
 import { useMemo } from "react"
-import { TaskPanelHeader } from "../../components/task-panel-header"
+import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { useDocumentDisplayUnits } from "../../document/document-display-units"
 import { numberFieldValidators } from "./assembly-fields"
@@ -276,7 +276,7 @@ export function AssemblyMotionPanel({
   return (
     <Form
       form={input.form}
-      className="grid min-w-0 gap-2"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
       onKeyDown={(event) => {
         if (event.key === "Escape" && !busy) {
           event.preventDefault()
@@ -284,7 +284,7 @@ export function AssemblyMotionPanel({
         }
       }}
     >
-      <TaskPanelHeader
+      <TaskPanelLayout
         title={t("motionTitle")}
         description={t("motionDescription")}
         actions={
@@ -299,21 +299,22 @@ export function AssemblyMotionPanel({
             onCancel={close}
           />
         }
-      />
-      <MotionCoordinateFields
-        joint={joint}
-        coordinate={coordinate}
-        input={input}
-        onCoordinate={onCoordinate}
-        disabled={busy || motion.playing || motion.pending}
-      />
-      <MotionPlayback motion={motion} coordinate={coordinate} input={input} disabled={busy} />
-      <AssemblyPlaybackSettings
-        form={input.form}
-        fields="playback"
-        disabled={busy || motion.playing || motion.pending}
-      />
-      <MotionStatus motion={motion} coordinate={coordinate} input={input} error={error} />
+      >
+        <MotionCoordinateFields
+          joint={joint}
+          coordinate={coordinate}
+          input={input}
+          onCoordinate={onCoordinate}
+          disabled={busy || motion.playing || motion.pending}
+        />
+        <MotionPlayback motion={motion} coordinate={coordinate} input={input} disabled={busy} />
+        <AssemblyPlaybackSettings
+          form={input.form}
+          fields="playback"
+          disabled={busy || motion.playing || motion.pending}
+        />
+        <MotionStatus motion={motion} coordinate={coordinate} input={input} error={error} />
+      </TaskPanelLayout>
     </Form>
   )
 }

@@ -7,11 +7,13 @@ export function NativeAgentActions({
   pending,
   disabled,
   disconnect,
+  form,
 }: {
   connected: boolean
   pending: boolean
   disabled?: boolean
   disconnect: () => Promise<void>
+  form?: string
 }) {
   const t = useTranslations("app.assistant")
   return connected ? (
@@ -19,7 +21,7 @@ export function NativeAgentActions({
       {t("disconnect")}
     </Button>
   ) : (
-    <SubmitButton size="sm" requireDirty={false} disabled={pending || disabled}>
+    <SubmitButton form={form} size="sm" requireDirty={false} disabled={pending || disabled}>
       {t("connect")}
     </SubmitButton>
   )

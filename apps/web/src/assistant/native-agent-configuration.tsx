@@ -3,9 +3,10 @@ import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { DialogBody, DialogFooter } from "@vibeshape/ui/components/dialog"
 import { SelectOption } from "@vibeshape/ui/components/select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useRef, useState } from "react"
+import { useId, useRef, useState } from "react"
 import {
   AssistantConnectionTestFeedback,
   useAssistantConnectionTest,
@@ -43,6 +44,7 @@ export function NativeAgentConfiguration({
   connected: boolean
 }) {
   const t = useTranslations("app.assistant")
+  const id = useId()
   const onSaved = useAssistantSettingsSaved()
   const test = useAssistantConnectionTest(chat.testConnection)
   const [initial] = useState(initialConfiguration)
@@ -133,24 +135,29 @@ export function NativeAgentConfiguration({
       {([choice, submitting]) => {
         const pending = connecting || disconnecting || submitting || test.pending
         const locked = pending || connected
-        return (
-          <div className="grid gap-2">
-            <form.AppField name="choice">
-              {(field) => (
-                <field.SelectField label={t("agent")} disabled={pending}>
-                  <SelectOption value="choose" disabled>
-                    {t("chooseAgent")}
+        const agentField = (
+          <form.AppField name="choice">
+            {(field) => (
+              <field.SelectField label={t("agent")} disabled={pending}>
+                <SelectOption value="choose" disabled>
+                  {t("chooseAgent")}
+                </SelectOption>
+                {agentPresets.map((preset) => (
+                  <SelectOption key={preset.id} value={preset.id}>
+                    {t(`agents.${preset.id}`)}
                   </SelectOption>
-                  {agentPresets.map((preset) => (
-                    <SelectOption key={preset.id} value={preset.id}>
-                      {t(`agents.${preset.id}`)}
-                    </SelectOption>
-                  ))}
-                  <SelectOption value="jev">{t("agents.jev")}</SelectOption>
-                  <SelectOption value="custom">{t("agents.custom")}</SelectOption>
-                </field.SelectField>
-              )}
-            </form.AppField>
+                ))}
+                <SelectOption value="jev">{t("agents.jev")}</SelectOption>
+                <SelectOption value="custom">{t("agents.custom")}</SelectOption>
+              </field.SelectField>
+            )}
+          </form.AppField>
+        )
+        const feedback = (
+          <AssistantConnectionTestFeedback result={test.result} attempt={test.attempt} />
+        )
+        return (
+          <>
             {choice === "jev" ? (
               <JevAgentConfiguration
                 chat={chat}
@@ -160,10 +167,14 @@ export function NativeAgentConfiguration({
                 testing={test.pending}
                 testConnection={test.run}
                 clearTest={test.clear}
+                agentField={agentField}
+                feedback={feedback}
               />
             ) : (
               <Form
+                id={id}
                 form={form}
+                className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
                 onInput={test.clear}
                 aria-busy={pending || undefined}
                 onSubmitCapture={(event) => {
@@ -172,60 +183,68 @@ export function NativeAgentConfiguration({
                   event.stopPropagation()
                 }}
               >
-                <p className="text-xs text-muted-foreground">{t("presetNotice")}</p>
-                <details
-                  open={advanced}
-                  onToggle={(event) => setAdvanced(event.currentTarget.open)}
-                >
-                  <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-                  <div className="mt-2 grid gap-2">
-                    <form.AppField name="command">
-                      {(field) => (
-                        <field.TextField
-                          label={t("executable")}
-                          disabled={locked}
-                          placeholder={t("executablePlaceholder")}
-                        />
-                      )}
-                    </form.AppField>
-                    <form.AppField name="args">
-                      {(field) => <field.TextField label={t("arguments")} disabled={locked} />}
-                    </form.AppField>
-                  </div>
-                </details>
-                {failed && <Alert>{t("errors.request-failed")}</Alert>}
-                {storageFailed && (
-                  <p role="status" className="text-xs text-muted-foreground">
-                    {t("settingsNotSaved")}
-                  </p>
-                )}
-                <form.Subscribe selector={(state) => Boolean(state.values.command.trim())}>
-                  {(complete) => (
-                    <>
-                      <NativeAgentActions
-                        connected={connected}
-                        pending={pending}
-                        disabled={!complete}
-                        disconnect={disconnect}
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={pending || !complete}
-                        isLoading={test.pending}
-                        onClick={() => form.handleSubmit("test")}
-                      >
-                        {t("testConnection")}
-                      </Button>
-                    </>
+                <DialogBody className="gap-3">
+                  {agentField}
+                  <p className="text-xs text-muted-foreground">{t("presetNotice")}</p>
+                  <details
+                    open={advanced}
+                    onToggle={(event) => setAdvanced(event.currentTarget.open)}
+                  >
+                    <summary className="cursor-pointer text-xs font-medium">
+                      {t("advanced")}
+                    </summary>
+                    <div className="mt-2 grid gap-2">
+                      <form.AppField name="command">
+                        {(field) => (
+                          <field.TextField
+                            label={t("executable")}
+                            disabled={locked}
+                            placeholder={t("executablePlaceholder")}
+                          />
+                        )}
+                      </form.AppField>
+                      <form.AppField name="args">
+                        {(field) => <field.TextField label={t("arguments")} disabled={locked} />}
+                      </form.AppField>
+                    </div>
+                  </details>
+                  {failed && <Alert>{t("errors.request-failed")}</Alert>}
+                  {storageFailed && (
+                    <p role="status" className="text-xs text-muted-foreground">
+                      {t("settingsNotSaved")}
+                    </p>
                   )}
-                </form.Subscribe>
-                <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
+                  <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
+                  {feedback}
+                </DialogBody>
+                <DialogFooter>
+                  <form.Subscribe selector={(state) => Boolean(state.values.command.trim())}>
+                    {(complete) => (
+                      <>
+                        <NativeAgentActions
+                          form={id}
+                          connected={connected}
+                          pending={pending}
+                          disabled={!complete}
+                          disconnect={disconnect}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pending || !complete}
+                          isLoading={test.pending}
+                          onClick={() => form.handleSubmit("test")}
+                        >
+                          {t("testConnection")}
+                        </Button>
+                      </>
+                    )}
+                  </form.Subscribe>
+                </DialogFooter>
               </Form>
             )}
-            <AssistantConnectionTestFeedback result={test.result} attempt={test.attempt} />
-          </div>
+          </>
         )
       }}
     </form.Subscribe>

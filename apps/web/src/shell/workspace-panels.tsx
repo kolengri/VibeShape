@@ -161,24 +161,6 @@ function WorkspacePanelSurface({
   root: RefObject<HTMLDivElement | null>
   taskActive: boolean
 }) {
-  useLayoutEffect(() => {
-    const element = root.current
-    const panel = element?.querySelector<HTMLElement>(".workspace-panel--task")
-    if (!element || !panel || !compact) return
-    const update = () => {
-      element.style.setProperty(
-        "--workspace-sheet-observed-height",
-        `${panel.getBoundingClientRect().height}px`,
-      )
-    }
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(panel)
-    return () => {
-      observer.disconnect()
-      element.style.removeProperty("--workspace-sheet-observed-height")
-    }
-  }, [compact, root])
   return (
     <div
       ref={root}
@@ -224,6 +206,97 @@ function WorkspaceHistory({ children }: { children: ReactNode }) {
   )
 }
 
+function useTaskPanelHeight(
+  root: RefObject<HTMLDivElement | null>,
+  task: RefObject<HTMLDivElement | null>,
+) {
+  useLayoutEffect(() => {
+    const surface = task.current
+    const workspace = root.current
+    if (!surface || !workspace) return
+    // Reserve the measured compact sheet height without forcing short windows to fill its cap.
+    const update = () => {
+      workspace.style.setProperty(
+        "--workspace-sheet-height",
+        `${surface.getBoundingClientRect().height}px`,
+      )
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(surface)
+    return () => {
+      observer.disconnect()
+      workspace.style.removeProperty("--workspace-sheet-height")
+    }
+  }, [root, task])
+}
+
+function persistWorkspaceLayout({
+  narrow,
+  compact,
+  taskActive,
+  tree,
+  task,
+  actions,
+}: {
+  narrow: boolean
+  compact: boolean
+  taskActive: boolean
+  tree: RefObject<PanelImperativeHandle | null>
+  task: RefObject<PanelImperativeHandle | null>
+  actions: WorkspaceLayoutPreferencesState["actions"]
+}) {
+  if (!narrow) persistPanelSize("tree", tree.current, actions)
+  if (!compact && taskActive) persistPanelSize("task", task.current, actions)
+}
+
+function useWorkspacePanelLayout(taskPanelActive: boolean, revealTreeRequest: number | undefined) {
+  const compact = useCompactTaskPanel()
+  const workspaceTask = useWorkspaceTask()
+  const taskActive = taskPanelActive || workspaceTask !== null
+  const narrow = useNarrowWorkspace()
+  const treePanelId = useId()
+  const preferences = useWorkspaceLayoutPreferences((state) => state)
+  const root = useRef<HTMLDivElement>(null)
+  const taskSurface = useRef<HTMLDivElement>(null)
+  useTaskPanelHeight(root, taskSurface)
+  const { treeCollapsed, taskCollapsed, actions } = preferences
+  const drawer = useModelTreeDrawer(narrow, revealTreeRequest, actions)
+
+  const treeLayout = treePresentation(narrow, drawer.open, treeCollapsed)
+  const taskLayout = taskPresentation(compact, taskCollapsed, taskActive)
+  const { tree, task, initialTreeSize, initialTaskSize } = usePanelSizes(
+    preferences,
+    compact,
+    narrow,
+    taskActive,
+  )
+
+  function trackSize(panel: "tree" | "task", pixels: number) {
+    // Keep pointer-rate layout out of React, persistence, and document/geometry state.
+    root.current?.style.setProperty(`--workspace-${panel}-size`, `${pixels}px`)
+  }
+
+  return {
+    compact,
+    taskActive,
+    narrow,
+    treePanelId,
+    preferences,
+    root,
+    taskSurface,
+    actions,
+    drawer,
+    treeLayout,
+    taskLayout,
+    tree,
+    task,
+    initialTreeSize,
+    initialTaskSize,
+    trackSize,
+  }
+}
+
 /** Layout changes never replace the viewport or the mounted task form. */
 export function WorkspacePanels({
   allowTransparency,
@@ -243,34 +316,24 @@ export function WorkspacePanels({
   taskPanelActive?: boolean
 }) {
   const t = useTranslations("app.shell.workspaceLayout")
-  const compact = useCompactTaskPanel()
-  const workspaceTask = useWorkspaceTask()
-  const taskActive = taskPanelActive || workspaceTask !== null
-  const narrow = useNarrowWorkspace()
-  const treePanelId = useId()
-  const preferences = useWorkspaceLayoutPreferences((state) => state)
-  const root = useRef<HTMLDivElement>(null)
-  const { treeCollapsed, taskCollapsed, actions } = preferences
-  const drawer = useModelTreeDrawer(narrow, revealTreeRequest, actions)
-
-  const treeLayout = treePresentation(narrow, drawer.open, treeCollapsed)
-  const taskLayout = taskPresentation(compact, taskCollapsed, taskActive)
-  const { tree, task, initialTreeSize, initialTaskSize } = usePanelSizes(
-    preferences,
+  const {
     compact,
-    narrow,
     taskActive,
-  )
-
-  function trackSize(panel: "tree" | "task", pixels: number) {
-    // Keep pointer-rate layout out of React, persistence, and document/geometry state.
-    root.current?.style.setProperty(`--workspace-${panel}-size`, `${pixels}px`)
-  }
-
-  function persistLayout() {
-    if (!narrow) persistPanelSize("tree", tree.current, actions)
-    if (!compact && taskActive) persistPanelSize("task", task.current, actions)
-  }
+    narrow,
+    treePanelId,
+    preferences,
+    root,
+    taskSurface,
+    actions,
+    drawer,
+    treeLayout,
+    taskLayout,
+    tree,
+    task,
+    initialTreeSize,
+    initialTaskSize,
+    trackSize,
+  } = useWorkspacePanelLayout(taskPanelActive, revealTreeRequest)
 
   return (
     <CompactModelTreeContext.Provider
@@ -294,7 +357,8 @@ export function WorkspacePanels({
           <ResizablePanelGroup
             className="pointer-events-none absolute inset-0 z-20"
             onLayoutChanged={(_layout, { isUserInteraction }) => {
-              if (isUserInteraction) persistLayout()
+              if (isUserInteraction)
+                persistWorkspaceLayout({ narrow, compact, taskActive, tree, task, actions })
             }}
           >
             <ResizablePanel
@@ -360,6 +424,7 @@ export function WorkspacePanels({
               style={{ overflow: "visible" }}
             >
               <div
+                ref={taskSurface}
                 className="workspace-panel workspace-panel--task"
                 inert={taskLayout.hidden}
                 data-collapsed={taskLayout.hidden}

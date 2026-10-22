@@ -157,7 +157,9 @@ describe("assistant connection settings", () => {
         <NativeAgentConfiguration chat={chat} connecting={false} connected={false} />,
       )
       await choose("Agent", agent)
-      const form = screen.getByRole("button", { name: "Connect agent" }).closest("form")
+      const connect = screen.getByRole("button", { name: "Connect agent" }) as HTMLButtonElement
+      const form = connect.form
+      expect(connect.closest('[data-slot="dialog-footer"]')).toBeTruthy()
       expect(form).toBeTruthy()
       await act(async () => {
         fireEvent.submit(form as HTMLFormElement)
@@ -253,7 +255,7 @@ describe("assistant connection settings", () => {
     await openSettings(<ApiConfigurationForm chat={chat} busy={false} connected={false} />)
     const connect = screen.getByRole("button", { name: "Connect and enable project access" })
     await userEvent.click(connect)
-    fireEvent.submit(connect.closest("form") as HTMLFormElement)
+    fireEvent.submit((connect as HTMLButtonElement).form as HTMLFormElement)
     expect(chat.connect).toHaveBeenCalledTimes(1)
     expect(screen.getByRole("dialog")).toBeTruthy()
     await act(async () => pending.resolve(true))
@@ -1100,7 +1102,7 @@ describe("compact chat actions", () => {
         onReset={reset}
       />,
     )
-    for (const name of ["AI settings", "Close chat", "New chat", "Send"]) {
+    for (const name of ["AI settings", "Collapse AI chat", "New chat", "Send"]) {
       const button = screen.getByRole("button", { name })
       expect(button.textContent).toBe("")
       expect(button.hasAttribute("title")).toBe(false)

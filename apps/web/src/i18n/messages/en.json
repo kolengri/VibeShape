@@ -3846,7 +3846,7 @@
       "questionExpired": "This question has expired.",
       "title": "AI chat",
       "connection": "Connection",
-      "close": "Close chat",
+      "collapse": "Collapse AI chat",
       "messages": "Project conversation",
       "empty": "Discuss this project or ask the agent to help build it.",
       "prompt": "Message",

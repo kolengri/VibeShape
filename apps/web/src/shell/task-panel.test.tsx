@@ -254,13 +254,14 @@ describe("captured-source History task", () => {
     const user = userEvent.setup()
     const { onCloseTool } = renderFeatureTask()
     const close = screen.getByRole("button", { name: "Close" })
-    const header = close.closest("header")
-    expect(header).not.toBeNull()
-    expect(screen.getByRole("heading", { name: "Organic lightweighting" }).closest("header")).toBe(
-      header,
-    )
-    expect(screen.getByRole("button", { name: "Delete feature" }).closest("header")).not.toBe(
-      header,
+    const footer = close.closest("footer")
+    expect(footer).not.toBeNull()
+    expect(close.closest("header")).toBeNull()
+    expect(
+      screen.getByRole("heading", { name: "Organic lightweighting" }).closest("header"),
+    ).not.toBeNull()
+    expect(screen.getByRole("button", { name: "Delete feature" }).closest("footer")).not.toBe(
+      footer,
     )
     expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(1)
     await user.click(close)
@@ -274,5 +275,33 @@ describe("captured-source History task", () => {
       true,
     )
     expect(screen.getByText("Open the document with write access to delete features.")).toBeTruthy()
+  })
+
+  it("keeps edit deletion and its explanation in the field scrollport above lifecycle actions", () => {
+    const datum = featureRecordSchema.parse({
+      ...feature,
+      type: datumPlaneFeatureTypeV1.type,
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(8),
+      },
+      label: "Datum plane",
+    })
+    renderFeatureTask("read-only", undefined, datum)
+    const form = screen.getByRole("form", { name: "Edit datum plane" })
+    const deletion = within(form).getByRole("region", { name: "Delete feature" })
+    const scrollport = deletion.closest("[data-slot='task-panel-content']")
+    expect(scrollport).not.toBeNull()
+    expect(deletion.closest("[data-slot='task-panel-footer']")).toBeNull()
+    expect(
+      within(deletion).getByText("Open the document with write access to delete features."),
+    ).toBeTruthy()
+    expect(
+      within(deletion).getByRole<HTMLButtonElement>("button", { name: "Delete feature" }).disabled,
+    ).toBe(true)
+    const cancel = within(form).getByRole("button", { name: "Cancel" })
+    expect(cancel.closest("[data-slot='task-panel-footer']")).not.toBeNull()
+    expect(cancel.closest("[data-slot='task-panel-content']")).toBeNull()
   })
 })

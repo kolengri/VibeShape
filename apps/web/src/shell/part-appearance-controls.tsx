@@ -18,6 +18,7 @@ import {
 } from "@vibeshape/ui/components/context-menu"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -299,7 +300,7 @@ export function PartAppearanceDialog(props: AppearanceDialogProps) {
           <DialogDescription>{t("appearanceFor", { name: props.name })}</DialogDescription>
         </DialogHeader>
         <form
-          className="grid gap-4"
+          className="flex min-h-0 flex-1 flex-col"
           onSubmit={(event) => {
             event.preventDefault()
             void state.apply({
@@ -308,9 +309,11 @@ export function PartAppearanceDialog(props: AppearanceDialogProps) {
             })
           }}
         >
-          <PartAppearanceFields state={state} />
-          {state.stale ? <Alert>{t("stale")}</Alert> : null}
-          {state.error ? <Alert>{state.error}</Alert> : null}
+          <DialogBody>
+            <PartAppearanceFields state={state} />
+            {state.stale ? <Alert>{t("stale")}</Alert> : null}
+            {state.error ? <Alert>{state.error}</Alert> : null}
+          </DialogBody>
           <PartAppearanceFooter state={state} onClose={props.onClose} />
         </form>
       </DialogContent>

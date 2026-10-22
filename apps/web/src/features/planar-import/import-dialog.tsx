@@ -3,6 +3,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -145,30 +146,32 @@ function Task({
   })
   return (
     <>
-      <fieldset
-        disabled={disabled || state.activity !== "idle"}
-        aria-busy={state.activity === "inspecting"}
-        className="grid gap-3"
-      >
-        <legend className="sr-only">{t("source")}</legend>
-        <Fields state={state} />
-        <Button
-          type="button"
-          variant="outline"
-          isLoading={state.activity === "inspecting"}
-          disabled={!state.canInspect}
-          onClick={state.inspect}
+      <DialogBody>
+        <fieldset
+          disabled={disabled || state.activity !== "idle"}
+          aria-busy={state.activity === "inspecting"}
+          className="grid gap-3"
         >
-          {t("inspect")}
-        </Button>
-      </fieldset>
-      <Inspection state={state} />
-      {state.activity === "inspecting" && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {t("inspecting")}
-        </p>
-      )}
-      {state.message && <Alert>{state.message}</Alert>}
+          <legend className="sr-only">{t("source")}</legend>
+          <Fields state={state} />
+          <Button
+            type="button"
+            variant="outline"
+            isLoading={state.activity === "inspecting"}
+            disabled={!state.canInspect}
+            onClick={state.inspect}
+          >
+            {t("inspect")}
+          </Button>
+        </fieldset>
+        <Inspection state={state} />
+        {state.activity === "inspecting" && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {t("inspecting")}
+          </p>
+        )}
+        {state.message && <Alert>{state.message}</Alert>}
+      </DialogBody>
       <DialogFooter>
         <Button
           type="button"
@@ -237,7 +240,7 @@ export function PlanarImportDialog({
       ) : null}
       <DialogContent
         onCloseAutoFocus={onCloseAutoFocus}
-        className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"
+        className="sm:max-w-3xl"
         closeLabel={t("close")}
         showCloseButton={!applying}
         aria-busy={applying}
