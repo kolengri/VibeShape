@@ -18,6 +18,7 @@ import {
   formatDisplayLength,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 
 type Selection = { element: TopologyMeasurementElement; point: MeasurementPoint }
 type Translation = ReturnType<typeof useTranslations<"app.topologyMeasurements">>
@@ -165,15 +166,12 @@ function AvailableTopologyMeasurements({
     <div className="grid gap-3">
       <ElementSelection elements={elements} label={t("element")} value={left} onChange={setLeft} />
       <MeasurementRows rows={rows} />
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="accent-primary"
-          checked={compare}
-          onChange={(event) => setCompare(event.currentTarget.checked)}
-        />
-        {t("compare")}
-      </label>
+      <BooleanParameterField
+        label={t("compare")}
+        className="accent-primary"
+        checked={compare}
+        onChange={(event) => setCompare(event.currentTarget.checked)}
+      />
       {compare ? (
         <>
           <ElementSelection

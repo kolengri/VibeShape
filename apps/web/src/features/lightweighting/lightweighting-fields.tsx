@@ -1,8 +1,10 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { useId } from "react"
 import { LightweightingAlgorithmControls } from "./lightweighting-algorithm-controls"
 import { LightweightingMaterialSelector } from "./lightweighting-material-selector"
 import type {
@@ -163,10 +165,12 @@ function ObjectiveControls({
 }) {
   const t = useTranslations("app.lightweighting")
   return (
-    <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-      <legend className="text-xs mb-2 font-medium">{t("objective")}</legend>
+    <fieldset className="grid min-w-0 grid-cols-1 gap-2" aria-label={t("objective")}>
       <SelectField
         id="lightweighting-objective"
+        description={t(
+          fields.objective === "minimize-mass" ? "minimizeMassHelp" : "maximizeStiffnessHelp",
+        )}
         label={t("objective")}
         value={fields.objective}
         onValueChange={(objective) => {
@@ -178,10 +182,10 @@ function ObjectiveControls({
         <SelectOption value="maximize-stiffness">{t("maximizeStiffness")}</SelectOption>
       </SelectField>
       {fields.objective === "maximize-stiffness" && (
-        <div className="grid gap-2">
-          <label htmlFor="lightweighting-retained-mass" className="text-sm font-medium">
+        <Field>
+          <FieldLabel htmlFor="lightweighting-retained-mass">
             {t("retainedMassPercent", { value: Number(fields.retainedMassPercent) })}
-          </label>
+          </FieldLabel>
           <input
             id="lightweighting-retained-mass"
             type="range"
@@ -189,15 +193,12 @@ function ObjectiveControls({
             max={100}
             step={5}
             value={fields.retainedMassPercent}
-            aria-describedby="lightweighting-objective-help"
+            aria-describedby="lightweighting-objective-description"
             onChange={(event) => onChange({ ...fields, retainedMassPercent: event.target.value })}
-            className="h-6 w-full cursor-pointer accent-primary"
+            className="h-8 w-full min-w-0 cursor-pointer accent-primary"
           />
-        </div>
+        </Field>
       )}
-      <p id="lightweighting-objective-help" className="text-xs text-muted-foreground">
-        {t(fields.objective === "minimize-mass" ? "minimizeMassHelp" : "maximizeStiffnessHelp")}
-      </p>
     </fieldset>
   )
 }
@@ -221,6 +222,7 @@ export function LightweightingParameters({
 }) {
   const t = useTranslations("app.lightweighting")
   const g = useTranslations("app.generativeDesign")
+  const preservationLabelId = useId()
   const surface = fields.surfaceSelection
   const numeric = (
     key:
@@ -266,9 +268,13 @@ export function LightweightingParameters({
     })
   const advanced = (
     <>
-      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="text-xs mb-2 font-medium">{t("preservation")}</legend>
-        <p className="text-xs text-muted-foreground">{t("preservationDescription")}</p>
+      <fieldset className="grid min-w-0 grid-cols-1 gap-2" aria-labelledby={preservationLabelId}>
+        <legend className="mb-1 font-medium text-xs">
+          <span className="inline-flex items-center gap-1">
+            <span id={preservationLabelId}>{t("preservation")}</span>
+            <FieldHelp label={t("preservation")}>{t("preservationDescription")}</FieldHelp>
+          </span>
+        </legend>
         <FacePicker
           label={t("pickPreserve")}
           faces={surface?.preserveFaces ?? []}
@@ -280,15 +286,15 @@ export function LightweightingParameters({
         <NumberField
           id="lightweighting-depth"
           label={t("surfaceDepth")}
+          description={t("surfaceDepthDescription")}
           value={surface?.depthMm ?? ""}
           min={0.01}
           onChange={(depthMm) => setSurface({ depthMm })}
         />
-        <p className="text-xs text-muted-foreground">{t("surfaceDepthDescription")}</p>
       </fieldset>
-      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="text-xs mb-2 font-medium">{t("constraints")}</legend>
-        <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
+      <fieldset className="grid min-w-0 grid-cols-1 gap-2">
+        <legend className="mb-1 font-medium text-xs">{t("constraints")}</legend>
+        <div className="grid grid-cols-1 gap-2">
           {numeric("safetyFactor", 1)}
           {numeric("maxDisplacementMm", 0)}
           {numeric("cellSizeMm", 0.01)}
@@ -304,10 +310,10 @@ export function LightweightingParameters({
       {showObjective && fields.optimization.kind === "greedy" && (
         <ObjectiveControls fields={fields} onChange={onChange} />
       )}
-      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="text-xs mb-2 font-medium">{t("material")}</legend>
+      <fieldset className="grid min-w-0 grid-cols-1 gap-2">
+        <legend className="mb-1 font-medium text-xs">{t("material")}</legend>
         <LightweightingMaterialSelector fields={fields} onChange={onChange} compact={compact}>
-          <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2">
             {numeric("youngModulusMpa", 0)}
             {numeric("poissonRatio", 0, 0.45)}
             {numeric("yieldStrengthMpa", 0)}
@@ -315,8 +321,8 @@ export function LightweightingParameters({
           </div>
         </LightweightingMaterialSelector>
       </fieldset>
-      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="text-xs mb-2 font-medium">
+      <fieldset className="grid min-w-0 grid-cols-1 gap-2">
+        <legend className="mb-1 font-medium text-xs">
           {compact ? g("fixedFaces") : t("support")}
         </legend>
         <p className="text-xs text-muted-foreground">{t("supportDescription")}</p>
@@ -330,13 +336,13 @@ export function LightweightingParameters({
           onClear={() => setSurface({ supportFaces: [] })}
         />
       </fieldset>
-      <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="text-xs mb-2 font-medium">
+      <fieldset className="grid min-w-0 grid-cols-1 gap-2">
+        <legend className="mb-1 font-medium text-xs">
           {compact ? g("loadedFaces") : t("loadCases")}
         </legend>
         <p className="text-xs text-muted-foreground">{t("loadDescription")}</p>
         {fields.loadCases.map((load, index) => (
-          <fieldset key={load.id} className="grid min-w-0 grid-cols-1 gap-3 rounded-md border p-3">
+          <fieldset key={load.id} className="grid min-w-0 grid-cols-1 gap-2 rounded-md border p-3">
             <legend className="px-1 text-xs font-medium">
               {t("loadCase", { index: index + 1 })}
             </legend>

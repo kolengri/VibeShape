@@ -65,12 +65,40 @@ beforeAll(() =>
 afterEach(cleanup)
 
 describe("Placement form", () => {
+  it("keeps alignment disclosure state unchanged while opening its help", async () => {
+    const f = setup(save(), undefined, { source: [], targets: [] })
+    const title = screen.getByText(messages.app.placement.alignmentTitle, {
+      selector: "summary span",
+    })
+    const details = title.closest("details")
+    if (!details) throw new Error("Alignment must have a disclosure.")
+    const help = screen.getByRole("button", { name: "Help for Align planar faces" })
+    for (const open of [false, true]) {
+      if (open) await userEvent.click(title)
+      expect(details.open).toBe(open)
+      for (const activation of ["click", "{Enter}", " "]) {
+        help.focus()
+        if (activation === "click") await userEvent.click(help)
+        else await userEvent.keyboard(activation)
+        expect(
+          screen.getByRole("dialog", { name: messages.app.placement.alignmentTitle }),
+        ).toBeTruthy()
+        expect(details.open).toBe(open)
+        await userEvent.keyboard("{Escape}")
+        expect(document.activeElement === help).toBe(true)
+        expect(details.open).toBe(open)
+      }
+    }
+    expect(f.onSave).not.toHaveBeenCalled()
+    expect(f.onCancel).not.toHaveBeenCalled()
+  })
+
   it("pauses the handle during face picking and resumes after an exact field edit", async () => {
     const changes = vi.fn((_value: PlacementManipulator | null) => {})
     setup(save(), changes, { source: [], targets: [] })
     const old = changes.mock.calls.at(-1)?.[0]?.translationGizmo
     await userEvent.click(
-      screen.getByText(messages.app.placement.alignmentTitle, { selector: "summary" }),
+      screen.getByText(messages.app.placement.alignmentTitle, { selector: "summary span" }),
     )
     await userEvent.click(
       screen.getByRole("button", { name: messages.app.placement.alignmentPickFaces }),

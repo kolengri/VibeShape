@@ -6,7 +6,7 @@ import {
 
 type LengthExpressionFieldProps = Omit<
   ComponentProps<typeof VariableExpressionField>,
-  "inputClassName" | "reserveErrorSpace"
+  "inputClassName"
 > &
   Readonly<{
     description: string
@@ -14,14 +14,7 @@ type LengthExpressionFieldProps = Omit<
   }>
 
 export function LengthExpressionField(props: LengthExpressionFieldProps) {
-  return (
-    <VariableExpressionField
-      {...props}
-      required
-      reserveErrorSpace
-      inputClassName="font-mono tabular-nums"
-    />
-  )
+  return <VariableExpressionField {...props} required inputClassName="font-mono tabular-nums" />
 }
 
 type PrimitiveLengthField = Readonly<{

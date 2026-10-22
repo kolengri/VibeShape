@@ -52,7 +52,10 @@ export function AssemblyRemoveDialog({
             {t(general ? "removeGeneralExplanation" : "removeExplanation")}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <Field orientation="horizontal">
+        <Field orientation="horizontal" className="min-h-8">
+          <FieldLabel htmlFor={id}>
+            {t(general ? "cascadeGeneralRemoval" : "cascadeRemoval")}
+          </FieldLabel>
           <input
             id={id}
             type="checkbox"
@@ -61,9 +64,6 @@ export function AssemblyRemoveDialog({
             className="size-4 accent-primary"
             onChange={(event) => setCascade(event.currentTarget.checked)}
           />
-          <FieldLabel htmlFor={id}>
-            {t(general ? "cascadeGeneralRemoval" : "cascadeRemoval")}
-          </FieldLabel>
         </Field>
         {error && <Alert>{error}</Alert>}
         <AlertDialogFooter>

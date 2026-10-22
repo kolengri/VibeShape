@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vibeshape/ui/components/dialog"
+import { fieldVariants } from "@vibeshape/ui/components/field"
 import { useEffect, useRef, useState } from "react"
 import type { UiExtensionsCopy } from "./ui-extensions-copy"
 import { mountUiPluginPanel, type UiPanelStatus } from "./ui-panel-host"
@@ -202,10 +203,11 @@ function UiExtensionsManager({ copy }: { copy: UiExtensionsCopy }) {
   return (
     <div className="grid min-h-0 gap-4 overflow-y-auto pr-1">
       <div className="grid gap-2">
-        <label className="grid gap-1 text-sm">
+        <label className={fieldVariants({ orientation: "horizontal" })}>
           <span>{copy.installFile}</span>
           <input
             type="file"
+            className="h-8 w-full min-w-0 text-xs"
             accept=".vsui.json,application/json"
             aria-label={copy.fileLabel}
             disabled={pending || snapshot.status !== "ready"}

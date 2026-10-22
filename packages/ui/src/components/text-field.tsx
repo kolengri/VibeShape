@@ -1,6 +1,6 @@
 import * as React from "react"
 
-import { Field, FieldDescription, FieldError, FieldLabel } from "#components/field"
+import { Field, FieldError, FieldLabel } from "#components/field"
 import { Input } from "#components/input"
 
 export type TextFieldProps = Omit<
@@ -55,7 +55,12 @@ function TextField({
       data-invalid={hasError || undefined}
       className={className}
     >
-      <FieldLabel htmlFor={inputId} required={Boolean(required)}>
+      <FieldLabel
+        htmlFor={inputId}
+        required={Boolean(required)}
+        description={description}
+        descriptionId={descriptionId}
+      >
         {label}
       </FieldLabel>
       <Input
@@ -67,12 +72,7 @@ function TextField({
         aria-invalid={hasError || undefined}
         className={inputClassName}
       />
-      {hasDescription ? (
-        <FieldDescription id={descriptionId}>{description}</FieldDescription>
-      ) : null}
-      <FieldError id={errorId} reserveSpace>
-        {error}
-      </FieldError>
+      <FieldError id={errorId}>{error}</FieldError>
     </Field>
   )
 }

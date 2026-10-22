@@ -135,7 +135,7 @@ export function NativeAgentConfiguration({
   const pending = connecting || form.disconnecting || form.submitting || test.pending
   const locked = pending || connected
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-2">
       <SelectField
         label={t("agent")}
         value={form.choice}
@@ -168,7 +168,7 @@ export function NativeAgentConfiguration({
         />
       ) : (
         <form
-          className="grid gap-3"
+          className="grid gap-2"
           onInput={test.clear}
           onSubmit={(event) => {
             if (test.pending) event.preventDefault()
@@ -182,7 +182,7 @@ export function NativeAgentConfiguration({
             onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
           >
             <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-            <div className="mt-3 grid gap-2">
+            <div className="mt-2 grid gap-2">
               <TextField
                 id={`${id}-command`}
                 label={t("executable")}

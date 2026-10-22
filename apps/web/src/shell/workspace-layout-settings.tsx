@@ -1,5 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { fieldVariants } from "@vibeshape/ui/components/field"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { useNarrowWorkspace } from "./compact-model-tree"
 import { useCompactTaskPanel } from "./responsive-task-panel"
 import { useWorkspaceLayoutPreferences } from "./workspace-layout-preferences"
@@ -25,7 +27,7 @@ function PanelSettings({ compact, panel }: Readonly<{ compact: boolean; panel: "
   return (
     <section className="grid min-w-0 gap-3 border-b py-3 last:border-b-0">
       <h3 className="text-sm font-medium">{title}</h3>
-      <label className="grid gap-1 text-xs text-muted-foreground">
+      <label className={fieldVariants({ orientation: "horizontal" })}>
         <span className="flex items-center justify-between gap-3">
           <span>{t("width")}</span>
           <span className="tabular-nums">{t("widthValue", { value: width })}</span>
@@ -42,7 +44,7 @@ function PanelSettings({ compact, panel }: Readonly<{ compact: boolean; panel: "
           className="w-full accent-primary"
         />
       </label>
-      <label className="grid gap-1 text-xs text-muted-foreground">
+      <label className={fieldVariants({ orientation: "horizontal" })}>
         <span className="flex items-center justify-between gap-3">
           <span>{t("opacity")}</span>
           <span className="tabular-nums">{t("opacityValue", { value: opacity })}</span>
@@ -83,7 +85,10 @@ export function WorkspaceLayoutSettings() {
 
   return (
     <div className="grid gap-2">
-      <p className="text-xs text-muted-foreground">{t("help")}</p>
+      <div className="flex items-center gap-1 text-xs font-medium">
+        {settingsT("workspace")}
+        <FieldHelp label={settingsT("workspace")}>{t("help")}</FieldHelp>
+      </div>
       {compact ? <p className="text-xs text-muted-foreground">{t("helpCompact")}</p> : null}
       {narrow ? (
         <p className="text-xs text-muted-foreground">{settingsT("compactTreeDescription")}</p>

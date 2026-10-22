@@ -20,6 +20,7 @@ export function LightweightingSourceSelector({
       <SelectField
         id="lightweighting-part"
         label={t("part")}
+        description={t("partDescription")}
         required
         value={state.partId || "unselected"}
         disabled={disabled}
@@ -40,7 +41,6 @@ export function LightweightingSourceSelector({
         </p>
       )}
       {state.partId && !state.source && <Alert>{t("partUnavailable")}</Alert>}
-      <p className="text-xs text-muted-foreground">{t("partDescription")}</p>
     </>
   )
 }

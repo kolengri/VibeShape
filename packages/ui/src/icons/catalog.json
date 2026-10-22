@@ -858,5 +858,10 @@
     "id": "stop",
     "label": "Stop",
     "legacy": []
+  },
+  {
+    "id": "information",
+    "label": "Information",
+    "legacy": []
   }
 ]

@@ -1,10 +1,11 @@
 import type { FeatureRecord, SketchRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { ChoiceField } from "@vibeshape/ui/components/choice-field"
-import { Field, FieldDescription, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
+import { Field, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { type Ref, useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
+import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import type { ExactBodyOption } from "../part-design/exact-body-options"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel } from "../part-design/parameter-panel"
@@ -67,15 +68,12 @@ function Toggle({
   onChange: (checked: boolean) => void
 }) {
   return (
-    <label className="flex items-center gap-2 text-xs">
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      {label}
-    </label>
+    <BooleanParameterField
+      label={label}
+      checked={checked}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.checked)}
+    />
   )
 }
 
@@ -171,7 +169,7 @@ export function FdmForm(props: FdmFormProps) {
         </form.Field>
         <form.Field name="lineIds">
           {(field) => (
-            <Field>
+            <Field orientation="vertical">
               <FieldLabel>{t("lines")}</FieldLabel>
               {lines.map((line, number) => (
                 <Toggle
@@ -225,7 +223,7 @@ export function FdmForm(props: FdmFormProps) {
         {values.style === "web" && (
           <form.Field name="stopPlane">
             {(field) => (
-              <Field>
+              <Field orientation="vertical">
                 <Toggle
                   label={t("planeTermination")}
                   checked={field.state.value !== null}
@@ -255,22 +253,20 @@ export function FdmForm(props: FdmFormProps) {
     return (
       <form.Field name="targetId">
         {(field) => (
-          <Field>
-            <LocalizedSearchableSelectField
-              label={t("target")}
-              placeholder={t("chooseTarget")}
-              value={field.state.value}
-              onValueChange={(value) => {
-                state.clearSubmissionErrors()
-                field.handleChange(value)
-              }}
-              options={[
-                { value: "", label: t(kind === "flexible-sleeve" ? "noTarget" : "chooseTarget") },
-                ...props.options.map(({ id, label }) => ({ value: id, label })),
-              ]}
-            />
-            {issues.targetId && <FieldError>{issues.targetId}</FieldError>}
-          </Field>
+          <LocalizedSearchableSelectField
+            label={t("target")}
+            error={issues.targetId}
+            placeholder={t("chooseTarget")}
+            value={field.state.value}
+            onValueChange={(value) => {
+              state.clearSubmissionErrors()
+              field.handleChange(value)
+            }}
+            options={[
+              { value: "", label: t(kind === "flexible-sleeve" ? "noTarget" : "chooseTarget") },
+              ...props.options.map(({ id, label }) => ({ value: id, label })),
+            ]}
+          />
         )}
       </form.Field>
     )
@@ -418,6 +414,7 @@ export function FdmForm(props: FdmFormProps) {
                 <LocalizedSearchableSelectField
                   ref={props.kindControlRef}
                   label={t("kind")}
+                  description={t("flatCutDescription")}
                   placeholder={t("kind")}
                   value={kind}
                   disabled={disabled || mode.kind === "edit"}
@@ -436,7 +433,6 @@ export function FdmForm(props: FdmFormProps) {
                 {specialFields()}
                 {dimensionFields(values, issues)}
                 {issues.parameters && <FieldError>{issues.parameters}</FieldError>}
-                <FieldDescription>{t("flatCutDescription")}</FieldDescription>
               </ParameterPanel>
             </>
           )
