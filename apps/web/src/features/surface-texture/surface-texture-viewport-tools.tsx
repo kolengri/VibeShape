@@ -1,7 +1,9 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
+import { cn } from "@vibeshape/ui/lib/cn"
 import type { GeometryViewport } from "@vibeshape/viewer/three-viewport"
 import { type RefObject, useEffect } from "react"
+import { SAFE_VIEWPORT_REGION } from "../../shell/viewport-chrome-styles"
 import { useSurfaceTexturePreviewContext } from "./surface-texture-preview-context"
 
 export function SurfaceTextureViewportTools({
@@ -15,5 +17,9 @@ export function SurfaceTextureViewportTools({
     viewportRef.current?.setSurfaceTextureBrush(preview?.brush ?? null, preview?.active ?? false)
   }, [preview?.brush, preview?.active, viewportRef])
   if (preview?.status !== "error") return null
-  return <Alert className="absolute bottom-12 left-3 right-3">{t("preview.error")}</Alert>
+  return (
+    <Alert className={cn("absolute bottom-12 left-3 right-3", SAFE_VIEWPORT_REGION)}>
+      {t("preview.error")}
+    </Alert>
+  )
 }

@@ -345,9 +345,11 @@ Record the preset in the repository. Running `init --force` without review is pr
 ## Assistant presentation and viewport capture
 
 The project-keyed editor scope owns a small assistant presentation context. Only the toggle and
-mounted panel consume its visibility; chat updates remain inside the project chat controller. The
-fixed panel overlays the workspace, with CSS safe insets for viewport controls rather than canvas
-resizing. The display transcript mounts on the first explicit panel opening, so project navigation
+mounted panel consume its visibility; chat updates remain inside the project chat controller. Chat
+occupies a separate shell grid column outside the editor. Opening it resizes the complete editor,
+including the toolbar, canvas, History, and status bar, while preserving the mounted viewport and task
+form. CSS safe insets keep viewport controls clear of the floating editor tools. The display
+transcript mounts on the first explicit panel opening, so project navigation
 does not parse Markdown or construct message DOM for a closed chat. Later closes retain that DOM,
 its scroll state, the controller, and transient composer state.
 
