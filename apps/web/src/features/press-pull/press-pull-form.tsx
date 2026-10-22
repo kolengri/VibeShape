@@ -87,7 +87,7 @@ export function PressPullForm(props: PressPullFormProps) {
     },
   })
   return (
-    <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
       {onPreviewChange && (
         <form.Subscribe selector={(state) => state.values.distance}>
           {(distance) => (
