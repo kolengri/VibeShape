@@ -91,13 +91,14 @@ jobs:
         run: bun run fallow:audit -- --no-cache
 
   unit-tests:
-    name: Bun unit tests (${{ matrix.group }})
+    name: Bun unit tests (${{ matrix.group }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     runs-on: ${{ fromJSON(vars.VIBESHAPE_CI_RUNNER == 'mac' && github.repository == 'kolengri/VibeShape' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == github.repository_owner)) && '["self-hosted","Linux","ARM64","vibeshape-mac"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        group: [node, dom]
+      # Hosted runners execute the heavy Node corpus concurrently. A single local
+      # runner keeps complete groups to avoid serial shard setup and cache bypass.
+      matrix: ${{ fromJSON(vars.VIBESHAPE_CI_RUNNER == 'mac' && '{"include":[{"group":"node","shard":""},{"group":"dom","shard":""}]}' || '{"include":[{"group":"node","shard":"1/3"},{"group":"node","shard":"2/3"},{"group":"node","shard":"3/3"},{"group":"dom","shard":""}]}') }}
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -115,6 +116,7 @@ jobs:
         run: bun ci
 
       - name: Restore dependency-aware unit test results
+        if: ${{ matrix.shard == '' }}
         id: unit-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
@@ -126,13 +128,21 @@ jobs:
       - name: Test
         env:
           UNIT_TEST_GROUP: ${{ matrix.group }}
-        # Each group owns a complete native corpus and validates restored receipts.
+          UNIT_TEST_SHARD: ${{ matrix.shard }}
+        # Native shards collectively own the complete corpus; only complete groups reuse receipts.
         run: |
           workers=$(bun -e 'console.log(require("node:os").availableParallelism())')
+          args=(--group="$UNIT_TEST_GROUP" --parallel="$workers" --timeout=15000)
+          if [[ -n "$UNIT_TEST_SHARD" ]]; then
+            args+=(--shard="$UNIT_TEST_SHARD")
+          else
+            args+=(--cache)
+          fi
           start=$SECONDS
-          bun run test --cache --group="$UNIT_TEST_GROUP" --parallel="$workers" --timeout=15000
+          bun run test "${args[@]}"
           {
             echo "### Unit tests ($UNIT_TEST_GROUP)"
+            echo "- Shard: ${UNIT_TEST_SHARD:-complete group}"
             echo "- Workers: $workers"
             echo "- Duration: $((SECONDS - start))s"
           } >> "$GITHUB_STEP_SUMMARY"

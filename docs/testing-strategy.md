@@ -61,12 +61,18 @@ changed-file selection, coverage, reporters, name/shard filters, bail thresholds
 and other partial/output-producing options bypass the cache. Reporter filenames
 and DOM preloads retain the native launcher contract.
 
-CI runs static/integration checks and the complete `--group=node` and `--group=dom`
-corpora in independent jobs. Both execute `bun test`; `node` names the DOM-free
+CI runs static/integration checks and the `--group=node` and `--group=dom`
+corpora in independent jobs. GitHub-hosted CI splits Node tests across three native
+Bun `--shard=i/3` jobs, balanced using the committed `scripts/unit-test-timings.json`.
+Every shard is required; none may be skipped after another fails. Shards bypass
+workspace receipts and their restore/save steps because a partial run cannot certify
+a complete workspace. DOM tests retain complete-group receipts. When
+`VIBESHAPE_CI_RUNNER=mac`, both groups run unsplit with receipts, avoiding serial
+shard setup on the single local runner. Both groups execute `bun test`; `node` names the DOM-free
 environment and does not select a Node.js runtime. Group selection preserves complete per-group receipts;
 combining it with a path/name/shard filter still disables caching. Omitting `--group`
 retains the local Node-then-DOM run. Each CI test job uses its available CPUs and
-publishes the worker count and elapsed duration. The `Fast PR checks` aggregate
+publishes the shard, worker count, and elapsed duration. The `Fast PR checks` aggregate
 fails when any required job fails, is canceled, or is skipped. Typecheck results
 and their incremental outputs travel in one Turbo archive.
 
