@@ -276,4 +276,32 @@ describe("captured-source History task", () => {
     )
     expect(screen.getByText("Open the document with write access to delete features.")).toBeTruthy()
   })
+
+  it("keeps edit deletion and its explanation in the field scrollport above lifecycle actions", () => {
+    const datum = featureRecordSchema.parse({
+      ...feature,
+      type: datumPlaneFeatureTypeV1.type,
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(8),
+      },
+      label: "Datum plane",
+    })
+    renderFeatureTask("read-only", undefined, datum)
+    const form = screen.getByRole("form", { name: "Edit datum plane" })
+    const deletion = within(form).getByRole("region", { name: "Delete feature" })
+    const scrollport = deletion.closest("[data-slot='task-panel-content']")
+    expect(scrollport).not.toBeNull()
+    expect(deletion.closest("[data-slot='task-panel-footer']")).toBeNull()
+    expect(
+      within(deletion).getByText("Open the document with write access to delete features."),
+    ).toBeTruthy()
+    expect(
+      within(deletion).getByRole<HTMLButtonElement>("button", { name: "Delete feature" }).disabled,
+    ).toBe(true)
+    const cancel = within(form).getByRole("button", { name: "Cancel" })
+    expect(cancel.closest("[data-slot='task-panel-footer']")).not.toBeNull()
+    expect(cancel.closest("[data-slot='task-panel-content']")).toBeNull()
+  })
 })

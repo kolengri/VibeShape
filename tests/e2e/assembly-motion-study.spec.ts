@@ -54,6 +54,16 @@ test("saves keyed motion separately, seeks and samples real poses, exports PNG/J
   await page.getByRole("menuitem", { name: "New study", exact: true }).click()
   await panel(page).getByRole("textbox", { name: "Study name", exact: true }).fill("Hinge sweep")
   await panel(page).getByText("Edit keys (2)", { exact: true }).click()
+  const keyTime = panel(page).getByRole("spinbutton", { name: "Time (s)", exact: true }).nth(1)
+  await keyTime.focus()
+  await keyTime.press("Tab")
+  const duration = panel(page).getByRole("spinbutton", { name: "Duration (s)", exact: true })
+  for (const value of ["4", "2"]) {
+    await duration.fill(value)
+    await panel(page).getByRole("textbox", { name: "Study name", exact: true }).focus()
+    await expect(keyTime).toHaveValue(value)
+    expect(await keyTime.evaluate((input) => input.checkValidity())).toBe(true)
+  }
   const values = panel(page).getByRole("spinbutton", { name: "Value (deg)", exact: true })
   await values.nth(0).fill("-30")
   await values.nth(1).fill("30")
@@ -253,11 +263,23 @@ async function captureStudyLayouts(page: Page, testInfo: TestInfo) {
   await expect(form.getByRole("button", { name: "Save study", exact: true })).toBeInViewport()
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   await page.screenshot({ path: testInfo.outputPath("motion-ui-1024.png") })
-  await page.setViewportSize({ width: 2048, height: 1536 })
-  await page.evaluate("document.documentElement.style.zoom = '2'")
+  // A 512×384 CSS viewport models 200% page zoom on a 1024×768 display.
+  await page.setViewportSize({ width: 512, height: 384 })
+  const content = form.locator("[data-slot='task-panel-content']")
+  const footer = form.locator("[data-slot='task-panel-footer']")
+  await expect(form.getByRole("button", { name: "Save study", exact: true })).toBeInViewport()
+  expect(await content.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
+    true,
+  )
+  const footerBounds = await footer.boundingBox()
+  await content.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  expect(await footer.boundingBox()).toEqual(footerBounds)
+  await expect(form.getByRole("heading", { name: "Edit study", exact: true })).toBeInViewport()
   await expect(form.getByRole("button", { name: "Save study", exact: true })).toBeInViewport()
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
-  await page.screenshot({ path: testInfo.outputPath("motion-ui-zoom200.png") })
+  await page.screenshot({ path: testInfo.outputPath("motion-ui-zoom200-equivalent.png") })
 }
 
 test("authors seven named drive tracks with degree offsets and graphical key times", async ({

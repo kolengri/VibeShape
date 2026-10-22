@@ -6,6 +6,7 @@ import {
 import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { useTranslations } from "@vibeshape/i18n"
 import { useCallback, useMemo } from "react"
+import { TaskPanelSurface } from "../components/task-panel-layout"
 import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
 import { SplitForm, type SplitFormCopy } from "../features/split/split-form"
 import { splitTargetBody } from "../features/split/split-form-model"
@@ -91,9 +92,9 @@ export function SplitTaskPanel(
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
       : `create:${mode.targetBody.featureId}:${mode.targetBody.outputRole}:${report.snapshot.revision}`
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={task("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={mode.kind === "edit" && props.renderDelete(mode.feature)}
     >
       <SplitForm
         key={key}
@@ -111,7 +112,6 @@ export function SplitTaskPanel(
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />
-      {mode.kind === "edit" && props.renderDelete(mode.feature)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

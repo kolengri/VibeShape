@@ -20,9 +20,9 @@ import {
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
 import { FieldError } from "@vibeshape/ui/components/field"
-import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form, useFieldContext, useFieldError } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useId, useRef, useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   type defaultAngleExpression,
@@ -30,19 +30,17 @@ import {
   normalizeExpressionWithDisplayUnit,
 } from "../../document/document-display-units"
 import { bodyReferencePickCandidate } from "../part-design/body-reference-picking"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   parsePrimitiveLengthExpression,
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
-import { ReferencePickField } from "../part-design/reference-pick-field"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
-import { VariableExpressionField } from "../variables/variable-expression-field"
 import { type HoleTargetBodyOption, holeTargetBodyKey } from "./hole-target-body"
 
 export type HoleFormCopy = ParameterPanelCopy &
@@ -474,12 +472,14 @@ function HolePoints({
   copy,
   error,
   onChange,
+  onBlur,
 }: {
   sketch: SketchRecord | undefined
   selected: readonly SketchEntityId[]
   copy: HoleFormCopy
   error: string | undefined
   onChange: (ids: readonly SketchEntityId[]) => void
+  onBlur?: (() => void) | undefined
 }) {
   const points = sketch?.entities.filter((entity) => entity.type === "point") ?? []
   const missing = selected.filter((id) => !points.some((point) => point.id === id))
@@ -488,6 +488,8 @@ function HolePoints({
     <fieldset
       className="grid min-w-0 gap-1"
       aria-label={copy.points}
+      onBlur={onBlur}
+      tabIndex={error ? -1 : undefined}
       aria-invalid={Boolean(error) || undefined}
       aria-describedby={error ? errorId : undefined}
     >
@@ -532,6 +534,32 @@ function HolePoints({
   )
 }
 
+function HolePointsFormField({
+  sketch,
+  copy,
+  onValueChange,
+}: {
+  sketch: SketchRecord | undefined
+  copy: HoleFormCopy
+  onValueChange: () => void
+}) {
+  const field = useFieldContext<readonly SketchEntityId[]>()
+  const error = useFieldError()
+  return (
+    <HolePoints
+      onBlur={field.handleBlur}
+      sketch={sketch}
+      selected={field.state.value}
+      copy={copy}
+      error={error}
+      onChange={(ids) => {
+        field.handleChange(ids)
+        onValueChange()
+      }}
+    />
+  )
+}
+
 async function submitHole(
   values: Values,
   props: HoleFormProps,
@@ -541,11 +569,7 @@ async function submitHole(
   if (props.disabled || (props.previewStatus !== undefined && props.previewStatus !== "ready"))
     return
   const parsed = parseValues(values, context)
-  if (!parsed.ok) {
-    state.setIssues(parsed.issues)
-    state.setMessage(props.copy.validationSummary)
-    return
-  }
+  if (!parsed.ok) return
   state.clearSubmissionErrors()
   try {
     await submitFeatureMutation({
@@ -576,8 +600,7 @@ export function HoleForm(props: HoleFormProps) {
     onPickingContextChange,
   } = props
   const state = useParameterFormState(variables)
-  const { displayUnits, formElementRef, issues, message, suggestions, clearSubmissionErrors } =
-    state
+  const { displayUnits, message, suggestions, clearSubmissionErrors } = state
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
@@ -592,8 +615,15 @@ export function HoleForm(props: HoleFormProps) {
     angleUnit: displayUnits.angle,
   }
   const [initial] = useState(() => initialValues(context))
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: initial,
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parseValues(value, context)
+        return parsed.ok ? undefined : { form: copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: ({ value }) => submitHole(value, props, context, state),
   })
   const changePoints = (ids: readonly SketchEntityId[]) => {
@@ -602,293 +632,246 @@ export function HoleForm(props: HoleFormProps) {
   }
   return (
     <Form
-      ref={formElementRef}
       form={form}
       aria-label={copy.title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
-      <form.Subscribe selector={(formState) => [formState.values, formState.isSubmitting] as const}>
-        {([values, isSubmitting]) => (
-          <>
-            {onPreviewChange ? (
-              <HolePreview values={values} context={context} onPreviewChange={onPreviewChange} />
-            ) : null}
-            <HolePickingEffects
-              values={values}
-              context={context}
-              disabled={disabled || isSubmitting}
-              request={pickingRequest}
-              onContextChange={onPickingContextChange}
-              onPointsChange={changePoints}
-            />
-          </>
-        )}
-      </form.Subscribe>
-      <form.Subscribe selector={(formState) => formState.isSubmitting}>
-        {(isSubmitting) => (
-          <ParameterPanel
-            actions={
-              <TaskPanelFormActions
-                acceptLabel={copy.submit}
-                ariaLabel={copy.title}
-                cancelLabel={copy.cancel}
-                disabled={disabled}
-                onCancel={onCancel}
-                previewStatus={previewStatus}
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <form.Subscribe
+          selector={(formState) => [formState.values, formState.isSubmitting] as const}
+        >
+          {([values, isSubmitting]) => (
+            <>
+              {onPreviewChange ? (
+                <HolePreview values={values} context={context} onPreviewChange={onPreviewChange} />
+              ) : null}
+              <HolePickingEffects
+                values={values}
+                context={context}
+                disabled={disabled || isSubmitting}
+                request={pickingRequest}
+                onContextChange={onPickingContextChange}
+                onPointsChange={changePoints}
               />
-            }
-            copy={copy}
-            disabled={disabled || isSubmitting}
-            legend={copy.title}
-            message={message}
-          >
-            <form.Field name="sketchId">
-              {(field) => (
-                <NativeSelectField
-                  name={field.name}
-                  value={field.state.value}
-                  label={copy.sketch}
-                  description={copy.sketchDescription}
-                  error={issues.sketchId}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => {
-                    clearSubmissionErrors()
-                    field.handleChange(event.currentTarget.value)
-                    form.setFieldValue("pointIds", [])
-                  }}
-                >
-                  {!sketches.some(({ id }) => id === field.state.value) ? (
-                    <option value={field.state.value}>{copy.missingSketch}</option>
-                  ) : null}
-                  {sketches.map((sketch) => (
-                    <option key={sketch.id} value={sketch.id}>
-                      {sketch.label}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              )}
-            </form.Field>
-            <form.Field name="targetBodyKey">
-              {(field) => {
-                const selectedOption = options.find(
-                  (option) =>
-                    holeTargetBodyKey(option.featureId, option.outputRole) === field.state.value,
-                )
-                return (
-                  <ReferencePickField
-                    id="hole-target-body"
-                    name={field.name}
-                    value={field.state.value}
-                    label={copy.target}
-                    placeholder={copy.missingTarget}
-                    options={options.map((option) => ({
-                      value: holeTargetBodyKey(option.featureId, option.outputRole),
-                      label: option.label,
-                      disabled: option.missing ?? false,
-                    }))}
-                    candidates={options
-                      .filter((option) => !option.missing)
-                      .map((option) =>
-                        bodyReferencePickCandidate(
-                          holeTargetBodyKey(option.featureId, option.outputRole),
-                          option,
-                        ),
-                      )}
-                    disabled={disabled}
-                    description={copy.targetDescription}
-                    error={
-                      selectedOption?.missing
-                        ? (copy.missingTargetRole ?? copy.missingTarget)
-                        : issues.targetBodyKey
-                    }
-                    onBlur={field.handleBlur}
-                    onValueChange={(value) => {
+            </>
+          )}
+        </form.Subscribe>
+        <form.Subscribe selector={(formState) => formState.isSubmitting}>
+          {(isSubmitting) => (
+            <ParameterPanel
+              actions={
+                <TaskPanelFormActions
+                  acceptLabel={copy.submit}
+                  ariaLabel={copy.title}
+                  cancelLabel={copy.cancel}
+                  disabled={disabled}
+                  onCancel={onCancel}
+                  previewStatus={previewStatus}
+                />
+              }
+              copy={copy}
+              disabled={disabled || isSubmitting}
+              legend={copy.title}
+              message={message}
+            >
+              <form.AppField name="sketchId">
+                {(field) => (
+                  <field.NativeSelectField
+                    label={copy.sketch}
+                    description={copy.sketchDescription}
+                    onValueChange={() => {
                       clearSubmissionErrors()
-                      field.handleChange(value)
+                      form.setFieldValue("pointIds", [])
+                    }}
+                  >
+                    {!sketches.some(({ id }) => id === field.state.value) ? (
+                      <option value={field.state.value}>{copy.missingSketch}</option>
+                    ) : null}
+                    {sketches.map((sketch) => (
+                      <option key={sketch.id} value={sketch.id}>
+                        {sketch.label}
+                      </option>
+                    ))}
+                  </field.NativeSelectField>
+                )}
+              </form.AppField>
+              <form.AppField name="targetBodyKey">
+                {(field) => {
+                  const selectedOption = options.find(
+                    (option) =>
+                      holeTargetBodyKey(option.featureId, option.outputRole) === field.state.value,
+                  )
+                  return (
+                    <field.ReferencePickField
+                      id="hole-target-body"
+                      error={
+                        selectedOption?.missing
+                          ? (copy.missingTargetRole ?? copy.missingTarget)
+                          : undefined
+                      }
+                      label={copy.target}
+                      placeholder={copy.missingTarget}
+                      options={options.map((option) => ({
+                        value: holeTargetBodyKey(option.featureId, option.outputRole),
+                        label: option.label,
+                        disabled: option.missing ?? false,
+                      }))}
+                      candidates={options
+                        .filter((option) => !option.missing)
+                        .map((option) =>
+                          bodyReferencePickCandidate(
+                            holeTargetBodyKey(option.featureId, option.outputRole),
+                            option,
+                          ),
+                        )}
+                      disabled={disabled}
+                      description={copy.targetDescription}
+                      onValueChange={() => {
+                        clearSubmissionErrors()
+                      }}
+                    />
+                  )
+                }}
+              </form.AppField>
+              <form.Subscribe selector={(formState) => formState.values.sketchId}>
+                {(sketchId) => (
+                  <form.AppField name="pointIds">
+                    {() => (
+                      <HolePointsFormField
+                        sketch={sketches.find(({ id }) => id === sketchId)}
+                        copy={copy}
+                        onValueChange={clearSubmissionErrors}
+                      />
+                    )}
+                  </form.AppField>
+                )}
+              </form.Subscribe>
+              <form.AppField name="diameter">
+                {(field) => (
+                  <field.LengthExpressionField
+                    id="hole-diameter"
+                    label={copy.diameter}
+                    description={copy.expressionDescription}
+                    suggestions={suggestions}
+                    onValueChange={() => {
+                      clearSubmissionErrors()
                     }}
                   />
-                )
-              }}
-            </form.Field>
-            <form.Subscribe
-              selector={(formState) =>
-                [formState.values.sketchId, formState.values.pointIds] as const
-              }
-            >
-              {([sketchId, pointIds]) => (
-                <HolePoints
-                  sketch={sketches.find(({ id }) => id === sketchId)}
-                  selected={pointIds}
-                  copy={copy}
-                  error={issues.pointIds}
-                  onChange={changePoints}
-                />
-              )}
-            </form.Subscribe>
-            <form.Field name="diameter">
-              {(field) => (
-                <LengthExpressionField
-                  id="hole-diameter"
-                  name={field.name}
-                  value={field.state.value}
-                  label={copy.diameter}
-                  description={copy.expressionDescription}
-                  error={issues.diameter}
-                  suggestions={suggestions}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
-                    clearSubmissionErrors()
-                    field.handleChange(value)
-                  }}
-                />
-              )}
-            </form.Field>
-            <form.Field name="treatment">
-              {(field) => (
-                <NativeSelectField
-                  name={field.name}
-                  value={field.state.value}
-                  label={copy.treatment}
-                  error={issues.treatment}
-                  onChange={(event) => {
-                    clearSubmissionErrors()
-                    field.handleChange(event.currentTarget.value as Values["treatment"])
-                  }}
-                >
-                  <option value="simple">{copy.simple}</option>
-                  <option value="counterbore">{copy.counterbore}</option>
-                  <option value="countersink">{copy.countersink}</option>
-                </NativeSelectField>
-              )}
-            </form.Field>
-            <form.Subscribe selector={(formState) => formState.values.treatment}>
-              {(treatment) =>
-                treatment !== "simple" ? (
-                  <>
-                    <form.Field name="recessDiameter">
+                )}
+              </form.AppField>
+              <form.AppField name="treatment">
+                {(field) => (
+                  <field.NativeSelectField
+                    label={copy.treatment}
+                    onValueChange={() => {
+                      clearSubmissionErrors()
+                    }}
+                  >
+                    <option value="simple">{copy.simple}</option>
+                    <option value="counterbore">{copy.counterbore}</option>
+                    <option value="countersink">{copy.countersink}</option>
+                  </field.NativeSelectField>
+                )}
+              </form.AppField>
+              <form.Subscribe selector={(formState) => formState.values.treatment}>
+                {(treatment) =>
+                  treatment !== "simple" ? (
+                    <>
+                      <form.AppField name="recessDiameter">
+                        {(field) => (
+                          <field.LengthExpressionField
+                            id="hole-recess-diameter"
+                            label={copy.recessDiameter}
+                            description={copy.expressionDescription}
+                            suggestions={suggestions}
+                            onValueChange={() => {
+                              clearSubmissionErrors()
+                            }}
+                          />
+                        )}
+                      </form.AppField>
+                      {treatment === "counterbore" ? (
+                        <form.AppField name="recessDepth">
+                          {(field) => (
+                            <field.LengthExpressionField
+                              id="hole-recess-depth"
+                              label={copy.recessDepth}
+                              description={copy.expressionDescription}
+                              suggestions={suggestions}
+                              onValueChange={() => {
+                                clearSubmissionErrors()
+                              }}
+                            />
+                          )}
+                        </form.AppField>
+                      ) : (
+                        <form.AppField name="includedAngle">
+                          {(field) => (
+                            <field.VariableExpressionField
+                              id="hole-included-angle"
+                              label={copy.includedAngle}
+                              description={copy.angleDescription}
+                              suggestions={suggestions}
+                              onValueChange={() => {
+                                clearSubmissionErrors()
+                              }}
+                            />
+                          )}
+                        </form.AppField>
+                      )}
+                    </>
+                  ) : null
+                }
+              </form.Subscribe>
+              <form.AppField name="extent">
+                {(field) => (
+                  <field.NativeSelectField
+                    label={copy.extent}
+                    onValueChange={() => {
+                      clearSubmissionErrors()
+                    }}
+                  >
+                    <option value="blind">{copy.blind}</option>
+                    <option value="through-all">{copy.throughAll}</option>
+                  </field.NativeSelectField>
+                )}
+              </form.AppField>
+              <form.Subscribe selector={(formState) => formState.values.extent}>
+                {(extent) =>
+                  extent === "blind" ? (
+                    <form.AppField name="depth">
                       {(field) => (
-                        <LengthExpressionField
-                          id="hole-recess-diameter"
-                          name={field.name}
-                          value={field.state.value}
-                          label={copy.recessDiameter}
+                        <field.LengthExpressionField
+                          id="hole-depth"
+                          label={copy.depth}
                           description={copy.expressionDescription}
-                          error={issues.recessDiameter}
                           suggestions={suggestions}
-                          onBlur={field.handleBlur}
-                          onValueChange={(value) => {
+                          onValueChange={() => {
                             clearSubmissionErrors()
-                            field.handleChange(value)
                           }}
                         />
                       )}
-                    </form.Field>
-                    {treatment === "counterbore" ? (
-                      <form.Field name="recessDepth">
-                        {(field) => (
-                          <LengthExpressionField
-                            id="hole-recess-depth"
-                            name={field.name}
-                            value={field.state.value}
-                            label={copy.recessDepth}
-                            description={copy.expressionDescription}
-                            error={issues.recessDepth}
-                            suggestions={suggestions}
-                            onBlur={field.handleBlur}
-                            onValueChange={(value) => {
-                              clearSubmissionErrors()
-                              field.handleChange(value)
-                            }}
-                          />
-                        )}
-                      </form.Field>
-                    ) : (
-                      <form.Field name="includedAngle">
-                        {(field) => (
-                          <VariableExpressionField
-                            id="hole-included-angle"
-                            name={field.name}
-                            value={field.state.value}
-                            label={copy.includedAngle}
-                            description={copy.angleDescription}
-                            error={issues.includedAngle}
-                            suggestions={suggestions}
-                            onBlur={field.handleBlur}
-                            onValueChange={(value) => {
-                              clearSubmissionErrors()
-                              field.handleChange(value)
-                            }}
-                          />
-                        )}
-                      </form.Field>
-                    )}
-                  </>
-                ) : null
-              }
-            </form.Subscribe>
-            <form.Field name="extent">
-              {(field) => (
-                <NativeSelectField
-                  name={field.name}
-                  value={field.state.value}
-                  label={copy.extent}
-                  onChange={(event) => {
-                    clearSubmissionErrors()
-                    field.handleChange(
-                      event.currentTarget.value === "blind" ? "blind" : "through-all",
-                    )
-                  }}
-                >
-                  <option value="blind">{copy.blind}</option>
-                  <option value="through-all">{copy.throughAll}</option>
-                </NativeSelectField>
-              )}
-            </form.Field>
-            <form.Subscribe selector={(formState) => formState.values.extent}>
-              {(extent) =>
-                extent === "blind" ? (
-                  <form.Field name="depth">
-                    {(field) => (
-                      <LengthExpressionField
-                        id="hole-depth"
-                        name={field.name}
-                        value={field.state.value}
-                        label={copy.depth}
-                        description={copy.expressionDescription}
-                        error={issues.depth}
-                        suggestions={suggestions}
-                        onBlur={field.handleBlur}
-                        onValueChange={(value) => {
-                          clearSubmissionErrors()
-                          field.handleChange(value)
-                        }}
-                      />
-                    )}
-                  </form.Field>
-                ) : null
-              }
-            </form.Subscribe>
-            <form.Field name="direction">
-              {(field) => (
-                <NativeSelectField
-                  name={field.name}
-                  value={field.state.value}
-                  label={copy.direction}
-                  onChange={(event) => {
-                    clearSubmissionErrors()
-                    field.handleChange(
-                      event.currentTarget.value === "forward" ? "forward" : "reverse",
-                    )
-                  }}
-                >
-                  <option value="forward">{copy.forward}</option>
-                  <option value="reverse">{copy.reverse}</option>
-                </NativeSelectField>
-              )}
-            </form.Field>
-          </ParameterPanel>
-        )}
-      </form.Subscribe>
+                    </form.AppField>
+                  ) : null
+                }
+              </form.Subscribe>
+              <form.AppField name="direction">
+                {(field) => (
+                  <field.NativeSelectField
+                    label={copy.direction}
+                    onValueChange={() => {
+                      clearSubmissionErrors()
+                    }}
+                  >
+                    <option value="forward">{copy.forward}</option>
+                    <option value="reverse">{copy.reverse}</option>
+                  </field.NativeSelectField>
+                )}
+              </form.AppField>
+            </ParameterPanel>
+          )}
+        </form.Subscribe>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

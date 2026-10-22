@@ -6,10 +6,12 @@ import {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
+import { type KeyboardEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { useReferencePicking } from "../../shell/reference-pick-context"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import { submitFeatureMutation } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
@@ -132,6 +134,7 @@ function useTreatmentFields(
   values: TreatmentValues,
   featureId: FeatureId,
   state: FormState,
+  formElement: RefObject<HTMLFormElement | null>,
   onChange: (value: TreatmentValues) => void,
 ) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
@@ -142,12 +145,12 @@ function useTreatmentFields(
   const lastSequence = useRef<number | null>(null)
   useEffect(() => {
     if (props.disabled || values.scope !== "selected") return
-    const button = state.formElementRef.current?.querySelector<HTMLButtonElement>(
+    const button = formElement.current?.querySelector<HTMLButtonElement>(
       "#edge-treatment-pick-edges",
     )
     button?.focus()
     returnFocus.current = button ?? null
-  }, [featureId, props.disabled, values.scope, state.formElementRef])
+  }, [featureId, props.disabled, values.scope, formElement])
   const candidates = useMemo(
     () =>
       edgeTreatmentCandidates(props.options, props.topologyCandidates ?? [], (kind, ordinal) =>
@@ -273,6 +276,8 @@ function TreatmentFields({
   values,
   featureId,
   state,
+  submitIssues,
+  formElement,
   onChange,
   setEscape,
 }: {
@@ -280,10 +285,12 @@ function TreatmentFields({
   values: TreatmentValues
   featureId: FeatureId
   state: FormState
+  submitIssues: Readonly<Record<string, string | undefined>>
+  formElement: RefObject<HTMLFormElement | null>
   onChange: (values: TreatmentValues) => void
   setEscape: (handler: ((event: KeyboardEvent<HTMLFormElement>) => void) | null) => void
 }) {
-  const fields = useTreatmentFields(props, values, featureId, state, onChange)
+  const fields = useTreatmentFields(props, values, featureId, state, formElement, onChange)
   useEffect(() => {
     setEscape(fields.onEscape)
     return () => setEscape(null)
@@ -291,7 +298,7 @@ function TreatmentFields({
   const option = props.options.find(({ id }) => id === values.targetFeatureId)
   const v3 = props.operation === "chamfer" && treatmentUsesV3(values, option)
   const issues = {
-    ...state.issues,
+    ...submitIssues,
     ...(v3 && !fields.parsed.ok && fields.parsed.issues.references
       ? { references: fields.parsed.issues.references }
       : {}),
@@ -335,39 +342,42 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
       state.displayUnits.length,
     ),
   }))
+  const formElement = useRef<HTMLFormElement>(null)
   const escapeHandler = useRef<((event: KeyboardEvent<HTMLFormElement>) => void) | null>(null)
-  const form = useAppForm({
+  const parseDraft = (draft: TreatmentValues) => {
+    const candidates = edgeTreatmentCandidates(
+      props.options,
+      props.topologyCandidates ?? [],
+      (kind, ordinal) =>
+        kind === "edge" ? props.copy.edgeLabel(ordinal) : t("faceLabel", { ordinal }),
+    )
+    return treatmentFeature(draft, {
+      featureId: initial.featureId,
+      mode: props.mode,
+      operation: props.operation,
+      options: props.options,
+      candidates,
+      variables: props.variables,
+      unit: state.displayUnits.length,
+      copy: treatmentValidationCopy(props.copy, t),
+    })
+  }
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: { draft: initial.values },
+    validators: {
+      onDynamic: ({ value }) => {
+        const result = parseDraft(value.draft)
+        return result.ok
+          ? undefined
+          : { form: props.copy.validationSummary, fields: { draft: result.issues } }
+      },
+    },
     onSubmit: async ({ value }) => {
       if (props.disabled || (props.previewStatus !== undefined && props.previewStatus !== "ready"))
         return
-      const candidates = edgeTreatmentCandidates(
-        props.options,
-        props.topologyCandidates ?? [],
-        (kind, ordinal) =>
-          kind === "edge" ? props.copy.edgeLabel(ordinal) : t("faceLabel", { ordinal }),
-      )
-      const result = treatmentFeature(value.draft, {
-        featureId: initial.featureId,
-        mode: props.mode,
-        operation: props.operation,
-        options: props.options,
-        candidates,
-        variables: props.variables,
-        unit: state.displayUnits.length,
-        copy: treatmentValidationCopy(props.copy, t),
-      })
-      if (!result.ok) {
-        state.setIssues(result.issues)
-        state.setMessage(props.copy.validationSummary)
-        const key = ["distance", "secondDistance", "angle", "targetFeatureId", "references"].find(
-          (field) => result.issues[field as keyof typeof result.issues],
-        )
-        const selector = key === "references" ? "#edge-treatment-pick-edges" : `[name="${key}"]`
-        state.formElementRef.current?.querySelector<HTMLElement>(selector)?.focus()
-        return
-      }
-      state.setIssues({})
+      const result = parseDraft(value.draft)
+      if (!result.ok) return
       state.setMessage(null)
       try {
         await submitFeatureMutation({
@@ -385,43 +395,47 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
   })
   return (
     <Form
-      ref={state.formElementRef}
+      ref={formElement}
       form={form}
       aria-label={props.copy.title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
       onKeyDown={(event) => escapeHandler.current?.(event)}
     >
-      <ParameterPanel
-        copy={props.copy}
-        disabled={Boolean(props.disabled)}
-        legend={props.copy.scopeLabel}
-        message={state.message}
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={props.copy.submit}
-            ariaLabel={props.copy.title}
-            cancelLabel={props.copy.cancel}
-            disabled={Boolean(props.disabled)}
-            onCancel={props.onCancel}
-            previewStatus={props.previewStatus}
-          />
-        }
-      >
-        <form.Field name="draft">
-          {(field) => (
-            <TreatmentFields
-              props={props}
-              values={field.state.value}
-              featureId={initial.featureId}
-              state={state}
-              onChange={field.handleChange}
-              setEscape={(handler) => {
-                escapeHandler.current = handler
-              }}
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <ParameterPanel
+          copy={props.copy}
+          disabled={Boolean(props.disabled)}
+          legend={props.copy.scopeLabel}
+          message={state.message}
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={props.copy.submit}
+              ariaLabel={props.copy.title}
+              cancelLabel={props.copy.cancel}
+              disabled={Boolean(props.disabled)}
+              onCancel={props.onCancel}
+              previewStatus={props.previewStatus}
             />
-          )}
-        </form.Field>
-      </ParameterPanel>
+          }
+        >
+          <form.Field name="draft">
+            {(field) => (
+              <TreatmentFields
+                props={props}
+                values={field.state.value}
+                featureId={initial.featureId}
+                state={state}
+                submitIssues={field.state.meta.errors[0] ?? {}}
+                formElement={formElement}
+                onChange={field.handleChange}
+                setEscape={(handler) => {
+                  escapeHandler.current = handler
+                }}
+              />
+            )}
+          </form.Field>
+        </ParameterPanel>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

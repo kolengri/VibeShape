@@ -1,13 +1,13 @@
 import type { FeatureRecord, SketchRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
-import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Field, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { type Ref, useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { BooleanParameterField } from "../part-design/boolean-parameter-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import type { ExactBodyOption } from "../part-design/exact-body-options"
-import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -96,8 +96,33 @@ export function FdmForm(props: FdmFormProps) {
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   // The owning task boundary keeps the identity stable across candidate previews.
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: defaults,
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parseFdmForm(
+          kind,
+          value,
+          props.options,
+          props.sketches,
+          props.variables,
+          state.displayUnits,
+          copy,
+        )
+        return parsed.ok
+          ? undefined
+          : {
+              form: t("validationSummary"),
+              fields: Object.fromEntries(
+                Object.entries(parsed.issues).map(([name, error]) => [
+                  name in fdmFieldDefinitions ? `fields.${name}` : name,
+                  error,
+                ]),
+              ),
+            }
+      },
+    },
     onSubmit: async ({ value }) => {
       const parsed = parseFdmForm(
         kind,
@@ -108,11 +133,7 @@ export function FdmForm(props: FdmFormProps) {
         state.displayUnits,
         copy,
       )
-      if (!parsed.ok) {
-        state.setIssues(parsed.issues)
-        state.setMessage(t("validationSummary"))
-        return
-      }
+      if (!parsed.ok) return
       state.clearSubmissionErrors()
       await submitFeatureMutation({
         baseRevision: props.baseRevision,
@@ -130,13 +151,11 @@ export function FdmForm(props: FdmFormProps) {
       sketch?.entities.filter((entity) => entity.type === "line" && !entity.construction) ?? []
     return (
       <>
-        <form.Field name="style">
+        <form.AppField name="style">
           {(field) => (
-            <ChoiceField
+            <field.ChoiceField
               label={t("style")}
-              value={field.state.value}
               onValueChange={(value) => {
-                field.handleChange(value === "rib" ? "rib" : "web")
                 form.setFieldValue("stopPlane", null)
                 if (value === "rib") form.setFieldValue("extendToWalls", false)
               }}
@@ -146,14 +165,12 @@ export function FdmForm(props: FdmFormProps) {
               ]}
             />
           )}
-        </form.Field>
-        <form.Field name="sketchId">
+        </form.AppField>
+        <form.AppField name="sketchId">
           {(field) => (
-            <LocalizedSearchableSelectField
+            <field.SearchableSelectField
               label={t("sketch")}
-              value={field.state.value}
-              onValueChange={(id) => {
-                field.handleChange(id)
+              onValueChange={() => {
                 form.setFieldValue("lineIds", [])
               }}
               placeholder={t("chooseSketch")}
@@ -166,7 +183,7 @@ export function FdmForm(props: FdmFormProps) {
               ]}
             />
           )}
-        </form.Field>
+        </form.AppField>
         <form.Field name="lineIds">
           {(field) => (
             <Field orientation="vertical">
@@ -194,31 +211,21 @@ export function FdmForm(props: FdmFormProps) {
             </Field>
           )}
         </form.Field>
-        <form.Field name="direction">
+        <form.AppField name="direction">
           {(field) => (
-            <ChoiceField
+            <field.ChoiceField
               label={t("direction")}
-              value={field.state.value}
-              onValueChange={(value) =>
-                field.handleChange(value === "reverse" ? "reverse" : "forward")
-              }
               options={[
                 { value: "forward", label: t("forward") },
                 { value: "reverse", label: t("reverse") },
               ]}
             />
           )}
-        </form.Field>
+        </form.AppField>
         {values.style === "web" && (
-          <form.Field name="extendToWalls">
-            {(field) => (
-              <Toggle
-                label={t("extendToWalls")}
-                checked={field.state.value}
-                onChange={field.handleChange}
-              />
-            )}
-          </form.Field>
+          <form.AppField name="extendToWalls">
+            {(field) => <field.CheckboxField label={t("extendToWalls")} />}
+          </form.AppField>
         )}
         {values.style === "web" && (
           <form.Field name="stopPlane">
@@ -251,16 +258,14 @@ export function FdmForm(props: FdmFormProps) {
   function targetField(issues: Readonly<Record<string, string | undefined>>) {
     if (kind === "calibration-coupon") return null
     return (
-      <form.Field name="targetId">
+      <form.AppField name="targetId">
         {(field) => (
-          <LocalizedSearchableSelectField
+          <field.SearchableSelectField
             label={t("target")}
             error={issues.targetId}
             placeholder={t("chooseTarget")}
-            value={field.state.value}
-            onValueChange={(value) => {
+            onValueChange={() => {
               state.clearSubmissionErrors()
-              field.handleChange(value)
             }}
             options={[
               { value: "", label: t(kind === "flexible-sleeve" ? "noTarget" : "chooseTarget") },
@@ -268,19 +273,15 @@ export function FdmForm(props: FdmFormProps) {
             ]}
           />
         )}
-      </form.Field>
+      </form.AppField>
     )
   }
   function axisField() {
     return (
-      <form.Field name="axis">
+      <form.AppField name="axis">
         {(field) => (
-          <ChoiceField
+          <field.ChoiceField
             label={t("axis")}
-            value={field.state.value}
-            onValueChange={(value) => {
-              if (value === "X" || value === "Y" || value === "Z") field.handleChange(value)
-            }}
             options={[
               { value: "X", label: "X" },
               { value: "Y", label: "Y" },
@@ -288,161 +289,142 @@ export function FdmForm(props: FdmFormProps) {
             ]}
           />
         )}
-      </form.Field>
+      </form.AppField>
     )
   }
   function specialFields() {
     return (
       <>
         {kind === "teardrop-hole" && (
-          <form.Field name="flatTop">
-            {(field) => (
-              <Toggle
-                label={t("flatTop")}
-                checked={field.state.value}
-                onChange={field.handleChange}
-              />
-            )}
-          </form.Field>
+          <form.AppField name="flatTop">
+            {(field) => <field.CheckboxField label={t("flatTop")} />}
+          </form.AppField>
         )}
         {kind === "enclosure-joint" && (
-          <form.Field name="jointMode">
+          <form.AppField name="jointMode">
             {(field) => (
-              <ChoiceField
+              <field.ChoiceField
                 label={t("mode")}
-                value={field.state.value}
-                onValueChange={(value) => field.handleChange(value === "groove" ? "groove" : "lip")}
                 options={[
                   { value: "lip", label: t("lip") },
                   { value: "groove", label: t("groove") },
                 ]}
               />
             )}
-          </form.Field>
+          </form.AppField>
         )}
         {kind === "membrane" && (
-          <form.Field name="membraneMode">
+          <form.AppField name="membraneMode">
             {(field) => (
-              <ChoiceField
+              <field.ChoiceField
                 label={t("mode")}
-                value={field.state.value}
-                onValueChange={(value) =>
-                  field.handleChange(value === "bridges" ? "bridges" : "sheet")
-                }
                 options={[
                   { value: "sheet", label: t("sheet") },
                   { value: "bridges", label: t("bridges") },
                 ]}
               />
             )}
-          </form.Field>
+          </form.AppField>
         )}
       </>
     )
   }
-  function dimensionFields(
-    values: FdmFormValues,
-    issues: Readonly<Record<string, string | undefined>>,
-  ) {
+  function dimensionFields(values: FdmFormValues) {
     const fields = activeFdmFields(kind, values.membraneMode)
     return (
       <>
         {fields.map((name) => (
-          <form.Field key={name} name={`fields.${name}`}>
+          <form.AppField key={name} name={`fields.${name}`}>
             {(field) => (
-              <LengthExpressionField
+              <field.LengthExpressionField
                 id={`fdm-${name}`}
-                name={field.name}
-                value={field.state.value ?? ""}
                 label={t(`fields.${name}`)}
                 description={t(fieldDescriptionKey(name))}
                 suggestions={state.suggestions}
-                error={issues[name]}
-                onBlur={field.handleBlur}
-                onValueChange={(value) => {
+                onValueChange={() => {
                   state.clearSubmissionErrors()
-                  field.handleChange(value)
                 }}
               />
             )}
-          </form.Field>
+          </form.AppField>
         ))}
       </>
     )
   }
   return (
     <Form
-      ref={state.formElementRef}
       form={form}
       aria-label={title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
-      <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
-        {([values, pending]) => {
-          const parsed = parseFdmForm(
-            kind,
-            values,
-            props.options,
-            props.sketches,
-            props.variables,
-            state.displayUnits,
-            copy,
-          )
-          const issues = parsed.ok ? state.issues : { ...state.issues, ...parsed.issues }
-          const disabled = Boolean(props.disabled || pending)
-          return (
-            <>
-              <Preview
-                feature={parsed.ok ? fdmFormFeature(mode, featureId, parsed) : null}
-                onChange={props.onPreviewChange}
-              />
-              <ParameterPanel
-                copy={{
-                  title: title,
-                  description: t("description"),
-                  cancel: t("cancel"),
-                }}
-                legend={t("parameters")}
-                disabled={disabled}
-                message={message}
-                actions={
-                  <TaskPanelFormActions
-                    acceptLabel={acceptLabel}
-                    ariaLabel={t("title")}
-                    cancelLabel={t("cancel")}
-                    disabled={disabled || !parsed.ok}
-                    onCancel={props.onCancel}
-                    previewStatus={props.previewStatus}
-                  />
-                }
-              >
-                <LocalizedSearchableSelectField
-                  ref={props.kindControlRef}
-                  label={t("kind")}
-                  description={t("flatCutDescription")}
-                  placeholder={t("kind")}
-                  value={kind}
-                  disabled={disabled || mode.kind === "edit"}
-                  onValueChange={(value) => {
-                    const selected = fdmToolKinds.find((tool) => tool === value)
-                    if (selected) props.onKindChange(selected)
-                  }}
-                  options={fdmToolKinds.map((tool) => ({
-                    value: tool,
-                    label: t(`tools.${tool}`),
-                    icon: <FdmToolIcon kind={tool} className="size-5 shrink-0" />,
-                  }))}
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
+          {([values, pending]) => {
+            const parsed = parseFdmForm(
+              kind,
+              values,
+              props.options,
+              props.sketches,
+              props.variables,
+              state.displayUnits,
+              copy,
+            )
+            const issues = parsed.ok ? {} : parsed.issues
+            const disabled = Boolean(props.disabled || pending)
+            return (
+              <>
+                <Preview
+                  feature={parsed.ok ? fdmFormFeature(mode, featureId, parsed) : null}
+                  onChange={props.onPreviewChange}
                 />
-                {targetField(issues)}
-                {kind === "web" ? webFields(values, issues) : axisField()}
-                {specialFields()}
-                {dimensionFields(values, issues)}
-                {issues.parameters && <FieldError>{issues.parameters}</FieldError>}
-              </ParameterPanel>
-            </>
-          )
-        }}
-      </form.Subscribe>
+                <ParameterPanel
+                  copy={{
+                    title: title,
+                    description: t("description"),
+                    cancel: t("cancel"),
+                  }}
+                  legend={t("parameters")}
+                  disabled={disabled}
+                  message={message}
+                  actions={
+                    <TaskPanelFormActions
+                      acceptLabel={acceptLabel}
+                      ariaLabel={t("title")}
+                      cancelLabel={t("cancel")}
+                      disabled={disabled || !parsed.ok}
+                      onCancel={props.onCancel}
+                      previewStatus={props.previewStatus}
+                    />
+                  }
+                >
+                  <LocalizedSearchableSelectField
+                    ref={props.kindControlRef}
+                    label={t("kind")}
+                    description={t("flatCutDescription")}
+                    placeholder={t("kind")}
+                    value={kind}
+                    disabled={disabled || mode.kind === "edit"}
+                    onValueChange={(value) => {
+                      const selected = fdmToolKinds.find((tool) => tool === value)
+                      if (selected) props.onKindChange(selected)
+                    }}
+                    options={fdmToolKinds.map((tool) => ({
+                      value: tool,
+                      label: t(`tools.${tool}`),
+                      icon: <FdmToolIcon kind={tool} className="size-5 shrink-0" />,
+                    }))}
+                  />
+                  {targetField(issues)}
+                  {kind === "web" ? webFields(values, issues) : axisField()}
+                  {specialFields()}
+                  {dimensionFields(values)}
+                  {issues.parameters && <FieldError>{issues.parameters}</FieldError>}
+                </ParameterPanel>
+              </>
+            )
+          }}
+        </form.Subscribe>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

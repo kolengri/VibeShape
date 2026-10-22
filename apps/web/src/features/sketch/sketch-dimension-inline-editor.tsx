@@ -7,16 +7,14 @@ import type {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { FieldError } from "@vibeshape/ui/components/field"
 import { Check, X } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { CSSProperties, KeyboardEvent } from "react"
-import { useState } from "react"
 import { createPortal } from "react-dom"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import {
-  VariableExpressionInput,
   type VariableExpressionSuggestion,
   variableExpressionSuggestions,
 } from "../variables/variable-expression-input"
@@ -158,18 +156,35 @@ type SketchDimensionInlineEditorProps = Readonly<{
   variables: readonly VariableDefinition[]
 }>
 
-function useInlineDimensionForm(
-  props: SketchDimensionInlineEditorProps,
-  setMessage: (message: string | null) => void,
-) {
+function useInlineDimensionForm(props: SketchDimensionInlineEditorProps) {
   const t = useTranslations("app.sketch.viewport")
-  return useAppForm({
+  return useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: inlineDimensionDefaults(
       props.displayUnits,
       props.initialExpression,
       props.initialKind,
       props.options,
     ),
+    validators: {
+      onDynamic: ({ value }) => {
+        const result = resolveInlineDimensionResult({
+          displayUnits: props.displayUnits,
+          entities: props.entities,
+          expression: value.expression,
+          kind: value.kind,
+          mode: props.mode,
+          valueMode: value.mode,
+          variables: props.variables,
+        })
+        return result
+          ? undefined
+          : {
+              form: t("dimensionInvalid"),
+              fields: value.mode === "driving" ? { expression: t("dimensionInvalid") } : {},
+            }
+      },
+    },
     onSubmit: ({ value }) => {
       const result = resolveInlineDimensionResult({
         displayUnits: props.displayUnits,
@@ -180,10 +195,7 @@ function useInlineDimensionForm(
         valueMode: value.mode,
         variables: props.variables,
       })
-      if (!result) {
-        setMessage(t("dimensionInvalid"))
-        return
-      }
+      if (!result) return
       props.onSubmit(result)
     },
   })
@@ -247,11 +259,9 @@ function DimensionKindControl({
 function DimensionModeControl({
   form,
   referenceAvailable,
-  resetMessage,
 }: Readonly<{
   form: InlineDimensionForm
   referenceAvailable: boolean
-  resetMessage: () => void
 }>) {
   const t = useTranslations("app.sketch.viewport")
   if (!referenceAvailable) return null
@@ -264,7 +274,6 @@ function DimensionModeControl({
           referenceLabel={t("reference")}
           value={field.state.value}
           onChange={(value) => {
-            resetMessage()
             field.handleChange(value)
           }}
         />
@@ -277,37 +286,28 @@ function DimensionExpressionControl({
   ariaLabel,
   form,
   onEscape,
-  resetMessage,
   suggestions,
 }: Readonly<{
   ariaLabel: string
   form: InlineDimensionForm
   onEscape: (event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => void
-  resetMessage: () => void
   suggestions: readonly VariableExpressionSuggestion[]
 }>) {
   return (
     <form.Subscribe selector={(state) => state.values.mode}>
       {(dimensionMode) =>
         dimensionMode === "reference" ? null : (
-          <form.Field name="expression">
+          <form.AppField name="expression">
             {(field) => (
-              <VariableExpressionInput
+              <field.VariableExpressionInput
                 autoFocus
                 aria-label={ariaLabel}
                 className="h-7 min-w-28 flex-1 font-mono text-xs tabular-nums"
-                name={field.name}
                 suggestions={suggestions}
-                value={field.state.value}
-                onBlur={field.handleBlur}
                 onKeyDown={onEscape}
-                onValueChange={(value) => {
-                  resetMessage()
-                  field.handleChange(value)
-                }}
               />
             )}
-          </form.Field>
+          </form.AppField>
         )
       }
     </form.Subscribe>
@@ -350,8 +350,7 @@ function DimensionEditorActions({
 
 export function SketchDimensionInlineEditor(props: SketchDimensionInlineEditorProps) {
   const t = useTranslations("app.sketch.viewport")
-  const [message, setMessage] = useState<string | null>(null)
-  const form = useInlineDimensionForm(props, setMessage)
+  const form = useInlineDimensionForm(props)
   const suggestions = variableExpressionSuggestions(props.variables)
   const referenceAvailable =
     (props.allowReference ?? true) &&
@@ -361,7 +360,6 @@ export function SketchDimensionInlineEditor(props: SketchDimensionInlineEditorPr
     )
   const cancelOnEscape = (event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) =>
     cancelDimensionEditor(event, props.onCancel)
-  const resetMessage = () => setMessage(null)
 
   const editor = (
     <div
@@ -381,21 +379,16 @@ export function SketchDimensionInlineEditor(props: SketchDimensionInlineEditorPr
             onEscape={cancelOnEscape}
             options={props.options}
           />
-          <DimensionModeControl
-            form={form}
-            referenceAvailable={referenceAvailable}
-            resetMessage={resetMessage}
-          />
+          <DimensionModeControl form={form} referenceAvailable={referenceAvailable} />
           <DimensionExpressionControl
             ariaLabel={props.expressionAriaLabel ?? t("dimensionExpression")}
             form={form}
             onEscape={cancelOnEscape}
-            resetMessage={resetMessage}
             suggestions={suggestions}
           />
           <DimensionEditorActions form={form} onCancel={props.onCancel} />
         </div>
-        <FieldError className="max-w-64 text-[10px] leading-3">{message}</FieldError>
+        <form.FormError />
       </Form>
     </div>
   )

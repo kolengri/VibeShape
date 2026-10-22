@@ -8,7 +8,7 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import type { ReactNode } from "react"
-import { TaskPanelLayout } from "../components/task-panel-layout"
+import { TaskPanelLayout, TaskPanelSurface } from "../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import {
   createBrowserFeatureId,
@@ -132,9 +132,9 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
       ? `edit:${mode.feature.id}:${props.report.snapshot.revision}`
       : `create:${operation}:${props.report.snapshot.revision}`
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={task("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={mode.kind === "edit" && props.renderDelete(mode.feature)}
     >
       <BodyCombinationForm
         key={key}
@@ -143,7 +143,6 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
         {...featureTaskFormProps(props, mode)}
         options={options}
       />
-      {mode.kind === "edit" && props.renderDelete(mode.feature)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

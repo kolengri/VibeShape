@@ -1,7 +1,9 @@
 import type { DocumentSnapshot, FeatureRecord } from "@vibeshape/domain"
 import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selector"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -72,8 +74,23 @@ export function SweepLoftForm({
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const [message, setMessage] = useState<string | null>(null)
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: sweepLoftFormValues(mode),
+    validators: {
+      onDynamic: ({ value }) => {
+        const feature = sweepLoftFeatureRecord(
+          mode,
+          featureId,
+          value,
+          profiles,
+          paths,
+          snapshot,
+          supports,
+        )
+        return feature ? undefined : copy.validationSummary
+      },
+    },
     onSubmit: async ({ value }) => {
       const feature = sweepLoftFeatureRecord(
         mode,
@@ -84,10 +101,7 @@ export function SweepLoftForm({
         snapshot,
         supports,
       )
-      if (!feature) {
-        setMessage(copy.validationSummary)
-        return
-      }
+      if (!feature) return
       setMessage(null)
       try {
         await submitFeatureMutation({ baseRevision, copy, feature, onSave, onSaved, setMessage })
@@ -102,134 +116,138 @@ export function SweepLoftForm({
       aria-label={copy.title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
-      <form.Subscribe selector={(state) => [state.values, state.isSubmitting] as const}>
-        {([values, pending]) => {
-          const feature = sweepLoftFeatureRecord(
-            mode,
-            featureId,
-            values,
-            profiles,
-            paths,
-            snapshot,
-            supports,
-          )
-          return (
-            <>
-              {onPreviewChange && (
-                <SweepLoftPreview feature={feature} onPreviewChange={onPreviewChange} />
-              )}
-              <ParameterPanel
-                copy={copy}
-                legend={copy.parameters}
-                disabled={disabled || pending}
-                message={
-                  message ??
-                  (previewStatus === "error" ? (previewDiagnostic ?? copy.previewFailed) : null)
-                }
-                actions={
-                  <TaskPanelFormActions
-                    acceptLabel={copy.submit}
-                    ariaLabel={copy.title}
-                    cancelLabel={copy.cancel}
-                    disabled={disabled || !feature}
-                    onCancel={onCancel}
-                    previewStatus={previewStatus}
-                  />
-                }
-              >
-                {mode.operation === "loft" ? (
-                  <>
-                    <LoftSectionFields
-                      sections={values.sections}
-                      ruled={values.ruled}
-                      ruledDisabled={values.constrained}
-                      profiles={profiles}
-                      copy={copy}
-                      onSectionsChange={(sections) => {
-                        setMessage(null)
-                        const tracks = sections.some(
-                          ({ holeBoundaryEntityIds }) => holeBoundaryEntityIds.length > 0,
-                        )
-                          ? values.holeCorrespondence.map((track) => ({
-                              sectionBoundaryEntityIds: sections.map((section) => {
-                                const oldIndex = values.sections.findIndex(
-                                  (old) =>
-                                    sketchProfileSelectorKey(old) ===
-                                    sketchProfileSelectorKey(section),
-                                )
-                                return [...(track.sectionBoundaryEntityIds[oldIndex] ?? [])]
-                              }),
-                            }))
-                          : []
-                        form.setFieldValue("holeCorrespondence", tracks)
-                        form.setFieldValue(
-                          "outerCorrespondence",
-                          remapLoftOuterTracks(
-                            values.outerCorrespondence,
-                            values.sections,
-                            sections,
-                          ),
-                        )
-                        form.setFieldValue("sections", sections)
-                      }}
-                      onRuledChange={(ruled) => {
-                        setMessage(null)
-                        form.setFieldValue("ruled", ruled)
-                      }}
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <form.Subscribe selector={(state) => [state.values, state.isSubmitting] as const}>
+          {([values, pending]) => {
+            const feature = sweepLoftFeatureRecord(
+              mode,
+              featureId,
+              values,
+              profiles,
+              paths,
+              snapshot,
+              supports,
+            )
+            return (
+              <>
+                {onPreviewChange && (
+                  <SweepLoftPreview feature={feature} onPreviewChange={onPreviewChange} />
+                )}
+                <ParameterPanel
+                  copy={copy}
+                  legend={copy.parameters}
+                  disabled={disabled || pending}
+                  message={
+                    message ??
+                    (previewStatus === "error" ? (previewDiagnostic ?? copy.previewFailed) : null)
+                  }
+                  actions={
+                    <TaskPanelFormActions
+                      acceptLabel={copy.submit}
+                      ariaLabel={copy.title}
+                      cancelLabel={copy.cancel}
+                      disabled={disabled || !feature}
+                      onCancel={onCancel}
+                      previewStatus={previewStatus}
                     />
-                    {!values.constrained && (
-                      <LoftHoleFields
+                  }
+                >
+                  {mode.operation === "loft" ? (
+                    <>
+                      <LoftSectionFields
                         sections={values.sections}
-                        tracks={values.holeCorrespondence}
-                        onChange={(tracks) => form.setFieldValue("holeCorrespondence", tracks)}
+                        ruled={values.ruled}
+                        ruledDisabled={values.constrained}
+                        profiles={profiles}
+                        copy={copy}
+                        onSectionsChange={(sections) => {
+                          setMessage(null)
+                          const tracks = sections.some(
+                            ({ holeBoundaryEntityIds }) => holeBoundaryEntityIds.length > 0,
+                          )
+                            ? values.holeCorrespondence.map((track) => ({
+                                sectionBoundaryEntityIds: sections.map((section) => {
+                                  const oldIndex = values.sections.findIndex(
+                                    (old) =>
+                                      sketchProfileSelectorKey(old) ===
+                                      sketchProfileSelectorKey(section),
+                                  )
+                                  return [...(track.sectionBoundaryEntityIds[oldIndex] ?? [])]
+                                }),
+                              }))
+                            : []
+                          form.setFieldValue("holeCorrespondence", tracks)
+                          form.setFieldValue(
+                            "outerCorrespondence",
+                            remapLoftOuterTracks(
+                              values.outerCorrespondence,
+                              values.sections,
+                              sections,
+                            ),
+                          )
+                          form.setFieldValue("sections", sections)
+                        }}
+                        onRuledChange={(ruled) => {
+                          setMessage(null)
+                          form.setFieldValue("ruled", ruled)
+                        }}
                       />
-                    )}
-                    <LoftConstraintFields
+                      {!values.constrained && (
+                        <LoftHoleFields
+                          sections={values.sections}
+                          tracks={values.holeCorrespondence}
+                          onChange={(tracks) => form.setFieldValue("holeCorrespondence", tracks)}
+                        />
+                      )}
+                      <LoftConstraintFields
+                        values={values}
+                        sections={values.sections}
+                        paths={paths}
+                        supports={supports}
+                        copy={copy}
+                        onChange={(changes) => {
+                          setMessage(null)
+                          if (changes.constrained !== undefined) {
+                            form.setFieldValue("constrained", changes.constrained)
+                            if (changes.constrained) form.setFieldValue("ruled", false)
+                          }
+                          if (changes.outerCorrespondence !== undefined)
+                            form.setFieldValue("outerCorrespondence", changes.outerCorrespondence)
+                          if (changes.rails !== undefined)
+                            form.setFieldValue("rails", changes.rails)
+                          if (changes.guides !== undefined)
+                            form.setFieldValue("guides", changes.guides)
+                          if (changes.start !== undefined)
+                            form.setFieldValue("start", changes.start)
+                          if (changes.end !== undefined) form.setFieldValue("end", changes.end)
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <SweepPathFields
                       values={values}
-                      sections={values.sections}
+                      profiles={profiles}
                       paths={paths}
-                      supports={supports}
                       copy={copy}
                       onChange={(changes) => {
                         setMessage(null)
-                        if (changes.constrained !== undefined) {
-                          form.setFieldValue("constrained", changes.constrained)
-                          if (changes.constrained) form.setFieldValue("ruled", false)
-                        }
-                        if (changes.outerCorrespondence !== undefined)
-                          form.setFieldValue("outerCorrespondence", changes.outerCorrespondence)
-                        if (changes.rails !== undefined) form.setFieldValue("rails", changes.rails)
-                        if (changes.guides !== undefined)
-                          form.setFieldValue("guides", changes.guides)
-                        if (changes.start !== undefined) form.setFieldValue("start", changes.start)
-                        if (changes.end !== undefined) form.setFieldValue("end", changes.end)
+                        if (changes.profileKey !== undefined)
+                          form.setFieldValue("profileKey", changes.profileKey)
+                        if (changes.pathSketchId !== undefined)
+                          form.setFieldValue("pathSketchId", changes.pathSketchId)
+                        if (changes.entityIds !== undefined)
+                          form.setFieldValue("entityIds", changes.entityIds)
+                        if (changes.startPointId !== undefined)
+                          form.setFieldValue("startPointId", changes.startPointId)
                       }}
                     />
-                  </>
-                ) : (
-                  <SweepPathFields
-                    values={values}
-                    profiles={profiles}
-                    paths={paths}
-                    copy={copy}
-                    onChange={(changes) => {
-                      setMessage(null)
-                      if (changes.profileKey !== undefined)
-                        form.setFieldValue("profileKey", changes.profileKey)
-                      if (changes.pathSketchId !== undefined)
-                        form.setFieldValue("pathSketchId", changes.pathSketchId)
-                      if (changes.entityIds !== undefined)
-                        form.setFieldValue("entityIds", changes.entityIds)
-                      if (changes.startPointId !== undefined)
-                        form.setFieldValue("startPointId", changes.startPointId)
-                    }}
-                  />
-                )}
-              </ParameterPanel>
-            </>
-          )
-        }}
-      </form.Subscribe>
+                  )}
+                </ParameterPanel>
+              </>
+            )
+          }}
+        </form.Subscribe>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

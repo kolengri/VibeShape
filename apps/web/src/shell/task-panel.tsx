@@ -15,7 +15,11 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerSelection } from "@vibeshape/viewer"
 import { type ReactNode, useMemo, useState } from "react"
-import { TaskPanelContentProvider, TaskPanelLayout } from "../components/task-panel-layout"
+import {
+  TaskPanelContentProvider,
+  TaskPanelLayout,
+  TaskPanelSurface,
+} from "../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import {
   addFeature,
@@ -777,9 +781,11 @@ function ExtrusionTaskPanel({
   )
   const profileLabel = profileLabels.join(", ")
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={t("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
     >
       <TaskPanelContentProvider
         content={
@@ -815,8 +821,7 @@ function ExtrusionTaskPanel({
           previewStatus={previewStatus}
         />
       </TaskPanelContentProvider>
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -901,9 +906,11 @@ function RevolveTaskPanel({
   const copy = useRevolveFormCopy(mode.kind)
   const task = featureTaskContext(mode, snapshot.revision)
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={panelT("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
     >
       <RevolveForm
         angleRequest={angleRequest}
@@ -930,8 +937,7 @@ function RevolveTaskPanel({
         onSaved={onCompleteTool}
         previewStatus={preview.status}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -958,9 +964,11 @@ function BoxTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={t("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
     >
       <BoxForm
         key={task.key}
@@ -976,8 +984,7 @@ function BoxTaskPanel({
         placementRequest={placementRequest}
         previewStatus={previewStatus}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -1001,9 +1008,11 @@ function DatumPlaneTaskPanel({
   const task = featureTaskContext(mode, snapshot.revision)
   const t = useTranslations("app.shell.taskPanel")
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={t("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
     >
       <DatumPlaneForm
         key={task.key}
@@ -1018,8 +1027,7 @@ function DatumPlaneTaskPanel({
         onSaved={onCompleteTool}
         previewStatus={previewStatus}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -1046,9 +1054,11 @@ function CylinderTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={t("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
     >
       <CylinderForm
         key={task.key}
@@ -1064,8 +1074,7 @@ function CylinderTaskPanel({
         placementRequest={placementRequest}
         previewStatus={previewStatus}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -1093,9 +1102,11 @@ function BooleanTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={t("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
     >
       <BooleanForm
         key={task.key}
@@ -1110,8 +1121,7 @@ function BooleanTaskPanel({
         onSave={task.onSave}
         onSaved={onCompleteTool}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -1698,9 +1708,11 @@ function ActiveBasicPrimitiveTaskPanel({
   if (!mode) return null
   const task = featureTaskContext(mode, report.snapshot.revision)
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={t("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
+      }
     >
       <BasicPrimitiveForm
         key={`${primitiveKind}:${task.key}`}
@@ -1717,8 +1729,7 @@ function ActiveBasicPrimitiveTaskPanel({
         placementRequest={primitivePlacementRequest}
         previewStatus={featurePreviewStatus}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -1941,9 +1952,11 @@ function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
   const copy = edgeTreatmentCopy(t, operation, mode.kind)
 
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={taskT("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
+      }
     >
       <EdgeTreatmentForm
         key={`${operation}:${task.key}`}
@@ -1967,8 +1980,7 @@ function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
           ? { onPickingContextChange: props.onEdgeTreatmentPickingContextChange }
           : {})}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 
@@ -2049,9 +2061,11 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
     pointLabel: (ordinal) => t("pointLabel", { ordinal }),
   }
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={taskT("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={
+        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
+      }
     >
       <HoleForm
         key={`hole:${task.key}`}
@@ -2072,8 +2086,7 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
           ? { onPickingContextChange: props.onHolePickingContextChange }
           : {})}
       />
-      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
-    </aside>
+    </TaskPanelSurface>
   )
 }
 

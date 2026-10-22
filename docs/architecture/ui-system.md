@@ -332,7 +332,9 @@ The lifecycle group locks cancellation while its asynchronous accept callback is
 releases the lock on fulfillment or rejection. Forms also expose their own submission state.
 Manual automation reviews retain their original decision controller and use the accept renderer
 only to preserve a destructive confirmation trigger. Item deletion and navigation within a
-subtask remain separate from panel cancellation. Generate and analysis cancellation are
+subtask remain separate from panel cancellation. Edit-feature deletion controls and their
+explanations belong to the field scrollport, after parameter controls, so long dependency or
+repair details cannot displace the fixed lifecycle footer. Generate and analysis cancellation are
 computational actions, rather than additional Save/Close controls.
 
 ## Verification

@@ -2,6 +2,53 @@ import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
 test.describe("Task-panel lifecycle actions", () => {
+  test("keeps edit deletion and long explanations reachable in a compact task body", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto("/")
+    await invokeModelCommand(page, "Primitives", "Box")
+    await page
+      .getByRole("form", { name: "Create box", exact: true })
+      .getByRole("button", { name: "Create box", exact: true })
+      .click()
+    await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
+    const form = page.getByRole("form", { name: "Edit box", exact: true })
+    const deletion = form.getByRole("region", { name: "Delete feature", exact: true })
+    await expect(deletion).toBeVisible()
+    expect(
+      await deletion.evaluate(
+        (element) => element.closest("[data-slot=task-panel-content]") !== null,
+      ),
+    ).toBe(true)
+    await deletion.evaluate((element) => {
+      const explanation = element.ownerDocument.createElement("p")
+      explanation.textContent =
+        "Dependent sketch references must be repaired before removal. ".repeat(60)
+      element.prepend(explanation)
+    })
+    await page.setViewportSize({ width: 512, height: 384 })
+    const header = form.locator("[data-slot=task-panel-header]")
+    const footer = form.locator("[data-slot=task-panel-footer]")
+    const headerBounds = await header.boundingBox()
+    const footerBounds = await footer.boundingBox()
+    await deletion
+      .getByRole("button", { name: "Delete feature", exact: true })
+      .scrollIntoViewIfNeeded()
+    expect(
+      await form.locator("[data-slot=task-panel-content]").evaluate((element) => element.scrollTop),
+    ).toBeGreaterThan(0)
+    expect(await header.boundingBox()).toEqual(headerBounds)
+    expect(await footer.boundingBox()).toEqual(footerBounds)
+    await expect(footer.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport()
+    await deletion.getByRole("button", { name: "Delete feature", exact: true }).click()
+    const confirmation = page.getByRole("alertdialog", { name: "Delete Box 1?", exact: true })
+    await expect(confirmation).toBeVisible()
+    await confirmation.getByRole("button", { name: "Keep feature", exact: true }).click()
+    await expect(form).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
+  })
+
   test("keeps readable feature actions in a separate footer without horizontal overflow", async ({
     page,
   }) => {

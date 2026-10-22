@@ -9,15 +9,16 @@ import {
   featureRecordSchema,
   type SketchFeatureFaceSupport,
 } from "@vibeshape/domain"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
   normalizeExpressionWithDisplayUnit,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -28,7 +29,6 @@ import {
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
-import { VariableExpressionField } from "../variables/variable-expression-field"
 
 type OriginPlane = "xy" | "xz" | "yz"
 
@@ -236,32 +236,28 @@ export function DatumPlaneForm({
   variables,
 }: FeatureParameterFormProps<DatumPlaneFormMode, DatumPlaneFormCopy> &
   Readonly<{ onPreviewChange?: (feature: FeatureRecord | null) => void }>) {
-  const {
-    clearSubmissionErrors,
-    displayUnits,
-    formElementRef,
-    issues,
-    message,
-    setIssues,
-    setMessage,
-    suggestions,
-  } = useParameterFormState(variables)
+  const { clearSubmissionErrors, displayUnits, message, setMessage, suggestions } =
+    useParameterFormState(variables)
   const parameters = parametersFromMode(mode)
   const faceSupported = parameters.support.kind === "feature-face"
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: defaultValues(mode, displayUnits),
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parsedDatumPlaneRecord(value, mode, featureId, variables, copy, displayUnits)
+        return parsed.ok
+          ? undefined
+          : { form: copy.validationSummary, fields: { [parsed.field]: parsed.message } }
+      },
+    },
     onSubmit: async ({ value }) => {
       const parsed = parsedDatumPlaneRecord(value, mode, featureId, variables, copy, displayUnits)
-      if (!parsed.ok) {
-        setIssues({ [parsed.field]: parsed.message })
-        setMessage(copy.validationSummary)
-        formElementRef.current?.querySelector<HTMLElement>(`[name="${parsed.field}"]`)?.focus()
-        return
-      }
-      setIssues({})
+      if (!parsed.ok) return
+
       setMessage(null)
       await submitFeatureMutation({
         baseRevision,
@@ -276,110 +272,101 @@ export function DatumPlaneForm({
 
   return (
     <Form
-      ref={formElementRef}
       form={form}
       aria-label={copy.title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
-      {onPreviewChange ? (
-        <form.Subscribe selector={(state) => state.values}>
-          {(values) => (
-            <DatumPlanePreviewSync
-              copy={copy}
-              displayUnits={displayUnits}
-              featureId={featureId}
-              mode={mode}
-              onPreviewChange={onPreviewChange}
-              values={values}
-              variables={variables}
+      <TaskPanelContentProvider content={<form.FormError />}>
+        {onPreviewChange ? (
+          <form.Subscribe selector={(state) => state.values}>
+            {(values) => (
+              <DatumPlanePreviewSync
+                copy={copy}
+                displayUnits={displayUnits}
+                featureId={featureId}
+                mode={mode}
+                onPreviewChange={onPreviewChange}
+                values={values}
+                variables={variables}
+              />
+            )}
+          </form.Subscribe>
+        ) : null}
+        <ParameterPanel
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={copy.submit}
+              ariaLabel={copy.title}
+              cancelLabel={copy.cancel}
+              disabled={disabled}
+              onCancel={onCancel}
+              previewStatus={previewStatus}
             />
-          )}
-        </form.Subscribe>
-      ) : null}
-      <ParameterPanel
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={copy.submit}
-            ariaLabel={copy.title}
-            cancelLabel={copy.cancel}
-            disabled={disabled}
-            onCancel={onCancel}
-            previewStatus={previewStatus}
-          />
-        }
-        copy={copy}
-        disabled={disabled}
-        legend={copy.parameters}
-        message={message}
-      >
-        <form.AppField name="originPlane">
-          {(field) => (
-            <field.NativeSelectField
-              disabled={faceSupported}
-              label={copy.support}
-              description={copy.supportDescription}
-              onValueChange={clearSubmissionErrors}
-            >
-              {faceSupported ? <option value="xy">{copy.selectedFace}</option> : null}
-              {!faceSupported ? (
-                <>
-                  <option value="xy">{copy.planeXy}</option>
-                  <option value="xz">{copy.planeXz}</option>
-                  <option value="yz">{copy.planeYz}</option>
-                </>
-              ) : null}
-            </field.NativeSelectField>
-          )}
-        </form.AppField>
-        <form.Field name="offset">
-          {(field) => (
-            <LengthExpressionField
-              id="datum-plane-offset"
-              name={field.name}
-              value={field.state.value}
-              label={copy.offset}
-              description={copy.expressionDescription}
-              error={issues.offset}
-              suggestions={suggestions}
-              onBlur={field.handleBlur}
-              onValueChange={(value) => {
-                clearSubmissionErrors()
-                field.handleChange(value)
-              }}
-            />
-          )}
-        </form.Field>
-        <form.AppField name="rotationAxis">
-          {(field) => (
-            <field.NativeSelectField
-              label={copy.rotationAxis}
-              description={copy.rotationDescription}
-              onValueChange={clearSubmissionErrors}
-            >
-              <option value="x">{copy.rotationAxisX}</option>
-              <option value="y">{copy.rotationAxisY}</option>
-            </field.NativeSelectField>
-          )}
-        </form.AppField>
-        <form.Field name="angle">
-          {(field) => (
-            <VariableExpressionField
-              id="datum-plane-angle"
-              name={field.name}
-              value={field.state.value}
-              label={copy.angle}
-              description={copy.angleDescription}
-              error={issues.angle}
-              suggestions={suggestions}
-              onBlur={field.handleBlur}
-              onValueChange={(value) => {
-                clearSubmissionErrors()
-                field.handleChange(value)
-              }}
-            />
-          )}
-        </form.Field>
-      </ParameterPanel>
+          }
+          copy={copy}
+          disabled={disabled}
+          legend={copy.parameters}
+          message={message}
+        >
+          <form.AppField name="originPlane">
+            {(field) => (
+              <field.NativeSelectField
+                disabled={faceSupported}
+                label={copy.support}
+                description={copy.supportDescription}
+                onValueChange={clearSubmissionErrors}
+              >
+                {faceSupported ? <option value="xy">{copy.selectedFace}</option> : null}
+                {!faceSupported ? (
+                  <>
+                    <option value="xy">{copy.planeXy}</option>
+                    <option value="xz">{copy.planeXz}</option>
+                    <option value="yz">{copy.planeYz}</option>
+                  </>
+                ) : null}
+              </field.NativeSelectField>
+            )}
+          </form.AppField>
+          <form.AppField name="offset">
+            {(field) => (
+              <field.LengthExpressionField
+                id="datum-plane-offset"
+                label={copy.offset}
+                description={copy.expressionDescription}
+                suggestions={suggestions}
+                onValueChange={() => {
+                  clearSubmissionErrors()
+                }}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="rotationAxis">
+            {(field) => (
+              <field.NativeSelectField
+                label={copy.rotationAxis}
+                description={copy.rotationDescription}
+                onValueChange={clearSubmissionErrors}
+              >
+                <option value="x">{copy.rotationAxisX}</option>
+                <option value="y">{copy.rotationAxisY}</option>
+              </field.NativeSelectField>
+            )}
+          </form.AppField>
+          <form.AppField name="angle">
+            {(field) => (
+              <field.VariableExpressionField
+                id="datum-plane-angle"
+                label={copy.angle}
+                description={copy.angleDescription}
+                suggestions={suggestions}
+                onValueChange={() => {
+                  clearSubmissionErrors()
+                }}
+              />
+            )}
+          </form.AppField>
+        </ParameterPanel>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

@@ -3,8 +3,9 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Trash2 } from "@vibeshape/ui/components/icons"
+import { Form, submitForm } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { TaskPanelLayout } from "../../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
@@ -38,9 +39,12 @@ export function SurfaceTextureTaskPanel({
   onComplete: () => void
 }) {
   const t = useTranslations("app.surfaceTexture")
+  const formElement = useRef<HTMLFormElement>(null)
   const report = controller.report
   const initialBody = textureInitialBody(initialFeatureId, initialOutputRole, selectedFace)
-  const state = useTextureDraft(controller, selectedFace, initialBody)
+  const state = useTextureDraft(controller, selectedFace, initialBody, async () => {
+    await apply()
+  })
   const { draft, layer, update } = state
   const [gallery, setGallery] = useState(false)
   const stale = report?.snapshot.revision !== state.baseRevision
@@ -50,7 +54,8 @@ export function SurfaceTextureTaskPanel({
   )
   useRegisterTaskSubmission(async () => {
     if (!draft && !uploading && !saving) onClose()
-    else await apply()
+    else if (state.form.state.isSubmitting || formElement.current?.reportValidity() !== false)
+      await submitForm(state.form)
   })
   useTexturePanelKeyboard(gallery, setGallery, state)
   if (gallery && layer)
@@ -71,12 +76,11 @@ export function SurfaceTextureTaskPanel({
       aria-label={t("title")}
       className="flex min-h-0 flex-col overflow-hidden border-l bg-panel"
     >
-      <form
-        className="flex min-h-0 min-w-0 flex-col overflow-hidden"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void apply()
-        }}
+      <Form
+        ref={formElement}
+        form={state.form}
+        noValidate={false}
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       >
         <TaskPanelLayout
           title={t("title")}
@@ -93,13 +97,9 @@ export function SurfaceTextureTaskPanel({
               onCancel={onClose}
             />
           }
-          footerContent={
-            <>
-              <TexturePreviewFooter visible={draft !== null} />
-              {error && <Alert>{error}</Alert>}
-            </>
-          }
         >
+          <state.form.FormError />
+          {error && <Alert>{error}</Alert>}
           {stale && <Alert>{t("stale")}</Alert>}
           <fieldset
             disabled={saving || uploading || stale || report?.mode !== "read-write"}
@@ -119,8 +119,9 @@ export function SurfaceTextureTaskPanel({
               onUpload={upload}
             />
           </fieldset>
+          <TexturePreviewFooter visible={draft !== null} />
         </TaskPanelLayout>
-      </form>
+      </Form>
     </aside>
   )
 }

@@ -1,9 +1,9 @@
-import { useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useCallback, useState } from "react"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
 } from "../../document/document-display-units"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import {
   type FeatureParameterFormProps,
   submitFeatureMutation,
@@ -34,17 +34,20 @@ export function usePlacementDraft(input: PlacementDraftInput) {
   const [featureId] = useState(() =>
     input.mode.kind === "edit" ? input.mode.feature.id : input.mode.createFeatureId(),
   )
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: placementFormValues(input.mode, state.displayUnits),
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parsePlacementForm(value, input.variables, state.displayUnits, input.copy)
+        return parsed.ok ? undefined : { form: input.copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: async ({ value }) => {
       if (input.sourceBounds === null) return
       const parsed = parsePlacementForm(value, input.variables, state.displayUnits, input.copy)
-      if (!parsed.ok) {
-        state.setIssues(parsed.issues)
-        state.setMessage(input.copy.validationSummary)
-        return
-      }
-      state.setIssues({})
+      if (!parsed.ok) return
+
       state.setMessage(null)
       try {
         await submitFeatureMutation({

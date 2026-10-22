@@ -1,125 +1,117 @@
 import { type AssemblyRigidPose, assemblyRigidPoseSchema } from "@vibeshape/domain/assembly"
 import { useTranslations } from "@vibeshape/i18n"
-import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { FieldHelp } from "@vibeshape/ui/components/field-help"
-import { Input } from "@vibeshape/ui/components/input"
+import { TanStackTextField, withFieldGroup } from "@vibeshape/ui/integrations/tanstack-form"
 import { type ReactNode, useId } from "react"
 import { assemblyEulerDegrees, assemblyPoseFromEuler, identityAssemblyPose } from "./assembly-model"
 
 export function AssemblyNumberField({
   label,
-  name,
-  value = 0,
   min = -100_000,
   max = 100_000,
   description,
 }: {
   label: string
-  name: string
-  value?: number | undefined
   min?: number
   max?: number
   description?: ReactNode
 }) {
-  const id = useId()
   return (
-    <Field>
-      <FieldLabel htmlFor={id} description={description} descriptionId={`${id}-description`}>
-        {label}
-      </FieldLabel>
-      <Input
-        id={id}
-        name={name}
-        aria-describedby={description ? `${id}-description` : undefined}
-        type="number"
-        defaultValue={value}
-        min={min}
-        max={max}
-        step="any"
-        required
-      />
-    </Field>
+    <TanStackTextField
+      label={label}
+      description={description}
+      type="number"
+      min={min}
+      max={max}
+      step="any"
+      required
+    />
   )
 }
-export function AssemblyNameField({ value }: { value: string }) {
-  const t = useTranslations("app.assembly")
-  const id = useId()
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>{t("name")}</FieldLabel>
-      <Input id={id} name="name" defaultValue={value} maxLength={120} required />
-    </Field>
-  )
+
+export function numberFieldValidators(message: string, min = -100_000, max = 100_000) {
+  return {
+    onChange: ({ value }: { value: string }) => {
+      const number = Number(value)
+      return value.trim() && Number.isFinite(number) && number >= min && number <= max
+        ? undefined
+        : message
+    },
+  }
 }
-export function AssemblyPoseFields({
-  prefix,
-  label,
-  pose = identityAssemblyPose,
-  description,
-}: {
-  prefix: string
-  label: string
-  pose?: AssemblyRigidPose | undefined
-  description?: ReactNode
-}) {
-  const t = useTranslations("app.assembly")
+
+export function poseFieldValues(pose: AssemblyRigidPose = identityAssemblyPose) {
   const rotation = assemblyEulerDegrees(pose)
-  const descriptionId = useId()
-  const labelId = useId()
-  return (
-    <fieldset
-      className="grid min-w-0 gap-2"
-      aria-labelledby={labelId}
-      aria-describedby={descriptionId}
-    >
-      <legend className="mb-1 text-xs font-medium">
-        <span className="inline-flex items-center gap-1">
-          <span id={labelId}>{label}</span>
-          <FieldHelp label={label} descriptionId={descriptionId}>
-            {description}
-            <span className="block">{t("rotationOrder")}</span>
-          </FieldHelp>
-        </span>
-      </legend>
-      <div className="grid gap-2">
-        {(["x", "y", "z"] as const).map((axis, index) => (
-          <AssemblyNumberField
-            key={axis}
-            name={`${prefix}.${axis}`}
-            label={t("translationAxis", { axis: axis.toUpperCase() })}
-            value={pose.translation[index]}
-          />
-        ))}
-        {(["x", "y", "z"] as const).map((axis, index) => (
-          <AssemblyNumberField
-            key={axis}
-            name={`${prefix}.r${axis}`}
-            label={t("rotationAxis", { axis: axis.toUpperCase() })}
-            value={rotation[index]}
-            min={-360}
-            max={360}
-          />
-        ))}
-      </div>
-    </fieldset>
-  )
+  return {
+    x: String(pose.translation[0]),
+    y: String(pose.translation[1]),
+    z: String(pose.translation[2]),
+    rx: String(rotation[0]),
+    ry: String(rotation[1]),
+    rz: String(rotation[2]),
+  }
 }
-export function formNumber(data: FormData, name: string) {
-  const value = data.get(name)
-  if (typeof value !== "string" || !value.trim()) throw new Error("A numeric field is required.")
-  return Number(value)
+export type AssemblyPoseValues = ReturnType<typeof poseFieldValues>
+
+export const AssemblyPoseFields = withFieldGroup({
+  defaultValues: poseFieldValues(),
+  props: {} as { label: string; description?: ReactNode },
+  render: function AssemblyPoseFields({ group, label, description }) {
+    const t = useTranslations("app.assembly")
+    const descriptionId = useId()
+    const labelId = useId()
+    return (
+      <fieldset
+        className="grid min-w-0 gap-2"
+        aria-labelledby={labelId}
+        aria-describedby={descriptionId}
+      >
+        <legend className="mb-1 text-xs font-medium">
+          <span className="inline-flex items-center gap-1">
+            <span id={labelId}>{label}</span>
+            <FieldHelp label={label} descriptionId={descriptionId}>
+              {description}
+              <span className="block">{t("rotationOrder")}</span>
+            </FieldHelp>
+          </span>
+        </legend>
+        <div className="grid gap-2">
+          {(["x", "y", "z", "rx", "ry", "rz"] as const).map((axis) => {
+            const rotation = axis.startsWith("r")
+            const bound = rotation ? 360 : 100_000
+            return (
+              <group.AppField
+                key={axis}
+                name={axis}
+                validators={numberFieldValidators(t("invalidParameters"), -bound, bound)}
+              >
+                {() => (
+                  <AssemblyNumberField
+                    label={t(rotation ? "rotationAxis" : "translationAxis", {
+                      axis: axis.slice(-1).toUpperCase(),
+                    })}
+                    min={-bound}
+                    max={bound}
+                  />
+                )}
+              </group.AppField>
+            )
+          })}
+        </div>
+      </fieldset>
+    )
+  },
+})
+
+export function formNumber(value: string) {
+  if (!value.trim()) throw new Error("A numeric field is required.")
+  const number = Number(value)
+  if (!Number.isFinite(number)) throw new Error("A finite numeric field is required.")
+  return number
 }
-export function formPose(data: FormData, prefix: string, original?: AssemblyRigidPose) {
-  const translation = [
-    formNumber(data, `${prefix}.x`),
-    formNumber(data, `${prefix}.y`),
-    formNumber(data, `${prefix}.z`),
-  ] as const
-  const rotation = [
-    formNumber(data, `${prefix}.rx`),
-    formNumber(data, `${prefix}.ry`),
-    formNumber(data, `${prefix}.rz`),
-  ] as const
+export function formPose(values: AssemblyPoseValues, original?: AssemblyRigidPose) {
+  const translation = [formNumber(values.x), formNumber(values.y), formNumber(values.z)] as const
+  const rotation = [formNumber(values.rx), formNumber(values.ry), formNumber(values.rz)] as const
   if (original && unchangedPoseFields(original, translation, rotation))
     return assemblyRigidPoseSchema.parse(original)
   return assemblyPoseFromEuler(translation, rotation)
@@ -135,3 +127,22 @@ function unchangedPoseFields(
     rotation.every((value, index) => value === angles[index])
   )
 }
+
+function nameFieldValidators(message: string) {
+  return {
+    onChange: ({ value }: { value: string }) =>
+      value.trim() && value.length <= 120 ? undefined : message,
+  }
+}
+
+export const AssemblyNameField = withFieldGroup({
+  defaultValues: { name: "" },
+  render: function AssemblyNameField({ group }) {
+    const t = useTranslations("app.assembly")
+    return (
+      <group.AppField name="name" validators={nameFieldValidators(t("invalidParameters"))}>
+        {(field) => <field.TextField label={t("name")} maxLength={120} required />}
+      </group.AppField>
+    )
+  },
+})

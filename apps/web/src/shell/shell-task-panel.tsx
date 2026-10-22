@@ -3,6 +3,7 @@ import { type FeatureRecord, readExtrusionFeatureParameters } from "@vibeshape/d
 import { readShellFeatureParameters } from "@vibeshape/domain/part-design-shell"
 import { useTranslations } from "@vibeshape/i18n"
 import { type ReactNode, useMemo } from "react"
+import { TaskPanelSurface } from "../components/task-panel-layout"
 import {
   createBrowserFeatureId,
   type DocumentControllerState,
@@ -110,9 +111,9 @@ export function ShellTaskPanel(props: ShellPanelProps) {
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
       : `create:${report.snapshot.revision}`
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={task("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={mode.kind === "edit" && props.renderDelete(mode.feature)}
     >
       <ShellForm
         key={key}
@@ -125,7 +126,6 @@ export function ShellTaskPanel(props: ShellPanelProps) {
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />
-      {mode.kind === "edit" && props.renderDelete(mode.feature)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

@@ -5,11 +5,13 @@ import {
   type PartId,
 } from "@vibeshape/domain/identifiers"
 import { Button } from "@vibeshape/ui/components/button"
+import { FieldError } from "@vibeshape/ui/components/field"
 import { ArrowDown, ArrowUp, X } from "@vibeshape/ui/components/icons"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useRef, useState } from "react"
+import { Form, validationMessage } from "@vibeshape/ui/integrations/tanstack-form"
+import { useId, useState } from "react"
 import { browserAuthoredUuid } from "../../document/authored-document-session"
 import type { FeatureMutationResult } from "../../document/document-controller"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import { submitFeatureMutation } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
@@ -44,6 +46,7 @@ type SelectionProps = {
   selected: readonly PartId[]
   onChange: (ids: PartId[]) => void
   copy: BodyCombinationCopy
+  error?: string | undefined
 }
 function OrderedCombinationInput({
   input,
@@ -88,6 +91,9 @@ function OrderedCombinationInput({
   )
 }
 function BodyCombinationInputs(props: SelectionProps) {
+  const id = useId()
+  const rulesId = `${id}-rules`
+  const errorId = `${id}-error`
   const selectedInputs = props.selected.flatMap((id) =>
     props.options.filter(({ partId }) => partId === id),
   )
@@ -95,7 +101,7 @@ function BodyCombinationInputs(props: SelectionProps) {
   const available = props.options.filter(({ partId }) => !props.selected.includes(partId))
   return (
     <>
-      <p id="combination-selection-rules" className="text-xs text-muted-foreground">
+      <p id={rulesId} className="text-xs text-muted-foreground">
         {props.copy.selectionRules}
       </p>
       <ol aria-label={props.copy.selectedParts} className="grid gap-2">
@@ -116,7 +122,8 @@ function BodyCombinationInputs(props: SelectionProps) {
             variant="outline"
             className="justify-start text-left"
             aria-label={props.copy.selectPart(input.name)}
-            aria-describedby="combination-selection-rules"
+            aria-describedby={props.error ? `${rulesId} ${errorId}` : rulesId}
+            aria-invalid={Boolean(props.error) || undefined}
             disabled={
               props.selected.length >= 8 ||
               bodies.has(`${input.body.featureId}:${input.body.outputRole}`)
@@ -127,6 +134,7 @@ function BodyCombinationInputs(props: SelectionProps) {
           </Button>
         ))}
       </fieldset>
+      {props.error && <FieldError id={errorId}>{props.error}</FieldError>}
     </>
   )
 }
@@ -175,7 +183,6 @@ export function BodyCombinationForm({
   onPreviewChange: (feature: FeatureRecord | null) => void
   previewStatus: FeaturePreviewState["status"]
 }) {
-  const formElement = useRef<HTMLFormElement>(null)
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
@@ -194,15 +201,18 @@ export function BodyCombinationForm({
       ),
   )
   const [message, setMessage] = useState<string | null>(null)
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: { selected: mode.initial.map(({ partId }) => partId) },
+    validators: {
+      onDynamic: ({ value }) =>
+        selectedCombinationInputs(value.selected, options)
+          ? undefined
+          : { fields: { selected: copy.invalidSelection } },
+    },
     onSubmit: async ({ value }) => {
       const inputs = selectedCombinationInputs(value.selected, options)
-      if (!inputs) {
-        setMessage(copy.invalidSelection)
-        formElement.current?.querySelector<HTMLElement>("fieldset button:not(:disabled)")?.focus()
-        return
-      }
+      if (!inputs) return
       setMessage(null)
       try {
         await submitFeatureMutation({
@@ -220,7 +230,6 @@ export function BodyCombinationForm({
   })
   return (
     <Form
-      ref={formElement}
       form={form}
       aria-label={copy.title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
@@ -266,6 +275,7 @@ export function BodyCombinationForm({
                     </p>
                   )}
                   <BodyCombinationInputs
+                    error={validationMessage(field.state.meta.errors[0])}
                     copy={copy}
                     options={options}
                     selected={field.state.value}

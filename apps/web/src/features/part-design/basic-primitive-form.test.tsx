@@ -235,6 +235,12 @@ describe("BasicPrimitiveForm", () => {
     expect((majorRadius as HTMLInputElement).value).toBe("5 mm")
     await waitFor(() => expect(onPreviewChange).toHaveBeenLastCalledWith(null))
     expect(onSave).not.toHaveBeenCalled()
+
+    await user.clear(majorRadius)
+    await user.type(majorRadius, "12 mm")
+    expect(screen.queryByText(copy.invalidTorusRadii)).toBeNull()
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledTimes(1)
   })
 
   it("explains invalid torus radii while exact preview keeps Apply disabled", async () => {

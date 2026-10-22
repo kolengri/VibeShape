@@ -26,12 +26,12 @@ import {
 } from "@vibeshape/domain"
 import type { BodyReference } from "@vibeshape/domain/body-reference"
 import { Button } from "@vibeshape/ui/components/button"
-import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { fieldVariants } from "@vibeshape/ui/components/field"
 import { Scan } from "@vibeshape/ui/components/icons"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultAngleExpression,
@@ -39,6 +39,7 @@ import {
   positiveDirectManipulationAngleExpression,
 } from "../../document/document-display-units"
 import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
 import { featureEditPreview } from "../part-design/feature-edit-preview"
 import { submitFeatureMutation } from "../part-design/primitive-form"
@@ -47,12 +48,10 @@ import {
   revolveAxesEqual,
   topologyReferencesEqual,
 } from "../part-design/profile-feature-selection"
-import { ReferencePickField } from "../part-design/reference-pick-field"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
-import { VariableExpressionField } from "../variables/variable-expression-field"
 import type { RevolveAngleRequest } from "./revolve-angle-manipulator"
 import { RevolveParameterPanel, type RevolveParameterPanelCopy } from "./revolve-parameter-panel"
 
@@ -148,10 +147,6 @@ function defaultValuesForMode(
   }
 }
 
-function invalidFieldName(issues: Readonly<Record<string, string>>) {
-  return "angle" in issues ? "angle" : "targetFeatureId"
-}
-
 function previewHandler(onPreviewChange?: (feature: FeatureRecord | null) => void) {
   return onPreviewChange ?? IGNORE_PREVIEW
 }
@@ -161,12 +156,10 @@ type RevolveSubmitHandlerInput = Readonly<{
   copy: RevolveFormCopy
   displayUnit: "rad" | "deg"
   featureId: FeatureId
-  focusInvalidField: (fieldName: string) => void
   mode: RevolveFormMode
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
   onSaved: () => void
   options: readonly RevolveTargetOption[]
-  setIssues: (issues: Readonly<Record<string, string | undefined>>) => void
   setMessage: (message: string | null) => void
   variables: readonly VariableDefinition[]
 }>
@@ -174,13 +167,7 @@ type RevolveSubmitHandlerInput = Readonly<{
 function revolveSubmitHandler(input: RevolveSubmitHandlerInput) {
   return async ({ value }: { value: Values }) => {
     const parsed = parseValues(value, input.variables, input.displayUnit, input.copy, input.options)
-    if (!parsed.ok) {
-      input.setIssues(parsed.issues)
-      input.setMessage(input.copy.validationSummary)
-      input.focusInvalidField(invalidFieldName(parsed.issues))
-      return
-    }
-    input.setIssues({})
+    if (!parsed.ok) return
     input.setMessage(null)
     await submitFeatureMutation({
       baseRevision: input.baseRevision,
@@ -507,31 +494,33 @@ export type RevolveFormProps = Readonly<{
 function useRevolveFormController(props: RevolveFormProps) {
   const targetOptions = props.options ?? EMPTY_TARGET_OPTIONS
   const updatePreview = previewHandler(props.onPreviewChange)
-  const {
-    clearSubmissionErrors,
-    displayUnits,
-    formElementRef,
-    issues,
-    message,
-    setIssues,
-    setMessage,
-    suggestions,
-  } = useParameterFormState(props.variables)
+  const { clearSubmissionErrors, displayUnits, message, setMessage, suggestions } =
+    useParameterFormState(props.variables)
   const [featureId] = useState(() => featureIdForMode(props.mode))
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: defaultValuesForMode(props.mode, displayUnits.angle, targetOptions),
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parseValues(
+          value,
+          props.variables,
+          displayUnits.angle,
+          props.copy,
+          targetOptions,
+        )
+        return parsed.ok ? undefined : { form: props.copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: revolveSubmitHandler({
       baseRevision: props.baseRevision,
       copy: props.copy,
       displayUnit: displayUnits.angle,
       featureId,
-      focusInvalidField: (fieldName) =>
-        formElementRef.current?.querySelector<HTMLElement>(`[name="${fieldName}"]`)?.focus(),
       mode: props.mode,
       onSave: props.onSave,
       onSaved: props.onSaved,
       options: targetOptions,
-      setIssues,
       setMessage,
       variables: props.variables,
     }),
@@ -591,8 +580,6 @@ function useRevolveFormController(props: RevolveFormProps) {
     displayUnits,
     featureId,
     form,
-    formElementRef,
-    issues,
     message,
     profileSelectionActive: props.profileSelectionActive ?? false,
     suggestions,
@@ -626,17 +613,13 @@ function RevolvePreviewField({ controller }: { controller: RevolveFormController
 function RevolveOperationField({ controller }: { controller: RevolveFormController }) {
   const { form } = controller
   return (
-    <form.Field name="operation">
+    <form.AppField name="operation">
       {(field) => (
-        <ChoiceField
-          name={field.name}
-          value={field.state.value}
+        <field.ChoiceField
           label={controller.copy.operation}
           disabled={controller.disabled}
-          onBlur={field.handleBlur}
-          onValueChange={(value) => {
+          onValueChange={() => {
             controller.clearSubmissionErrors()
-            field.handleChange(value)
           }}
           options={[
             { value: "new", label: controller.copy.operationNew },
@@ -646,7 +629,7 @@ function RevolveOperationField({ controller }: { controller: RevolveFormControll
           ]}
         />
       )}
-    </form.Field>
+    </form.AppField>
   )
 }
 
@@ -656,12 +639,10 @@ function RevolveTargetField({ controller }: { controller: RevolveFormController 
     <form.Subscribe selector={(state) => state.values.operation}>
       {(operation) =>
         operation === "new" ? null : (
-          <form.Field name="targetFeatureId">
+          <form.AppField name="targetFeatureId">
             {(field) => (
-              <ReferencePickField
+              <field.ReferencePickField
                 id="revolve-target-body"
-                name={field.name}
-                value={field.state.value}
                 label={controller.copy.target}
                 placeholder={controller.copy.missingTarget}
                 options={controller.targetOptions.map((option) => ({
@@ -670,17 +651,14 @@ function RevolveTargetField({ controller }: { controller: RevolveFormController 
                 }))}
                 candidates={exactBodyPickCandidates(controller.targetOptions)}
                 description={controller.copy.targetDescription}
-                error={controller.issues.targetFeatureId}
                 disabled={controller.disabled}
                 required
-                onBlur={field.handleBlur}
-                onValueChange={(value) => {
+                onValueChange={() => {
                   controller.clearSubmissionErrors()
-                  field.handleChange(value)
                 }}
               />
             )}
-          </form.Field>
+          </form.AppField>
         )
       }
     </form.Subscribe>
@@ -713,25 +691,20 @@ function RevolveAxisFormField({ controller }: { controller: RevolveFormControlle
 function RevolveAngleField({ controller }: { controller: RevolveFormController }) {
   const { form } = controller
   return (
-    <form.Field name="angle">
+    <form.AppField name="angle">
       {(field) => (
-        <VariableExpressionField
+        <field.VariableExpressionField
           id="revolve-angle"
-          name={field.name}
           label={controller.copy.angle}
           description={controller.copy.expressionDescription}
-          error={controller.issues.angle}
-          value={field.state.value}
           disabled={controller.disabled}
           suggestions={controller.suggestions}
-          onBlur={field.handleBlur}
-          onValueChange={(value: string) => {
+          onValueChange={() => {
             controller.clearSubmissionErrors()
-            field.handleChange(value)
           }}
         />
       )}
-    </form.Field>
+    </form.AppField>
   )
 }
 
@@ -739,45 +712,46 @@ function RevolveFormView({ controller }: { controller: RevolveFormController }) 
   const { form } = controller
   return (
     <Form
-      ref={controller.formElementRef}
       form={form}
       aria-label={controller.copy.title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
-      <RevolveProfileSelectionSync
-        profiles={controller.mode.profiles}
-        supportReference={controller.mode.supportReference ?? null}
-        onChange={controller.applyProfileSelection}
-      />
-      <RevolveAxisSelectionSync
-        axisSelection={controller.axisSelection}
-        onChange={controller.applyAxisSelection}
-      />
-      <RevolvePreviewField controller={controller} />
-      <RevolveParameterPanel
-        actions={
-          <TaskPanelFormActions
-            acceptLabel={controller.copy.submit}
-            ariaLabel={controller.copy.title}
-            cancelLabel={controller.copy.cancel}
-            disabled={controller.disabled}
-            onCancel={controller.onCancel}
-            previewStatus={controller.previewStatus}
-          />
-        }
-        copy={controller.copy}
-        disabled={controller.disabled}
-        message={controller.message}
-        profileLabels={controller.profileLabels ?? [controller.profileLabel]}
-        onProfileRemove={controller.onProfileRemove}
-        onProfilesClear={controller.onProfilesClear}
-        profileSelectionActive={controller.profileSelectionActive}
-        onProfileSelectionRequest={controller.onProfileSelectionRequest}
-        operationField={<RevolveOperationField controller={controller} />}
-        targetField={<RevolveTargetField controller={controller} />}
-        axisField={<RevolveAxisFormField controller={controller} />}
-        angleField={<RevolveAngleField controller={controller} />}
-      />
+      <TaskPanelContentProvider content={<form.FormError />}>
+        <RevolveProfileSelectionSync
+          profiles={controller.mode.profiles}
+          supportReference={controller.mode.supportReference ?? null}
+          onChange={controller.applyProfileSelection}
+        />
+        <RevolveAxisSelectionSync
+          axisSelection={controller.axisSelection}
+          onChange={controller.applyAxisSelection}
+        />
+        <RevolvePreviewField controller={controller} />
+        <RevolveParameterPanel
+          actions={
+            <TaskPanelFormActions
+              acceptLabel={controller.copy.submit}
+              ariaLabel={controller.copy.title}
+              cancelLabel={controller.copy.cancel}
+              disabled={controller.disabled}
+              onCancel={controller.onCancel}
+              previewStatus={controller.previewStatus}
+            />
+          }
+          copy={controller.copy}
+          disabled={controller.disabled}
+          message={controller.message}
+          profileLabels={controller.profileLabels ?? [controller.profileLabel]}
+          onProfileRemove={controller.onProfileRemove}
+          onProfilesClear={controller.onProfilesClear}
+          profileSelectionActive={controller.profileSelectionActive}
+          onProfileSelectionRequest={controller.onProfileSelectionRequest}
+          operationField={<RevolveOperationField controller={controller} />}
+          targetField={<RevolveTargetField controller={controller} />}
+          axisField={<RevolveAxisFormField controller={controller} />}
+          angleField={<RevolveAngleField controller={controller} />}
+        />
+      </TaskPanelContentProvider>
     </Form>
   )
 }

@@ -6,9 +6,10 @@ import type {
 } from "@vibeshape/domain"
 import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
 import { ChoiceField } from "@vibeshape/ui/components/choice-field"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -177,8 +178,24 @@ export function ShellForm({
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const repair = shellInitialSelection(mode, evidence, allowSemanticRebinding).repair
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: shellInitialValues(mode, evidence, state.displayUnits, allowSemanticRebinding),
+    validators: {
+      onDynamic: ({ value }) => {
+        const feature = shellFormFeature(
+          mode,
+          featureId,
+          value,
+          evidence,
+          variables,
+          state.displayUnits,
+          copy,
+          allowSemanticRebinding,
+        )
+        return feature ? undefined : copy.validationSummary
+      },
+    },
     onSubmit: async ({ value }) => {
       const feature = shellFormFeature(
         mode,
@@ -190,10 +207,7 @@ export function ShellForm({
         copy,
         allowSemanticRebinding,
       )
-      if (!feature) {
-        state.setMessage(copy.validationSummary)
-        return
-      }
+      if (!feature) return
       state.setMessage(null)
       try {
         await submitFeatureMutation({
@@ -211,172 +225,167 @@ export function ShellForm({
   })
   return (
     <Form
-      ref={state.formElementRef}
       form={form}
       aria-label={copy.title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
-      <form.Subscribe selector={(formState) => formState.values}>
-        {(values) => (
-          <ShellPickingSync
-            values={values}
-            evidence={evidence}
-            featureId={featureId}
-            mode={mode}
-            request={pickingRequest}
-            onContextChange={onPickingContextChange}
-            onOpeningsChange={(ids) => {
-              state.clearSubmissionErrors()
-              form.setFieldValue("openingIds", ids)
-            }}
-          />
-        )}
-      </form.Subscribe>
-      {onPreviewChange && (
+      <TaskPanelContentProvider content={<form.FormError />}>
         <form.Subscribe selector={(formState) => formState.values}>
           {(values) => (
-            <ShellPreview
+            <ShellPickingSync
               values={values}
-              mode={mode}
-              featureId={featureId}
               evidence={evidence}
-              variables={variables}
-              units={state.displayUnits}
-              copy={copy}
-              allowSemanticRebinding={allowSemanticRebinding}
-              onPreviewChange={onPreviewChange}
+              featureId={featureId}
+              mode={mode}
+              request={pickingRequest}
+              onContextChange={onPickingContextChange}
+              onOpeningsChange={(ids) => {
+                state.clearSubmissionErrors()
+                form.setFieldValue("openingIds", ids)
+              }}
             />
           )}
         </form.Subscribe>
-      )}
-      <form.Subscribe selector={(formState) => formState.isSubmitting}>
-        {(pending) => (
-          <ParameterPanel
-            copy={copy}
-            legend={copy.parameters}
-            disabled={disabled || pending}
-            message={state.message ?? (previewStatus === "error" ? copy.previewFailed : null)}
-            actions={
-              <TaskPanelFormActions
-                acceptLabel={copy.submit}
-                ariaLabel={copy.title}
-                cancelLabel={copy.cancel}
-                disabled={disabled || !evidence}
-                onCancel={onCancel}
-                previewStatus={previewStatus}
+        {onPreviewChange && (
+          <form.Subscribe selector={(formState) => formState.values}>
+            {(values) => (
+              <ShellPreview
+                values={values}
+                mode={mode}
+                featureId={featureId}
+                evidence={evidence}
+                variables={variables}
+                units={state.displayUnits}
+                copy={copy}
+                allowSemanticRebinding={allowSemanticRebinding}
+                onPreviewChange={onPreviewChange}
               />
-            }
-          >
-            {repair && (
-              <p role="status" className="text-sm text-muted-foreground">
-                {copy.repair}
-              </p>
             )}
-            {!evidence && (
-              <p role="status" className="text-sm text-muted-foreground">
-                {copy.unavailable}
-              </p>
-            )}
-            <form.Field name="thickness">
-              {(field) => (
-                <LengthExpressionField
-                  id="shell-thickness"
-                  name="thickness"
-                  label={copy.thickness}
-                  description={copy.lengthDescription}
-                  value={field.state.value}
-                  suggestions={state.suggestions}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
-                    state.clearSubmissionErrors()
-                    field.handleChange(value)
-                  }}
-                />
-              )}
-            </form.Field>
-            <form.Field name="direction">
-              {(field) => (
-                <ChoiceField
-                  name={field.name}
-                  label={copy.direction}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
-                    state.clearSubmissionErrors()
-                    field.handleChange(value === "inward" ? "inward" : "outward")
-                  }}
-                  options={(["inward", "outward"] as const).map((direction) => ({
-                    value: direction,
-                    label: copy[direction],
-                  }))}
-                />
-              )}
-            </form.Field>
-            <form.Field name="closed">
-              {(field) => (
-                <ChoiceField
-                  name={field.name}
-                  label={copy.cavity}
-                  value={String(field.state.value)}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
-                    state.clearSubmissionErrors()
-                    field.handleChange(value === "true")
-                  }}
-                  options={([false, true] as const).map((closed) => ({
-                    value: String(closed),
-                    label: closed ? copy.closedCavity : copy.openCavity,
-                  }))}
-                />
-              )}
-            </form.Field>
-            <form.Subscribe selector={(formState) => formState.values.closed}>
-              {(closed) =>
-                closed ? null : (
-                  <form.Field name="openingIds">
-                    {(field) => (
-                      <fieldset className="grid gap-1">
-                        <legend className="mb-1 text-xs font-medium">{copy.openings}</legend>
-                        <p className="text-xs text-muted-foreground">{copy.openingsDescription}</p>
-                        {evidence?.candidates.map((candidate, index) => (
-                          <label
-                            key={candidate.candidateId}
-                            className="flex items-start gap-2 text-xs"
-                          >
-                            <input
-                              type="checkbox"
-                              name="openings"
-                              checked={field.state.value.includes(candidate.candidateId)}
-                              onBlur={field.handleBlur}
-                              onChange={(event) => {
-                                state.clearSubmissionErrors()
-                                field.handleChange(
-                                  event.currentTarget.checked
-                                    ? [...field.state.value, candidate.candidateId]
-                                    : field.state.value.filter(
-                                        (id) => id !== candidate.candidateId,
-                                      ),
-                                )
-                              }}
-                            />
-                            {copy.face({
-                              number: index + 1,
-                              area: formatShellMeasurement(candidate.signature.measure),
-                              x: formatShellMeasurement(candidate.signature.centroid[0]),
-                              y: formatShellMeasurement(candidate.signature.centroid[1]),
-                              z: formatShellMeasurement(candidate.signature.centroid[2]),
-                            })}
-                          </label>
-                        ))}
-                      </fieldset>
-                    )}
-                  </form.Field>
-                )
-              }
-            </form.Subscribe>
-          </ParameterPanel>
+          </form.Subscribe>
         )}
-      </form.Subscribe>
+        <form.Subscribe selector={(formState) => formState.isSubmitting}>
+          {(pending) => (
+            <ParameterPanel
+              copy={copy}
+              legend={copy.parameters}
+              disabled={disabled || pending}
+              message={state.message ?? (previewStatus === "error" ? copy.previewFailed : null)}
+              actions={
+                <TaskPanelFormActions
+                  acceptLabel={copy.submit}
+                  ariaLabel={copy.title}
+                  cancelLabel={copy.cancel}
+                  disabled={disabled || !evidence}
+                  onCancel={onCancel}
+                  previewStatus={previewStatus}
+                />
+              }
+            >
+              {repair && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {copy.repair}
+                </p>
+              )}
+              {!evidence && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {copy.unavailable}
+                </p>
+              )}
+              <form.AppField name="thickness">
+                {(field) => (
+                  <field.LengthExpressionField
+                    id="shell-thickness"
+                    label={copy.thickness}
+                    description={copy.lengthDescription}
+                    suggestions={state.suggestions}
+                    onValueChange={() => {
+                      state.clearSubmissionErrors()
+                    }}
+                  />
+                )}
+              </form.AppField>
+              <form.AppField name="direction">
+                {(field) => (
+                  <field.ChoiceField
+                    label={copy.direction}
+                    onValueChange={() => {
+                      state.clearSubmissionErrors()
+                    }}
+                    options={(["inward", "outward"] as const).map((direction) => ({
+                      value: direction,
+                      label: copy[direction],
+                    }))}
+                  />
+                )}
+              </form.AppField>
+              <form.Field name="closed">
+                {(field) => (
+                  <ChoiceField
+                    name={field.name}
+                    label={copy.cavity}
+                    value={String(field.state.value)}
+                    onBlur={field.handleBlur}
+                    onValueChange={(value) => {
+                      state.clearSubmissionErrors()
+                      field.handleChange(value === "true")
+                    }}
+                    options={([false, true] as const).map((closed) => ({
+                      value: String(closed),
+                      label: closed ? copy.closedCavity : copy.openCavity,
+                    }))}
+                  />
+                )}
+              </form.Field>
+              <form.Subscribe selector={(formState) => formState.values.closed}>
+                {(closed) =>
+                  closed ? null : (
+                    <form.Field name="openingIds">
+                      {(field) => (
+                        <fieldset className="grid gap-1">
+                          <legend className="mb-1 text-xs font-medium">{copy.openings}</legend>
+                          <p className="text-xs text-muted-foreground">
+                            {copy.openingsDescription}
+                          </p>
+                          {evidence?.candidates.map((candidate, index) => (
+                            <label
+                              key={candidate.candidateId}
+                              className="flex items-start gap-2 text-xs"
+                            >
+                              <input
+                                type="checkbox"
+                                name="openings"
+                                checked={field.state.value.includes(candidate.candidateId)}
+                                onBlur={field.handleBlur}
+                                onChange={(event) => {
+                                  state.clearSubmissionErrors()
+                                  field.handleChange(
+                                    event.currentTarget.checked
+                                      ? [...field.state.value, candidate.candidateId]
+                                      : field.state.value.filter(
+                                          (id) => id !== candidate.candidateId,
+                                        ),
+                                  )
+                                }}
+                              />
+                              {copy.face({
+                                number: index + 1,
+                                area: formatShellMeasurement(candidate.signature.measure),
+                                x: formatShellMeasurement(candidate.signature.centroid[0]),
+                                y: formatShellMeasurement(candidate.signature.centroid[1]),
+                                z: formatShellMeasurement(candidate.signature.centroid[2]),
+                              })}
+                            </label>
+                          ))}
+                        </fieldset>
+                      )}
+                    </form.Field>
+                  )
+                }
+              </form.Subscribe>
+            </ParameterPanel>
+          )}
+        </form.Subscribe>
+      </TaskPanelContentProvider>
     </Form>
   )
 }

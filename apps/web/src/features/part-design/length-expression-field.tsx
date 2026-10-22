@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react"
+import { TanStackVariableExpressionField } from "../variables/tanstack-variable-expression-field"
 import {
   VariableExpressionField,
   type VariableExpressionFieldProps,
@@ -17,29 +18,10 @@ export function LengthExpressionField(props: LengthExpressionFieldProps) {
   return <VariableExpressionField {...props} required inputClassName="font-mono tabular-nums" />
 }
 
-type PrimitiveLengthField = Readonly<{
-  name: string
-  state: Readonly<{ value: string }>
-  handleBlur: () => void
-  handleChange: (value: string) => void
-}>
-
-export function TanStackLengthExpressionField({
-  field,
-  onBeforeChange,
-  ...props
-}: Omit<LengthExpressionFieldProps, "name" | "value" | "onBlur" | "onValueChange"> &
-  Readonly<{ field: PrimitiveLengthField; onBeforeChange: () => void }>) {
+export function TanStackLengthExpressionField(
+  props: Omit<ComponentProps<typeof TanStackVariableExpressionField>, "inputClassName">,
+) {
   return (
-    <LengthExpressionField
-      {...props}
-      name={field.name}
-      value={field.state.value}
-      onBlur={field.handleBlur}
-      onValueChange={(value) => {
-        onBeforeChange()
-        field.handleChange(value)
-      }}
-    />
+    <TanStackVariableExpressionField {...props} required inputClassName="font-mono tabular-nums" />
   )
 }

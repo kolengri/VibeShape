@@ -30,12 +30,11 @@ import {
   PopoverTrigger,
 } from "@vibeshape/ui/components/popover"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useState } from "react"
 import { createPortal } from "react-dom"
 import { useDocumentDisplayUnits } from "../../document/document-display-units"
-import { VariableExpressionField } from "../variables/variable-expression-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 import {
   type ExternalSketchGeometryCandidate,
@@ -373,11 +372,17 @@ function SketchDimensionEditForm({
   variables: readonly VariableDefinition[]
 }) {
   const displayUnits = useDocumentDisplayUnits()
-  const [message, setMessage] = useState<string | null>(null)
   const suggestions = variableExpressionSuggestions(variables)
   const expressionId = `sketch-dimension-expression-${constraint.id}`
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: { expression: constraintValue(constraint) ?? "" },
+    validators: {
+      onDynamic: ({ value }) =>
+        evaluateSketchDimensionValue(constraint.type, value.expression, variables, displayUnits)
+          ? undefined
+          : { fields: { expression: copy.dimensionInvalid } },
+    },
     onSubmit: ({ value }) => {
       const nextValue = evaluateSketchDimensionValue(
         constraint.type,
@@ -385,35 +390,23 @@ function SketchDimensionEditForm({
         variables,
         displayUnits,
       )
-      if (!nextValue) {
-        setMessage(copy.dimensionInvalid)
-        return
-      }
-      setMessage(null)
+      if (!nextValue) return
       onSave(nextValue)
     },
   })
   return (
     <Form form={form} aria-label={copy.editConstraint} className="gap-2 border-t pt-2">
-      <form.Field name="expression">
+      <form.AppField name="expression">
         {(field) => (
-          <VariableExpressionField
+          <field.VariableExpressionField
             autoFocus
             id={expressionId}
-            name={field.name}
             label={copy.dimensionExpression}
-            value={field.state.value}
-            error={message ?? undefined}
             suggestions={suggestions}
             inputClassName="font-mono tabular-nums"
-            onBlur={field.handleBlur}
-            onValueChange={(nextValue) => {
-              setMessage(null)
-              field.handleChange(nextValue)
-            }}
           />
         )}
-      </form.Field>
+      </form.AppField>
       <form.SubmitButton size="xs" requireDirty>
         {copy.saveDimension}
       </form.SubmitButton>

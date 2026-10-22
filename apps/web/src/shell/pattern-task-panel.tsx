@@ -3,6 +3,7 @@ import {
   readPatternFeatureParametersV2,
 } from "@vibeshape/domain/part-design-pattern"
 import { useTranslations } from "@vibeshape/i18n"
+import { TaskPanelSurface } from "../components/task-panel-layout"
 import { PatternForm, type PatternFormCopy } from "../features/pattern/pattern-form"
 import { patternTargetBody } from "../features/pattern/pattern-form-model"
 import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
@@ -72,9 +73,9 @@ export function PatternTaskPanel(props: BodyFeatureTaskPanelProps) {
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
       : `create:${report.snapshot.revision}`
   return (
-    <aside
+    <TaskPanelSurface
       aria-label={task("ariaLabel")}
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l bg-panel"
+      trailingContent={mode.kind === "edit" && props.renderDelete(mode.feature)}
     >
       <PatternForm
         key={key}
@@ -90,7 +91,6 @@ export function PatternTaskPanel(props: BodyFeatureTaskPanelProps) {
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />
-      {mode.kind === "edit" && props.renderDelete(mode.feature)}
-    </aside>
+    </TaskPanelSurface>
   )
 }

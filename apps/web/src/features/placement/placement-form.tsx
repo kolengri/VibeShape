@@ -7,9 +7,8 @@ import type {
 import { Button } from "@vibeshape/ui/components/button"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { type RefObject, useEffect } from "react"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { featureEditPreview } from "../part-design/feature-edit-preview"
-import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import type { FeatureParameterFormProps } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
@@ -89,21 +88,6 @@ function PlacementPreview({
   })
   return null
 }
-function PlacementErrorFocus({
-  pending,
-  field,
-  formRef,
-}: {
-  pending: boolean
-  field: string | undefined
-  formRef: RefObject<HTMLFormElement | null>
-}) {
-  useEffect(() => {
-    if (!pending && field) formRef.current?.querySelector<HTMLElement>(`[name="${field}"]`)?.focus()
-  }, [field, pending, formRef])
-  return null
-}
-
 export function PlacementForm(props: PlacementFormProps) {
   const {
     alignmentFaces,
@@ -121,138 +105,129 @@ export function PlacementForm(props: PlacementFormProps) {
   const { form, state } = draft
   return (
     <Form
-      ref={state.formElementRef}
       form={form}
       aria-label={copy.title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
-      {onManipulatorChange && (
-        <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
-          {([values, pending]) => (
-            <PlacementManipulatorBinding
-              values={values}
-              variables={variables}
-              units={state.displayUnits}
-              copy={copy}
-              featureId={draft.featureId}
-              sourceBounds={sourceBounds}
-              axis={draft.manipulationAxis}
-              disabled={disabled || pending || !draft.previewEnabled || !draft.interactive}
-              onManipulatorChange={onManipulatorChange}
-              onTranslationChange={draft.changeTranslation}
-              onRotationChange={draft.changeRotation}
-            />
-          )}
-        </form.Subscribe>
-      )}
-      {onPreviewChange && (
-        <form.Subscribe selector={(formState) => formState.values}>
-          {(values) => (
-            <PlacementPreview
-              values={values}
-              variables={variables}
-              units={state.displayUnits}
-              copy={copy}
-              mode={mode}
-              featureId={draft.featureId}
-              onPreviewChange={onPreviewChange}
-              previewEnabled={draft.previewEnabled}
-            />
-          )}
-        </form.Subscribe>
-      )}
-      <form.Subscribe selector={(formState) => formState.isSubmitting}>
-        {(pending) => (
-          <>
-            <PlacementErrorFocus
-              pending={pending}
-              field={Object.keys(state.issues)[0]}
-              formRef={state.formElementRef}
-            />
-            <ParameterPanel
-              copy={copy}
-              legend={copy.parameters}
-              disabled={disabled || pending || sourceBounds === null}
-              message={state.message ?? (sourceBounds === null ? copy.unavailable : null)}
-              actions={
-                <TaskPanelFormActions
-                  acceptLabel={copy.submit}
-                  ariaLabel={copy.title}
-                  cancelLabel={copy.cancel}
-                  disabled={disabled || sourceBounds === null}
-                  onCancel={draft.cancel}
-                  previewStatus={previewStatus}
-                />
-              }
-            >
-              {onManipulatorChange && sourceBounds && (
-                <fieldset className="flex min-w-0 flex-wrap gap-1" aria-label={copy.parameters}>
-                  {(["translation", ...placementAxes] as const).map((axis) => (
-                    <Button
-                      key={axis}
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      aria-pressed={draft.manipulationAxis === axis}
-                      onClick={() => draft.selectAxis(axis)}
-                    >
-                      {axis === "translation"
-                        ? copy.translation
-                        : copy[placementFieldName("rotation", axis)]}
-                    </Button>
-                  ))}
-                </fieldset>
-              )}
-              {alignmentFaces && (
-                <PlacementAlignmentFields
-                  faces={alignmentFaces}
-                  selectedFace={selectedFace}
-                  units={state.displayUnits}
-                  variables={variables}
-                  copy={copy}
-                  onPickFaces={draft.pickFaces}
-                  previewPaused={!draft.previewEnabled}
-                  onAlign={draft.align}
-                />
-              )}
-              {(["translation", "rotation"] as const).map((group) => (
-                <fieldset className="grid gap-3" key={group}>
-                  <legend className="mb-2 text-xs font-medium text-muted-foreground">
-                    {copy[group]}
-                  </legend>
-                  {placementAxes.map((axis) => {
-                    const name = placementFieldName(group, axis)
-                    return (
-                      <form.Field key={name} name={name}>
-                        {(field) => (
-                          <LengthExpressionField
-                            id={`placement-${name}`}
-                            name={name}
-                            value={field.state.value}
-                            label={copy[name]}
-                            description={
-                              group === "translation"
-                                ? copy.lengthDescription
-                                : copy.angleDescription
-                            }
-                            error={state.issues[name]}
-                            suggestions={state.suggestions}
-                            onBlur={field.handleBlur}
-                            onValueChange={(value) => {
-                              draft.beforeEdit()
-                              field.handleChange(value)
-                            }}
-                          />
-                        )}
-                      </form.Field>
-                    )
-                  })}
-                </fieldset>
-              ))}
-            </ParameterPanel>
-          </>
+      <TaskPanelContentProvider content={<form.FormError />}>
+        {onManipulatorChange && (
+          <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
+            {([values, pending]) => (
+              <PlacementManipulatorBinding
+                values={values}
+                variables={variables}
+                units={state.displayUnits}
+                copy={copy}
+                featureId={draft.featureId}
+                sourceBounds={sourceBounds}
+                axis={draft.manipulationAxis}
+                disabled={disabled || pending || !draft.previewEnabled || !draft.interactive}
+                onManipulatorChange={onManipulatorChange}
+                onTranslationChange={draft.changeTranslation}
+                onRotationChange={draft.changeRotation}
+              />
+            )}
+          </form.Subscribe>
         )}
-      </form.Subscribe>
+        {onPreviewChange && (
+          <form.Subscribe selector={(formState) => formState.values}>
+            {(values) => (
+              <PlacementPreview
+                values={values}
+                variables={variables}
+                units={state.displayUnits}
+                copy={copy}
+                mode={mode}
+                featureId={draft.featureId}
+                onPreviewChange={onPreviewChange}
+                previewEnabled={draft.previewEnabled}
+              />
+            )}
+          </form.Subscribe>
+        )}
+        <form.Subscribe selector={(formState) => formState.isSubmitting}>
+          {(pending) => (
+            <>
+              <ParameterPanel
+                copy={copy}
+                legend={copy.parameters}
+                disabled={disabled || pending || sourceBounds === null}
+                message={state.message ?? (sourceBounds === null ? copy.unavailable : null)}
+                actions={
+                  <TaskPanelFormActions
+                    acceptLabel={copy.submit}
+                    ariaLabel={copy.title}
+                    cancelLabel={copy.cancel}
+                    disabled={disabled || sourceBounds === null}
+                    onCancel={draft.cancel}
+                    previewStatus={previewStatus}
+                  />
+                }
+              >
+                {onManipulatorChange && sourceBounds && (
+                  <fieldset className="flex min-w-0 flex-wrap gap-1" aria-label={copy.parameters}>
+                    {(["translation", ...placementAxes] as const).map((axis) => (
+                      <Button
+                        key={axis}
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        aria-pressed={draft.manipulationAxis === axis}
+                        onClick={() => draft.selectAxis(axis)}
+                      >
+                        {axis === "translation"
+                          ? copy.translation
+                          : copy[placementFieldName("rotation", axis)]}
+                      </Button>
+                    ))}
+                  </fieldset>
+                )}
+                {alignmentFaces && (
+                  <PlacementAlignmentFields
+                    faces={alignmentFaces}
+                    selectedFace={selectedFace}
+                    units={state.displayUnits}
+                    variables={variables}
+                    copy={copy}
+                    onPickFaces={draft.pickFaces}
+                    previewPaused={!draft.previewEnabled}
+                    onAlign={draft.align}
+                  />
+                )}
+                {(["translation", "rotation"] as const).map((group) => (
+                  <fieldset className="grid gap-3" key={group}>
+                    <legend className="mb-2 text-xs font-medium text-muted-foreground">
+                      {copy[group]}
+                    </legend>
+                    {placementAxes.map((axis) => {
+                      const name = placementFieldName(group, axis)
+                      return (
+                        <form.AppField key={name} name={name}>
+                          {(field) => (
+                            <field.LengthExpressionField
+                              id={`placement-${name}`}
+                              label={copy[name]}
+                              description={
+                                group === "translation"
+                                  ? copy.lengthDescription
+                                  : copy.angleDescription
+                              }
+                              suggestions={state.suggestions}
+                              onValueChange={() => {
+                                draft.beforeEdit()
+                              }}
+                            />
+                          )}
+                        </form.AppField>
+                      )
+                    })}
+                  </fieldset>
+                ))}
+              </ParameterPanel>
+            </>
+          )}
+        </form.Subscribe>
+      </TaskPanelContentProvider>
     </Form>
   )
 }
