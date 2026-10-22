@@ -2490,8 +2490,8 @@
       "disabled": "Disable section view",
       "axis": "Section plane",
       "planeLabel": "{plane} plane, normal {axis}",
-      "offset": "Section offset (mm)",
-      "invalid": "Enter a finite offset between −100,000 and 100,000 mm.",
+      "offset": "Section offset",
+      "invalid": "Enter a length between −100,000 and 100,000 mm using a supported unit.",
       "flip": "Keep the opposite side"
     },
     "mirror": {

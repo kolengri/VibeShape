@@ -252,7 +252,9 @@ control group beside the standard-view selector. Its button highlights an active
 closes with Escape and returns focus to its trigger.
 Four icon-only radio tiles select Off, XY, XZ, or YZ and support arrow-key selection. Choosing a plane
 enables sectioning immediately; Off disables it. Accessible labels and tooltips identify the choices
-without captions or an explanatory footer. Cut material uses a subtle diagonal grid; holes remain
+without captions or an explanatory footer. An icon toggle reverses the retained side. The offset
+uses the shared length expression field with inline units and project-unit defaults.
+Cut material uses a subtle diagonal grid; holes remain
 unfilled. The grid follows the section plane and adapts to zoom without exposing display-triangle edges.
 
 The alpha default is:

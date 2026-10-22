@@ -1,18 +1,25 @@
+import type { DocumentDisplayUnits } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   HideIcon,
+  MirrorIcon,
   SectionPlaneXyIcon,
   SectionPlaneXzIcon,
   SectionPlaneYzIcon,
   SectionViewIcon,
 } from "@vibeshape/ui/components/icons"
 import { Popover, PopoverContent, PopoverTrigger } from "@vibeshape/ui/components/popover"
-import { TextField } from "@vibeshape/ui/components/text-field"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import type { ViewerMesh, ViewerSection } from "@vibeshape/viewer/three-viewport"
 import { useId, useState } from "react"
+import {
+  defaultLengthExpression,
+  useDocumentDisplayUnits,
+} from "../document/document-display-units"
+import { LengthExpressionField } from "../features/part-design/length-expression-field"
+import { parsePrimitiveLengthExpression } from "../features/part-design/primitive-form"
 
 const sectionPlanes = [
   { axis: null, plane: null, icon: HideIcon },
@@ -37,24 +44,33 @@ function modelMidpoint(meshes: readonly ViewerMesh[], axis: ViewerSection["axis"
   return Number.isFinite(min + max) ? (min + max) / 2 : 0
 }
 
-function useSectionControlDraft(section: ViewerSection | null) {
-  const initial: ViewerSection = section ?? { axis: "z", offset: 0, flipped: false }
-  const [axis, setAxis] = useState(initial.axis)
-  const [offset, setOffset] = useState(String(initial.offset))
-  const [flipped, setFlipped] = useState(initial.flipped)
-  const [previousSection, setPreviousSection] = useState(section)
-  if (section !== previousSection) {
-    setPreviousSection(section)
-    if (
-      section &&
-      (section.axis !== previousSection?.axis || section.offset !== previousSection?.offset)
-    ) {
-      setAxis(section.axis)
-      setOffset(String(section.offset))
-    }
-    if (section) setFlipped(section.flipped)
+function useSectionControlDraft(
+  section: ViewerSection | null,
+  unit: DocumentDisplayUnits["length"],
+  onChange: (section: ViewerSection | null) => void,
+) {
+  const sourceOffset = section?.offset
+  const sourceFlipped = section?.flipped
+  const currentOffset = sourceOffset ?? 0
+  const [draft, setDraft] = useState(() => ({
+    expression: defaultLengthExpression(currentOffset, unit),
+    sourceOffset,
+    unit,
+  }))
+  const [flipped, setFlipped] = useState(sourceFlipped ?? false)
+  if (sourceFlipped !== undefined && sourceFlipped !== flipped) setFlipped(sourceFlipped)
+  if (draft.sourceOffset !== sourceOffset || draft.unit !== unit) {
+    setDraft({ expression: defaultLengthExpression(currentOffset, unit), sourceOffset, unit })
   }
-  return { axis, setAxis, offset, setOffset, flipped, setFlipped }
+  function setOffset(expression: string) {
+    setDraft((current) => ({ ...current, expression }))
+  }
+  function changeSection(next: ViewerSection | null) {
+    // Preserve authored units until the section changes externally, such as by dragging its handle.
+    setDraft((current) => ({ ...current, sourceOffset: next?.offset }))
+    onChange(next)
+  }
+  return { offset: draft.expression, setOffset, flipped, setFlipped, changeSection }
 }
 
 export function SectionViewControls({
@@ -70,9 +86,27 @@ export function SectionViewControls({
 }) {
   const t = useTranslations("app.sectionView")
   const axisId = useId()
-  const { axis, setAxis, offset, setOffset, flipped, setFlipped } = useSectionControlDraft(section)
-  const invalid =
-    offset.trim() === "" || !Number.isFinite(Number(offset)) || Math.abs(Number(offset)) > 100_000
+  const { length: unit } = useDocumentDisplayUnits()
+  const { offset, setOffset, flipped, setFlipped, changeSection } = useSectionControlDraft(
+    section,
+    unit,
+    onChange,
+  )
+  const invalidMessage = t("invalid")
+  function parseOffset(value: string) {
+    return parsePrimitiveLengthExpression(
+      value,
+      [],
+      {
+        invalidExpression: invalidMessage,
+        invalidDimension: invalidMessage,
+        invalidRange: invalidMessage,
+      },
+      (quantity) => Math.abs(quantity.value) <= 100_000,
+      unit,
+    )
+  }
+  const parsedOffset = parseOffset(offset)
   if (disabled || meshes.length === 0) return null
   return (
     <Popover>
@@ -119,13 +153,12 @@ export function SectionViewControls({
                         className="peer absolute inset-0 z-10 m-0 size-full cursor-pointer opacity-0"
                         onChange={() => {
                           if (next === null) {
-                            onChange(null)
+                            changeSection(null)
                             return
                           }
-                          setAxis(next)
                           const center = modelMidpoint(meshes, next)
-                          setOffset(String(center))
-                          onChange({ axis: next, offset: center, flipped })
+                          setOffset(defaultLengthExpression(center, unit))
+                          changeSection({ axis: next, offset: center, flipped })
                         }}
                       />
                     </TooltipTrigger>
@@ -145,33 +178,39 @@ export function SectionViewControls({
             })}
           </div>
         </fieldset>
-        <TextField
+        <LengthExpressionField
+          id={`${axisId}-offset`}
           label={t("offset")}
-          type="number"
-          step="any"
+          description=""
+          suggestions={[]}
           value={offset}
-          error={invalid ? t("invalid") : undefined}
-          onChange={(event) => {
-            const value = event.currentTarget.value
+          error={parsedOffset.ok ? undefined : parsedOffset.message}
+          onValueChange={(value) => {
             setOffset(value)
-            const number = Number(value)
-            if (value.trim() && Number.isFinite(number) && Math.abs(number) <= 100_000 && section) {
-              onChange({ axis, offset: number, flipped })
+            const parsed = parseOffset(value)
+            if (parsed.ok && section) {
+              changeSection({ ...section, offset: parsed.quantity.value })
             }
           }}
         />
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            className="accent-primary"
-            checked={flipped}
-            onChange={(event) => {
-              setFlipped(event.currentTarget.checked)
-              if (section) onChange({ ...section, flipped: event.currentTarget.checked })
-            }}
-          />
-          {t("flip")}
-        </label>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant={flipped ? "secondary" : "ghost"}
+              aria-label={t("flip")}
+              aria-pressed={flipped}
+              onClick={() => {
+                setFlipped(!flipped)
+                if (section) changeSection({ ...section, flipped: !flipped })
+              }}
+            >
+              <MirrorIcon aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("flip")}</TooltipContent>
+        </Tooltip>
       </PopoverContent>
     </Popover>
   )

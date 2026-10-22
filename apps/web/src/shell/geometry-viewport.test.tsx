@@ -778,7 +778,9 @@ describe("GeometryViewport", () => {
       offset: 10,
       flipped: false,
     })
-    await userEvent.click(screen.getByRole("checkbox", { name: "Keep the opposite side" }))
+    const flip = screen.getByRole("button", { name: "Keep the opposite side" })
+    await userEvent.click(flip)
+    expect(flip.getAttribute("aria-pressed")).toBe("true")
     await userEvent.click(screen.getByRole("radio", { name: "XZ plane, normal Y" }))
     expect(rendered.port.setSection).toHaveBeenLastCalledWith({
       axis: "y",

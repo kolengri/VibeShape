@@ -667,7 +667,10 @@ The **Section view** icon beside the standard-view selector opens four icon-only
 XZ, and YZ), offset, and flip controls. Choosing a plane immediately enables sectioning and recenters
 the offset on the model; Off disables it. The choices use native radio keyboard behavior and expose
 their names through accessible labels and tooltips. The selected choice and toolbar active state
-remain visible. The panel has no captions below the icons or explanatory footer.
+remain visible. The panel has no captions below the icons or explanatory footer. An icon toggle
+reverses the retained side. The shared length field shows units inside the offset value, accepts
+supported length units and expressions, and interprets bare numbers in project units. Valid edits
+preserve the entered expression; dragging the plane refreshes the field in project units.
 Drag the plane's viewport handle along its projected normal to change the same offset; numeric input
 is the keyboard equivalent. Pointer capture prevents accidental orbiting, and Escape or pointer
 cancellation restores the starting offset. Closed render meshes receive derived solid cut caps with
