@@ -76,17 +76,6 @@ export const ExtrudeIcon = /* @__PURE__ */ coloredIcon("extrude", (instanceId) =
     <g transform="scale(4)">
       <defs>
         <linearGradient
-          id={`${instanceId}-b-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-b-front`}
           x1="12"
           y1="12"
@@ -375,17 +364,6 @@ export const CircleIcon = /* @__PURE__ */ coloredIcon("circle", (instanceId) => 
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-circle-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-circle-light-material-front`}
         x1="12"
         y1="12"
@@ -395,17 +373,6 @@ export const CircleIcon = /* @__PURE__ */ coloredIcon("circle", (instanceId) => 
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-circle-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-circle-light-visible-action`}
@@ -526,59 +493,20 @@ export const CircleIcon = /* @__PURE__ */ coloredIcon("circle", (instanceId) => 
 
 export const ConstraintParallelIcon = /* @__PURE__ */ coloredIcon(
   "constraint-parallel",
-  (instanceId) => (
-    <>
-      <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-parallel-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-parallel-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-parallel-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
-      </defs>
-      <g opacity=".91" data-layer="material">
-        <g transform="scale(4)">
-          <g transform="translate(-7.2 -7.2) scale(1.225)">
-            <path
-              d="M12 52 32 12M32 52 52 12"
-              fill="none"
-              stroke="var(--icon-geometry-ink, #5784b0)"
-              strokeWidth="2.67431"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </g>
-        </g>
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(-7.2 -7.2) scale(1.225)">
+        <path
+          d="M12 52 32 12M32 52 52 12"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.67431"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
-    </>
-  ),
+    </g>
+  </g>,
 )
 
 export const FilesIcon = /* @__PURE__ */ coloredIcon("files", (instanceId) => (
@@ -729,17 +657,6 @@ export const SettingsIcon = /* @__PURE__ */ coloredIcon("settings", (instanceId)
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-settings-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-settings-light-material-front`}
         x1="12"
         y1="12"
@@ -749,17 +666,6 @@ export const SettingsIcon = /* @__PURE__ */ coloredIcon("settings", (instanceId)
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-settings-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -805,17 +711,6 @@ export const CylinderIcon = /* @__PURE__ */ coloredIcon("cylinder", (instanceId)
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
       </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-cylinder-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
       <g transform="scale(4)">
@@ -848,39 +743,6 @@ export const CylinderIcon = /* @__PURE__ */ coloredIcon("cylinder", (instanceId)
 export const SphereIcon = /* @__PURE__ */ coloredIcon("sphere", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-sphere-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-sphere-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-sphere-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <radialGradient
         id={`${instanceId}-frosted-sphere-light-material-sphere`}
         cx=".29"
@@ -909,17 +771,6 @@ export const ConeIcon = /* @__PURE__ */ coloredIcon("cone", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-cone-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-cone-light-material-front`}
         x1="12"
         y1="12"
@@ -929,17 +780,6 @@ export const ConeIcon = /* @__PURE__ */ coloredIcon("cone", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-cone-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -962,17 +802,6 @@ export const ConeIcon = /* @__PURE__ */ coloredIcon("cone", (instanceId) => (
 export const PyramidIcon = /* @__PURE__ */ coloredIcon("pyramid", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-pyramid-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-pyramid-light-material-front`}
         x1="12"
@@ -1017,17 +846,6 @@ export const TorusIcon = /* @__PURE__ */ coloredIcon("torus", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-torus-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-torus-light-material-front`}
         x1="12"
         y1="12"
@@ -1037,17 +855,6 @@ export const TorusIcon = /* @__PURE__ */ coloredIcon("torus", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-torus-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -1212,17 +1019,6 @@ export const LoftIcon = /* @__PURE__ */ coloredIcon("loft", (instanceId) => (
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
       </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-loft-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
       <g transform="scale(4)">
@@ -1276,17 +1072,6 @@ export const SweepIcon = /* @__PURE__ */ coloredIcon("sweep", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-sweep-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-sweep-light-visible-action`}
@@ -1683,17 +1468,6 @@ export const ThreadIcon = /* @__PURE__ */ coloredIcon("thread", (instanceId) => 
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-thread-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-thread-light-visible-action`}
@@ -2313,17 +2087,6 @@ export const IntersectionIcon = /* @__PURE__ */ coloredIcon("intersection", (ins
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-intersection-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-intersection-light-material-front`}
         x1="12"
         y1="12"
@@ -2467,17 +2230,6 @@ export const SplitBodyIcon = /* @__PURE__ */ coloredIcon("split-body", (instance
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-split-body-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-split-body-light-visible-action`}
@@ -3502,17 +3254,6 @@ export const LightweightingIcon = /* @__PURE__ */ coloredIcon("lightweighting", 
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-lightweighting-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-lightweighting-light-material-front`}
         x1="12"
         y1="12"
@@ -3522,17 +3263,6 @@ export const LightweightingIcon = /* @__PURE__ */ coloredIcon("lightweighting", 
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-lightweighting-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -3559,17 +3289,6 @@ export const QuickLightweightingIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-quick-lightweighting-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-quick-lightweighting-light-material-front`}
           x1="12"
           y1="12"
@@ -3579,17 +3298,6 @@ export const QuickLightweightingIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-quick-lightweighting-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
       </defs>
       <g opacity=".91" data-layer="material">
@@ -3624,17 +3332,6 @@ export const GenerativeDesignIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-generative-design-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
         <linearGradient
           id={`${instanceId}-frosted-generative-design-light-material-front`}
           x1="12"
@@ -3849,17 +3546,6 @@ export const DatumPlaneIcon = /* @__PURE__ */ coloredIcon("datum-plane", (instan
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-datum-plane-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-datum-plane-light-material-front`}
         x1="12"
         y1="12"
@@ -3869,17 +3555,6 @@ export const DatumPlaneIcon = /* @__PURE__ */ coloredIcon("datum-plane", (instan
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-datum-plane-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-datum-plane-light-visible-action`}
@@ -3998,39 +3673,6 @@ export const DatumPlaneIcon = /* @__PURE__ */ coloredIcon("datum-plane", (instan
 export const TransformIcon = /* @__PURE__ */ coloredIcon("transform", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-transform-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-transform-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-transform-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-transform-light-visible-action`}
         x="0"
@@ -4146,28 +3788,6 @@ export const SketchIcon = /* @__PURE__ */ coloredIcon("sketch", (instanceId) => 
           <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
           <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
         </linearGradient>
-        <linearGradient
-          id={`${instanceId}-b-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-b-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
       </defs>
       <g opacity="0.91" data-layer="material">
         <g mask={`url(#${instanceId}-plane-pencil-mask)`}>
@@ -4238,39 +3858,6 @@ export const SketchIcon = /* @__PURE__ */ coloredIcon("sketch", (instanceId) => 
 export const PointIcon = /* @__PURE__ */ coloredIcon("point", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-point-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-point-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-point-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-point-light-visible-action`}
         x="0"
@@ -4381,39 +3968,6 @@ export const PointIcon = /* @__PURE__ */ coloredIcon("point", (instanceId) => (
 export const LineIcon = /* @__PURE__ */ coloredIcon("line", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-line-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-line-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-line-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-line-light-visible-action`}
         x="0"
@@ -4518,17 +4072,6 @@ export const MidpointLineIcon = /* @__PURE__ */ coloredIcon("midpoint-line", (in
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-midpoint-line-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-midpoint-line-light-material-front`}
         x1="12"
         y1="12"
@@ -4631,17 +4174,6 @@ export const RectangleIcon = /* @__PURE__ */ coloredIcon("rectangle", (instanceI
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-rectangle-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-rectangle-light-material-front`}
         x1="12"
         y1="12"
@@ -4651,17 +4183,6 @@ export const RectangleIcon = /* @__PURE__ */ coloredIcon("rectangle", (instanceI
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-rectangle-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-rectangle-light-visible-action`}
@@ -4775,17 +4296,6 @@ export const CenterRectangleIcon = /* @__PURE__ */ coloredIcon("center-rectangle
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-center-rectangle-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-center-rectangle-light-material-front`}
         x1="12"
         y1="12"
@@ -4795,17 +4305,6 @@ export const CenterRectangleIcon = /* @__PURE__ */ coloredIcon("center-rectangle
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-center-rectangle-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-center-rectangle-light-visible-action`}
@@ -4941,17 +4440,6 @@ export const AlignedRectangleIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-aligned-rectangle-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-aligned-rectangle-light-material-front`}
           x1="12"
           y1="12"
@@ -4961,17 +4449,6 @@ export const AlignedRectangleIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-aligned-rectangle-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-aligned-rectangle-light-visible-action`}
@@ -5097,17 +4574,6 @@ export const CenteredAlignedRectangleIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-centered-aligned-rectangle-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-centered-aligned-rectangle-light-material-front`}
           x1="12"
           y1="12"
@@ -5117,17 +4583,6 @@ export const CenteredAlignedRectangleIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-centered-aligned-rectangle-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-centered-aligned-rectangle-light-visible-action`}
@@ -5268,17 +4723,6 @@ export const EllipseIcon = /* @__PURE__ */ coloredIcon("ellipse", (instanceId) =
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-ellipse-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-ellipse-light-material-front`}
         x1="12"
         y1="12"
@@ -5288,17 +4732,6 @@ export const EllipseIcon = /* @__PURE__ */ coloredIcon("ellipse", (instanceId) =
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-ellipse-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-ellipse-light-visible-action`}
@@ -5429,17 +4862,6 @@ export const ThreePointCircleIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-three-point-circle-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-three-point-circle-light-material-front`}
           x1="12"
           y1="12"
@@ -5449,17 +4871,6 @@ export const ThreePointCircleIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-three-point-circle-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-three-point-circle-light-visible-action`}
@@ -5599,39 +5010,6 @@ export const ThreePointCircleIcon = /* @__PURE__ */ coloredIcon(
 export const ArcIcon = /* @__PURE__ */ coloredIcon("arc", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-arc-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arc-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arc-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-arc-light-visible-action`}
         x="0"
@@ -5779,39 +5157,6 @@ export const ArcIcon = /* @__PURE__ */ coloredIcon("arc", (instanceId) => (
 export const ThreePointArcIcon = /* @__PURE__ */ coloredIcon("three-point-arc", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-three-point-arc-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-three-point-arc-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-three-point-arc-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-three-point-arc-light-visible-action`}
         x="0"
@@ -5945,39 +5290,6 @@ export const ThreePointArcIcon = /* @__PURE__ */ coloredIcon("three-point-arc", 
 export const TangentArcIcon = /* @__PURE__ */ coloredIcon("tangent-arc", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-tangent-arc-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-tangent-arc-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-tangent-arc-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-tangent-arc-light-visible-action`}
         x="0"
@@ -6121,39 +5433,6 @@ export const TangentArcIcon = /* @__PURE__ */ coloredIcon("tangent-arc", (instan
 export const EllipticalArcIcon = /* @__PURE__ */ coloredIcon("elliptical-arc", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-elliptical-arc-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-elliptical-arc-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-elliptical-arc-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-elliptical-arc-light-visible-action`}
         x="0"
@@ -6277,39 +5556,6 @@ export const EllipticalArcIcon = /* @__PURE__ */ coloredIcon("elliptical-arc", (
 export const SplineIcon = /* @__PURE__ */ coloredIcon("spline", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-spline-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-spline-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-spline-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-spline-light-visible-action`}
         x="0"
@@ -6468,17 +5714,6 @@ export const InscribedPolygonIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-inscribed-polygon-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-inscribed-polygon-light-material-front`}
           x1="12"
           y1="12"
@@ -6488,17 +5723,6 @@ export const InscribedPolygonIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-inscribed-polygon-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-inscribed-polygon-light-visible-action`}
@@ -6585,39 +5809,6 @@ export const CircumscribedPolygonIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-circumscribed-polygon-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-circumscribed-polygon-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-circumscribed-polygon-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-circumscribed-polygon-light-visible-action`}
           x="0"
@@ -6710,17 +5901,6 @@ export const SlotIcon = /* @__PURE__ */ coloredIcon("slot", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-slot-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-slot-light-material-front`}
         x1="12"
         y1="12"
@@ -6730,17 +5910,6 @@ export const SlotIcon = /* @__PURE__ */ coloredIcon("slot", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-slot-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-slot-light-visible-action`}
@@ -6874,17 +6043,6 @@ export const CenteredSlotIcon = /* @__PURE__ */ coloredIcon("centered-slot", (in
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-centered-slot-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-centered-slot-light-material-front`}
         x1="12"
         y1="12"
@@ -6894,17 +6052,6 @@ export const CenteredSlotIcon = /* @__PURE__ */ coloredIcon("centered-slot", (in
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-centered-slot-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-centered-slot-light-visible-action`}
@@ -7008,17 +6155,6 @@ export const SlotAroundLineIcon = /* @__PURE__ */ coloredIcon("slot-around-line"
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-slot-around-line-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-slot-around-line-light-material-front`}
         x1="12"
         y1="12"
@@ -7028,17 +6164,6 @@ export const SlotAroundLineIcon = /* @__PURE__ */ coloredIcon("slot-around-line"
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-slot-around-line-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-slot-around-line-light-visible-action`}
@@ -7178,95 +6303,26 @@ export const SlotAroundLineIcon = /* @__PURE__ */ coloredIcon("slot-around-line"
   </>
 ))
 
-export const TextIcon = /* @__PURE__ */ coloredIcon("text", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-text-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-text-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-text-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(4.0 3.5625) scale(0.875)">
-          <path
-            d="M8 9h48v10H37v37H27V19H8Z"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-          />
-        </g>
+export const TextIcon = /* @__PURE__ */ coloredIcon(
+  "text",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(4.0 3.5625) scale(0.875)">
+        <path
+          d="M8 9h48v10H37v37H27V19H8Z"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
 export const DimensionIcon = /* @__PURE__ */ coloredIcon("dimension", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-dimension-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-dimension-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-dimension-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-dimension-light-visible-action`}
         x="0"
@@ -7357,17 +6413,6 @@ export const TrimIcon = /* @__PURE__ */ coloredIcon("trim", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-trim-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-trim-light-material-front`}
         x1="12"
         y1="12"
@@ -7377,17 +6422,6 @@ export const TrimIcon = /* @__PURE__ */ coloredIcon("trim", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-trim-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-trim-light-visible-action`}
@@ -7532,39 +6566,6 @@ export const TrimIcon = /* @__PURE__ */ coloredIcon("trim", (instanceId) => (
 export const ExtendIcon = /* @__PURE__ */ coloredIcon("extend", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-extend-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-extend-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-extend-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-extend-light-visible-action`}
         x="0"
@@ -7681,39 +6682,6 @@ export const ExtendIcon = /* @__PURE__ */ coloredIcon("extend", (instanceId) => 
 export const OffsetIcon = /* @__PURE__ */ coloredIcon("offset", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-offset-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-offset-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-offset-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-offset-light-visible-action`}
         x="0"
@@ -7827,39 +6795,6 @@ export const OffsetIcon = /* @__PURE__ */ coloredIcon("offset", (instanceId) => 
 export const SplitIcon = /* @__PURE__ */ coloredIcon("split", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-split-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-split-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-split-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-split-light-visible-action`}
         x="0"
@@ -7980,59 +6915,23 @@ export const SplitIcon = /* @__PURE__ */ coloredIcon("split", (instanceId) => (
   </>
 ))
 
-export const ConstructionIcon = /* @__PURE__ */ coloredIcon("construction", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-construction-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-construction-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-construction-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(-4.173913 -4.173913) scale(1.130435)">
-          <path
-            d="M9 55 21 43M26 38 38 26M43 21 55 9"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.89801"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </g>
+export const ConstructionIcon = /* @__PURE__ */ coloredIcon(
+  "construction",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(-4.173913 -4.173913) scale(1.130435)">
+        <path
+          d="M9 55 21 43M26 38 38 26M43 21 55 9"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.89801"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
 export const UseExternalGeometryIcon = /* @__PURE__ */ coloredIcon(
   "use-external-geometry",
@@ -8060,17 +6959,6 @@ export const UseExternalGeometryIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-use-external-geometry-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-use-external-geometry-light-visible-action`}
@@ -8213,17 +7101,6 @@ export const IntersectionCurveIcon = /* @__PURE__ */ coloredIcon(
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
         </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-intersection-curve-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-intersection-curve-light-visible-action`}
           x="0"
@@ -8339,17 +7216,6 @@ export const PierceIcon = /* @__PURE__ */ coloredIcon("pierce", (instanceId) => 
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
       </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-pierce-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-pierce-light-visible-action`}
         x="0"
@@ -8460,39 +7326,6 @@ export const ConstraintCoincidentIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-coincident-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-coincident-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-coincident-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-coincident-light-visible-action`}
           x="0"
@@ -8594,39 +7427,6 @@ export const ConstraintHorizontalIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-horizontal-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-horizontal-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-horizontal-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-horizontal-light-visible-action`}
           x="0"
@@ -8752,39 +7552,6 @@ export const ConstraintVerticalIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-vertical-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-vertical-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-vertical-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-vertical-light-visible-action`}
           x="0"
@@ -8910,39 +7677,6 @@ export const ConstraintPerpendicularIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-perpendicular-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-perpendicular-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-perpendicular-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-perpendicular-light-visible-action`}
           x="0"
@@ -9020,39 +7754,6 @@ export const ConstraintPerpendicularIcon = /* @__PURE__ */ coloredIcon(
 export const ConstraintEqualIcon = /* @__PURE__ */ coloredIcon("constraint-equal", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-constraint-equal-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-constraint-equal-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-constraint-equal-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-constraint-equal-light-visible-action`}
         x="0"
@@ -9141,28 +7842,6 @@ export const ConstraintTangentIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
           <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-tangent-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-tangent-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-tangent-light-visible-action`}
@@ -9266,39 +7945,6 @@ export const ConstraintConcentricIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-concentric-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-concentric-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-concentric-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-concentric-light-visible-action`}
           x="0"
@@ -9402,39 +8048,6 @@ export const ConstraintMidpointIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-midpoint-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-midpoint-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-midpoint-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-midpoint-light-visible-action`}
           x="0"
@@ -9543,28 +8156,6 @@ export const ConstraintSymmetricIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
           <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-symmetric-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-symmetric-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-symmetric-light-visible-action`}
@@ -9718,17 +8309,6 @@ export const ConstraintFixedIcon = /* @__PURE__ */ coloredIcon("constraint-fixed
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-constraint-fixed-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-constraint-fixed-light-material-front`}
         x1="12"
         y1="12"
@@ -9738,17 +8318,6 @@ export const ConstraintFixedIcon = /* @__PURE__ */ coloredIcon("constraint-fixed
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-constraint-fixed-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -9802,39 +8371,6 @@ export const ConstraintPointOnLineIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-point-on-line-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-point-on-line-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-point-on-line-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-point-on-line-light-visible-action`}
           x="0"
@@ -9940,39 +8476,6 @@ export const ConstraintPointOnCurveIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-point-on-curve-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-point-on-curve-light-material-front`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-          <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-constraint-point-on-curve-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
         <mask
           id={`${instanceId}-frosted-constraint-point-on-curve-light-visible-action`}
           x="0"
@@ -10200,17 +8703,6 @@ export const AssemblyInstanceIcon = /* @__PURE__ */ coloredIcon(
 export const AssemblyJointIcon = /* @__PURE__ */ coloredIcon("assembly-joint", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-assembly-joint-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-assembly-joint-light-material-front`}
         x1="12"
@@ -10584,17 +9076,6 @@ export const MotionStudyIcon = /* @__PURE__ */ coloredIcon("motion-study", (inst
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-motion-study-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-motion-study-light-material-front`}
         x1="12"
         y1="12"
@@ -10604,17 +9085,6 @@ export const MotionStudyIcon = /* @__PURE__ */ coloredIcon("motion-study", (inst
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-motion-study-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-motion-study-light-visible-action`}
@@ -10725,39 +9195,6 @@ export const MotionStudyIcon = /* @__PURE__ */ coloredIcon("motion-study", (inst
 export const LinkIcon = /* @__PURE__ */ coloredIcon("link", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-link-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-link-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-link-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-link-light-visible-action`}
         x="0"
@@ -10847,39 +9284,6 @@ export const LinkIcon = /* @__PURE__ */ coloredIcon("link", (instanceId) => (
 export const MeasureIcon = /* @__PURE__ */ coloredIcon("measure", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-measure-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-measure-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-measure-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-measure-light-visible-action`}
         x="0"
@@ -10989,17 +9393,6 @@ export const SectionViewIcon = /* @__PURE__ */ coloredIcon("section-view", (inst
       >
         <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
         <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-section-view-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
       </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-section-view-light-material-side`}
@@ -11714,28 +10107,6 @@ export const NormalViewIcon = /* @__PURE__ */ coloredIcon("normal-view", (instan
         <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
         <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
       </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-normal-view-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-normal-view-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-normal-view-light-visible-action`}
         x="0"
@@ -11974,17 +10345,6 @@ export const SketchVisibilityIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-sketch-visibility-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-sketch-visibility-light-material-front`}
           x1="12"
           y1="12"
@@ -12038,17 +10398,6 @@ export const SketchVisibilityIcon = /* @__PURE__ */ coloredIcon(
 export const HideIcon = /* @__PURE__ */ coloredIcon("hide", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-hide-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-hide-light-material-front`}
         x1="12"
@@ -12243,17 +10592,6 @@ export const BoxSelectIcon = /* @__PURE__ */ coloredIcon("box-select", (instance
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-box-select-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-box-select-light-material-front`}
         x1="12"
         y1="12"
@@ -12263,17 +10601,6 @@ export const BoxSelectIcon = /* @__PURE__ */ coloredIcon("box-select", (instance
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-box-select-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -12315,66 +10642,30 @@ export const BoxSelectIcon = /* @__PURE__ */ coloredIcon("box-select", (instance
   </>
 ))
 
-export const SelectIcon = /* @__PURE__ */ coloredIcon("select", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-select-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-select-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-select-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(3.714286 3.714286) scale(0.897959)">
-          <path
-            d="m13 7 12 48 9-15 16-7Z"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-          />
-          <path
-            d="m34 40 9 16"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="3.64829"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </g>
+export const SelectIcon = /* @__PURE__ */ coloredIcon(
+  "select",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(3.714286 3.714286) scale(0.897959)">
+        <path
+          d="m13 7 12 48 9-15 16-7Z"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+        />
+        <path
+          d="m34 40 9 16"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="3.64829"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
 export const LayersIcon = /* @__PURE__ */ coloredIcon("layers", (instanceId) => (
   <>
@@ -12389,28 +10680,6 @@ export const LayersIcon = /* @__PURE__ */ coloredIcon("layers", (instanceId) => 
       >
         <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
         <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-layers-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-layers-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -12449,17 +10718,6 @@ export const LayersIcon = /* @__PURE__ */ coloredIcon("layers", (instanceId) => 
 export const GridIcon = /* @__PURE__ */ coloredIcon("grid", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-grid-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-grid-light-material-front`}
         x1="12"
@@ -12735,17 +10993,6 @@ export const PanelLeftOpenIcon = /* @__PURE__ */ coloredIcon("panel-left-open", 
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
       </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-panel-left-open-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
       <g transform="scale(4)">
@@ -12828,17 +11075,6 @@ export const PanelLeftCloseIcon = /* @__PURE__ */ coloredIcon("panel-left-close"
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-panel-left-close-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -12924,17 +11160,6 @@ export const PanelBottomOpenIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-panel-bottom-open-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
       </defs>
       <g opacity=".91" data-layer="material">
@@ -13022,17 +11247,6 @@ export const PanelBottomCloseIcon = /* @__PURE__ */ coloredIcon(
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
         </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-panel-bottom-close-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
       </defs>
       <g opacity=".91" data-layer="material">
         <g transform="scale(4)">
@@ -13095,39 +11309,6 @@ export const PanelBottomCloseIcon = /* @__PURE__ */ coloredIcon(
 export const FilterIcon = /* @__PURE__ */ coloredIcon("filter", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-filter-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-filter-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-filter-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-filter-light-visible-action`}
         x="0"
@@ -13364,17 +11545,6 @@ export const FolderPlusIcon = /* @__PURE__ */ coloredIcon("folder-plus", (instan
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-folder-plus-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-folder-plus-light-material-front`}
         x1="12"
         y1="12"
@@ -13384,17 +11554,6 @@ export const FolderPlusIcon = /* @__PURE__ */ coloredIcon("folder-plus", (instan
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-folder-plus-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-folder-plus-light-visible-action`}
@@ -13470,17 +11629,6 @@ export const FolderOpenIcon = /* @__PURE__ */ coloredIcon("folder-open", (instan
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-folder-open-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-folder-open-light-material-front`}
         x1="12"
         y1="12"
@@ -13490,17 +11638,6 @@ export const FolderOpenIcon = /* @__PURE__ */ coloredIcon("folder-open", (instan
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-folder-open-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -13533,17 +11670,6 @@ export const BackupIcon = /* @__PURE__ */ coloredIcon("backup", (instanceId) => 
       >
         <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
         <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-backup-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
       </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-backup-light-material-side`}
@@ -13693,28 +11819,6 @@ export const BackupIcon = /* @__PURE__ */ coloredIcon("backup", (instanceId) => 
 export const ExportIcon = /* @__PURE__ */ coloredIcon("export", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-export-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-export-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-export-light-material-side`}
         x1="12"
@@ -14191,17 +12295,6 @@ export const LibraryIcon = /* @__PURE__ */ coloredIcon("library", (instanceId) =
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-library-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-library-light-material-front`}
         x1="12"
         y1="12"
@@ -14211,17 +12304,6 @@ export const LibraryIcon = /* @__PURE__ */ coloredIcon("library", (instanceId) =
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-library-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-library-light-visible-action`}
@@ -14363,17 +12445,6 @@ export const ExtensionsIcon = /* @__PURE__ */ coloredIcon("extensions", (instanc
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-extensions-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-extensions-light-material-front`}
         x1="12"
         y1="12"
@@ -14383,17 +12454,6 @@ export const ExtensionsIcon = /* @__PURE__ */ coloredIcon("extensions", (instanc
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-extensions-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -14413,74 +12473,27 @@ export const ExtensionsIcon = /* @__PURE__ */ coloredIcon("extensions", (instanc
   </>
 ))
 
-export const CommandIcon = /* @__PURE__ */ coloredIcon("command", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-command-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-command-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-command-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(-4.173913 -4.173913) scale(1.130435)">
-          <path
-            d="M23 23h18v18H23Zm0 0H16a7 7 0 1 1 7-7v7Zm18 0v-7a7 7 0 1 1 7 7h-7Zm0 18h7a7 7 0 1 1-7 7v-7Zm-18 0v7a7 7 0 1 1-7-7h7Z"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.89801"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </g>
+export const CommandIcon = /* @__PURE__ */ coloredIcon(
+  "command",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(-4.173913 -4.173913) scale(1.130435)">
+        <path
+          d="M23 23h18v18H23Zm0 0H16a7 7 0 1 1 7-7v7Zm18 0v-7a7 7 0 1 1 7 7h-7Zm0 18h7a7 7 0 1 1-7 7v-7Zm-18 0v7a7 7 0 1 1-7-7h7Z"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.89801"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
 export const KeyboardIcon = /* @__PURE__ */ coloredIcon("keyboard", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-keyboard-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-keyboard-light-material-front`}
         x1="12"
@@ -14491,17 +12504,6 @@ export const KeyboardIcon = /* @__PURE__ */ coloredIcon("keyboard", (instanceId)
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-keyboard-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -14629,17 +12631,6 @@ export const HelpIcon = /* @__PURE__ */ coloredIcon("help", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-help-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-help-light-material-front`}
         x1="12"
         y1="12"
@@ -14649,17 +12640,6 @@ export const HelpIcon = /* @__PURE__ */ coloredIcon("help", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-help-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -14698,182 +12678,77 @@ export const HelpIcon = /* @__PURE__ */ coloredIcon("help", (instanceId) => (
   </>
 ))
 
-export const UndoIcon = /* @__PURE__ */ coloredIcon("undo", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-undo-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-undo-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-undo-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(-1.897143 -5.714286) scale(1.142857)">
-          <path
-            d="M10 25h23c18 0 24 24 3 29"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.86650"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M10 25 23 12M10 25l13 13"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.86650"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M33 54h4"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.86650"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </g>
+export const UndoIcon = /* @__PURE__ */ coloredIcon(
+  "undo",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(-1.897143 -5.714286) scale(1.142857)">
+        <path
+          d="M10 25h23c18 0 24 24 3 29"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.86650"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M10 25 23 12M10 25l13 13"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.86650"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M33 54h4"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.86650"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
-export const RedoIcon = /* @__PURE__ */ coloredIcon("redo", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-redo-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-redo-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-redo-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(-7.245714 -5.714286) scale(1.142857)">
-          <path
-            d="M54 25H31C13 25 7 49 28 54"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.86650"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M54 25 41 12M54 25 41 38"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.86650"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M27 54h4"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.86650"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </g>
+export const RedoIcon = /* @__PURE__ */ coloredIcon(
+  "redo",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(-7.245714 -5.714286) scale(1.142857)">
+        <path
+          d="M54 25H31C13 25 7 49 28 54"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.86650"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M54 25 41 12M54 25 41 38"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.86650"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M27 54h4"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.86650"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
 export const RenameIcon = /* @__PURE__ */ coloredIcon("rename", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-rename-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-rename-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-rename-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-rename-light-visible-action`}
         x="0"
@@ -14956,17 +12831,6 @@ export const CopyIcon = /* @__PURE__ */ coloredIcon("copy", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-copy-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-copy-light-material-front`}
         x1="12"
         y1="12"
@@ -15018,17 +12882,6 @@ export const DuplicateIcon = /* @__PURE__ */ coloredIcon("duplicate", (instanceI
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-duplicate-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-duplicate-light-material-front`}
         x1="12"
         y1="12"
@@ -15038,17 +12891,6 @@ export const DuplicateIcon = /* @__PURE__ */ coloredIcon("duplicate", (instanceI
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-duplicate-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-duplicate-light-visible-action`}
@@ -15155,39 +12997,6 @@ export const DuplicateIcon = /* @__PURE__ */ coloredIcon("duplicate", (instanceI
 export const DeleteIcon = /* @__PURE__ */ coloredIcon("delete", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-delete-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-delete-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-delete-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-delete-light-visible-action`}
         x="0"
@@ -15294,39 +13103,6 @@ export const AcceptIcon = /* @__PURE__ */ coloredIcon("accept", (instanceId) => 
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-accept-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-accept-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-accept-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-accept-light-status-positive`}
         x1="16"
         y1="10"
@@ -15336,39 +13112,6 @@ export const AcceptIcon = /* @__PURE__ */ coloredIcon("accept", (instanceId) => 
       >
         <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
         <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-accept-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-accept-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-accept-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-accept-light-visible-action`}
@@ -15425,50 +13168,6 @@ export const CancelIcon = /* @__PURE__ */ coloredIcon("cancel", (instanceId) => 
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-cancel-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-cancel-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-cancel-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-cancel-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-cancel-light-status-negative`}
         x1="16"
         y1="10"
@@ -15478,28 +13177,6 @@ export const CancelIcon = /* @__PURE__ */ coloredIcon("cancel", (instanceId) => 
       >
         <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
         <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-cancel-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-cancel-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-cancel-light-visible-action`}
@@ -15616,39 +13293,6 @@ export const AddIcon = /* @__PURE__ */ coloredIcon("add", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-add-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-add-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-add-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-add-light-status-positive`}
         x1="16"
         y1="10"
@@ -15658,39 +13302,6 @@ export const AddIcon = /* @__PURE__ */ coloredIcon("add", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
         <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-add-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-add-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-add-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-add-light-visible-action`}
@@ -15789,72 +13400,6 @@ export const RemoveIcon = /* @__PURE__ */ coloredIcon("remove", (instanceId) => 
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-remove-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-remove-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-remove-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-remove-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-remove-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-remove-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-remove-light-status-amber`}
         x1="16"
         y1="10"
@@ -15932,61 +13477,6 @@ export const WarningIcon = /* @__PURE__ */ coloredIcon("warning", (instanceId) =
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-warning-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-warning-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-warning-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-warning-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-warning-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-warning-light-status-warning`}
         x1="16"
         y1="10"
@@ -15996,17 +13486,6 @@ export const WarningIcon = /* @__PURE__ */ coloredIcon("warning", (instanceId) =
       >
         <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
         <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-warning-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-warning-light-visible-action`}
@@ -16095,50 +13574,6 @@ export const ErrorIcon = /* @__PURE__ */ coloredIcon("error", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-error-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-error-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-error-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-error-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-error-light-status-negative`}
         x1="16"
         y1="10"
@@ -16148,28 +13583,6 @@ export const ErrorIcon = /* @__PURE__ */ coloredIcon("error", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
         <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-error-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-error-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-error-light-visible-action`}
@@ -16255,39 +13668,6 @@ export const PlayIcon = /* @__PURE__ */ coloredIcon("play", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-play-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-play-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-play-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-play-light-status-positive`}
         x1="16"
         y1="10"
@@ -16297,39 +13677,6 @@ export const PlayIcon = /* @__PURE__ */ coloredIcon("play", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
         <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-play-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-play-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-play-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-play-light-visible-action`}
@@ -16380,72 +13727,6 @@ export const PlayIcon = /* @__PURE__ */ coloredIcon("play", (instanceId) => (
 export const PauseIcon = /* @__PURE__ */ coloredIcon("pause", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-pause-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-pause-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-pause-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-pause-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-pause-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-pause-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-pause-light-status-amber`}
         x1="16"
@@ -16550,90 +13831,38 @@ export const PauseIcon = /* @__PURE__ */ coloredIcon("pause", (instanceId) => (
   </>
 ))
 
-export const StepBackIcon = /* @__PURE__ */ coloredIcon("step-back", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-step-back-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-back-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-back-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-back-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-back-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-back-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-back-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(-6.235294 -5.647059) scale(1.176471)">
+export const StepBackIcon = /* @__PURE__ */ coloredIcon(
+  "step-back",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(-6.235294 -5.647059) scale(1.176471)">
+        <path
+          d="M20 17v30"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.78460"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="m45 15-22 17 22 17Z"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
+      </g>
+    </g>
+  </g>,
+)
+
+export const StepForwardIcon = /* @__PURE__ */ coloredIcon(
+  "step-forward",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(-5.058824 -5.647059) scale(1.176471)">
+        <g transform="translate(64 0) scale(-1 1)">
           <path
             d="M20 17v30"
             fill="none"
@@ -16653,201 +13882,41 @@ export const StepBackIcon = /* @__PURE__ */ coloredIcon("step-back", (instanceId
         </g>
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
-export const StepForwardIcon = /* @__PURE__ */ coloredIcon("step-forward", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-step-forward-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-forward-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-forward-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-forward-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-forward-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-forward-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-step-forward-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(-5.058824 -5.647059) scale(1.176471)">
-          <g transform="translate(64 0) scale(-1 1)">
-            <path
-              d="M20 17v30"
-              fill="none"
-              stroke="var(--icon-geometry-ink, #5784b0)"
-              strokeWidth="2.78460"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="m45 15-22 17 22 17Z"
-              fill="var(--icon-geometry-ink, #5784b0)"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              stroke="none"
-              strokeWidth="0"
-            />
-          </g>
-        </g>
+export const SkipBackIcon = /* @__PURE__ */ coloredIcon(
+  "skip-back",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(1.454545 1.454545) scale(0.954545)">
+        <path
+          d="M10 17v30"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="3.43200"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="m33 15-16 17 16 17Zm21 0L38 32l16 17Z"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
-export const SkipBackIcon = /* @__PURE__ */ coloredIcon("skip-back", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-back-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-back-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-back-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-back-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-back-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-back-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-back-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(1.454545 1.454545) scale(0.954545)">
+export const SkipForwardIcon = /* @__PURE__ */ coloredIcon(
+  "skip-forward",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(1.454545 1.454545) scale(0.954545)">
+        <g transform="translate(64 0) scale(-1 1)">
           <path
             d="M10 17v30"
             fill="none"
@@ -16867,197 +13936,12 @@ export const SkipBackIcon = /* @__PURE__ */ coloredIcon("skip-back", (instanceId
         </g>
       </g>
     </g>
-  </>
-))
-
-export const SkipForwardIcon = /* @__PURE__ */ coloredIcon("skip-forward", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-forward-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-forward-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-forward-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-forward-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-forward-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-forward-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-skip-forward-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(1.454545 1.454545) scale(0.954545)">
-          <g transform="translate(64 0) scale(-1 1)">
-            <path
-              d="M10 17v30"
-              fill="none"
-              stroke="var(--icon-geometry-ink, #5784b0)"
-              strokeWidth="3.43200"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="m33 15-16 17 16 17Zm21 0L38 32l16 17Z"
-              fill="var(--icon-geometry-ink, #5784b0)"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              stroke="none"
-              strokeWidth="0"
-            />
-          </g>
-        </g>
-      </g>
-    </g>
-  </>
-))
+  </g>,
+)
 
 export const FavoriteIcon = /* @__PURE__ */ coloredIcon("favorite", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-favorite-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-favorite-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-favorite-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-favorite-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-favorite-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-favorite-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-favorite-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-favorite-light-visible-action`}
         x="0"
@@ -17147,50 +14031,6 @@ export const ModifyIcon = /* @__PURE__ */ coloredIcon("modify", (instanceId) => 
       >
         <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
         <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-modify-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-modify-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-modify-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-modify-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-modify-light-visible-action`}
@@ -17291,17 +14131,6 @@ export const AssistantThinkingIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-assistant-thinking-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-assistant-thinking-light-material-front`}
           x1="12"
           y1="12"
@@ -17311,17 +14140,6 @@ export const AssistantThinkingIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-assistant-thinking-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-assistant-thinking-light-visible-action`}
@@ -17391,39 +14209,6 @@ export const AssistantThinkingIcon = /* @__PURE__ */ coloredIcon(
 export const AssistantSteerIcon = /* @__PURE__ */ coloredIcon("assistant-steer", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-assistant-steer-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-assistant-steer-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-assistant-steer-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-assistant-steer-light-visible-action`}
         x="0"
@@ -17485,17 +14270,6 @@ export const AssistantIcon = /* @__PURE__ */ coloredIcon("assistant", (instanceI
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-assistant-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-assistant-light-material-front`}
         x1="12"
         y1="12"
@@ -17505,17 +14279,6 @@ export const AssistantIcon = /* @__PURE__ */ coloredIcon("assistant", (instanceI
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-assistant-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-assistant-light-visible-action`}
@@ -17591,17 +14354,6 @@ export const SendIcon = /* @__PURE__ */ coloredIcon("send", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-send-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-send-light-material-front`}
         x1="12"
         y1="12"
@@ -17643,466 +14395,135 @@ export const SendIcon = /* @__PURE__ */ coloredIcon("send", (instanceId) => (
   </>
 ))
 
-export const MoreIcon = /* @__PURE__ */ coloredIcon("more", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-more-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-more-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-more-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-more-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-more-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-more-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-more-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(8.0 8.0) scale(0.75)">
-          <circle
-            cx="13"
-            cy="32"
-            r="5"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-            strokeWidth="0"
-          />
-          <circle
-            cx="32"
-            cy="32"
-            r="5"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-            strokeWidth="0"
-          />
-          <circle
-            cx="51"
-            cy="32"
-            r="5"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-            strokeWidth="0"
-          />
-        </g>
+export const MoreIcon = /* @__PURE__ */ coloredIcon(
+  "more",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(8.0 8.0) scale(0.75)">
+        <circle
+          cx="13"
+          cy="32"
+          r="5"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
+        <circle
+          cx="32"
+          cy="32"
+          r="5"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
+        <circle
+          cx="51"
+          cy="32"
+          r="5"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
-export const ChevronDownIcon = /* @__PURE__ */ coloredIcon("chevron-down", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-chevron-down-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-chevron-down-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-chevron-down-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-chevron-down-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-chevron-down-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-chevron-down-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-chevron-down-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(3.368421 2.473684) scale(0.894737)">
-          <path
-            d="m13 24 19 18 19-18"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="3.66140"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </g>
+export const ChevronDownIcon = /* @__PURE__ */ coloredIcon(
+  "chevron-down",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(3.368421 2.473684) scale(0.894737)">
+        <path
+          d="m13 24 19 18 19-18"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="3.66140"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
-export const ArrowUpIcon = /* @__PURE__ */ coloredIcon("arrow-up", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-up-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-up-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-up-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-up-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-up-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-up-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-up-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(3.265306 1.918367) scale(0.897959)">
-          <path
-            d="M32 55V9"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="3.64829"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M15 26 32 9l17 17"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="3.64829"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M16 58h32"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.67273"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </g>
+export const ArrowUpIcon = /* @__PURE__ */ coloredIcon(
+  "arrow-up",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(3.265306 1.918367) scale(0.897959)">
+        <path
+          d="M32 55V9"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="3.64829"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M15 26 32 9l17 17"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="3.64829"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M16 58h32"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.67273"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
-export const ArrowDownIcon = /* @__PURE__ */ coloredIcon("arrow-down", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-down-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-down-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-down-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-down-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-down-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-down-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-arrow-down-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(3.265306 4.612245) scale(0.897959)">
-          <path
-            d="M32 9v46"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="3.64829"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M15 38 32 55l17-17"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="3.64829"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M16 6h32"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.67273"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </g>
+export const ArrowDownIcon = /* @__PURE__ */ coloredIcon(
+  "arrow-down",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(3.265306 4.612245) scale(0.897959)">
+        <path
+          d="M32 9v46"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="3.64829"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M15 38 32 55l17-17"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="3.64829"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M16 6h32"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.67273"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
 export const OpenExternalIcon = /* @__PURE__ */ coloredIcon("open-external", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-open-external-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
       <linearGradient
         id={`${instanceId}-frosted-open-external-light-material-front`}
         x1="12"
@@ -18113,61 +14534,6 @@ export const OpenExternalIcon = /* @__PURE__ */ coloredIcon("open-external", (in
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-open-external-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-open-external-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-open-external-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-open-external-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-open-external-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -18193,155 +14559,75 @@ export const OpenExternalIcon = /* @__PURE__ */ coloredIcon("open-external", (in
   </>
 ))
 
-export const DragHandleIcon = /* @__PURE__ */ coloredIcon("drag-handle", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-drag-handle-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-drag-handle-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-drag-handle-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-drag-handle-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-drag-handle-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-drag-handle-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-drag-handle-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(-0.653061 -0.653061) scale(1.020408)">
-          <circle
-            cx="24"
-            cy="16"
-            r="3.6"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-            strokeWidth="0"
-          />
-          <circle
-            cx="24"
-            cy="32"
-            r="3.6"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-            strokeWidth="0"
-          />
-          <circle
-            cx="24"
-            cy="48"
-            r="3.6"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-            strokeWidth="0"
-          />
-          <circle
-            cx="40"
-            cy="16"
-            r="3.6"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-            strokeWidth="0"
-          />
-          <circle
-            cx="40"
-            cy="32"
-            r="3.6"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-            strokeWidth="0"
-          />
-          <circle
-            cx="40"
-            cy="48"
-            r="3.6"
-            fill="var(--icon-geometry-ink, #5784b0)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            stroke="none"
-            strokeWidth="0"
-          />
-        </g>
+export const DragHandleIcon = /* @__PURE__ */ coloredIcon(
+  "drag-handle",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(-0.653061 -0.653061) scale(1.020408)">
+        <circle
+          cx="24"
+          cy="16"
+          r="3.6"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
+        <circle
+          cx="24"
+          cy="32"
+          r="3.6"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
+        <circle
+          cx="24"
+          cy="48"
+          r="3.6"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
+        <circle
+          cx="40"
+          cy="16"
+          r="3.6"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
+        <circle
+          cx="40"
+          cy="32"
+          r="3.6"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
+        <circle
+          cx="40"
+          cy="48"
+          r="3.6"
+          fill="var(--icon-geometry-ink, #5784b0)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          stroke="none"
+          strokeWidth="0"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
 export const BoltIcon = /* @__PURE__ */ coloredIcon("bolt", (instanceId) => (
   <>
@@ -18378,50 +14664,6 @@ export const BoltIcon = /* @__PURE__ */ coloredIcon("bolt", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
         <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-bolt-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-bolt-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-bolt-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-bolt-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -18476,39 +14718,6 @@ export const BoltIcon = /* @__PURE__ */ coloredIcon("bolt", (instanceId) => (
 export const CompassIcon = /* @__PURE__ */ coloredIcon("compass", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-compass-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-compass-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-compass-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-compass-light-visible-action`}
         x="0"
@@ -18614,164 +14823,51 @@ export const CompassIcon = /* @__PURE__ */ coloredIcon("compass", (instanceId) =
   </>
 ))
 
-export const SplitGenericIcon = /* @__PURE__ */ coloredIcon("split-generic", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-split-generic-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-split-generic-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-split-generic-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-split-generic-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-split-generic-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-split-generic-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-split-generic-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(-10.666667 -15.333333) scale(1.333333)">
-          <path
-            d="M32 55V36q0-12-19-20"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.45700"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="m13 27 0-11 11 0"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.45700"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M32 36q0-12 19-20"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.45700"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="m40 16 11 0 0 11"
-            fill="none"
-            stroke="var(--icon-geometry-ink, #5784b0)"
-            strokeWidth="2.45700"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </g>
+export const SplitGenericIcon = /* @__PURE__ */ coloredIcon(
+  "split-generic",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(-10.666667 -15.333333) scale(1.333333)">
+        <path
+          d="M32 55V36q0-12-19-20"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.45700"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="m13 27 0-11 11 0"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.45700"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M32 36q0-12 19-20"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.45700"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="m40 16 11 0 0 11"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2.45700"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </g>
     </g>
-  </>
-))
+  </g>,
+)
 
 export const SketchFilletIcon = /* @__PURE__ */ coloredIcon("sketch-fillet", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-sketch-fillet-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-sketch-fillet-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-sketch-fillet-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-sketch-fillet-light-visible-action`}
         x="0"
@@ -18845,39 +14941,6 @@ export const SketchFilletIcon = /* @__PURE__ */ coloredIcon("sketch-fillet", (in
 export const SketchChamferIcon = /* @__PURE__ */ coloredIcon("sketch-chamfer", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-sketch-chamfer-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-sketch-chamfer-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-sketch-chamfer-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-sketch-chamfer-light-visible-action`}
         x="0"
@@ -18952,17 +15015,6 @@ export const SketchTransformIcon = /* @__PURE__ */ coloredIcon("sketch-transform
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-sketch-transform-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-sketch-transform-light-material-front`}
         x1="12"
         y1="12"
@@ -18972,17 +15024,6 @@ export const SketchTransformIcon = /* @__PURE__ */ coloredIcon("sketch-transform
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-sketch-transform-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-sketch-transform-light-visible-action`}
@@ -19117,17 +15158,6 @@ export const NavigateViewIcon = /* @__PURE__ */ coloredIcon("navigate-view", (in
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-navigate-view-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-navigate-view-light-material-front`}
         x1="12"
         y1="12"
@@ -19137,17 +15167,6 @@ export const NavigateViewIcon = /* @__PURE__ */ coloredIcon("navigate-view", (in
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-navigate-view-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -19294,17 +15313,6 @@ export const FdmWebIcon = /* @__PURE__ */ coloredIcon("fdm-web", (instanceId) =>
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-fdm-web-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-fdm-web-light-material-front`}
         x1="12"
         y1="12"
@@ -19418,17 +15426,6 @@ export const FdmCornerReliefIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-fdm-corner-relief-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-fdm-corner-relief-light-material-front`}
           x1="12"
           y1="12"
@@ -19438,17 +15435,6 @@ export const FdmCornerReliefIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-fdm-corner-relief-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-fdm-corner-relief-light-visible-action`}
@@ -19703,17 +15689,6 @@ export const FdmTeardropHoleIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-fdm-teardrop-hole-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-fdm-teardrop-hole-light-material-front`}
           x1="12"
           y1="12"
@@ -19723,17 +15698,6 @@ export const FdmTeardropHoleIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-fdm-teardrop-hole-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-fdm-teardrop-hole-light-visible-action`}
@@ -19837,17 +15801,6 @@ export const FdmHexSeatIcon = /* @__PURE__ */ coloredIcon("fdm-hex-seat", (insta
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-fdm-hex-seat-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-fdm-hex-seat-light-material-front`}
         x1="12"
         y1="12"
@@ -19857,17 +15810,6 @@ export const FdmHexSeatIcon = /* @__PURE__ */ coloredIcon("fdm-hex-seat", (insta
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-fdm-hex-seat-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-fdm-hex-seat-light-visible-action`}
@@ -19991,17 +15933,6 @@ export const FdmCrushRibsIcon = /* @__PURE__ */ coloredIcon("fdm-crush-ribs", (i
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-fdm-crush-ribs-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-fdm-crush-ribs-light-material-front`}
         x1="12"
         y1="12"
@@ -20011,17 +15942,6 @@ export const FdmCrushRibsIcon = /* @__PURE__ */ coloredIcon("fdm-crush-ribs", (i
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-fdm-crush-ribs-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-fdm-crush-ribs-light-visible-action`}
@@ -20304,17 +16224,6 @@ export const FdmFlexibleSleeveIcon = /* @__PURE__ */ coloredIcon(
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
         </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-fdm-flexible-sleeve-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-        </linearGradient>
       </defs>
       <g opacity=".91" data-layer="material">
         <g transform="scale(4)">
@@ -20355,17 +16264,6 @@ export const FdmNutPocketIcon = /* @__PURE__ */ coloredIcon("fdm-nut-pocket", (i
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-fdm-nut-pocket-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-fdm-nut-pocket-light-material-front`}
         x1="12"
         y1="12"
@@ -20375,17 +16273,6 @@ export const FdmNutPocketIcon = /* @__PURE__ */ coloredIcon("fdm-nut-pocket", (i
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-fdm-nut-pocket-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-fdm-nut-pocket-light-visible-action`}
@@ -20523,17 +16410,6 @@ export const FdmInsertPocketIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-fdm-insert-pocket-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-fdm-insert-pocket-light-material-front`}
           x1="12"
           y1="12"
@@ -20543,17 +16419,6 @@ export const FdmInsertPocketIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-fdm-insert-pocket-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-fdm-insert-pocket-light-visible-action`}
@@ -20698,17 +16563,6 @@ export const FdmEnclosureJointIcon = /* @__PURE__ */ coloredIcon(
     <>
       <defs>
         <linearGradient
-          id={`${instanceId}-frosted-fdm-enclosure-joint-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
-        <linearGradient
           id={`${instanceId}-frosted-fdm-enclosure-joint-light-material-front`}
           x1="12"
           y1="12"
@@ -20718,17 +16572,6 @@ export const FdmEnclosureJointIcon = /* @__PURE__ */ coloredIcon(
         >
           <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
           <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-        </linearGradient>
-        <linearGradient
-          id={`${instanceId}-frosted-fdm-enclosure-joint-light-material-side`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-          <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
         </linearGradient>
         <mask
           id={`${instanceId}-frosted-fdm-enclosure-joint-light-visible-action`}
@@ -20848,17 +16691,6 @@ export const FdmMembraneIcon = /* @__PURE__ */ coloredIcon("fdm-membrane", (inst
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-fdm-membrane-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-fdm-membrane-light-material-front`}
         x1="12"
         y1="12"
@@ -20868,17 +16700,6 @@ export const FdmMembraneIcon = /* @__PURE__ */ coloredIcon("fdm-membrane", (inst
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-fdm-membrane-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-fdm-membrane-light-visible-action`}
@@ -20955,17 +16776,6 @@ export const FdmCalibrationCouponIcon = /* @__PURE__ */ coloredIcon(
   (instanceId) => (
     <>
       <defs>
-        <linearGradient
-          id={`${instanceId}-frosted-fdm-calibration-coupon-light-material-top`}
-          x1="12"
-          y1="12"
-          x2="48"
-          y2="56"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-          <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-        </linearGradient>
         <linearGradient
           id={`${instanceId}-frosted-fdm-calibration-coupon-light-material-front`}
           x1="12"
@@ -21155,17 +16965,6 @@ export const FileTextIcon = /* @__PURE__ */ coloredIcon("file-text", (instanceId
         <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
       </linearGradient>
       <linearGradient
-        id={`${instanceId}-frosted-file-text-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-file-text-light-material-side`}
         x1="12"
         y1="12"
@@ -21234,17 +17033,6 @@ export const ImageIcon = /* @__PURE__ */ coloredIcon("image", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-image-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-image-light-visible-action`}
@@ -21349,39 +17137,6 @@ export const ImageIcon = /* @__PURE__ */ coloredIcon("image", (instanceId) => (
 export const AttachIcon = /* @__PURE__ */ coloredIcon("attach", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-attach-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-attach-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-attach-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-attach-light-visible-action`}
         x="0"
@@ -21475,17 +17230,6 @@ export const SearchIcon = /* @__PURE__ */ coloredIcon("search", (instanceId) => 
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-search-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-search-light-material-front`}
         x1="12"
         y1="12"
@@ -21495,61 +17239,6 @@ export const SearchIcon = /* @__PURE__ */ coloredIcon("search", (instanceId) => 
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-search-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-search-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-search-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-search-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-search-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
       <mask
         id={`${instanceId}-frosted-search-light-visible-action`}
@@ -21623,83 +17312,6 @@ export const SearchIcon = /* @__PURE__ */ coloredIcon("search", (instanceId) => 
 export const LoadingIcon = /* @__PURE__ */ coloredIcon("loading", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-loading-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-loading-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-loading-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-loading-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-loading-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-loading-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-loading-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-loading-light-visible-action`}
         x="0"
@@ -21747,83 +17359,6 @@ export const LoadingIcon = /* @__PURE__ */ coloredIcon("loading", (instanceId) =
 export const IndicatorCheckIcon = /* @__PURE__ */ coloredIcon("indicator-check", (instanceId) => (
   <>
     <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-indicator-check-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-indicator-check-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-indicator-check-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-indicator-check-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-indicator-check-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-indicator-check-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-indicator-check-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
       <mask
         id={`${instanceId}-frosted-indicator-check-light-visible-action`}
         x="0"
@@ -21868,17 +17403,6 @@ export const StopIcon = /* @__PURE__ */ coloredIcon("stop", (instanceId) => (
   <>
     <defs>
       <linearGradient
-        id={`${instanceId}-frosted-stop-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
         id={`${instanceId}-frosted-stop-light-material-front`}
         x1="12"
         y1="12"
@@ -21888,61 +17412,6 @@ export const StopIcon = /* @__PURE__ */ coloredIcon("stop", (instanceId) => (
       >
         <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
         <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-stop-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-stop-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-stop-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-stop-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-stop-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
       </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
@@ -21976,72 +17445,6 @@ export const InformationIcon = /* @__PURE__ */ coloredIcon("information", (insta
         <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
         <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
       </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-information-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-information-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-information-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-information-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-information-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-information-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
     </defs>
     <g opacity=".91" data-layer="material">
       <g transform="scale(4)">
@@ -22065,116 +17468,36 @@ export const InformationIcon = /* @__PURE__ */ coloredIcon("information", (insta
   </>
 ))
 
-export const CloseIcon = /* @__PURE__ */ coloredIcon("close", (instanceId) => (
-  <>
-    <defs>
-      <linearGradient
-        id={`${instanceId}-frosted-close-light-material-top`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
-        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-close-light-material-front`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
-        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-close-light-material-side`}
-        x1="12"
-        y1="12"
-        x2="48"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
-        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-close-light-status-positive`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
-        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-close-light-status-negative`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
-        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-close-light-status-warning`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
-        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
-      </linearGradient>
-      <linearGradient
-        id={`${instanceId}-frosted-close-light-status-amber`}
-        x1="16"
-        y1="10"
-        x2="44"
-        y2="56"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
-        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
-      </linearGradient>
-    </defs>
-    <g opacity=".91" data-layer="material">
-      <g transform="scale(4)">
-        <g transform="translate(32 32)">
-          <g transform="rotate(45)">
-            <rect
-              x="-2.05"
-              y="-21.5"
-              width="4.1"
-              height="43"
-              rx="2.05"
-              fill="var(--icon-geometry-ink, #5784b0)"
-              stroke="none"
-              strokeWidth="0"
-            />
-          </g>
-          <g transform="rotate(-45)">
-            <rect
-              x="-2.05"
-              y="-21.5"
-              width="4.1"
-              height="43"
-              rx="2.05"
-              fill="var(--icon-geometry-ink, #5784b0)"
-              stroke="none"
-              strokeWidth="0"
-            />
-          </g>
+export const CloseIcon = /* @__PURE__ */ coloredIcon(
+  "close",
+  <g opacity=".91" data-layer="material">
+    <g transform="scale(4)">
+      <g transform="translate(32 32)">
+        <g transform="rotate(45)">
+          <rect
+            x="-2.05"
+            y="-21.5"
+            width="4.1"
+            height="43"
+            rx="2.05"
+            fill="var(--icon-geometry-ink, #5784b0)"
+            stroke="none"
+            strokeWidth="0"
+          />
+        </g>
+        <g transform="rotate(-45)">
+          <rect
+            x="-2.05"
+            y="-21.5"
+            width="4.1"
+            height="43"
+            rx="2.05"
+            fill="var(--icon-geometry-ink, #5784b0)"
+            stroke="none"
+            strokeWidth="0"
+          />
         </g>
       </g>
     </g>
-  </>
-))
+  </g>,
+)

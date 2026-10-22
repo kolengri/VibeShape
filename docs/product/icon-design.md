@@ -20,6 +20,8 @@ approved source colors as fallbacks. It needs no runtime XML parser, external fo
 network asset request or SVG loader plugin. Pure factories allow unused drawings to be tree-shaken.
 Native gradients, luminance masks and material opacity remain editable in the SVG masters. Their
 JSX attributes and instance-local references are generated rather than patched in components.
+Generation omits definitions that are unreachable from the artwork, while preserving their editable
+master copies and any dependencies referenced by retained masks or gradients.
 
 Import application icons through `@vibeshape/ui/components/icons`, or `#components/icons` inside
 shared UI. Do not introduce direct Lucide imports or another local action-glyph family. The separate

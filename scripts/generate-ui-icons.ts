@@ -1,5 +1,6 @@
 import { resolve } from "node:path"
 import { z } from "zod"
+import { uiIconSource } from "./ui-icon-source"
 
 const root = resolve(import.meta.dir, "..")
 const directory = resolve(root, "packages/ui/src/icons")
@@ -54,6 +55,14 @@ const attributes: Readonly<Record<string, string>> = {
 }
 const aliases = new Map<string, string>()
 const drawings: string[] = []
+function drawingSource(source: string) {
+  return source
+    .replace(/^<svg\b[^>]*>/, "")
+    .replace(/<\/svg>\s*$/, "")
+    .replace(/<title>[^<]*<\/title>/, "")
+    .replace(/<defs>\s*<\/defs>/, "")
+}
+
 for (const icon of catalog) {
   const name = `${icon.id
     .split("-")
@@ -66,18 +75,14 @@ for (const icon of catalog) {
   }
   const source = await Bun.file(resolve(directory, "svg", `${icon.id}.svg`)).text()
   if (!source.includes('viewBox="0 0 256 256"')) throw new Error(`Invalid icon canvas: ${icon.id}`)
-  let drawing = source
-    .replace(/^<svg\b[^>]*>/, "")
-    .replace(/<\/svg>\s*$/, "")
-    .replace(/<title>[^<]*<\/title>/, "")
-    .replace(/<defs>\s*<\/defs>/, "")
+  let drawing = drawingSource(source)
   if (
     /<\/?(?!g\b|path\b|rect\b|circle\b|ellipse\b|defs\b|linearGradient\b|radialGradient\b|stop\b|mask\b)[a-z]/i.test(
       drawing,
     )
   )
     throw new Error(`Unsupported SVG element: ${icon.id}`)
-  drawing = drawing
+  drawing = drawingSource(uiIconSource(source))
     .replace(
       /(fill|stroke|stop-color)="(#[a-f0-9]{6})"/gi,
       (_, attribute: string, color: string) => {

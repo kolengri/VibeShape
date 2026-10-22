@@ -100,5 +100,6 @@ it("uses the neutral close glyph for generic dismissal while preserving explicit
     "cancel",
   ])
   expect(container.querySelector('[data-icon="close"] circle')).toBeNull()
+  expect(container.querySelector('[data-icon="close"] defs')).toBeNull()
   expect(container.querySelector('[data-icon="cancel"] circle')).not.toBeNull()
 })
