@@ -345,7 +345,9 @@ Record the preset in the repository. Running `init --force` without review is pr
 The project-keyed editor scope owns a small assistant presentation context. Only the toggle and
 mounted panel consume its visibility; chat updates remain inside the project chat controller. The
 fixed panel overlays the workspace, with CSS safe insets for viewport controls rather than canvas
-resizing. Closing hides the subtree without disposing its controller or transient composer state.
+resizing. The display transcript mounts on the first explicit panel opening, so project navigation
+does not parse Markdown or construct message DOM for a closed chat. Later closes retain that DOM,
+its scroll state, the controller, and transient composer state.
 
 A separate scope-local capture port registers the currently visible viewport. An explicit composer
 action requests a fresh render and synchronous copy of its WebGL buffer before asynchronous PNG

@@ -14,7 +14,7 @@ import {
 } from "@vibeshape/ui/components/icons"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type ReactNode, useId, useState } from "react"
+import { type ComponentProps, type ReactNode, useEffect, useId, useState } from "react"
 import { ReviewActions } from "../automation/automation-review-actions"
 import { TaskPanelLifecycleButton } from "../components/task-panel-lifecycle-button"
 import { useReportApplicationError } from "../shell/application-notices"
@@ -321,6 +321,17 @@ function AssistantFeedback(
   )
 }
 
+function AssistantPanelMessages({
+  open,
+  ...props
+}: ComponentProps<typeof AssistantMessages> & { open: boolean }) {
+  const [mounted, setMounted] = useState(open)
+  useEffect(() => {
+    if (open) setMounted(true)
+  }, [open])
+  return open || mounted ? <AssistantMessages {...props} /> : null
+}
+
 export function AssistantPanel(props: AssistantPanelProps) {
   const t = useTranslations("app.assistant")
   const titleId = useId()
@@ -349,7 +360,11 @@ export function AssistantPanel(props: AssistantPanelProps) {
             {t("configure")}
           </Button>
         )}
-        <AssistantMessages messages={props.messages} onHighlight={props.onToolHighlight} />
+        <AssistantPanelMessages
+          open={props.open}
+          messages={props.messages}
+          onHighlight={props.onToolHighlight}
+        />
         {props.busy && (
           <div
             role="status"

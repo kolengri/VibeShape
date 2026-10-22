@@ -166,6 +166,20 @@ afterEach(() => {
 })
 
 describe("project tabs", () => {
+  it("refreshes tab metadata without loading project preview images", async () => {
+    setup()
+    await waitFor(() => expect(actions.list).toHaveBeenCalledWith({ includeThumbnails: false }))
+    expect(
+      (await screen.findByRole("tab", { name: "Bracket" })).getAttribute("aria-selected"),
+    ).toBe("true")
+    actions.list.mockClear()
+    await userEvent.click(screen.getByRole("tab", { name: "Enclosure" }))
+    await waitFor(() => expect(actions.list).toHaveBeenCalled())
+    expect(actions.list.mock.calls.every(([options]) => options?.includeThumbnails === false)).toBe(
+      true,
+    )
+  })
+
   it("switches while an agent works but refuses to close its busy project", async () => {
     setup()
     blocked = "automation-busy"

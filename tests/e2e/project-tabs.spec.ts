@@ -151,7 +151,9 @@ test("retains an active draft when switching or closing its project tab is block
   await expect(page.getByRole("dialog", { name: "Rename project", exact: true })).toHaveCount(0)
   await expect(width).toHaveValue("37 mm")
   await tabs.getByRole("tab", { name: "Draft target", exact: true }).click()
-  await expect(page.getByRole("alert").filter({ hasText: "Finish or cancel" })).toBeVisible()
+  await expect(
+    page.getByRole("region", { name: "Notifications", exact: true }).getByRole("alert"),
+  ).toContainText("Finish or cancel")
   expect(projectId(page)).toBe(firstId)
   await expect(width).toHaveValue("37 mm")
   await tabs.getByRole("button", { name: "Close Draft source", exact: true }).click()

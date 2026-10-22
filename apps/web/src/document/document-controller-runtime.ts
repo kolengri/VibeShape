@@ -599,27 +599,6 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
             ),
           }),
         )
-      const listed = await repository.listProjects()
-      if (!listed.ok)
-        return {
-          ok: false as const,
-          diagnostic: {
-            code: "persistence-failed" as const,
-            message: listed.diagnostic.message,
-            retryable: listed.diagnostic.retryable,
-            sourceCode: listed.diagnostic.code,
-          },
-        }
-      if (!listed.value.some((project) => project.documentId === initial.documentId))
-        return {
-          ok: false as const,
-          diagnostic: {
-            code: "persistence-failed" as const,
-            message: "The local project does not exist.",
-            retryable: false,
-            sourceCode: "document-not-found",
-          },
-        }
       return openControllerProject(database, repository, initial.documentId)
     }
     const requested = readProjectUrl(window.location.href)
@@ -3288,10 +3267,12 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       : { ok: false, diagnostic: imported.diagnostic }
   }
 
-  async function listLocalProjects(): Promise<LocalProjectListResult> {
+  async function listLocalProjects(
+    options?: Parameters<BrowserProjectRepository["listProjects"]>[0],
+  ): Promise<LocalProjectListResult> {
     if (!activeRepository || (state.status !== "ready" && state.status !== "library"))
       return unavailableProjectFileResult()
-    const result = await activeRepository.listProjects()
+    const result = await activeRepository.listProjects(options)
     return result.ok
       ? { ok: true, projects: result.value }
       : { ok: false, diagnostic: result.diagnostic }
