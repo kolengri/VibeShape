@@ -2198,7 +2198,6 @@ function EditorModelTree({
   return (
     <ModelTree
       surface={surface}
-      onCreateSketch={actions.createSketch}
       origin={{
         selected: props.selectedOriginPlane,
         visibility: props.originPlaneVisibility,
