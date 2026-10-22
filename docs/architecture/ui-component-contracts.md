@@ -18,6 +18,8 @@ by its subject. `FieldHelpProvider` binds this shared `ui` catalog copy to the a
 isolated shared controls use the same English source catalog. This avoids adding a second control
 with the input's exact accessible label. The help trigger uses a focusable button role with Enter and
 Space activation so native disabled fieldsets lock editing while keeping guidance available.
+`DialogContent` honors an enabled shared input's declared `autoFocus` before ordinary focusable
+help controls, while preserving caller cancellation and the default fallback when none is available.
 `TaskPanelHeader.description` is optional help. Required next actions and persistent description
 targets use its `instruction` prop, which stays visible and mounted independently of any popover.
 

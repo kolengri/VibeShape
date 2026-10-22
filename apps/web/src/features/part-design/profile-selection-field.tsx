@@ -60,6 +60,7 @@ export function ProfileSelectionField({
               size="icon-xs"
               variant="ghost"
               aria-label={copy.remove(labels[0])}
+              disabled={disabled}
               onClick={() => onRemove(0)}
             >
               <X className="size-3.5" aria-hidden="true" />

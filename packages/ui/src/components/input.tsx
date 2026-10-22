@@ -7,6 +7,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
     <input
       {...props}
       data-slot="input"
+      data-autofocus={props.autoFocus || undefined}
       type={type}
       className={cn(
         "flex h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none",
