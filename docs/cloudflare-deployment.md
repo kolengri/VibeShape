@@ -7,9 +7,9 @@ session relay are a separate implementation; this workflow does not advertise th
 
 ## Pipeline
 
-Runner selection and automatic recovery from GitHub-hosted billing limits are documented in
-[Personal GitHub Actions fallback](github-runner.md). The fallback changes the Linux execution
-host; the publication environments and current-head checks below still apply.
+Publication always uses GitHub-hosted runners. Optional isolated execution of one
+credential-free Node test shard is documented in [Mac CI isolation](github-runner.md).
+The Mac worker never builds or publishes production artifacts and receives no deployment credentials.
 
 `.github/workflows/ci.yml` verifies PRs to `main` and can be called by the production workflow.
 `.github/workflows/cloudflare-pages.yml` runs only for this repository's `main`, after
@@ -25,11 +25,10 @@ Successful unit-test scopes are saved even if another scope fails. Only validate
 receipts are reusable; a failed scope runs again. Cancelled runs do not save the receipt archive.
 Destination settings remain in the publication environment where they are available.
 
-The owner approved deployment from verified current `main` without mandatory GitHub branch
-protection on 2026-10-09. The private repository uses GitHub Free, where that feature is unavailable.
-This does not prevent direct pushes, force pushes or deletions at the GitHub repository boundary;
-use verified PRs. Each deployment still requires full CI, the latest main SHA, the pinned kernel
-checksum, exact artifact manifests and the configured publication destination.
+The public repository's `Protect main` ruleset requires a pull request and `Fast PR checks`,
+and prohibits force pushes and branch deletion. Each deployment additionally requires full CI,
+the latest main SHA, the pinned kernel checksum, exact artifact manifests and the configured
+publication destination. Workflow changes remain subject to the repository owner's review.
 
 1. Run the existing audit, formatting, lint, types, tests, build and Fallow gates without Cloudflare
    credentials. Official actions are pinned to reviewed commit SHAs.

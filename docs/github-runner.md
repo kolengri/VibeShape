@@ -1,161 +1,110 @@
-# Personal GitHub Actions fallback
+# Isolated Mac CI
 
-VibeShape normally uses GitHub-hosted Ubuntu runners. Setting the repository variable
-`VIBESHAPE_CI_RUNNER` to `mac` routes CI and every Cloudflare job to the repository-scoped
-`vibeshape-mac` runner (`self-hosted`, `Linux`, `ARM64`). Any other value uses
-GitHub-hosted runners unless hybrid CI is explicitly enabled below.
-All verification steps, publication environments, credentials,
-protected-head checks, and deployment concurrency remain in effect.
+VibeShape is public. It has no registered self-hosted Actions runner. All public
+workflow jobs run on GitHub-hosted Ubuntu. The retired full-local fallback,
+`VIBESHAPE_CI_RUNNER`, and its billing recovery daemon are no longer supported.
+Production builds, artifacts, and deployment credentials stay on GitHub. Desktop
+release verification also remains fully hosted, independent of the hybrid flag.
 
-## Hybrid CI
+## Hybrid execution
 
-Set `VIBESHAPE_CI_HYBRID=true` while `VIBESHAPE_CI_RUNNER` is `github` (or unset)
-to distribute CI across hosted runners and the dedicated Mac. The three Node
-shards remain complementary: `1/3` and `2/3` run on GitHub, and `3/3` runs on the
-Mac. DOM tests, static/integration checks, the aggregate, and Cloudflare publication
-jobs remain hosted. The committed timing profile balances the native shards;
-`3/3` was the slowest hosted shard in the first sharded PR run, but future timing
-and cross-architecture performance can vary. Every shard remains required and
-partial runs never read or write complete-workspace receipts.
+`VIBESHAPE_CI_HYBRID=true` requests Node shard `3/3` from the isolated Mac worker.
+Node shards `1/3` and `2/3`, DOM, static/integration checks, and the required
+`Fast PR checks` aggregate remain hosted. Every shard is required. Partial runs
+never restore or save complete-workspace receipts. A hosted waiter verifies the
+Mac result, so this arrangement still consumes hosted waiting time.
 
-Only the same trusted repository/PRs eligible for full Mac fallback can use the
-Mac in hybrid mode. Fork and non-owner PRs execute all three shards on GitHub.
-Full `VIBESHAPE_CI_RUNNER=mac` fallback takes precedence over the hybrid flag.
-The existing billing controller can temporarily select full Mac fallback and
-restore hosted routing at the next billing month; the separate hybrid flag is
-preserved, so mixed execution resumes without changing the controller.
+Only owner-triggered runs from `kolengri/VibeShape` are eligible. PRs must be
+open, owner-authored, from the same repository, and still at the requested head.
+Forks and other authors' PRs run entirely on GitHub. The host broker independently
+checks this policy using GitHub API data; public workflow conditions do not grant
+access to the Mac.
 
-The runner must be online. An offline Mac or a local queue delays its shard;
-GitHub does not automatically move it to a hosted runner. Disable the hybrid flag
-and start a new run to use hosted execution again. Changing variables does not
-move already queued jobs. Keep one runner on this 16 GiB Mac so concurrent local
-jobs cannot each claim all eight test workers and exhaust memory.
-
-To test a reviewed branch without changing repository variables, dispatch only
-the CI workflow with its boolean `hybrid` input:
+To try a reviewed branch before enabling the repository variable:
 
 ```sh
 gh workflow run ci.yml --repo kolengri/VibeShape --ref <reviewed-branch> -F hybrid=true
 ```
 
-## Mac runtime
+The Mac processes one shard at a time. An offline, sleeping, or busy Mac delays its
+waiter; missing or failed results fail closed after the waiting deadline. GitHub
+does not automatically reschedule that job on another runner. Disable the flag
+and start a new run to restore fully hosted execution. Changing a variable does
+not move an already running job.
 
-The runner uses the official GitHub runner image, pinned by version and digest, with `gh`,
-Python, build tools, and Node.js 24/npm added. OrbStack runs the Linux ARM64 container on Apple Silicon.
-New containers have no CPU or memory cap, a 1 GiB shared-memory area, and their own named
-workspace volume. No macOS home directory or Docker socket is mounted, and no ports are
-published. Dependency installation and browser downloads happen inside Linux. A GitHub pre-job
-hook clears the exact repository workspace, including hidden files, before every job; runner
-actions/tool/browser caches remain outside it. Publication jobs start without a stale checkout,
-lockfile, dependencies, or older downloaded artifacts. Unexpected/symlinked workspace paths fail
-the job instead of being deleted.
+## Private control plane
 
-CI selects the native test worker count from the CPUs available to each job.
-OrbStack's global resource limits still apply. On the current eight-core, 16 GiB
-Mac, CPU access is eight cores and the OrbStack memory ceiling is 16 GiB. Memory is allocated
-on demand, rather than reserved. The installer removes a previous CPU quota and raises an
-existing container's memory ceiling to the full OrbStack memory pool;
-OrbStack settings can be adjusted with `orb config set cpu 8` and
-`orb config set memory_mib 16384` on this host.
+The private [`kolengri/vibeshape-ci`](https://github.com/kolengri/vibeshape-ci)
+repository owns the reviewed, installed host broker and VM executor. Its GitHub
+Actions are disabled, and it has no registered runner. The host runs a pinned
+installation of that private code; it never loads controller code, commands,
+workflow YAML, or configuration from a public checkout.
 
-Only this private repository is registered. Owner-authored PRs whose source is the same
-repository can use the fallback; fork and other authors' PRs retain GitHub-hosted routing.
-This persistent runner is intended for trusted personal code. Do not register public or
-untrusted projects on it. Workflow code has access to this repository's persistent Linux
-workspace and to credentials granted to its current job, including production credentials
-when GitHub authorizes a production environment.
+The broker uses the owner's existing host GitHub CLI login. It passes only an
+exact public source SHA to its trusted executor. Neither that credential nor a
+GitHub job token enters the worker. The executor downloads a bounded public source
+archive and transfers it into the VM without extracting it on macOS.
 
-Install from a reviewed checkout on an Apple Silicon Mac with OrbStack, Docker CLI, and
-an authenticated GitHub CLI account that administers this repository:
+The result status is bound to the tested checkout SHA and the exact public run ID
+and attempt. The waiter accepts the expected owner's status and run URL only.
+For a synthetic PR merge, the broker also verifies the current merge ref and its
+base/head parents. It revalidates eligibility during execution and before success.
+An old head, moved merge, canceled run, interrupted broker, ambiguous job, missing
+result, or failed verification cannot satisfy a new attempt. Host state records
+execution intent before launch, preventing an interrupted request from silently
+being treated as a fresh successful run.
 
-```sh
-bash ops/github-runner/install-macos.sh
-```
+## Worker boundary
 
-Start OrbStack before the initial installation if its daemon is not yet ready. Registration
-uses a short-lived token piped directly into the container. The host GitHub CLI login is
-never mounted or copied into the runner. Runner registration credentials remain inside the
-container; GitHub's automatic runner updates are enabled. Recreating the container requires
-removing the old registration and registering again; replacing an active runner is not part
-of the installer.
+Each shard receives a fresh Linux VM with its own kernel, cloned from a stopped,
+trusted golden image. The worker has six virtual CPUs and 10 GiB RAM on the
+16 GiB Mac; the inner test container is limited to six CPUs and 8 GiB. These are
+resource limits, not measured optimal allocations. One local worker prevents
+concurrent jobs from exhausting host memory.
 
-The installer copies the controller into
-`~/Library/Application Support/GitHubRunners/vibeshape/` and installs the LaunchAgent
-`dev.vibeshape.actions-fallback`. It starts OrbStack and checks every three minutes, also at
-login. Docker's restart policy restarts the container after the Linux runtime restarts.
-Re-run the installer to update the copied controller after reviewing changes. Restore hosted
-routing and wait for the local runner to be idle first; the installer rejects a busy runner and
-restarts an existing idle listener so its pre-job hook configuration takes effect.
+Tart 2.41.1 launches the VM with clipboard, audio, USB accessories, and graphics
+disabled. No macOS directory, additional disk, SSH agent, Docker socket, device,
+secret, or host port is shared. Management SSH is initiated by the host with a
+dedicated key and forwarding disabled. The guest has only its management public
+key. The worker VM and all writable dependency/test state are deleted after each
+attempt; failed cleanup prevents the next worker from starting.
 
-Keep the Mac connected to power and the network, with sleep disabled on AC power. This is
-a login service: after a reboot/FileVault unlock, the macOS user must log in before it starts.
-A closed laptop lid can suspend the Mac; use a supported awake/clamshell setup. A powered-off,
-sleeping, or disconnected Mac cannot run jobs. Self-hosted Actions execution does not consume
-GitHub-hosted minutes; GitHub artifact storage is still governed by the account's limits.
+Softnet 0.24.1 enforces network filtering outside the guest. Guest-initiated traffic
+to the VM gateway and all connected host IPv4 networks is denied. A default-deny
+policy permits only the npm registry addresses resolved by the host and two fixed
+public DNS resolvers; private/reserved IPv4 and IPv6 remain denied. A registry or
+DNS address overlapping a connected host network aborts startup. Host-initiated
+management connections can receive replies. The test container itself uses
+`--network=none`. Dependencies requiring other download hosts fail closed.
+A guest-root compromise cannot remove the external filter.
 
-## Automatic recovery
+Inside the VM, source extraction and dependency lifecycle scripts run as a
+non-root container user. The container has a read-only root filesystem, no Linux
+capabilities, no privilege escalation, and bounded memory, processes, temporary
+storage, output, and execution time. The test container runs the complete Node
+corpus with Bun's native `--shard=3/3`, using the same committed timings as the
+hosted shards. It cannot publish production artifacts or reusable test receipts.
 
-GitHub does not automatically substitute a self-hosted runner when hosted minutes run out.
-The host-side controller uses the existing `gh` login to inspect workflow runs and check-run
-annotations; it needs no additional billing OAuth scope or credential inside CI.
+## Host operation and remaining limits
 
-It redirects only when GitHub reports an **unstarted** failed job with an annotation about
-a spending/minutes limit. A failed test, build, asset check, missing runner, or permission
-error does not activate recovery. The same GitHub billing message can also mention failed
-payments; recovery is based on that scheduling message, not a measurement of remaining minutes.
-The account's budgets and payment settings are never changed.
+Installation and image preparation are documented in the private control
+repository. Softnet requires a one-time macOS administrator confirmation for its
+verified root-owned helper. The broker receives no general passwordless sudo.
+Install or update the controller only from a reviewed private commit. Do not
+re-register the old public runner or re-enable `dev.vibeshape.actions-fallback`.
 
-Before switching, the controller checks that the local runner is online. It retries failed
-jobs only for the current main SHA or an open, current, owner-authored, same-repository
-PR. Both workflow files must contain the selector at the run's API `head_sha`. For PRs this is
-the source-branch head, not the original synthetic merge SHA used by GitHub. As a conservative
-rollout requirement, older PR branches must merge/rebase `main` first, even if their merge result
-inherits the selector. The controller does not guess the original workflow from a newer merge ref.
-Earlier workflow versions cannot gain routing by rerunning; superseded commits and runs predating
-installation are ignored. Only `ci.yml` and `cloudflare-pages.yml` are eligible. The last 100 failed runs
-are inspected per poll; this is intended for personal-project volume, not an organization queue.
+Only the owner currently has repository write access. External contributors'
+workflow runs require approval. These controls limit who can request work, while
+the VM and external network filter provide the machine boundary. Workflow files
+can still be changed in a PR; a publicly registered runner would therefore defeat
+the intended isolation even if its normal workflow had restrictive conditions.
+The waiter is also editable source: the required aggregate alone does not prove
+that a maliciously rewritten workflow ran every intended test. Review workflow
+changes before merging them.
 
-After automatic recovery, subsequent jobs use the Mac. On the first poll of a new UTC month,
-the controller restores GitHub-hosted routing and stops retrying the preceding month's runs.
-It requests at most one successful automatic retry per run, even if the retry is also blocked.
-API failures retain retry state.
-A manually selected `mac` mode has no automatic monthly reset. There is no automatic hosted
-fallback while the Mac is offline; jobs already queued for it keep their original labels.
-
-## Operation
-
-```sh
-# Force local execution or restore hosted execution.
-gh variable set VIBESHAPE_CI_RUNNER --repo kolengri/VibeShape --body mac
-gh variable set VIBESHAPE_CI_RUNNER --repo kolengri/VibeShape --body github
-
-# Opt into mixed CI, or return to fully hosted CI when the primary mode is github.
-gh variable set VIBESHAPE_CI_HYBRID --repo kolengri/VibeShape --body true
-gh variable set VIBESHAPE_CI_HYBRID --repo kolengri/VibeShape --body false
-
-# Inspect Linux runtime, registration, and controller errors.
-docker logs --tail 30 vibeshape-actions-runner
-gh api repos/kolengri/VibeShape/actions/runners
-tail -n 30 "$HOME/Library/Application Support/GitHubRunners/vibeshape/fallback-error.log"
-
-# Stop automatic recovery and the local runner.
-launchctl bootout "gui/$(id -u)/dev.vibeshape.actions-fallback"
-docker stop vibeshape-actions-runner
-```
-
-Restore the variable to `github` before stopping if hosted execution is desired. To keep
-recovery stopped after the next login, remove its LaunchAgent plist. Do not prune unrelated
-Docker data. Workspace/browser caches occupy disk; inspect the named volume and available
-Mac disk space before adding more projects.
-
-Controller checks:
-
-```sh
-python3 -m unittest discover -s ops/github-runner -p 'test_*.py'
-python3 ops/github-runner/fallback.py --state /tmp/vibeshape-fallback-dry-run.json --dry-run
-```
-
-The CI workflow also accepts `workflow_dispatch` for verifying a branch without publishing
-to Cloudflare. A green local CI run verifies the selected checks on Linux ARM64; it does not
-prove a production deployment or a real billing-limit event. See [Cloudflare deployment](cloudflare-deployment.md)
-for publication gates.
+Drain workers before changing host networks; connected network ranges are captured at VM startup.
+Keep the Mac powered, connected, and awake on AC power. The broker is a login
+service; reboot/FileVault unlock requires login before it starts. No software
+boundary removes hypervisor, networking-helper, or SSH implementation risk.
+Keep macOS, the golden image, and the reviewed runtime updated, and rerun the
+host/LAN denial and cancellation checks after changing this boundary.
