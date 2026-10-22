@@ -21,7 +21,28 @@ test("clips the viewport with reversible sections while preserving saved solids"
   await expect(
     viewControls.getByRole("button", { name: "Section view", exact: true }),
   ).toBeVisible()
-  await section.getByLabel("Enable section view", { exact: true }).check()
+  await expect(
+    page.getByRole("tooltip", { name: "Disable section view", exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(section).toBeHidden()
+  await expect(sectionButton).toBeFocused()
+  await sectionButton.press("Enter")
+  await section.getByRole("radio", { name: "XY plane, normal Z", exact: true }).focus()
+  await expect(page.getByRole("tooltip", { name: "XY plane, normal Z", exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(section).toBeHidden()
+  await expect(sectionButton).toBeFocused()
+  await sectionButton.press("Enter")
+  await section.getByRole("button", { name: "Keep the opposite side", exact: true }).focus()
+  await expect(
+    page.getByRole("tooltip", { name: "Keep the opposite side", exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(section).toBeHidden()
+  await expect(sectionButton).toBeFocused()
+  await sectionButton.press("Enter")
+  await section.getByRole("radio", { name: "XY plane, normal Z", exact: true }).check()
   await expect(section.getByRole("radio", { name: "XY plane, normal Z" })).toBeChecked()
   await section.getByRole("radio", { name: "XY plane, normal Z" }).focus()
   await page.keyboard.press("ArrowRight")
@@ -39,20 +60,29 @@ test("clips the viewport with reversible sections while preserving saved solids"
       return bounds !== null && bounds.y >= 0 && bounds.y + bounds.height <= 384
     })
     .toBe(true)
-  await section.getByLabel("Keep the opposite side").check()
-  await section.getByLabel("Keep the opposite side").uncheck()
+  await section.getByRole("button", { name: "Keep the opposite side", exact: true }).click()
+  await expect(
+    section.getByRole("button", { name: "Keep the opposite side", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true")
+  await section.getByRole("button", { name: "Keep the opposite side", exact: true }).press("Space")
+  await expect(
+    section.getByRole("button", { name: "Keep the opposite side", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false")
   await page.setViewportSize({ width: 1440, height: 900 })
   const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
   await expect(viewport).toHaveAttribute("data-section-axis", "z")
-  await section.getByLabel("Section offset (mm)").fill("10")
+  await section.getByRole("combobox", { name: "Section offset", exact: true }).fill("1 cm")
+  await expect(section.getByRole("combobox", { name: "Section offset", exact: true })).toHaveValue(
+    "1 cm",
+  )
   await expect(viewport).toHaveAttribute("data-section-offset", "10")
   await page.screenshot({ path: test.info().outputPath("section-lower.png") })
-  await section.getByLabel("Keep the opposite side").check()
+  await section.getByRole("button", { name: "Keep the opposite side", exact: true }).click()
   await page.screenshot({ path: test.info().outputPath("section-upper.png") })
-  await section.getByLabel("Section offset (mm)").fill("100001")
-  await expect(section.getByText(/finite offset/)).toBeVisible()
+  await section.getByRole("combobox", { name: "Section offset", exact: true }).fill("100001")
+  await expect(section.getByText(/Enter a length between/)).toBeVisible()
   await expect(viewport).toHaveAttribute("data-section-offset", "10")
-  await section.getByLabel("Section offset (mm)").fill("5")
+  await section.getByRole("combobox", { name: "Section offset", exact: true }).fill("5")
   await section.getByRole("radio", { name: "YZ plane, normal X" }).check()
   await expect(viewport).toHaveAttribute("data-section-axis", "x")
   await page.keyboard.press("Escape")
@@ -71,10 +101,12 @@ test("clips the viewport with reversible sections while preserving saved solids"
   await page.getByRole("button", { name: "Cancel", exact: true }).click()
   await sectionButton.click()
   await expect(section.getByRole("radio", { name: "YZ plane, normal X" })).toBeChecked()
-  await expect(section.getByLabel("Keep the opposite side")).toBeChecked()
+  await expect(
+    section.getByRole("button", { name: "Keep the opposite side", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true")
   await section.getByRole("radio", { name: "XY plane, normal Z" }).check()
-  await section.getByLabel("Keep the opposite side").uncheck()
-  await section.getByLabel("Section offset (mm)").fill("-100")
+  await section.getByRole("button", { name: "Keep the opposite side", exact: true }).click()
+  await section.getByRole("combobox", { name: "Section offset", exact: true }).fill("-100")
   await page.keyboard.press("Escape")
   const canvas = viewport.locator("canvas")
   const bounds = await canvas.boundingBox()
@@ -84,7 +116,7 @@ test("clips the viewport with reversible sections while preserving saved solids"
   await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } })
   await expect(viewport).not.toHaveAttribute("data-selected-feature")
   await sectionButton.click()
-  await section.getByLabel("Enable section view", { exact: true }).uncheck()
+  await section.getByRole("radio", { name: "Disable section view", exact: true }).check()
   await expect(viewport).not.toHaveAttribute("data-section-axis")
   await page.reload()
   await saved(page)
@@ -122,8 +154,8 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.getByRole("tooltip", { name: "Section view", exact: true })).toBeVisible()
     await trigger.click()
     const section = page.getByRole("dialog", { name: "Section view", exact: true })
-    await section.getByLabel("Enable section view", { exact: true }).check()
-    await section.getByLabel("Section offset (mm)").fill("10")
+    await section.getByRole("radio", { name: "XY plane, normal Z", exact: true }).check()
+    await section.getByRole("combobox", { name: "Section offset", exact: true }).fill("10")
     await expect(canvas).toHaveAttribute("data-section-cap-count", "1")
     await page.keyboard.press("Escape")
     const handle = async () => {
@@ -147,8 +179,10 @@ for (const theme of ["light", "dark"] as const) {
       .toBeGreaterThan(10)
     const offset = await canvas.getAttribute("data-section-offset")
     await trigger.click()
-    await expect(section.getByLabel("Section offset (mm)")).toHaveValue(offset ?? "")
-    await section.getByLabel("Section offset (mm)").fill("10")
+    await expect(
+      section.getByRole("combobox", { name: "Section offset", exact: true }),
+    ).toHaveValue(`${Number(Number(offset).toPrecision(12))} mm`)
+    await section.getByRole("combobox", { name: "Section offset", exact: true }).fill("10")
     await page.keyboard.press("Escape")
     const cancelStart = await handle()
     await page.mouse.move(cancelStart.x, cancelStart.y)

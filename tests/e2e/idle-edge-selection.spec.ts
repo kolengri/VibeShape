@@ -21,8 +21,8 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await page.getByRole("button", { name: "Fit view", exact: true }).click()
     await page.getByRole("button", { name: "Section view", exact: true }).click()
     const section = page.getByRole("dialog", { name: "Section view", exact: true })
-    await section.getByLabel("Enable section view", { exact: true }).check()
-    await section.getByLabel("Section offset (mm)").fill("10")
+    await section.getByRole("radio", { name: "XY plane, normal Z", exact: true }).check()
+    await section.getByRole("combobox", { name: "Section offset", exact: true }).fill("10")
     await page.keyboard.press("Escape")
     await page
       .getByRole("combobox", { name: "Selection filter", exact: true })
