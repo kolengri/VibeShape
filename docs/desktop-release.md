@@ -22,8 +22,9 @@ For example, source version `0.1.13` with tag `desktop-v0.1.13` produces `0.1.14
 The workflow creates a release commit containing only the selected desktop version in
 `apps/desktop/package.json` and `bun.lock`, with the dispatched commit as its sole parent. It pushes
 an annotated `desktop-vVERSION` tag recording the workflow run ID and both source SHAs. It never
-pushes commits to `main`. CI, the website build and desktop packaging check out the generated
-release commit; receipts and bundled application sources identify that exact commit. The native
+pushes commits to `main`. CI, Windows source checks, the website build and desktop packaging check
+out the generated release commit; receipts and bundled application sources identify that exact
+commit. The native
 acceptance harness remains the dispatched source, while its expected artifact SHA is the release
 commit. The tag and its source are reserved before CI and packaging; public downloads appear only
 after both native acceptance jobs and publication succeed.
@@ -32,9 +33,12 @@ dispatch whose source has already been superseded on `main`.
 
 ## Build and acceptance
 
-The workflow runs the existing reusable CI checks and the presentation site's production-build
-tests, including desktop download discovery. It downloads the configured OCCT corresponding-source
-archive, verifies the same pinned SHA-256 used by the browser deployment, and invokes the existing
+The workflow runs the existing reusable CI checks, Windows native source checks, and the
+presentation site's production-build tests, including desktop download discovery. Windows source
+checks run here before packaging and can also be dispatched manually; they do not run on every
+pull request. A failed Windows source check blocks packaging and publication. The workflow downloads
+the configured OCCT corresponding-source archive, verifies the same pinned SHA-256 used by the
+browser deployment, and invokes the existing
 source-matched desktop packager on Apple Silicon. Both packages contain the controlled editor,
 kernel and solver, exact corresponding sources, notices and replacement instructions.
 

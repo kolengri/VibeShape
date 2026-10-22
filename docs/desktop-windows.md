@@ -94,8 +94,13 @@ failed-launch recovery and the absence of slicing or printer traffic match the M
 For a single manual build, native acceptance and publication run, see
 [automated desktop releases](desktop-release.md).
 
-`Windows desktop` CI runs Windows x64 target/ZIP/update/schema/private-file checks, builds the native
-host and source editor, and exercises CAD creation and project persistence through real Electron.
+`Windows desktop` runs automatically as a required gate in `Desktop release` before packaging,
+and can also be dispatched manually for diagnosis. It does not run on every pull request; normal
+PR CI remains enabled, but Windows-specific regressions may be discovered only during release
+preparation. The release caller passes the exact reserved release commit to checkout.
+The workflow runs Windows x64 target/ZIP/update/schema/private-file checks, builds the native
+host and source editor, checks local-agent probing and process launch, and exercises CAD creation
+and project persistence through real Electron.
 Its source editor uses the normal feasibility build; it does not certify a controlled release.
 `bun run test:desktop` selects this Windows smoke test on Windows and retains the existing Mac
 suite on macOS.
