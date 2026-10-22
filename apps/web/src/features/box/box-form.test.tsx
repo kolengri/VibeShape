@@ -234,6 +234,23 @@ describe("BoxForm", () => {
     expect((width as HTMLInputElement).value).toBe("#missing")
     expect(document.activeElement).toBe(width)
     expect(onSave).not.toHaveBeenCalled()
+
+    await user.clear(width)
+    await user.type(width, "32 mm")
+    expect(screen.queryByText(copy.invalidExpression)).toBeNull()
+    expect(screen.queryByText(copy.validationSummary)).toBeNull()
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({
+        parameters: expect.objectContaining({
+          width: expect.objectContaining({
+            value: 32,
+            source: expect.objectContaining({ expression: "32 mm" }),
+          }),
+        }),
+      }),
+    )
   })
 
   it("uses project units for defaults and normalizes unitless input before persistence", async () => {

@@ -1,7 +1,8 @@
 import type { DocumentSnapshot, FeatureRecord } from "@vibeshape/domain"
 import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selector"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -72,8 +73,23 @@ export function SweepLoftForm({
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const [message, setMessage] = useState<string | null>(null)
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: sweepLoftFormValues(mode),
+    validators: {
+      onDynamic: ({ value }) => {
+        const feature = sweepLoftFeatureRecord(
+          mode,
+          featureId,
+          value,
+          profiles,
+          paths,
+          snapshot,
+          supports,
+        )
+        return feature ? undefined : copy.validationSummary
+      },
+    },
     onSubmit: async ({ value }) => {
       const feature = sweepLoftFeatureRecord(
         mode,
@@ -84,10 +100,7 @@ export function SweepLoftForm({
         snapshot,
         supports,
       )
-      if (!feature) {
-        setMessage(copy.validationSummary)
-        return
-      }
+      if (!feature) return
       setMessage(null)
       try {
         await submitFeatureMutation({ baseRevision, copy, feature, onSave, onSaved, setMessage })
@@ -98,6 +111,7 @@ export function SweepLoftForm({
   })
   return (
     <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       <form.Subscribe selector={(state) => [state.values, state.isSubmitting] as const}>
         {([values, pending]) => {
           const feature = sweepLoftFeatureRecord(

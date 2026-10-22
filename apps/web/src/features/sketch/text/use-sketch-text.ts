@@ -1,6 +1,7 @@
 import type { SketchEntityId, SketchRecord } from "@vibeshape/domain"
 import { detachSketchTextGroup } from "@vibeshape/domain/sketch-text-edit"
 import type { SketchTextGroup } from "@vibeshape/domain/sketch-text-groups"
+import { useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
 import type { SketchTextActions } from "./text-context"
 import { loadSketchTextFont, SketchTextFontError } from "./text-font"
@@ -13,7 +14,7 @@ import {
   sketchTextDraftUnchanged,
   sketchTextOutlineAltered,
   sketchTextValues,
-  type TextFieldErrors,
+  type TextValidationKey,
 } from "./text-model"
 
 export type SketchTextTarget = { sketch: SketchRecord; group: SketchTextGroup | null }
@@ -73,6 +74,7 @@ export type SketchTextTaskCopy = {
   fontFailed: string
   outlineFailed: string
   outlineProblem: (error: SketchTextOutlineError) => string
+  fieldProblem: (key: TextValidationKey) => string
 }
 function taskPrecondition(
   target: SketchTextTarget,
@@ -141,74 +143,81 @@ export function useSketchTextTask({
   onApplied: () => void
   copy: SketchTextTaskCopy
 }) {
-  const [values, setValues] = useState(() => sketchTextValues(target.group ?? undefined))
-  const [fieldErrors, setFieldErrors] = useState<TextFieldErrors>({})
   const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
   const [altered, setAltered] = useState<boolean | null>(target.group ? null : false)
-  const active = useRef(true),
-    lock = useRef(false)
+  const active = useRef<SketchTextTarget | null>(target)
   const constraints = target.group
     ? attachedSketchTextConstraints(target.sketch, target.group).length
     : 0
   useEffect(() => {
-    active.current = true
+    active.current = target
+    let cancelled = false
     if (target.group)
       void sketchTextOutlineAltered(target.sketch, target.group)
         .then((changed) => {
-          if (active.current) setAltered(changed)
+          if (!cancelled) setAltered(changed)
         })
         .catch(() => {
-          if (active.current) setError(copy.outlineFailed)
+          if (!cancelled) setError(copy.outlineFailed)
         })
     return () => {
-      active.current = false
+      cancelled = true
+      active.current = null
     }
   }, [target, copy.outlineFailed])
-  const update = <K extends keyof SketchTextValues>(field: K, value: SketchTextValues[K]) => {
-    setValues((current) => ({ ...current, [field]: value }))
-    setFieldErrors((current) => ({ ...current, [field]: undefined }))
-    setError(null)
-  }
-  const apply = async () => {
-    if (lock.current || altered === null) return
+  const validate = (values: SketchTextValues) => {
     const parsed = parseSketchTextValues(values)
-    setFieldErrors(parsed.errors)
-    if (!parsed.ok) return
-    const precondition = taskPrecondition(
-      target,
-      getDraft(),
-      constraints,
-      values.removeAttachedConstraints,
-      copy,
-    )
-    if (precondition) return setError(precondition)
-    lock.current = true
-    setPending(true)
-    setError(null)
-    try {
-      const generated = await prepareTaskDraft(
-        target,
-        parsed,
-        values.removeAttachedConstraints,
-        () => active.current,
-      )
-      publishTaskDraft({
-        isActive: () => active.current,
-        generated,
-        captured: target.sketch,
-        getDraft,
-        onDraftChange,
-        onApplied,
-        onStale: () => setError(copy.stale),
-      })
-    } catch (problem) {
-      if (active.current) setError(taskProblem(problem, copy))
-    } finally {
-      lock.current = false
-      if (active.current) setPending(false)
+    if (parsed.ok) return undefined
+    const fields: Partial<Record<keyof SketchTextValues, string>> = {}
+    for (const key of Object.keys(parsed.errors) as (keyof SketchTextValues)[]) {
+      const problem = parsed.errors[key]
+      if (problem) fields[key] = copy.fieldProblem(problem)
     }
+    return { fields }
   }
-  return { values, fieldErrors, error, pending, altered, constraints, update, apply }
+  const form = useAppForm({
+    defaultValues: sketchTextValues(target.group ?? undefined),
+    validators: {
+      onChange: ({ value, formApi }) =>
+        formApi.state.submissionAttempts > 0 ? validate(value) : undefined,
+      onSubmit: ({ value }) => validate(value),
+    },
+    listeners: { onChange: () => setError(null) },
+    onSubmit: async ({ value }) => {
+      if (altered === null) return
+      const parsed = parseSketchTextValues(value)
+      if (!parsed.ok) return
+      const precondition = taskPrecondition(
+        target,
+        getDraft(),
+        constraints,
+        value.removeAttachedConstraints,
+        copy,
+      )
+      if (precondition) return setError(precondition)
+      const isActive = () => active.current === target
+      setError(null)
+      try {
+        const generated = await prepareTaskDraft(
+          target,
+          parsed,
+          value.removeAttachedConstraints,
+          isActive,
+        )
+        publishTaskDraft({
+          isActive,
+          generated,
+          captured: target.sketch,
+          getDraft,
+          onDraftChange,
+          onApplied,
+          onStale: () => setError(copy.stale),
+        })
+      } catch (problem) {
+        if (isActive()) setError(taskProblem(problem, copy))
+      }
+    },
+  })
+  return { form, error, altered, constraints }
 }
 export type SketchTextTask = ReturnType<typeof useSketchTextTask>

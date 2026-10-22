@@ -6,10 +6,8 @@ import type {
 } from "@vibeshape/domain"
 import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { Button } from "@vibeshape/ui/components/button"
-import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import type { FeatureParameterFormProps, PrimitiveLengthCopy } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
@@ -103,7 +101,8 @@ export function SplitForm(props: SplitFormProps) {
   const draft = useSplitDraft(props)
   const { form, state } = draft
   return (
-    <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       {onManipulatorChange && (
         <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
           {([values, pending]) => (
@@ -167,17 +166,13 @@ export function SplitForm(props: SplitFormProps) {
               selectedFace={selectedFace}
               onChange={draft.setReference}
             >
-              <form.Field name="plane">
+              <form.AppField name="plane">
                 {(field) => (
-                  <ChoiceField
-                    name={field.name}
+                  <field.ChoiceField
                     label={copy.plane}
                     description={copy.planeDescription}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onValueChange={(value) => {
+                    onValueChange={() => {
                       state.clearSubmissionErrors()
-                      field.handleChange(value as "XY" | "XZ" | "YZ")
                     }}
                     options={(["XY", "XZ", "YZ"] as const).map((plane) => ({
                       value: plane,
@@ -185,26 +180,21 @@ export function SplitForm(props: SplitFormProps) {
                     }))}
                   />
                 )}
-              </form.Field>
+              </form.AppField>
             </ReferencePlaneSelection>
-            <form.Field name="offset">
+            <form.AppField name="offset">
               {(field) => (
-                <LengthExpressionField
+                <field.LengthExpressionField
                   id="split-offset"
-                  name="offset"
-                  value={field.state.value}
                   label={copy.offset}
                   description={copy.lengthDescription}
-                  error={state.issues.offset}
                   suggestions={state.suggestions}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
+                  onValueChange={() => {
                     state.clearSubmissionErrors()
-                    field.handleChange(value)
                   }}
                 />
               )}
-            </form.Field>
+            </form.AppField>
             <Button
               type="button"
               variant="outline"

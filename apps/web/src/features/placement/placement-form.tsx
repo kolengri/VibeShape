@@ -7,9 +7,7 @@ import type {
 import { Button } from "@vibeshape/ui/components/button"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { type RefObject, useEffect } from "react"
 import { featureEditPreview } from "../part-design/feature-edit-preview"
-import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import type { FeatureParameterFormProps } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
@@ -89,21 +87,6 @@ function PlacementPreview({
   })
   return null
 }
-function PlacementErrorFocus({
-  pending,
-  field,
-  formRef,
-}: {
-  pending: boolean
-  field: string | undefined
-  formRef: RefObject<HTMLFormElement | null>
-}) {
-  useEffect(() => {
-    if (!pending && field) formRef.current?.querySelector<HTMLElement>(`[name="${field}"]`)?.focus()
-  }, [field, pending, formRef])
-  return null
-}
-
 export function PlacementForm(props: PlacementFormProps) {
   const {
     alignmentFaces,
@@ -120,7 +103,8 @@ export function PlacementForm(props: PlacementFormProps) {
   const draft = usePlacementDraft(props)
   const { form, state } = draft
   return (
-    <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       {onManipulatorChange && (
         <form.Subscribe selector={(s) => [s.values, s.isSubmitting] as const}>
           {([values, pending]) => (
@@ -159,11 +143,6 @@ export function PlacementForm(props: PlacementFormProps) {
       <form.Subscribe selector={(formState) => formState.isSubmitting}>
         {(pending) => (
           <>
-            <PlacementErrorFocus
-              pending={pending}
-              field={Object.keys(state.issues)[0]}
-              formRef={state.formElementRef}
-            />
             <ParameterPanel
               copy={copy}
               legend={copy.parameters}
@@ -218,28 +197,23 @@ export function PlacementForm(props: PlacementFormProps) {
                   {placementAxes.map((axis) => {
                     const name = placementFieldName(group, axis)
                     return (
-                      <form.Field key={name} name={name}>
+                      <form.AppField key={name} name={name}>
                         {(field) => (
-                          <LengthExpressionField
+                          <field.LengthExpressionField
                             id={`placement-${name}`}
-                            name={name}
-                            value={field.state.value}
                             label={copy[name]}
                             description={
                               group === "translation"
                                 ? copy.lengthDescription
                                 : copy.angleDescription
                             }
-                            error={state.issues[name]}
                             suggestions={state.suggestions}
-                            onBlur={field.handleBlur}
-                            onValueChange={(value) => {
+                            onValueChange={() => {
                               draft.beforeEdit()
-                              field.handleChange(value)
                             }}
                           />
                         )}
-                      </form.Field>
+                      </form.AppField>
                     )
                   })}
                 </fieldset>

@@ -1,8 +1,10 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { vi } from "../../../../../tests/unit/support/bun-test"
-import { BooleanParameterField, TanStackBooleanParameterField } from "./boolean-parameter-field"
+import { BooleanParameterField } from "./boolean-parameter-field"
+import { useCadForm } from "./cad-form"
 
 afterEach(cleanup)
 
@@ -18,19 +20,23 @@ describe("BooleanParameterField", () => {
     expect(onChange).toHaveBeenCalledTimes(1)
   })
 
-  it("adapts a TanStack-style boolean field without owning form state", () => {
-    const handleChange = vi.fn()
-    const onBeforeChange = vi.fn()
-    render(
-      <TanStackBooleanParameterField
-        label="Symmetric"
-        onBeforeChange={onBeforeChange}
-        field={{ name: "symmetric", state: { value: false }, handleBlur: vi.fn(), handleChange }}
-      />,
-    )
+  it("binds a registered boolean field and preserves its value-change callback", () => {
+    const onValueChange = vi.fn()
+    function Fixture() {
+      const form = useCadForm({ defaultValues: { symmetric: false } })
+      return (
+        <Form form={form}>
+          <form.AppField name="symmetric">
+            {(field) => <field.CheckboxField label="Symmetric" onValueChange={onValueChange} />}
+          </form.AppField>
+        </Form>
+      )
+    }
+    render(<Fixture />)
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Symmetric" }))
-    expect(onBeforeChange).toHaveBeenCalledTimes(1)
-    expect(handleChange).toHaveBeenCalledWith(true)
+    const checkbox = screen.getByRole("checkbox", { name: "Symmetric" })
+    fireEvent.click(checkbox)
+    expect(onValueChange).toHaveBeenCalledWith(true)
+    expect((checkbox as HTMLInputElement).checked).toBe(true)
   })
 })

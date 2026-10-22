@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
+import { closeVariablesDialog } from "./variables-ui-support"
 
 test.describe("Cylinder parameters", () => {
   test("creates, edits, renders, and reopens a variable-driven Cylinder", async ({ page }) => {
@@ -14,6 +15,7 @@ test.describe("Cylinder parameters", () => {
     await page.getByRole("textbox", { name: "Variable name" }).fill("radius")
     await page.getByRole("combobox", { name: "Variable expression" }).fill("12 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
+    await closeVariablesDialog(page)
 
     await invokeModelCommand(page, "Primitives", "Cylinder")
     const createForm = page.getByRole("form", { name: "Create cylinder" })
@@ -23,9 +25,9 @@ test.describe("Cylinder parameters", () => {
     await createForm.getByRole("combobox", { name: "Origin Y" }).fill("-6 mm")
     await createForm.getByRole("combobox", { name: "Origin Z" }).fill("10 mm")
     await createForm.getByRole("checkbox", { name: "Center height about placement origin" }).check()
-    await createForm.getByRole("button", { name: "Create cylinder" }).dblclick()
+    await createForm.getByRole("button", { name: "Create cylinder", exact: true }).dblclick()
 
-    await expect(page.getByRole("treeitem", { name: "Cylinder 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(
@@ -34,7 +36,7 @@ test.describe("Cylinder parameters", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
 
-    await page.getByRole("treeitem", { name: "Cylinder 1" }).click()
+    await page.getByRole("treeitem", { name: "Cylinder 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit cylinder" })
     await expect(editForm.getByRole("combobox", { name: "Radius" })).toHaveValue("#radius")
     await expect(editForm.getByRole("combobox", { name: "Origin X" })).toHaveValue("18 mm")
@@ -49,9 +51,9 @@ test.describe("Cylinder parameters", () => {
     await expect(editForm).not.toBeVisible()
 
     await page.reload()
-    await expect(page.getByRole("treeitem", { name: "Cylinder 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
-    await page.getByRole("treeitem", { name: "Cylinder 1" }).click()
+    await page.getByRole("treeitem", { name: "Cylinder 1", exact: true }).click()
     const reopenedForm = page.getByRole("form", { name: "Edit cylinder" })
     await expect(reopenedForm.getByRole("combobox", { name: "Radius" })).toHaveValue("#radius")
     await expect(reopenedForm.getByRole("combobox", { name: "Height" })).toHaveValue("42 mm")

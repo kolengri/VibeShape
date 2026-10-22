@@ -6,14 +6,13 @@ import {
   featureRecordSchema,
   type VariableDefinition,
 } from "@vibeshape/domain"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
-import { TanStackLengthExpressionField } from "../part-design/length-expression-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import {
   defaultPrimitiveOriginValues,
   type FeatureParameterFormProps,
@@ -200,16 +199,8 @@ export function CylinderForm({
   previewStatus,
   variables,
 }: CylinderFormProps) {
-  const {
-    clearSubmissionErrors,
-    displayUnits,
-    formElementRef,
-    issues,
-    message,
-    setIssues,
-    setMessage,
-    suggestions,
-  } = useParameterFormState(variables)
+  const { clearSubmissionErrors, displayUnits, message, setMessage, suggestions } =
+    useParameterFormState(variables)
   const defaultValues =
     mode.kind === "edit"
       ? cylinderFormValuesFromFeature(mode.feature)
@@ -217,22 +208,19 @@ export function CylinderForm({
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues,
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parseCylinderValues(value, variables, copy, displayUnits.length)
+        return parsed.ok ? undefined : { form: copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: async ({ value }) => {
       const parsed = parseCylinderValues(value, variables, copy, displayUnits.length)
-      if (!parsed.ok) {
-        setIssues(parsed.issues)
-        setMessage(copy.validationSummary)
-        const firstField = (["radius", "height", "originX", "originY", "originZ"] as const).find(
-          (field) => parsed.issues[field],
-        )
-        if (firstField) {
-          formElementRef.current?.querySelector<HTMLElement>(`[name="${firstField}"]`)?.focus()
-        }
-        return
-      }
-      setIssues({})
+      if (!parsed.ok) return
+
       setMessage(null)
       await submitFeatureMutation({
         baseRevision,
@@ -255,39 +243,36 @@ export function CylinderForm({
   })
 
   const dimensionField = (fieldName: DimensionField, label: string) => (
-    <form.Field name={fieldName}>
+    <form.AppField name={fieldName}>
       {(field) => (
-        <TanStackLengthExpressionField
+        <field.LengthExpressionField
           id={`cylinder-${fieldName}`}
-          field={field}
           label={label}
           description={copy.expressionDescription}
-          error={issues[fieldName]}
           suggestions={suggestions}
-          onBeforeChange={clearSubmissionErrors}
+          onValueChange={clearSubmissionErrors}
         />
       )}
-    </form.Field>
+    </form.AppField>
   )
 
   const originField = (fieldName: PrimitiveOriginField, label: string) => (
-    <form.Field name={fieldName}>
+    <form.AppField name={fieldName}>
       {(field) => (
-        <TanStackLengthExpressionField
+        <field.LengthExpressionField
           id={`cylinder-${fieldName}`}
-          field={field}
           label={label}
           description={copy.positionDescription}
-          error={issues[fieldName]}
           suggestions={suggestions}
-          onBeforeChange={clearSubmissionErrors}
+          onValueChange={clearSubmissionErrors}
         />
       )}
-    </form.Field>
+    </form.AppField>
   )
 
   return (
-    <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       {onPreviewChange ? (
         <form.Subscribe selector={(state) => state.values}>
           {(values) => (
@@ -324,15 +309,11 @@ export function CylinderForm({
           </>
         }
         centeredField={
-          <form.Field name="centered">
+          <form.AppField name="centered">
             {(field) => (
-              <TanStackBooleanParameterField
-                field={field}
-                label={copy.centered}
-                onBeforeChange={clearSubmissionErrors}
-              />
+              <field.CheckboxField label={copy.centered} onValueChange={clearSubmissionErrors} />
             )}
-          </form.Field>
+          </form.AppField>
         }
         placementFields={
           <>

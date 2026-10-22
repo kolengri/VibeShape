@@ -3,9 +3,13 @@ import {
   createDefaultSurfaceTextureLayer,
   type SurfaceTextureLayer,
   surfaceTextureLayerIdSchema,
+  surfaceTextureLayersSchema,
 } from "@vibeshape/domain/surface-textures"
+import { useTranslations } from "@vibeshape/i18n"
+import { useIsMounted } from "@vibeshape/ui/hooks/use-is-mounted"
+import { useAppForm, useStore } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useCallback, useEffect, useState } from "react"
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useState } from "react"
 import { browserAuthoredUuid } from "../../document/authored-document-session"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { useSurfaceTexturePreviewContext } from "./surface-texture-preview-context"
@@ -55,25 +59,50 @@ export function useTextureDraft(
   controller: DocumentControllerState,
   selection: ViewerSelection | null,
   initialBody: Body | null,
+  onSubmit: () => Promise<void>,
 ) {
-  const preview = useSurfaceTexturePreviewContext()
+  const isMounted = useIsMounted()
+  const t = useTranslations("app.surfaceTexture")
   const [baseRevision] = useState(controller.report?.snapshot.revision ?? 0)
-  const [draft, setDraft] = useState<TextureDraft | null>(() =>
-    initialBody ? bodyDraft(controller, initialBody, selection) : null,
+  const [defaultValues] = useState<{ draft: TextureDraft | null }>(() => ({
+    draft: initialBody ? bodyDraft(controller, initialBody, selection) : null,
+  }))
+  const form = useAppForm({
+    defaultValues,
+    validators: {
+      onSubmit: ({ value }) => {
+        if (!value.draft) return undefined
+        const parsed = surfaceTextureLayersSchema.safeParse(value.draft.layers)
+        return parsed.success ? undefined : t("saveFailed")
+      },
+    },
+    onSubmit: async () => {
+      if (isMounted()) await onSubmit()
+    },
+  })
+  const draft = useStore(form.store, (state) => state.values.draft)
+  const setDraft: Dispatch<SetStateAction<TextureDraft | null>> = useCallback(
+    (value) => {
+      form.setFieldValue("draft", value)
+    },
+    [form],
   )
   const layer = draft?.layers.find(({ id }) => id === draft.selectedId) ?? null
-  const update = useCallback((patch: Partial<SurfaceTextureLayer>) => {
-    setDraft((current) =>
-      current
-        ? {
-            ...current,
-            layers: current.layers.map((item) =>
-              item.id === current.selectedId ? { ...item, ...patch } : item,
-            ),
-          }
-        : null,
-    )
-  }, [])
+  const update = useCallback(
+    (patch: Partial<SurfaceTextureLayer>) => {
+      setDraft((current) =>
+        current
+          ? {
+              ...current,
+              layers: current.layers.map((item) =>
+                item.id === current.selectedId ? { ...item, ...patch } : item,
+              ),
+            }
+          : null,
+      )
+    },
+    [setDraft],
+  )
   const pickFace = useCallback(
     (picked: ViewerSelection) => {
       const body = {
@@ -100,27 +129,14 @@ export function useTextureDraft(
   useEffect(() => {
     if (!draft && selection) pickFace(selection)
   }, [draft, selection, pickFace])
-  const setPreviewDraft = preview?.setDraft
-  useEffect(() => {
-    const documentId = controller.report?.snapshot.id
-    setPreviewDraft?.(
-      draft && documentId
-        ? { documentId, revision: baseRevision, featureId: draft.featureId, layers: draft.layers }
-        : null,
-    )
-  }, [draft, baseRevision, controller.report?.snapshot.id, setPreviewDraft])
-  useEffect(
-    () => () => {
-      setPreviewDraft?.(null)
-    },
-    [setPreviewDraft],
-  )
+  useTextureDraftPreview(draft, controller.report?.snapshot.id, baseRevision)
   const writable =
     controller.report?.mode === "read-write" &&
     controller.report.snapshot.revision === baseRevision &&
     controller.saveStatus !== "saving"
   const brush = useTextureBrush(draft, layer, writable, setDraft, pickFace, update)
   return {
+    form,
     draft,
     layer,
     baseRevision,
@@ -170,6 +186,27 @@ export function useTextureDraft(
       })
     },
   }
+}
+
+function useTextureDraftPreview(
+  draft: TextureDraft | null,
+  documentId: string | undefined,
+  baseRevision: number,
+) {
+  const setPreviewDraft = useSurfaceTexturePreviewContext()?.setDraft
+  useEffect(() => {
+    setPreviewDraft?.(
+      draft && documentId
+        ? {
+            documentId,
+            revision: baseRevision,
+            featureId: draft.featureId,
+            layers: draft.layers,
+          }
+        : null,
+    )
+  }, [draft, documentId, baseRevision, setPreviewDraft])
+  useEffect(() => () => setPreviewDraft?.(null), [setPreviewDraft])
 }
 
 function chooseDraftBody(

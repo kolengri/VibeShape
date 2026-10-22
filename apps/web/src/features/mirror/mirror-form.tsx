@@ -6,12 +6,10 @@ import type {
 } from "@vibeshape/domain"
 import { readMirrorFeatureParametersV3 } from "@vibeshape/domain/part-design-mirror"
 import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
-import { ChoiceField } from "@vibeshape/ui/components/choice-field"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useEffect, useState } from "react"
-import { BooleanParameterField } from "../part-design/boolean-parameter-field"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { useState } from "react"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -101,16 +99,19 @@ export function MirrorForm({
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: mirrorFormValues(mode, state.displayUnits),
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parseMirrorForm(value, variables, state.displayUnits, copy)
+        return parsed.ok ? undefined : { form: copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: async ({ value }) => {
       if (referencePlane === null) return
       const parsed = parseMirrorForm(value, variables, state.displayUnits, copy)
-      if (!parsed.ok) {
-        state.setIssues(parsed.issues)
-        state.setMessage(copy.validationSummary)
-        return
-      }
+      if (!parsed.ok) return
       state.clearSubmissionErrors()
       try {
         await submitFeatureMutation({
@@ -126,13 +127,9 @@ export function MirrorForm({
       }
     },
   })
-  const invalidOffset = Boolean(state.issues.offset)
-  useEffect(() => {
-    if (invalidOffset)
-      state.formElementRef.current?.querySelector<HTMLInputElement>('[name="offset"]')?.focus()
-  }, [invalidOffset, state.formElementRef])
   return (
-    <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       {onPreviewChange && (
         <form.Subscribe selector={(formState) => formState.values}>
           {(values) => (
@@ -176,16 +173,12 @@ export function MirrorForm({
                 setReference(value)
               }}
             >
-              <form.Field name="plane">
+              <form.AppField name="plane">
                 {(field) => (
-                  <ChoiceField
-                    name={field.name}
+                  <field.ChoiceField
                     label={copy.plane}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onValueChange={(value) => {
+                    onValueChange={() => {
                       state.clearSubmissionErrors()
-                      field.handleChange(value as "XY" | "XZ" | "YZ")
                     }}
                     options={(["XY", "XZ", "YZ"] as const).map((plane) => ({
                       value: plane,
@@ -193,42 +186,33 @@ export function MirrorForm({
                     }))}
                   />
                 )}
-              </form.Field>
+              </form.AppField>
             </ReferencePlaneSelection>
-            <form.Field name="offset">
+            <form.AppField name="offset">
               {(field) => (
-                <LengthExpressionField
+                <field.LengthExpressionField
                   id="mirror-offset"
-                  name="offset"
-                  value={field.state.value}
                   label={copy.offset}
                   description={copy.offsetDescription}
-                  error={state.issues.offset}
                   suggestions={state.suggestions}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
+                  onValueChange={() => {
                     state.clearSubmissionErrors()
-                    field.handleChange(value)
                   }}
                 />
               )}
-            </form.Field>
-            <form.Field name="preserveSource">
+            </form.AppField>
+            <form.AppField name="preserveSource">
               {(field) => (
-                <BooleanParameterField
+                <field.CheckboxField
                   id="mirror-preserve-source"
-                  name="preserveSource"
                   label={copy.preserveSource}
                   description={copy.preserveSourceDescription}
-                  checked={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => {
+                  onValueChange={() => {
                     state.clearSubmissionErrors()
-                    field.handleChange(event.target.checked)
                   }}
                 />
               )}
-            </form.Field>
+            </form.AppField>
           </ParameterPanel>
         )}
       </form.Subscribe>

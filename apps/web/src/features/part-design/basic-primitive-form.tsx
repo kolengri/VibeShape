@@ -15,11 +15,10 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { TextField } from "@vibeshape/ui/components/text-field"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useEffect, useMemo, useState } from "react"
+import { Form, useStore } from "@vibeshape/ui/integrations/tanstack-form"
+import { useState } from "react"
 import { defaultLengthExpression } from "../../document/document-display-units"
-import { TanStackBooleanParameterField } from "./boolean-parameter-field"
-import { TanStackLengthExpressionField } from "./length-expression-field"
+import { cadFormValidationLogic, useCadForm } from "./cad-form"
 import {
   defaultPrimitiveOriginValues,
   type FeatureParameterFormProps,
@@ -41,6 +40,8 @@ import { useDebouncedFeaturePreview } from "./use-debounced-feature-preview"
 import { useParameterFormState } from "./use-parameter-form-state"
 
 export type BasicPrimitiveKind = "sphere" | "cone" | "torus" | "pyramid"
+const IGNORE_PREVIEW = () => undefined
+
 type DimensionField = "radius" | "height" | "majorRadius" | "minorRadius"
 type PrimitiveField = DimensionField | PrimitiveOriginField | "sides"
 type PrimitiveFormValues = PrimitiveOriginFormValues &
@@ -277,85 +278,39 @@ type BasicPrimitiveFormProps = FeatureParameterFormProps<
     placementRequest?: PrimitivePlacementRequest | null | undefined
   }>
 
-function DebouncedPrimitivePreview({
-  onPreviewChange,
-  preview,
-}: Readonly<{
-  onPreviewChange: (feature: FeatureRecord | null) => void
-  preview: FeatureRecord | null
-}>) {
-  useDebouncedFeaturePreview({ onPreviewChange, preview })
-  return null
-}
-
-function PrimitiveValuesSync({
-  copy,
-  dirty,
-  displayUnit,
-  featureId,
-  mode,
-  onPreviewChange,
-  onIssuesChange,
-  primitiveKind,
-  values,
-  variables,
-}: Readonly<{
-  copy: BasicPrimitiveFormCopy
-  dirty: boolean
-  displayUnit: DocumentDisplayUnits["length"]
-  featureId: FeatureId
-  mode: BasicPrimitiveFormMode
-  onPreviewChange: ((feature: FeatureRecord | null) => void) | undefined
-  onIssuesChange: (issues: Partial<Record<PrimitiveField, string>>) => void
-  primitiveKind: BasicPrimitiveKind
-  values: PrimitiveFormValues
-  variables: readonly VariableDefinition[]
-}>) {
-  const parsed = useMemo(
-    () => parsePrimitiveValues(primitiveKind, values, variables, copy, displayUnit),
-    [primitiveKind, values, variables, copy, displayUnit],
-  )
-  useEffect(() => {
-    if (dirty) onIssuesChange(parsed.ok ? {} : parsed.issues)
-  }, [dirty, onIssuesChange, parsed])
-  return onPreviewChange ? (
-    <DebouncedPrimitivePreview
-      onPreviewChange={onPreviewChange}
-      preview={parsed.ok ? primitiveFeatureRecord(primitiveKind, mode, featureId, parsed) : null}
-    />
-  ) : null
-}
-
-export function BasicPrimitiveForm({
-  baseRevision,
-  copy,
-  disabled = false,
-  mode,
-  onCancel,
-  onPreviewChange,
-  onSave,
-  onSaved,
-  placementRequest,
-  previewStatus,
-  primitiveKind,
-  variables,
-}: BasicPrimitiveFormProps) {
+function useBasicPrimitiveDraft(props: BasicPrimitiveFormProps) {
   const {
-    clearSubmissionErrors,
-    displayUnits,
-    formElementRef,
-    issues,
-    message,
-    setIssues,
-    setMessage,
-    suggestions,
-  } = useParameterFormState(variables)
+    baseRevision,
+    copy,
+    disabled = false,
+    mode,
+    onPreviewChange,
+    onSave,
+    onSaved,
+    placementRequest,
+    primitiveKind,
+    variables,
+  } = props
+  const { clearSubmissionErrors, displayUnits, message, setMessage, suggestions } =
+    useParameterFormState(variables)
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
-  const dimensions = primitiveDefinitions[primitiveKind].dimensions
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: initialPrimitiveValues(primitiveKind, mode, displayUnits.length),
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parsePrimitiveValues(
+          primitiveKind,
+          value,
+          variables,
+          copy,
+          displayUnits.length,
+        )
+        return parsed.ok ? undefined : { form: copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: async ({ value }) => {
       const parsed = parsePrimitiveValues(
         primitiveKind,
@@ -364,17 +319,7 @@ export function BasicPrimitiveForm({
         copy,
         displayUnits.length,
       )
-      if (!parsed.ok) {
-        setIssues(parsed.issues)
-        setMessage(copy.validationSummary)
-        const firstField = (
-          ["sides", ...dimensions, "originX", "originY", "originZ"] as const
-        ).find((field) => parsed.issues[field])
-        if (firstField) {
-          formElementRef.current?.querySelector<HTMLElement>(`[name="${firstField}"]`)?.focus()
-        }
-        return
-      }
+      if (!parsed.ok) return
       clearSubmissionErrors()
       await submitFeatureMutation({
         baseRevision,
@@ -387,6 +332,14 @@ export function BasicPrimitiveForm({
     },
   })
 
+  const values = useStore(form.store, (state) => state.values)
+  const parsed = parsePrimitiveValues(primitiveKind, values, variables, copy, displayUnits.length)
+  const issues = parsed.ok ? {} : parsed.issues
+  useDebouncedFeaturePreview({
+    onPreviewChange: onPreviewChange ?? IGNORE_PREVIEW,
+    preview: parsed.ok ? primitiveFeatureRecord(primitiveKind, mode, featureId, parsed) : null,
+  })
+
   usePrimitivePlacementRequest({
     disabled,
     displayUnit: displayUnits.length,
@@ -396,40 +349,33 @@ export function BasicPrimitiveForm({
     placementRequest,
   })
 
+  return { form, issues, suggestions, message, clearSubmissionErrors }
+}
+
+export function BasicPrimitiveForm(props: BasicPrimitiveFormProps) {
+  const { copy, disabled = false, onCancel, previewStatus, primitiveKind } = props
+  const { form, issues, suggestions, message, clearSubmissionErrors } =
+    useBasicPrimitiveDraft(props)
+  const dimensions = primitiveDefinitions[primitiveKind].dimensions
+
   const lengthField = (fieldName: Exclude<PrimitiveField, "sides">, description: string) => (
-    <form.Field key={fieldName} name={fieldName}>
+    <form.AppField key={fieldName} name={fieldName}>
       {(field) => (
-        <TanStackLengthExpressionField
+        <field.LengthExpressionField
           id={`${primitiveKind}-${fieldName}`}
-          field={field}
           label={copy[fieldName]}
-          description={description}
           error={issues[fieldName]}
+          description={description}
           suggestions={suggestions}
-          onBeforeChange={clearSubmissionErrors}
+          onValueChange={clearSubmissionErrors}
         />
       )}
-    </form.Field>
+    </form.AppField>
   )
 
   return (
-    <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
-      <form.Subscribe selector={(state) => [state.values, state.isDirty] as const}>
-        {([values, dirty]) => (
-          <PrimitiveValuesSync
-            copy={copy}
-            dirty={dirty}
-            displayUnit={displayUnits.length}
-            featureId={featureId}
-            mode={mode}
-            onPreviewChange={onPreviewChange}
-            onIssuesChange={setIssues}
-            primitiveKind={primitiveKind}
-            values={values}
-            variables={variables}
-          />
-        )}
-      </form.Subscribe>
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       <PrimitiveParameterPanel
         actions={
           <TaskPanelFormActions
@@ -452,6 +398,9 @@ export function BasicPrimitiveForm({
                   <TextField
                     id="pyramid-sides"
                     name={field.name}
+                    value={field.state.value}
+                    error={issues.sides}
+                    onBlur={field.handleBlur}
                     type="number"
                     min={3}
                     max={64}
@@ -459,9 +408,6 @@ export function BasicPrimitiveForm({
                     required
                     label={copy.sides}
                     description={copy.sidesDescription}
-                    error={issues.sides}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
                     onChange={(event) => {
                       clearSubmissionErrors()
                       field.handleChange(event.currentTarget.value)
@@ -475,15 +421,11 @@ export function BasicPrimitiveForm({
         }
         centeredField={
           ["cone", "pyramid"].includes(primitiveKind) ? (
-            <form.Field name="centered">
+            <form.AppField name="centered">
               {(field) => (
-                <TanStackBooleanParameterField
-                  field={field}
-                  label={copy.centered}
-                  onBeforeChange={clearSubmissionErrors}
-                />
+                <field.CheckboxField label={copy.centered} onValueChange={clearSubmissionErrors} />
               )}
-            </form.Field>
+            </form.AppField>
           ) : null
         }
         placementFields={(["originX", "originY", "originZ"] as const).map((field) =>

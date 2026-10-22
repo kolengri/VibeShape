@@ -11,9 +11,7 @@ import {
 import { type SketchCornerTreatment, treatSketchCorner } from "@vibeshape/domain/sketch-corner-edit"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { Field, FieldLabel } from "@vibeshape/ui/components/field"
-import { Input } from "@vibeshape/ui/components/input"
-import { useMemo, useState } from "react"
+import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import {
   createBrowserSketchConstraintId,
   createBrowserSketchEntityId,
@@ -148,60 +146,83 @@ export function SketchCornerTreatmentPanel({
 }) {
   const t = useTranslations("app.sketch.cornerTreatment")
   const displayUnits = useDocumentDisplayUnits()
-  const [first, setFirst] = useState("2 mm"),
-    [second, setSecond] = useState("2 mm")
-  const firstValue = cornerLength(first, variables, displayUnits.length),
-    secondValue = cornerLength(second, variables, displayUnits.length)
-  const treatment = cornerTreatment(kind, selectedEntityIds, firstValue, secondValue)
-  const preview = useMemo(
-    () => previewCorner(draft, treatment, solvedPoints),
-    [draft, treatment, solvedPoints],
-  )
+  const getPreview = (values: { first: string; second: string }) =>
+    previewCorner(
+      draft,
+      cornerTreatment(
+        kind,
+        selectedEntityIds,
+        cornerLength(values.first, variables, displayUnits.length),
+        cornerLength(values.second, variables, displayUnits.length),
+      ),
+      solvedPoints,
+    )
+  const validate = (values: { first: string; second: string }) => {
+    const fields: Partial<Record<"first" | "second", string>> = {}
+    if (!cornerLength(values.first, variables, displayUnits.length)) fields.first = t("invalid")
+    if (kind === "chamfer" && !cornerLength(values.second, variables, displayUnits.length))
+      fields.second = t("invalid")
+    return Object.keys(fields).length ? { fields } : undefined
+  }
+  const form = useAppForm({
+    defaultValues: { first: "2 mm", second: "2 mm" },
+    validators: {
+      onChange: ({ value, formApi }) =>
+        formApi.state.submissionAttempts > 0 ? validate(value) : undefined,
+      onSubmit: ({ value }) => validate(value),
+    },
+    onSubmit: ({ value }) => {
+      const preview = getPreview(value)
+      if (preview) onApply(preview)
+    },
+  })
   return (
-    <form
+    <Form
+      form={form}
       aria-label={t(kind)}
       className="absolute bottom-3 right-3 z-10 grid w-80 max-w-[calc(100%-1.5rem)] gap-3 rounded border bg-background/95 p-3 shadow-md"
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (preview) onApply(preview)
-      }}
     >
       <p className="text-xs text-muted-foreground">{t("select")}</p>
-      <Field>
-        <FieldLabel htmlFor="sketch-corner-first">
-          {t(kind === "fillet" ? "radius" : "firstDistance")}
-        </FieldLabel>
-        <Input
-          id="sketch-corner-first"
-          value={first}
-          onChange={(event) => setFirst(event.target.value)}
-        />
-      </Field>
-      {kind === "chamfer" ? (
-        <Field>
-          <FieldLabel htmlFor="sketch-corner-second">{t("secondDistance")}</FieldLabel>
-          <Input
-            id="sketch-corner-second"
-            value={second}
-            onChange={(event) => setSecond(event.target.value)}
+      <form.AppField name="first">
+        {(field) => (
+          <field.TextField
+            id="sketch-corner-first"
+            label={t(kind === "fillet" ? "radius" : "firstDistance")}
+            required
           />
-        </Field>
-      ) : null}
-      {preview ? (
-        <CornerPreview sketch={preview} source={draft} label={t("preview")} />
-      ) : (
-        <p className="text-xs text-muted-foreground" role="status">
-          {t("invalid")}
-        </p>
+        )}
+      </form.AppField>
+      {kind === "chamfer" && (
+        <form.AppField name="second">
+          {(field) => (
+            <field.TextField id="sketch-corner-second" label={t("secondDistance")} required />
+          )}
+        </form.AppField>
       )}
-      <div className="grid grid-cols-2 gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          {t("cancel")}
-        </Button>
-        <Button type="submit" size="sm" disabled={!preview}>
-          {t("apply")}
-        </Button>
-      </div>
-    </form>
+      <form.Subscribe selector={(state) => state.values}>
+        {(values) => {
+          const preview = getPreview(values)
+          return (
+            <>
+              {preview ? (
+                <CornerPreview sketch={preview} source={draft} label={t("preview")} />
+              ) : (
+                <p className="text-xs text-muted-foreground" role="status">
+                  {t("invalid")}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+                  {t("cancel")}
+                </Button>
+                <form.SubmitButton size="sm" requireDirty={false} disabled={!preview}>
+                  {t("apply")}
+                </form.SubmitButton>
+              </div>
+            </>
+          )
+        }}
+      </form.Subscribe>
+    </Form>
   )
 }
