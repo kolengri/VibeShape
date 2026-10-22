@@ -6,7 +6,7 @@ import { Field, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useId } from "react"
+import { useId, useLayoutEffect } from "react"
 import { browserAuthoredUuid as browserUuidV7 } from "../../document/authored-document-session"
 import { useDocumentDisplayUnits } from "../../document/document-display-units"
 import { assemblyMotionCoordinates, assemblyMotionUnits } from "./assembly-motion"
@@ -59,6 +59,10 @@ function AssemblyStudyNumber({
   const t = useTranslations("app.assembly")
   const id = useId()
   const form = useAppForm({ defaultValues: { raw: String(value) } })
+  useLayoutEffect(() => {
+    const raw = String(value)
+    if (!form.state.isDirty && form.state.values.raw !== raw) form.reset({ raw })
+  }, [form, value])
   return (
     <form.AppForm>
       <form.AppField

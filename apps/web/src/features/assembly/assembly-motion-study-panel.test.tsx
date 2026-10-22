@@ -101,6 +101,11 @@ function setup() {
 describe("Motion study form submission", () => {
   it("commits duration retiming and name edits before one revision-checked save", async () => {
     const f = setup()
+    await userEvent.click(screen.getByText("Edit keys (2)", { exact: true }))
+    const keyTime = screen.getAllByRole<HTMLInputElement>("spinbutton", { name: "Time (s)" })[1]
+    if (!keyTime) throw new Error("Expected the second motion key.")
+    await userEvent.click(keyTime)
+    await userEvent.tab()
     const duration = screen.getByRole<HTMLInputElement>("spinbutton", { name: "Duration (s)" })
     await userEvent.click(duration)
     fireEvent.change(duration, { target: { value: "4" } })
@@ -109,6 +114,9 @@ describe("Motion study form submission", () => {
     await userEvent.click(screen.getByRole("textbox", { name: "Study name" }))
     expect(duration.checkValidity()).toBe(true)
     expect(f.current().tracks[0]?.keys[1]?.time).toBe(4)
+    const retimed = screen.getAllByRole<HTMLInputElement>("spinbutton", { name: "Time (s)" })[1]
+    expect(retimed?.value).toBe("4")
+    expect(retimed?.checkValidity()).toBe(true)
     fireEvent.change(screen.getByRole("textbox", { name: "Study name" }), {
       target: { value: "Long crank" },
     })
@@ -128,6 +136,49 @@ describe("Motion study form submission", () => {
       7,
     ])
     expect(f.close).toHaveBeenCalledTimes(1)
+  })
+  it("synchronizes a touched clean key time after a timeline move", async () => {
+    const f = setup()
+    await userEvent.click(screen.getByText("Edit keys (2)", { exact: true }))
+    const keyTime = screen.getAllByRole<HTMLInputElement>("spinbutton", { name: "Time (s)" })[1]
+    if (!keyTime) throw new Error("Expected the second motion key.")
+    await userEvent.click(keyTime)
+    await userEvent.tab()
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Key 2 at 2 s" }), { key: "ArrowLeft" })
+    expect(f.current().tracks[0]?.keys[1]?.time).toBe(1.98)
+    const moved = screen.getAllByRole<HTMLInputElement>("spinbutton", { name: "Time (s)" })[1]
+    expect(moved?.value).toBe("1.98")
+    expect(moved?.checkValidity()).toBe(true)
+    await userEvent.click(screen.getByRole("button", { name: "Save study" }))
+    await waitFor(() => expect(f.apply).toHaveBeenCalledTimes(1))
+    expect(f.apply.mock.calls[0]?.[0][0].study.tracks[0].keys[1].time).toBe(1.98)
+  })
+  it("preserves a dirty key buffer through retiming and restores the latest value on Escape", async () => {
+    const f = setup()
+    await userEvent.click(screen.getByText("Edit keys (2)", { exact: true }))
+    const keyTime = screen.getAllByRole<HTMLInputElement>("spinbutton", { name: "Time (s)" })[1]
+    if (!keyTime) throw new Error("Expected the second motion key.")
+    await userEvent.click(keyTime)
+    fireEvent.change(keyTime, { target: { value: "" } })
+    const duration = screen.getByRole<HTMLInputElement>("spinbutton", { name: "Duration (s)" })
+    await userEvent.click(duration)
+    fireEvent.change(duration, { target: { value: "4" } })
+    await userEvent.click(screen.getByRole("textbox", { name: "Study name" }))
+    expect(f.current().tracks[0]?.keys[1]?.time).toBe(4)
+    const preserved = screen.getAllByRole<HTMLInputElement>("spinbutton", { name: "Time (s)" })[1]
+    if (!preserved) throw new Error("Expected the retimed motion key.")
+    expect(preserved.value).toBe("")
+    expect(preserved.checkValidity()).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: "Save study" }))
+    expect(f.apply).not.toHaveBeenCalled()
+    await userEvent.click(preserved)
+    await userEvent.keyboard("{Escape}")
+    const restored = screen.getAllByRole<HTMLInputElement>("spinbutton", { name: "Time (s)" })[1]
+    expect(restored?.value).toBe("4")
+    expect(restored?.checkValidity()).toBe(true)
+    await userEvent.click(screen.getByRole("button", { name: "Save study" }))
+    await waitFor(() => expect(f.apply).toHaveBeenCalledTimes(1))
+    expect(f.apply.mock.calls[0]?.[0][0].study.tracks[0].keys[1].time).toBe(4)
   })
   it("retains an invalid duration, blocks save and playback, and accepts a corrected retry", async () => {
     const f = setup()
