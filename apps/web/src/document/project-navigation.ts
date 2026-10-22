@@ -56,6 +56,13 @@ export function createProjectNavigation(port: NavigationPort) {
   let queue = Promise.resolve()
   let unsubscribe: (() => void) | null = null
   let owners = 0
+  const pendingListeners = new Set<() => void>()
+
+  function setPending(next: number) {
+    const wasPending = pending !== 0
+    pending = next
+    if (wasPending !== (pending !== 0)) for (const listener of pendingListeners) listener()
+  }
 
   function write(documentId: string, mode: "push" | "replace") {
     const url = new URL(port.href())
@@ -99,12 +106,11 @@ export function createProjectNavigation(port: NavigationPort) {
     if (!isCurrentRequest(requestGeneration)) return
     const signal = new AbortController()
     abort = signal
-    pending = requestGeneration
     let error: ProjectNavigationError | null = null
     try {
       error = await openRequestedProject(request, signal.signal)
     } finally {
-      if (pending === requestGeneration) pending = 0
+      if (pending === requestGeneration) setPending(0)
       if (abort === signal) abort = null
     }
     if (!isCurrentRequest(requestGeneration)) return
@@ -115,12 +121,18 @@ export function createProjectNavigation(port: NavigationPort) {
 
   function onPopState() {
     const requestGeneration = ++generation
+    setPending(requestGeneration)
     abort?.abort()
     const request = readProjectUrl(port.href())
     queue = queue.then(() => navigate(request, requestGeneration))
   }
 
   return {
+    getPendingSnapshot: () => pending !== 0,
+    subscribePending(listener: () => void) {
+      pendingListeners.add(listener)
+      return () => pendingListeners.delete(listener)
+    },
     clear(mode: "push" | "replace" = "push") {
       if (readProjectUrl(port.href()).kind === "default") return true
       try {
@@ -142,6 +154,7 @@ export function createProjectNavigation(port: NavigationPort) {
         unsubscribe = null
         generation += 1
         abort?.abort()
+        setPending(0)
       }
     },
   }

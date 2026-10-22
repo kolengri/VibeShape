@@ -1,6 +1,8 @@
 import type { AssemblyMotionStudy, AssemblyMotionTrack } from "@vibeshape/domain/assembly-authority"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { FieldError } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { useId, useState } from "react"
 import { browserAuthoredUuid as browserUuidV7 } from "../../document/authored-document-session"
@@ -106,11 +108,14 @@ export function AssemblyStudyNumber({
           }
         }}
       />
-      {message && (
-        <span id={`${id}-error`} className={invalid ? "text-destructive" : "sr-only"}>
-          {message}
-        </span>
-      )}
+      {message &&
+        (invalid ? (
+          <FieldError id={`${id}-error`}>{message}</FieldError>
+        ) : (
+          <span id={`${id}-error`} className="sr-only">
+            {message}
+          </span>
+        ))}
     </div>
   )
 }
@@ -232,11 +237,7 @@ function CopyTrack({
         >
           {t("motionCopyApply")}
         </Button>
-        {error && (
-          <p role="alert" className="text-xs text-destructive">
-            {t("motionCopyOutOfLimits")}
-          </p>
-        )}
+        {error && <Alert>{t("motionCopyOutOfLimits")}</Alert>}
       </div>
     </details>
   )
@@ -436,9 +437,7 @@ function TrackCard({
           />
         </>
       ) : (
-        <p role="alert" className="text-xs text-destructive">
-          {t("motionMissingJoint")}
-        </p>
+        <Alert>{t("motionMissingJoint")}</Alert>
       )}
       <Button
         type="button"

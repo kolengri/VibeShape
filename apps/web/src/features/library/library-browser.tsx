@@ -1,4 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { TextField } from "@vibeshape/ui/components/text-field"
@@ -14,6 +16,7 @@ export function LibraryBrowserPanel({
   pending: boolean
 }) {
   const t = useTranslations("app.library")
+  useReportActivity(browser.loading || pending)
   return (
     <section aria-label={t("browseTitle")} className="grid content-start gap-3">
       <TextField
@@ -69,11 +72,7 @@ export function LibraryBrowserPanel({
           ))}
         </SelectField>
       )}
-      {browser.error && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("operationError", { message: browser.error })}
-        </p>
-      )}
+      {browser.error && <Alert>{t("operationError", { message: browser.error })}</Alert>}
     </section>
   )
 }

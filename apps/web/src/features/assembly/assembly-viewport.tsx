@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection } from "@vibeshape/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import type {
   GeometryViewport,
@@ -12,6 +13,7 @@ import {
   usePrintViewportFactory,
   usePrintViewportSynchronization,
 } from "../../printing/print-viewport-presentation"
+import { useBlockingViewport } from "../../shell/use-blocking-viewport"
 import { useViewerPreferences } from "../../shell/viewer-preferences"
 
 async function createAssemblyViewport(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
@@ -60,6 +62,7 @@ function useAssemblyViewportMount(
   factory: typeof createAssemblyViewport,
 ) {
   const [ready, setReady] = useState(false)
+  useBlockingViewport(viewport)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
     let disposed = false
@@ -192,14 +195,7 @@ export function AssemblyViewport({
         report={view.printPresentation.report}
         count={view.meshCount}
       />
-      {view.failed && (
-        <p
-          role="alert"
-          className="absolute inset-x-3 top-3 rounded-md border bg-panel p-2 text-destructive"
-        >
-          {t("viewportFailed")}
-        </p>
-      )}
+      {view.failed && <Alert className="absolute inset-x-3 top-3">{t("viewportFailed")}</Alert>}
     </section>
   )
 }

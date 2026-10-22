@@ -9,6 +9,7 @@ import {
   variableReferencesInExpression,
 } from "@vibeshape/domain"
 import { useFormatter } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Check, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
@@ -531,14 +532,7 @@ export function VariablesForm({
           {copy.readOnly}
         </p>
       ) : null}
-      {submitMessage ? (
-        <p
-          className="rounded-md border border-destructive/40 bg-panel-muted p-2 text-xs text-destructive"
-          role="alert"
-        >
-          {submitMessage}
-        </p>
-      ) : null}
+      {submitMessage ? <Alert>{submitMessage}</Alert> : null}
       <form.AppField name="variables" mode="array">
         {(arrayField) => (
           <form.Subscribe selector={(formState) => formState.values.variables}>

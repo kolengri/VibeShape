@@ -2,6 +2,7 @@ import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { type HistoryFolder, historyItemKey } from "@vibeshape/domain/history-folders"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   ContextMenu,
@@ -333,11 +334,7 @@ export function HistoryFolderSelectionControls({ compact = false }: { compact?: 
           {items ? t("selectedItems", { count: context.keys.length }) : t("invalidSelection")}
         </p>
       )}
-      {context.error && (
-        <p role="alert" className="text-xs text-destructive">
-          {context.error}
-        </p>
-      )}
+      {context.error && <Alert>{context.error}</Alert>}
     </div>
   )
 }
@@ -429,11 +426,7 @@ function HistoryInsertionFeedback({
           {t("insertPending")}
         </p>
       )}
-      {insertion.error && (
-        <p role="alert" className="text-xs text-destructive">
-          {insertion.error}
-        </p>
-      )}
+      {insertion.error && <Alert>{insertion.error}</Alert>}
     </>
   )
 }

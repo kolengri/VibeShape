@@ -568,12 +568,14 @@ History uses compact, named feature icons by default. **Details** reveals labels
 
 | Feedback | Surface | Lifetime |
 |---|---|---|
-| Field error | Under the field and in command summary | Until corrected or canceled |
-| Command precondition | Task panel near the blocked action | While blocked |
+| Field error | Shared `FieldError` beside its field, associated through `aria-describedby` | Until corrected or canceled |
+| Command precondition or form error | Shared `Alert` near the blocked action | While blocked |
 | Rebuild/solver status | Status bar and affected tree nodes | While active or stale |
 | Recoverable warning | Persistent diagnostic panel or report | Until resolved or acknowledged |
 | Brief success | Status message or optional toast | Short and non-blocking |
 | Data-loss/security decision | Modal dialog or recovery screen | Until explicit decision |
+
+Contextual operation and whole-form errors use the shared icon-and-border `Alert`. Operational notifications use the shared dismissible toast. Field validation remains beside its owning field and does not create an operation Alert or toast; a compact error-icon alternative must reveal its message on keyboard focus as well as hover.
 
 Toasts MUST NOT be the only record of an error, topology ambiguity, save failure, or export result. Important results remain discoverable in the task panel, tree, project state, or report.
 
@@ -585,7 +587,8 @@ Status changes that do not move focus use the appropriate live-region semantics.
 - Disabling the initiating control does not disable unrelated navigation or inspection. Conflicting actions use the same operation state instead of implementing independent timers.
 - Show named stages such as `Reading STEP`, `Healing geometry`, `Rebuilding features`, and `Tessellating`.
 - Show a percentage only when the underlying operation reports meaningful progress.
-- Otherwise animate a printing shimmer through the complete VibeShape wordmark, preserving its text, width, and height. A reserved-width status in the chat header identifies when the active project's AI is working; it uses the project's authoritative busy state and a static icon with reduced motion. Other buttons, tabs, panels, and dialogs do not add animated loaders. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion keeps a static highlighted wordmark.
+- Blocking work dims the application and presents one centered `BlockingLoader` with a visible loader and named stage. Opening or switching projects and library mutations use this surface. It traps focus, blocks background input, and cannot be dismissed independently of the operation. Overlapping owners keep it visible until every blocking operation settles; completion or failure restores focus where the initiating control still exists.
+- Non-blocking work animates a high-contrast shimmer through the complete VibeShape wordmark and a spinning icon in a reserved slot beside it, preserving the indicator footprint. A reserved-width status in the chat header identifies when the active project's AI is working; it uses the project's authoritative busy state and a static icon with reduced motion. Other buttons, tabs, panels, and dialogs do not add animated loaders. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion keeps a static highlighted wordmark and activity icon.
 - Keep camera navigation and unaffected document inspection responsive.
 - Distinguish `Cancel requested` from `Canceled`; logical cancellation may wait for the active kernel call to return.
 - Discard stale worker generations and state this in diagnostics only when relevant.

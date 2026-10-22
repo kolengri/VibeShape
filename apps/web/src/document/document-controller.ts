@@ -350,6 +350,11 @@ export function deleteLocalProject(
     )
   return runtimes.active().deleteLocalProject(...args)
 }
+export function useProjectNavigationPending() {
+  const owner = projectNavigation()
+  return useSyncExternalStore(owner.subscribePending, owner.getPendingSnapshot, () => false)
+}
+
 export function useDocumentController(defaultDocumentName: string) {
   const state = useSyncExternalStore(
     runtimes.subscribe,

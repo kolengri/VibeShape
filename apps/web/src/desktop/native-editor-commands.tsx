@@ -3,7 +3,8 @@ import {
   desktopApplicationCommandSchema,
   desktopEditorCommandSchema,
 } from "@vibeshape/automation-api/desktop-host"
-import { useEffect, useRef } from "react"
+import { useBlockingActivity } from "@vibeshape/ui/components/activity"
+import { useLayoutEffect, useRef } from "react"
 import { editorCommandIds, type ResolvedEditorCommand } from "../commands/editor-command"
 import { hasTextInputTarget } from "../commands/editor-text-input"
 import { getDesktopHost } from "./desktop-host"
@@ -46,24 +47,28 @@ export function NativeEditorCommandBridge({
   commands: readonly ResolvedEditorCommand[]
 }) {
   const host = getDesktopHost()
+  const blocking = useBlockingActivity() !== null
   const pending = useRef(false)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!host) return
     let active = true
     const publish = () => {
       const text = hasTextInputTarget(document.activeElement)
-      const enabled = desktopEditorCommandSchema.options.filter(
-        (id) =>
-          ((id === "undo" || id === "redo") && text) ||
-          resolveCommand(id, commands)?.eligibility.enabled,
-      )
+      const enabled = blocking
+        ? []
+        : desktopEditorCommandSchema.options.filter(
+            (id) =>
+              ((id === "undo" || id === "redo") && text) ||
+              resolveCommand(id, commands)?.eligibility.enabled,
+          )
       void host.updateCommandState({ scope: "editor", enabled }).catch(() => undefined)
     }
     const unsubscribe = host.onCommand((incoming) => {
       const parsed = desktopEditorCommandSchema.safeParse(incoming)
-      if (!parsed.success || pending.current) return
+      if (!active || blocking || !parsed.success || pending.current) return
       const id = parsed.data
       const action = () => {
+        if (!active || blocking) return undefined
         if ((id === "undo" || id === "redo") && hasTextInputTarget(document.activeElement))
           return host.editText(id)
         const command = resolveCommand(id, commands)
@@ -91,7 +96,7 @@ export function NativeEditorCommandBridge({
       document.removeEventListener("focusout", publish)
       void host.updateCommandState({ scope: "editor", enabled: [] }).catch(() => undefined)
     }
-  }, [commands, host])
+  }, [blocking, commands, host])
   return null
 }
 
@@ -107,20 +112,26 @@ export function NativeApplicationCommandBridge({
   ) => void
 }) {
   const host = getDesktopHost()
-  useEffect(() => {
+  const blocking = useBlockingActivity() !== null
+  useLayoutEffect(() => {
     if (!host) return
-    const enabled = desktopApplicationCommandSchema.options.filter(
-      (id) => allowedCommands.includes(id) && (id !== "export" || exportAvailable),
-    )
+    let active = true
+    const enabled = blocking
+      ? []
+      : desktopApplicationCommandSchema.options.filter(
+          (id) => allowedCommands.includes(id) && (id !== "export" || exportAvailable),
+        )
     void host.updateCommandState({ scope: "application", enabled }).catch(() => undefined)
     const unsubscribe = host.onCommand((id) => {
+      if (!active || blocking) return
       const command = desktopApplicationCommandSchema.safeParse(id)
       if (command.success && enabled.includes(command.data)) onCommand(command.data)
     })
     return () => {
+      active = false
       unsubscribe()
       void host.updateCommandState({ scope: "application", enabled: [] }).catch(() => undefined)
     }
-  }, [host, exportAvailable, onCommand, allowedCommands])
+  }, [blocking, host, exportAvailable, onCommand, allowedCommands])
   return null
 }

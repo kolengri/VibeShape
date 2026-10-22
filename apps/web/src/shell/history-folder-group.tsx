@@ -1,6 +1,7 @@
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import type { HistoryFolder } from "@vibeshape/domain/history-folders"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -84,11 +85,7 @@ function RemoveFolder({
           <AlertDialogTitle>{t("removeFolder", { name: folder.name })}</AlertDialogTitle>
           <AlertDialogDescription>{t("removeFolderDescription")}</AlertDialogDescription>
         </AlertDialogHeader>
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {error && <Alert>{error}</Alert>}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>{t("cancel")}</AlertDialogCancel>
           <Button variant="destructive" onClick={remove}>

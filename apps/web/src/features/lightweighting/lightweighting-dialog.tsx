@@ -1,4 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { useBlockingActivity, useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerAnalysisOverlay, ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import {
@@ -48,6 +50,7 @@ export type LightweightingViewportInteraction = Readonly<{
 
 function TaskStatus({ state }: { state: TaskState }) {
   const t = useTranslations("app.lightweighting")
+  useReportActivity(state.activity !== "idle")
   const stages = { loading: "loading", solving: "solving", inspecting: "inspecting" } as const
   const stage =
     state.activity === "idle" || state.activity === "applying" ? null : stages[state.activity]
@@ -58,11 +61,7 @@ function TaskStatus({ state }: { state: TaskState }) {
           {t(stage)}
         </p>
       )}
-      {state.message && (
-        <p role="alert" className="text-sm text-destructive">
-          {state.message}
-        </p>
-      )}
+      {state.message && <Alert>{state.message}</Alert>}
     </>
   )
 }
@@ -144,6 +143,7 @@ function useFaceInteraction(
   onInteractionChange: (interaction: LightweightingViewportInteraction | null) => void,
 ) {
   const t = useTranslations("app.lightweighting")
+  const blocking = useBlockingActivity() !== null
   const [picking, setPicking] = useState<LightweightingPickTarget | null>(null)
   const [pickMessage, setPickMessage] = useState<string | null>(null)
   const surface = state.fields.surfaceSelection
@@ -172,7 +172,7 @@ function useFaceInteraction(
   }, [current, state, surface, t])
 
   useEffect(() => {
-    if (!picking) return
+    if (!picking || blocking) return
     const cancelPicking = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       event.preventDefault()
@@ -181,7 +181,7 @@ function useFaceInteraction(
     }
     window.addEventListener("keydown", cancelPicking, true)
     return () => window.removeEventListener("keydown", cancelPicking, true)
-  }, [picking])
+  }, [blocking, picking])
 
   const onFacePick = useCallback((selection: ViewerSelection | null) => {
     const { state: task, picking: target, interactive: enabled, wrongBody } = latest.current
@@ -549,6 +549,7 @@ function AnalysisActions({
 
 function GenerativeProgress({ state }: { state: ReturnType<typeof useGenerativeDesignTask> }) {
   const t = useTranslations("app.generativeDesign")
+  useReportActivity(state.activity !== "idle")
   if (!state.progress || state.activity === "idle" || state.activity === "applying") return null
   return (
     <p role="status" className="text-xs">

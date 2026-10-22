@@ -101,7 +101,8 @@ function positionDescription() {
 }
 
 function feedback() {
-  return navigation().getByRole("status", { name: "" }).textContent
+  return (navigation().queryByRole("alert") ?? navigation().getByRole("status", { name: "" }))
+    .textContent
 }
 
 describe("History transport", () => {

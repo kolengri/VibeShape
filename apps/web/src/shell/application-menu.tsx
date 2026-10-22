@@ -1,5 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { useReportBlockingActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   DropdownMenu,
@@ -76,14 +76,14 @@ type ApplicationMenuProps = {
 
 const libraryCommands = ["settings", "faq"] as const
 
-function useProjectNavigation(failureMessage: string) {
+function useProjectNavigation(failureMessage: string, loadingMessage: string) {
   const [navigating, setNavigating] = useState(false)
   const [navigationFailure, setNavigationFailure] = useState<string | null>(null)
   const [navigationAttempt, setNavigationAttempt] = useState(0)
   const message = navigationFailure
   const centralized = useReportApplicationError(message, navigationAttempt)
   const navigationPending = useRef(false)
-  useReportActivity(navigating)
+  useReportBlockingActivity(navigating, loadingMessage)
   const navigateProjects = async (
     action: () => Promise<ProjectSwitchResult> = showProjectLibrary,
     actionFailureMessage = failureMessage,
@@ -354,7 +354,7 @@ export function ApplicationMenu(props: ApplicationMenuProps) {
   const backup = useProjectBackup(controller)
   const [open, setOpen] = useState(false)
   const [dialog, setDialog] = useState<MenuDialog | null>(null)
-  const navigation = useProjectNavigation(t("projectNavigationFailed"))
+  const navigation = useProjectNavigation(t("projectNavigationFailed"), t("openingProjects"))
   const trigger = useRef<HTMLButtonElement>(null)
   const openingCommandDialog = useRef(false)
   const closeDialogMenu = (event: Event) => {

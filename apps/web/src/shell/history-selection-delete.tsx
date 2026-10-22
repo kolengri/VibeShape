@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -90,16 +91,8 @@ function RemovalConfirmation({
         <RemovalNames label={t("selected")} names={request.names} remaining={remaining} />
         <RemovalNames label={t("owners")} names={request.owners} remaining={remaining} />
         <RemovalNames label={t("dependents")} names={request.dependents} remaining={remaining} />
-        {message && (
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        )}
-        {failure && (
-          <p role="alert" className="text-sm text-destructive">
-            {failure}
-          </p>
-        )}
+        {message && <Alert>{message}</Alert>}
+        {failure && <Alert>{failure}</Alert>}
         <AlertDialogFooter>
           <AlertDialogCancel asChild>
             <Button type="button" variant="outline" disabled={pending}>

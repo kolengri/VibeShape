@@ -17,6 +17,7 @@ const { cleanup, render, screen, waitFor } = await import("@testing-library/reac
 const { default: userEvent } = await import("@testing-library/user-event")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { ActivityProvider, useBlockingActivity } = await import("@vibeshape/ui/components/activity")
 const { i18n } = await import("../i18n")
 const { ApplicationMenu } = await import("./application-menu")
 
@@ -25,19 +26,25 @@ const controller = {
   saveStatus: "saved",
   report: { mode: "read-write", snapshot: { id: "project", revision: 3, name: "Bracket" } },
 } as DocumentControllerState
+function BlockingStatus() {
+  return <output aria-label="Project action blocking">{useBlockingActivity() ?? "none"}</output>
+}
 function setup(state = controller) {
   render(
-    <I18nProvider i18n={i18n} initialLocale="en">
-      <TooltipProvider>
-        <ApplicationMenu
-          controller={state}
-          unitChangesBlocked={false}
-          onOpenCommandPalette={() => {}}
-          onOpenShortcutHelp={() => {}}
-          renderDialogs={() => null}
-        />
-      </TooltipProvider>
-    </I18nProvider>,
+    <ActivityProvider>
+      <BlockingStatus />
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <TooltipProvider>
+          <ApplicationMenu
+            controller={state}
+            unitChangesBlocked={false}
+            onOpenCommandPalette={() => {}}
+            onOpenShortcutHelp={() => {}}
+            renderDialogs={() => null}
+          />
+        </TooltipProvider>
+      </I18nProvider>
+    </ActivityProvider>,
   )
 }
 beforeEach(() => {
@@ -72,6 +79,7 @@ it("creates through the existing command and locks repeat menu activation while 
   await user.click(trigger)
   await user.click(screen.getByRole("menuitem", { name: "New project" }))
   expect(actions.create).toHaveBeenCalledTimes(1)
+  expect(screen.getByLabelText("Project action blocking").textContent).not.toBe("none")
   await user.click(trigger)
   expect(screen.getByRole("menuitem", { name: "New project" }).getAttribute("aria-disabled")).toBe(
     "true",
@@ -82,6 +90,7 @@ it("creates through the existing command and locks repeat menu activation while 
       screen.getByRole("menuitem", { name: "New project" }).getAttribute("aria-disabled"),
     ).toBeNull(),
   )
+  expect(screen.getByLabelText("Project action blocking").textContent).toBe("none")
 })
 
 it("opens the shared rename dialog from the menu and restores focus after a revisioned rename", async () => {
@@ -131,6 +140,7 @@ it("reports a failed creation and releases the action for retry", async () => {
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Could not create a project. The current project remains open.",
   )
+  expect(screen.getByLabelText("Project action blocking").textContent).toBe("none")
   await user.click(trigger)
   await user.click(screen.getByRole("menuitem", { name: "New project" }))
   expect(actions.create).toHaveBeenCalledTimes(2)

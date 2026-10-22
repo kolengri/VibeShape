@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { FieldError } from "@vibeshape/ui/components/field"
 import { Scan, X } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import type { ComponentProps } from "react"
@@ -91,9 +92,9 @@ function CandidateChoice({
         {t("candidateLabel", { body, reference: candidate.label })}
       </Button>
       {status !== "resolved" && (
-        <p className="text-xs text-destructive">
+        <FieldError>
           {status === "ambiguous" ? props.copy.ambiguousEdge : props.copy.missingEdge}
-        </p>
+        </FieldError>
       )}
     </div>
   )
@@ -385,11 +386,7 @@ function SelectedTargets({ props }: { props: TreatmentControlsProps }) {
       {references.map((reference, index) => (
         <SelectedRow key={JSON.stringify(reference)} props={props} index={index} v3={v3} />
       ))}
-      {props.issues.references && (
-        <p role="alert" className="text-xs text-destructive">
-          {props.issues.references}
-        </p>
-      )}
+      {props.issues.references && <FieldError>{props.issues.references}</FieldError>}
       {references.length > 0 && (
         <Button
           type="button"
@@ -557,11 +554,7 @@ export function EdgeTreatmentControls(props: TreatmentControlsProps) {
                 props.copy.missingTarget}
             </dd>
           </dl>
-          {props.issues.targetFeatureId && (
-            <p role="alert" className="text-xs text-destructive">
-              {props.issues.targetFeatureId}
-            </p>
-          )}
+          {props.issues.targetFeatureId && <FieldError>{props.issues.targetFeatureId}</FieldError>}
         </div>
       )}
       <fieldset className="grid gap-2">

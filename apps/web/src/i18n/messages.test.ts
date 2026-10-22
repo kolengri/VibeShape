@@ -40,4 +40,27 @@ describe("web message catalogs", () => {
     expect(i18n.defaultLocale).toBe("en")
     expect(i18n.resolveLocale("unsupported")).toBe("en")
   })
+  it("formats every blocking project stage as valid ICU copy", () => {
+    vi.stubGlobal("navigator", { language: "en", languages: ["en"] })
+    function Stages() {
+      const t = useTranslations("app.projectFile")
+      return createElement(
+        "p",
+        null,
+        ["creating", "deleting", "duplicating", "openingFile", "switching"]
+          .map((activity) => t("activity", { activity }))
+          .join("|"),
+      )
+    }
+    const rendered = renderToStaticMarkup(
+      createElement(I18nProvider, {
+        i18n,
+        initialLocale: "en",
+        children: createElement(Stages),
+      }),
+    )
+    expect(rendered).toBe(
+      "<p>Creating project…|Deleting project…|Duplicating project…|Opening project file…|Opening project…</p>",
+    )
+  })
 })

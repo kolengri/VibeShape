@@ -1,6 +1,7 @@
 import { resolveAuthoredParts } from "@vibeshape/application/authored-parts"
 import { useTranslations } from "@vibeshape/i18n"
 import type { GeometryExportFormat, MeshExportQuality } from "@vibeshape/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -151,11 +152,7 @@ function ExportNotice({
   )
   if (!hasGeometry) return <p className="text-sm text-muted-foreground">{t("noBodies")}</p>
   if (!failed || (appOwnsError && !errorKey)) return null
-  return (
-    <p className="text-sm text-destructive" role="alert">
-      {t(errorKey ?? "error")}
-    </p>
-  )
+  return <Alert>{t(errorKey ?? "error")}</Alert>
 }
 
 function ExportPartSelection({

@@ -1,5 +1,6 @@
 import { surfaceTextureLayersSchema } from "@vibeshape/domain/surface-textures"
 import { useTranslations } from "@vibeshape/i18n"
+import { useBlockingActivity } from "@vibeshape/ui/components/activity"
 import { useEffect, useRef, useState } from "react"
 import { replaceSurfaceTextureLayers } from "../../document/document-controller"
 import { readTextureImage } from "./read-texture-image"
@@ -72,9 +73,11 @@ export function useTexturePanelActions(state: TextureDraftState, onComplete: () 
 export function useTexturePanelKeyboard(
   gallery: boolean,
   setGallery: (value: boolean) => void,
-  state: TextureDraftState,
+  state: Pick<TextureDraftState, "maskUndoAvailable" | "strokeActive" | "undoMask">,
 ) {
+  const blocking = useBlockingActivity() !== null
   useEffect(() => {
+    if (blocking) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && gallery) {
         event.preventDefault()
@@ -92,7 +95,7 @@ export function useTexturePanelKeyboard(
     }
     document.addEventListener("keydown", onKeyDown, true)
     return () => document.removeEventListener("keydown", onKeyDown, true)
-  }, [gallery, state.maskUndoAvailable, state.strokeActive, state.undoMask])
+  }, [blocking, gallery, setGallery, state.maskUndoAvailable, state.strokeActive, state.undoMask])
 }
 
 function isMaskUndoShortcut(event: KeyboardEvent) {

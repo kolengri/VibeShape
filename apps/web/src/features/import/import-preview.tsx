@@ -1,4 +1,5 @@
 import type { MeshImportInspection, SourceImportInspection } from "@vibeshape/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import type { GeometryViewport } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useRef, useState } from "react"
 
@@ -59,11 +60,7 @@ export function ImportPreview({
         className="h-64 w-full rounded-md border bg-viewport-background"
         aria-label={label}
       />
-      {failed && (
-        <p role="alert" className="text-sm text-destructive">
-          {failedMessage}
-        </p>
-      )}
+      {failed && <Alert>{failedMessage}</Alert>}
     </div>
   )
 }

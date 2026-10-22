@@ -1,6 +1,7 @@
 import type { AssistantSnapshot } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   DropdownMenu,
@@ -132,11 +133,7 @@ function SessionChoices({
   const locked = busy || pending || snapshot.status !== "ready"
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1" aria-busy={pending || undefined}>
-      {failure && !centralized && (
-        <p role="alert" className="text-xs text-destructive">
-          {failure}
-        </p>
-      )}
+      {failure && !centralized && <Alert>{failure}</Alert>}
       <SessionFields chat={chat} snapshot={snapshot} locked={locked} change={change} />
     </div>
   )

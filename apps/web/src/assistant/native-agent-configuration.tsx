@@ -1,9 +1,10 @@
-import { assistantAgentSchema } from "@vibeshape/automation-api/assistant"
+import { assistantExternalAgentSchema } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
-import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { TextField } from "@vibeshape/ui/components/text-field"
 import { type FormEvent, useId, useRef, useState } from "react"
 import {
   AssistantConnectionTestFeedback,
@@ -26,7 +27,7 @@ function initialConfiguration() {
 }
 function parseConfiguration(command: string, args: string) {
   try {
-    return assistantAgentSchema.safeParse({ command, args: JSON.parse(args) })
+    return assistantExternalAgentSchema.safeParse({ command, args: JSON.parse(args) })
   } catch {
     return null
   }
@@ -42,6 +43,12 @@ function useAgentConfiguration(chat: Connection, connected: boolean) {
   const [choice, setChoice] = useState(initial.choice)
   const [advanced, setAdvanced] = useState(initial.choice === "custom")
   const [invalid, setInvalid] = useState(false)
+  const validation = parseConfiguration(draft.command, draft.args)
+  const invalidField = (name: "command" | "args") =>
+    invalid &&
+    (validation === null
+      ? name === "args"
+      : !validation.success && validation.error.issues.some(({ path }) => path[0] === name))
   const [storageFailed, setStorageFailed] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   useReportActivity(disconnecting || submitting)
@@ -70,6 +77,7 @@ function useAgentConfiguration(chat: Connection, connected: boolean) {
   const validate = () => {
     const parsed = parseConfiguration(draft.command, draft.args)
     setInvalid(!parsed?.success)
+    if (!parsed?.success) setAdvanced(true)
     return parsed?.success ? parsed.data : null
   }
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -97,7 +105,7 @@ function useAgentConfiguration(chat: Connection, connected: boolean) {
     draft,
     choice,
     advanced,
-    invalid,
+    invalidField,
     storageFailed,
     submitting,
     failed,
@@ -175,37 +183,26 @@ export function NativeAgentConfiguration({
           >
             <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
             <div className="mt-3 grid gap-2">
-              <label htmlFor={`${id}-command`} className="text-xs font-medium">
-                {t("executable")}
-              </label>
-              <Input
+              <TextField
                 id={`${id}-command`}
+                label={t("executable")}
+                error={form.invalidField("command") ? t("invalidAgent") : undefined}
                 value={form.draft.command}
                 disabled={locked}
                 onChange={(event) => form.edit("command", event.currentTarget.value)}
                 placeholder={t("executablePlaceholder")}
               />
-              <label htmlFor={`${id}-args`} className="text-xs font-medium">
-                {t("arguments")}
-              </label>
-              <Input
+              <TextField
                 id={`${id}-args`}
+                label={t("arguments")}
+                error={form.invalidField("args") ? t("invalidAgent") : undefined}
                 value={form.draft.args}
                 disabled={locked}
                 onChange={(event) => form.edit("args", event.currentTarget.value)}
               />
             </div>
           </details>
-          {form.invalid && (
-            <p role="alert" className="text-xs text-destructive">
-              {t("invalidAgent")}
-            </p>
-          )}
-          {form.failed && (
-            <p role="alert" className="text-xs text-destructive">
-              {t("errors.request-failed")}
-            </p>
-          )}
+          {form.failed && <Alert>{t("errors.request-failed")}</Alert>}
           {form.storageFailed && (
             <p role="status" className="text-xs text-muted-foreground">
               {t("settingsNotSaved")}

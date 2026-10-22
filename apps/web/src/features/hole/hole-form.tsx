@@ -19,9 +19,10 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
+import { FieldError } from "@vibeshape/ui/components/field"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   type defaultAngleExpression,
@@ -482,8 +483,14 @@ function HolePoints({
 }) {
   const points = sketch?.entities.filter((entity) => entity.type === "point") ?? []
   const missing = selected.filter((id) => !points.some((point) => point.id === id))
+  const errorId = useId()
   return (
-    <fieldset className="grid min-w-0 gap-2" aria-label={copy.points}>
+    <fieldset
+      className="grid min-w-0 gap-2"
+      aria-label={copy.points}
+      aria-invalid={Boolean(error) || undefined}
+      aria-describedby={error ? errorId : undefined}
+    >
       <legend className="text-xs font-medium">{copy.points}</legend>
       <p className="text-xs text-muted-foreground">{copy.pointsDescription}</p>
       {points.length === 0 ? (
@@ -507,9 +514,7 @@ function HolePoints({
       ))}
       {missing.map((id) => (
         <div key={id} className="grid min-w-0 gap-1">
-          <p role="alert" className="text-xs text-destructive">
-            {copy.missingPoint}
-          </p>
+          <FieldError>{copy.missingPoint}</FieldError>
           <code className="break-all text-xs">{id}</code>
           <Button
             type="button"
@@ -522,11 +527,7 @@ function HolePoints({
           </Button>
         </div>
       ))}
-      {error ? (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
+      {error ? <FieldError id={errorId}>{error}</FieldError> : null}
     </fieldset>
   )
 }

@@ -72,6 +72,7 @@ beforeEach(() => {
     setGroundGrid: ports.grid,
     setPrintBed: ports.bed,
     setMeshes: ports.meshes,
+    cancelInteractions: vi.fn(),
     setInteractionMode: ports.mode,
     setFeatureSelection: ports.highlight,
     dispose: ports.dispose,

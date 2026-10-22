@@ -1,6 +1,7 @@
 import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Input } from "@vibeshape/ui/components/input"
 import { type FormEvent, useEffect, useId, useRef, useState } from "react"
@@ -105,11 +106,7 @@ export function AssistantQuestionForm({
             </fieldset>
           )
         })}
-        {failed && (
-          <p role="alert" className="text-xs text-destructive">
-            {t("questionResponseFailed")}
-          </p>
-        )}
+        {failed && <Alert>{t("questionResponseFailed")}</Alert>}
         {expired && (
           <p role="status" className="text-xs text-muted-foreground">
             {t("questionExpired")}

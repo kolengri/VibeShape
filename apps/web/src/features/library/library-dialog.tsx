@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -81,11 +82,7 @@ function LibraryTask({
           />
         </div>
       </div>
-      {action.error && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("operationError", { message: action.error })}
-        </p>
-      )}
+      {action.error && <Alert>{t("operationError", { message: action.error })}</Alert>}
       {action.notice && (
         <p role="status" className="text-sm">
           {action.notice}

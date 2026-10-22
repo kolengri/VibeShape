@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
@@ -227,19 +228,15 @@ export function GenerativeDesignResults({ state }: { state: StudyState }) {
         </article>
       ))}
       {state.study.failures.map((failure) => (
-        <p key={failure.id} className="text-xs text-destructive">
+        <Alert key={failure.id}>
           {t("candidateFailed", {
             material: failure.materialName,
             target: failure.retainedMassFraction * 100,
             code: failure.code,
           })}
-        </p>
+        </Alert>
       ))}
-      {state.study.candidates.length === 0 && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("noCandidates")}
-        </p>
-      )}
+      {state.study.candidates.length === 0 && <Alert>{t("noCandidates")}</Alert>}
     </section>
   )
 }

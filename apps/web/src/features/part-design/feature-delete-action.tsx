@@ -1,4 +1,5 @@
 import type { FeatureRecord } from "@vibeshape/domain"
+import { Alert } from "@vibeshape/ui/components/alert"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -172,11 +173,7 @@ export function FeatureDeleteDialog({
           <AlertDialogDescription>{copy.description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AffectedReferenceList {...copy} />
-        {failed ? (
-          <p className="text-sm text-destructive" role="alert">
-            {copy.failed}
-          </p>
-        ) : null}
+        {failed ? <Alert>{copy.failed}</Alert> : null}
         <AlertDialogFooter>
           <AlertDialogCancel asChild>
             <Button type="button" variant="outline" disabled={pending}>

@@ -1,4 +1,5 @@
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { TaskPanelHeader } from "../components/task-panel-header"
 import { PlanarImportPreview } from "../features/planar-import/import-preview"
 import { ReviewActions } from "./automation-review-actions"
@@ -60,11 +61,7 @@ export function PlanarImportReviewPanel({
           <li>{t("closedPaths", { count: input.source.closedPaths })}</li>
           <li>{t("curves", { count: input.source.curves })}</li>
         </ul>
-        {review.status === "error" && (
-          <p role="status" className="text-sm text-destructive">
-            {actions("applyFailed")}
-          </p>
-        )}
+        {review.status === "error" && <Alert aria-live="polite">{actions("applyFailed")}</Alert>}
       </div>
     </section>
   )

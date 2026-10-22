@@ -6,6 +6,8 @@ import {
   assistantAttachmentsSupported,
 } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
+import { FieldError } from "@vibeshape/ui/components/field"
 import { FileText, X } from "@vibeshape/ui/components/icons"
 import { AssistantIconAction } from "./assistant-icon-action"
 
@@ -149,14 +151,15 @@ export function AssistantImageAttachmentFeedback({
     readyAssistantAttachments(attachments),
     capabilities,
   )
-  return (
-    <p role={unsupported ? "alert" : undefined} className="px-3 pt-2 text-xs text-muted-foreground">
-      {t(unsupported ? "attachmentImageEnvelopeExceeded" : "attachmentImageLimits", {
-        formats: limits.mimeTypes.map((type) => type.slice(6).toUpperCase()).join(", "),
-        count: limits.maxCount,
-        limit: (Math.floor(limits.maxTotalBase64Bytes / 4) * 3) / 1024,
-      })}
-    </p>
+  const message = t(unsupported ? "attachmentImageEnvelopeExceeded" : "attachmentImageLimits", {
+    formats: limits.mimeTypes.map((type) => type.slice(6).toUpperCase()).join(", "),
+    count: limits.maxCount,
+    limit: (Math.floor(limits.maxTotalBase64Bytes / 4) * 3) / 1024,
+  })
+  return unsupported ? (
+    <FieldError className="px-3 pt-2">{message}</FieldError>
+  ) : (
+    <p className="px-3 pt-2 text-xs text-muted-foreground">{message}</p>
   )
 }
 
@@ -203,7 +206,7 @@ export function AssistantAttachments({
             </AssistantIconAction>
           </div>
           {file.status === "error" && (
-            <p role="alert" className="max-w-64 break-words px-2 pb-2 text-destructive">
+            <Alert className="max-w-64">
               {file.issue === "too-large"
                 ? t("attachmentTooLarge", { name: file.name, limit: file.limit ?? 0 })
                 : file.issue === "unsupported"
@@ -211,7 +214,7 @@ export function AssistantAttachments({
                   : file.issue === "invalid-text"
                     ? t("attachmentInvalidText", { name: file.name })
                     : t("attachmentReadFailed", { name: file.name })}
-            </p>
+            </Alert>
           )}
         </li>
       ))}

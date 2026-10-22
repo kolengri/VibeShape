@@ -7,6 +7,7 @@ import {
 } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   AssistantSteerIcon,
@@ -551,19 +552,15 @@ function AssistantComposerFeedback({
           {t(canAttach ? "dropFiles" : "dropFilesUnavailable")}
         </p>
       )}
-      {captureFailed && (
-        <p role="alert" className="px-3 pt-2 text-xs text-destructive">
-          {t("captureViewFailed")}
-        </p>
-      )}
+      {captureFailed && <Alert>{t("captureViewFailed")}</Alert>}
       {selectionIssue && (
-        <p role="alert" className="px-3 pt-2 text-xs text-destructive">
+        <Alert>
           {selectionIssue === "count"
             ? t("attachmentTooMany", { count: ASSISTANT_MAX_ATTACHMENTS })
             : t("attachmentTotalTooLarge", {
                 limit: ASSISTANT_MAX_ATTACHMENT_TOTAL_BYTES / 1024 ** 2,
               })}
-        </p>
+        </Alert>
       )}
     </>
   )

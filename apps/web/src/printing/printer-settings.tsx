@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { printerProfileSchema } from "@vibeshape/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
@@ -56,11 +57,7 @@ export function PrinterSettings() {
             </form.AppField>
           ))}
         </div>
-        {error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {t("invalid")}
-          </p>
-        ) : null}
+        {error ? <Alert>{t("invalid")}</Alert> : null}
         <form.SubmitButton requireDirty={false}>{t("apply")}</form.SubmitButton>
       </Form>
       <label className="flex items-center gap-2 text-sm">

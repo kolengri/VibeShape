@@ -1,5 +1,6 @@
 import type { SketchRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { useSketchTextActions } from "./text-context"
 
@@ -21,11 +22,7 @@ export function SketchTextGroups({ draft, disabled }: { draft: SketchRecord; dis
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">{t("groupsDescription")}</p>
-      {actions?.error && (
-        <p role="alert" className="text-xs text-destructive">
-          {actions.error}
-        </p>
-      )}
+      {actions?.error && <Alert>{actions.error}</Alert>}
       {(draft.textGroups ?? []).map((group) => (
         <div
           key={group.id}

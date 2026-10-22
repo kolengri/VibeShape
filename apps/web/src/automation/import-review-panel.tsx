@@ -1,4 +1,5 @@
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { useState } from "react"
 import { TaskPanelHeader } from "../components/task-panel-header"
 import { ImportPreview } from "../features/import/import-preview"
@@ -93,11 +94,7 @@ export function ImportReviewPanel({
             {t("degenerateTriangles", { count: warning.count })}
           </p>
         ))}
-        {review.status === "error" && (
-          <p role="status" className="text-sm text-destructive">
-            {actions("applyFailed")}
-          </p>
-        )}
+        {review.status === "error" && <Alert aria-live="polite">{actions("applyFailed")}</Alert>}
       </div>
     </section>
   )

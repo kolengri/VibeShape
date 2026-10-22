@@ -1,5 +1,6 @@
 import type { FeatureId } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Trash2 } from "@vibeshape/ui/components/icons"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
@@ -91,11 +92,7 @@ export function SurfaceTextureTaskPanel({
             />
           }
         >
-          {stale && (
-            <p role="alert" className="text-xs text-destructive">
-              {t("stale")}
-            </p>
-          )}
+          {stale && <Alert>{t("stale")}</Alert>}
         </TaskPanelHeader>
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <fieldset
@@ -119,11 +116,7 @@ export function SurfaceTextureTaskPanel({
         </div>
         <div className="grid shrink-0 gap-2 border-t bg-panel p-3">
           <TexturePreviewFooter visible={draft !== null} />
-          {error && (
-            <p role="alert" className="text-xs text-destructive">
-              {error}
-            </p>
-          )}
+          {error && <Alert>{error}</Alert>}
         </div>
       </form>
     </aside>

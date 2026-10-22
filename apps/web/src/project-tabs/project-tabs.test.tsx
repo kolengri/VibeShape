@@ -59,6 +59,7 @@ const copy = {
   switchFailed: "Could not open the project. The current project remains open.",
   listFailed: "Could not refresh open projects.",
   storageFailed: "Open project tabs could not be remembered on this device.",
+  working: "Opening project…",
 }
 function publish(next: DocumentControllerState) {
   current = next

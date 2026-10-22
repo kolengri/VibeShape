@@ -6,6 +6,7 @@ import type {
   GeometryExportFormat,
   PrintPreparationSettings,
 } from "@vibeshape/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -130,11 +131,7 @@ function AssemblyExportStatus({ view }: { view: ExportView }) {
   return (
     <>
       {view.includesMesh && <p className="text-xs text-muted-foreground">{t("exportMeshStep")}</p>}
-      {view.action.failed && !appOwnsError && (
-        <p role="alert" className="text-sm text-destructive">
-          {t("exportFailed")}
-        </p>
-      )}
+      {view.action.failed && !appOwnsError && <Alert>{t("exportFailed")}</Alert>}
       {view.action.downloaded && (
         <p role="status" className="text-sm">
           {t("exportDownloaded", { format: view.action.downloaded.toUpperCase() })}
