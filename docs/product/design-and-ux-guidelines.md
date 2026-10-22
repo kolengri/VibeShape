@@ -124,7 +124,7 @@ At widths below 1024 px, VibeShape MAY offer view, inspect, and export behavior,
 - Use the shadcn/ui `new-york` direction with Radix primitives.
 - Ship dark, light, and system themes; dark is the initial default for the CAD workspace, not a hard-coded requirement.
 - Use neutral or zinc foundational surfaces with one restrained primary accent.
-- Separate working regions with borders, contrast, and resizable separators rather than nested cards.
+- Present the command toolbar, model browser, task panel, assistant, and History as separate working regions with 8 px gutters, subtle borders, and 10 px corners. Keep internal controls compact and avoid nested cards. Resize gutters retain their full 8 px hit area and show their accent on hover, keyboard focus, and drag.
 - Do not use glassmorphism, large gradients, ornamental shadows, animated backgrounds, or oversized marketing typography in the editor.
 - Use elevation only for temporary layers such as menus, popovers, tooltips, dialogs, and drag previews.
 - Preserve the same semantic hierarchy in both themes; dark mode is not an inverted afterthought.

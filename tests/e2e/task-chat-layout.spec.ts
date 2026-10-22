@@ -41,19 +41,27 @@ for (const width of [800, 1024, 1440]) {
       })
       .toBe(true)
     await expect(draft).toHaveValue("77")
+    if (width >= 1024) {
+      const treeBounds = await page.locator(".workspace-panel--tree").boundingBox()
+      const taskBounds = await page.locator(".workspace-panel--task").boundingBox()
+      if (!treeBounds || !taskBounds) throw new Error("Side panels must have measurable bounds.")
+      expect(treeBounds.width).toBeGreaterThanOrEqual(200)
+      expect(taskBounds.width).toBeGreaterThanOrEqual(280)
+    }
     const timeline = page.locator("[data-feature-timeline]")
     const timelineBounds = await timeline.boundingBox()
     const chatBounds = await chat.boundingBox()
     if (!timelineBounds || !chatBounds) throw new Error("Chat and History must be visible.")
-    expect(chatBounds.y + chatBounds.height).toBeLessThanOrEqual(timelineBounds.y + 1)
-    expect(timelineBounds.width).toBe(width)
+    expect(timelineBounds.y - (chatBounds.y + chatBounds.height)).toBeCloseTo(8, 0)
+    expect(timelineBounds.x).toBe(8)
+    expect(timelineBounds.width).toBe(width - 16)
     await timeline.getByRole("treeitem", { name: "History", exact: true }).click()
     await expect
       .poll(async () => {
         const historyBounds = await timeline.boundingBox()
         const bounds = await chat.boundingBox()
         if (!historyBounds || !bounds) return false
-        return Math.abs(bounds.y + bounds.height - historyBounds.y) <= 1
+        return Math.abs(historyBounds.y - (bounds.y + bounds.height) - 8) <= 1
       })
       .toBe(true)
     await chat.getByRole("button", { name: "Close chat", exact: true }).click()
