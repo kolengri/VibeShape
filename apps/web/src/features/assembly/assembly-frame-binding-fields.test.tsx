@@ -1,13 +1,19 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import type { AssemblyFrameBinding } from "@vibeshape/domain/assembly-mates"
 import { assemblyFrameBindingSchema } from "@vibeshape/domain/assembly-mates"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { assemblyInspectionSchema, topologyCandidateSchema } from "@vibeshape/protocol"
+import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
-import { AssemblyFrameBindingFields } from "./assembly-frame-binding-fields"
+import {
+  AssemblyFrameBindingFields,
+  frameBindingValues,
+  readAssemblyFrameBinding,
+} from "./assembly-frame-binding-fields"
 import { identityAssemblyPose } from "./assembly-model"
 import { assemblyUiFixture } from "./assembly-test-fixture"
 
@@ -88,6 +94,34 @@ function fixture() {
   })
   return { f, body, binding, assembly, inspection }
 }
+function BindingHarness({
+  f,
+  onChange,
+  onSubmit,
+}: {
+  f: ReturnType<typeof fixture>
+  onChange: (binding: AssemblyFrameBinding | undefined) => void
+  onSubmit?: (binding: AssemblyFrameBinding | undefined) => void
+}) {
+  const form = useAppForm({
+    defaultValues: { binding: frameBindingValues(f.binding) },
+    onSubmit: ({ value }) => onSubmit?.(readAssemblyFrameBinding(value.binding)),
+    listeners: { onChange: ({ formApi }) => onChange(formApi.state.values.binding.reference) },
+  })
+  return (
+    <Form form={form}>
+      <AssemblyFrameBindingFields
+        form={form}
+        fields="binding"
+        prefix="child"
+        assembly={f.assembly}
+        inspection={f.inspection}
+        instanceId={f.f.parent.id}
+      />
+      <button type="submit">Apply binding</button>
+    </Form>
+  )
+}
 describe("saved frame binding identity", () => {
   it.each(["pin", "body"] as const)(
     "surfaces an unchanged shape with stale %s as unresolved until deliberate reselection",
@@ -100,14 +134,7 @@ describe("saved frame binding identity", () => {
       const onChange = vi.fn()
       render(
         <I18nProvider i18n={i18n} initialLocale="en">
-          <AssemblyFrameBindingFields
-            prefix="child"
-            assembly={f.assembly}
-            inspection={f.inspection}
-            instanceId={f.f.parent.id}
-            binding={f.binding}
-            onChange={onChange}
-          />
+          <BindingHarness f={f} onChange={onChange} />
         </I18nProvider>,
       )
       const control = screen.getByRole("combobox", { name: "Child frame geometry" })
@@ -121,6 +148,36 @@ describe("saved frame binding identity", () => {
       )
     },
   )
+  it("submits typed binding edits and allows explicit frames after an invalid geometry draft", async () => {
+    const f = fixture()
+    f.binding.pinRevision = 2
+    const onSubmit = vi.fn()
+    render(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <BindingHarness f={f} onChange={vi.fn()} onSubmit={onSubmit} />
+      </I18nProvider>,
+    )
+    const origin = screen.getByRole("spinbutton", { name: "Origin hint X (mm)" })
+    fireEvent.change(origin, { target: { value: "12.5" } })
+    await userEvent.click(screen.getByRole("checkbox", { name: "Reverse joint axis" }))
+    await userEvent.click(screen.getByRole("button", { name: "Apply binding" }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        originHint: [12.5, 0, 0],
+        reversed: true,
+        reference: f.binding.reference,
+      }),
+    )
+    fireEvent.change(origin, { target: { value: "" } })
+    await userEvent.click(screen.getByRole("button", { name: "Apply binding" }))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole("combobox", { name: "Child frame geometry" }))
+    await userEvent.click(screen.getByRole("option", { name: "Explicit numeric frame" }))
+    await userEvent.click(screen.getByRole("button", { name: "Apply binding" }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2))
+    expect(onSubmit).toHaveBeenLastCalledWith(undefined)
+  })
   it("keeps stale inspection candidates unavailable until a current pin is inspected", async () => {
     const f = fixture()
     f.binding.pinRevision = 2
@@ -130,14 +187,7 @@ describe("saved frame binding identity", () => {
     const onChange = vi.fn()
     render(
       <I18nProvider i18n={i18n} initialLocale="en">
-        <AssemblyFrameBindingFields
-          prefix="child"
-          assembly={f.assembly}
-          inspection={f.inspection}
-          instanceId={f.f.parent.id}
-          binding={f.binding}
-          onChange={onChange}
-        />
+        <BindingHarness f={f} onChange={onChange} />
       </I18nProvider>,
     )
     const control = screen.getByRole("combobox", { name: "Child frame geometry" })

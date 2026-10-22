@@ -80,7 +80,7 @@ describe("stored disconnected History authority", () => {
     expect(await validAuthorityEvent(event)).toEqual(fixture.removed.event)
     expect(await validAuthoritySnapshot({ ...snapshot, checksum: "0".repeat(64) })).toBeNull()
     expect(await validAuthoritySnapshot({ ...snapshot, schemaVersion: 4 })).toBeNull()
-    await expect(validAuthoritySnapshot({ ...snapshot, schemaVersion: 6 })).rejects.toThrow()
+    await expect(validAuthoritySnapshot({ ...snapshot, schemaVersion: 7 })).rejects.toThrow()
   })
   it("validates explicit atomic adoption and portable replay without relaxing old authority heads", () => {
     const fixture = historyRepairJournalFixture()

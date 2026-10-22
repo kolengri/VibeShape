@@ -64,6 +64,12 @@ test("previews real assembly drives without saving, pauses and resets, applies o
     timeout: 60_000,
   })
   await expect(page.getByText("Unsaved motion preview", { exact: true })).toBeVisible()
+  const badge = await page.getByText("Unsaved motion preview", { exact: true }).boundingBox()
+  const toolbar = await page.locator("nav[data-sketch-mode]").boundingBox()
+  const tree = await page.locator(".workspace-panel--tree").boundingBox()
+  if (!badge || !toolbar || !tree) throw new Error("Motion preview chrome must be measurable.")
+  expect(badge.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height)
+  expect(badge.x).toBeGreaterThanOrEqual(tree.x + tree.width)
   const unsaved = await assembly(page)
   expect(unsaved.assembly).toEqual(baseline.assembly)
   expect(unsaved.revision).toBe(baseline.revision)
@@ -83,9 +89,19 @@ test("previews real assembly drives without saving, pauses and resets, applies o
   await panel(page).getByRole("button", { name: "Reset preview", exact: true }).click()
   await expect(page.getByText("Unsaved motion preview", { exact: true })).toHaveCount(0)
   await expect(panel(page).getByRole("button", { name: "Apply", exact: true })).toBeDisabled()
-  await panel(page).getByRole("spinbutton", { name: "Sweep start (deg)", exact: true }).fill("46")
+  const invalidStart = panel(page).getByRole("spinbutton", {
+    name: "Sweep start (deg)",
+    exact: true,
+  })
+  await invalidStart.fill("46")
   await panel(page).getByRole("button", { name: "Play animation", exact: true }).click()
-  await expect(panel(page).getByRole("alert")).toContainText("Check track coordinates")
+  await expect(invalidStart).toHaveAttribute("aria-invalid", "true")
+  await expect(invalidStart).toHaveAccessibleDescription(
+    "Check the names, finite coordinates, rotation angles, nonzero axis and ordered drive limits.",
+  )
+  await expect(panel(page).getByRole("alert")).toHaveText(
+    "Check the names, finite coordinates, rotation angles, nonzero axis and ordered drive limits.",
+  )
   await expect(panel(page).getByRole("button", { name: "Apply", exact: true })).toBeDisabled()
 
   await panel(page).getByRole("spinbutton", { name: "Sweep start (deg)", exact: true }).fill("-10")

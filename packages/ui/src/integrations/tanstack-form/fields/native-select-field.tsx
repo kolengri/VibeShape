@@ -1,6 +1,6 @@
 import { NativeSelectField, type NativeSelectFieldProps } from "#components/native-select-field"
 import { useFieldContext } from "../context"
-import { validationMessage } from "../validation-message"
+import { useFieldError } from "../use-field-error"
 
 export type TanStackNativeSelectFieldProps = Omit<
   NativeSelectFieldProps,
@@ -11,8 +11,7 @@ export type TanStackNativeSelectFieldProps = Omit<
 
 function TanStackNativeSelectField({ onValueChange, ...props }: TanStackNativeSelectFieldProps) {
   const field = useFieldContext<string>()
-  const showError = field.state.meta.isBlurred || field.form.state.isSubmitted
-  const error = showError ? validationMessage(field.state.meta.errors[0]) : undefined
+  const error = useFieldError()
 
   return (
     <NativeSelectField
@@ -22,8 +21,8 @@ function TanStackNativeSelectField({ onValueChange, ...props }: TanStackNativeSe
       error={error}
       onBlur={field.handleBlur}
       onChange={(event) => {
-        onValueChange?.(event.currentTarget.value)
         field.handleChange(event.currentTarget.value)
+        onValueChange?.(event.currentTarget.value)
       }}
     />
   )

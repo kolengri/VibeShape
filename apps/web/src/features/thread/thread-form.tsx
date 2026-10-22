@@ -1,10 +1,10 @@
 import type { FeatureRecord } from "@vibeshape/domain"
 import { metricThreadPresets } from "@vibeshape/domain/part-design-thread"
 import { referenceAxisSchema } from "@vibeshape/domain/reference-frame"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -93,12 +93,6 @@ function panelMessage(
 function controlsDisabled(disabled: boolean, sourceAvailable: boolean, valid = true) {
   return disabled || !sourceAvailable || !valid
 }
-function visibleIssues(
-  parsed: ReturnType<typeof parseThreadForm>,
-  issues: Readonly<Record<string, string | undefined>>,
-) {
-  return parsed.ok ? issues : { ...issues, ...parsed.issues }
-}
 const descriptionKeys = {
   nominalDiameter: "dimensionDescription",
   pitch: "pitchDescription",
@@ -133,15 +127,18 @@ export function ThreadForm({
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: threadFormValues(mode, state.displayUnits),
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parseThreadForm(value, mode, variables, state.displayUnits, copy)
+        return parsed.ok ? undefined : { form: copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: async ({ value }) => {
       const parsed = parseThreadForm(value, mode, variables, state.displayUnits, copy)
-      if (!parsed.ok) {
-        state.setIssues(parsed.issues)
-        state.setMessage(copy.validationSummary)
-        return
-      }
+      if (!parsed.ok) return
       state.clearSubmissionErrors()
       await submitFeatureMutation({
         baseRevision,
@@ -154,34 +151,31 @@ export function ThreadForm({
     },
   })
   return (
-    <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       <form.Subscribe selector={(formState) => [formState.values, formState.isSubmitting] as const}>
         {([values, pending]) => {
           const parsed = parseThreadForm(values, mode, variables, state.displayUnits, copy)
-          const issues = visibleIssues(parsed, state.issues)
+          const issues = parsed.ok ? {} : parsed.issues
           const advancedInvalid = threadAdvancedFields.some((field) => Boolean(issues[field]))
           const expressionField = (
             name: (typeof threadCoreFields)[number] | (typeof threadAdvancedFields)[number],
           ) => (
-            <form.Field name={name} key={name}>
+            <form.AppField name={name} key={name}>
               {(field) => (
-                <LengthExpressionField
+                <field.LengthExpressionField
                   id={`thread-${name}`}
-                  name={name}
-                  value={field.state.value}
                   label={copy[name]}
-                  description={copy[descriptionKeys[name]]}
                   error={issues[name]}
+                  description={copy[descriptionKeys[name]]}
                   suggestions={state.suggestions}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
+                  onValueChange={() => {
                     state.clearSubmissionErrors()
                     if (name === "nominalDiameter" || name === "pitch") setMetricSize("custom")
-                    field.handleChange(value)
                   }}
                 />
               )}
-            </form.Field>
+            </form.AppField>
           )
           return (
             <>
@@ -209,6 +203,7 @@ export function ThreadForm({
               >
                 <LocalizedSearchableSelectField
                   label={copy.metricSize}
+                  description={copy.metricSizeDescription}
                   placeholder={copy.metricSize}
                   value={metricSize}
                   onValueChange={(value) => {
@@ -227,63 +222,44 @@ export function ThreadForm({
                     })),
                   ]}
                 />
-                <p className="text-xs text-muted-foreground">{copy.metricSizeDescription}</p>
-                <form.Field name="kind">
+                <form.AppField name="kind">
                   {(field) => (
-                    <fieldset className="grid gap-2">
-                      <legend className="mb-2 text-xs font-medium">{copy.kind}</legend>
-                      {(["external", "internal"] as const).map((kind) => (
-                        <label key={kind} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="kind"
-                            value={kind}
-                            checked={field.state.value === kind}
-                            onBlur={field.handleBlur}
-                            onChange={() => {
-                              state.clearSubmissionErrors()
-                              field.handleChange(kind)
-                            }}
-                          />
-                          {copy[kind]}
-                        </label>
-                      ))}
-                    </fieldset>
+                    <field.ChoiceField
+                      label={copy.kind}
+                      onValueChange={() => {
+                        state.clearSubmissionErrors()
+                      }}
+                      options={(["external", "internal"] as const).map((kind) => ({
+                        value: kind,
+                        label: copy[kind],
+                      }))}
+                    />
                   )}
-                </form.Field>
+                </form.AppField>
                 {threadCoreFields.map(expressionField)}
                 <details
-                  className="grid gap-3"
+                  className="grid gap-2"
                   open={advancedExpanded || advancedInvalid}
                   onToggle={(event) => setAdvancedExpanded(event.currentTarget.open)}
                 >
-                  <summary className="cursor-pointer py-2 text-xs font-medium">
+                  <summary className="cursor-pointer py-1 text-xs font-medium">
                     {copy.advanced}
                   </summary>
-                  <div className="grid gap-3 pt-3">
-                    <form.Field name="axis">
+                  <div className="grid gap-2 pt-1">
+                    <form.AppField name="axis">
                       {(field) => (
-                        <fieldset className="grid gap-2">
-                          <legend className="mb-2 text-xs font-medium">{copy.axis}</legend>
-                          {(["X", "Y", "Z"] as const).map((axis) => (
-                            <label key={axis} className="flex items-center gap-2 text-sm">
-                              <input
-                                type="radio"
-                                name="axis"
-                                value={axis}
-                                checked={field.state.value === axis}
-                                onBlur={field.handleBlur}
-                                onChange={() => {
-                                  state.clearSubmissionErrors()
-                                  field.handleChange(axis)
-                                }}
-                              />
-                              {axis}
-                            </label>
-                          ))}
-                        </fieldset>
+                        <field.ChoiceField
+                          label={copy.axis}
+                          onValueChange={() => {
+                            state.clearSubmissionErrors()
+                          }}
+                          options={(["X", "Y", "Z"] as const).map((axis) => ({
+                            value: axis,
+                            label: axis,
+                          }))}
+                        />
                       )}
-                    </form.Field>
+                    </form.AppField>
                     {axisOptions && (
                       <ReferenceAxisSelection
                         options={axisOptions}
@@ -298,29 +274,20 @@ export function ThreadForm({
                         {null}
                       </ReferenceAxisSelection>
                     )}
-                    <form.Field name="handedness">
+                    <form.AppField name="handedness">
                       {(field) => (
-                        <fieldset className="grid gap-2">
-                          <legend className="mb-2 text-xs font-medium">{copy.handedness}</legend>
-                          {(["right", "left"] as const).map((handedness) => (
-                            <label key={handedness} className="flex items-center gap-2 text-sm">
-                              <input
-                                type="radio"
-                                name="handedness"
-                                value={handedness}
-                                checked={field.state.value === handedness}
-                                onBlur={field.handleBlur}
-                                onChange={() => {
-                                  state.clearSubmissionErrors()
-                                  field.handleChange(handedness)
-                                }}
-                              />
-                              {copy[handedness]}
-                            </label>
-                          ))}
-                        </fieldset>
+                        <field.ChoiceField
+                          label={copy.handedness}
+                          onValueChange={() => {
+                            state.clearSubmissionErrors()
+                          }}
+                          options={(["right", "left"] as const).map((handedness) => ({
+                            value: handedness,
+                            label: copy[handedness],
+                          }))}
+                        />
                       )}
-                    </form.Field>
+                    </form.AppField>
                     {threadAdvancedFields
                       .filter((name) => values.axis !== "reference" || !name.startsWith("origin"))
                       .map(expressionField)}

@@ -27,6 +27,12 @@ import { type DocumentSnapshotV4, documentSnapshotV4Schema } from "./document-v4
 import { applyDocumentV4AuthoredCommand } from "./document-v4-commands"
 import { type DocumentSnapshotV5, documentSnapshotV5Schema } from "./document-v5"
 import { applyDocumentV5AuthoredCommand } from "./document-v5-commands"
+import {
+  type DocumentSnapshotV6,
+  documentSnapshotV6Schema,
+  projectDocumentSnapshotV6ToV5,
+} from "./document-v6"
+import { wrapDocumentV6AuthoredResult } from "./document-v6-commands"
 import { commandIdSchema, documentIdSchema, draftIdSchema, timestampSchema } from "./identifiers"
 
 const copyInputObjectSchema = z
@@ -38,6 +44,7 @@ const copyInputObjectSchema = z
       documentSnapshotV3Schema,
       documentSnapshotV4Schema,
       documentSnapshotV5Schema,
+      documentSnapshotV6Schema,
     ]),
     sourceEvents: z.array(documentAuthorityEventSchema).max(99_999),
     documentId: documentIdSchema,
@@ -106,7 +113,12 @@ export type CompleteDocumentAuthorityCopyResult =
       ok: true
       legacyEvents: readonly DocumentEvent[]
       seed: DocumentSnapshotV1 | null
-      snapshot: DocumentSnapshotV2 | DocumentSnapshotV3 | DocumentSnapshotV4 | DocumentSnapshotV5
+      snapshot:
+        | DocumentSnapshotV2
+        | DocumentSnapshotV3
+        | DocumentSnapshotV4
+        | DocumentSnapshotV5
+        | DocumentSnapshotV6
       versionedEvents: readonly DocumentAuthorityEvent[]
     }>
   | Readonly<{ ok: false; diagnostic: DomainDiagnostic }>
@@ -201,6 +213,11 @@ function renameCopiedAuthority(snapshot: DocumentAuthoritySnapshot, input: CopyI
     schemaVersion: snapshot.schemaVersion === 2 ? 2 : 3,
     payload: { command, partAllocations: [] },
   }
+  if (snapshot.schemaVersion === 6)
+    return wrapDocumentV6AuthoredResult(
+      snapshot,
+      applyDocumentV5AuthoredCommand(projectDocumentSnapshotV6ToV5(snapshot), authored),
+    )
   if (snapshot.schemaVersion === 5) return applyDocumentV5AuthoredCommand(snapshot, authored)
   if (snapshot.schemaVersion === 4) return applyDocumentV4AuthoredCommand(snapshot, authored)
   return snapshot.schemaVersion === 3

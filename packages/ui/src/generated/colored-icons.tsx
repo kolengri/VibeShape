@@ -21962,6 +21962,109 @@ export const StopIcon = /* @__PURE__ */ coloredIcon("stop", (instanceId) => (
   </>
 ))
 
+export const InformationIcon = /* @__PURE__ */ coloredIcon("information", (instanceId) => (
+  <>
+    <defs>
+      <linearGradient
+        id={`${instanceId}-frosted-information-light-material-top`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
+        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-information-light-material-front`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
+        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-information-light-material-side`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
+        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-information-light-status-positive`}
+        x1="16"
+        y1="10"
+        x2="44"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-success-start, #eef8f2)" />
+        <stop offset="1" stopColor="var(--icon-success-end, #c7e0d3)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-information-light-status-negative`}
+        x1="16"
+        y1="10"
+        x2="44"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-danger-start, #fff1ef)" />
+        <stop offset="1" stopColor="var(--icon-danger-end, #efcbc7)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-information-light-status-warning`}
+        x1="16"
+        y1="10"
+        x2="44"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-warning-start, #fff2dd)" />
+        <stop offset="1" stopColor="var(--icon-warning-end, #efcf99)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-information-light-status-amber`}
+        x1="16"
+        y1="10"
+        x2="44"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-amber-start, #f9d9aa)" />
+        <stop offset="1" stopColor="var(--icon-amber-end, #efb56b)" />
+      </linearGradient>
+    </defs>
+    <g opacity=".91" data-layer="material">
+      <g transform="scale(4)">
+        <circle
+          cx="32"
+          cy="32"
+          r="24"
+          fill={`url(#${instanceId}-frosted-information-light-material-top)`}
+        />
+        <rect
+          x="29.5"
+          y="28"
+          width="5"
+          height="19"
+          rx="2.5"
+          fill="var(--icon-geometry-recess, #547ca2)"
+        />
+        <circle cx="32" cy="19" r="3" fill="var(--icon-geometry-recess, #547ca2)" />
+      </g>
+    </g>
+  </>
+))
+
 export const CloseIcon = /* @__PURE__ */ coloredIcon("close", (instanceId) => (
   <>
     <defs>

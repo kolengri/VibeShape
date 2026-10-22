@@ -95,6 +95,7 @@ import {
   profileSupportReferences,
 } from "../features/part-design/profile-feature-selection"
 import type { PlacementManipulator } from "../features/placement/placement-manipulator"
+import { PressPullTaskPanel } from "../features/press-pull/press-pull-task-panel"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import {
   DatumPlaneForm,
@@ -1356,7 +1357,7 @@ function EmptyProfileFeatureTaskPanel({
     >
       <TaskPanelHeader
         title={title}
-        description={description}
+        instruction={description}
         actions={
           <TaskPanelLifecycleActions
             ariaLabel={title}
@@ -2051,6 +2052,9 @@ function featureTaskDeleteAction(props: ActiveTaskPanelProps) {
 function PlacementToolTaskPanel(props: ActiveTaskPanelProps) {
   return <PlacementTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
 }
+function PressPullToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <PressPullTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+}
 function ShellToolTaskPanel(props: ActiveTaskPanelProps) {
   return <ShellTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
 }
@@ -2122,6 +2126,8 @@ const activeTaskPanelByKind = {
   "edit-placement": PlacementToolTaskPanel,
   "create-mirror": MirrorToolTaskPanel,
   "edit-mirror": MirrorToolTaskPanel,
+  "create-press-pull": PressPullToolTaskPanel,
+  "edit-press-pull": PressPullToolTaskPanel,
   "create-shell": ShellToolTaskPanel,
   "edit-shell": ShellToolTaskPanel,
   "create-thread": ThreadToolTaskPanel,
@@ -2471,7 +2477,7 @@ function ActiveSketchTaskPanel({
       <TaskPanelHeader
         className="border-b p-3"
         title={draft.label}
-        description={modeDescription}
+        instruction={modeDescription}
         actions={
           <TaskPanelLifecycleActions
             acceptDisabled={report.mode === "read-only"}
@@ -2513,7 +2519,7 @@ function SketchPlaneSelectionTaskPanel({
       <TaskPanelHeader
         className="border-b p-3"
         title={title}
-        description={description}
+        instruction={description}
         actions={
           <TaskPanelLifecycleActions
             ariaLabel={t("lifecycleActions")}

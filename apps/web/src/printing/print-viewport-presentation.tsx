@@ -1,10 +1,12 @@
 import type { PrinterProfile } from "@vibeshape/protocol"
+import { cn } from "@vibeshape/ui/lib/cn"
 import type {
   GeometryViewport,
   GeometryViewportOptions,
   ViewerMesh,
 } from "@vibeshape/viewer/three-viewport"
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react"
+import { SAFE_VIEWPORT_RIGHT } from "../shell/viewport-chrome-styles"
 import { inspectViewportPrintVolume } from "./print-volume"
 import { PrintVolumeStatus } from "./print-volume-status"
 
@@ -65,7 +67,12 @@ export function PrintViewportStatus({
 }) {
   if (!visible || !profile || count === 0) return null
   return (
-    <div className="pointer-events-none absolute bottom-12 right-3 max-w-64 rounded-md border bg-background/90 p-2">
+    <div
+      className={cn(
+        "pointer-events-none absolute bottom-12 right-3 w-64 rounded-md border bg-background/90 p-2",
+        SAFE_VIEWPORT_RIGHT,
+      )}
+    >
       <PrintVolumeStatus profile={profile} report={report} compact />
     </div>
   )

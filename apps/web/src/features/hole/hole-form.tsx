@@ -20,8 +20,7 @@ import {
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
 import { FieldError } from "@vibeshape/ui/components/field"
-import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form, useFieldContext, useFieldError } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useId, useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
@@ -30,19 +29,17 @@ import {
   normalizeExpressionWithDisplayUnit,
 } from "../../document/document-display-units"
 import { bodyReferencePickCandidate } from "../part-design/body-reference-picking"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   parsePrimitiveLengthExpression,
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
-import { ReferencePickField } from "../part-design/reference-pick-field"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
-import { VariableExpressionField } from "../variables/variable-expression-field"
 import { type HoleTargetBodyOption, holeTargetBodyKey } from "./hole-target-body"
 
 export type HoleFormCopy = ParameterPanelCopy &
@@ -474,24 +471,28 @@ function HolePoints({
   copy,
   error,
   onChange,
+  onBlur,
 }: {
   sketch: SketchRecord | undefined
   selected: readonly SketchEntityId[]
   copy: HoleFormCopy
   error: string | undefined
   onChange: (ids: readonly SketchEntityId[]) => void
+  onBlur?: (() => void) | undefined
 }) {
   const points = sketch?.entities.filter((entity) => entity.type === "point") ?? []
   const missing = selected.filter((id) => !points.some((point) => point.id === id))
   const errorId = useId()
   return (
     <fieldset
-      className="grid min-w-0 gap-2"
+      className="grid min-w-0 gap-1"
       aria-label={copy.points}
+      onBlur={onBlur}
+      tabIndex={error ? -1 : undefined}
       aria-invalid={Boolean(error) || undefined}
       aria-describedby={error ? errorId : undefined}
     >
-      <legend className="text-xs font-medium">{copy.points}</legend>
+      <legend className="mb-1 text-xs font-medium">{copy.points}</legend>
       <p className="text-xs text-muted-foreground">{copy.pointsDescription}</p>
       {points.length === 0 ? (
         <p className="text-xs text-muted-foreground">{copy.noPoints}</p>
@@ -532,6 +533,32 @@ function HolePoints({
   )
 }
 
+function HolePointsFormField({
+  sketch,
+  copy,
+  onValueChange,
+}: {
+  sketch: SketchRecord | undefined
+  copy: HoleFormCopy
+  onValueChange: () => void
+}) {
+  const field = useFieldContext<readonly SketchEntityId[]>()
+  const error = useFieldError()
+  return (
+    <HolePoints
+      onBlur={field.handleBlur}
+      sketch={sketch}
+      selected={field.state.value}
+      copy={copy}
+      error={error}
+      onChange={(ids) => {
+        field.handleChange(ids)
+        onValueChange()
+      }}
+    />
+  )
+}
+
 async function submitHole(
   values: Values,
   props: HoleFormProps,
@@ -541,11 +568,7 @@ async function submitHole(
   if (props.disabled || (props.previewStatus !== undefined && props.previewStatus !== "ready"))
     return
   const parsed = parseValues(values, context)
-  if (!parsed.ok) {
-    state.setIssues(parsed.issues)
-    state.setMessage(props.copy.validationSummary)
-    return
-  }
+  if (!parsed.ok) return
   state.clearSubmissionErrors()
   try {
     await submitFeatureMutation({
@@ -576,8 +599,7 @@ export function HoleForm(props: HoleFormProps) {
     onPickingContextChange,
   } = props
   const state = useParameterFormState(variables)
-  const { displayUnits, formElementRef, issues, message, suggestions, clearSubmissionErrors } =
-    state
+  const { displayUnits, message, suggestions, clearSubmissionErrors } = state
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
@@ -592,8 +614,15 @@ export function HoleForm(props: HoleFormProps) {
     angleUnit: displayUnits.angle,
   }
   const [initial] = useState(() => initialValues(context))
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: initial,
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parseValues(value, context)
+        return parsed.ok ? undefined : { form: copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: ({ value }) => submitHole(value, props, context, state),
   })
   const changePoints = (ids: readonly SketchEntityId[]) => {
@@ -601,7 +630,8 @@ export function HoleForm(props: HoleFormProps) {
     form.setFieldValue("pointIds", ids)
   }
   return (
-    <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       <form.Subscribe selector={(formState) => [formState.values, formState.isSubmitting] as const}>
         {([values, isSubmitting]) => (
           <>
@@ -637,18 +667,13 @@ export function HoleForm(props: HoleFormProps) {
             legend={copy.title}
             message={message}
           >
-            <form.Field name="sketchId">
+            <form.AppField name="sketchId">
               {(field) => (
-                <NativeSelectField
-                  name={field.name}
-                  value={field.state.value}
+                <field.NativeSelectField
                   label={copy.sketch}
                   description={copy.sketchDescription}
-                  error={issues.sketchId}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => {
+                  onValueChange={() => {
                     clearSubmissionErrors()
-                    field.handleChange(event.currentTarget.value)
                     form.setFieldValue("pointIds", [])
                   }}
                 >
@@ -660,20 +685,23 @@ export function HoleForm(props: HoleFormProps) {
                       {sketch.label}
                     </option>
                   ))}
-                </NativeSelectField>
+                </field.NativeSelectField>
               )}
-            </form.Field>
-            <form.Field name="targetBodyKey">
+            </form.AppField>
+            <form.AppField name="targetBodyKey">
               {(field) => {
                 const selectedOption = options.find(
                   (option) =>
                     holeTargetBodyKey(option.featureId, option.outputRole) === field.state.value,
                 )
                 return (
-                  <ReferencePickField
+                  <field.ReferencePickField
                     id="hole-target-body"
-                    name={field.name}
-                    value={field.state.value}
+                    error={
+                      selectedOption?.missing
+                        ? (copy.missingTargetRole ?? copy.missingTarget)
+                        : undefined
+                    }
                     label={copy.target}
                     placeholder={copy.missingTarget}
                     options={options.map((option) => ({
@@ -691,196 +719,148 @@ export function HoleForm(props: HoleFormProps) {
                       )}
                     disabled={disabled}
                     description={copy.targetDescription}
-                    error={
-                      selectedOption?.missing
-                        ? (copy.missingTargetRole ?? copy.missingTarget)
-                        : issues.targetBodyKey
-                    }
-                    onBlur={field.handleBlur}
-                    onValueChange={(value) => {
+                    onValueChange={() => {
                       clearSubmissionErrors()
-                      field.handleChange(value)
                     }}
                   />
                 )
               }}
-            </form.Field>
-            <form.Subscribe
-              selector={(formState) =>
-                [formState.values.sketchId, formState.values.pointIds] as const
-              }
-            >
-              {([sketchId, pointIds]) => (
-                <HolePoints
-                  sketch={sketches.find(({ id }) => id === sketchId)}
-                  selected={pointIds}
-                  copy={copy}
-                  error={issues.pointIds}
-                  onChange={changePoints}
-                />
+            </form.AppField>
+            <form.Subscribe selector={(formState) => formState.values.sketchId}>
+              {(sketchId) => (
+                <form.AppField name="pointIds">
+                  {() => (
+                    <HolePointsFormField
+                      sketch={sketches.find(({ id }) => id === sketchId)}
+                      copy={copy}
+                      onValueChange={clearSubmissionErrors}
+                    />
+                  )}
+                </form.AppField>
               )}
             </form.Subscribe>
-            <form.Field name="diameter">
+            <form.AppField name="diameter">
               {(field) => (
-                <LengthExpressionField
+                <field.LengthExpressionField
                   id="hole-diameter"
-                  name={field.name}
-                  value={field.state.value}
                   label={copy.diameter}
                   description={copy.expressionDescription}
-                  error={issues.diameter}
                   suggestions={suggestions}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
+                  onValueChange={() => {
                     clearSubmissionErrors()
-                    field.handleChange(value)
                   }}
                 />
               )}
-            </form.Field>
-            <form.Field name="treatment">
+            </form.AppField>
+            <form.AppField name="treatment">
               {(field) => (
-                <NativeSelectField
-                  name={field.name}
-                  value={field.state.value}
+                <field.NativeSelectField
                   label={copy.treatment}
-                  error={issues.treatment}
-                  onChange={(event) => {
+                  onValueChange={() => {
                     clearSubmissionErrors()
-                    field.handleChange(event.currentTarget.value as Values["treatment"])
                   }}
                 >
                   <option value="simple">{copy.simple}</option>
                   <option value="counterbore">{copy.counterbore}</option>
                   <option value="countersink">{copy.countersink}</option>
-                </NativeSelectField>
+                </field.NativeSelectField>
               )}
-            </form.Field>
+            </form.AppField>
             <form.Subscribe selector={(formState) => formState.values.treatment}>
               {(treatment) =>
                 treatment !== "simple" ? (
                   <>
-                    <form.Field name="recessDiameter">
+                    <form.AppField name="recessDiameter">
                       {(field) => (
-                        <LengthExpressionField
+                        <field.LengthExpressionField
                           id="hole-recess-diameter"
-                          name={field.name}
-                          value={field.state.value}
                           label={copy.recessDiameter}
                           description={copy.expressionDescription}
-                          error={issues.recessDiameter}
                           suggestions={suggestions}
-                          onBlur={field.handleBlur}
-                          onValueChange={(value) => {
+                          onValueChange={() => {
                             clearSubmissionErrors()
-                            field.handleChange(value)
                           }}
                         />
                       )}
-                    </form.Field>
+                    </form.AppField>
                     {treatment === "counterbore" ? (
-                      <form.Field name="recessDepth">
+                      <form.AppField name="recessDepth">
                         {(field) => (
-                          <LengthExpressionField
+                          <field.LengthExpressionField
                             id="hole-recess-depth"
-                            name={field.name}
-                            value={field.state.value}
                             label={copy.recessDepth}
                             description={copy.expressionDescription}
-                            error={issues.recessDepth}
                             suggestions={suggestions}
-                            onBlur={field.handleBlur}
-                            onValueChange={(value) => {
+                            onValueChange={() => {
                               clearSubmissionErrors()
-                              field.handleChange(value)
                             }}
                           />
                         )}
-                      </form.Field>
+                      </form.AppField>
                     ) : (
-                      <form.Field name="includedAngle">
+                      <form.AppField name="includedAngle">
                         {(field) => (
-                          <VariableExpressionField
+                          <field.VariableExpressionField
                             id="hole-included-angle"
-                            name={field.name}
-                            value={field.state.value}
                             label={copy.includedAngle}
                             description={copy.angleDescription}
-                            error={issues.includedAngle}
                             suggestions={suggestions}
-                            onBlur={field.handleBlur}
-                            onValueChange={(value) => {
+                            onValueChange={() => {
                               clearSubmissionErrors()
-                              field.handleChange(value)
                             }}
                           />
                         )}
-                      </form.Field>
+                      </form.AppField>
                     )}
                   </>
                 ) : null
               }
             </form.Subscribe>
-            <form.Field name="extent">
+            <form.AppField name="extent">
               {(field) => (
-                <NativeSelectField
-                  name={field.name}
-                  value={field.state.value}
+                <field.NativeSelectField
                   label={copy.extent}
-                  onChange={(event) => {
+                  onValueChange={() => {
                     clearSubmissionErrors()
-                    field.handleChange(
-                      event.currentTarget.value === "blind" ? "blind" : "through-all",
-                    )
                   }}
                 >
                   <option value="blind">{copy.blind}</option>
                   <option value="through-all">{copy.throughAll}</option>
-                </NativeSelectField>
+                </field.NativeSelectField>
               )}
-            </form.Field>
+            </form.AppField>
             <form.Subscribe selector={(formState) => formState.values.extent}>
               {(extent) =>
                 extent === "blind" ? (
-                  <form.Field name="depth">
+                  <form.AppField name="depth">
                     {(field) => (
-                      <LengthExpressionField
+                      <field.LengthExpressionField
                         id="hole-depth"
-                        name={field.name}
-                        value={field.state.value}
                         label={copy.depth}
                         description={copy.expressionDescription}
-                        error={issues.depth}
                         suggestions={suggestions}
-                        onBlur={field.handleBlur}
-                        onValueChange={(value) => {
+                        onValueChange={() => {
                           clearSubmissionErrors()
-                          field.handleChange(value)
                         }}
                       />
                     )}
-                  </form.Field>
+                  </form.AppField>
                 ) : null
               }
             </form.Subscribe>
-            <form.Field name="direction">
+            <form.AppField name="direction">
               {(field) => (
-                <NativeSelectField
-                  name={field.name}
-                  value={field.state.value}
+                <field.NativeSelectField
                   label={copy.direction}
-                  onChange={(event) => {
+                  onValueChange={() => {
                     clearSubmissionErrors()
-                    field.handleChange(
-                      event.currentTarget.value === "forward" ? "forward" : "reverse",
-                    )
                   }}
                 >
                   <option value="forward">{copy.forward}</option>
                   <option value="reverse">{copy.reverse}</option>
-                </NativeSelectField>
+                </field.NativeSelectField>
               )}
-            </form.Field>
+            </form.AppField>
           </ParameterPanel>
         )}
       </form.Subscribe>

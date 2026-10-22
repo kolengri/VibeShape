@@ -6,10 +6,10 @@ import type {
 } from "@vibeshape/domain"
 import { readPatternFeatureParametersV2 } from "@vibeshape/domain/part-design-pattern"
 import type { ReferenceAxis } from "@vibeshape/domain/reference-frame"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -111,13 +111,6 @@ function panelMessage(
   if (!sourceAvailable) return copy.unavailable
   return status === "error" ? copy.previewFailed : null
 }
-function fieldError(
-  issues: Readonly<Record<string, string | undefined>>,
-  parsed: ReturnType<typeof parsePatternForm>,
-  name: keyof PatternFormValues,
-) {
-  return issues[name] ?? (parsed.ok ? undefined : parsed.issues[name])
-}
 export function PatternForm({
   baseRevision,
   copy,
@@ -140,8 +133,21 @@ export function PatternForm({
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: patternFormValues(mode, state.displayUnits),
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parsePatternForm(
+          value,
+          variables,
+          state.displayUnits,
+          copy,
+          referenceAxis ?? undefined,
+        )
+        return parsed.ok ? undefined : { form: copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: async ({ value }) => {
       if (referenceAxis === null) return
       const parsed = parsePatternForm(
@@ -151,12 +157,8 @@ export function PatternForm({
         copy,
         referenceAxis ?? undefined,
       )
-      if (!parsed.ok) {
-        state.setIssues(parsed.issues)
-        state.setMessage(copy.validationSummary)
-        return
-      }
-      state.setIssues({})
+      if (!parsed.ok) return
+
       state.setMessage(null)
       try {
         await submitFeatureMutation({
@@ -173,7 +175,8 @@ export function PatternForm({
     },
   })
   return (
-    <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       <form.Subscribe selector={(formState) => [formState.values, formState.isSubmitting] as const}>
         {([values, pending]) => {
           const parsed = parsePatternForm(
@@ -222,78 +225,56 @@ export function PatternForm({
                   />
                 }
               >
-                <form.Field name="kind">
+                <form.AppField name="kind">
                   {(field) => (
-                    <fieldset className="grid gap-2">
-                      <legend className="mb-2 text-xs font-medium">{copy.kind}</legend>
-                      {(["linear", "circular"] as const).map((kind) => (
-                        <label key={kind} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="kind"
-                            value={kind}
-                            checked={field.state.value === kind}
-                            onBlur={field.handleBlur}
-                            onChange={() => {
-                              state.clearSubmissionErrors()
-                              field.handleChange(kind)
-                            }}
-                          />
-                          {copy[kind]}
-                        </label>
-                      ))}
-                    </fieldset>
+                    <field.ChoiceField
+                      label={copy.kind}
+                      onValueChange={() => {
+                        state.clearSubmissionErrors()
+                      }}
+                      options={(["linear", "circular"] as const).map((kind) => ({
+                        value: kind,
+                        label: copy[kind],
+                      }))}
+                    />
                   )}
-                </form.Field>
+                </form.AppField>
                 <ReferenceAxisSelection
                   options={referenceOptions}
                   value={referenceAxis}
                   selectedFace={selectedFace}
                   onChange={setReference}
                 >
-                  <form.Field name="axis">
+                  <form.AppField name="axis">
                     {(field) => (
-                      <fieldset className="grid gap-2">
-                        <legend className="mb-2 text-xs font-medium">{copy.axis}</legend>
-                        {(["X", "Y", "Z"] as const).map((axis) => (
-                          <label key={axis} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="radio"
-                              name="axis"
-                              value={axis}
-                              checked={field.state.value === axis}
-                              onBlur={field.handleBlur}
-                              onChange={() => {
-                                state.clearSubmissionErrors()
-                                field.handleChange(axis)
-                              }}
-                            />
-                            {axis}
-                          </label>
-                        ))}
-                      </fieldset>
+                      <field.ChoiceField
+                        label={copy.axis}
+                        onValueChange={() => {
+                          state.clearSubmissionErrors()
+                        }}
+                        options={(["X", "Y", "Z"] as const).map((axis) => ({
+                          value: axis,
+                          label: axis,
+                        }))}
+                      />
                     )}
-                  </form.Field>
+                  </form.AppField>
                 </ReferenceAxisSelection>
                 {fields.map((name) => (
-                  <form.Field name={name} key={name}>
+                  <form.AppField name={name} key={name}>
                     {(field) => (
-                      <LengthExpressionField
+                      <field.LengthExpressionField
                         id={`pattern-${name}`}
-                        name={name}
-                        value={field.state.value}
                         label={copy[name]}
                         description={description[name]}
-                        error={fieldError(state.issues, parsed, name)}
+                        error={parsed.ok ? undefined : parsed.issues[name]}
                         suggestions={state.suggestions}
-                        onBlur={field.handleBlur}
-                        onValueChange={(value) => {
+                        onValueChange={() => {
                           state.clearSubmissionErrors()
-                          field.handleChange(value)
                         }}
                       />
                     )}
-                  </form.Field>
+                  </form.AppField>
                 ))}
               </ParameterPanel>
             </>

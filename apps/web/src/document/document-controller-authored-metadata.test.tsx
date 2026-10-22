@@ -405,3 +405,34 @@ it.each([false, true])(
     expect(screen.queryByRole("alert")).toBeNull()
   },
 )
+
+it("commits a preset and custom color through the controller as one saved V6 change and undoes across adoption", async () => {
+  const f = await fixture()
+  const before = canonicalJson(f.stored.features)
+  const revision = f.active.snapshot.revision
+  expect(
+    await f.runtime.commitAuthoredMetadata(revision, {
+      kind: "part.set-appearance",
+      partId: f.part.id,
+      appearance: {
+        presetId: "copper",
+        color: (await import("@vibeshape/domain/part-appearance")).appearanceColorSchema.parse(
+          "#4499aa",
+        ),
+      },
+    }),
+  ).toEqual({ ok: true })
+  expect(f.writes).toHaveBeenCalledTimes(1)
+  expect(f.stored).toMatchObject({
+    schemaVersion: 6,
+    partAppearances: [{ partId: f.part.id, appearance: { presetId: "copper", color: "#4499aa" } }],
+  })
+  expect(f.active.snapshot.revision).toBe(revision + 1)
+  expect(canonicalJson(f.stored.features)).toBe(before)
+  expect(await f.runtime.undoDocument(revision + 1)).toMatchObject({ ok: true })
+  expect(f.stored).toMatchObject({ schemaVersion: 6, partAppearances: [] })
+  expect(await f.runtime.redoDocument(revision + 2)).toMatchObject({ ok: true })
+  expect(f.stored).toMatchObject({
+    partAppearances: [{ partId: f.part.id, appearance: { presetId: "copper", color: "#4499aa" } }],
+  })
+})

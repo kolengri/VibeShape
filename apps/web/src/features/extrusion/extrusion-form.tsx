@@ -34,9 +34,7 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
-import { ChoiceField } from "@vibeshape/ui/components/choice-field"
-import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
@@ -45,21 +43,18 @@ import {
   positiveDirectManipulationLengthExpression,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { BooleanParameterField } from "../part-design/boolean-parameter-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { featureEditPreview } from "../part-design/feature-edit-preview"
-import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
   parsePrimitiveLengthExpression,
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
 import { profileSelectorsEqual } from "../part-design/profile-feature-selection"
-import { ReferencePickField } from "../part-design/reference-pick-field"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
-import { VariableExpressionField } from "../variables/variable-expression-field"
 import { type ExtrusionTargetOption, extrusionBodyOptionKey } from "./extrusion-body-options"
 import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
 import {
@@ -687,20 +682,13 @@ export type ExtrusionFormProps = Readonly<{
 }>
 
 function useExtrusionFormController(props: ExtrusionFormProps) {
-  const {
-    clearSubmissionErrors,
-    displayUnits,
-    formElementRef,
-    issues,
-    message,
-    setIssues,
-    setMessage,
-    suggestions,
-  } = useParameterFormState(props.variables)
+  const { clearSubmissionErrors, displayUnits, message, setMessage, suggestions } =
+    useParameterFormState(props.variables)
   const [featureId] = useState(() =>
     props.mode.kind === "edit" ? props.mode.feature.id : props.mode.createFeatureId(),
   )
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues:
       props.mode.kind === "edit"
         ? valuesFromFeature(
@@ -714,6 +702,19 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
             props.mode.profiles,
             modeSupportReferences(props.mode),
           ),
+    validators: {
+      onDynamic: ({ value }) => {
+        const parsed = parseValues(
+          value,
+          props.variables,
+          props.options,
+          props.copy,
+          displayUnits.length,
+          displayUnits.angle,
+        )
+        return parsed.ok ? undefined : { form: props.copy.validationSummary, fields: parsed.issues }
+      },
+    },
     onSubmit: async ({ value }) => {
       const parsed = parseValues(
         value,
@@ -723,27 +724,8 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
         displayUnits.length,
         displayUnits.angle,
       )
-      if (!parsed.ok) {
-        setIssues(parsed.issues)
-        setMessage(
-          "profiles" in parsed.issues ? parsed.issues.profiles : props.copy.validationSummary,
-        )
-        const invalidFieldName =
-          "distance" in parsed.issues
-            ? "distance"
-            : "secondDistance" in parsed.issues
-              ? "secondDistance"
-              : "targetFeatureId" in parsed.issues
-                ? "targetFeatureId"
-                : null
-        if (invalidFieldName) {
-          formElementRef.current
-            ?.querySelector<HTMLElement>(`[name="${invalidFieldName}"]`)
-            ?.focus()
-        }
-        return
-      }
-      setIssues({})
+      if (!parsed.ok) return
+
       setMessage(null)
       await submitFeatureMutation({
         baseRevision: props.baseRevision,
@@ -810,8 +792,6 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
     displayUnits,
     featureId,
     form,
-    formElementRef,
-    issues,
     message,
     suggestions,
   } as const
@@ -844,17 +824,13 @@ function ExtrusionPreviewField({ controller }: { controller: ExtrusionFormContro
 function ExtrusionOperationField({ controller }: { controller: ExtrusionFormController }) {
   const { form } = controller
   return (
-    <form.Field name="operation">
+    <form.AppField name="operation">
       {(field) => (
-        <ChoiceField
-          name={field.name}
-          value={field.state.value}
+        <field.ChoiceField
           label={controller.copy.operation}
           disabled={controller.disabled}
-          onBlur={field.handleBlur}
-          onValueChange={(value) => {
+          onValueChange={() => {
             controller.clearSubmissionErrors()
-            field.handleChange(value)
           }}
           options={[
             { value: "new", label: controller.copy.operationNew },
@@ -864,7 +840,7 @@ function ExtrusionOperationField({ controller }: { controller: ExtrusionFormCont
           ]}
         />
       )}
-    </form.Field>
+    </form.AppField>
   )
 }
 
@@ -874,12 +850,10 @@ function ExtrusionTargetField({ controller }: { controller: ExtrusionFormControl
     <form.Subscribe selector={(state) => state.values.operation}>
       {(operation) =>
         operation === "new" ? null : (
-          <form.Field name="targetFeatureId">
+          <form.AppField name="targetFeatureId">
             {(field) => (
-              <ReferencePickField
+              <field.ReferencePickField
                 id="extrusion-target-body"
-                name={field.name}
-                value={field.state.value}
                 label={controller.copy.target}
                 placeholder={controller.copy.missingTarget}
                 options={controller.options.map((option) => ({
@@ -888,17 +862,14 @@ function ExtrusionTargetField({ controller }: { controller: ExtrusionFormControl
                 }))}
                 candidates={extrusionTargetPickCandidates(controller.options)}
                 description={controller.copy.targetDescription}
-                error={controller.issues.targetFeatureId}
                 disabled={controller.disabled}
                 required
-                onBlur={field.handleBlur}
-                onValueChange={(value) => {
+                onValueChange={() => {
                   controller.clearSubmissionErrors()
-                  field.handleChange(value)
                 }}
               />
             )}
-          </form.Field>
+          </form.AppField>
         )
       }
     </form.Subscribe>
@@ -914,48 +885,40 @@ function ExtrusionDistanceField({
 }) {
   const { form } = controller
   return (
-    <form.Field name={second ? "secondDistance" : "distance"}>
+    <form.AppField name={second ? "secondDistance" : "distance"}>
       {(field) => (
-        <LengthExpressionField
+        <field.LengthExpressionField
           id={second ? "extrusion-second-distance" : "extrusion-distance"}
-          name={field.name}
-          value={field.state.value}
           label={second ? controller.copy.secondDistance : controller.copy.distance}
           description={controller.copy.expressionDescription}
-          error={controller.issues[second ? "secondDistance" : "distance"]}
           suggestions={controller.suggestions}
-          onBlur={field.handleBlur}
-          onValueChange={(value) => {
+          onValueChange={() => {
             controller.clearSubmissionErrors()
-            field.handleChange(value)
           }}
         />
       )}
-    </form.Field>
+    </form.AppField>
   )
 }
 
 function ExtrusionSymmetricField({ controller }: { controller: ExtrusionFormController }) {
   const { form } = controller
   return (
-    <form.Field name="symmetric">
+    <form.AppField name="symmetric">
       {(field) => (
-        <BooleanParameterField
-          name={field.name}
-          checked={field.state.value}
+        <field.CheckboxField
           label={controller.copy.symmetric}
-          onBlur={field.handleBlur}
-          onChange={(event) => {
+          description={controller.copy.symmetricDescription}
+          onValueChange={(checked) => {
             controller.clearSubmissionErrors()
-            field.handleChange(event.currentTarget.checked)
-            if (event.currentTarget.checked) {
+            if (checked) {
               form.setFieldValue("secondDirection", false)
               form.setFieldValue("reversed", false)
             }
           }}
         />
       )}
-    </form.Field>
+    </form.AppField>
   )
 }
 
@@ -963,41 +926,32 @@ function ExtrusionExtentFields({ controller }: { controller: ExtrusionFormContro
   const { form, copy } = controller
   return (
     <div className="grid gap-3">
-      <p className="text-xs text-muted-foreground">{copy.symmetricDescription}</p>
       <form.Subscribe selector={(state) => state.values.symmetric}>
         {(symmetric) => (
-          <form.Field name="reversed">
+          <form.AppField name="reversed">
             {(field) => (
-              <BooleanParameterField
-                name={field.name}
-                checked={field.state.value}
+              <field.CheckboxField
                 label={copy.reversed}
                 disabled={symmetric || controller.disabled}
-                onBlur={field.handleBlur}
-                onChange={(event) => {
+                onValueChange={() => {
                   controller.clearSubmissionErrors()
-                  field.handleChange(event.currentTarget.checked)
                 }}
               />
             )}
-          </form.Field>
+          </form.AppField>
         )}
       </form.Subscribe>
-      <form.Field name="secondDirection">
+      <form.AppField name="secondDirection">
         {(field) => (
-          <BooleanParameterField
-            name={field.name}
-            checked={field.state.value}
+          <field.CheckboxField
             label={copy.secondDirection}
-            onBlur={field.handleBlur}
-            onChange={(event) => {
+            onValueChange={(checked) => {
               controller.clearSubmissionErrors()
-              field.handleChange(event.currentTarget.checked)
-              if (event.currentTarget.checked) form.setFieldValue("symmetric", false)
+              if (checked) form.setFieldValue("symmetric", false)
             }}
           />
         )}
-      </form.Field>
+      </form.AppField>
       <form.Subscribe selector={(state) => state.values.secondDirection}>
         {(enabled) => (enabled ? <ExtrusionDistanceField controller={controller} second /> : null)}
       </form.Subscribe>
@@ -1020,55 +974,59 @@ function ExtrusionEndReferenceFields({
   )
   return (
     <>
-      <ReferencePickField
-        id="extrusion-end-body"
-        name="endTarget"
-        label={t("endBody")}
-        value={values.endTarget}
-        placeholder={t("chooseBody")}
-        error={controller.issues.endTarget}
-        disabled={controller.disabled}
-        options={controller.options
-          .filter((option) => option.outputRole && option.contentHash)
-          .map((option) => ({ value: extrusionBodyOptionKey(option), label: option.label }))}
-        candidates={extrusionEndBodyPickCandidates(controller.options)}
-        onValueChange={(value) => {
-          controller.clearSubmissionErrors()
-          const option = controller.options.find((item) => extrusionBodyOptionKey(item) === value)
-          form.setFieldValue("endTarget", value)
-          form.setFieldValue("endSourceHash", option?.contentHash ?? "")
-          form.setFieldValue("endFace", "")
-        }}
-      />
-      {values.endKind === "up-to-face" ? (
-        <ReferencePickField
-          id="extrusion-end-face"
-          name="endFace"
-          label={t("endFace")}
-          value={values.endFace}
-          placeholder={t("chooseFace")}
-          description={t("finiteFaceCoverage")}
-          disabled={controller.disabled}
-          options={
-            target?.faces?.map((face) => ({
-              value: JSON.stringify(face.reference),
-              label: face.label,
-            })) ?? []
-          }
-          candidates={extrusionEndFacePickCandidates(controller.options)}
-          onValueChange={(value) => {
-            controller.clearSubmissionErrors()
-            if (!value) {
+      <form.AppField name="endTarget">
+        {(field) => (
+          <field.ReferencePickField
+            id="extrusion-end-body"
+            label={t("endBody")}
+            placeholder={t("chooseBody")}
+            disabled={controller.disabled}
+            options={controller.options
+              .filter((option) => option.outputRole && option.contentHash)
+              .map((option) => ({ value: extrusionBodyOptionKey(option), label: option.label }))}
+            candidates={extrusionEndBodyPickCandidates(controller.options)}
+            onValueChange={(value) => {
+              controller.clearSubmissionErrors()
+              const option = controller.options.find(
+                (item) => extrusionBodyOptionKey(item) === value,
+              )
+              form.setFieldValue("endSourceHash", option?.contentHash ?? "")
               form.setFieldValue("endFace", "")
-              return
-            }
-            const selection = extrusionEndFaceSelection(controller.options, value)
-            if (!selection) return
-            form.setFieldValue("endTarget", selection.endTarget)
-            form.setFieldValue("endSourceHash", selection.endSourceHash)
-            form.setFieldValue("endFace", selection.endFace)
-          }}
-        />
+            }}
+          />
+        )}
+      </form.AppField>
+      {values.endKind === "up-to-face" ? (
+        <form.AppField name="endFace">
+          {(field) => (
+            <field.ReferencePickField
+              id="extrusion-end-face"
+              label={t("endFace")}
+              placeholder={t("chooseFace")}
+              description={t("finiteFaceCoverage")}
+              disabled={controller.disabled}
+              options={
+                target?.faces?.map((face) => ({
+                  value: JSON.stringify(face.reference),
+                  label: face.label,
+                })) ?? []
+              }
+              candidates={extrusionEndFacePickCandidates(controller.options)}
+              onValueChange={(value) => {
+                controller.clearSubmissionErrors()
+                if (!value) {
+                  form.setFieldValue("endFace", "")
+                  return
+                }
+                const selection = extrusionEndFaceSelection(controller.options, value)
+                if (!selection) return
+                form.setFieldValue("endTarget", selection.endTarget)
+                form.setFieldValue("endSourceHash", selection.endSourceHash)
+                form.setFieldValue("endFace", selection.endFace)
+              }}
+            />
+          )}
+        </form.AppField>
       ) : null}
     </>
   )
@@ -1082,55 +1040,53 @@ function ExtrusionAdvancedFields({ controller }: { controller: ExtrusionFormCont
       {(values) => {
         return (
           <div className="grid gap-3 pt-3">
-            <NativeSelectField
-              id="extrusion-end-condition"
-              name="endKind"
-              label={t("condition")}
-              value={values.endKind}
-              disabled={controller.disabled}
-              onChange={(event) => {
-                controller.clearSubmissionErrors()
-                form.setFieldValue("advanced", true)
-                form.setFieldValue(
-                  "endKind",
-                  event.currentTarget.value as ExtrusionFormValues["endKind"],
-                )
-                form.setFieldValue("symmetric", false)
-                form.setFieldValue("secondDirection", false)
-              }}
-            >
-              <option value="distance">{t("distance")}</option>
-              <option value="through-all">{t("throughAll")}</option>
-              <option value="up-to-body">{t("upToBody")}</option>
-              <option value="up-to-face">{t("upToFace")}</option>
-            </NativeSelectField>
+            <form.AppField name="endKind">
+              {(field) => (
+                <field.NativeSelectField
+                  id="extrusion-end-condition"
+                  label={t("condition")}
+                  disabled={controller.disabled}
+                  onValueChange={() => {
+                    controller.clearSubmissionErrors()
+                    form.setFieldValue("advanced", true)
+                    form.setFieldValue("symmetric", false)
+                    form.setFieldValue("secondDirection", false)
+                  }}
+                >
+                  <option value="distance">{t("distance")}</option>
+                  <option value="through-all">{t("throughAll")}</option>
+                  <option value="up-to-body">{t("upToBody")}</option>
+                  <option value="up-to-face">{t("upToFace")}</option>
+                </field.NativeSelectField>
+              )}
+            </form.AppField>
             <ExtrusionEndReferenceFields controller={controller} values={values} />
-            <LengthExpressionField
-              id="extrusion-start-offset"
-              name="startOffset"
-              label={t("startOffset")}
-              value={values.startOffset}
-              suggestions={controller.suggestions}
-              description={controller.copy.expressionDescription}
-              error={controller.issues.startOffset}
-              onValueChange={(value) => {
-                controller.clearSubmissionErrors()
-                form.setFieldValue("startOffset", value)
-              }}
-            />
-            <VariableExpressionField
-              id="extrusion-draft-angle"
-              name="draftAngle"
-              label={t("draftAngle")}
-              value={values.draftAngle}
-              suggestions={controller.suggestions}
-              description={t("draftDescription")}
-              error={controller.issues.draftAngle}
-              onValueChange={(value) => {
-                controller.clearSubmissionErrors()
-                form.setFieldValue("draftAngle", value)
-              }}
-            />
+            <form.AppField name="startOffset">
+              {(field) => (
+                <field.LengthExpressionField
+                  id="extrusion-start-offset"
+                  label={t("startOffset")}
+                  suggestions={controller.suggestions}
+                  description={controller.copy.expressionDescription}
+                  onValueChange={() => {
+                    controller.clearSubmissionErrors()
+                  }}
+                />
+              )}
+            </form.AppField>
+            <form.AppField name="draftAngle">
+              {(field) => (
+                <field.VariableExpressionField
+                  id="extrusion-draft-angle"
+                  label={t("draftAngle")}
+                  suggestions={controller.suggestions}
+                  description={t("draftDescription")}
+                  onValueChange={() => {
+                    controller.clearSubmissionErrors()
+                  }}
+                />
+              )}
+            </form.AppField>
           </div>
         )
       }}
@@ -1141,12 +1097,8 @@ function ExtrusionAdvancedFields({ controller }: { controller: ExtrusionFormCont
 function ExtrusionFormView({ controller }: { controller: ExtrusionFormController }) {
   const { form } = controller
   return (
-    <Form
-      ref={controller.formElementRef}
-      form={form}
-      aria-label={controller.copy.title}
-      className="gap-0"
-    >
+    <Form form={form} aria-label={controller.copy.title} className="gap-0">
+      <form.FormError />
       <ExtrusionProfileSelectionSync
         profiles={controller.mode.profiles}
         supportReferences={modeSupportReferences(controller.mode)}

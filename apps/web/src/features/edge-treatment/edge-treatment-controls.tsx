@@ -1,11 +1,13 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { FieldError } from "@vibeshape/ui/components/field"
 import { Scan, X } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import type { ComponentProps } from "react"
 import { useState } from "react"
 import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
+import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ReferencePickField } from "../part-design/reference-pick-field"
 import { VariableExpressionField } from "../variables/variable-expression-field"
@@ -61,6 +63,7 @@ function PickButton({
       variant="outline"
       disabled={props.disabled}
       aria-pressed={props.pick?.kind === kind}
+      aria-invalid={(kind === "edges" && Boolean(props.issues.references)) || undefined}
       onClick={(event) => props.onArm({ kind }, event.currentTarget)}
     >
       <Scan aria-hidden="true" />
@@ -247,21 +250,17 @@ function EdgeOverrideCheckbox({
 }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   return (
-    <label className="flex items-center gap-2 text-xs">
-      <input
-        type="checkbox"
-        disabled={props.disabled || candidate?.resolveStatus() !== "resolved"}
-        aria-label={t("reverseNamedEdge", { edge: label })}
-        checked={props.values.directionOverrides.some(
-          (ref) =>
-            candidate && treatmentReferenceMatchesCandidate(ref, candidate, props.candidates),
-        )}
-        onChange={() => {
-          if (candidate) props.onPick(candidate, { kind: "overrides" })
-        }}
-      />
-      {t("reverseEdge")}
-    </label>
+    <BooleanParameterField
+      label={t("reverseEdge")}
+      disabled={props.disabled || candidate?.resolveStatus() !== "resolved"}
+      aria-label={t("reverseNamedEdge", { edge: label })}
+      checked={props.values.directionOverrides.some(
+        (ref) => candidate && treatmentReferenceMatchesCandidate(ref, candidate, props.candidates),
+      )}
+      onChange={() => {
+        if (candidate) props.onPick(candidate, { kind: "overrides" })
+      }}
+    />
   )
 }
 
@@ -473,30 +472,24 @@ function ChamferControls({ props }: { props: TreatmentControlsProps }) {
         <option value="offset">{t("measurementOffset")}</option>
         <option value="tangent">{t("measurementTangent")}</option>
       </NativeSelectField>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={values.tangentPropagation}
-          disabled={props.disabled}
-          onChange={(event) =>
-            props.onChange({
-              ...values,
-              scope: "selected",
-              tangentPropagation: event.currentTarget.checked,
-            })
-          }
-        />
-        {t("tangentPropagation")}
-      </label>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={values.flip}
-          disabled={props.disabled || values.mode === "equal-distance"}
-          onChange={(event) => props.onChange({ ...values, flip: event.currentTarget.checked })}
-        />
-        {t("flipDirection")}
-      </label>
+      <BooleanParameterField
+        label={t("tangentPropagation")}
+        checked={values.tangentPropagation}
+        disabled={props.disabled}
+        onChange={(event) =>
+          props.onChange({
+            ...values,
+            scope: "selected",
+            tangentPropagation: event.currentTarget.checked,
+          })
+        }
+      />
+      <BooleanParameterField
+        label={t("flipDirection")}
+        checked={values.flip}
+        disabled={props.disabled || values.mode === "equal-distance"}
+        onChange={(event) => props.onChange({ ...values, flip: event.currentTarget.checked })}
+      />
       {values.mode !== "equal-distance" && <PickButton kind="overrides" props={props} />}
       {values.directionOverrides.length > 0 && (
         <div className="flex flex-wrap items-center gap-1">
@@ -557,38 +550,34 @@ export function EdgeTreatmentControls(props: TreatmentControlsProps) {
           {props.issues.targetFeatureId && <FieldError>{props.issues.targetFeatureId}</FieldError>}
         </div>
       )}
-      <fieldset className="grid gap-2">
-        <legend className="text-xs font-medium">{props.copy.scopeLabel}</legend>
-        {(["all", "selected"] as const).map((scope) => (
-          <label key={scope} className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="scope"
-              value={scope}
-              checked={props.values.scope === scope}
-              disabled={props.disabled || (scope === "all" && allUnavailable)}
-              onChange={() =>
-                props.onChange({
-                  ...props.values,
-                  scope,
-                  ...(scope === "all"
-                    ? {
-                        retainV3: false,
-                        mode: "equal-distance",
-                        measurement: "offset",
-                        flip: false,
-                        tangentPropagation: false,
-                        directionOverrides: [],
-                        targets: [],
-                      }
-                    : {}),
-                })
-              }
-            />
-            {scope === "all" ? props.copy.allEdges : props.copy.selectedEdges}
-          </label>
-        ))}
-      </fieldset>
+      <ChoiceField
+        label={props.copy.scopeLabel}
+        name="scope"
+        value={props.values.scope}
+        disabled={props.disabled}
+        options={[
+          { value: "all", label: props.copy.allEdges, disabled: allUnavailable },
+          { value: "selected", label: props.copy.selectedEdges },
+        ]}
+        onValueChange={(scope) => {
+          if (scope !== "all" && scope !== "selected") return
+          props.onChange({
+            ...props.values,
+            scope,
+            ...(scope === "all"
+              ? {
+                  retainV3: false,
+                  mode: "equal-distance",
+                  measurement: "offset",
+                  flip: false,
+                  tangentPropagation: false,
+                  directionOverrides: [],
+                  targets: [],
+                }
+              : {}),
+          })
+        }}
+      />
       <SelectedTargets props={props} />
       <LengthExpressionField
         id="edge-treatment-distance"

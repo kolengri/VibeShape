@@ -124,6 +124,7 @@ export {
   ImportGeometryIcon,
   ImportSketchIcon,
   IndicatorCheckIcon,
+  InformationIcon,
   InscribedPolygonIcon,
   IntersectionCurveIcon,
   IntersectionIcon,

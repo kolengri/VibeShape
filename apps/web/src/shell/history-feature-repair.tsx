@@ -1,5 +1,7 @@
 import type { FeatureId, FeatureRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import { fieldVariants } from "@vibeshape/ui/components/field"
+import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { createContext, type ReactNode, useContext, useId, useState } from "react"
 import { TaskPanelHeader, TaskPanelHeaderContentProvider } from "../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
@@ -31,7 +33,7 @@ type Props = {
 
 function retainedFeatureRepairIntent(controller: DocumentControllerState, featureId: FeatureId) {
   const authority = currentAuthoredSnapshot(controller)
-  if (authority?.schemaVersion !== 5) return undefined
+  if (authority?.schemaVersion !== 5 && authority?.schemaVersion !== 6) return undefined
   return authority.repairIntents.find(
     (item) => item.kind === "feature" && item.authored.id === featureId,
   )
@@ -121,7 +123,7 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
       <section aria-label={t("title")} className="grid shrink-0 gap-2 border-b p-4">
         <TaskPanelHeader
           title={t("title")}
-          description={<span id={`${selectId}-description`}>{t("description")}</span>}
+          instruction={<span id={`${selectId}-description`}>{t("description")}</span>}
           actions={
             <TaskPanelLifecycleActions
               ariaLabel={t("title")}
@@ -156,12 +158,11 @@ function RepairBodyControls({
 }) {
   return (
     <>
-      <label htmlFor={selectId} className="grid gap-1 text-sm">
+      <label htmlFor={selectId} className={fieldVariants({ orientation: "horizontal" })}>
         {t("replacementBody")}
-        <select
+        <NativeSelect
           id={selectId}
           aria-describedby={`${selectId}-description`}
-          className="h-9 min-w-0 rounded-md border bg-background px-2"
           value={selectedId}
           disabled={disabled}
           onChange={(event) => onSelect(event.target.value)}
@@ -172,7 +173,7 @@ function RepairBodyControls({
               {label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       {options.length === 0 && (
         <p role="status" className="text-xs text-muted-foreground">

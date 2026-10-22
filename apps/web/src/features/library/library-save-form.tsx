@@ -1,8 +1,9 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
+import { SelectOption } from "@vibeshape/ui/components/select-field"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { LibraryMetadataFields } from "./library-fields"
-import type { LibrarySource } from "./library-model"
+import { type LibrarySource, librarySaveState } from "./library-model"
 import type { LibraryAction } from "./use-library-action"
 import type { LibraryBrowser } from "./use-library-browser"
 import { useLibrarySave } from "./use-library-save"
@@ -19,70 +20,75 @@ export function LibrarySaveForm({
   writable: boolean
 }) {
   const t = useTranslations("app.library")
-  const { state, sourceKey, setSourceKey, publish, setPublish, submit } = useLibrarySave(
-    sources,
-    browser,
-    action,
-    writable,
-  )
-  const { target } = state
+  const form = useLibrarySave(sources, browser, action, writable)
   return (
-    <section className="grid gap-3 rounded-md border p-3" aria-label={t("saveTitle")}>
-      <h3 className="text-sm font-semibold">{t("saveTitle")}</h3>
-      <p className="text-xs text-muted-foreground">{t("saveExplanation")}</p>
-      <form
-        aria-label={t("saveTitle")}
-        noValidate
-        key={state.formKey}
-        className="grid gap-3"
-        onSubmit={submit}
-      >
-        <fieldset
-          disabled={!writable || action.pending}
-          aria-busy={action.pending}
-          className="grid gap-3"
+    <section className="grid gap-2 rounded-md border p-3" aria-label={t("saveTitle")}>
+      <div className="flex items-center gap-1">
+        <h3 className="text-sm font-semibold">{t("saveTitle")}</h3>
+        <FieldHelp label={t("saveTitle")}>{t("saveExplanation")}</FieldHelp>
+      </div>
+      <Form form={form} aria-label={t("saveTitle")} className="grid gap-2">
+        <form.Subscribe
+          selector={(state) =>
+            [state.values.sourceKey, state.values.publishMode, state.isSubmitting] as const
+          }
         >
-          <legend className="sr-only">{t("saveTitle")}</legend>
-          <SelectField label={t("source")} value={sourceKey} onValueChange={setSourceKey} required>
-            {sources.map((entry) => (
-              <SelectOption key={entry.key} value={entry.key}>
-                {t(entry.kind === "part" ? "partSource" : "definitionSource", { name: entry.name })}
-              </SelectOption>
-            ))}
-          </SelectField>
-          {!sources.length && <p className="text-xs text-muted-foreground">{t("noSources")}</p>}
-          <div className="flex flex-wrap gap-3 text-sm">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="publishMode"
-                checked={!publish}
-                onChange={() => setPublish(false)}
-              />
-              {t("newItem")}
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="publishMode"
-                checked={publish}
-                disabled={!browser.selection}
-                onChange={() => setPublish(true)}
-              />
-              {t("newVersion")}
-            </label>
-          </div>
-          {target && (
-            <p className="text-xs">
-              {t("publishTarget", { name: target.name, version: target.headVersion + 1 })}
-            </p>
-          )}
-          <LibraryMetadataFields name={state.name} tags={state.tags} />
-          <Button type="submit" disabled={state.disabled} isLoading={action.pending}>
-            {t(publish ? "publishVersion" : "saveItem")}
-          </Button>
-        </fieldset>
-      </form>
+          {([sourceKey, publishMode, submitting]) => {
+            const state = librarySaveState(
+              sources,
+              sourceKey,
+              publishMode === "publish",
+              browser.selection,
+            )
+            const pending = action.pending || submitting
+            return (
+              <fieldset disabled={!writable || pending} aria-busy={pending} className="grid gap-2">
+                <legend className="sr-only">{t("saveTitle")}</legend>
+                <form.AppField name="sourceKey">
+                  {(field) => (
+                    <field.SelectField label={t("source")} required>
+                      {sources.map((entry) => (
+                        <SelectOption key={entry.key} value={entry.key}>
+                          {t(entry.kind === "part" ? "partSource" : "definitionSource", {
+                            name: entry.name,
+                          })}
+                        </SelectOption>
+                      ))}
+                    </field.SelectField>
+                  )}
+                </form.AppField>
+                {!sources.length && (
+                  <p className="text-xs text-muted-foreground">{t("noSources")}</p>
+                )}
+                <form.AppField name="publishMode">
+                  {(field) => (
+                    <field.ChoiceField
+                      label={t("saveTitle")}
+                      options={[
+                        { value: "new", label: t("newItem") },
+                        { value: "publish", label: t("newVersion"), disabled: !browser.selection },
+                      ]}
+                    />
+                  )}
+                </form.AppField>
+                {state.target && (
+                  <p className="text-xs">
+                    {t("publishTarget", {
+                      name: state.target.name,
+                      version: state.target.headVersion + 1,
+                    })}
+                  </p>
+                )}
+                <LibraryMetadataFields form={form} fields={{ name: "name", tags: "tags" }} />
+                <form.FormError />
+                <form.SubmitButton disabled={state.disabled} requireDirty={false}>
+                  {t(publishMode === "publish" ? "publishVersion" : "saveItem")}
+                </form.SubmitButton>
+              </fieldset>
+            )
+          }}
+        </form.Subscribe>
+      </Form>
     </section>
   )
 }

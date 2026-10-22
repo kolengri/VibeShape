@@ -163,7 +163,7 @@ export function useHistorySelectionDelete({
 
   const appOwnsError = useReportApplicationError(failure ?? (stale ? t("stale") : null))
 
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>, eventTargets = targets) => {
+  const requestDelete = (eventTargets = targets, focusTarget: HTMLElement | null = null) => {
     if (
       !writable ||
       !authority ||
@@ -171,17 +171,21 @@ export function useHistorySelectionDelete({
       pendingRef.current ||
       eventTargets.length === 0
     )
-      return
-    const focusTarget = historyDeleteKeyboardTarget(event)
-    if (!focusTarget) return
-    event.preventDefault()
-    event.stopPropagation()
+      return false
     returnFocus.current = focusTarget
-    returnTree.current = focusTarget.closest<HTMLElement>('[role="tree"]')
+    returnTree.current = focusTarget?.closest<HTMLElement>('[role="tree"]') ?? null
     const next = planHistoryRemoval(authority, eventTargets)
     requestRef.current = next
     setFailure(null)
     setRequest(next)
+    return true
+  }
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>, eventTargets = targets) => {
+    const focusTarget = historyDeleteKeyboardTarget(event)
+    if (!focusTarget) return
+    if (!requestDelete(eventTargets, focusTarget)) return
+    event.preventDefault()
+    event.stopPropagation()
   }
   const changeOpen = (open: boolean) => {
     if (open || pendingRef.current) return
@@ -229,5 +233,5 @@ export function useHistorySelectionDelete({
       onCloseAutoFocus={restoreFocus}
     />
   ) : null
-  return { onKeyDown, confirmation }
+  return { requestDelete, onKeyDown, confirmation }
 }

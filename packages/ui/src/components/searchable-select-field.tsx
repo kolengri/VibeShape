@@ -9,7 +9,7 @@ import {
   CommandItem,
   CommandList,
 } from "#components/command"
-import { Field, FieldDescription, FieldError, FieldLabel } from "#components/field"
+import { Field, FieldError, FieldLabel } from "#components/field"
 import { ChevronDown, IndicatorCheckIcon } from "#components/icons"
 import { Popover, PopoverContent, PopoverTrigger } from "#components/popover"
 import { cn } from "#lib/cn"
@@ -599,7 +599,7 @@ export function SearchableSelectField({
 }: SearchableSelectFieldProps) {
   const generatedId = React.useId()
   const id = providedId ?? generatedId
-  const { hasDescription, hasError, describedBy } = fieldContent(id, description, error)
+  const { hasError, describedBy } = fieldContent(id, description, error)
 
   return (
     <Field
@@ -608,7 +608,13 @@ export function SearchableSelectField({
       data-disabled={props.disabled || undefined}
       data-invalid={hasError || undefined}
     >
-      <FieldLabel id={`${id}-label`} htmlFor={id} required={Boolean(props.required)}>
+      <FieldLabel
+        id={`${id}-label`}
+        htmlFor={id}
+        required={Boolean(props.required)}
+        description={description}
+        descriptionId={`${id}-description`}
+      >
         {label}
       </FieldLabel>
       <SearchableSelectControl
@@ -620,12 +626,7 @@ export function SearchableSelectField({
         aria-invalid={hasError || undefined}
         className={triggerClassName}
       />
-      {hasDescription ? (
-        <FieldDescription id={`${id}-description`}>{description}</FieldDescription>
-      ) : null}
-      <FieldError id={`${id}-error`} reserveSpace>
-        {error}
-      </FieldError>
+      <FieldError id={`${id}-error`}>{error}</FieldError>
     </Field>
   )
 }

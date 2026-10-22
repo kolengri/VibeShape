@@ -64,7 +64,16 @@ afterEach(cleanup)
 describe("Mirror form", () => {
   it("previews a stable exact body and applies the selected plane through one revision-bound command", async () => {
     const f = setup()
+    const preserveSource = screen.getByRole("checkbox", { name: "Preserve source part" })
+    expect(preserveSource.getAttribute("aria-describedby")).toBe(
+      "mirror-preserve-source-description",
+    )
+    expect(document.getElementById("mirror-preserve-source-description")?.textContent).toBe(
+      copy.preserveSourceDescription,
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Help for Mirror part" }))
     expect(screen.getByText(/result replaces the current part/)).toBeTruthy()
+    await userEvent.keyboard("{Escape}")
     await waitFor(() =>
       expect(f.onPreviewChange).toHaveBeenLastCalledWith(
         expect.objectContaining({

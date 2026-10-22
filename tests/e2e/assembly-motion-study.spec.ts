@@ -54,6 +54,16 @@ test("saves keyed motion separately, seeks and samples real poses, exports PNG/J
   await page.getByRole("menuitem", { name: "New study", exact: true }).click()
   await panel(page).getByRole("textbox", { name: "Study name", exact: true }).fill("Hinge sweep")
   await panel(page).getByText("Edit keys (2)", { exact: true }).click()
+  const keyTime = panel(page).getByRole("spinbutton", { name: "Time (s)", exact: true }).nth(1)
+  await keyTime.focus()
+  await keyTime.press("Tab")
+  const duration = panel(page).getByRole("spinbutton", { name: "Duration (s)", exact: true })
+  for (const value of ["4", "2"]) {
+    await duration.fill(value)
+    await panel(page).getByRole("textbox", { name: "Study name", exact: true }).focus()
+    await expect(keyTime).toHaveValue(value)
+    expect(await keyTime.evaluate((input) => input.checkValidity())).toBe(true)
+  }
   const values = panel(page).getByRole("spinbutton", { name: "Value (deg)", exact: true })
   await values.nth(0).fill("-30")
   await values.nth(1).fill("30")

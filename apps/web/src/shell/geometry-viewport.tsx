@@ -5,6 +5,7 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
+import { appearancePresets } from "@vibeshape/domain/part-appearance"
 import { useTranslations } from "@vibeshape/i18n"
 import type { PrinterProfile } from "@vibeshape/protocol"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
@@ -85,13 +86,19 @@ import {
 } from "../printing/print-viewport-presentation"
 import { useReportApplicationError } from "./application-notices"
 import { assistantCheckpointDisplayController } from "./assistant-checkpoint-display"
-import { authoredBodyKey, authoredBodyKeys, currentAuthoredSnapshot } from "./authored-tree-state"
+import {
+  authoredBodyKey,
+  authoredBodyKeys,
+  currentAuthoredParts,
+  currentAuthoredSnapshot,
+} from "./authored-tree-state"
 import {
   ModelEdgeViewportChrome,
   type ModelEdgeViewportSelection,
   useModelEdgeSelectOther,
   useModelEdgeViewport,
 } from "./model-edge-viewport"
+import { partForModelBody } from "./model-tree-selection"
 import { SectionViewControls } from "./section-view-controls"
 import {
   useSectionViewportFactory,
@@ -105,6 +112,7 @@ import {
   SAFE_VIEWPORT_REGION,
   SAFE_VIEWPORT_RIGHT,
 } from "./viewport-chrome-styles"
+import { ViewportContextTrigger, ViewportSelectionProperties } from "./viewport-context-target"
 import { useWorkspaceTask } from "./workspace-task-context"
 
 const EMPTY_IDS = [] as const
@@ -167,16 +175,28 @@ export function viewerMeshes(
     ? authoredBodyKeys(authority, true, partVisibilityOverrides)
     : new Set<string>()
   const hiddenIds = new Set([...hiddenFeatureIds, ...contextualHiddenFeatureIds])
+  const parts = currentAuthoredParts(controller)
+  const appearances = new Map(
+    authority?.schemaVersion === 6
+      ? authority.partAppearances.map((item) => [item.partId, item.appearance])
+      : [],
+  )
   const solidMeshes = bodies
     .filter(
       ({ geometry }) =>
         !hiddenIds.has(geometry.featureId) && !hiddenParts.has(authoredBodyKey(geometry)),
     )
-    .map(({ geometry: body }) => ({
-      featureId: body.featureId,
-      ...(body.outputRole === undefined ? {} : { outputRole: body.outputRole }),
-      ...body.mesh,
-    }))
+    .map(({ geometry: body }) => {
+      const owner = partForModelBody(parts, body)
+      const appearance = owner ? appearances.get(owner.part.id) : undefined
+      return {
+        featureId: body.featureId,
+        ...(body.outputRole === undefined ? {} : { outputRole: body.outputRole }),
+        ...body.mesh,
+        ...(appearance?.presetId ? { material: appearancePresets[appearance.presetId] } : {}),
+        ...(appearance?.color ? { color: appearance.color } : {}),
+      }
+    })
   const datumIds = new Set<string>(
     features
       .filter((feature) => readDatumPlaneFeatureParameters(feature) !== null)
@@ -2219,7 +2239,7 @@ function WorldAxesLegend() {
     <div
       aria-label={t("worldAxes")}
       className={cn(
-        "pointer-events-none absolute bottom-2 left-2 size-20 rounded-md border border-border/70 bg-background/10 shadow-inner",
+        "pointer-events-none absolute bottom-2 left-2 aspect-square h-[clamp(0px,calc(100%_-_var(--workspace-chrome-top,0px)_-_var(--workspace-chrome-bottom,0px)_-_1rem),5rem)] rounded-md border border-border/70 bg-background/10 shadow-inner",
         SAFE_VIEWPORT_LEFT,
       )}
       role="img"
@@ -3451,6 +3471,7 @@ function viewportAdditionalControls(
   return (
     <>
       {controls}
+      <ViewportSelectionProperties />
       <SectionViewControls {...sectionProps} />
     </>
   )
@@ -3678,11 +3699,19 @@ function GeometryViewport(props: GeometryViewportProps) {
       onPointerLeave={referenceInteraction.onPointerLeave}
       tabIndex={referenceInteraction.tabIndex ?? -1}
     >
-      <canvas
-        aria-hidden={passive ? true : undefined}
-        ref={canvasRef}
-        className={cn("peer", regionClassNames.canvas)}
-      />
+      <ViewportContextTrigger
+        viewportRef={viewportRef}
+        selection={props.selection}
+        onSelect={props.onSelectionChange}
+      >
+        <canvas
+          tabIndex={props.readOnlyPresentation ? undefined : 0}
+          aria-label={t("ariaLabel")}
+          aria-hidden={passive ? true : undefined}
+          ref={canvasRef}
+          className={cn("peer", regionClassNames.canvas)}
+        />
+      </ViewportContextTrigger>
       <PrintViewportStatus
         profile={props.printerProfile}
         visible={props.printBedVisible}
@@ -3693,7 +3722,7 @@ function GeometryViewport(props: GeometryViewportProps) {
       <div
         aria-hidden="true"
         data-viewport-orientation-offset
-        className="pointer-events-none absolute left-0 top-0 h-0 w-[var(--workspace-chrome-left,0px)]"
+        className="pointer-events-none absolute left-0 top-0 box-content h-[var(--workspace-chrome-bottom,0px)] w-[var(--workspace-chrome-left,0px)] pt-[var(--workspace-chrome-top,0px)]"
       />
       <GeometryViewportContextChrome
         viewControls={viewportAdditionalControls(props.viewControls, {

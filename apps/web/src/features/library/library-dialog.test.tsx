@@ -62,7 +62,9 @@ async function openLibrary(select = true) {
 }
 async function choose(label: string, option: string) {
   const field = screen.getByRole("combobox", { name: label })
-  field.focus()
+  await act(async () => {
+    field.focus()
+  })
   await userEvent.keyboard("{Enter}")
   await userEvent.click(screen.getByRole("option", { name: option }))
 }
@@ -96,6 +98,56 @@ afterEach(() => {
 })
 
 describe("local component library dialog", () => {
+  it.each([1, 2])(
+    "keeps insertion and metadata form identities distinct when both counters equal %s",
+    async (version) => {
+      const item = { ...libraryItem, headVersion: version, metadataRevision: version }
+      ports.read.mockResolvedValueOnce({ ok: true, value: { ...libraryRead(version), item } })
+      ports.metadata.mockResolvedValueOnce({
+        ok: true,
+        value: { ...item, name: "Saved metadata", metadataRevision: version + 1 },
+      })
+      const errors = vi.spyOn(console, "error")
+      try {
+        setup()
+        const dialog = await openLibrary()
+        const insertion = within(dialog).getByRole("form", { name: "Insert into the assembly" })
+        const metadata = within(dialog).getByRole("form", { name: "Library item metadata" })
+        fireEvent.change(within(insertion).getByRole("textbox", { name: "Definition name" }), {
+          target: { value: "Insertion draft" },
+        })
+        fireEvent.change(within(metadata).getByRole("textbox", { name: "Component name" }), {
+          target: { value: "Metadata draft" },
+        })
+        await userEvent.click(within(metadata).getByRole("button", { name: "Save name and tags" }))
+        const updated = within(dialog).getByRole("form", { name: "Library item metadata" })
+        expect(
+          (within(updated).getByRole("textbox", { name: "Component name" }) as HTMLInputElement)
+            .value,
+        ).toBe("Saved metadata")
+        const preservedInsertion = within(dialog).getByRole("form", {
+          name: "Insert into the assembly",
+        })
+        expect(
+          (
+            within(preservedInsertion).getByRole("textbox", {
+              name: "Definition name",
+            }) as HTMLInputElement
+          ).value,
+        ).toBe("Insertion draft")
+        expect(
+          within(dialog).getAllByRole("form", { name: "Insert into the assembly" }),
+        ).toHaveLength(1)
+        expect(within(dialog).getAllByRole("form", { name: "Library item metadata" })).toHaveLength(
+          1,
+        )
+        expect(errors).not.toHaveBeenCalled()
+      } finally {
+        cleanup()
+        errors.mockRestore()
+      }
+    },
+  )
   it("searches local names/tags, reads an explicit historical version and inserts copy or pinned reference", async () => {
     setup()
     const dialog = await openLibrary()
@@ -180,8 +232,10 @@ describe("local component library dialog", () => {
     )
     const dialog = await openLibrary(false)
     const form = within(dialog).getByRole("form", { name: "Save a frozen component" })
-    fireEvent.submit(form)
-    fireEvent.submit(form)
+    await act(async () => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
     expect(ports.save).toHaveBeenCalledTimes(1)
     await userEvent.keyboard("{Escape}")
     expect(screen.getByRole("dialog")).toBeTruthy()
@@ -198,6 +252,70 @@ describe("local component library dialog", () => {
     if (!close) throw new Error("The library requires an accessible close action.")
     await userEvent.click(close)
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+  it.each([
+    ["Save a frozen component", "save"],
+    ["Library item metadata", "metadata"],
+    ["Insert into the assembly", "insert"],
+  ] as const)("does not mutate from %s after dismissal during validation", async (label, port) => {
+    setup()
+    const dialog = await openLibrary()
+    const form = within(dialog).getByRole("form", { name: label })
+    const close = within(dialog).getAllByRole("button", { name: "Close library" })[0]
+    if (!close) throw new Error("The library requires an accessible close action.")
+    await act(async () => {
+      fireEvent.submit(form)
+      fireEvent.click(close)
+    })
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(ports[port]).not.toHaveBeenCalled()
+  })
+  it("resets metadata for a new source or publication target while retaining drafts across unrelated reads", async () => {
+    setup()
+    const dialog = await openLibrary()
+    const form = within(dialog).getByRole("form", { name: "Save a frozen component" })
+    const name = within(form).getByRole("textbox", { name: "Component name" }) as HTMLInputElement
+    const tags = within(form).getByRole("textbox", { name: "Tags" }) as HTMLInputElement
+    fireEvent.change(name, { target: { value: "First source draft" } })
+    fireEvent.change(tags, { target: { value: "Custom" } })
+    await choose("Source component", "Part · Part 2")
+    expect(name.value).toBe("Part 2")
+    expect(tags.value).toBe("")
+    fireEvent.change(name, { target: { value: "Second source draft" } })
+    fireEvent.change(within(dialog).getByRole("searchbox", { name: "Search names and tags" }), {
+      target: { value: "Bracket" },
+    })
+    await waitFor(() => expect(ports.list).toHaveBeenLastCalledWith("Bracket"))
+    expect(name.value).toBe("Second source draft")
+    await userEvent.click(
+      within(form).getByRole("radio", { name: "Publish a version of the selected item" }),
+    )
+    expect(name.value).toBe("Bracket")
+    expect(tags.value).toBe("Print, Mount")
+    fireEvent.change(name, { target: { value: "Publication draft" } })
+    await choose("Library version", "Version 1")
+    await waitFor(() => expect(ports.read).toHaveBeenLastCalledWith(libraryItem.id, 1))
+    expect(name.value).toBe("Bracket")
+    const metadata = within(dialog).getByRole("form", { name: "Library item metadata" })
+    ports.metadata.mockResolvedValueOnce({
+      ok: true,
+      value: { ...libraryItem, name: "Renamed bracket", metadataRevision: 4 },
+    })
+    await userEvent.click(within(metadata).getByRole("button", { name: "Save name and tags" }))
+    await waitFor(() => expect(name.value).toBe("Renamed bracket"))
+    expect(
+      (
+        within(form).getByRole("radio", {
+          name: "Publish a version of the selected item",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true)
+    expect(within(form).getByRole("combobox", { name: "Source component" }).textContent).toContain(
+      "Part 2",
+    )
+    await userEvent.click(within(form).getByRole("radio", { name: "Create a new item" }))
+    expect(name.value).toBe("Part 2")
+    expect(tags.value).toBe("")
   })
   it("requires explicit reference update or detach and never relinks on a library read", async () => {
     setup(libraryController(true))
@@ -256,6 +374,12 @@ describe("local component library dialog", () => {
       messages.app.library.invalidMetadata,
     )
     expect(ports.save).not.toHaveBeenCalled()
+    const tags = within(form).getByRole("textbox", { name: "Tags" })
+    expect(tags.getAttribute("aria-invalid")).toBe("true")
+    expect(document.activeElement).toBe(tags)
+    fireEvent.change(tags, { target: { value: " Print, Fixture " } })
+    await userEvent.click(within(form).getByRole("button", { name: "Save library item" }))
+    expect(ports.save).toHaveBeenCalledWith(expect.objectContaining({ tags: ["Print", "Fixture"] }))
   })
   it("discards stale document results instead of publishing them into another scope", async () => {
     const controller = libraryController()

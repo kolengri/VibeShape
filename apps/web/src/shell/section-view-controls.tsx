@@ -131,7 +131,7 @@ export function SectionViewControls({
       <PopoverContent
         align="end"
         collisionPadding={8}
-        className="grid max-h-[var(--radix-popover-content-available-height)] w-64 gap-3 overflow-y-auto p-3 text-xs"
+        className="grid max-h-[var(--radix-popover-content-available-height)] w-64 gap-2 overflow-y-auto p-3 text-xs"
         aria-label={t("title")}
       >
         <fieldset className="grid gap-2">

@@ -49,6 +49,12 @@ so a pending manual review does not terminate the agent after ten minutes. Expli
 overrides still apply. Connection/settings requests, permission/question expiry and the Stop
 escalation keep their separate bounds; a stalled turn remains cancellable by the person.
 
+The native ACP transport uses the pinned SDK's bounded 32 MiB frame limit so loading a saved
+session can receive historical prompts with embedded attachments. Historical replay is not
+published as new live output or resent as a modeling prompt. The separate 2 MiB live-event budget
+per turn and the 64 KiB handshake-probe limit remain unchanged. Model context compaction does not
+guarantee that archived ACP replay frames are small.
+
 A native completion/error event can belong to a predecessor request while a steering continuation
 is still active. Aggregate terminal/cancelling host snapshots own control and tool cleanup, so the
 continuation keeps its questions and permissions. Newer streamed snapshots take precedence over
@@ -495,7 +501,8 @@ ordinary broker, credentials, exact previews, revisions and commit path; it gran
 management authority. External clients retain the initial pairing action below.
 
 The embedded native chat and its project automation connection bound transient recovery to five
-attempts before explicit retry. Transient model retries that expire while ACP is still loading do not discard
+attempts before explicit retry, with increasing delays of 5, 10, 20, 40 and 60 seconds.
+Stop AI and cancellation interrupt the pending wait. Transient model retries that expire while ACP is still loading do not discard
 that pending ACP connection. Once ACP is ready, the model connection gets a new bounded recovery
 phase; exhausting that phase still requires explicit retry. Exact ACP session loading, effective setting restoration and settled
 document persistence precede automatic continuation of an interrupted turn. The continuation reads

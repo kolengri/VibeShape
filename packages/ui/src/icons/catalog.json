@@ -860,6 +860,11 @@
     "legacy": []
   },
   {
+    "id": "information",
+    "label": "Information",
+    "legacy": []
+  },
+  {
     "id": "close",
     "label": "Close",
     "legacy": ["X"]

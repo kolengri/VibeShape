@@ -1,10 +1,12 @@
-import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
+import {
+  type AssistantQuestion,
+  assistantQuestionAnswersMatch,
+} from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
-import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
-import { Input } from "@vibeshape/ui/components/input"
-import { type FormEvent, useEffect, useId, useRef, useState } from "react"
+import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { useEffect, useState } from "react"
 
 export function AssistantQuestionForm({
   question,
@@ -14,119 +16,131 @@ export function AssistantQuestionForm({
   onAnswer: (answers: Record<string, string> | null) => Promise<boolean>
 }) {
   const t = useTranslations("app.assistant")
-  const id = useId()
-  const lock = useRef(false)
-  const [pending, setPending] = useState(false)
   const [failed, setFailed] = useState(false)
   const [expired, setExpired] = useState(Date.now() >= question.expiresAt)
-  useReportActivity(pending)
   useEffect(() => {
     const timer = setTimeout(() => setExpired(true), Math.max(0, question.expiresAt - Date.now()))
     return () => clearTimeout(timer)
   }, [question.expiresAt])
-  const answer = async (answers: Record<string, string> | null) => {
-    if (lock.current || Date.now() >= question.expiresAt) return
-    lock.current = true
-    setPending(true)
-    setFailed(false)
-    try {
-      if (!(await onAnswer(answers))) setFailed(true)
-    } catch {
-      setFailed(true)
-    } finally {
-      lock.current = false
-      setPending(false)
-    }
-  }
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
-    const answers = Object.fromEntries(
-      question.fields.flatMap((field) => {
-        const value = String(data.get(field.id) ?? "")
-        return !field.required && value === "" ? [] : [[field.id, value]]
-      }),
-    )
-    void answer(answers)
+  const form = useAppForm({
+    defaultValues: { answers: question.fields.map(() => ""), cancelled: false },
+    onSubmit: async ({ value, formApi }) => {
+      if (Date.now() >= question.expiresAt) return
+      setFailed(false)
+      const answers = value.cancelled
+        ? null
+        : Object.fromEntries(
+            question.fields.flatMap((field, index) => {
+              const answer = value.answers[index] ?? ""
+              return !field.required && answer === "" ? [] : [[field.id, answer]]
+            }),
+          )
+      try {
+        if (!(await onAnswer(answers))) setFailed(true)
+      } catch {
+        setFailed(true)
+      } finally {
+        formApi.setFieldValue("cancelled", false)
+      }
+    },
+  })
+  const cancel = async () => {
+    if (form.state.isSubmitting || Date.now() >= question.expiresAt) return
+    form.setFieldValue("cancelled", true)
+    await form.handleSubmit()
   }
   return (
     <details open className="rounded-md border bg-background p-2">
       <summary className="cursor-pointer whitespace-pre-wrap break-words text-sm font-medium">
         {question.message || t("questionTitle")}
       </summary>
-      <form aria-label={t("questionTitle")} className="mt-3 space-y-3" onSubmit={submit}>
-        {question.fields.map((field, index) => {
-          const fieldId = `${id}-${index}`
-          const descriptionId = field.description ? `${fieldId}-description` : undefined
-          return (
-            <fieldset key={field.id} disabled={pending || expired} className="min-w-0 space-y-1">
-              <legend className="text-xs font-medium">{field.label}</legend>
-              {field.description && (
-                <p id={descriptionId} className="text-xs text-muted-foreground">
-                  {field.description}
-                </p>
-              )}
-              {field.options ? (
-                <div className="flex flex-wrap gap-1">
-                  {field.options.map((option) => (
-                    <label key={option.id} className="min-w-0 cursor-pointer">
-                      <input
-                        type="radio"
-                        className="peer sr-only"
-                        name={field.id}
-                        value={option.id}
-                        required={field.required}
-                        aria-describedby={descriptionId}
-                        aria-label={option.name}
-                      />
-                      <span className="block rounded-md border px-2 py-1 text-xs peer-checked:border-primary peer-checked:bg-accent peer-focus-visible:outline peer-focus-visible:outline-ring peer-disabled:cursor-not-allowed peer-disabled:opacity-50">
-                        {option.name}
-                        {option.description && (
-                          <span className="mt-1 block text-muted-foreground">
-                            {option.description}
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <Input
-                  id={fieldId}
-                  name={field.id}
-                  aria-label={field.label}
-                  aria-describedby={descriptionId}
-                  type={field.secret ? "password" : "text"}
-                  autoComplete="off"
-                  required={field.required}
-                  minLength={field.minLength}
-                  maxLength={field.maxLength ?? 16_384}
-                />
-              )}
-            </fieldset>
-          )
-        })}
-        {failed && <Alert>{t("questionResponseFailed")}</Alert>}
-        {expired && (
-          <p role="status" className="text-xs text-muted-foreground">
-            {t("questionExpired")}
-          </p>
-        )}
-        <div className="flex flex-wrap justify-end gap-1">
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={pending || expired}
-            onClick={() => answer(null)}
+      <form.Subscribe selector={(state) => state.isSubmitting}>
+        {(pending) => (
+          <Form
+            form={form}
+            aria-label={t("questionTitle")}
+            className="mt-3 space-y-3"
+            aria-busy={pending || undefined}
+            onSubmitCapture={(event) => {
+              if (!pending && Date.now() < question.expiresAt) return
+              event.preventDefault()
+              event.stopPropagation()
+            }}
           >
-            {t("cancelQuestion")}
-          </Button>
-          <Button type="submit" size="xs" disabled={pending || expired} aria-busy={pending}>
-            {t("submitAnswers")}
-          </Button>
-        </div>
-      </form>
+            {question.fields.map((questionField, index) => {
+              const validate = (value: string, cancelled: boolean) => {
+                if (cancelled) return undefined
+                const valid = assistantQuestionAnswersMatch(
+                  { fields: [questionField] },
+                  value === "" ? {} : { [questionField.id]: value },
+                )
+                return valid ? undefined : t("questionResponseFailed")
+              }
+              return (
+                <form.AppField
+                  key={questionField.id}
+                  name={`answers[${index}]`}
+                  validators={{
+                    onSubmit: ({ value, fieldApi }) =>
+                      validate(value, fieldApi.form.state.values.cancelled),
+                    onChange: ({ value, fieldApi }) =>
+                      fieldApi.form.state.submissionAttempts > 0
+                        ? validate(value, fieldApi.form.state.values.cancelled)
+                        : undefined,
+                  }}
+                >
+                  {(field) =>
+                    questionField.options ? (
+                      <field.ChoiceField
+                        label={questionField.label}
+                        description={questionField.description}
+                        required={questionField.required}
+                        disabled={pending || expired}
+                        options={questionField.options.map((option) => ({
+                          value: option.id,
+                          label: option.name,
+                          description: option.description,
+                        }))}
+                      />
+                    ) : (
+                      <field.TextField
+                        label={questionField.label}
+                        description={questionField.description}
+                        type={questionField.secret ? "password" : "text"}
+                        autoComplete="off"
+                        required={questionField.required}
+                        minLength={questionField.minLength}
+                        maxLength={questionField.maxLength ?? 16_384}
+                        disabled={pending || expired}
+                      />
+                    )
+                  }
+                </form.AppField>
+              )
+            })}
+            {failed && <Alert>{t("questionResponseFailed")}</Alert>}
+            {expired && (
+              <p role="status" className="text-xs text-muted-foreground">
+                {t("questionExpired")}
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-1">
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                disabled={pending || expired}
+                onClick={cancel}
+              >
+                {t("cancelQuestion")}
+              </Button>
+              <form.SubmitButton size="xs" requireDirty={false} disabled={pending || expired}>
+                {t("submitAnswers")}
+              </form.SubmitButton>
+            </div>
+          </Form>
+        )}
+      </form.Subscribe>
     </details>
   )
 }

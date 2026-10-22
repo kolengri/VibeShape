@@ -5,9 +5,10 @@ import type {
   VariableDefinition,
 } from "@vibeshape/domain"
 import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -176,8 +177,24 @@ export function ShellForm({
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const repair = shellInitialSelection(mode, evidence, allowSemanticRebinding).repair
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: shellInitialValues(mode, evidence, state.displayUnits, allowSemanticRebinding),
+    validators: {
+      onDynamic: ({ value }) => {
+        const feature = shellFormFeature(
+          mode,
+          featureId,
+          value,
+          evidence,
+          variables,
+          state.displayUnits,
+          copy,
+          allowSemanticRebinding,
+        )
+        return feature ? undefined : copy.validationSummary
+      },
+    },
     onSubmit: async ({ value }) => {
       const feature = shellFormFeature(
         mode,
@@ -189,10 +206,7 @@ export function ShellForm({
         copy,
         allowSemanticRebinding,
       )
-      if (!feature) {
-        state.setMessage(copy.validationSummary)
-        return
-      }
+      if (!feature) return
       state.setMessage(null)
       try {
         await submitFeatureMutation({
@@ -209,7 +223,8 @@ export function ShellForm({
     },
   })
   return (
-    <Form ref={state.formElementRef} form={form} aria-label={copy.title} className="gap-0">
+    <Form form={form} aria-label={copy.title} className="gap-0">
+      <form.FormError />
       <form.Subscribe selector={(formState) => formState.values}>
         {(values) => (
           <ShellPickingSync
@@ -271,65 +286,49 @@ export function ShellForm({
                 {copy.unavailable}
               </p>
             )}
-            <form.Field name="thickness">
+            <form.AppField name="thickness">
               {(field) => (
-                <LengthExpressionField
+                <field.LengthExpressionField
                   id="shell-thickness"
-                  name="thickness"
                   label={copy.thickness}
                   description={copy.lengthDescription}
-                  value={field.state.value}
                   suggestions={state.suggestions}
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
+                  onValueChange={() => {
                     state.clearSubmissionErrors()
-                    field.handleChange(value)
                   }}
                 />
               )}
-            </form.Field>
-            <form.Field name="direction">
+            </form.AppField>
+            <form.AppField name="direction">
               {(field) => (
-                <fieldset className="grid gap-2">
-                  <legend className="mb-2 text-xs font-medium">{copy.direction}</legend>
-                  {(["inward", "outward"] as const).map((direction) => (
-                    <label key={direction} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="direction"
-                        checked={field.state.value === direction}
-                        onBlur={field.handleBlur}
-                        onChange={() => {
-                          state.clearSubmissionErrors()
-                          field.handleChange(direction)
-                        }}
-                      />
-                      {copy[direction]}
-                    </label>
-                  ))}
-                </fieldset>
+                <field.ChoiceField
+                  label={copy.direction}
+                  onValueChange={() => {
+                    state.clearSubmissionErrors()
+                  }}
+                  options={(["inward", "outward"] as const).map((direction) => ({
+                    value: direction,
+                    label: copy[direction],
+                  }))}
+                />
               )}
-            </form.Field>
+            </form.AppField>
             <form.Field name="closed">
               {(field) => (
-                <fieldset className="grid gap-2">
-                  <legend className="mb-2 text-xs font-medium">{copy.cavity}</legend>
-                  {([false, true] as const).map((closed) => (
-                    <label key={String(closed)} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="closed"
-                        checked={field.state.value === closed}
-                        onBlur={field.handleBlur}
-                        onChange={() => {
-                          state.clearSubmissionErrors()
-                          field.handleChange(closed)
-                        }}
-                      />
-                      {closed ? copy.closedCavity : copy.openCavity}
-                    </label>
-                  ))}
-                </fieldset>
+                <ChoiceField
+                  name={field.name}
+                  label={copy.cavity}
+                  value={String(field.state.value)}
+                  onBlur={field.handleBlur}
+                  onValueChange={(value) => {
+                    state.clearSubmissionErrors()
+                    field.handleChange(value === "true")
+                  }}
+                  options={([false, true] as const).map((closed) => ({
+                    value: String(closed),
+                    label: closed ? copy.closedCavity : copy.openCavity,
+                  }))}
+                />
               )}
             </form.Field>
             <form.Subscribe selector={(formState) => formState.values.closed}>
@@ -337,8 +336,8 @@ export function ShellForm({
                 closed ? null : (
                   <form.Field name="openingIds">
                     {(field) => (
-                      <fieldset className="grid gap-2">
-                        <legend className="mb-2 text-xs font-medium">{copy.openings}</legend>
+                      <fieldset className="grid gap-1">
+                        <legend className="mb-1 text-xs font-medium">{copy.openings}</legend>
                         <p className="text-xs text-muted-foreground">{copy.openingsDescription}</p>
                         {evidence?.candidates.map((candidate, index) => (
                           <label

@@ -49,8 +49,8 @@ complete texture intent; recovery refuses a result before that recorded upgrade 
 compatibility projection remains disposable and cannot replace V3 authority.
 
 Native saves use format 3 for V2 parts/folders and format 4 for V3 texture authority, retaining verified
-mixed history and original actors. V4 uses format 5 and V5 repair authority uses format 6; the authored
-reader accepts formats 0–6. Opening a complete
+mixed history and original actors. V4 uses format 5, V5 repair authority uses format 6, and V6 authored
+appearance uses format 7; the authored reader accepts formats 0–7. Opening a complete
 archive creates fresh document, command, and transaction identities while preserving document-local
 feature, part, folder, and texture-layer identities. Read-only checkpoints cannot become writable
 copies. Older builds reject unsupported authority before recovery fallback; rolling back the
@@ -77,6 +77,12 @@ adoption boundary. Normal repair and Undo/Redo persist complete repair intent an
 identities, and confirmed authority projections include automatically restored descendants. Format-6
 export/import/copy preserves replay proof and the full source closure. See
 [ADR-0103](../adr/0103-retained-history-repair-authority.md).
+
+V6 appearance authority retains the same stores and adopts a strict V6 head with
+`appearanceUpgradeRevision` in the first saved appearance command. Material presets and validated
+custom colors are keyed by stable PartId, preserved through ordinary edits, and included in saved
+Undo/Redo and format-7 native archives. Recovery cannot cross appearance adoption, and old runtimes
+reject the newer head before fallback. See [ADR-0128](../adr/0128-saved-authored-part-appearance.md).
 
 A user command becomes committed only after:
 

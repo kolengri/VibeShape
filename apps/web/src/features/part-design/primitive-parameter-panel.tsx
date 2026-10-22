@@ -34,12 +34,12 @@ export function PrimitiveParameterPanel({
       legend={copy.parameters}
       message={message}
     >
-      <fieldset className="grid gap-3">
-        <legend className="text-xs font-medium text-muted-foreground">{copy.dimensions}</legend>
+      <fieldset className="grid min-w-0 gap-2">
+        <legend className="sr-only">{copy.dimensions}</legend>
         {fields}
       </fieldset>
-      <fieldset className="grid gap-3 border-t border-border pt-3">
-        <legend className="text-xs font-medium text-muted-foreground">{copy.placement}</legend>
+      <fieldset className="grid min-w-0 gap-2 border-t border-border pt-2">
+        <legend className="sr-only">{copy.placement}</legend>
         {placementFields}
         {centeredField ? <div className="pt-1">{centeredField}</div> : null}
       </fieldset>

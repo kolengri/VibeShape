@@ -1,12 +1,14 @@
 import { Select as SelectPrimitive } from "radix-ui"
 import { type ComponentProps, type FocusEventHandler, type ReactNode, useId } from "react"
-import { Field, FieldLabel } from "#components/field"
+import { Field, FieldError, FieldLabel } from "#components/field"
 import { IndicatorCheckIcon as CheckIcon, ChevronDown as ChevronDownIcon } from "#components/icons"
 import { cn } from "#lib/cn"
 
 type SelectFieldProps = ComponentProps<typeof SelectPrimitive.Root> & {
   id?: string
   label: ReactNode
+  description?: ReactNode
+  error?: ReactNode
   menuLabel?: ReactNode
   menuDescription?: ReactNode
   "aria-describedby"?: string
@@ -16,6 +18,8 @@ type SelectFieldProps = ComponentProps<typeof SelectPrimitive.Root> & {
 function SelectField({
   id: providedId,
   label,
+  description,
+  error,
   menuLabel,
   menuDescription,
   onBlur,
@@ -26,14 +30,28 @@ function SelectField({
   const generatedId = useId()
   const id = providedId ?? generatedId
   return (
-    <Field data-disabled={props.disabled || undefined}>
-      <FieldLabel htmlFor={id} required={Boolean(props.required)}>
+    <Field data-disabled={props.disabled || undefined} data-invalid={Boolean(error) || undefined}>
+      <FieldLabel
+        htmlFor={id}
+        required={Boolean(props.required)}
+        description={description}
+        descriptionId={`${id}-description`}
+      >
         {label}
       </FieldLabel>
       <SelectPrimitive.Root {...props}>
         <SelectPrimitive.Trigger
           id={id}
-          aria-describedby={describedBy}
+          aria-invalid={Boolean(error) || undefined}
+          aria-describedby={
+            [
+              description ? `${id}-description` : undefined,
+              error ? `${id}-error` : undefined,
+              describedBy,
+            ]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
           onBlur={onBlur}
           className={cn(
             "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none",
@@ -57,26 +75,34 @@ function SelectField({
             )}
           >
             <SelectPrimitive.Viewport>
-              {menuLabel ? (
-                <SelectPrimitive.Group>
-                  <SelectPrimitive.Label className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                    {menuLabel}
-                  </SelectPrimitive.Label>
-                  {menuDescription && (
-                    <p className="max-w-sm px-2 pb-1.5 text-xs text-muted-foreground">
-                      {menuDescription}
-                    </p>
-                  )}
-                  {children}
-                </SelectPrimitive.Group>
-              ) : (
-                children
-              )}
+              <SelectMenuGroup menuLabel={menuLabel} menuDescription={menuDescription}>
+                {children}
+              </SelectMenuGroup>
             </SelectPrimitive.Viewport>
           </SelectPrimitive.Content>
         </SelectPrimitive.Portal>
       </SelectPrimitive.Root>
+      <FieldError id={`${id}-error`}>{error}</FieldError>
     </Field>
+  )
+}
+
+function SelectMenuGroup({
+  menuLabel,
+  menuDescription,
+  children,
+}: Pick<SelectFieldProps, "menuLabel" | "menuDescription" | "children">) {
+  if (!menuLabel) return children
+  return (
+    <SelectPrimitive.Group>
+      <SelectPrimitive.Label className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+        {menuLabel}
+      </SelectPrimitive.Label>
+      {menuDescription && (
+        <p className="max-w-sm px-2 pb-1.5 text-xs text-muted-foreground">{menuDescription}</p>
+      )}
+      {children}
+    </SelectPrimitive.Group>
   )
 }
 

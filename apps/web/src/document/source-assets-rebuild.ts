@@ -2,6 +2,7 @@ import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import type { DocumentSnapshotV5 } from "@vibeshape/domain/document-v5"
+import type { DocumentSnapshotV6 } from "@vibeshape/domain/document-v6"
 import {
   type SourceAsset,
   type SourceAssetBlob,
@@ -34,7 +35,11 @@ export async function materializeDocumentSourceAssets(
   )
   if (required.size === 0) return []
   const authority = await readAuthority()
-  if (authority.schemaVersion !== 4 && authority.schemaVersion !== 5)
+  if (
+    authority.schemaVersion !== 4 &&
+    authority.schemaVersion !== 5 &&
+    authority.schemaVersion !== 6
+  )
     throw new Error("Imported geometry requires source asset authority.")
   const assets = [...required].map((id) => {
     const asset = authority.assets.find((candidate) => candidate.id === id)
@@ -74,7 +79,9 @@ async function readMaterializations(
   return sourceAssetMaterializationsSchema.parse(materials)
 }
 
-function assemblySourceDescriptors(authority: DocumentSnapshotV4 | DocumentSnapshotV5) {
+function assemblySourceDescriptors(
+  authority: DocumentSnapshotV4 | DocumentSnapshotV5 | DocumentSnapshotV6,
+) {
   const assets = authority.assembly.definitions.flatMap((definition) =>
     definition.pinnedModels.flatMap((model) => model.assets),
   )
@@ -91,7 +98,7 @@ function assemblySourceDescriptors(authority: DocumentSnapshotV4 | DocumentSnaps
 /** Frozen assembly dependencies survive deletion of their original authored Parts. */
 export async function materializeAssemblySourceAssets(
   database: VibeShapeDatabase,
-  authority: DocumentSnapshotV4 | DocumentSnapshotV5,
+  authority: DocumentSnapshotV4 | DocumentSnapshotV5 | DocumentSnapshotV6,
   ownedBlobs: readonly SourceAssetBlob[] = [],
 ): Promise<readonly SourceAssetMaterialization[]> {
   return readMaterializations(database, assemblySourceDescriptors(authority), ownedBlobs)

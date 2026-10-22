@@ -2,7 +2,9 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { Input } from "@vibeshape/ui/components/input"
+import { useId } from "react"
 import { FdmSupportDemand } from "./fdm-analysis-details"
 import { GenerativeFdmControls } from "./generative-fdm-controls"
 import { LightweightingSettingsDetails } from "./lightweighting-settings-details"
@@ -12,12 +14,18 @@ type StudyState = ReturnType<typeof useGenerativeDesignTask>
 
 export function GenerativeDesignControls({ state }: { state: StudyState }) {
   const t = useTranslations("app.generativeDesign")
+  const id = useId()
   const fields = state.studyFields
   return (
-    <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-      <legend className="text-xs mb-2 font-medium">{t("searchSpace")}</legend>
-      <p className="text-xs text-muted-foreground">{t("targetHelp")}</p>
-      <fieldset className="flex flex-wrap gap-2" aria-label={t("weightTarget")}>
+    <fieldset className="grid min-w-0 grid-cols-1 gap-2">
+      <legend className="mb-1 font-medium text-xs">{t("searchSpace")}</legend>
+      <fieldset className="flex flex-wrap gap-2" aria-labelledby={`${id}-weight-target`}>
+        <legend className="mb-1 text-xs font-medium">
+          <span className="inline-flex items-center gap-1">
+            <span id={`${id}-weight-target`}>{t("weightTarget")}</span>
+            <FieldHelp label={t("weightTarget")}>{t("targetHelp")}</FieldHelp>
+          </span>
+        </legend>
         {[85, 70, 50].map((percent) => (
           <Button
             key={percent}
@@ -60,8 +68,13 @@ export function GenerativeDesignControls({ state }: { state: StudyState }) {
             {t("massTargetsHelp")}
           </p>
         </Field>
-        <p className="text-xs text-muted-foreground">{t("materialsHelp")}</p>
-        <fieldset className="flex flex-wrap gap-2" aria-label={t("additionalMaterials")}>
+        <fieldset className="flex flex-wrap gap-2" aria-labelledby={`${id}-materials`}>
+          <legend className="mb-1 text-xs font-medium">
+            <span className="inline-flex items-center gap-1">
+              <span id={`${id}-materials`}>{t("additionalMaterials")}</span>
+              <FieldHelp label={t("additionalMaterials")}>{t("materialsHelp")}</FieldHelp>
+            </span>
+          </legend>
           {state.materialOptions.map((preset) => {
             const selected = fields.additionalMaterialIds.includes(preset.id)
             return (
@@ -96,21 +109,26 @@ export function GenerativeDesignControls({ state }: { state: StudyState }) {
 
 function GenerativeObstacleControls({ state }: { state: StudyState }) {
   const t = useTranslations("app.generativeDesign")
+  const id = useId()
   const fields = state.studyFields
   return (
-    <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-      <legend className="text-xs mb-2 font-medium">{t("obstacles")}</legend>
-      <p className="text-xs text-muted-foreground">{t("obstaclesHelp")}</p>
+    <fieldset className="grid min-w-0 grid-cols-1 gap-2" aria-labelledby={id}>
+      <legend className="mb-1 font-medium text-xs">
+        <span className="inline-flex items-center gap-1">
+          <span id={id}>{t("obstacles")}</span>
+          <FieldHelp label={t("obstacles")}>{t("obstaclesHelp")}</FieldHelp>
+        </span>
+      </legend>
       {fields.obstacles.map((obstacle, index) => (
         <fieldset
           key={obstacle.id}
-          className="grid min-w-0 grid-cols-1 gap-3 rounded-md border p-3"
+          className="grid min-w-0 grid-cols-1 gap-2 rounded-md border p-3"
         >
           <legend className="px-1 text-xs font-medium">
             {t("obstacle", { index: index + 1 })}
           </legend>
           {(["min", "max"] as const).map((bound) => (
-            <div key={bound} className="grid grid-cols-1 gap-2 @xs:grid-cols-3">
+            <div key={bound} className="grid grid-cols-1 gap-2">
               {(["X", "Y", "Z"] as const).map((axis, axisIndex) => (
                 <Field key={axis}>
                   <FieldLabel htmlFor={`generative-obstacle-${obstacle.id}-${bound}-${axis}`}>
@@ -183,9 +201,11 @@ export function GenerativeDesignResults({ state }: { state: StudyState }) {
   const t = useTranslations("app.generativeDesign")
   if (!state.study) return null
   return (
-    <section className="grid min-w-0 grid-cols-1 gap-3" aria-label={t("candidates")}>
-      <h3 className="text-xs font-medium">{t("candidates")}</h3>
-      <p className="text-xs text-muted-foreground">{t("comparisonHelp")}</p>
+    <section className="grid min-w-0 grid-cols-1 gap-2" aria-label={t("candidates")}>
+      <div className="flex items-center gap-1">
+        <h3 className="font-medium text-xs">{t("candidates")}</h3>
+        <FieldHelp label={t("candidates")}>{t("comparisonHelp")}</FieldHelp>
+      </div>
       {state.study.candidates.map((candidate, index) => (
         <article key={candidate.id} className="grid gap-2 rounded-md border p-3">
           <h4 className="text-xs font-medium">

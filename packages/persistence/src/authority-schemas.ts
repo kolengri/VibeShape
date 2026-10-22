@@ -10,6 +10,7 @@ import {
   documentSnapshotV3Schema,
   documentSnapshotV4Schema,
   documentSnapshotV5Schema,
+  documentSnapshotV6Schema,
   draftIdSchema,
   projectDocumentSnapshotV4ToV3,
   replayDocumentAuthorityEvents,
@@ -17,6 +18,7 @@ import {
   sessionIdSchema,
   sourceAssetBlobSchema,
   timestampSchema,
+  validateAppearanceAuthorityBoundary,
   validateRepairAuthorityBoundaries,
 } from "@vibeshape/domain"
 import { z } from "zod"
@@ -145,12 +147,39 @@ export const snapshotRecordV5Schema = snapshotRecordV1Schema.extend({ schemaVers
 export const eventRecordV5Schema = eventRecordV1Schema.extend({ schemaVersion: z.literal(5) })
 export const recoveryRecordV5Schema = recoveryRecordV1Schema.extend({ schemaVersion: z.literal(5) })
 export type ProjectRecordV5 = z.infer<typeof projectRecordV5Schema>
+export const projectRecordV6Schema = z
+  .object({
+    ...projectRecordV5Schema.shape,
+    schemaVersion: z.literal(6),
+    appearanceUpgradeRevision: revisionSchema,
+  })
+  .strict()
+  .superRefine((project, context) => {
+    const { appearanceUpgradeRevision, ...previous } = project
+    const parsed = projectRecordV5Schema.safeParse({ ...previous, schemaVersion: 5 })
+    if (!parsed.success)
+      for (const issue of parsed.error.issues)
+        context.addIssue({ code: "custom", path: issue.path, message: issue.message })
+    if (
+      appearanceUpgradeRevision < project.repairUpgradeRevision ||
+      appearanceUpgradeRevision > project.latestSnapshotRevision
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Appearance adoption must follow repair authority and have a committed snapshot.",
+      })
+  })
+export const snapshotRecordV6Schema = snapshotRecordV1Schema.extend({ schemaVersion: z.literal(6) })
+export const eventRecordV6Schema = eventRecordV1Schema.extend({ schemaVersion: z.literal(6) })
+export const recoveryRecordV6Schema = recoveryRecordV1Schema.extend({ schemaVersion: z.literal(6) })
+export type ProjectRecordV6 = z.infer<typeof projectRecordV6Schema>
 export const projectAuthorityRecordSchema = z.union([
   projectRecordV1Schema,
   projectRecordV2Schema,
   projectRecordV3Schema,
   projectRecordV4Schema,
   projectRecordV5Schema,
+  projectRecordV6Schema,
 ])
 export const snapshotAuthorityRecordSchema = z.union([
   snapshotRecordV1Schema,
@@ -158,6 +187,7 @@ export const snapshotAuthorityRecordSchema = z.union([
   snapshotRecordV3Schema,
   snapshotRecordV4Schema,
   snapshotRecordV5Schema,
+  snapshotRecordV6Schema,
 ])
 export const eventAuthorityRecordSchema = z.union([
   eventRecordV1Schema,
@@ -165,6 +195,7 @@ export const eventAuthorityRecordSchema = z.union([
   eventRecordV3Schema,
   eventRecordV4Schema,
   eventRecordV5Schema,
+  eventRecordV6Schema,
 ])
 export const recoveryAuthorityRecordSchema = z.union([
   recoveryRecordV1Schema,
@@ -172,6 +203,7 @@ export const recoveryAuthorityRecordSchema = z.union([
   recoveryRecordV3Schema,
   recoveryRecordV4Schema,
   recoveryRecordV5Schema,
+  recoveryRecordV6Schema,
 ])
 export type ProjectRecordV2 = z.infer<typeof projectRecordV2Schema>
 export type ProjectAuthorityRecord = z.infer<typeof projectAuthorityRecordSchema>
@@ -445,11 +477,43 @@ export const portableProjectV6ImportSchema = portableProjectV6PayloadSchema
 export const portableProjectV6CopySchema = portableProjectV6PayloadSchema
   .safeExtend({ copiedAt: timestampSchema })
   .superRefine(requireCompleteHistory)
+export const portableProjectV7PayloadSchema = z
+  .object({
+    ...portableProjectV6PayloadSchema.shape,
+    snapshot: documentSnapshotV6Schema,
+    appearanceUpgradeRevision: revisionSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const replayed = replayDocumentAuthorityEvents(input.seed, input.versionedEvents)
+    const modeValid =
+      input.historyMode === "complete" ? completeBoundary(input) : checkpointBoundary(input)
+    if (
+      !modeValid ||
+      validateRepairAuthorityBoundaries(input) !== null ||
+      validateAppearanceAuthorityBoundary(input) !== null ||
+      !replayed.ok ||
+      canonicalJson(replayed.snapshot) !== canonicalJson(input.snapshot)
+    )
+      context.addIssue({
+        code: "custom",
+        message: "The V7 history must reproduce its appearance authority and adoption boundaries.",
+      })
+    validatePortableEventBudget(input, context)
+  })
+export type PortableProjectV7 = Readonly<z.infer<typeof portableProjectV7PayloadSchema>>
+export const portableProjectV7ImportSchema = portableProjectV7PayloadSchema
+  .safeExtend({ importedAt: timestampSchema, exportedAt: timestampSchema })
+  .superRefine(requireCompleteHistory)
+export const portableProjectV7CopySchema = portableProjectV7PayloadSchema
+  .safeExtend({ copiedAt: timestampSchema })
+  .superRefine(requireCompleteHistory)
 export const authoredPortableProjectPayloadSchema = z.union([
   portableProjectV3PayloadSchema,
   portableProjectV4PayloadSchema,
   portableProjectV5PayloadSchema,
   portableProjectV6PayloadSchema,
+  portableProjectV7PayloadSchema,
 ])
 
 function validatePortableEventBudget(

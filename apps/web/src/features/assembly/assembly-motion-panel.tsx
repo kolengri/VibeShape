@@ -2,51 +2,25 @@ import type { AssemblyJointRecord } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
-import { Field, FieldLabel } from "@vibeshape/ui/components/field"
-import { Input } from "@vibeshape/ui/components/input"
-import { useId, useMemo, useState } from "react"
+import { TextField } from "@vibeshape/ui/components/text-field"
+import { Form, useAppForm, useFieldError } from "@vibeshape/ui/integrations/tanstack-form"
+import { useMemo } from "react"
 import { TaskPanelHeader } from "../../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { useDocumentDisplayUnits } from "../../document/document-display-units"
+import { numberFieldValidators } from "./assembly-fields"
 import {
   type AssemblyMotionCoordinate,
   assemblyMotionCoordinates,
   assemblyMotionUnits,
 } from "./assembly-motion"
 import { assemblyMotionFailureKey } from "./assembly-motion-runner"
-import { AssemblyPlaybackSettings } from "./assembly-motion-study-panel"
-import type { AssemblyMotionView, AssemblyPlaybackOptions } from "./use-assembly-motion"
-
-function MotionNumber({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string
-  value: string
-  min: number
-  max: number
-  onChange: (value: string) => void
-}) {
-  const id = useId()
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
-        id={id}
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        step="any"
-        required
-        onChange={(event) => onChange(event.currentTarget.value)}
-      />
-    </Field>
-  )
-}
+import {
+  AssemblyPlaybackSettings,
+  playbackFieldValues,
+  playbackOptions,
+} from "./assembly-motion-study-panel"
+import type { AssemblyMotionView } from "./use-assembly-motion"
 
 type MotionPanelProps = {
   joint: AssemblyJointRecord
@@ -57,48 +31,55 @@ type MotionPanelProps = {
   onCoordinate: (kind: AssemblyMotionCoordinate["kind"]) => void
   onClose: () => void
 }
-function useMotionInputs(coordinate: AssemblyMotionCoordinate, motion: AssemblyMotionView) {
-  const [playback, setPlayback] = useState<AssemblyPlaybackOptions>({ count: 13, speed: 1 })
+function useMotionInputs(
+  coordinate: AssemblyMotionCoordinate,
+  motion: AssemblyMotionView,
+  disabled: boolean,
+) {
   const units = useDocumentDisplayUnits()
   const unit = useMemo(() => assemblyMotionUnits(coordinate, units), [coordinate, units])
   const display = (value: number) => String(unit.display(value))
-  const [rawValue, setValue] = useState(() => display(coordinate.value))
-  const value = motion.value === null ? rawValue : display(motion.value)
   const radius = coordinate.kind === "angle" ? Math.PI / 4 : 10
-  const [start, setStart] = useState(() =>
-    display(Math.max(coordinate.min, coordinate.value - radius)),
-  )
-  const [end, setEnd] = useState(() => display(Math.min(coordinate.max, coordinate.value + radius)))
+  const form = useAppForm({
+    defaultValues: {
+      value: display(coordinate.value),
+      start: display(Math.max(coordinate.min, coordinate.value - radius)),
+      end: display(Math.min(coordinate.max, coordinate.value + radius)),
+      playback: playbackFieldValues(),
+    },
+    onSubmitMeta: { action: "preview" as "preview" | "play" },
+    onSubmit: async ({ value, meta }) => {
+      if (disabled || motion.applying || motion.pending || motion.playing) return
+      if (meta.action === "play") {
+        form.setFieldValue("value", visibleValue())
+        await motion.play(parse(value.start), parse(value.end), playbackOptions(value.playback))
+      } else {
+        const current = visibleValue()
+        form.setFieldValue("value", current)
+        await motion.preview(parse(current))
+      }
+    },
+  })
   const parse = (raw: string) => (raw.trim() ? unit.canonical(Number(raw)) : Number.NaN)
-  const edit = (setter: (value: string) => void) => (raw: string) => {
+  const visibleValue = () =>
+    motion.value === null ? form.getFieldValue("value") : display(motion.value)
+  const edit = (name: "value" | "start" | "end", raw: string) => {
+    if (name !== "value") form.setFieldValue("value", visibleValue())
     motion.reset()
-    setValue(value)
-    setter(raw)
+    form.setFieldValue(name, raw)
   }
   const reset = () => {
     motion.reset()
-    setValue(display(coordinate.value))
+    form.setFieldValue("value", display(coordinate.value))
   }
   return {
+    form,
     unit,
     display,
-    value,
-    start,
-    end,
-    editValue: edit(setValue),
-    editStart: edit(setStart),
-    editEnd: edit(setEnd),
+    visibleValue,
+    edit,
     reset,
-    playback,
-    setPlayback,
-    preview: () => {
-      setValue(value)
-      return motion.preview(parse(value))
-    },
-    play: () => {
-      setValue(value)
-      return motion.play(parse(start), parse(end), playback)
-    },
+    play: () => form.handleSubmit({ action: "play" }),
   }
 }
 type MotionInputs = ReturnType<typeof useMotionInputs>
@@ -115,9 +96,9 @@ function MotionCoordinateFields({
   const { unit, display } = input
   const bounds = { min: unit.display(coordinate.min), max: unit.display(coordinate.max) }
   return (
-    <fieldset disabled={disabled} className="grid min-w-0 gap-3">
+    <fieldset disabled={disabled} className="grid min-w-0 gap-2">
       <fieldset className="flex min-w-0 flex-wrap gap-2">
-        <legend className="mb-2 text-xs font-medium">{t("motionCoordinate")}</legend>
+        <legend className="mb-1 text-xs font-medium">{t("motionCoordinate")}</legend>
         {assemblyMotionCoordinates(joint).map((item) => (
           <Button
             key={item.kind}
@@ -138,30 +119,73 @@ function MotionCoordinateFields({
           unit: unit.unit,
         })}
       </p>
-      <MotionNumber
-        label={t("motionValue", { unit: unit.unit })}
-        value={input.value}
-        {...bounds}
-        onChange={input.editValue}
-      />
+      <input.form.AppField
+        name="value"
+        validators={numberFieldValidators(t("invalidParameters"), bounds.min, bounds.max)}
+      >
+        {(field) => (
+          <MotionValueField
+            label={t("motionValue", { unit: unit.unit })}
+            name={field.name}
+            value={input.visibleValue()}
+            min={bounds.min}
+            max={bounds.max}
+            onBlur={field.handleBlur}
+            onChange={(raw) => input.edit("value", raw)}
+          />
+        )}
+      </input.form.AppField>
       <Button type="submit" variant="outline" size="sm">
         {t("motionPreview")}
       </Button>
-      <div className="grid min-w-0 grid-cols-2 gap-2">
-        <MotionNumber
-          label={t("motionRangeStart", { unit: unit.unit })}
-          value={input.start}
-          {...bounds}
-          onChange={input.editStart}
-        />
-        <MotionNumber
-          label={t("motionRangeEnd", { unit: unit.unit })}
-          value={input.end}
-          {...bounds}
-          onChange={input.editEnd}
-        />
+      <div className="grid min-w-0 gap-2">
+        {(["start", "end"] as const).map((name) => (
+          <input.form.AppField
+            key={name}
+            name={name}
+            validators={numberFieldValidators(t("invalidParameters"), bounds.min, bounds.max)}
+          >
+            {(field) => (
+              <MotionValueField
+                label={t(name === "start" ? "motionRangeStart" : "motionRangeEnd", {
+                  unit: unit.unit,
+                })}
+                name={field.name}
+                value={field.state.value}
+                min={bounds.min}
+                max={bounds.max}
+                onBlur={field.handleBlur}
+                onChange={(raw) => input.edit(name, raw)}
+              />
+            )}
+          </input.form.AppField>
+        ))}
       </div>
     </fieldset>
+  )
+}
+function MotionValueField({
+  onChange,
+  ...props
+}: {
+  label: string
+  name: string
+  value: string
+  min: number
+  max: number
+  onBlur: () => void
+  onChange: (raw: string) => void
+}) {
+  const error = useFieldError()
+  return (
+    <TextField
+      {...props}
+      type="number"
+      step="any"
+      required
+      error={error}
+      onChange={(event) => onChange(event.currentTarget.value)}
+    />
   )
 }
 function MotionPlayback({
@@ -191,7 +215,7 @@ function MotionPlayback({
           size="sm"
           variant="outline"
           disabled={disabled || motion.pending || coordinate.min === coordinate.max}
-          onClick={() => void input.play()}
+          onClick={input.play}
         >
           {t("motionPlay")}
         </Button>
@@ -243,19 +267,16 @@ export function AssemblyMotionPanel({
   onClose,
 }: MotionPanelProps) {
   const t = useTranslations("app.assembly")
-  const input = useMotionInputs(coordinate, motion)
+  const input = useMotionInputs(coordinate, motion, disabled)
   const busy = disabled || motion.applying
   const close = () => {
     motion.reset()
     onClose()
   }
   return (
-    <form
+    <Form
+      form={input.form}
       className="grid min-w-0 gap-2"
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (!busy && !motion.playing && !motion.pending) void input.preview()
-      }}
       onKeyDown={(event) => {
         if (event.key === "Escape" && !busy) {
           event.preventDefault()
@@ -288,11 +309,11 @@ export function AssemblyMotionPanel({
       />
       <MotionPlayback motion={motion} coordinate={coordinate} input={input} disabled={busy} />
       <AssemblyPlaybackSettings
-        value={input.playback}
-        onChange={input.setPlayback}
+        form={input.form}
+        fields="playback"
         disabled={busy || motion.playing || motion.pending}
       />
       <MotionStatus motion={motion} coordinate={coordinate} input={input} error={error} />
-    </form>
+    </Form>
   )
 }

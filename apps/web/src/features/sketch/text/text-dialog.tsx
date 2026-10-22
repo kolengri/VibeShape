@@ -10,70 +10,55 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vibeshape/ui/components/dialog"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { TextField } from "@vibeshape/ui/components/text-field"
+import { SelectOption } from "@vibeshape/ui/components/select-field"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { SketchTextOutlineError } from "./text-model"
 import { type SketchTextTarget, type SketchTextTask, useSketchTextTask } from "./use-sketch-text"
 
-function TextDimensions({ state }: { state: SketchTextTask }) {
+function TextDimensions({ form }: Pick<SketchTextTask, "form">) {
   const t = useTranslations("app.sketchText")
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {(["height", "tracking", "originX", "originY"] as const).map((field) => {
-        const error = state.fieldErrors[field]
-        return (
-          <TextField
-            key={field}
-            label={t(field)}
-            type="number"
-            step="any"
-            required
-            value={state.values[field]}
-            error={error ? t(error) : undefined}
-            onChange={(event) => state.update(field, event.currentTarget.value)}
-          />
-        )
-      })}
+    <div className="grid gap-2">
+      {(["height", "tracking", "originX", "originY"] as const).map((name) => (
+        <form.AppField key={name} name={name}>
+          {(field) => <field.TextField label={t(name)} type="number" step="any" required />}
+        </form.AppField>
+      ))}
     </div>
   )
 }
-function TextAlignment({ state }: { state: SketchTextTask }) {
+function TextAlignment({ form }: Pick<SketchTextTask, "form">) {
   const t = useTranslations("app.sketchText")
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <SelectField
-        label={t("horizontal")}
-        value={state.values.horizontal}
-        onValueChange={(value) => {
-          if (value === "left" || value === "center" || value === "right")
-            state.update("horizontal", value)
-        }}
-      >
-        {(["left", "center", "right"] as const).map((value) => (
-          <SelectOption key={value} value={value}>
-            {t(value)}
-          </SelectOption>
-        ))}
-      </SelectField>
-      <SelectField
-        label={t("vertical")}
-        value={state.values.vertical}
-        onValueChange={(value) => {
-          if (value === "baseline" || value === "bottom" || value === "center" || value === "top")
-            state.update("vertical", value)
-        }}
-      >
-        {(["baseline", "bottom", "center", "top"] as const).map((value) => (
-          <SelectOption key={value} value={value}>
-            {t(value)}
-          </SelectOption>
-        ))}
-      </SelectField>
+    <div className="grid gap-2">
+      <form.AppField name="horizontal">
+        {(field) => (
+          <field.SelectField label={t("horizontal")}>
+            {(["left", "center", "right"] as const).map((value) => (
+              <SelectOption key={value} value={value}>
+                {t(value)}
+              </SelectOption>
+            ))}
+          </field.SelectField>
+        )}
+      </form.AppField>
+      <form.AppField name="vertical">
+        {(field) => (
+          <field.SelectField label={t("vertical")}>
+            {(["baseline", "bottom", "center", "top"] as const).map((value) => (
+              <SelectOption key={value} value={value}>
+                {t(value)}
+              </SelectOption>
+            ))}
+          </field.SelectField>
+        )}
+      </form.AppField>
     </div>
   )
 }
 function TextRegenerationNotice({ state }: { state: SketchTextTask }) {
   const t = useTranslations("app.sketchText")
+  const { form } = state
   return (
     <>
       {state.altered === null && (
@@ -89,17 +74,9 @@ function TextRegenerationNotice({ state }: { state: SketchTextTask }) {
       {state.constraints > 0 && (
         <div className="grid gap-2 rounded-md border p-3">
           <p className="text-sm">{t("attachedConstraints", { count: state.constraints })}</p>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5 accent-primary"
-              checked={state.values.removeAttachedConstraints}
-              onChange={(event) =>
-                state.update("removeAttachedConstraints", event.currentTarget.checked)
-              }
-            />
-            {t("removeConstraints")}
-          </label>
+          <form.AppField name="removeAttachedConstraints">
+            {(field) => <field.CheckboxField label={t("removeConstraints")} />}
+          </form.AppField>
         </div>
       )}
     </>
@@ -140,55 +117,39 @@ function TextTask({
       fontFailed: t("fontFailed"),
       outlineFailed: t("outlineFailed"),
       outlineProblem: problem,
+      fieldProblem: (key) => t(key),
     },
   })
-  const textError = state.fieldErrors.text
+  const { form } = state
   return (
-    <form
-      aria-label={t(target.group ? "editTitle" : "title")}
-      noValidate
-      className="grid gap-4"
-      onSubmit={(event) => {
-        event.preventDefault()
-        void state.apply()
-      }}
-    >
-      <fieldset disabled={state.pending} aria-busy={state.pending} className="grid gap-4">
-        <legend className="sr-only">{t("parameters")}</legend>
-        <TextField
-          label={t("text")}
-          value={state.values.text}
-          required
-          error={textError ? t(textError) : undefined}
-          onChange={(event) => state.update("text", event.currentTarget.value)}
-        />
-        <TextDimensions state={state} />
-        <TextAlignment state={state} />
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="accent-primary"
-            checked={state.values.kerning}
-            onChange={(event) => state.update("kerning", event.currentTarget.checked)}
-          />
-          {t("kerning")}
-        </label>
-        <TextRegenerationNotice state={state} />
-      </fieldset>
+    <Form form={form} aria-label={t(target.group ? "editTitle" : "title")} className="grid gap-4">
+      <form.Subscribe selector={(state) => state.isSubmitting}>
+        {(pending) => (
+          <fieldset disabled={pending} aria-busy={pending} className="grid gap-4">
+            <legend className="sr-only">{t("parameters")}</legend>
+            <form.AppField name="text">
+              {(field) => <field.TextField label={t("text")} required />}
+            </form.AppField>
+            <TextDimensions form={form} />
+            <TextAlignment form={form} />
+            <form.AppField name="kerning">
+              {(field) => <field.CheckboxField label={t("kerning")} />}
+            </form.AppField>
+            <TextRegenerationNotice state={state} />
+          </fieldset>
+        )}
+      </form.Subscribe>
+      <form.FormError />
       {state.error && <Alert>{state.error}</Alert>}
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           {t("cancel")}
         </Button>
-        <Button
-          type="submit"
-          isLoading={state.pending}
-          disabled={state.pending || state.altered === null}
-        >
+        <form.SubmitButton requireDirty={false} disabled={state.altered === null}>
           {t("apply")}
-        </Button>
+        </form.SubmitButton>
       </DialogFooter>
-    </form>
+    </Form>
   )
 }
 export function SketchTextDialog({

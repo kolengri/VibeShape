@@ -3,9 +3,9 @@ import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { TextField } from "@vibeshape/ui/components/text-field"
-import { type FormEvent, useId, useRef, useState } from "react"
+import { SelectOption } from "@vibeshape/ui/components/select-field"
+import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { useRef, useState } from "react"
 import {
   AssistantConnectionTestFeedback,
   useAssistantConnectionTest,
@@ -25,97 +25,11 @@ function initialConfiguration() {
   if ("kind" in agent) return { command: "", args: "[]", choice: "jev" }
   return { command: agent.command, args: JSON.stringify(agent.args), choice: agentPresetId(agent) }
 }
-function parseConfiguration(command: string, args: string) {
+function parseConfiguration({ command, args }: { command: string; args: string }) {
   try {
     return assistantExternalAgentSchema.safeParse({ command, args: JSON.parse(args) })
   } catch {
     return null
-  }
-}
-function useAgentConfiguration(chat: Connection, connected: boolean) {
-  const onSaved = useAssistantSettingsSaved()
-  const active = useRef(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [failed, setFailed] = useState(false)
-  const [initial] = useState(initialConfiguration)
-  const [draft, setDraft] = useState({ command: initial.command, args: initial.args })
-  const [custom, setCustom] = useState(draft)
-  const [choice, setChoice] = useState(initial.choice)
-  const [advanced, setAdvanced] = useState(initial.choice === "custom")
-  const [invalid, setInvalid] = useState(false)
-  const validation = parseConfiguration(draft.command, draft.args)
-  const invalidField = (name: "command" | "args") =>
-    invalid &&
-    (validation === null
-      ? name === "args"
-      : !validation.success && validation.error.issues.some(({ path }) => path[0] === name))
-  const [storageFailed, setStorageFailed] = useState(false)
-  const [disconnecting, setDisconnecting] = useState(false)
-  useReportActivity(disconnecting || submitting)
-  const disconnect = async () => {
-    setDisconnecting(true)
-    try {
-      await chat.disconnect()
-    } finally {
-      setDisconnecting(false)
-    }
-  }
-  const choose = (value: string) => {
-    const preset = agentPresets.find((entry) => entry.id === value)
-    if (!preset && value !== "custom" && value !== "jev") return
-    if (choice === "custom") setCustom(draft)
-    setChoice(preset?.id ?? value)
-    setDraft(preset ? { command: preset.command, args: JSON.stringify(preset.args) } : custom)
-    setAdvanced(value === "custom")
-    setInvalid(false)
-    if (connected) void disconnect()
-  }
-  const edit = (key: "command" | "args", value: string) => {
-    setChoice("custom")
-    setDraft((previous) => ({ ...previous, [key]: value }))
-  }
-  const validate = () => {
-    const parsed = parseConfiguration(draft.command, draft.args)
-    setInvalid(!parsed?.success)
-    if (!parsed?.success) setAdvanced(true)
-    return parsed?.success ? parsed.data : null
-  }
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (disconnecting || active.current) return
-    const agent = validate()
-    if (!agent) return
-    const saved = saveAssistantPreferences({ version: 1, agent })
-    setStorageFailed(!saved)
-    active.current = true
-    setSubmitting(true)
-    setFailed(false)
-    try {
-      const accepted = await chat.connect(agent)
-      setFailed(!accepted)
-      if (accepted && saved) onSaved?.()
-    } catch {
-      setFailed(true)
-    } finally {
-      active.current = false
-      setSubmitting(false)
-    }
-  }
-  return {
-    draft,
-    choice,
-    advanced,
-    invalidField,
-    storageFailed,
-    submitting,
-    failed,
-    disconnecting,
-    choose,
-    edit,
-    submit,
-    validate,
-    disconnect,
-    setAdvanced,
   }
 }
 
@@ -129,108 +43,191 @@ export function NativeAgentConfiguration({
   connected: boolean
 }) {
   const t = useTranslations("app.assistant")
-  const id = useId()
-  const form = useAgentConfiguration(chat, connected)
+  const onSaved = useAssistantSettingsSaved()
   const test = useAssistantConnectionTest(chat.testConnection)
-  const pending = connecting || form.disconnecting || form.submitting || test.pending
-  const locked = pending || connected
+  const [initial] = useState(initialConfiguration)
+  const custom = useRef({ command: initial.command, args: initial.args })
+  const [advanced, setAdvanced] = useState(initial.choice === "custom")
+  const [failed, setFailed] = useState(false)
+  const [storageFailed, setStorageFailed] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
+  useReportActivity(disconnecting)
+  const disconnect = async () => {
+    setDisconnecting(true)
+    try {
+      await chat.disconnect()
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+  const connect = async (agent: Parameters<Connection["connect"]>[0]) => {
+    const saved = saveAssistantPreferences({ version: 1, agent })
+    setStorageFailed(!saved)
+    setFailed(false)
+    try {
+      const accepted = await chat.connect(agent)
+      setFailed(!accepted)
+      if (accepted && saved) onSaved?.()
+    } catch {
+      setFailed(true)
+    }
+  }
+  const validation = (value: typeof initial) => {
+    const parsed = parseConfiguration(value)
+    if (parsed?.success) return undefined
+    return {
+      fields: {
+        command: parsed?.error?.issues.some(({ path }) => path[0] === "command")
+          ? t("invalidAgent")
+          : undefined,
+        args:
+          !parsed || parsed.error?.issues.some(({ path }) => path[0] === "args")
+            ? t("invalidAgent")
+            : undefined,
+      },
+    }
+  }
+  const form = useAppForm({
+    defaultValues: initial,
+    onSubmitMeta: "connect" as "connect" | "test",
+    validators: {
+      onSubmit: ({ value }) => validation(value),
+      onChange: ({ value, formApi }) =>
+        formApi.state.submissionAttempts > 0 ? validation(value) : undefined,
+    },
+    listeners: {
+      onChange: ({ formApi, fieldApi }) => {
+        test.clear()
+        const { choice, command, args } = formApi.state.values
+        if (fieldApi.name === "choice") {
+          const preset = agentPresets.find((entry) => entry.id === choice)
+          if (!preset && choice !== "custom" && choice !== "jev") return
+          const next = preset
+            ? { command: preset.command, args: JSON.stringify(preset.args) }
+            : custom.current
+          formApi.setFieldValue("command", next.command, { dontRunListeners: true })
+          formApi.setFieldValue("args", next.args, { dontRunListeners: true })
+          setAdvanced(choice === "custom")
+          if (connected) void disconnect()
+        } else {
+          formApi.setFieldValue("choice", "custom", { dontRunListeners: true })
+          custom.current = { command, args }
+        }
+      },
+    },
+    onSubmitInvalid: () => setAdvanced(true),
+    onSubmit: async ({ value, meta }) => {
+      if (connecting || disconnecting || test.pending) return
+      const parsed = parseConfiguration(value)
+      if (!parsed?.success) return
+      if (meta === "test") {
+        await test.run(parsed.data)
+        return
+      }
+      if (connected) return
+      await connect(parsed.data)
+    },
+  })
   return (
-    <div className="grid gap-3">
-      <SelectField
-        label={t("agent")}
-        value={form.choice}
-        disabled={pending}
-        onValueChange={(value) => {
-          test.clear()
-          form.choose(value)
-        }}
-      >
-        <SelectOption value="choose" disabled>
-          {t("chooseAgent")}
-        </SelectOption>
-        {agentPresets.map((preset) => (
-          <SelectOption key={preset.id} value={preset.id}>
-            {t(`agents.${preset.id}`)}
-          </SelectOption>
-        ))}
-        <SelectOption value="jev">{t("agents.jev")}</SelectOption>
-        <SelectOption value="custom">{t("agents.custom")}</SelectOption>
-      </SelectField>
-      {form.choice === "jev" ? (
-        <JevAgentConfiguration
-          chat={chat}
-          connected={connected}
-          pending={pending}
-          disconnect={form.disconnect}
-          testing={test.pending}
-          testConnection={test.run}
-          clearTest={test.clear}
-        />
-      ) : (
-        <form
-          className="grid gap-3"
-          onInput={test.clear}
-          onSubmit={(event) => {
-            if (test.pending) event.preventDefault()
-            else form.submit(event)
-          }}
-          aria-busy={pending || undefined}
-        >
-          <p className="text-xs text-muted-foreground">{t("presetNotice")}</p>
-          <details
-            open={form.advanced}
-            onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
-          >
-            <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-            <div className="mt-3 grid gap-2">
-              <TextField
-                id={`${id}-command`}
-                label={t("executable")}
-                error={form.invalidField("command") ? t("invalidAgent") : undefined}
-                value={form.draft.command}
-                disabled={locked}
-                onChange={(event) => form.edit("command", event.currentTarget.value)}
-                placeholder={t("executablePlaceholder")}
+    <form.Subscribe selector={(state) => [state.values.choice, state.isSubmitting] as const}>
+      {([choice, submitting]) => {
+        const pending = connecting || disconnecting || submitting || test.pending
+        const locked = pending || connected
+        return (
+          <div className="grid gap-2">
+            <form.AppField name="choice">
+              {(field) => (
+                <field.SelectField label={t("agent")} disabled={pending}>
+                  <SelectOption value="choose" disabled>
+                    {t("chooseAgent")}
+                  </SelectOption>
+                  {agentPresets.map((preset) => (
+                    <SelectOption key={preset.id} value={preset.id}>
+                      {t(`agents.${preset.id}`)}
+                    </SelectOption>
+                  ))}
+                  <SelectOption value="jev">{t("agents.jev")}</SelectOption>
+                  <SelectOption value="custom">{t("agents.custom")}</SelectOption>
+                </field.SelectField>
+              )}
+            </form.AppField>
+            {choice === "jev" ? (
+              <JevAgentConfiguration
+                chat={chat}
+                connected={connected}
+                pending={pending}
+                disconnect={disconnect}
+                testing={test.pending}
+                testConnection={test.run}
+                clearTest={test.clear}
               />
-              <TextField
-                id={`${id}-args`}
-                label={t("arguments")}
-                error={form.invalidField("args") ? t("invalidAgent") : undefined}
-                value={form.draft.args}
-                disabled={locked}
-                onChange={(event) => form.edit("args", event.currentTarget.value)}
-              />
-            </div>
-          </details>
-          {form.failed && <Alert>{t("errors.request-failed")}</Alert>}
-          {form.storageFailed && (
-            <p role="status" className="text-xs text-muted-foreground">
-              {t("settingsNotSaved")}
-            </p>
-          )}
-          <NativeAgentActions
-            connected={connected}
-            pending={pending}
-            disabled={!form.draft.command.trim()}
-            disconnect={form.disconnect}
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pending || !form.draft.command.trim()}
-            isLoading={test.pending}
-            onClick={async () => {
-              const agent = form.validate()
-              if (agent) await test.run(agent)
-            }}
-          >
-            {t("testConnection")}
-          </Button>
-          <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
-        </form>
-      )}
-      <AssistantConnectionTestFeedback result={test.result} attempt={test.attempt} />
-    </div>
+            ) : (
+              <Form
+                form={form}
+                onInput={test.clear}
+                aria-busy={pending || undefined}
+                onSubmitCapture={(event) => {
+                  if (!locked) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+              >
+                <p className="text-xs text-muted-foreground">{t("presetNotice")}</p>
+                <details
+                  open={advanced}
+                  onToggle={(event) => setAdvanced(event.currentTarget.open)}
+                >
+                  <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
+                  <div className="mt-2 grid gap-2">
+                    <form.AppField name="command">
+                      {(field) => (
+                        <field.TextField
+                          label={t("executable")}
+                          disabled={locked}
+                          placeholder={t("executablePlaceholder")}
+                        />
+                      )}
+                    </form.AppField>
+                    <form.AppField name="args">
+                      {(field) => <field.TextField label={t("arguments")} disabled={locked} />}
+                    </form.AppField>
+                  </div>
+                </details>
+                {failed && <Alert>{t("errors.request-failed")}</Alert>}
+                {storageFailed && (
+                  <p role="status" className="text-xs text-muted-foreground">
+                    {t("settingsNotSaved")}
+                  </p>
+                )}
+                <form.Subscribe selector={(state) => Boolean(state.values.command.trim())}>
+                  {(complete) => (
+                    <>
+                      <NativeAgentActions
+                        connected={connected}
+                        pending={pending}
+                        disabled={!complete}
+                        disconnect={disconnect}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending || !complete}
+                        isLoading={test.pending}
+                        onClick={() => form.handleSubmit("test")}
+                      >
+                        {t("testConnection")}
+                      </Button>
+                    </>
+                  )}
+                </form.Subscribe>
+                <p className="text-xs text-muted-foreground">{t("historyNotice")}</p>
+              </Form>
+            )}
+            <AssistantConnectionTestFeedback result={test.result} attempt={test.attempt} />
+          </div>
+        )
+      }}
+    </form.Subscribe>
   )
 }

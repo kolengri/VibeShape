@@ -3,8 +3,9 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Trash2 } from "@vibeshape/ui/components/icons"
+import { Form, submitForm } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { TaskPanelHeader } from "../../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../../document/document-controller"
@@ -38,9 +39,12 @@ export function SurfaceTextureTaskPanel({
   onComplete: () => void
 }) {
   const t = useTranslations("app.surfaceTexture")
+  const formElement = useRef<HTMLFormElement>(null)
   const report = controller.report
   const initialBody = textureInitialBody(initialFeatureId, initialOutputRole, selectedFace)
-  const state = useTextureDraft(controller, selectedFace, initialBody)
+  const state = useTextureDraft(controller, selectedFace, initialBody, async () => {
+    await apply()
+  })
   const { draft, layer, update } = state
   const [gallery, setGallery] = useState(false)
   const stale = report?.snapshot.revision !== state.baseRevision
@@ -50,7 +54,8 @@ export function SurfaceTextureTaskPanel({
   )
   useRegisterTaskSubmission(async () => {
     if (!draft && !uploading && !saving) onClose()
-    else await apply()
+    else if (state.form.state.isSubmitting || formElement.current?.reportValidity() !== false)
+      await submitForm(state.form)
   })
   useTexturePanelKeyboard(gallery, setGallery, state)
   if (gallery && layer)
@@ -68,12 +73,11 @@ export function SurfaceTextureTaskPanel({
       aria-label={t("title")}
       className="flex h-full min-h-0 flex-col overflow-hidden border-l bg-panel"
     >
-      <form
+      <Form
+        ref={formElement}
+        form={state.form}
+        noValidate={false}
         className="flex min-h-0 flex-1 flex-col"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void apply()
-        }}
       >
         <TaskPanelHeader
           title={t("title")}
@@ -116,9 +120,10 @@ export function SurfaceTextureTaskPanel({
         </div>
         <div className="grid shrink-0 gap-2 border-t bg-panel p-3">
           <TexturePreviewFooter visible={draft !== null} />
+          <state.form.FormError />
           {error && <Alert>{error}</Alert>}
         </div>
-      </form>
+      </Form>
     </aside>
   )
 }

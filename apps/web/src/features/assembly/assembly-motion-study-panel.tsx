@@ -6,11 +6,19 @@ import type { AssemblyJointRecord } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
-import { type ReactNode, useEffect, useId, useRef, useState } from "react"
+import {
+  Form,
+  useAppForm,
+  useStore,
+  withFieldGroup,
+} from "@vibeshape/ui/integrations/tanstack-form"
+import { useEffect, useId, useRef, useState } from "react"
 import { TaskPanelHeader } from "../../components/task-panel-header"
 import { TaskPanelLifecycleActions } from "../../components/task-panel-lifecycle-actions"
 import { browserAuthoredUuid as browserUuidV7 } from "../../document/authored-document-session"
+import { formNumber, numberFieldValidators } from "./assembly-fields"
 import { assemblyMotionCoordinates, retimeAssemblyMotionStudy } from "./assembly-motion"
 import {
   assemblyMotionExportData,
@@ -20,7 +28,7 @@ import {
   prepareAssemblyMotionExport,
 } from "./assembly-motion-export"
 import { assemblyMotionFailureKey } from "./assembly-motion-runner"
-import { AssemblyMotionTrackEditor, AssemblyStudyNumber } from "./assembly-motion-track-editor"
+import { AssemblyMotionTrackEditor } from "./assembly-motion-track-editor"
 import { type AssemblyPlaybackOptions, useAssemblyMotion } from "./use-assembly-motion"
 import type { AssemblyWorkspaceView } from "./use-assembly-workspace"
 
@@ -54,62 +62,71 @@ function newStudy(joints: readonly AssemblyJointRecord[]): AssemblyMotionStudy |
     : null
 }
 
-export function AssemblyPlaybackSettings({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: AssemblyPlaybackOptions
-  onChange: (value: AssemblyPlaybackOptions) => void
-  disabled: boolean
-}) {
-  const t = useTranslations("app.assembly")
-  const id = useId()
-  return (
-    <fieldset disabled={disabled} className="grid gap-2 text-sm">
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={value.reverse ?? false}
-          onChange={(event) => onChange({ ...value, reverse: event.currentTarget.checked })}
-        />
-        {t("motionReverse")}
-      </label>
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={value.loop ?? false}
-          onChange={(event) => onChange({ ...value, loop: event.currentTarget.checked })}
-        />
-        {t("motionLoop")}
-      </label>
-      <label htmlFor={`${id}-speed`}>
-        {t("motionSpeed")}
-        <Input
-          id={`${id}-speed`}
-          type="number"
-          min={0.1}
-          max={10}
-          step={0.1}
-          value={value.speed ?? 1}
-          onChange={(event) => onChange({ ...value, speed: Number(event.currentTarget.value) })}
-        />
-      </label>
-      <label htmlFor={`${id}-count`}>
-        {t("motionSampleCount")}
-        <Input
-          id={`${id}-count`}
-          type="number"
-          min={2}
-          max={256}
-          step={1}
-          value={value.count ?? 13}
-          onChange={(event) => onChange({ ...value, count: Number(event.currentTarget.value) })}
-        />
-      </label>
-    </fieldset>
-  )
+export function playbackFieldValues() {
+  return { reverse: false, loop: false, speed: "1", count: "13" }
 }
+export function playbackOptions(
+  values: ReturnType<typeof playbackFieldValues>,
+): AssemblyPlaybackOptions {
+  return {
+    reverse: values.reverse,
+    loop: values.loop,
+    speed: Number(values.speed),
+    count: Number(values.count),
+  }
+}
+export const AssemblyPlaybackSettings = withFieldGroup({
+  defaultValues: playbackFieldValues(),
+  props: { disabled: false },
+  render: function AssemblyPlaybackSettings({ group, disabled }) {
+    const t = useTranslations("app.assembly")
+    return (
+      <fieldset disabled={disabled} className="grid gap-2 text-sm">
+        <group.AppField name="reverse">
+          {(field) => <field.CheckboxField label={t("motionReverse")} />}
+        </group.AppField>
+        <group.AppField name="loop">
+          {(field) => <field.CheckboxField label={t("motionLoop")} />}
+        </group.AppField>
+        <group.AppField
+          name="speed"
+          validators={numberFieldValidators(t("motionNumberInvalid"), 0.1, 10)}
+        >
+          {(field) => (
+            <field.TextField
+              label={t("motionSpeed")}
+              type="number"
+              min={0.1}
+              max={10}
+              step={0.1}
+              required
+            />
+          )}
+        </group.AppField>
+        <group.AppField
+          name="count"
+          validators={{
+            onChange: ({ value }) =>
+              Number.isInteger(Number(value))
+                ? numberFieldValidators(t("motionNumberInvalid"), 2, 256).onChange({ value })
+                : t("motionNumberInvalid"),
+          }}
+        >
+          {(field) => (
+            <field.TextField
+              label={t("motionSampleCount")}
+              type="number"
+              min={2}
+              max={256}
+              step={1}
+              required
+            />
+          )}
+        </group.AppField>
+      </fieldset>
+    )
+  },
+})
 
 export function useAssemblyMotionStudySession(view: AssemblyWorkspaceView) {
   const task = view.studyTask
@@ -158,94 +175,101 @@ function StudyExport({
   revision: number
   disabled: boolean
 }) {
-  const t = useTranslations("app.assembly"),
-    [error, setError] = useState<
-      "motionTraceInvalid" | "motionPngLimit" | "motionExportUnavailable" | null
-    >(null),
-    [busy, setBusy] = useState(false)
+  const t = useTranslations("app.assembly")
   const request = useRef<AbortController | null>(null)
-  const pointId = useId()
-  const [target, setTarget] = useState(""),
-    [point, setPoint] = useState("0,0,0")
   useEffect(() => () => request.current?.abort(), [session.draft, session.motion.samples])
   const occurrences = session.motion.samples[0]?.inspection.occurrences ?? []
-  const exportData = () => {
-    if (!session.draft) throw new Error("The motion study is missing.")
-    return assemblyMotionExportData(
-      session.draft,
-      revision,
-      session.motion.samples,
-      assemblyMotionTraceInput(point, target, session.motion.samples[0]?.inspection),
-    )
-  }
-
-  const run = async (format: "json" | "csv" | "zip") => {
-    if (request.current || disabled) return
-    const abort = new AbortController()
-    request.current = abort
-    setBusy(true)
-    setError(null)
-    try {
-      const data = exportData()
-      const result = await prepareAssemblyMotionExport(
-        format,
-        data,
-        session.motion.samples,
-        abort.signal,
-      )
-      abort.signal.throwIfAborted()
-      downloadAssemblyMotion(data.studyName, format, result)
-    } catch (failure) {
-      if (!abort.signal.aborted) setError(assemblyMotionExportFailureKey(failure))
-    } finally {
-      if (request.current === abort) {
-        request.current = null
-        setBusy(false)
+  const form = useAppForm({
+    defaultValues: { target: "", point: "0,0,0" },
+    onSubmitMeta: { format: "json" as "json" | "csv" | "zip" },
+    onSubmit: async ({ value, meta, formApi }) => {
+      if (request.current || disabled) return
+      const abort = new AbortController()
+      request.current = abort
+      try {
+        if (!session.draft) throw new Error("The motion study is missing.")
+        const data = assemblyMotionExportData(
+          session.draft,
+          revision,
+          session.motion.samples,
+          assemblyMotionTraceInput(
+            value.point,
+            value.target,
+            session.motion.samples[0]?.inspection,
+          ),
+        )
+        const result = await prepareAssemblyMotionExport(
+          meta.format,
+          data,
+          session.motion.samples,
+          abort.signal,
+        )
+        abort.signal.throwIfAborted()
+        downloadAssemblyMotion(data.studyName, meta.format, result)
+      } catch (failure) {
+        if (!abort.signal.aborted)
+          formApi.setErrorMap({
+            onSubmit: {
+              form: t("motionExportFailed", {
+                reason: t(assemblyMotionExportFailureKey(failure)),
+              }),
+              fields: {},
+            },
+          })
+      } finally {
+        if (request.current === abort) request.current = null
       }
-    }
-  }
+    },
+  })
   return (
-    <fieldset disabled={disabled || busy || !session.motion.samples.length} className="grid gap-2">
-      <label>
-        {t("motionTraceInstance")}
-        <select
-          className="h-9 w-full rounded-md border bg-background px-2"
-          value={target}
-          onChange={(event) => setTarget(event.currentTarget.value)}
-        >
-          <option value="">—</option>
-          {occurrences.map(({ instanceId, sourceIndex }) => (
-            <option key={`${instanceId}:${sourceIndex}`} value={`${instanceId}:${sourceIndex}`}>
-              {instanceId} · {sourceIndex}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label htmlFor={pointId}>
-        {t("motionTracePoint")}
-        <Input
-          id={pointId}
-          value={point}
-          onChange={(event) => setPoint(event.currentTarget.value)}
-        />
-      </label>
-      <Button type="button" variant="outline" onClick={() => void run("json")}>
-        {t("motionExportJson")}
-      </Button>
-      <Button type="button" variant="outline" onClick={() => void run("csv")}>
-        {t("motionExportCsv")}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        disabled={session.motion.samples.length > 64}
-        aria-busy={busy}
-        onClick={() => void run("zip")}
-      >
-        {t("motionExportPng")}
-      </Button>
-      {error && <Alert>{t("motionExportFailed", { reason: t(error) })}</Alert>}
-    </fieldset>
+    <form.AppForm>
+      <form.Subscribe selector={(state) => state.isSubmitting}>
+        {(busy) => (
+          <fieldset
+            disabled={disabled || busy || !session.motion.samples.length}
+            className="grid gap-2"
+          >
+            <form.AppField name="target">
+              {(field) => (
+                <field.NativeSelectField label={t("motionTraceInstance")}>
+                  <option value="">—</option>
+                  {occurrences.map(({ instanceId, sourceIndex }) => (
+                    <option
+                      key={`${instanceId}:${sourceIndex}`}
+                      value={`${instanceId}:${sourceIndex}`}
+                    >
+                      {instanceId} · {sourceIndex}
+                    </option>
+                  ))}
+                </field.NativeSelectField>
+              )}
+            </form.AppField>
+            <form.AppField name="point">
+              {(field) => <field.TextField label={t("motionTracePoint")} />}
+            </form.AppField>
+            {(["json", "csv", "zip"] as const).map((format) => (
+              <Button
+                key={format}
+                type="button"
+                variant="outline"
+                disabled={format === "zip" && session.motion.samples.length > 64}
+                aria-busy={busy}
+                onClick={() => form.handleSubmit({ format })}
+              >
+                {t(
+                  format === "json"
+                    ? "motionExportJson"
+                    : format === "csv"
+                      ? "motionExportCsv"
+                      : "motionExportPng",
+                )}
+              </Button>
+            ))}
+            <form.FormError />
+          </fieldset>
+        )}
+      </form.Subscribe>
+    </form.AppForm>
   )
 }
 
@@ -261,79 +285,157 @@ function canRetimeStudy(study: AssemblyMotionStudy, duration: number) {
   )
 }
 
-type StudyPanelProps = { view: AssemblyWorkspaceView; session: AssemblyMotionStudySession }
-function StudyFields({
-  session,
-  draft,
-  disabled,
-}: StudyPanelProps & { draft: AssemblyMotionStudy; disabled: boolean }) {
-  const t = useTranslations("app.assembly"),
-    inputId = useId()
-  return (
-    <fieldset disabled={disabled} className="grid gap-2">
-      <label htmlFor={`${inputId}-name`}>
-        {t("motionStudyName")}
-        <Input
-          id={`${inputId}-name`}
-          value={draft.name}
-          onChange={(event) => session.edit({ ...draft, name: event.currentTarget.value })}
-        />
-      </label>
-      <AssemblyStudyNumber
-        label={t("motionDuration")}
-        value={draft.duration}
-        min={0.001}
-        max={3600}
-        onDirty={() => session.motion.reset()}
-        validate={(duration) => canRetimeStudy(draft, duration)}
-        errorMessage={t("motionRetimeInvalid")}
-        onCommit={(duration) => session.edit(retimeAssemblyMotionStudy(draft, duration))}
-      />
-    </fieldset>
-  )
+function studyDurationInput(raw: string, study: AssemblyMotionStudy) {
+  const value = Number(raw)
+  const valid =
+    Boolean(raw.trim()) &&
+    Number.isFinite(value) &&
+    value >= 0.001 &&
+    value <= 3600 &&
+    canRetimeStudy(study, value)
+  return { value, valid, pending: valid && value !== study.duration }
 }
+
+type StudyPanelProps = {
+  view: Pick<AssemblyWorkspaceView, "assembly" | "studyTask" | "disabled" | "closeStudy"> & {
+    mutations: Pick<AssemblyWorkspaceView["mutations"], "apply" | "error">
+  }
+  session: AssemblyMotionStudySession
+}
+const StudyFields = withFieldGroup({
+  defaultValues: { name: "", duration: "2" },
+  props: {} as {
+    session: AssemblyMotionStudySession
+    draft: AssemblyMotionStudy
+    disabled: boolean
+  },
+  render: function StudyFields({ group, session, draft, disabled }) {
+    const t = useTranslations("app.assembly")
+    const durationId = useId()
+    return (
+      <fieldset disabled={disabled} className="grid gap-2">
+        <group.AppField
+          name="name"
+          validators={{
+            onChange: ({ value }) => (value.trim() ? undefined : t("motionStudyInvalidDetails")),
+          }}
+          listeners={{ onChange: ({ value }) => session.edit({ ...draft, name: value }) }}
+        >
+          {(field) => <field.TextField label={t("motionStudyName")} required />}
+        </group.AppField>
+        <group.AppField
+          name="duration"
+          validators={{
+            onChange: ({ value }) =>
+              studyDurationInput(value, draft).valid ? undefined : t("motionRetimeInvalid"),
+          }}
+          listeners={{ onChange: () => session.motion.reset() }}
+        >
+          {(field) => {
+            const { value: parsed, valid, pending } = studyDurationInput(field.state.value, draft)
+            const invalid = !valid
+            const message = invalid
+              ? t("motionRetimeInvalid")
+              : pending
+                ? t("motionNumberPending")
+                : ""
+            return (
+              <Field>
+                <FieldLabel htmlFor={durationId}>{t("motionDuration")}</FieldLabel>
+                <Input
+                  id={durationId}
+                  ref={(node) => node?.setCustomValidity(message)}
+                  type="number"
+                  min={0.001}
+                  max={3600}
+                  step="any"
+                  required
+                  value={field.state.value}
+                  aria-invalid={invalid || undefined}
+                  aria-describedby={message ? `${durationId}-error` : undefined}
+                  onFocus={(event) => event.currentTarget.select()}
+                  onChange={(event) => field.handleChange(event.currentTarget.value)}
+                  onBlur={() => {
+                    field.handleBlur()
+                    if (!invalid) {
+                      session.edit(retimeAssemblyMotionStudy(draft, parsed))
+                      field.handleChange(String(parsed))
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      event.currentTarget.blur()
+                    }
+                    if (event.key === "Escape" && field.state.value !== String(draft.duration)) {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      field.handleChange(String(draft.duration))
+                    }
+                  }}
+                />
+                {message && (
+                  <span
+                    id={`${durationId}-error`}
+                    role={invalid ? "alert" : undefined}
+                    className={invalid ? "text-xs text-destructive" : "sr-only"}
+                  >
+                    {message}
+                  </span>
+                )}
+              </Field>
+            )
+          }}
+        </group.AppField>
+      </fieldset>
+    )
+  },
+})
 function StudyPlayback({
   draft,
   motion,
   options,
-  setOptions,
+  settings,
   disabled,
 }: {
   draft: AssemblyMotionStudy
   motion: AssemblyMotionStudySession["motion"]
   options: AssemblyPlaybackOptions
-  setOptions: (options: AssemblyPlaybackOptions) => void
+  settings: React.ReactNode
   disabled: boolean
 }) {
   const t = useTranslations("app.assembly")
+  const seekId = useId()
   return (
     <>
-      <label>
-        {t("motionSeek")}
-        <input
-          className="w-full"
-          type="range"
-          min={0}
-          max={draft.duration}
-          step="any"
-          value={motion.value ?? 0}
-          disabled={disabled}
-          onChange={(event) => {
-            if (event.currentTarget.form?.reportValidity())
-              void motion.preview(Number(event.currentTarget.value))
-          }}
-        />
-        <output>{motion.value ?? 0}</output>
-      </label>
+      <Field>
+        <FieldLabel htmlFor={seekId}>{t("motionSeek")}</FieldLabel>
+        <div className="flex min-w-0 items-center gap-2">
+          <input
+            id={seekId}
+            className="h-8 w-full min-w-0"
+            type="range"
+            min={0}
+            max={draft.duration}
+            step="any"
+            value={motion.value ?? 0}
+            disabled={disabled}
+            onChange={(event) => {
+              if (event.currentTarget.form?.reportValidity())
+                void motion.preview(Number(event.currentTarget.value))
+            }}
+          />
+          <output htmlFor={seekId} className="shrink-0 tabular-nums">
+            {motion.value ?? 0}
+          </output>
+        </div>
+      </Field>
       <details>
         <summary className="font-medium cursor-pointer py-1 text-xs">
           {t("motionPlaybackOptions")}
         </summary>
-        <AssemblyPlaybackSettings
-          value={options}
-          onChange={setOptions}
-          disabled={disabled || motion.playing}
-        />
+        {settings}
       </details>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -374,85 +476,75 @@ function StudyFailure({ view, session, error }: StudyPanelProps & { error: strin
     </Alert>
   )
 }
-function StudyLifecycle({
-  view,
-  session,
-  draft,
-  revision,
-  setError,
-  children,
-}: StudyPanelProps & {
-  children: ReactNode
+type ReadyStudyPanelProps = StudyPanelProps & {
   draft: AssemblyMotionStudy
-  revision: number
-  setError: (error: string) => void
-}) {
-  const t = useTranslations("app.assembly"),
-    motion = session.motion
-  const busy = view.disabled || motion.applying
+  task: NonNullable<StudyPanelProps["view"]["studyTask"]>
+}
+function useStudyForm({ view, session, draft, task }: ReadyStudyPanelProps) {
+  const t = useTranslations("app.assembly")
+  const motion = session.motion
+  const form = useAppForm({
+    defaultValues: {
+      name: draft.name,
+      duration: String(draft.duration),
+      playback: playbackFieldValues(),
+    },
+    onSubmit: async ({ value, formApi }) => {
+      if (view.disabled || motion.applying || motion.pending || motion.playing) return
+      motion.pause()
+      const parsed = assemblyMotionStudySchema.safeParse({
+        ...draft,
+        name: value.name,
+        duration: formNumber(value.duration),
+      })
+      if (!parsed.success) {
+        formApi.setErrorMap({ onSubmit: { form: t("motionStudyInvalidDetails"), fields: {} } })
+        return
+      }
+      if (
+        await view.mutations.apply(
+          [
+            {
+              kind: session.existing ? "motion-study.update" : "motion-study.create",
+              study: parsed.data,
+            },
+          ],
+          task.revision,
+        )
+      )
+        view.closeStudy()
+    },
+  })
+  return form
+}
+export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
+  const t = useTranslations("app.assembly")
+  const draft = session.draft
+  const task = view.studyTask
+  if (!draft || !task) return <p>{t("motionStudyEmpty")}</p>
+  return <StudyEditor view={view} session={session} draft={draft} task={task} />
+}
+function StudyEditor(props: ReadyStudyPanelProps) {
+  const { view, session, draft, task } = props
+  const t = useTranslations("app.assembly")
+  const motion = session.motion
+  const form = useStudyForm(props)
+  const submitting = useStore(form.store, (state) => state.isSubmitting)
+  const options = useStore(form.store, (state) => state.values.playback)
+  const busy = view.disabled || motion.applying || submitting
+  const solving = motion.pending || motion.playing
+  const editingDisabled = busy || solving
+  const playbackDisabled = busy || motion.playing
   const close = () => {
     motion.reset()
     view.closeStudy()
   }
-  const save = async () => {
-    motion.pause()
-    const parsed = assemblyMotionStudySchema.safeParse(draft)
-    if (!parsed.success) {
-      setError(t("motionStudyInvalidDetails"))
-      return
-    }
-    if (
-      await view.mutations.apply(
-        [
-          {
-            kind: session.existing ? "motion-study.update" : "motion-study.create",
-            study: parsed.data,
-          },
-        ],
-        revision,
-      )
-    )
-      view.closeStudy()
-  }
   return (
-    <TaskPanelHeader
-      title={t(session.existing ? "motionEditStudy" : "motionNewStudy")}
-      description={t("motionStudyDescription")}
-      className="bg-panel py-2"
-      actions={
-        <TaskPanelLifecycleActions
-          ariaLabel={t("motionStudies")}
-          acceptLabel={t("motionSaveStudy")}
-          acceptDisabled={busy || motion.pending || motion.playing}
-          onAccept={(event) => {
-            if (event.currentTarget.form?.reportValidity()) return save()
-          }}
-          cancelLabel={t("cancel")}
-          cancelDisabled={busy}
-          onCancel={close}
-        />
-      }
-    >
-      {children}
-    </TaskPanelHeader>
-  )
-}
-
-export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
-  const t = useTranslations("app.assembly"),
-    [options, setOptions] = useState<AssemblyPlaybackOptions>({ count: 13, speed: 1 }),
-    [error, setError] = useState<string | null>(null)
-  const draft = session.draft,
-    task = view.studyTask,
-    motion = session.motion
-  if (!draft || !task) return <p>{t("motionStudyEmpty")}</p>
-  const busy = view.disabled || motion.applying,
-    solving = motion.pending || motion.playing
-  return (
-    <form
-      className="grid min-w-0 gap-3"
+    <Form
+      form={form}
+      noValidate={false}
+      className="grid min-w-0 gap-2"
       aria-label={t("motionStudies")}
-      onSubmit={(event) => event.preventDefault()}
       onInvalidCapture={(event) => {
         let ancestor = event.target instanceof HTMLElement ? event.target.parentElement : null
         while (ancestor && ancestor !== event.currentTarget) {
@@ -461,35 +553,54 @@ export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
         }
       }}
     >
-      <StudyLifecycle
-        view={view}
-        session={session}
-        draft={draft}
-        revision={task.revision}
-        setError={setError}
+      <TaskPanelHeader
+        title={t(session.existing ? "motionEditStudy" : "motionNewStudy")}
+        description={t("motionStudyDescription")}
+        className="bg-panel py-2"
+        actions={
+          <TaskPanelLifecycleActions
+            ariaLabel={t("motionStudies")}
+            acceptLabel={t("motionSaveStudy")}
+            acceptType="submit"
+            acceptDisabled={editingDisabled}
+            acceptLoading={submitting}
+            cancelLabel={t("cancel")}
+            cancelDisabled={busy}
+            onCancel={close}
+          />
+        }
       >
         <StudyPlayback
           draft={draft}
           motion={motion}
-          options={options}
-          setOptions={setOptions}
+          options={playbackOptions(options)}
           disabled={busy}
+          settings={
+            <AssemblyPlaybackSettings form={form} fields="playback" disabled={playbackDisabled} />
+          }
         />
-      </StudyLifecycle>
-      <StudyFields view={view} session={session} draft={draft} disabled={busy || solving} />
+      </TaskPanelHeader>
+      <StudyFields
+        form={form}
+        fields={{ name: "name", duration: "duration" }}
+        session={session}
+        draft={draft}
+        disabled={editingDisabled}
+      />
       <AssemblyMotionTrackEditor
         study={draft}
         view={view}
         edit={session.edit}
-        disabled={busy || solving}
+        disabled={editingDisabled}
       />
       <details>
         <summary className="font-medium cursor-pointer py-1 text-xs">
           {t("motionExportOptions")}
         </summary>
-        <StudyExport session={session} revision={task.revision} disabled={busy || solving} />
+        <StudyExport session={session} revision={task.revision} disabled={editingDisabled} />
       </details>
-      <StudyFailure view={view} session={session} error={error} />
+      <form.FormError />
+      <StudyFailure view={view} session={session} error={null} />
       {session.existing && (
         <Button
           type="button"
@@ -509,6 +620,6 @@ export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
           {t("motionDeleteStudy")}
         </Button>
       )}
-    </form>
+    </Form>
   )
 }

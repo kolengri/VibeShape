@@ -6,17 +6,15 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
-import { Alert } from "@vibeshape/ui/components/alert"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useMemo, useState } from "react"
+import { Form } from "@vibeshape/ui/integrations/tanstack-form"
+import { useMemo } from "react"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
+import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
-import { SketchExpressionFormField } from "./sketch-expression-form-field"
 import { SketchFormActions } from "./sketch-form-actions"
 import {
   evaluateSketchPatternExpression,
@@ -101,17 +99,19 @@ export function SketchCircularPatternForm({
 }>) {
   const t = useTranslations("app.sketch.circularPattern")
   const displayUnits = useDocumentDisplayUnits()
-  const [message, setMessage] = useState<string | null>(null)
   const suggestions = useMemo(() => variableExpressionSuggestions(variables), [variables])
-  const form = useAppForm({
+  const form = useCadForm({
+    validationLogic: cadFormValidationLogic,
     defaultValues: defaultValues(initialValue, displayUnits),
+    validators: {
+      onDynamic: ({ value }) =>
+        evaluateCircularSketchPatternForm(value, variables, displayUnits)
+          ? undefined
+          : t("invalid"),
+    },
     onSubmit: ({ value }) => {
       const definition = evaluateCircularSketchPatternForm(value, variables, displayUnits)
-      if (!definition) {
-        setMessage(t("invalid"))
-        return
-      }
-      setMessage(null)
+      if (!definition) return
       onApply(definition)
     },
   })
@@ -119,7 +119,6 @@ export function SketchCircularPatternForm({
     field: keyof CircularSketchPatternFormValues,
     value: CircularSketchPatternFormValues[typeof field],
   ) => {
-    setMessage(null)
     onPreview(
       evaluateCircularSketchPatternForm(
         { ...form.state.values, [field]: value },
@@ -140,54 +139,53 @@ export function SketchCircularPatternForm({
       form={form}
       variant="panel"
     >
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2">
         {fields.map(({ label, name }) => (
-          <form.Field key={name} name={name}>
+          <form.AppField key={name} name={name}>
             {(field) => (
-              <SketchExpressionFormField
-                field={field}
+              <field.VariableExpressionField
                 id={`sketch-circular-pattern-${name}`}
                 label={label}
                 suggestions={suggestions}
+                inputClassName="font-mono tabular-nums"
                 onValueChange={(nextValue) => {
                   updatePreview(name, nextValue)
                 }}
               />
             )}
-          </form.Field>
+          </form.AppField>
         ))}
       </div>
-      <form.Field name="closed">
+      <form.AppField name="closed">
         {(field) => (
-          <TanStackBooleanParameterField
-            field={field}
+          <field.CheckboxField
             label={t("closed")}
-            onBeforeChange={() => {
-              updatePreview("closed", !field.state.value)
+            onValueChange={(checked) => {
+              updatePreview("closed", checked)
             }}
           />
         )}
-      </form.Field>
+      </form.AppField>
       <form.Subscribe selector={(state) => state.values.closed}>
         {(closed) =>
           closed ? null : (
-            <form.Field name="angle">
+            <form.AppField name="angle">
               {(field) => (
-                <SketchExpressionFormField
-                  field={field}
+                <field.VariableExpressionField
                   id="sketch-circular-pattern-angle"
                   label={t("angle")}
                   suggestions={suggestions}
+                  inputClassName="font-mono tabular-nums"
                   onValueChange={(nextValue) => {
                     updatePreview("angle", nextValue)
                   }}
                 />
               )}
-            </form.Field>
+            </form.AppField>
           )
         }
       </form.Subscribe>
-      {message ? <Alert>{message}</Alert> : null}
+      <form.FormError />
       <SketchFormActions
         cancelLabel={t("cancel")}
         submit={

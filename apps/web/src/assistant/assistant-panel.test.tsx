@@ -639,8 +639,10 @@ describe("structured agent questions", () => {
       target: { value: "Use a 2 mm radius" },
     })
     const form = screen.getByRole("form", { name: "Agent question" })
-    fireEvent.submit(form)
-    fireEvent.submit(form)
+    await act(async () => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
     expect(answer).toHaveBeenCalledTimes(1)
     expect(answer).toHaveBeenCalledWith({ finish: "fillet", note: "Use a 2 mm radius" })
     expect(screen.getByRole("button", { name: "Submit answers" }).getAttribute("aria-busy")).toBe(
@@ -680,5 +682,58 @@ describe("structured agent questions", () => {
     expect(screen.getByRole("button", { name: "Submit answers" }).hasAttribute("disabled")).toBe(
       true,
     )
+  })
+
+  it("allows skipping a question after required-field validation fails", async () => {
+    const answer = vi.fn().mockResolvedValue(true)
+    render(panel({ question: question(), onAnswer: answer }))
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("form", { name: "Agent question" }))
+    })
+    expect(answer).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "Skip question" }))
+    expect(answer).toHaveBeenCalledTimes(1)
+    expect(answer).toHaveBeenCalledWith(null)
+  })
+
+  it("validates constrained secret answers and preserves literal protocol field IDs", async () => {
+    const answer = vi.fn().mockResolvedValue(true)
+    render(
+      panel({
+        question: {
+          ...question(),
+          fields: [
+            {
+              id: "account.token[0]",
+              label: "Connection token",
+              required: true,
+              secret: true,
+              minLength: 3,
+              maxLength: 5,
+            },
+            { id: "note.with.dots", label: "Connection note", required: false, secret: false },
+          ],
+        },
+        onAnswer: answer,
+      }),
+    )
+    const token = screen.getByLabelText(/^Connection token/)
+    expect(token.getAttribute("type")).toBe("password")
+    fireEvent.change(token, { target: { value: "ab" } })
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("form", { name: "Agent question" }))
+    })
+    expect(answer).not.toHaveBeenCalled()
+    expect(token.getAttribute("aria-invalid")).toBe("true")
+    fireEvent.change(token, { target: { value: "abcde" } })
+    fireEvent.change(screen.getByLabelText("Connection note"), {
+      target: { value: "Keep this literal" },
+    })
+    await userEvent.click(screen.getByRole("button", { name: "Submit answers" }))
+    expect(answer).toHaveBeenCalledTimes(1)
+    expect(answer).toHaveBeenCalledWith({
+      "account.token[0]": "abcde",
+      "note.with.dots": "Keep this literal",
+    })
   })
 })

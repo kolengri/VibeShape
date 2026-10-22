@@ -9,6 +9,7 @@ import {
   historyRemoveRetainingDependentsCommandSchema,
   historyRepairCommandSchema,
 } from "@vibeshape/domain/document-v5-command-schemas"
+import { documentV6MetadataCommandSchema } from "@vibeshape/domain/document-v6-command-schemas"
 import { draftIdSchema } from "@vibeshape/domain/identifiers"
 import { sourceAssetBlobSchema } from "@vibeshape/domain/source-assets"
 import { z } from "zod"
@@ -27,6 +28,7 @@ export const authorityTransactionSchema = z
     commands: z
       .array(
         z.union([
+          documentV6MetadataCommandSchema,
           documentV4CommandSchema,
           historyRemoveRetainingDependentsCommandSchema,
           historyRepairCommandSchema,
@@ -82,7 +84,11 @@ export function prepareAuthorityTransaction(
       )
     next = result.snapshot
     events.push(result.event)
-    if (historyBase.schemaVersion !== next.schemaVersion && next.schemaVersion !== 5)
+    if (
+      historyBase.schemaVersion !== next.schemaVersion &&
+      next.schemaVersion !== 5 &&
+      next.schemaVersion !== 6
+    )
       historyBase = next
   }
   return {

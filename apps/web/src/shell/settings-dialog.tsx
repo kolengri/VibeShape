@@ -10,9 +10,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
+import { fieldVariants } from "@vibeshape/ui/components/field"
 import { Settings as SettingsIcon } from "@vibeshape/ui/components/icons"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@vibeshape/ui/components/tabs"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useState } from "react"
 import { type DialogOpenProps, useDialogOpen } from "../components/use-dialog-open"
 import { DesktopMcpSettings } from "../desktop/desktop-mcp-settings"
@@ -120,16 +122,18 @@ export function SettingsDialog({
               className="grid gap-3"
             >
               <h3 className="font-medium">{t("workspace")}</h3>
-              <label className="flex items-start gap-2 text-sm">
+              <label
+                className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}
+              >
+                <span>{t("autoHideConsumedSketches")}</span>
                 <input
                   type="checkbox"
-                  className="mt-1 accent-primary"
+                  className="accent-primary"
                   checked={preferences.autoHideConsumedSketches}
                   onChange={(event) =>
                     preferences.actions.setAutoHideConsumedSketches(event.currentTarget.checked)
                   }
                 />
-                <span>{t("autoHideConsumedSketches")}</span>
               </label>
               <p className="text-xs text-muted-foreground">{t("autoHideDescription")}</p>
               <WorkspaceLayoutSettings />

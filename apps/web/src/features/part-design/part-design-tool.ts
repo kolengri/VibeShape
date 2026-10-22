@@ -33,6 +33,7 @@ import {
   torusFeatureType,
 } from "@vibeshape/domain"
 import type { BodyReference } from "@vibeshape/domain/body-reference"
+import type { BodyFaceRef } from "@vibeshape/domain/body-topology-reference"
 import type { PartId } from "@vibeshape/domain/identifiers"
 import { isExtrusionType } from "@vibeshape/domain/part-design"
 import {
@@ -53,6 +54,7 @@ import {
 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
+import { readPressPullFeatureParameters } from "@vibeshape/domain/part-design-press-pull"
 import { readShellFeatureParameters } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
@@ -74,6 +76,13 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-placement"; featureId: FeatureId }>
   | Readonly<{ kind: "create-mirror"; partId: PartId; targetBody: BodyReference }>
   | Readonly<{ kind: "edit-mirror"; featureId: FeatureId }>
+  | Readonly<{
+      kind: "create-press-pull"
+      targetBody: BodyReference
+      face: BodyFaceRef
+      sourceContentHash: string
+    }>
+  | Readonly<{ kind: "edit-press-pull"; featureId: FeatureId }>
   | Readonly<{ kind: "create-shell"; partId: PartId; targetBody: BodyReference }>
   | Readonly<{ kind: "edit-shell"; featureId: FeatureId }>
   | Readonly<{ kind: "create-split"; partId: PartId; targetBody: BodyReference }>
@@ -273,6 +282,9 @@ export function isDatumPlaneFeature(feature: FeatureRecord) {
 function isPlacementFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, placementFeatureType.type)
 }
+function isPressPullFeature(feature: FeatureRecord) {
+  return readPressPullFeatureParameters(feature) !== null
+}
 function isShellFeature(feature: FeatureRecord) {
   return readShellFeatureParameters(feature) !== null
 }
@@ -333,6 +345,7 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
     isHoleFeature,
     isPlacementFeature,
     isMirrorFeature,
+    isPressPullFeature,
     isShellFeature,
     isLoftFeature,
     isSweepFeature,
@@ -483,10 +496,7 @@ export function activeFeatureId(activeTool: ActivePartDesignTool | null) {
   return activeTool && "featureId" in activeTool ? activeTool.featureId : null
 }
 
-const editableFeatureTools: readonly [
-  (feature: FeatureRecord) => boolean,
-  Extract<ActivePartDesignTool, { featureId: FeatureId }>["kind"],
-][] = [
+const editableFeatureTools = [
   [
     (feature) =>
       hasFeatureType(feature, importedFeatureType.type) ||
@@ -522,12 +532,16 @@ const editableFeatureTools: readonly [
   [isChamferFeature, "edit-chamfer"],
   [isBooleanFeature, "edit-subtract"],
   [isDatumPlaneFeature, "edit-datum-plane"],
-]
+] as const satisfies readonly [
+  (feature: FeatureRecord) => boolean,
+  Extract<ActivePartDesignTool, { featureId: FeatureId }>["kind"],
+][]
 
 export function editPartDesignTool(
   feature: FeatureRecord | undefined,
 ): ActivePartDesignTool | null {
   if (!feature) return null
+  if (isPressPullFeature(feature)) return { kind: "edit-press-pull", featureId: feature.id }
   const kind = editableFeatureTools.find(([matches]) => matches(feature))?.[1]
   return kind ? { kind, featureId: feature.id } : null
 }
@@ -545,6 +559,8 @@ const commandByToolKind = {
   "edit-placement": "placement",
   "create-mirror": "mirror",
   "edit-mirror": "mirror",
+  "create-press-pull": "press-pull",
+  "edit-press-pull": "press-pull",
   "create-shell": "shell",
   "edit-shell": "shell",
   "create-split": "split",

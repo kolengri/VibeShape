@@ -1,15 +1,13 @@
 import type { AssemblyAuthority, AssemblyMutation } from "@vibeshape/domain/assembly-authority"
 import {
-  type AssemblyFrameBinding,
   type AssemblyInstanceRecord as AssemblyInstance,
   type AssemblyJointRecord as AssemblyJoint,
-  assemblyJointRecordSchema as assemblyJointSchema,
+  assemblyJointRecordSchema,
 } from "@vibeshape/domain/assembly-mates"
 import { useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection } from "@vibeshape/protocol"
-import { Field, FieldLabel } from "@vibeshape/ui/components/field"
-import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
-import { useId, useState } from "react"
+import { SelectOption } from "@vibeshape/ui/components/select-field"
+import { withFieldGroup } from "@vibeshape/ui/integrations/tanstack-form"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import { browserAuthoredUuid } from "../../document/authored-document-session"
 import {
@@ -18,10 +16,13 @@ import {
   AssemblyPoseFields,
   formNumber,
   formPose,
+  numberFieldValidators,
+  poseFieldValues,
 } from "./assembly-fields"
-import { type AssemblyFormActions, AssemblyTaskForm } from "./assembly-forms"
+import { type AssemblyFormActions, AssemblyTaskForm, useAssemblyForm } from "./assembly-forms"
 import {
   AssemblyFrameBindingFields,
+  frameBindingValues,
   readAssemblyFrameBinding,
 } from "./assembly-frame-binding-fields"
 import {
@@ -30,224 +31,11 @@ import {
   newAssemblyInstance,
 } from "./assembly-model"
 
-type JointOptions = {
-  kind: AssemblyJoint["kind"]
-  parentId: string
-  childId: string
-  definitionId: string
-  creating: boolean
-}
 const units = {
   revolute: { scale: Math.PI / 180, bound: 360, label: "driveDegrees" },
   prismatic: { scale: 1, bound: 100_000, label: "driveMm" },
 } as const
-function initialOptions(
-  assembly: AssemblyAuthority,
-  joint: AssemblyJoint | undefined,
-  selectedId: string | null,
-): JointOptions {
-  if (joint)
-    return {
-      kind: joint.kind,
-      parentId: joint.parentInstanceId,
-      childId: joint.childInstanceId,
-      definitionId: "",
-      creating: false,
-    }
-  const parent = selectedId ?? ""
-  const definition = assembly.definitions[0]
-  return {
-    kind: "fixed",
-    parentId: parent,
-    childId: "",
-    definitionId: definition ? definition.id : "",
-    creating: true,
-  }
-}
-function jointDrive(data: FormData, kind: AssemblyJoint["kind"]) {
-  if (kind === "fixed" || kind === "ball") return {}
-  if (kind === "cylindrical")
-    return {
-      axis: [formNumber(data, "axis.X"), formNumber(data, "axis.Y"), formNumber(data, "axis.Z")],
-      angle: (formNumber(data, "angle") * Math.PI) / 180,
-      angleLimits: {
-        min: (formNumber(data, "angle.minimum") * Math.PI) / 180,
-        max: (formNumber(data, "angle.maximum") * Math.PI) / 180,
-      },
-      rotationDriven: data.get("rotationDriven") === "on",
-      translation: formNumber(data, "translation"),
-      translationLimits: {
-        min: formNumber(data, "translation.minimum"),
-        max: formNumber(data, "translation.maximum"),
-      },
-      translationDriven: data.get("translationDriven") === "on",
-    }
-  const scale = units[kind].scale
-  return {
-    axis: [formNumber(data, "axis.X"), formNumber(data, "axis.Y"), formNumber(data, "axis.Z")],
-    value: formNumber(data, "drive") * scale,
-    limits: { min: formNumber(data, "minimum") * scale, max: formNumber(data, "maximum") * scale },
-  }
-}
-function jointChild(
-  assembly: AssemblyAuthority,
-  data: FormData,
-  options: JointOptions,
-): AssemblyInstance {
-  if (options.creating) {
-    const definition = assembly.definitions.find(({ id }) => id === options.definitionId)
-    if (!definition) throw new Error("Select the child definition.")
-    return newAssemblyInstance(
-      definition,
-      String(data.get("name")),
-      identityAssemblyPose,
-      undefined,
-      assembly.schemaVersion,
-    )
-  }
-  const child = assembly.instances.find(({ id }) => id === options.childId)
-  if (!child) throw new Error("Select the child occurrence.")
-  return child
-}
-function captureJoint(
-  data: FormData,
-  options: JointOptions,
-  child: AssemblyInstance,
-  previous: AssemblyJoint | undefined,
-  schemaVersion: 1 | 2,
-  bindings: { parent?: AssemblyFrameBinding; child?: AssemblyFrameBinding },
-) {
-  return assemblyJointSchema.parse({
-    schemaVersion,
-    id: previous ? previous.id : browserAuthoredUuid(),
-    kind: options.kind,
-    parentInstanceId: options.parentId,
-    childInstanceId: child.id,
-    parentFrame: formPose(data, "parent", previous?.parentFrame),
-    childFrame: formPose(data, "child", previous?.childFrame),
-    ...jointDrive(data, options.kind),
-    ...(schemaVersion === 2 && (options.kind === "revolute" || options.kind === "prismatic")
-      ? { driven: data.get("driven") === "on" }
-      : {}),
-    ...(bindings.parent
-      ? { parentBinding: readAssemblyFrameBinding(data, "parent", bindings.parent) }
-      : {}),
-    ...(bindings.child
-      ? { childBinding: readAssemblyFrameBinding(data, "child", bindings.child) }
-      : {}),
-  })
-}
-function jointChanges(
-  assembly: AssemblyAuthority,
-  data: FormData,
-  options: JointOptions,
-  previous: AssemblyJoint | undefined,
-  bindings: { parent?: AssemblyFrameBinding; child?: AssemblyFrameBinding },
-): readonly AssemblyMutation[] {
-  const child = jointChild(assembly, data, options)
-  const joint = captureJoint(data, options, child, previous, assembly.schemaVersion, bindings)
-  return previous
-    ? [{ kind: "joint.update", joint }]
-    : attachAssemblyChildChanges(child, joint, options.creating)
-}
-function driveDefaults(kind: "revolute" | "prismatic", joint: AssemblyJoint | undefined) {
-  if (joint && (joint.kind === "revolute" || joint.kind === "prismatic")) return joint
-  const { scale, bound } = units[kind]
-  return { axis: [0, 0, 1], value: 0, limits: { min: -bound * scale, max: bound * scale } }
-}
-function DrivenJointFields({
-  kind,
-  joint,
-}: {
-  kind: "revolute" | "prismatic"
-  joint: AssemblyJoint | undefined
-}) {
-  const t = useTranslations("app.assembly")
-  const { scale, bound, label } = units[kind]
-  const driven = driveDefaults(kind, joint)
-  return (
-    <>
-      <fieldset className="grid gap-2">
-        <legend className="mb-2 text-xs font-medium">{t("jointAxis")}</legend>
-        <div className="grid grid-cols-3 gap-2">
-          {(["X", "Y", "Z"] as const).map((axis, index) => (
-            <AssemblyNumberField
-              key={axis}
-              name={`axis.${axis}`}
-              label={axis}
-              value={driven.axis[index]}
-            />
-          ))}
-        </div>
-      </fieldset>
-      <AssemblyNumberField
-        name="drive"
-        label={t(label)}
-        value={driven.value / scale}
-        min={-bound}
-        max={bound}
-      />
-      <div className="grid grid-cols-2 gap-2">
-        <AssemblyNumberField
-          name="minimum"
-          label={t("minimum")}
-          value={driven.limits.min / scale}
-          min={-bound}
-          max={bound}
-        />
-        <AssemblyNumberField
-          name="maximum"
-          label={t("maximum")}
-          value={driven.limits.max / scale}
-          min={-bound}
-          max={bound}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">{t("driveLimitsExplanation")}</p>
-    </>
-  )
-}
-function JointDriveFields({
-  kind,
-  joint,
-}: {
-  kind: AssemblyJoint["kind"]
-  joint: AssemblyJoint | undefined
-}) {
-  if (kind === "cylindrical")
-    return <CylindricalJointFields joint={joint?.kind === "cylindrical" ? joint : undefined} />
-  return kind === "fixed" || kind === "ball" ? null : (
-    <DrivenJointFields kind={kind} joint={joint} />
-  )
-}
-function CylindricalJointFields({
-  joint,
-}: {
-  joint: Extract<AssemblyJoint, { kind: "cylindrical" }> | undefined
-}) {
-  const t = useTranslations("app.assembly")
-  return (
-    <>
-      <fieldset className="grid gap-2">
-        <legend className="text-xs font-medium">{t("jointAxis")}</legend>
-        <div className="grid grid-cols-3 gap-2">
-          {(["X", "Y", "Z"] as const).map((axis, index) => (
-            <AssemblyNumberField
-              key={axis}
-              name={`axis.${axis}`}
-              label={axis}
-              value={joint?.axis[index] ?? (index === 2 ? 1 : 0)}
-            />
-          ))}
-        </div>
-      </fieldset>
-      {cylindricalCoordinateFields.map((config) => (
-        <CylindricalCoordinateField key={config.kind} config={config} joint={joint} />
-      ))}
-    </>
-  )
-}
-const cylindricalCoordinateFields = [
+const cylindricalCoordinates = [
   {
     kind: "angle",
     scale: Math.PI / 180,
@@ -260,150 +48,288 @@ const cylindricalCoordinateFields = [
   {
     kind: "translation",
     scale: 1,
-    bound: 100000,
+    bound: 100_000,
     driven: "translationDriven",
     limits: "translationLimits",
     driveLabel: "driveMm",
     lockLabel: "lockTranslation",
   },
 ] as const
-function CylindricalCoordinateField({
-  config,
-  joint,
-}: {
-  config: (typeof cylindricalCoordinateFields)[number]
-  joint: Extract<AssemblyJoint, { kind: "cylindrical" }> | undefined
-}) {
-  const t = useTranslations("app.assembly"),
-    { kind, scale, bound, driven } = config
-  const limits = joint?.[config.limits] ?? { min: -bound * scale, max: bound * scale }
-  return (
-    <fieldset className="grid gap-2">
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          name={driven}
-          type="checkbox"
-          defaultChecked={joint?.[driven] ?? false}
-          className="size-4 accent-primary"
-        />
-        {t(config.lockLabel)}
-      </label>
-      <AssemblyNumberField
-        name={kind}
-        label={t(config.driveLabel)}
-        value={(joint?.[kind] ?? 0) / scale}
-        min={-bound}
-        max={bound}
-      />
-      <div className="grid grid-cols-2 gap-2">
-        <AssemblyNumberField
-          name={`${kind}.minimum`}
-          label={t("minimum")}
-          value={limits.min / scale}
-          min={-bound}
-          max={bound}
-        />
-        <AssemblyNumberField
-          name={`${kind}.maximum`}
-          label={t("maximum")}
-          value={limits.max / scale}
-          min={-bound}
-          max={bound}
-        />
-      </div>
-    </fieldset>
-  )
+function coordinateValues(value: number, min: number, max: number, scale: number) {
+  return {
+    value: String(value / scale),
+    minimum: String(min / scale),
+    maximum: String(max / scale),
+  }
 }
-type ChildProps = {
-  assembly: AssemblyAuthority
-  options: JointOptions
-  update: (fields: Partial<JointOptions>) => void
+function axisValues(axis: readonly number[]) {
+  return { X: String(axis[0]), Y: String(axis[1]), Z: String(axis[2]) }
 }
-function NewChildFields({ assembly, options, update }: ChildProps) {
-  const t = useTranslations("app.assembly")
-  return (
-    <>
-      <LocalizedSearchableSelectField
-        label={t("childDefinition")}
-        placeholder={t("childDefinition")}
-        value={options.definitionId}
-        onValueChange={(definitionId) => update({ definitionId })}
-        required
-        options={assembly.definitions.map(({ id, name, pinnedModels }, index) => ({
-          value: id,
-          label: name,
-          description: t("choiceSource", {
-            number: index + 1,
-            source:
-              [...new Set(pinnedModels.map(({ snapshot }) => snapshot.name))].join(", ") || name,
-          }),
-          keywords: [id],
-        }))}
-      />
-      <AssemblyNameField value={t("defaultChild")} />
-    </>
-  )
+function defaultDriveValues(kind: AssemblyJoint["kind"]) {
+  const unit = kind === "revolute" ? units.revolute : units.prismatic
+  return {
+    axis: axisValues([0, 0, 1]),
+    coordinate: coordinateValues(0, -unit.bound * unit.scale, unit.bound * unit.scale, unit.scale),
+    driven: true,
+    angle: coordinateValues(0, -Math.PI * 2, Math.PI * 2, Math.PI / 180),
+    translation: coordinateValues(0, -100_000, 100_000, 1),
+    rotationDriven: false,
+    translationDriven: false,
+  }
 }
-function ExistingChildField({ assembly, options, update }: ChildProps) {
-  const t = useTranslations("app.assembly")
-  return (
-    <LocalizedSearchableSelectField
-      label={t(assembly.schemaVersion === 2 ? "existingOccurrence" : "childInstance")}
-      placeholder={t(assembly.schemaVersion === 2 ? "existingOccurrence" : "childInstance")}
-      value={options.childId}
-      onValueChange={(childId) => update({ childId })}
-      required
-      options={assembly.instances
-        .filter(
-          (instance) =>
-            (assembly.schemaVersion === 2 || instance.grounded) && instance.id !== options.parentId,
-        )
-        .map(({ id, name, definitionId }, index) => ({
-          value: id,
-          label: name,
-          description: t("choiceSource", {
-            number: index + 1,
-            source:
-              assembly.definitions.find((definition) => definition.id === definitionId)?.name ??
-              name,
-          }),
-          keywords: [id],
-        }))}
-    />
-  )
+function driveValues(kind: AssemblyJoint["kind"], joint?: AssemblyJoint) {
+  const defaults = defaultDriveValues(kind)
+  if (!joint || joint.kind !== kind) return defaults
+  switch (joint.kind) {
+    case "revolute":
+    case "prismatic":
+      return {
+        ...defaults,
+        axis: axisValues(joint.axis),
+        coordinate: coordinateValues(
+          joint.value,
+          joint.limits.min,
+          joint.limits.max,
+          units[joint.kind].scale,
+        ),
+        driven: joint.schemaVersion === 2 ? joint.driven : true,
+      }
+    case "cylindrical":
+      return {
+        ...defaults,
+        axis: axisValues(joint.axis),
+        angle: coordinateValues(
+          joint.angle,
+          joint.angleLimits.min,
+          joint.angleLimits.max,
+          Math.PI / 180,
+        ),
+        translation: coordinateValues(
+          joint.translation,
+          joint.translationLimits.min,
+          joint.translationLimits.max,
+          1,
+        ),
+        rotationDriven: joint.rotationDriven,
+        translationDriven: joint.translationDriven,
+      }
+    default:
+      return defaults
+  }
 }
-function ChildCreationFields(props: ChildProps) {
-  const t = useTranslations("app.assembly")
-  const id = useId()
-  return (
-    <>
-      <Field orientation="horizontal">
-        <input
-          id={id}
-          type="checkbox"
-          checked={props.options.creating}
-          className="size-4 accent-primary"
-          onChange={(event) => props.update({ creating: event.currentTarget.checked })}
-        />
-        <FieldLabel htmlFor={id}>{t("createChild")}</FieldLabel>
-      </Field>
-      {props.options.creating ? <NewChildFields {...props} /> : <ExistingChildField {...props} />}
-    </>
-  )
+function jointFormValues(
+  assembly: AssemblyAuthority,
+  joint: AssemblyJoint | undefined,
+  selectedId: string | null,
+  name: string,
+) {
+  const definition = assembly.definitions[0]
+  const defaults = {
+    kind: "fixed" as AssemblyJoint["kind"],
+    parentId: selectedId ?? "",
+    childId: "",
+    definitionId: definition ? definition.id : "",
+    creating: true,
+    name,
+    parent: poseFieldValues(),
+    child: poseFieldValues(),
+    parentBinding: frameBindingValues(),
+    childBinding: frameBindingValues(),
+    drive: defaultDriveValues("fixed"),
+  }
+  if (!joint) return defaults
+  const bindings =
+    joint.schemaVersion === 2 ? joint : { parentBinding: undefined, childBinding: undefined }
+  return {
+    ...defaults,
+    kind: joint.kind,
+    parentId: joint.parentInstanceId,
+    childId: joint.childInstanceId,
+    creating: false,
+    parent: poseFieldValues(joint.parentFrame),
+    child: poseFieldValues(joint.childFrame),
+    parentBinding: frameBindingValues(bindings.parentBinding),
+    childBinding: frameBindingValues(bindings.childBinding),
+    drive: driveValues(joint.kind, joint),
+  }
 }
-function JointChildFields({ joint, ...props }: ChildProps & { joint: AssemblyJoint | undefined }) {
-  const t = useTranslations("app.assembly")
-  if (!joint) return <ChildCreationFields {...props} />
-  const child = props.assembly.instances.find(({ id }) => id === joint.childInstanceId)
-  return <p className="text-sm">{t("jointChild", { name: child ? child.name : "" })}</p>
+type JointValues = ReturnType<typeof jointFormValues>
+function jointDrive(values: JointValues) {
+  const { kind, drive } = values
+  if (kind === "fixed" || kind === "ball") return {}
+  const axis = [formNumber(drive.axis.X), formNumber(drive.axis.Y), formNumber(drive.axis.Z)]
+  if (kind === "cylindrical")
+    return {
+      axis,
+      angle: (formNumber(drive.angle.value) * Math.PI) / 180,
+      angleLimits: {
+        min: (formNumber(drive.angle.minimum) * Math.PI) / 180,
+        max: (formNumber(drive.angle.maximum) * Math.PI) / 180,
+      },
+      rotationDriven: drive.rotationDriven,
+      translation: formNumber(drive.translation.value),
+      translationLimits: {
+        min: formNumber(drive.translation.minimum),
+        max: formNumber(drive.translation.maximum),
+      },
+      translationDriven: drive.translationDriven,
+    }
+  const scale = units[kind].scale
+  return {
+    axis,
+    value: formNumber(drive.coordinate.value) * scale,
+    limits: {
+      min: formNumber(drive.coordinate.minimum) * scale,
+      max: formNumber(drive.coordinate.maximum) * scale,
+    },
+  }
 }
-function jointFrames(joint: AssemblyJoint | undefined) {
-  return joint ?? { parentFrame: identityAssemblyPose, childFrame: identityAssemblyPose }
+function jointChild(assembly: AssemblyAuthority, values: JointValues): AssemblyInstance {
+  if (values.creating) {
+    const definition = assembly.definitions.find(({ id }) => id === values.definitionId)
+    if (!definition) throw new Error("Select the child definition.")
+    return newAssemblyInstance(
+      definition,
+      values.name,
+      identityAssemblyPose,
+      undefined,
+      assembly.schemaVersion,
+    )
+  }
+  const child = assembly.instances.find(({ id }) => id === values.childId)
+  if (!child) throw new Error("Select the child occurrence.")
+  return child
 }
-function matchingJoint(joint: AssemblyJoint | undefined, kind: AssemblyJoint["kind"]) {
-  if (joint && joint.kind === kind) return joint
-  return undefined
+function jointBindingChanges(values: JointValues) {
+  const parentBinding = readAssemblyFrameBinding(values.parentBinding)
+  const childBinding = values.creating ? undefined : readAssemblyFrameBinding(values.childBinding)
+  return {
+    ...(parentBinding ? { parentBinding } : {}),
+    ...(childBinding ? { childBinding } : {}),
+  }
 }
+function jointDrivePolicy(values: JointValues, schemaVersion: AssemblyAuthority["schemaVersion"]) {
+  if (schemaVersion === 1) return {}
+  switch (values.kind) {
+    case "revolute":
+    case "prismatic":
+      return { driven: values.drive.driven }
+    default:
+      return {}
+  }
+}
+function jointIdentityFrames(values: JointValues, previous?: AssemblyJoint) {
+  if (!previous)
+    return {
+      id: browserAuthoredUuid(),
+      parentFrame: formPose(values.parent),
+      childFrame: formPose(values.child),
+    }
+  return {
+    id: previous.id,
+    parentFrame: formPose(values.parent, previous.parentFrame),
+    childFrame: formPose(values.child, previous.childFrame),
+  }
+}
+function jointChanges(
+  assembly: AssemblyAuthority,
+  values: JointValues,
+  previous?: AssemblyJoint,
+): readonly AssemblyMutation[] {
+  const child = jointChild(assembly, values)
+  const bindings = jointBindingChanges(values)
+  const joint = assemblyJointRecordSchema.parse({
+    schemaVersion: assembly.schemaVersion,
+    kind: values.kind,
+    parentInstanceId: values.parentId,
+    childInstanceId: child.id,
+    ...jointIdentityFrames(values, previous),
+    ...jointDrive(values),
+    ...jointDrivePolicy(values, assembly.schemaVersion),
+    ...bindings,
+  })
+  return previous
+    ? [{ kind: "joint.update", joint }]
+    : attachAssemblyChildChanges(child, joint, values.creating)
+}
+const JointDriveFields = withFieldGroup({
+  defaultValues: driveValues("fixed"),
+  props: { kind: "fixed" as AssemblyJoint["kind"], general: false },
+  render: function JointDriveFields({ group, kind, general }) {
+    const t = useTranslations("app.assembly")
+    if (kind === "fixed" || kind === "ball") return null
+    return (
+      <>
+        {general && kind !== "cylindrical" && (
+          <group.AppField name="driven">
+            {(field) => <field.CheckboxField label={t("lockDrive")} />}
+          </group.AppField>
+        )}
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 text-xs font-medium">{t("jointAxis")}</legend>
+          <div className="grid gap-2">
+            {(["X", "Y", "Z"] as const).map((axis) => (
+              <group.AppField
+                key={axis}
+                name={`axis.${axis}`}
+                validators={numberFieldValidators(t("invalidParameters"))}
+              >
+                {() => <AssemblyNumberField label={axis} />}
+              </group.AppField>
+            ))}
+          </div>
+        </fieldset>
+        {kind === "cylindrical"
+          ? cylindricalCoordinates.map((config) => (
+              <fieldset key={config.kind} className="grid gap-2">
+                <group.AppField name={config.driven}>
+                  {(field) => <field.CheckboxField label={t(config.lockLabel)} />}
+                </group.AppField>
+                {(["value", "minimum", "maximum"] as const).map((fieldName) => (
+                  <group.AppField
+                    key={fieldName}
+                    name={`${config.kind}.${fieldName}`}
+                    validators={numberFieldValidators(
+                      t("invalidParameters"),
+                      -config.bound,
+                      config.bound,
+                    )}
+                  >
+                    {() => (
+                      <AssemblyNumberField
+                        label={t(fieldName === "value" ? config.driveLabel : fieldName)}
+                        min={-config.bound}
+                        max={config.bound}
+                      />
+                    )}
+                  </group.AppField>
+                ))}
+              </fieldset>
+            ))
+          : (["value", "minimum", "maximum"] as const).map((fieldName) => (
+              <group.AppField
+                key={fieldName}
+                name={`coordinate.${fieldName}`}
+                validators={numberFieldValidators(
+                  t("invalidParameters"),
+                  -units[kind].bound,
+                  units[kind].bound,
+                )}
+              >
+                {() => (
+                  <AssemblyNumberField
+                    label={t(fieldName === "value" ? units[kind].label : fieldName)}
+                    description={fieldName === "value" ? t("driveLimitsExplanation") : undefined}
+                    min={-units[kind].bound}
+                    max={units[kind].bound}
+                  />
+                )}
+              </group.AppField>
+            ))}
+      </>
+    )
+  },
+})
 export function AssemblyJointForm({
   assembly,
   joint,
@@ -418,122 +344,172 @@ export function AssemblyJointForm({
   inspection?: AssemblyInspection | null | undefined
 }) {
   const t = useTranslations("app.assembly")
-  const [options, setOptions] = useState(() => initialOptions(assembly, joint, selectedId))
-  const frames = jointFrames(joint)
-  const [parentBinding, setParentBinding] = useState<AssemblyFrameBinding | undefined>(() =>
-    joint?.schemaVersion === 2 ? joint.parentBinding : undefined,
-  )
-  const [childBinding, setChildBinding] = useState<AssemblyFrameBinding | undefined>(() =>
-    joint?.schemaVersion === 2 ? joint.childBinding : undefined,
-  )
-  const update = (fields: Partial<JointOptions>) => {
-    if (fields.parentId !== undefined && fields.parentId !== options.parentId)
-      setParentBinding(undefined)
-    if (
-      (fields.childId !== undefined && fields.childId !== options.childId) ||
-      fields.creating === true
-    )
-      setChildBinding(undefined)
-    setOptions((previous) => ({ ...previous, ...fields }))
-  }
+  const form = useAssemblyForm({
+    defaultValues: jointFormValues(assembly, joint, selectedId, t("defaultChild")),
+    actions,
+    build: (values) => jointChanges(assembly, values, joint),
+  })
+  const instanceOptions = (exclude: string, children = false) =>
+    assembly.instances
+      .filter(
+        (instance) =>
+          instance.id !== exclude &&
+          (!children || assembly.schemaVersion === 2 || instance.grounded),
+      )
+      .map(({ id, name, definitionId }, index) => ({
+        value: id,
+        label: name,
+        description: t("choiceSource", {
+          number: index + 1,
+          source:
+            assembly.definitions.find((definition) => definition.id === definitionId)?.name ?? name,
+        }),
+        keywords: [id],
+      }))
   return (
-    <AssemblyTaskForm
-      actions={actions}
-      build={(data) =>
-        jointChanges(assembly, data, options, joint, {
-          ...(parentBinding ? { parent: parentBinding } : {}),
-          ...(childBinding ? { child: childBinding } : {}),
-        })
-      }
-    >
-      <SelectField
-        label={t("jointKind")}
-        value={options.kind}
-        onValueChange={(value) => {
-          if (
-            value === "fixed" ||
-            value === "revolute" ||
-            value === "prismatic" ||
-            value === "cylindrical" ||
-            value === "ball"
-          )
-            update({ kind: value })
-        }}
-      >
-        {(assembly.schemaVersion === 2
-          ? (["fixed", "revolute", "prismatic", "cylindrical", "ball"] as const)
-          : (["fixed", "revolute", "prismatic"] as const)
-        ).map((value) => (
-          <SelectOption key={value} value={value}>
-            {t(value)}
-          </SelectOption>
-        ))}
-      </SelectField>
-      <LocalizedSearchableSelectField
-        label={t("parentInstance")}
-        placeholder={t("parentInstance")}
-        value={options.parentId}
-        onValueChange={(parentId) => update({ parentId })}
-        required
-        options={assembly.instances
-          .filter(({ id }) => id !== options.childId)
-          .map(({ id, name, definitionId }, index) => ({
-            value: id,
-            label: name,
-            description: t("choiceSource", {
-              number: index + 1,
-              source:
-                assembly.definitions.find((definition) => definition.id === definitionId)?.name ??
-                name,
-            }),
-            keywords: [id],
-          }))}
-      />
-      <JointChildFields joint={joint} assembly={assembly} options={options} update={update} />
-      {assembly.schemaVersion === 2 && (
-        <AssemblyFrameBindingFields
-          prefix="parent"
-          assembly={assembly}
-          inspection={inspection}
-          instanceId={options.parentId}
-          binding={parentBinding}
-          onChange={setParentBinding}
-        />
-      )}
-      <AssemblyPoseFields prefix="parent" label={t("parentFrame")} pose={frames.parentFrame} />
-      {assembly.schemaVersion === 2 && !options.creating && (
-        <AssemblyFrameBindingFields
-          prefix="child"
-          assembly={assembly}
-          inspection={inspection}
-          instanceId={options.childId}
-          binding={childBinding}
-          onChange={setChildBinding}
-        />
-      )}
-      <AssemblyPoseFields prefix="child" label={t("childFrame")} pose={frames.childFrame} />
-      {assembly.schemaVersion === 2 &&
-        (options.kind === "revolute" || options.kind === "prismatic") && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              name="driven"
-              type="checkbox"
-              defaultChecked={
-                joint?.schemaVersion === 2 &&
-                (joint.kind === "revolute" || joint.kind === "prismatic")
-                  ? joint.driven
-                  : true
-              }
-              className="size-4 accent-primary"
+    <form.Subscribe selector={(state) => state.values}>
+      {(values) => (
+        <AssemblyTaskForm form={form} actions={actions}>
+          <form.AppField
+            name="kind"
+            listeners={{
+              onChange: ({ value }) => form.setFieldValue("drive", driveValues(value, joint)),
+            }}
+          >
+            {(field) => (
+              <field.SelectField label={t("jointKind")}>
+                {(assembly.schemaVersion === 2
+                  ? (["fixed", "revolute", "prismatic", "cylindrical", "ball"] as const)
+                  : (["fixed", "revolute", "prismatic"] as const)
+                ).map((kind) => (
+                  <SelectOption key={kind} value={kind}>
+                    {t(kind)}
+                  </SelectOption>
+                ))}
+              </field.SelectField>
+            )}
+          </form.AppField>
+          <form.AppField
+            name="parentId"
+            listeners={{
+              onChange: () => form.setFieldValue("parentBinding", frameBindingValues()),
+            }}
+          >
+            {(field) => (
+              <LocalizedSearchableSelectField
+                label={t("parentInstance")}
+                placeholder={t("parentInstance")}
+                value={field.state.value}
+                onValueChange={field.handleChange}
+                onBlur={field.handleBlur}
+                required
+                options={instanceOptions(values.childId)}
+              />
+            )}
+          </form.AppField>
+          {joint ? (
+            <p className="text-sm">
+              {t("jointChild", {
+                name: assembly.instances.find(({ id }) => id === joint.childInstanceId)?.name ?? "",
+              })}
+            </p>
+          ) : (
+            <>
+              <form.AppField
+                name="creating"
+                listeners={{
+                  onChange: ({ value }) => {
+                    if (value) form.setFieldValue("childBinding", frameBindingValues())
+                  },
+                }}
+              >
+                {(field) => <field.CheckboxField label={t("createChild")} />}
+              </form.AppField>
+              {values.creating ? (
+                <>
+                  <form.AppField name="definitionId">
+                    {(field) => (
+                      <LocalizedSearchableSelectField
+                        label={t("childDefinition")}
+                        placeholder={t("childDefinition")}
+                        value={field.state.value}
+                        onValueChange={field.handleChange}
+                        onBlur={field.handleBlur}
+                        required
+                        options={assembly.definitions.map(({ id, name, pinnedModels }, index) => ({
+                          value: id,
+                          label: name,
+                          description: t("choiceSource", {
+                            number: index + 1,
+                            source:
+                              [...new Set(pinnedModels.map(({ snapshot }) => snapshot.name))].join(
+                                ", ",
+                              ) || name,
+                          }),
+                          keywords: [id],
+                        }))}
+                      />
+                    )}
+                  </form.AppField>
+                  <AssemblyNameField form={form} fields={{ name: "name" }} />
+                </>
+              ) : (
+                <form.AppField
+                  name="childId"
+                  listeners={{
+                    onChange: () => form.setFieldValue("childBinding", frameBindingValues()),
+                  }}
+                >
+                  {(field) => (
+                    <LocalizedSearchableSelectField
+                      label={t(
+                        assembly.schemaVersion === 2 ? "existingOccurrence" : "childInstance",
+                      )}
+                      placeholder={t(
+                        assembly.schemaVersion === 2 ? "existingOccurrence" : "childInstance",
+                      )}
+                      value={field.state.value}
+                      onValueChange={field.handleChange}
+                      onBlur={field.handleBlur}
+                      required
+                      options={instanceOptions(values.parentId, true)}
+                    />
+                  )}
+                </form.AppField>
+              )}
+            </>
+          )}
+          {assembly.schemaVersion === 2 && (
+            <AssemblyFrameBindingFields
+              form={form}
+              fields="parentBinding"
+              prefix="parent"
+              assembly={assembly}
+              inspection={inspection}
+              instanceId={values.parentId}
             />
-            {t("lockDrive")}
-          </label>
-        )}
-      <JointDriveFields
-        key={options.kind}
-        kind={options.kind}
-        joint={matchingJoint(joint, options.kind)}
-      />
-    </AssemblyTaskForm>
+          )}
+          <AssemblyPoseFields form={form} fields="parent" label={t("parentFrame")} />
+          {assembly.schemaVersion === 2 && !values.creating && (
+            <AssemblyFrameBindingFields
+              form={form}
+              fields="childBinding"
+              prefix="child"
+              assembly={assembly}
+              inspection={inspection}
+              instanceId={values.childId}
+            />
+          )}
+          <AssemblyPoseFields form={form} fields="child" label={t("childFrame")} />
+          <JointDriveFields
+            key={values.kind}
+            form={form}
+            fields="drive"
+            kind={values.kind}
+            general={assembly.schemaVersion === 2}
+          />
+        </AssemblyTaskForm>
+      )}
+    </form.Subscribe>
   )
 }

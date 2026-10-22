@@ -715,7 +715,7 @@ export function createNativeChatController({
           if (recovery === owner && canRecover(owner.at)) failRecovery("request-failed")
         })
       },
-      Math.min(1000 * 2 ** recoveryAttempt, 8000),
+      Math.min(5000 * 2 ** recoveryAttempt, 60_000),
     )
   }
   function recoveryFeedback(

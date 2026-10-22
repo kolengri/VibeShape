@@ -266,6 +266,16 @@ export function useModelEdgeSelectOther(
     if (event.target === event.currentTarget || (event.target as HTMLElement).tagName === "CANVAS")
       event.currentTarget.focus({ preventScroll: true })
   }
+  const focusOnEnter = (event: PointerEvent<HTMLElement>) => {
+    const active = event.currentTarget.ownerDocument.activeElement
+    if (
+      active &&
+      active !== event.currentTarget.ownerDocument.body &&
+      !event.currentTarget.contains(active)
+    )
+      return
+    focus(event)
+  }
   return {
     activeIndex,
     candidates: candidateStack,
@@ -277,7 +287,7 @@ export function useModelEdgeSelectOther(
           className: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           onKeyDown,
           onPointerDown: focus,
-          onPointerEnter: focus,
+          onPointerEnter: focusOnEnter,
           onPointerLeave: () => close(false),
           tabIndex: 0,
         }

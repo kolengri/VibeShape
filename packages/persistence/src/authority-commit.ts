@@ -25,11 +25,13 @@ import {
   projectRecordV3Schema,
   projectRecordV4Schema,
   projectRecordV5Schema,
+  projectRecordV6Schema,
   recoveryAuthorityRecordSchema,
   recoveryRecordV2Schema,
   recoveryRecordV3Schema,
   recoveryRecordV4Schema,
   recoveryRecordV5Schema,
+  recoveryRecordV6Schema,
 } from "./authority-schemas"
 import type { VibeShapeDatabase } from "./database"
 import {
@@ -62,7 +64,12 @@ function nextHistoryBase(
   transaction?: true,
 ) {
   if (!transaction || !base) return base
-  if (base.schemaVersion === next.schemaVersion || next.schemaVersion === 5) return base
+  if (
+    base.schemaVersion === next.schemaVersion ||
+    next.schemaVersion === 5 ||
+    next.schemaVersion === 6
+  )
+    return base
   return next.schemaVersion === 1 ? null : next
 }
 
@@ -120,6 +127,7 @@ function nextProject(current: ProjectAuthorityRecord, input: AuthorityWrite) {
     3: projectRecordV3Schema,
     4: projectRecordV4Schema,
     5: projectRecordV5Schema,
+    6: projectRecordV6Schema,
   }[input.snapshot.schemaVersion]
   return schema.parse({
     ...current,
@@ -208,13 +216,15 @@ async function writeAuthorityRecords(database: VibeShapeDatabase, input: Authori
     await database.snapshotsV1.add(records.snapshot)
     await database.projectsV1.put(project)
     await database.recoveryV1.put(
-      (input.snapshot.schemaVersion === 5
-        ? recoveryRecordV5Schema
-        : input.snapshot.schemaVersion === 4
-          ? recoveryRecordV4Schema
-          : input.snapshot.schemaVersion === 3
-            ? recoveryRecordV3Schema
-            : recoveryRecordV2Schema
+      (input.snapshot.schemaVersion === 6
+        ? recoveryRecordV6Schema
+        : input.snapshot.schemaVersion === 5
+          ? recoveryRecordV5Schema
+          : input.snapshot.schemaVersion === 4
+            ? recoveryRecordV4Schema
+            : input.snapshot.schemaVersion === 3
+              ? recoveryRecordV3Schema
+              : recoveryRecordV2Schema
       ).parse({
         schemaVersion: input.snapshot.schemaVersion,
         documentId: input.snapshot.id,
@@ -332,6 +342,7 @@ type AdoptionBoundaries = {
   textureUpgradeRevision: number
   sourceUpgradeRevision: number
   repairUpgradeRevision: number
+  appearanceUpgradeRevision: number
 }
 function adoptionRevision(
   current: { schemaVersion: number } & Partial<AdoptionBoundaries>,
@@ -342,7 +353,12 @@ function adoptionRevision(
   const existing = current[key]
   if (existing !== undefined) return existing
   const captured = input.events.find((event) => event.type === type)?.revision
-  return captured ?? (input.snapshot.schemaVersion === 5 ? input.events[0]?.revision : undefined)
+  return (
+    captured ??
+    (input.snapshot.schemaVersion === 5 || input.snapshot.schemaVersion === 6
+      ? input.events[0]?.revision
+      : undefined)
+  )
 }
 function authorityUpgradeBoundaries(current: ProjectAuthorityRecord, input: AuthorityWrite) {
   const upgradeRevision = adoptionRevision(
@@ -373,5 +389,16 @@ function authorityUpgradeBoundaries(current: ProjectAuthorityRecord, input: Auth
     "repairUpgradeRevision",
     "org.vibeshape.history.removed-retaining-dependents",
   )
-  return { upgradeRevision, textureUpgradeRevision, sourceUpgradeRevision, repairUpgradeRevision }
+  const previous = {
+    upgradeRevision,
+    textureUpgradeRevision,
+    sourceUpgradeRevision,
+    repairUpgradeRevision,
+  }
+  if (input.snapshot.schemaVersion === 5) return previous
+  const appearanceUpgradeRevision =
+    current.schemaVersion === 6
+      ? current.appearanceUpgradeRevision
+      : input.events.find((event) => event.schemaVersion === 6)?.revision
+  return { ...previous, appearanceUpgradeRevision }
 }
