@@ -1,6 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
+  HideIcon,
   SectionPlaneXyIcon,
   SectionPlaneXzIcon,
   SectionPlaneYzIcon,
@@ -14,6 +15,7 @@ import type { ViewerMesh, ViewerSection } from "@vibeshape/viewer/three-viewport
 import { useId, useState } from "react"
 
 const sectionPlanes = [
+  { axis: null, plane: null, icon: HideIcon },
   { axis: "z", plane: "XY", icon: SectionPlaneXyIcon },
   { axis: "y", plane: "XZ", icon: SectionPlaneXzIcon },
   { axis: "x", plane: "YZ", icon: SectionPlaneYzIcon },
@@ -97,54 +99,50 @@ export function SectionViewControls({
         className="grid max-h-[var(--radix-popover-content-available-height)] w-64 gap-3 overflow-y-auto p-3 text-xs"
         aria-label={t("title")}
       >
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            className="accent-primary"
-            checked={section !== null}
-            onChange={(event) => {
-              if (!event.currentTarget.checked) {
-                onChange(null)
-                return
-              }
-              const center = modelMidpoint(meshes, axis)
-              setOffset(String(center))
-              onChange({ axis, offset: center, flipped })
-            }}
-          />
-          {t("enabled")}
-        </label>
         <fieldset className="grid gap-2">
-          <legend className="mb-2 font-medium">{t("axis")}</legend>
-          <div className="grid grid-cols-3 gap-2">
-            {sectionPlanes.map(({ axis: next, plane, icon: Icon }) => (
-              <label key={next} className="relative cursor-pointer">
-                <input
-                  type="radio"
-                  name={axisId}
-                  value={next}
-                  checked={axis === next}
-                  aria-label={t("planeLabel", { plane, axis: next.toUpperCase() })}
-                  className="peer absolute inset-0 z-10 m-0 size-full cursor-pointer opacity-0"
-                  onChange={() => {
-                    setAxis(next)
-                    const center = modelMidpoint(meshes, next)
-                    setOffset(String(center))
-                    if (section) onChange({ axis: next, offset: center, flipped })
-                  }}
-                />
-                <span
-                  className={cn(
-                    "flex flex-col items-center gap-1 rounded-md border border-input bg-background px-2 py-2",
-                    "peer-hover:bg-accent peer-checked:border-primary peer-checked:bg-accent peer-checked:ring-1 peer-checked:ring-primary",
-                    "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
-                  )}
-                >
-                  <Icon className="size-8" />
-                  <span className="font-medium">{plane}</span>
-                </span>
-              </label>
-            ))}
+          <legend className="sr-only">{t("axis")}</legend>
+          <div className="grid grid-cols-4 gap-2">
+            {sectionPlanes.map(({ axis: next, plane, icon: Icon }) => {
+              const label = next
+                ? t("planeLabel", { plane, axis: next.toUpperCase() })
+                : t("disabled")
+              return (
+                <label key={next ?? "off"} className="relative cursor-pointer">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <input
+                        type="radio"
+                        name={axisId}
+                        value={next ?? "off"}
+                        checked={(section?.axis ?? null) === next}
+                        aria-label={label}
+                        className="peer absolute inset-0 z-10 m-0 size-full cursor-pointer opacity-0"
+                        onChange={() => {
+                          if (next === null) {
+                            onChange(null)
+                            return
+                          }
+                          setAxis(next)
+                          const center = modelMidpoint(meshes, next)
+                          setOffset(String(center))
+                          onChange({ axis: next, offset: center, flipped })
+                        }}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>{label}</TooltipContent>
+                  </Tooltip>
+                  <span
+                    className={cn(
+                      "flex items-center justify-center rounded-md border border-input bg-background p-2",
+                      "peer-hover:bg-accent peer-checked:border-primary peer-checked:bg-accent peer-checked:ring-1 peer-checked:ring-primary",
+                      "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
+                    )}
+                  >
+                    <Icon aria-hidden="true" className="size-8" />
+                  </span>
+                </label>
+              )
+            })}
           </div>
         </fieldset>
         <TextField
@@ -174,8 +172,6 @@ export function SectionViewControls({
           />
           {t("flip")}
         </label>
-        <p className="text-muted-foreground">{t("dragHint")}</p>
-        <p className="text-muted-foreground">{t("description")}</p>
       </PopoverContent>
     </Popover>
   )
