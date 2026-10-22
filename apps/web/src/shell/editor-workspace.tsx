@@ -55,6 +55,7 @@ import {
 import { automationDraftViewportPreview } from "../automation/automation-draft-viewport"
 import { automationReviews } from "../automation/automation-review-controller"
 import { AutomationReviewPanel } from "../automation/automation-review-panel"
+import type { ResolvedEditorCommand } from "../commands/editor-command"
 import {
   commitAuthoredMetadata,
   type DocumentControllerState,
@@ -172,6 +173,7 @@ import { TaskPanel } from "./task-panel"
 import { useModelEdgeSelection } from "./use-model-edge-selection"
 import { useViewerPreferences } from "./viewer-preferences"
 import { SAFE_VIEWPORT_CENTER } from "./viewport-chrome-styles"
+import { ViewportContextMenu } from "./viewport-context-menu"
 import type { EditorWorkspaceName } from "./workspace"
 import { WorkspacePanels } from "./workspace-panels"
 import { WorkspaceTaskPanel } from "./workspace-task-context"
@@ -198,6 +200,8 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-mirror",
   "create-shell",
   "edit-shell",
+  "create-press-pull",
+  "edit-press-pull",
   "create-split",
   "edit-split",
   "create-pattern",
@@ -1846,6 +1850,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
 }
 
 export type EditorWorkspaceActions = Readonly<{
+  clearSelection?: () => void
   insertHistoryAt?: (item: HistoryItemRef, side: "above" | "below") => Promise<boolean>
   returnHistoryToEnd?: () => Promise<boolean>
   acknowledgeExtrusionDistance: (featureId: FeatureId) => void
@@ -1924,6 +1929,7 @@ export type EditorWorkspaceActions = Readonly<{
 }>
 
 type EditorWorkspaceProps = Readonly<{
+  commands?: readonly ResolvedEditorCommand[]
   selectedModelEdges?: ModelEdgeSelection | null | undefined
   modelEdgeSelectionEnabled?: boolean | undefined
   onModelEdgeToggle?: ((selection: ModelEdgeSelection) => void) | undefined
@@ -2184,7 +2190,11 @@ function EditorModelTree({
 }: {
   props: EditorWorkspaceProps
   surface: "browser" | "timeline"
-  revealRequest: Readonly<{ featureId: FeatureId; sequence: number }> | null
+  revealRequest: Readonly<{
+    featureId: FeatureId
+    sequence: number
+    destination?: "browser" | "timeline"
+  }> | null
   onRevealFeature: (featureId: FeatureId) => void
   profilePreview: SketchProfileSelector | null
   onProfilePreview: ((profile: SketchProfileSelector | null) => void) | undefined
@@ -2214,7 +2224,7 @@ function EditorModelTree({
       highlightedFeatureId={props.preselectedBody?.featureId ?? props.preselectedFeatureId}
       {...workspaceToolTreeHighlights(props)}
       selectedResultFeatureId={props.selectedBody?.featureId ?? props.selection?.featureId ?? null}
-      revealRequest={revealRequest}
+      revealRequest={revealForSurface(revealRequest, surface)}
       onRevealFeature={onRevealFeature}
       onHistoryReturnToEnd={actions.returnHistoryToEnd}
       onSourceProfilePreview={onProfilePreview}
@@ -2806,7 +2816,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
   ])
   return (
     <SurfaceTexturePreviewProvider active={props.activeTool?.kind === "surface-texture"}>
-      <EditorWorkspaceContent {...props} />
+      <EditorWorkspaceContent {...props} commands={props.commands ?? []} />
     </SurfaceTexturePreviewProvider>
   )
 }
@@ -2951,13 +2961,34 @@ function useWorkspaceManipulatorBindings(props: EditorWorkspaceProps) {
   }
 }
 
-function EditorWorkspaceContent(fullProps: EditorWorkspaceProps) {
+function viewportContextMenuEnabled(
+  props: EditorWorkspaceProps,
+  review: ReturnType<typeof automationReviews.getSnapshot>,
+) {
+  return idleModelWorkspace(props) && !review && !props.controller.assistantCheckpointPresentation
+}
+
+function revealForSurface<T extends { destination?: "browser" | "timeline" }>(
+  request: T | null,
+  surface: "browser" | "timeline",
+) {
+  return request && (request.destination ?? "browser") === surface ? request : null
+}
+
+function EditorWorkspaceContent(
+  fullProps: EditorWorkspaceProps & { commands: readonly ResolvedEditorCommand[] },
+) {
   const [revealRequest, setRevealRequest] = useState<Readonly<{
     featureId: FeatureId
     sequence: number
+    destination?: "browser" | "timeline"
   }> | null>(null)
-  const revealFeature = (featureId: FeatureId) =>
-    setRevealRequest((previous) => ({ featureId, sequence: (previous?.sequence ?? 0) + 1 }))
+  const revealFeature = (featureId: FeatureId, destination: "browser" | "timeline" = "browser") =>
+    setRevealRequest((previous) => ({
+      featureId,
+      destination,
+      sequence: (previous?.sequence ?? 0) + 1,
+    }))
   const props = useHistoryInsertionWorkspaceProps(fullProps)
   const review = useSyncExternalStore(
     automationReviews.subscribe,
@@ -2984,88 +3015,100 @@ function EditorWorkspaceContent(fullProps: EditorWorkspaceProps) {
   } = useWorkspaceFeatureSelection(props)
   return (
     <SketchProjectionProvider>
-      <ReferencePickProvider
+      <ViewportContextMenu
         controller={props.controller}
-        activityKey={
-          !review && props.activeTool && !props.activeSketchTool
-            ? taskPanelActivityKey(props, review)
-            : null
-        }
-        editingFeatureId={props.activeTool ? (activeFeatureId(props.activeTool) ?? null) : null}
+        commands={fullProps.commands}
+        actions={props.actions}
+        enabled={viewportContextMenuEnabled(props, review)}
+        selectedBody={props.selectedBody}
+        selection={props.selection}
+        partVisibility={props.partVisibility}
         hiddenFeatureIds={props.hiddenFeatureIds}
-        partVisibilityOverrides={props.partVisibility?.overrides}
+        onReveal={revealFeature}
       >
-        <WorkspacePanels
-          taskPanelActive={taskPanelActivityKey(props, review) !== null}
-          revealTreeRequest={revealRequest?.sequence}
-          allowTransparency={props.workspace !== "variables"}
-          modelTree={
-            <EditorModelTree
-              surface="browser"
-              revealRequest={revealRequest}
-              onRevealFeature={revealFeature}
-              props={fullProps}
-              profilePreview={historySourcePreview.profile}
-              onProfilePreview={historySourcePreview.onPreview}
-            />
+        <ReferencePickProvider
+          controller={props.controller}
+          activityKey={
+            !review && props.activeTool && !props.activeSketchTool
+              ? taskPanelActivityKey(props, review)
+              : null
           }
-          history={
-            <EditorModelTree
-              surface="timeline"
-              revealRequest={revealRequest}
-              onRevealFeature={revealFeature}
-              props={fullProps}
-              profilePreview={historySourcePreview.profile}
-              onProfilePreview={historySourcePreview.onPreview}
-            />
-          }
-          taskPanel={
-            <WorkspaceTaskPanel
-              activeTaskKey={taskPanelActivityKey(props, review)}
-              autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}
-              collapseLabel={taskPanelT("collapsePanel")}
-              expandLabel={taskPanelT("expandPanel")}
-            >
-              <EditorTaskPanel
-                preview={preview}
-                holePicking={holePicking}
-                edgeTreatmentPicking={edgeTreatmentPicking}
-                shellPicking={shellPicking}
-                featureProfileSelections={featureProfileSelection.value}
-                onFeatureProfileRemove={removeFeatureProfile}
-                onFeatureProfilesClear={clearFeatureProfiles}
-                onPlacementManipulatorChange={placementBinding.onChange}
-                onSplitManipulatorChange={splitBinding.onChange}
-                onRevolveAxisChange={revolveAxisSelection.setValue}
-                onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
-                props={props}
-                revolveAxisCandidates={revolveAxisCandidates}
-                revolveAxisSelection={revolveAxisSelection.value}
-                revolveSelectionPurpose={revolveSelectionPurpose.value}
-                review={review}
-              />
-            </WorkspaceTaskPanel>
-          }
+          editingFeatureId={props.activeTool ? (activeFeatureId(props.activeTool) ?? null) : null}
+          hiddenFeatureIds={props.hiddenFeatureIds}
+          partVisibilityOverrides={props.partVisibility?.overrides}
         >
-          <EditorContent
-            historyProfilePreview={historySourcePreview.profile}
-            featureSelectionContext={viewportContext}
-            edgeSelection={edgeSelection}
-            featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
-            featureProfileSelections={featureProfileSelection.value}
-            featurePreview={featurePreview}
-            manipulatorFeature={manipulatorFeature}
-            placementManipulator={placement}
-            splitManipulator={split}
-            onFeatureProfileChange={selectFeatureProfile}
-            onRevolveAxisChange={revolveAxisSelection.setValue}
-            props={props}
-            revolveAxisCandidates={revolveAxisCandidates}
-            revolveAxisSelection={revolveAxisSelection.value}
-            revolveSelectionPurpose={revolveSelectionPurpose.value}
-          />
-        </WorkspacePanels>
-      </ReferencePickProvider>
+          <WorkspacePanels
+            taskPanelActive={taskPanelActivityKey(props, review) !== null}
+            revealTreeRequest={revealForSurface(revealRequest, "browser")?.sequence}
+            allowTransparency={props.workspace !== "variables"}
+            modelTree={
+              <EditorModelTree
+                surface="browser"
+                revealRequest={revealRequest}
+                onRevealFeature={revealFeature}
+                props={fullProps}
+                profilePreview={historySourcePreview.profile}
+                onProfilePreview={historySourcePreview.onPreview}
+              />
+            }
+            history={
+              <EditorModelTree
+                surface="timeline"
+                revealRequest={revealRequest}
+                onRevealFeature={revealFeature}
+                props={fullProps}
+                profilePreview={historySourcePreview.profile}
+                onProfilePreview={historySourcePreview.onPreview}
+              />
+            }
+            taskPanel={
+              <WorkspaceTaskPanel
+                activeTaskKey={taskPanelActivityKey(props, review)}
+                autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}
+                collapseLabel={taskPanelT("collapsePanel")}
+                expandLabel={taskPanelT("expandPanel")}
+              >
+                <EditorTaskPanel
+                  preview={preview}
+                  holePicking={holePicking}
+                  edgeTreatmentPicking={edgeTreatmentPicking}
+                  shellPicking={shellPicking}
+                  featureProfileSelections={featureProfileSelection.value}
+                  onFeatureProfileRemove={removeFeatureProfile}
+                  onFeatureProfilesClear={clearFeatureProfiles}
+                  onPlacementManipulatorChange={placementBinding.onChange}
+                  onSplitManipulatorChange={splitBinding.onChange}
+                  onRevolveAxisChange={revolveAxisSelection.setValue}
+                  onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
+                  props={props}
+                  revolveAxisCandidates={revolveAxisCandidates}
+                  revolveAxisSelection={revolveAxisSelection.value}
+                  revolveSelectionPurpose={revolveSelectionPurpose.value}
+                  review={review}
+                />
+              </WorkspaceTaskPanel>
+            }
+          >
+            <EditorContent
+              historyProfilePreview={historySourcePreview.profile}
+              featureSelectionContext={viewportContext}
+              edgeSelection={edgeSelection}
+              featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
+              featureProfileSelections={featureProfileSelection.value}
+              featurePreview={featurePreview}
+              manipulatorFeature={manipulatorFeature}
+              placementManipulator={placement}
+              splitManipulator={split}
+              onFeatureProfileChange={selectFeatureProfile}
+              onRevolveAxisChange={revolveAxisSelection.setValue}
+              props={props}
+              revolveAxisCandidates={revolveAxisCandidates}
+              revolveAxisSelection={revolveAxisSelection.value}
+              revolveSelectionPurpose={revolveSelectionPurpose.value}
+            />
+          </WorkspacePanels>
+        </ReferencePickProvider>
+      </ViewportContextMenu>
       <VariablesDialog
         controller={props.controller}
         open={props.workspace === "variables"}

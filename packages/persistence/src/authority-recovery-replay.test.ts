@@ -12,6 +12,7 @@ import {
 } from "@vibeshape/domain"
 import { sourceAssetsFixture } from "../../../scripts/source-assets-fixture"
 import { surfaceTextureProjectFixture } from "../../../tests/fixtures/surface-texture-project"
+import { partAppearanceJournalFixture } from "../../domain/src/part-appearance.test-fixture"
 import { storeAuthorityEvent, storeAuthoritySnapshot } from "./authority-records"
 import { loadAuthorityRestoreTarget, recoverAuthoritySnapshot } from "./authority-recovery"
 import {
@@ -209,8 +210,28 @@ async function databaseFixture(journal: ReturnType<typeof nestedJournal>, withSe
     ...(journal.head.schemaVersion >= 2 ? { upgradeRevision: 2 } : {}),
     ...(journal.head.schemaVersion >= 3 ? { textureUpgradeRevision: 3 } : {}),
     ...(journal.head.schemaVersion >= 4 ? { sourceUpgradeRevision: 4 } : {}),
+    ...additionalAdoptions(journal),
   })
   return { database, events, snapshots, reads, blobs, project }
+}
+
+function additionalAdoptions(journal: ReturnType<typeof nestedJournal>) {
+  return {
+    ...(journal.head.schemaVersion >= 5
+      ? {
+          repairUpgradeRevision:
+            journal.events.find((event) => event.schemaVersion >= 5)?.revision ??
+            journal.head.revision,
+        }
+      : {}),
+    ...(journal.head.schemaVersion >= 6
+      ? {
+          appearanceUpgradeRevision:
+            journal.events.find((event) => event.schemaVersion === 6)?.revision ??
+            journal.head.revision,
+        }
+      : {}),
+  }
 }
 
 it.each([false, true])(
@@ -442,4 +463,39 @@ it("bridges a corrupt older journal segment with a later verified checkpoint wit
     snapshot: journal.head,
     corruptRecords: [],
   })
+})
+
+it("replays saved appearance from an older checkpoint and refuses fallback before its committed adoption", async () => {
+  const source = partAppearanceJournalFixture()
+  const f = await databaseFixture(
+    {
+      events: source.payload.versionedEvents,
+      head: source.changed.snapshot,
+      seed: null,
+      recoverySeed: source.previous.removed.snapshot,
+    },
+    true,
+  )
+  const project = projectAuthorityRecordSchema.parse({
+    ...f.project,
+    upgradeRevision: source.payload.upgradeRevision,
+    textureUpgradeRevision: source.payload.textureUpgradeRevision,
+    sourceUpgradeRevision: source.payload.sourceUpgradeRevision,
+    repairUpgradeRevision: source.payload.repairUpgradeRevision,
+    appearanceUpgradeRevision: source.payload.appearanceUpgradeRevision,
+  })
+  expect((await recoverAuthoritySnapshot(f.database, project)).snapshot).toEqual(
+    source.changed.snapshot,
+  )
+  expect(
+    await loadAuthorityRestoreTarget(
+      f.database,
+      source.changed.snapshot.id,
+      source.previous.removed.snapshot.revision,
+    ),
+  ).toEqual(source.previous.removed.snapshot)
+  f.events.delete(source.changed.snapshot.revision)
+  await expect(recoverAuthoritySnapshot(f.database, project)).rejects.toThrow(
+    "authority version boundary",
+  )
 })

@@ -206,7 +206,10 @@ function canClearCommittedOverride(
   return latest.revision === base.revision + 1 && latest.visible === requestedVisible
 }
 
-function usePartVisibility(part: ResolvedAuthoredPart["part"], props: Omit<PartsProps, "parts">) {
+export function usePartVisibility(
+  part: ResolvedAuthoredPart["part"],
+  props: Pick<PartsProps, "revision" | "visibility" | "presentationOnlyVisibility" | "onCommit">,
+) {
   const t = useTranslations("app.authoredTree")
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)

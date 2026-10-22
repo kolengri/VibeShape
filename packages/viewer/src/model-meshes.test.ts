@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { appearanceColorSchema, appearancePresets } from "@vibeshape/domain/part-appearance"
 import {
   BufferAttribute,
   LineBasicMaterial,
@@ -11,6 +12,7 @@ import { vi } from "../../../tests/unit/support/bun-test"
 import { edgePreparationFixture } from "../tests/edge-preparation-fixture"
 import { ModelMeshPresentation } from "./model-meshes"
 import type { ViewerMesh } from "./three-viewport"
+import { viewerBodyColor } from "./viewer-appearance"
 
 const mesh: ViewerMesh = {
   featureId: "box",
@@ -296,4 +298,64 @@ describe("current model mesh resource ownership", () => {
     expect(restored?.surface.geometry).toBe(geometry)
     dispose()
   })
+})
+
+it("updates authored material and custom color in place, including opacity, reset and exact output-role identity", () => {
+  const f = fixture()
+  try {
+    const source = { ...mesh, featureId: "pattern", outputRole: "copy:1", textureSource: mesh }
+    const sibling = { ...mesh, featureId: "pattern", outputRole: "copy:2" }
+    const [first, second] = f.presentation.setMeshes([source, sibling])
+    if (!first || !second || !(first.surface.material instanceof MeshStandardMaterial))
+      throw new Error("Missing model material")
+    const geometry = first.surface.geometry
+    const edges = first.edges.geometry
+    const material = first.surface.material
+    const disposed = vi.spyOn(material, "dispose")
+    const geometryDisposed = vi.spyOn(geometry, "dispose")
+    const prepared = f.preparation.worker.requests.length
+    const changed = {
+      ...source,
+      material: appearancePresets["polycarbonate-clear"],
+      color: appearanceColorSchema.parse("#4499cc"),
+    }
+    const [colored, unchanged] = f.presentation.setMeshes([changed, sibling])
+    expect(colored?.surface.geometry).toBe(geometry)
+    expect(colored?.edges.geometry).toBe(edges)
+    expect(colored?.surface.material).toBe(material)
+    expect(colored?.textureSource?.surface.material).toBe(material)
+    expect(unchanged?.surface.material).toBe(second.surface.material)
+    expect(material.color.getHexString()).toBe("4499cc")
+    expect(material.roughness).toBe(0.12)
+    expect(material.metalness).toBe(0)
+    expect(material.opacity).toBe(0.28)
+    expect(material.transparent).toBe(true)
+    expect(material.depthWrite).toBe(false)
+    f.presentation.setMeshes([
+      { ...changed, color: appearanceColorSchema.parse("#ff2200") },
+      sibling,
+    ])
+    expect(material.color.getHexString()).toBe("ff2200")
+    expect(material.roughness).toBe(0.12)
+    expect(material.opacity).toBe(0.28)
+    f.presentation.setMeshes([{ ...source, material: appearancePresets.chrome }, sibling])
+    expect(material.color.getHexString()).toBe("e0e5eb")
+    expect(material.metalness).toBe(0.98)
+    expect(material.roughness).toBe(0.08)
+    expect(material.transparent).toBe(false)
+    expect(material.depthWrite).toBe(true)
+    f.presentation.setMeshes([source, sibling])
+    expect(material.color.getHexString()).toBe(viewerBodyColor(source.featureId).slice(1))
+    expect(material.roughness).toBe(0.72)
+    expect(material.metalness).toBe(0.04)
+    expect(material.opacity).toBe(1)
+    expect(f.preparation.worker.requests.length).toBe(prepared)
+    expect(geometryDisposed).not.toHaveBeenCalled()
+    expect(disposed).not.toHaveBeenCalled()
+    f.presentation.setMeshes([])
+    expect(disposed).toHaveBeenCalledTimes(1)
+    expect(geometryDisposed).toHaveBeenCalledTimes(1)
+  } finally {
+    f.dispose()
+  }
 })

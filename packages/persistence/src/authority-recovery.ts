@@ -280,7 +280,11 @@ class AuthorityReplayContext {
 
   async #verifyAssets(snapshot: DocumentAuthoritySnapshot, source: number) {
     if (this.#checkedAssets.has(source)) return
-    if (snapshot.schemaVersion === 4 || snapshot.schemaVersion === 5) {
+    if (
+      snapshot.schemaVersion === 4 ||
+      snapshot.schemaVersion === 5 ||
+      snapshot.schemaVersion === 6
+    ) {
       await requireSourceAssetBytes(this.database, snapshot.assets)
       this.#checkedAssets.add(source)
     }
@@ -451,13 +455,21 @@ export async function recoverAuthoritySnapshot(
       "corrupt-history",
       "No valid V3 revision remains at its source upgrade boundary.",
     )
-  if (project.schemaVersion === 5 && snapshot.revision < project.repairUpgradeRevision)
+  if (
+    (project.schemaVersion === 5 || project.schemaVersion === 6) &&
+    snapshot.revision < project.repairUpgradeRevision
+  )
     throw persistenceInvariantError(
       "corrupt-history",
       "Recovery cannot cross committed repair authority.",
     )
-  if (snapshot.schemaVersion === 4 || snapshot.schemaVersion === 5)
+  if (snapshot.schemaVersion === 4 || snapshot.schemaVersion === 5 || snapshot.schemaVersion === 6)
     await requireSourceAssetBytes(database, snapshot.assets)
+  if (project.schemaVersion === 6 && snapshot.revision < project.appearanceUpgradeRevision)
+    throw persistenceInvariantError(
+      "corrupt-history",
+      "Recovery cannot cross committed appearance authority.",
+    )
   return { snapshot, corruptRecords }
 }
 

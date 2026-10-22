@@ -57,10 +57,12 @@ import {
   type PatternFeatureContentParameters,
   type PatternFeatureContentParametersV2,
   type PlacementFeatureContentParameters,
+  type PressPullFeatureContentParameters,
   patternContentOutputRoles,
   patternFeatureContentParametersSchema,
   patternFeatureContentParametersV2Schema,
   placementFeatureContentParametersSchema,
+  pressPullFeatureContentParametersSchema,
   pyramidFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
@@ -170,6 +172,7 @@ import { mirrorOcctShape } from "./occt-mirror"
 import { patternOcctShape } from "./occt-pattern"
 import { placeOcctShape } from "./occt-placement"
 import { splitOcctShape } from "./occt-plane-split"
+import { pressPullOcctShape } from "./occt-press-pull"
 import { splitOcctShapeByReferencePlane } from "./occt-reference-plane"
 import {
   createOcctBox,
@@ -1291,6 +1294,10 @@ type ParsedFeature =
   | { kind: "hole"; parameters: HoleContentParameters }
   | { kind: "placement"; parameters: PlacementFeatureContentParameters }
   | {
+      kind: "press-pull"
+      parameters: PressPullFeatureContentParameters
+    }
+  | {
       kind: "shell"
       parameters: ShellFeatureContentParameters
       openingResolution: "exact" | "durable"
@@ -2376,6 +2383,30 @@ function parseSplitFeature(input: FeatureEvaluationInput): FeatureParseResult {
     : featureFailure("invalid-feature-parameters", "Split content parameters are invalid.")
 }
 
+function parsePressPullFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  if (!hasExactSingleBodyInput(input))
+    return invalidInputCardinality("Press Pull requires one exact named body dependency.")
+  const parameters = pressPullFeatureContentParametersSchema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success)
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Press Pull requires a planar face and a nonzero bounded distance.",
+    )
+  if (parameters.data.sourceContentHash !== input.dependencies[0]?.contentHash)
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Press Pull source changed. Reselect the face on the current body.",
+    )
+  if (parameters.data.face.outputRole !== input.content.feature.inputRoles[0])
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Press Pull face must belong to the exact input body role.",
+    )
+  return { ok: true, feature: { kind: "press-pull", parameters: parameters.data } }
+}
+
 function parseShellFeature(input: FeatureEvaluationInput, version = 1): FeatureParseResult {
   const feature = input.content.feature
   if (!hasExactSingleBodyInput(input))
@@ -2446,6 +2477,10 @@ function parseFdmFeature(input: FeatureEvaluationInput): FeatureParseResult {
 }
 
 const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
+  [
+    "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.press-pull#1",
+    parsePressPullFeature,
+  ],
   ["org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.fdm#1", parseFdmFeature],
   [COMPOUND_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "compound")],
   [UNION_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "union")],
@@ -3027,6 +3062,7 @@ function createFeatureShape(
         | "selected-chamfer"
         | "placement"
         | "mirror"
+        | "press-pull"
         | "shell"
         | "thread"
         | "imported"
@@ -3930,6 +3966,7 @@ function evaluateFeatureGeometry(
     [
       "placement",
       "mirror",
+      "press-pull",
       "shell",
       "thread",
       "imported",
@@ -4685,6 +4722,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       return this.#createConstrainedLoft(opencascade, feature.parameters, dependencies, input)
     if (feature.kind === "advanced-chamfer")
       return this.#createChamferV3(opencascade, feature.parameters, dependencies[0], input)
+    if (feature.kind === "press-pull")
+      return this.#createPressPullFeature(opencascade, feature, dependencies[0], input)
     return this.#createUncachedStandardFeature(opencascade, feature, dependencies, input)
   }
 
@@ -4700,6 +4739,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           | "imported"
           | "constrained-loft"
           | "advanced-chamfer"
+          | "press-pull"
       }
     >,
     dependencies: readonly Shape3D[],
@@ -4829,6 +4869,32 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       )
     } finally {
       for (const face of supports.reverse()) face.delete()
+    }
+  }
+
+  #createPressPullFeature(
+    occt: OpenCascadeInstance,
+    feature: Extract<ParsedFeature, { kind: "press-pull" }>,
+    target: Shape3D | undefined,
+    input: FeatureEvaluationInput,
+  ) {
+    const snapshot = target ? this.#topologySnapshots.get(target) : undefined
+    const dependency = input.dependencies[0]
+    const resolve = this.resolveShellOpenings
+    if (!target || !snapshot || !dependency?.outputRole || !resolve)
+      throw new Error("Exact Press Pull body-face topology is unavailable.")
+    const face = takeResolvedBodyFace(
+      target,
+      snapshot,
+      feature.parameters.face,
+      { featureId: dependency.featureId, outputRole: dependency.outputRole },
+      (references, candidates, scope) =>
+        resolve(references, candidates, scope, "exact", { allowSemanticRebinding: false }),
+    )
+    try {
+      return pressPullOcctShape(occt, target, face, feature.parameters.distance)
+    } finally {
+      face.delete()
     }
   }
 

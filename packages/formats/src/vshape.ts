@@ -41,6 +41,11 @@ import {
   documentSnapshotV5Schema,
   validateRepairAuthorityBoundaries,
 } from "@vibeshape/domain/document-v5"
+import {
+  type DocumentSnapshotV6,
+  documentSnapshotV6Schema,
+  validateAppearanceAuthorityBoundary,
+} from "@vibeshape/domain/document-v6"
 import { documentIdSchema, timestampSchema } from "@vibeshape/domain/identifiers"
 import { strFromU8, strToU8, type Zippable, zipSync } from "fflate"
 import { z } from "zod"
@@ -1581,6 +1586,7 @@ export type AuthoredVShapeProject =
   | Readonly<{ version: 4; project: VShapeProjectV4 }>
   | Readonly<{ version: 5; project: VShapeProjectV5 }>
   | Readonly<{ version: 6; project: VShapeProjectV6 }>
+  | Readonly<{ version: 7; project: VShapeProjectV7 }>
 export async function readAuthoredVShape(
   bytes: unknown,
 ): Promise<VShapeResult<AuthoredVShapeProject>> {
@@ -1588,10 +1594,12 @@ export async function readAuthoredVShape(
     const files = await readSafeZip(bytes, VSHAPE_V5_LIMITS)
     const header = parseManifestHeader(files)
     requireVShape(
-      header.minimumReaderVersion <= 6,
+      header.minimumReaderVersion <= 7,
       "unsupported-version",
       "This project requires a newer VibeShape reader.",
     )
+    if (header.formatVersion === 7)
+      return { ok: true, value: { version: 7, project: await decodeVShapeV7(files) } }
     if (header.formatVersion === 6)
       return { ok: true, value: { version: 6, project: await decodeVShapeV6(files) } }
     if (header.formatVersion === 5)
@@ -1744,7 +1752,7 @@ function requireV5Upgrades({ manifest, seed, versionedEvents }: VShapeProjectV5)
 
 async function requireV5AssetClosure(
   project: Pick<
-    VShapeProjectV5 | VShapeProjectV6,
+    VShapeProjectV5 | VShapeProjectV6 | VShapeProjectV7,
     "seed" | "snapshot" | "versionedEvents" | "assetBlobs" | "manifest"
   >,
 ) {
@@ -1938,7 +1946,7 @@ const writeVShapeV6InputSchema = z
     repairUpgradeRevision: z.number().int().positive().safe(),
   })
   .strict()
-function requireV6History(project: VShapeProjectV6) {
+function requireV6History(project: RepairPortableProject) {
   const { snapshot, manifest } = project
   const events = [...project.legacyEvents, ...project.versionedEvents]
   requireVShape(
@@ -1960,21 +1968,38 @@ function requireV6History(project: VShapeProjectV6) {
     "history-mismatch",
     "The V6 adoption boundaries do not match its journal.",
   )
+  if (snapshot.schemaVersion === 6) {
+    requireVShape(
+      "appearanceUpgradeRevision" in manifest,
+      "history-mismatch",
+      "Appearance authority requires its adoption boundary.",
+    )
+    requireVShape(
+      validateAppearanceAuthorityBoundary({ ...project, ...manifest }) === null,
+      "history-mismatch",
+      "The appearance adoption boundary does not match its journal.",
+    )
+  }
   const replayed = replayDocumentAuthorityEvents(project.seed, project.versionedEvents)
   requireVShape(
     replayed.ok && canonicalJson(replayed.snapshot) === canonicalJson(snapshot),
     "history-mismatch",
-    "The V6 journal does not reproduce its repair authority.",
+    "The journal does not reproduce its authored authority.",
   )
 }
-export async function writeVShapeV6(inputValue: unknown): Promise<VShapeResult<Uint8Array>> {
-  const input = writeVShapeV6InputSchema.safeParse(inputValue)
+async function writeRepairProject(
+  inputValue: unknown,
+  version: 6 | 7,
+): Promise<VShapeResult<Uint8Array>> {
+  const input = (version === 7 ? writeVShapeV7InputSchema : writeVShapeV6InputSchema).safeParse(
+    inputValue,
+  )
   if (!input.success)
     return {
       ok: false,
       diagnostic: {
         code: "invalid-document",
-        message: "The V6 portable project input is invalid.",
+        message: "The authored portable project input is invalid.",
       },
     }
   try {
@@ -1984,11 +2009,14 @@ export async function writeVShapeV6(inputValue: unknown): Promise<VShapeResult<U
     }))
     const bytes = encodeV2SemanticProject(input.data)
     const previous = await createManifestV2(input.data, bytes)
-    const manifest = vShapeManifestV6Schema.parse({
+    const manifest = (version === 7 ? vShapeManifestV7Schema : vShapeManifestV6Schema).parse({
       ...previous,
-      schemaVersion: 6,
-      formatVersion: 6,
-      minimumReaderVersion: 6,
+      schemaVersion: version,
+      formatVersion: version,
+      minimumReaderVersion: version,
+      ...("appearanceUpgradeRevision" in input.data
+        ? { appearanceUpgradeRevision: input.data.appearanceUpgradeRevision }
+        : {}),
       upgradeRevision: input.data.upgradeRevision,
       textureUpgradeRevision: input.data.textureUpgradeRevision,
       sourceUpgradeRevision: input.data.sourceUpgradeRevision,
@@ -2021,22 +2049,26 @@ export async function writeVShapeV6(inputValue: unknown): Promise<VShapeResult<U
     return { ok: false, diagnostic: vShapeDiagnostic(error) }
   }
 }
-async function decodeVShapeV6(files: UnzippedProjectFiles): Promise<VShapeProjectV6> {
-  const manifest = vShapeManifestV6Schema.safeParse(parseManifestInput(files))
-  requireVShape(manifest.success, "invalid-manifest", "The V6 manifest is invalid.")
+export async function writeVShapeV6(inputValue: unknown): Promise<VShapeResult<Uint8Array>> {
+  return writeRepairProject(inputValue, 6)
+}
+export async function writeVShapeV7(inputValue: unknown): Promise<VShapeResult<Uint8Array>> {
+  return writeRepairProject(inputValue, 7)
+}
+function decodeRepairEntries(
+  files: UnzippedProjectFiles,
+  manifest: VShapeProjectV6["manifest"] | VShapeProjectV7["manifest"],
+) {
   const paths = [
     ...V2_REQUIRED_PATHS,
-    ...manifest.data.assetEntries.map((entry) => assetPath(entry.digest)),
+    ...manifest.assetEntries.map((entry) => assetPath(entry.digest)),
   ]
   requireVShape(
     Object.keys(files).length === paths.length && paths.every((path) => Object.hasOwn(files, path)),
     "undeclared-entry",
     "The V6 archive must contain exactly its declared entries.",
   )
-  await requireV2SemanticIntegrity(manifest.data, files)
-  const project = {
-    manifest: manifest.data,
-    snapshot: parseJsonFile(files, DOCUMENT_PATH, documentSnapshotV5Schema, "invalid-document"),
+  return {
     seed: parseJsonFile(
       files,
       V2_SEED_PATH,
@@ -2045,9 +2077,34 @@ async function decodeVShapeV6(files: UnzippedProjectFiles): Promise<VShapeProjec
     ),
     legacyEvents: parseNdjson(files, V2_LEGACY_PATH, documentEventSchema),
     versionedEvents: parseNdjson(files, V2_SUFFIX_PATH, documentAuthorityEventSchema),
-    assetBlobs: manifest.data.assetEntries.map((entry) =>
+    assetBlobs: manifest.assetEntries.map((entry) =>
       sourceAssetBlobSchema.parse({ digest: entry.digest, bytes: files[assetPath(entry.digest)] }),
     ),
+  }
+}
+async function decodeVShapeV6(files: UnzippedProjectFiles): Promise<VShapeProjectV6> {
+  const parsed = vShapeManifestV6Schema.safeParse(parseManifestInput(files))
+  requireVShape(parsed.success, "invalid-manifest", "The V6 manifest is invalid.")
+  const manifest = parsed.data
+  await requireV2SemanticIntegrity(manifest, files)
+  const project = {
+    ...decodeRepairEntries(files, manifest),
+    manifest,
+    snapshot: parseJsonFile(files, DOCUMENT_PATH, documentSnapshotV5Schema, "invalid-document"),
+  }
+  requireV6History(project)
+  await requireV5AssetClosure(project)
+  return project
+}
+async function decodeVShapeV7(files: UnzippedProjectFiles): Promise<VShapeProjectV7> {
+  const parsed = vShapeManifestV7Schema.safeParse(parseManifestInput(files))
+  requireVShape(parsed.success, "invalid-manifest", "The V7 manifest is invalid.")
+  const manifest = parsed.data
+  await requireV2SemanticIntegrity(manifest, files)
+  const project = {
+    ...decodeRepairEntries(files, manifest),
+    manifest,
+    snapshot: parseJsonFile(files, DOCUMENT_PATH, documentSnapshotV6Schema, "invalid-document"),
   }
   requireV6History(project)
   await requireV5AssetClosure(project)
@@ -2056,6 +2113,57 @@ async function decodeVShapeV6(files: UnzippedProjectFiles): Promise<VShapeProjec
 export async function readVShapeV6(bytes: unknown): Promise<VShapeResult<VShapeProjectV6>> {
   try {
     return { ok: true, value: await decodeVShapeV6(await readSafeZip(bytes, VSHAPE_V5_LIMITS)) }
+  } catch (error) {
+    return { ok: false, diagnostic: vShapeDiagnostic(error) }
+  }
+}
+
+/** V7 carries V6 authored appearance; older native readers reject its manifest before recovery. */
+export const vShapeManifestV7Schema = z
+  .object({
+    ...vShapeManifestV6Schema.shape,
+    ...manifestVersionFields(7),
+    appearanceUpgradeRevision: z.number().int().positive().safe(),
+  })
+  .strict()
+  .superRefine((manifest, context) => {
+    const { appearanceUpgradeRevision, ...previous } = manifest
+    // The historical parser owns repair/source/entry invariants.
+    const historical = vShapeManifestV6Schema.safeParse({
+      ...previous,
+      schemaVersion: 6,
+      formatVersion: 6,
+      minimumReaderVersion: 6,
+    })
+    if (!historical.success)
+      for (const issue of historical.error.issues)
+        context.addIssue({ code: "custom", path: issue.path, message: issue.message })
+    if (
+      appearanceUpgradeRevision < manifest.repairUpgradeRevision ||
+      appearanceUpgradeRevision > manifest.documentRevision
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Appearance adoption must follow repair authority within the saved history.",
+      })
+  })
+export type VShapeProjectV7 = Readonly<
+  Omit<VShapeProjectV6, "snapshot" | "manifest"> & {
+    manifest: z.infer<typeof vShapeManifestV7Schema>
+    snapshot: DocumentSnapshotV6
+  }
+>
+type RepairPortableProject = Pick<VShapeProjectV6 | VShapeProjectV7, keyof VShapeProjectV6>
+const writeVShapeV7InputSchema = z
+  .object({
+    ...writeVShapeV6InputSchema.shape,
+    snapshot: documentSnapshotV6Schema,
+    appearanceUpgradeRevision: z.number().int().positive().safe(),
+  })
+  .strict()
+export async function readVShapeV7(bytes: unknown): Promise<VShapeResult<VShapeProjectV7>> {
+  try {
+    return { ok: true, value: await decodeVShapeV7(await readSafeZip(bytes, VSHAPE_V5_LIMITS)) }
   } catch (error) {
     return { ok: false, diagnostic: vShapeDiagnostic(error) }
   }

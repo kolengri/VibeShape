@@ -1877,3 +1877,83 @@ it.each([null, "texture", "import", "repair"] as const)(
     expect(loaded).toEqual([target.revision])
   },
 )
+
+describe("saved authored part appearance", () => {
+  it("saves presets and custom colors in one revision, rejects failed/stale saves, reopens and navigates across adoption", async () => {
+    const f = fixture()
+    const original = f.current()
+    const partId = part(original).id
+    const set = (n: number, appearance: unknown) =>
+      f.adapter.authoredMetadata.apply({
+        sessionId,
+        lease,
+        baseSnapshot: f.runtime(),
+        command: {
+          ...f.envelope(n),
+          schemaVersion: 6,
+          kind: "org.vibeshape.document.metadata-command",
+          payload: { kind: "part.set-appearance", partId, appearance },
+        },
+      })
+    success(await set(2000, { presetId: "aluminum-satin" }))
+    expect(f.current()).toMatchObject({
+      schemaVersion: 6,
+      revision: original.revision + 1,
+      parts: original.schemaVersion === 1 ? [] : original.parts,
+    })
+    const baseline = f.current()
+    f.fail(true)
+    expect(await set(2001, { presetId: "aluminum-satin", color: "#cf44aa" })).toMatchObject({
+      ok: false,
+    })
+    expect(f.current()).toBe(baseline)
+    f.fail(false)
+    success(await set(2002, { presetId: "aluminum-satin", color: "#cf44aa" }))
+    expect(f.current()).toMatchObject({
+      partAppearances: [{ partId, appearance: { presetId: "aluminum-satin", color: "#cf44aa" } }],
+    })
+    expect(
+      await f.adapter.authoredMetadata.apply({
+        sessionId,
+        lease,
+        baseSnapshot: f.runtime(),
+        command: {
+          ...f.envelope(2003),
+          schemaVersion: 6,
+          baseRevision: original.revision,
+          kind: "org.vibeshape.document.metadata-command",
+          payload: { kind: "part.set-appearance", partId, appearance: null },
+        },
+      }),
+    ).toMatchObject({ ok: false })
+    success(await f.navigate(2004, "undo"))
+    expect(f.current()).toMatchObject({
+      partAppearances: [{ partId, appearance: { presetId: "aluminum-satin" } }],
+    })
+    success(await f.navigate(2005, "undo"))
+    expect(f.current()).toMatchObject({ schemaVersion: 6, partAppearances: [] })
+    success(await f.navigate(2006, "redo"))
+    success(await f.navigate(2007, "redo"))
+    expect(f.current()).toMatchObject({
+      partAppearances: [{ partId, appearance: { presetId: "aluminum-satin", color: "#cf44aa" } }],
+    })
+    await checkpointRename(f, 2008, "Appearance model")
+    expect(f.current()).toMatchObject({
+      schemaVersion: 6,
+      partAppearances: [{ partId, appearance: { presetId: "aluminum-satin", color: "#cf44aa" } }],
+    })
+    const reopened = createAuthorityPersistenceAdapter(
+      f.repository,
+      (requirement) => ({ ...requirement, id: partId, name: "Unused" }),
+      f.current(),
+    )
+    success(await reopened.recover(original.id))
+    expect(reopened.currentAuthoritySnapshot).toEqual(f.current())
+    expect(f.current().features).toEqual(original.features)
+    expect(
+      f.writes
+        .filter((write) => write.event.type !== "org.vibeshape.document.restored")
+        .map((write) => write.event.schemaVersion),
+    ).toEqual([6, 6, 6, 6])
+  })
+})

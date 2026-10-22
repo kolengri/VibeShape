@@ -84,8 +84,9 @@ function checkpointContent(snapshot: AuthoredAuthoritySnapshot) {
   } = promoteDocumentSnapshotV4(snapshot)
   return canonicalJson({
     ...content,
-    repairIntents: snapshot.schemaVersion === 5 ? snapshot.repairIntents : [],
-    suspendedParts: snapshot.schemaVersion === 5 ? snapshot.suspendedParts : [],
+    repairIntents: "repairIntents" in snapshot ? snapshot.repairIntents : [],
+    suspendedParts: "repairIntents" in snapshot ? snapshot.suspendedParts : [],
+    partAppearances: snapshot.schemaVersion === 6 ? snapshot.partAppearances : [],
   })
 }
 
@@ -156,7 +157,7 @@ export function createAuthorityPersistenceAdapter(
       events.push(result.event)
     }
     const resultMatch =
-      base.schemaVersion === 5
+      base.schemaVersion === 5 || base.schemaVersion === 6
         ? matchLegacyCommitResult(input.baseSnapshot, input.events, input.snapshot)
         : matchRuntimeProjection(next, input.snapshot)
     if (resultMatch) return resultMatch
@@ -168,7 +169,11 @@ export function createAuthorityPersistenceAdapter(
     next: AuthoredAuthoritySnapshot,
     acceptHistory: () => void,
   ) {
-    if (base?.schemaVersion !== next.schemaVersion && next.schemaVersion !== 5)
+    if (
+      base?.schemaVersion !== next.schemaVersion &&
+      next.schemaVersion !== 5 &&
+      next.schemaVersion !== 6
+    )
       history.clearUndoRedo()
     acceptHistory()
     authority = next
@@ -463,7 +468,7 @@ export function createAuthorityPersistenceAdapter(
       const result = prepareAuthorityModelEvent(base, translated, createPart)
       if (!result.ok) return authorityFailure(result.diagnostic.code, result.diagnostic.message)
       const resultMatch =
-        base.schemaVersion === 5
+        base.schemaVersion === 5 || base.schemaVersion === 6
           ? matchLegacyCommitResult(input.baseSnapshot, [input.event], input.snapshot)
           : matchRuntimeProjection(result.snapshot, input.snapshot)
       if (resultMatch) return resultMatch

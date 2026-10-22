@@ -64,6 +64,7 @@
     "./document-v2-replay": "./src/document-v2-replay.ts",
     "./document-v2-copy": "./src/document-v2-copy.ts",
     "./body-topology-reference": "./src/body-topology-reference.ts",
+    "./part-design-press-pull": "./src/part-design-press-pull.ts",
     "./part-design-shell": "./src/part-design-shell.ts",
     "./part-design-split": "./src/part-design-split.ts",
     "./part-design-loft": "./src/part-design-loft.ts",
@@ -102,7 +103,11 @@
     "./lightweighting": "./src/lightweighting.ts",
     "./generative-design": "./src/generative-design.ts",
     "./lightweighting-materials": "./src/lightweighting-materials.ts",
-    "./quick-lightweighting": "./src/quick-lightweighting.ts"
+    "./quick-lightweighting": "./src/quick-lightweighting.ts",
+    "./part-appearance": "./src/part-appearance.ts",
+    "./document-v6": "./src/document-v6.ts",
+    "./document-v6-commands": "./src/document-v6-commands.ts",
+    "./document-v6-command-schemas": "./src/document-v6-command-schemas.ts"
   },
   "scripts": {
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json"

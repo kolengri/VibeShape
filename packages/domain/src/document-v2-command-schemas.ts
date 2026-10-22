@@ -3,6 +3,7 @@ import { documentV2EventSchema } from "./document-v2-command-core"
 import { documentV3EventSchema } from "./document-v3-command-schemas"
 import { documentV4EventSchema } from "./document-v4-command-schemas"
 import { documentV5EventSchema } from "./document-v5-command-schemas"
+import { documentV6EventSchema } from "./document-v6-command-schemas"
 import { versionedDocumentEventSchema } from "./versioned-document-commands"
 
 export * from "./document-v2-command-core"
@@ -17,5 +18,6 @@ export const documentAuthorityEventSchema = z.union([
   documentV3EventSchema,
   documentV4EventSchema,
   documentV5EventSchema,
+  documentV6EventSchema,
 ])
 export type DocumentAuthorityEvent = Readonly<z.infer<typeof documentAuthorityEventSchema>>
