@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  statuses: read
 
 concurrency:
   group: ${{ github.ref == 'refs/heads/main' && 'vibeshape-cloudflare-production' || format('vibeshape-cloudflare-production-{0}', github.ref) }}
@@ -15,7 +16,7 @@ concurrency:
 jobs:
   preflight:
     if: github.repository == 'kolengri/VibeShape' && github.ref == 'refs/heads/main' && vars.VIBESHAPE_CLOUDFLARE_ENABLED == 'true'
-    runs-on: ${{ fromJSON(vars.VIBESHAPE_CI_RUNNER == 'mac' && '["self-hosted","Linux","ARM64","vibeshape-mac"]' || '["ubuntu-24.04"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -40,7 +41,7 @@ jobs:
 
   build:
     needs: verify
-    runs-on: ${{ fromJSON(vars.VIBESHAPE_CI_RUNNER == 'mac' && '["self-hosted","Linux","ARM64","vibeshape-mac"]' || '["ubuntu-24.04"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       VITE_REMOTE_MCP_URL: ${{ vars.VIBESHAPE_REMOTE_MCP_URL }}
@@ -153,7 +154,7 @@ jobs:
   publish-relay:
     needs: build
     if: needs.build.outputs.relay-manifest-sha256 != ''
-    runs-on: ${{ fromJSON(vars.VIBESHAPE_CI_RUNNER == 'mac' && '["self-hosted","Linux","ARM64","vibeshape-mac"]' || '["ubuntu-24.04"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:
       name: cloudflare-mcp-production
@@ -207,7 +208,7 @@ jobs:
   publish:
     needs: [build, publish-relay]
     if: ${{ !cancelled() && needs.build.result == 'success' && (needs.publish-relay.result == 'success' || (needs.publish-relay.result == 'skipped' && needs.build.outputs.relay-manifest-sha256 == '')) }}
-    runs-on: ${{ fromJSON(vars.VIBESHAPE_CI_RUNNER == 'mac' && '["self-hosted","Linux","ARM64","vibeshape-mac"]' || '["ubuntu-24.04"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
@@ -277,7 +278,7 @@ jobs:
 
   public-browser:
     needs: publish
-    runs-on: ${{ fromJSON(vars.VIBESHAPE_CI_RUNNER == 'mac' && '["self-hosted","Linux","ARM64","vibeshape-mac"]' || '["ubuntu-24.04"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

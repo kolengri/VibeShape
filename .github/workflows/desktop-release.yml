@@ -43,6 +43,9 @@ jobs:
 
   verify:
     needs: preflight
+    permissions:
+      contents: read
+      statuses: read
     uses: ./.github/workflows/ci.yml
     with:
       source_ref: ${{ needs.preflight.outputs.source-commit }}
