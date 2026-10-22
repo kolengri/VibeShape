@@ -163,7 +163,7 @@ export function SketchTransformForm({
       form={form}
       variant="panel"
     >
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2">
         {fields.map(({ label, name }) => (
           <form.Field key={name} name={name}>
             {(field) => (

@@ -6,6 +6,23 @@ This document defines the implementation contract for reusable controls in `@vib
 
 ## Layering rule
 
+`FieldLabel` composes optional `description` and `descriptionId` through `FieldHelp`, placing its
+information button beside the native label. Text, native-select, searchable-select, and choice
+fields use this disclosure for optional guidance and keep stable `aria-describedby` targets.
+`FieldDescription` remains available for required visible instructions. `FieldHelp` also serves
+section headings without importing form state; labels and help controls remain separate targets.
+`Field` defaults to a horizontal 2:3 label/control grid; use its explicit vertical orientation for
+full-width compound content. Empty error slots are omitted by standard field compositions.
+Help triggers have distinct contextual names, such as “Help for Width”, while the popover is named
+by its subject. `FieldHelpProvider` binds this shared `ui` catalog copy to the application locale;
+isolated shared controls use the same English source catalog. This avoids adding a second control
+with the input's exact accessible label. The help trigger uses a focusable button role with Enter and
+Space activation so native disabled fieldsets lock editing while keeping guidance available.
+`DialogContent` honors an enabled shared input's declared `autoFocus` before ordinary focusable
+help controls, while preserving caller cancellation and the default fallback when none is available.
+`TaskPanelHeader.description` is optional help. Required next actions and persistent description
+targets use its `instruction` prop, which stays visible and mounted independently of any popover.
+
 Build reusable controls in this order:
 
 1. **Native primitive** — preserve the platform element, standard attributes, ref, focus, keyboard behavior, and accessible name.

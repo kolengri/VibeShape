@@ -1,6 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { Field, FieldDescription, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
+import { Field, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import { Scan } from "@vibeshape/ui/components/icons"
 import type { SearchableSelectOption } from "@vibeshape/ui/components/searchable-select-field"
 import { cn } from "@vibeshape/ui/lib/cn"
@@ -50,16 +50,16 @@ function ReferenceFieldLayout({
       data-disabled={field.disabled || undefined}
       data-invalid={Boolean(field.error) || undefined}
     >
-      <FieldLabel htmlFor={field.id} required={Boolean(field.required)}>
+      <FieldLabel
+        htmlFor={field.id}
+        required={Boolean(field.required)}
+        description={field.description}
+        descriptionId={`${field.id}-description`}
+      >
         {field.label}
       </FieldLabel>
       {children}
-      {field.description ? (
-        <FieldDescription id={`${field.id}-description`}>{field.description}</FieldDescription>
-      ) : null}
-      <FieldError id={`${field.id}-error`} reserveSpace>
-        {field.error}
-      </FieldError>
+      <FieldError id={`${field.id}-error`}>{field.error}</FieldError>
     </Field>
   )
 }

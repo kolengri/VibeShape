@@ -1,5 +1,6 @@
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
+import type { ReactNode } from "react"
 
 export function LightweightingNumberField({
   id,
@@ -9,6 +10,7 @@ export function LightweightingNumberField({
   min,
   max,
   step = "any",
+  description,
 }: {
   id: string
   label: string
@@ -17,14 +19,21 @@ export function LightweightingNumberField({
   min?: number
   max?: number
   step?: string
+  description?: ReactNode
 }) {
   return (
     <Field>
-      <FieldLabel htmlFor={id} className="max-w-full">
+      <FieldLabel
+        htmlFor={id}
+        className="max-w-full"
+        description={description}
+        descriptionId={`${id}-description`}
+      >
         {label}
       </FieldLabel>
       <Input
         id={id}
+        aria-describedby={description ? `${id}-description` : undefined}
         type="number"
         required
         step={step}

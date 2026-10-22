@@ -944,6 +944,7 @@ function ExtrusionSymmetricField({ controller }: { controller: ExtrusionFormCont
           name={field.name}
           checked={field.state.value}
           label={controller.copy.symmetric}
+          description={controller.copy.symmetricDescription}
           onBlur={field.handleBlur}
           onChange={(event) => {
             controller.clearSubmissionErrors()
@@ -963,7 +964,6 @@ function ExtrusionExtentFields({ controller }: { controller: ExtrusionFormContro
   const { form, copy } = controller
   return (
     <div className="grid gap-3">
-      <p className="text-xs text-muted-foreground">{copy.symmetricDescription}</p>
       <form.Subscribe selector={(state) => state.values.symmetric}>
         {(symmetric) => (
           <form.Field name="reversed">

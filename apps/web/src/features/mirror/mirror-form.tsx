@@ -6,9 +6,11 @@ import type {
 } from "@vibeshape/domain"
 import { readMirrorFeatureParametersV3 } from "@vibeshape/domain/part-design-mirror"
 import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
+import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useState } from "react"
+import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -176,25 +178,20 @@ export function MirrorForm({
             >
               <form.Field name="plane">
                 {(field) => (
-                  <fieldset className="grid gap-2">
-                    <legend className="mb-2 text-xs font-medium">{copy.plane}</legend>
-                    {(["XY", "XZ", "YZ"] as const).map((plane) => (
-                      <label key={plane} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="radio"
-                          name="plane"
-                          value={plane}
-                          checked={field.state.value === plane}
-                          onBlur={field.handleBlur}
-                          onChange={() => {
-                            state.clearSubmissionErrors()
-                            field.handleChange(plane)
-                          }}
-                        />
-                        {plane}
-                      </label>
-                    ))}
-                  </fieldset>
+                  <ChoiceField
+                    name={field.name}
+                    label={copy.plane}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onValueChange={(value) => {
+                      state.clearSubmissionErrors()
+                      field.handleChange(value as "XY" | "XZ" | "YZ")
+                    }}
+                    options={(["XY", "XZ", "YZ"] as const).map((plane) => ({
+                      value: plane,
+                      label: plane,
+                    }))}
+                  />
                 )}
               </form.Field>
             </ReferencePlaneSelection>
@@ -218,28 +215,18 @@ export function MirrorForm({
             </form.Field>
             <form.Field name="preserveSource">
               {(field) => (
-                <div className="grid gap-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      name="preserveSource"
-                      checked={field.state.value}
-                      onBlur={field.handleBlur}
-                      aria-describedby="mirror-preserve-source-description"
-                      onChange={(event) => {
-                        state.clearSubmissionErrors()
-                        field.handleChange(event.target.checked)
-                      }}
-                    />
-                    {copy.preserveSource}
-                  </label>
-                  <p
-                    id="mirror-preserve-source-description"
-                    className="text-xs text-muted-foreground"
-                  >
-                    {copy.preserveSourceDescription}
-                  </p>
-                </div>
+                <BooleanParameterField
+                  id="mirror-preserve-source"
+                  name="preserveSource"
+                  label={copy.preserveSource}
+                  description={copy.preserveSourceDescription}
+                  checked={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => {
+                    state.clearSubmissionErrors()
+                    field.handleChange(event.target.checked)
+                  }}
+                />
               )}
             </form.Field>
           </ParameterPanel>

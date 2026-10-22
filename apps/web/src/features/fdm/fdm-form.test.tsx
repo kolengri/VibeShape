@@ -127,6 +127,17 @@ it("restores the coupon feature with its authored dimensions", () => {
   })
 })
 
+it("connects an unavailable target error to its full-width selector", async () => {
+  const f = setup(undefined, "corner-relief")
+  await userEvent.click(screen.getByRole("button", { name: "Create" }))
+  const target = screen.getByRole("combobox", { name: messages.app.fdm.target })
+  await waitFor(() => expect(target.getAttribute("aria-invalid")).toBe("true"))
+  const error = document.getElementById(target.getAttribute("aria-describedby") ?? "")
+  expect(error?.getAttribute("role")).toBe("alert")
+  expect(error?.textContent).toBe(messages.app.fdm.unavailable)
+  expect(f.onSave).not.toHaveBeenCalled()
+})
+
 it("limits wall extension to Web and clears the incompatible setting when choosing Rib", async () => {
   setup(undefined, "web")
   await userEvent.click(screen.getByRole("checkbox", { name: "Extend lines to cavity walls" }))
@@ -197,4 +208,17 @@ it("pairs all twelve FDM tool choices with distinct decorative artwork", async (
   expect(ids).toContain("fdm-membrane")
   for (const option of options)
     expect(option.querySelector("svg[data-icon]")?.getAttribute("aria-hidden")).toBe("true")
+})
+
+it("keeps flat-cut workflow guidance in the tool help", async () => {
+  setup()
+  const help = screen.getByRole("button", { name: "Help for Tool" })
+  expect(screen.queryByRole("dialog", { name: "Tool" })).toBeNull()
+  await userEvent.click(help)
+  expect(screen.getByRole("dialog", { name: "Tool" }).textContent).toContain(
+    "Use Split on the selected part and retain the desired output.",
+  )
+  await userEvent.keyboard("{Escape}")
+  expect(document.activeElement).toBe(help)
+  expect(screen.getByRole("form", { name: "FDM tools" })).toBeTruthy()
 })

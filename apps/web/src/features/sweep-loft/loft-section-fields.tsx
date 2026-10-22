@@ -2,8 +2,10 @@ import type { SketchProfileSelector } from "@vibeshape/domain"
 import { MAX_LOFT_SECTIONS } from "@vibeshape/domain/part-design-loft"
 import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selector"
 import { Button } from "@vibeshape/ui/components/button"
+import { fieldVariants } from "@vibeshape/ui/components/field"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { useRef, useState } from "react"
+import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { ProfileSelectionField } from "../part-design/profile-selection-field"
 import { type ProfileOption, reorderLoftSection } from "./sweep-loft-form-model"
 
@@ -42,7 +44,10 @@ export function LoftSectionFields({
   const available = profiles.filter(({ key }) => !selectedKeys.has(key))
   return (
     <>
-      <label htmlFor="loft-section-profile" className="grid gap-2 text-sm">
+      <label
+        htmlFor="loft-section-profile"
+        className={fieldVariants({ orientation: "horizontal" })}
+      >
         <span>{copy.sectionProfile}</span>
         <NativeSelect
           id="loft-section-profile"
@@ -122,16 +127,13 @@ export function LoftSectionFields({
           )
         })}
       </ol>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={ruled}
-          disabled={ruledDisabled}
-          onChange={(event) => onRuledChange(event.currentTarget.checked)}
-        />
-        {copy.ruled}
-      </label>
-      <p className="text-xs text-muted-foreground">{copy.ruledDescription}</p>
+      <BooleanParameterField
+        label={copy.ruled}
+        description={copy.ruledDescription}
+        checked={ruled}
+        disabled={ruledDisabled}
+        onChange={(event) => onRuledChange(event.currentTarget.checked)}
+      />
     </>
   )
 }

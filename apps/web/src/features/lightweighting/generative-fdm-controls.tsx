@@ -18,8 +18,8 @@ export function GenerativeFdmControls({
   const change = (next: Partial<typeof fields.fdm>) =>
     state.changeStudyFields({ ...fields, fdm: { ...fields.fdm, ...next } })
   return (
-    <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-      <legend className="text-xs mb-2 font-medium">{t("title")}</legend>
+    <fieldset className="grid min-w-0 grid-cols-1 gap-2">
+      <legend className="mb-1 font-medium text-xs">{t("title")}</legend>
       <SelectField
         id="generative-fdm-supports"
         label={t("supportMode")}
@@ -37,6 +37,7 @@ export function GenerativeFdmControls({
       <SelectField
         id="generative-fdm-direction"
         label={t("buildDirection")}
+        description={t("directionHelp")}
         value={fields.fdm.buildDirection}
         onValueChange={(value) => {
           const buildDirection = directions.find((direction) => direction === value)
@@ -49,7 +50,6 @@ export function GenerativeFdmControls({
           </SelectOption>
         ))}
       </SelectField>
-      <p className="text-xs text-muted-foreground">{t("directionHelp")}</p>
       <p className="text-xs text-muted-foreground">
         {t("settingsSummary", {
           feature: fields.fdm.minFeatureSizeMm,
@@ -58,7 +58,7 @@ export function GenerativeFdmControls({
         })}
       </p>
       <LightweightingSettingsDetails label={t("printerSettings")}>
-        <div className="grid min-w-0 grid-cols-1 gap-3 @xs:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-2">
           {numericFields.map((key) => (
             <Field key={key}>
               <FieldLabel htmlFor={`generative-fdm-${key}`} className="max-w-full">

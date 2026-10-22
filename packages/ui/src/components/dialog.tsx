@@ -43,6 +43,7 @@ function DialogContent({
   children,
   closeLabel,
   showCloseButton = true,
+  onOpenAutoFocus,
   ...props
 }: DialogContentProps) {
   return (
@@ -56,6 +57,16 @@ function DialogContent({
           className,
         )}
         {...props}
+        onOpenAutoFocus={(event) => {
+          onOpenAutoFocus?.(event)
+          if (event.defaultPrevented || !(event.target instanceof HTMLElement)) return
+          const input = event.target.querySelector<HTMLInputElement>(
+            'input[data-autofocus="true"]:not(:disabled)',
+          )
+          if (!input) return
+          input.focus()
+          if (input.ownerDocument.activeElement === input) event.preventDefault()
+        }}
       >
         {children}
         {showCloseButton ? (

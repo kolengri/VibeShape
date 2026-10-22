@@ -36,7 +36,7 @@ export function AssemblyTaskForm({
   if (!panel) throw new Error("Assembly task forms require an assembly task panel context.")
   return (
     <form
-      className="grid gap-4"
+      className="grid gap-2"
       onKeyDown={(event) => {
         if (event.key === "Escape" && !event.defaultPrevented && !actions.pending) {
           event.preventDefault()

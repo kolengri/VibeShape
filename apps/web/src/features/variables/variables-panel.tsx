@@ -1,6 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Alert } from "@vibeshape/ui/components/alert"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import type { ReactNode } from "react"
 import {
   applyVariableTable,
@@ -92,11 +93,11 @@ function ReadyVariablesPanel({
   return (
     <section className="min-h-0 overflow-auto bg-background p-3" aria-labelledby="variables-title">
       <div className="mx-auto grid max-w-6xl gap-2">
-        <div>
+        <div className="flex items-center gap-1">
           <h1 id="variables-title" className="text-xs font-medium">
             {t("title")}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t("description")}</p>
+          <FieldHelp label={t("title")}>{t("description")}</FieldHelp>
         </div>
         <VariablesForm
           key={snapshot.revision}

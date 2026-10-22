@@ -6,7 +6,7 @@ import {
 } from "@vibeshape/domain/reference-frame"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { FieldError } from "@vibeshape/ui/components/field"
+import { FieldError, fieldVariants } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { type ReactNode, useId, useState } from "react"
@@ -148,10 +148,10 @@ function OriginSupportControls({ value, onChange }: Pick<Props, "value" | "onCha
   if (value?.kind !== "origin-plane" && value?.kind !== "origin-axis") return null
   const plane = value.kind === "origin-plane"
   return (
-    <label className="grid gap-1 text-sm">
+    <label className={fieldVariants({ orientation: "horizontal" })}>
       {t(plane ? "plane" : "axis")}
       <select
-        className="h-9 rounded-md border bg-background px-2"
+        className="h-8 min-w-0 rounded-md border bg-background px-2 text-sm"
         value={plane ? value.plane : value.axis}
         onChange={(event) => {
           const parsed = plane
@@ -176,12 +176,12 @@ function ExplicitReferenceSupportFields({
   const fieldId = useId()
   const [fields, setFields] = useState(() => explicitValues(value))
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid gap-2">
       {fields.map((field, index) => (
         <label
           htmlFor={`${fieldId}-${index}`}
           key={index < 3 ? `origin-${index}` : `direction-${index}`}
-          className="grid gap-1 text-xs"
+          className={fieldVariants({ orientation: "horizontal" })}
         >
           {t(index < 3 ? "originCoordinate" : "directionCoordinate", {
             axis: ["X", "Y", "Z"][index % 3] ?? "X",
@@ -215,10 +215,10 @@ function ReferenceSourceField({
 }) {
   const t = useTranslations("app.referenceFrame")
   return (
-    <label className="grid gap-1 text-sm">
+    <label className={fieldVariants({ orientation: "horizontal" })}>
       {t("source")}
       <select
-        className="h-9 min-w-0 rounded-md border bg-background px-2"
+        className="h-8 min-w-0 rounded-md border bg-background px-2 text-sm"
         value={source}
         onChange={(event) => selectReference(event.target.value, kind, value, choices, onChange)}
       >

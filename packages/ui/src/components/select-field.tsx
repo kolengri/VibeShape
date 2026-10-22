@@ -7,6 +7,7 @@ import { cn } from "#lib/cn"
 type SelectFieldProps = ComponentProps<typeof SelectPrimitive.Root> & {
   id?: string
   label: ReactNode
+  description?: ReactNode
   menuLabel?: ReactNode
   menuDescription?: ReactNode
   "aria-describedby"?: string
@@ -16,6 +17,7 @@ type SelectFieldProps = ComponentProps<typeof SelectPrimitive.Root> & {
 function SelectField({
   id: providedId,
   label,
+  description,
   menuLabel,
   menuDescription,
   onBlur,
@@ -27,13 +29,22 @@ function SelectField({
   const id = providedId ?? generatedId
   return (
     <Field data-disabled={props.disabled || undefined}>
-      <FieldLabel htmlFor={id} required={Boolean(props.required)}>
+      <FieldLabel
+        htmlFor={id}
+        required={Boolean(props.required)}
+        description={description}
+        descriptionId={`${id}-description`}
+      >
         {label}
       </FieldLabel>
       <SelectPrimitive.Root {...props}>
         <SelectPrimitive.Trigger
           id={id}
-          aria-describedby={describedBy}
+          aria-describedby={
+            [description ? `${id}-description` : undefined, describedBy]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
           onBlur={onBlur}
           className={cn(
             "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none",

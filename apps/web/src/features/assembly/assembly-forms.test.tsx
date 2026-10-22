@@ -56,6 +56,43 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Assembly forms", () => {
+  it.each([
+    ["revolute", "Revolute", 18],
+    ["cylindrical", "Cylindrical", 21],
+  ] as const)(
+    "stacks pose and %s joint field rows in a narrow task panel",
+    async (_kind, option, expectedInputs) => {
+      const f = assemblyUiFixture()
+      const { container } = setup(
+        <div style={{ width: 280 }}>
+          <AssemblyJointForm
+            assembly={{ ...f.assembly, schemaVersion: 2 }}
+            selectedId={f.parent.id}
+            actions={actions()}
+          />
+        </div>,
+        "Add joint",
+      )
+      await choose("Joint type", option)
+      const inputs = screen.getAllByRole<HTMLInputElement>("spinbutton")
+      expect(inputs).toHaveLength(expectedInputs)
+      for (const input of inputs) {
+        const row = input.closest('[data-slot="field"]')
+        expect(row?.getAttribute("data-orientation")).toBe("horizontal")
+        expect(row?.querySelector("label")?.htmlFor).toBe(input.id)
+        for (
+          let wrapper = row?.parentElement;
+          wrapper && wrapper !== container;
+          wrapper = wrapper.parentElement
+        ) {
+          const columnLayouts = [...wrapper.classList].filter(
+            (token) => token.includes("grid-cols-") && token !== "grid-cols-1",
+          )
+          expect(columnLayouts).toEqual([])
+        }
+      }
+    },
+  )
   it("creates a frozen definition and first independent instance through one Apply", async () => {
     const f = assemblyUiFixture(),
       a = actions()
@@ -189,11 +226,15 @@ describe("Assembly forms", () => {
       />,
       "Edit joint and drive",
     )
-    fireEvent.change(screen.getByLabelText("Drive (deg)"), { target: { value: "46" } })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Drive (deg)" }), {
+      target: { value: "46" },
+    })
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
     expect(a.onApply).not.toHaveBeenCalled()
     expect(screen.getByRole("alert")).toBeTruthy()
-    fireEvent.change(screen.getByLabelText("Drive (deg)"), { target: { value: "45" } })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Drive (deg)" }), {
+      target: { value: "45" },
+    })
     fireEvent.change(screen.getByLabelText("Z", { exact: true }), { target: { value: "0" } })
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
     expect(a.onApply).not.toHaveBeenCalled()
@@ -228,7 +269,9 @@ describe("Assembly forms", () => {
       />,
       "Edit joint and drive",
     )
-    fireEvent.change(screen.getByLabelText("Drive (mm)"), { target: { value: "10" } })
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Drive (mm)" }), {
+      target: { value: "10" },
+    })
     await userEvent.click(screen.getByRole("button", { name: "Apply" }))
     expect(a.onApply.mock.calls[0]?.[0]).toMatchObject([
       { kind: "joint.update", joint: { value: 10, axis: [1, 0, 0], limits: { min: -5, max: 10 } } },

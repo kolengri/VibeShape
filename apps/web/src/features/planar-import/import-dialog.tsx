@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
-import { Field, FieldDescription, FieldLabel } from "@vibeshape/ui/components/field"
+import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { useState } from "react"
@@ -27,14 +27,20 @@ function Fields({ state }: { state: PlanarImportState }) {
   return (
     <>
       <Field>
-        <FieldLabel htmlFor="planar-source-file">{t("file")}</FieldLabel>
+        <FieldLabel
+          htmlFor="planar-source-file"
+          description={t("fileDescription")}
+          descriptionId="planar-file-description"
+        >
+          {t("file")}
+        </FieldLabel>
         <Input
           id="planar-source-file"
+          aria-describedby="planar-file-description"
           type="file"
           accept=".dxf,.svg"
           onChange={(event) => state.chooseFile(event.currentTarget.files?.[0] ?? null)}
         />
-        <FieldDescription>{t("fileDescription")}</FieldDescription>
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <SelectField

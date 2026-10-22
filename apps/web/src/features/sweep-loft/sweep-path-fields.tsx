@@ -1,3 +1,4 @@
+import { fieldVariants } from "@vibeshape/ui/components/field"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import {
   type PathSketchOption,
@@ -31,7 +32,7 @@ export function SweepPathFields({
 }) {
   return (
     <>
-      <label htmlFor="sweep-profile" className="grid gap-2 text-sm">
+      <label htmlFor="sweep-profile" className={fieldVariants({ orientation: "horizontal" })}>
         <span>{copy.profile}</span>
         <NativeSelect
           id="sweep-profile"
@@ -79,7 +80,10 @@ export function SketchPathFields({
   const points = selectedPathPointIds(path, values.entityIds)
   return (
     <>
-      <label htmlFor={`${idPrefix}-path-sketch`} className="grid gap-2 text-sm">
+      <label
+        htmlFor={`${idPrefix}-path-sketch`}
+        className={fieldVariants({ orientation: "horizontal" })}
+      >
         <span>{copy.pathSketch}</span>
         <NativeSelect
           id={`${idPrefix}-path-sketch`}
@@ -124,7 +128,10 @@ export function SketchPathFields({
         )}
         <p className="text-xs text-muted-foreground">{copy.pathDescription}</p>
       </fieldset>
-      <label htmlFor={`${idPrefix}-start-point`} className="grid gap-2 text-sm">
+      <label
+        htmlFor={`${idPrefix}-start-point`}
+        className={fieldVariants({ orientation: "horizontal" })}
+      >
         <span>{copy.startPoint}</span>
         <NativeSelect
           id={`${idPrefix}-start-point`}

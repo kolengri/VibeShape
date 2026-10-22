@@ -1,6 +1,7 @@
 import * as React from "react"
 
-import { Field, FieldDescription, FieldError } from "#components/field"
+import { Field, FieldError, fieldVariants } from "#components/field"
+import { FieldHelp } from "#components/field-help"
 import { cn } from "#lib/cn"
 
 export type ChoiceFieldOption = Readonly<{
@@ -63,7 +64,7 @@ function ChoiceOption({
   describedBy,
 }: ChoiceOptionProps) {
   return (
-    <label
+    <div
       className={cn(
         "relative flex min-w-0 flex-1 basis-20 cursor-pointer items-center gap-2 rounded-md border border-input px-2 py-1.5 text-sm",
         "has-checked:border-ring has-checked:bg-accent has-checked:text-accent-foreground",
@@ -71,37 +72,39 @@ function ChoiceOption({
         "has-disabled:cursor-not-allowed has-disabled:opacity-50",
       )}
     >
-      <input
-        type="radio"
-        id={id}
-        name={name ?? id}
-        value={option.value}
-        checked={value === undefined ? undefined : value === option.value}
-        defaultChecked={value === undefined ? defaultValue === option.value : undefined}
-        disabled={disabled || option.disabled}
-        required={required}
-        aria-invalid={hasError || undefined}
-        aria-labelledby={`${id}-label`}
-        aria-describedby={
-          [describedBy, option.description ? `${id}-description` : undefined]
-            .filter(Boolean)
-            .join(" ") || undefined
-        }
-        onBlur={onBlur}
-        onChange={(event) => {
-          if (event.currentTarget.checked) onValueChange?.(event.currentTarget.value)
-        }}
-        className="size-3.5 shrink-0 accent-primary"
-      />
-      <span className="min-w-0 wrap-anywhere">
-        <span id={`${id}-label`}>{option.label}</span>
-        {option.description ? (
-          <span id={`${id}-description`} className="block text-xs text-muted-foreground">
-            {option.description}
-          </span>
-        ) : null}
-      </span>
-    </label>
+      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+        <input
+          type="radio"
+          id={id}
+          name={name ?? id}
+          value={option.value}
+          checked={value === undefined ? undefined : value === option.value}
+          defaultChecked={value === undefined ? defaultValue === option.value : undefined}
+          disabled={disabled || option.disabled}
+          required={required}
+          aria-invalid={hasError || undefined}
+          aria-labelledby={`${id}-label`}
+          aria-describedby={
+            [describedBy, option.description ? `${id}-description` : undefined]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
+          onBlur={onBlur}
+          onChange={(event) => {
+            if (event.currentTarget.checked) onValueChange?.(event.currentTarget.value)
+          }}
+          className="size-3.5 shrink-0 accent-primary"
+        />
+        <span className="min-w-0 wrap-anywhere">
+          <span id={`${id}-label`}>{option.label}</span>
+        </span>
+      </label>
+      {option.description ? (
+        <FieldHelp label={option.label} descriptionId={`${id}-description`}>
+          {option.description}
+        </FieldHelp>
+      ) : null}
+    </div>
   )
 }
 
@@ -130,21 +133,31 @@ export function ChoiceField({
       data-disabled={disabled || undefined}
       data-invalid={hasError || undefined}
       className={className}
+      orientation="vertical"
     >
       <fieldset
         id={id}
+        aria-labelledby={`${id}-label`}
         disabled={disabled}
         aria-describedby={describedBy || undefined}
         aria-invalid={hasError || undefined}
-        className="min-w-0"
+        className={fieldVariants({ orientation: "horizontal" })}
       >
-        <legend className="mb-1.5 text-sm font-medium">
-          {label}
-          <span hidden={!required} className="ml-0.5 text-destructive" aria-hidden="true">
-            *
+        <legend className="sr-only">{label}</legend>
+        <div className="text-xs font-medium">
+          <span className="inline-flex items-center gap-1">
+            <span id={`${id}-label`}>{label}</span>
+            <span hidden={!required} className="ml-0.5 text-destructive" aria-hidden="true">
+              *
+            </span>
+            {hasDescription ? (
+              <FieldHelp label={label} descriptionId={`${id}-description`}>
+                {description}
+              </FieldHelp>
+            ) : null}
           </span>
-        </legend>
-        <div className="flex flex-wrap gap-1">
+        </div>
+        <div className="flex min-w-0 flex-wrap gap-1">
           {options.map((option, index) => (
             <ChoiceOption
               key={option.value}
@@ -162,13 +175,8 @@ export function ChoiceField({
             />
           ))}
         </div>
+        <FieldError id={`${id}-error`}>{error}</FieldError>
       </fieldset>
-      {hasDescription ? (
-        <FieldDescription id={`${id}-description`}>{description}</FieldDescription>
-      ) : null}
-      <FieldError id={`${id}-error`} reserveSpace>
-        {error}
-      </FieldError>
     </Field>
   )
 }

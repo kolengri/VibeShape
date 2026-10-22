@@ -1,8 +1,17 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  fieldVariants,
+} from "@vibeshape/ui/components/field"
+import { Input } from "@vibeshape/ui/components/input"
 import { SelectField, SelectOption } from "@vibeshape/ui/components/select-field"
 import { TextField } from "@vibeshape/ui/components/text-field"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { type FormEvent, useId, useRef, useState } from "react"
 import { apiConfigurationSchema } from "./api-assistant-preferences"
 import { useApiAssistantSettings } from "./api-assistant-provider"
@@ -112,7 +121,7 @@ export function ApiConfigurationForm({
   const form = useApiConnectionForm(chat, connected)
   const locked = busy || connected || form.submitting
   return (
-    <form className="grid gap-3" onSubmit={form.submit} aria-busy={form.submitting || undefined}>
+    <form className="grid gap-2" onSubmit={form.submit} aria-busy={form.submitting || undefined}>
       <SelectField
         label={t("provider")}
         value={form.choice}
@@ -140,24 +149,13 @@ export function ApiConfigurationForm({
         disabled={locked}
         onChange={(event) => form.setModel(event.currentTarget.value)}
       />
-      <TextField
-        id={`${id}-key`}
-        label={t("apiKey")}
-        description={t("keyMemory")}
-        error={form.invalidField("apiKey") ? t("apiKeyInvalid") : undefined}
-        type="password"
-        autoComplete="off"
-        value={form.apiKey}
-        maxLength={4096}
-        disabled={locked}
-        onChange={(event) => form.setApiKey(event.currentTarget.value)}
-      />
+      <ApiKeyField id={id} form={form} locked={locked} />
       <details
         open={form.advanced}
         onToggle={(event) => form.setAdvanced(event.currentTarget.open)}
       >
         <summary className="cursor-pointer text-xs font-medium">{t("advanced")}</summary>
-        <div className="mt-3 grid gap-2">
+        <div className="mt-2 grid gap-2">
           <TextField
             id={`${id}-endpoint`}
             label={t("endpoint")}
@@ -169,14 +167,14 @@ export function ApiConfigurationForm({
             disabled={locked}
             onChange={(event) => form.editEndpoint(event.currentTarget.value)}
           />
-          <label className="flex items-center gap-2 text-xs">
+          <label className={cn(fieldVariants({ orientation: "horizontal" }), "min-h-8 text-sm")}>
+            <span>{t("stream")}</span>
             <input
               type="checkbox"
               checked={form.stream}
               disabled={locked}
               onChange={(event) => form.setStream(event.currentTarget.checked)}
             />
-            {t("stream")}
           </label>
         </div>
       </details>
@@ -201,5 +199,40 @@ export function ApiConfigurationForm({
         </Button>
       )}
     </form>
+  )
+}
+
+function ApiKeyField({
+  id,
+  form,
+  locked,
+}: {
+  id: string
+  form: ReturnType<typeof useApiConnectionForm>
+  locked: boolean
+}) {
+  const t = useTranslations("app.assistant.api")
+  const keyInvalid = form.invalidField("apiKey")
+  return (
+    <>
+      <Field data-invalid={keyInvalid || undefined} data-disabled={locked || undefined}>
+        <FieldLabel htmlFor={`${id}-key`}>{t("apiKey")}</FieldLabel>
+        <Input
+          id={`${id}-key`}
+          type="password"
+          autoComplete="off"
+          value={form.apiKey}
+          maxLength={4096}
+          disabled={locked}
+          onChange={(event) => form.setApiKey(event.currentTarget.value)}
+          aria-invalid={keyInvalid || undefined}
+          aria-describedby={keyInvalid ? `${id}-memory ${id}-key-error` : `${id}-memory`}
+        />
+        <FieldError id={`${id}-key-error`}>
+          {keyInvalid ? t("apiKeyInvalid") : undefined}
+        </FieldError>
+      </Field>
+      <FieldDescription id={`${id}-memory`}>{t("keyMemory")}</FieldDescription>
+    </>
   )
 }

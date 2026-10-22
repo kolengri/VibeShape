@@ -1,6 +1,6 @@
 import * as React from "react"
 
-import { Field, FieldDescription, FieldError, FieldLabel } from "#components/field"
+import { Field, FieldError, FieldLabel } from "#components/field"
 import { NativeSelect } from "#components/native-select"
 
 export type NativeSelectFieldProps = Omit<
@@ -46,7 +46,12 @@ function NativeSelectField({
       data-invalid={hasError || undefined}
       className={className}
     >
-      <FieldLabel htmlFor={selectId} required={Boolean(required)}>
+      <FieldLabel
+        htmlFor={selectId}
+        required={Boolean(required)}
+        description={description}
+        descriptionId={descriptionId}
+      >
         {label}
       </FieldLabel>
       <NativeSelect
@@ -58,12 +63,7 @@ function NativeSelectField({
         aria-invalid={hasError || undefined}
         className={selectClassName}
       />
-      {hasDescription ? (
-        <FieldDescription id={descriptionId}>{description}</FieldDescription>
-      ) : null}
-      <FieldError id={errorId} reserveSpace>
-        {error}
-      </FieldError>
+      <FieldError id={errorId}>{error}</FieldError>
     </Field>
   )
 }
