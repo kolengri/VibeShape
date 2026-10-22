@@ -416,6 +416,7 @@ export function FdmForm(props: FdmFormProps) {
                 <LocalizedSearchableSelectField
                   ref={props.kindControlRef}
                   label={t("kind")}
+                  description={t("flatCutDescription")}
                   placeholder={t("kind")}
                   value={kind}
                   disabled={disabled || mode.kind === "edit"}

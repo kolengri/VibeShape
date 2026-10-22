@@ -209,3 +209,16 @@ it("pairs all twelve FDM tool choices with distinct decorative artwork", async (
   for (const option of options)
     expect(option.querySelector("svg[data-icon]")?.getAttribute("aria-hidden")).toBe("true")
 })
+
+it("keeps flat-cut workflow guidance in the tool help", async () => {
+  setup()
+  const help = screen.getByRole("button", { name: "Help for Tool" })
+  expect(screen.queryByRole("dialog", { name: "Tool" })).toBeNull()
+  await userEvent.click(help)
+  expect(screen.getByRole("dialog", { name: "Tool" }).textContent).toContain(
+    "Use Split on the selected part and retain the desired output.",
+  )
+  await userEvent.keyboard("{Escape}")
+  expect(document.activeElement).toBe(help)
+  expect(screen.getByRole("form", { name: "FDM tools" })).toBeTruthy()
+})
