@@ -156,7 +156,7 @@ async function checkLayout(page: Page, panel: Locator) {
         await checkControls(panel)
         if (["1440-dark-1", "1024-light-2"].includes(`${width}-${theme}-${zoom}`))
           await page.screenshot({
-            path: `artifacts/polish-project-input/composer-${theme}-${zoom}x.png`,
+            path: test.info().outputPath(`composer-${theme}-${zoom}x.png`),
           })
       }
     }
