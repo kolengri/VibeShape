@@ -352,7 +352,7 @@ function CadReviewPanel({
     >
       <TaskPanelHeader
         title={t("title")}
-        className="border-b p-4"
+        className="border-b p-3"
         actions={<ReviewActions commands={commands} review={review} t={t} />}
       />
       <section

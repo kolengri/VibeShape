@@ -35,7 +35,7 @@ function RemovalNames({
   if (names.length === 0) return null
   return (
     <section className="grid gap-1">
-      <h3 className="text-sm font-medium">{label}</h3>
+      <h3 className="text-xs font-medium">{label}</h3>
       <ul className="grid gap-1 text-sm text-muted-foreground">
         {names.slice(0, 8).map((name, index) => (
           <li key={`${index}:${name}`}>{name}</li>

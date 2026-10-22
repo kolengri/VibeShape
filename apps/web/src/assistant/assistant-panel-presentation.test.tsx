@@ -31,7 +31,6 @@ function panel(props: Partial<PanelProps> = {}) {
       <button type="button">Chat toggle</button>
       <AssistantPanel
         open
-        projectName="Bracket"
         messages={[]}
         busy={false}
         canSend
@@ -48,14 +47,19 @@ function panel(props: Partial<PanelProps> = {}) {
   )
 }
 
-it("keeps the chat header free of working status while retaining cancellation in the composer", () => {
+it("keeps one compact chat header without project copy and retains cancellation in the composer", () => {
   const view = render(panel())
   const heading = screen.getByRole("heading", { name: "AI chat" })
   const header = heading.closest("header")
-  expect(header?.textContent).toBe("AI chatBracket")
+  expect(header?.textContent).toBe("AI chat")
+  expect(header?.querySelector("p")).toBeNull()
+  expect(heading.classList.contains("text-xs")).toBe(true)
+  for (const button of header?.querySelectorAll("button") ?? []) {
+    expect(button.getAttribute("data-size")).toBe("icon-xs")
+  }
   view.rerender(panel({ busy: true }))
   expect(heading.closest("header")).toBe(header)
-  expect(header?.textContent).toBe("AI chatBracket")
+  expect(header?.textContent).toBe("AI chat")
   expect(header?.querySelector('[role="status"]')).toBeNull()
   expect(screen.getByRole("button", { name: /^Stop$/ })).toBeTruthy()
 })

@@ -17,7 +17,7 @@ export function AutomationReviewFrame(props: {
       aria-label={t("title")}
       className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-l bg-panel"
     >
-      <TaskPanelHeader title={t("title")} actions={props.actions} className="border-b p-4" />
+      <TaskPanelHeader title={t("title")} actions={props.actions} className="border-b p-3" />
       <section
         aria-label={t("changes")}
         className="min-h-0 min-w-0 overflow-auto overscroll-contain p-4"

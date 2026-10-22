@@ -40,7 +40,7 @@ export function SurfaceTextureTreeGroup({
         aria-expanded={expanded}
         aria-selected={false}
         variant="ghost"
-        size="sm"
+        size="xs"
         className={modelBrowserGroupRow}
         onClick={() => setExpanded(!expanded)}
       >

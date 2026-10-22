@@ -55,7 +55,7 @@ export function SurfaceTextureTaskPanel({
   useTexturePanelKeyboard(gallery, setGallery, state)
   if (gallery && layer)
     return (
-      <aside aria-label={t("title")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <aside aria-label={t("title")} className="min-h-0 overflow-auto border-l bg-panel p-3">
         <TextureGallery
           selected={layer.map}
           onSelect={(map) => update({ map })}
@@ -78,7 +78,7 @@ export function SurfaceTextureTaskPanel({
         <TaskPanelHeader
           title={t("title")}
           description={t("description")}
-          className="shrink-0 border-b p-4"
+          className="shrink-0 border-b p-3"
           actions={
             <TaskPanelLifecycleActions
               ariaLabel={t("title")}

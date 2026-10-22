@@ -108,7 +108,7 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
   )
   if (!mode || !props.authority)
     return (
-      <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
         <TaskPanelHeader
           title={copy.title}
           actions={
@@ -128,7 +128,7 @@ export function BodyCombinationTaskPanel(props: CombinationPanelProps) {
       ? `edit:${mode.feature.id}:${props.report.snapshot.revision}`
       : `create:${operation}:${props.report.snapshot.revision}`
   return (
-    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={task("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <BodyCombinationForm
         key={key}
         copy={copy}

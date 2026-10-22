@@ -327,7 +327,7 @@ function HistoryItemActions({ children }: { children: ReactNode }) {
     <div
       className={
         timeline && !detailed
-          ? "pointer-events-none absolute -right-2 -top-2 opacity-0 focus-within:opacity-100 group-hover/history-item:opacity-100 [&_button]:pointer-events-auto"
+          ? "pointer-events-none absolute right-0 -top-2 opacity-0 focus-within:opacity-100 group-hover/history-item:opacity-100 [&_button]:pointer-events-auto"
           : "contents"
       }
     >
@@ -912,9 +912,9 @@ function ModelTreeGroupItem({
     <Button
       type="button"
       variant="ghost"
-      size="sm"
+      size="xs"
       className={cn(
-        timeline ? "w-full justify-start font-normal" : modelBrowserGroupRow,
+        timeline ? "w-full justify-start text-xs font-medium" : modelBrowserGroupRow,
         className,
       )}
       role="treeitem"
@@ -1414,9 +1414,7 @@ function HistoryRowDetails({
 
 function historyRowLayout(timeline: boolean, compact: boolean) {
   if (!timeline) return undefined
-  return compact
-    ? "relative h-10 w-12 shrink-0 px-2 py-1"
-    : "relative w-64 shrink-0 border-r px-2 py-2"
+  return compact ? "relative size-8 shrink-0" : "relative w-64 shrink-0 border-r px-2 py-2"
 }
 
 function HistoryRepairTooltip({
@@ -1743,6 +1741,50 @@ function FeatureHistoryRow({
   )
 }
 
+function HistoryGroupHeader({
+  count,
+  expanded,
+  onDetailedChange,
+  onExpandedChange,
+}: {
+  count: number
+  expanded: boolean
+  onDetailedChange: () => void
+  onExpandedChange: (expanded: boolean) => void
+}) {
+  const t = useTranslations("app.shell.modelTree")
+  const { detailed } = useContext(HistoryPresentation)
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-1 px-2",
+        detailed ? "border-b" : "lg:flex-nowrap lg:border-r",
+      )}
+    >
+      <ModelTreeGroupItem
+        className="w-auto shrink-0"
+        expanded={expanded}
+        onExpandedChange={onExpandedChange}
+        title={t("items.history")}
+      />
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
+      <HistoryNavigationControls />
+      <div className="min-w-0 flex-1" />
+      {expanded && <HistoryFolderSelectionControls compact />}
+      <Button
+        size="xs"
+        variant="ghost"
+        aria-pressed={detailed}
+        disabled={!expanded}
+        onClick={onDetailedChange}
+      >
+        <ListFilter aria-hidden="true" className="size-3.5" />
+        {t("timelineDetails")}
+      </Button>
+    </div>
+  )
+}
+
 function HistoryGroup({
   expanded,
   onDetailedChange,
@@ -1849,7 +1891,10 @@ function HistoryGroup({
     )
   }
   return (
-    <div role="none">
+    <div
+      role="none"
+      className={cn(!detailed && "lg:grid lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center")}
+    >
       <HistoryFolderSelection
         controller={props.controller}
         authority={authority}
@@ -1857,32 +1902,14 @@ function HistoryGroup({
         disabled={metadataDisabled || !completeGraph || busy}
         onCommit={props.onAuthoredMetadata}
       >
-        <div className="flex min-w-0 flex-wrap items-center gap-1 border-b px-2">
-          <ModelTreeGroupItem
-            className="w-auto shrink-0"
-            expanded={expanded}
-            onExpandedChange={onExpandedChange}
-            title={t("items.history")}
-          />
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {view.rows.length}
-          </span>
-          <HistoryNavigationControls />
-          <div className="min-w-0 flex-1" />
-          {expanded && <HistoryFolderSelectionControls compact />}
-          <Button
-            size="xs"
-            variant="ghost"
-            aria-pressed={detailed}
-            disabled={!expanded}
-            onClick={onDetailedChange}
-          >
-            <ListFilter aria-hidden="true" className="size-3.5" />
-            {t("timelineDetails")}
-          </Button>
-        </div>
+        <HistoryGroupHeader
+          count={view.rows.length}
+          expanded={expanded}
+          onDetailedChange={onDetailedChange}
+          onExpandedChange={onExpandedChange}
+        />
         {expanded && (
-          <fieldset className="contents">
+          <fieldset className="min-w-0">
             <legend className="sr-only">{t("items.history")}</legend>
             <p id="history-drag-instructions" className="sr-only">
               {t("historyDragInstructions", { item: t("items.history") })}
@@ -2830,17 +2857,12 @@ export function ModelTree(props: ModelTreeProps) {
       className="min-h-0 overflow-auto border-r bg-panel p-2"
       onKeyDown={deletion.onKeyDown}
     >
-      <div className="mb-1 flex items-center gap-2 border-b px-2 pb-3 pt-1">
-        <div className="min-w-0">
-          <h2 className="flex h-8 items-center gap-2 pl-6 text-sm font-medium">
-            <Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />
-            {t("title")}
-          </h2>
-          {snapshot?.name && (
-            <p className="truncate pl-12 text-xs text-muted-foreground">{snapshot.name}</p>
-          )}
-        </div>
-      </div>
+      <header className="mb-1 border-b px-2 py-1">
+        <h2 className="flex min-w-0 items-center gap-2 pl-6 text-xs font-medium">
+          <Cuboid aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">{t("title")}</span>
+        </h2>
+      </header>
       <ModelBrowserSearch
         entries={[
           ...modelSearchBodyEntries({ ...props, t, view: historyView }),

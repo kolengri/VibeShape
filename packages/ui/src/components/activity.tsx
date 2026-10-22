@@ -35,17 +35,17 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
 
 /** Registers owned work without coupling its cancellation or action lock to presentation. */
 export function useReportActivity(active: boolean) {
-  return useOwnedActivity(active, null)
+  const store = React.useContext(ActivityContext)
+  React.useEffect(() => {
+    if (active) return store?.begin(null)
+  }, [active, store])
+  return store !== null
 }
 
 /** Blocks interaction only for work whose owner cannot safely accept more input. */
 export function useReportBlockingActivity(active: boolean, label: string) {
-  return useOwnedActivity(active, label)
-}
-
-function useOwnedActivity(active: boolean, label: string | null) {
   const store = React.useContext(ActivityContext)
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (active) return store?.begin(label)
   }, [active, label, store])
   return store !== null

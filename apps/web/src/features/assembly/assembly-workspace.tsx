@@ -225,7 +225,7 @@ function IdleAssemblyPanelHeading({ error }: { error: string | null }) {
   const appOwnsError = useReportApplicationError(error)
   return (
     <>
-      <h2 className="text-base font-semibold">{t("workspaceTitle")}</h2>
+      <h2 className="text-xs font-medium">{t("workspaceTitle")}</h2>
       {error && !appOwnsError && <Alert>{error}</Alert>}
     </>
   )
@@ -250,7 +250,7 @@ function AssemblyPanel({
       expandLabel={t("expandPanel")}
     >
       <section
-        className="grid h-full min-h-0 min-w-0 content-start gap-4 overflow-y-auto p-4"
+        className="grid h-full min-h-0 min-w-0 content-start gap-2 overflow-y-auto p-3"
         aria-label={t("taskPanel")}
       >
         {view.idle && <IdleAssemblyPanelHeading error={view.mutations.error} />}

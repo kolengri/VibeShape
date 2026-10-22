@@ -6,7 +6,7 @@ export function FdmSettingsDetails({ settings }: { settings: StructuralFdmSettin
   const number = useTranslations("app.lightweighting")
   return (
     <section className="grid min-w-0 gap-2 text-xs" aria-label={t("reviewSettings")}>
-      <h3 className="font-medium">{t("reviewSettings")}</h3>
+      <h3 className="text-xs font-medium">{t("reviewSettings")}</h3>
       <dl className="grid grid-cols-1 gap-1 @xs:grid-cols-2">
         <dt>{t("supportMode")}</dt>
         <dd>{t(settings.supportMode)}</dd>

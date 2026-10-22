@@ -178,9 +178,17 @@ test("keeps the divider and transport read-only when another tab owns the projec
     await saved(other)
     const viewport = other.getByRole("region", { name: "3D viewport", exact: true })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
+    await other.getByRole("button", { name: "Application menu", exact: true }).click()
     await expect(
-      other.getByRole("button", { name: "Rename Untitled project", exact: true }),
+      other.getByRole("menuitem", { name: "Rename project", exact: true }),
     ).toBeDisabled()
+    await other.keyboard.press("Escape")
+    const activeTab = other
+      .getByRole("navigation", { name: "Open projects", exact: true })
+      .getByRole("tab", { name: "Untitled project", exact: true, selected: true })
+    await activeTab.dblclick()
+    await activeTab.press("F2")
+    await expect(other.getByRole("dialog", { name: "Rename project", exact: true })).toHaveCount(0)
     const divider = other.getByRole("separator", { name: "History rollback divider", exact: true })
     await expect(divider).toHaveAttribute("aria-disabled", "true")
     const handle = await divider.boundingBox()

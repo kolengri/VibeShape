@@ -442,9 +442,7 @@ function AppliedConstraintsSection({
 }) {
   return (
     <section className="grid gap-2 border-t pt-3">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {copy.constraints}
-      </h3>
+      <h3 className="text-xs font-medium text-muted-foreground">{copy.constraints}</h3>
       {draft.constraints.length > 0 ? (
         <ul className="grid gap-1">
           {draft.constraints.map((constraint) => (
@@ -525,7 +523,7 @@ export function SketchConstraintManagerPopover({
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <header className="flex min-w-0 items-center justify-between gap-2">
-          <h3 className="truncate text-sm font-medium">
+          <h3 className="truncate text-xs font-medium">
             {copy.constraintManager(state.draft.constraints.length)}
           </h3>
           <Tooltip>
@@ -600,9 +598,7 @@ function ExternalReferencesSection({
 
   return (
     <section className="grid gap-2 border-t pt-3">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {copy.externalReferences}
-      </h3>
+      <h3 className="text-xs font-medium text-muted-foreground">{copy.externalReferences}</h3>
       <p className="text-xs leading-4 text-muted-foreground">{copy.externalReferenceDescription}</p>
       {references.length === 0 ? (
         <p className="text-xs text-muted-foreground">{copy.noExternalReferences}</p>

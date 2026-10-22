@@ -15,7 +15,7 @@ export function GenerativeDesignControls({ state }: { state: StudyState }) {
   const fields = state.studyFields
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-      <legend className="mb-2 font-medium">{t("searchSpace")}</legend>
+      <legend className="text-xs mb-2 font-medium">{t("searchSpace")}</legend>
       <p className="text-xs text-muted-foreground">{t("targetHelp")}</p>
       <fieldset className="flex flex-wrap gap-2" aria-label={t("weightTarget")}>
         {[85, 70, 50].map((percent) => (
@@ -99,14 +99,14 @@ function GenerativeObstacleControls({ state }: { state: StudyState }) {
   const fields = state.studyFields
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-      <legend className="mb-2 font-medium">{t("obstacles")}</legend>
+      <legend className="text-xs mb-2 font-medium">{t("obstacles")}</legend>
       <p className="text-xs text-muted-foreground">{t("obstaclesHelp")}</p>
       {fields.obstacles.map((obstacle, index) => (
         <fieldset
           key={obstacle.id}
           className="grid min-w-0 grid-cols-1 gap-3 rounded-md border p-3"
         >
-          <legend className="px-1 text-sm font-medium">
+          <legend className="px-1 text-xs font-medium">
             {t("obstacle", { index: index + 1 })}
           </legend>
           {(["min", "max"] as const).map((bound) => (
@@ -184,11 +184,11 @@ export function GenerativeDesignResults({ state }: { state: StudyState }) {
   if (!state.study) return null
   return (
     <section className="grid min-w-0 grid-cols-1 gap-3" aria-label={t("candidates")}>
-      <h3 className="font-medium">{t("candidates")}</h3>
+      <h3 className="text-xs font-medium">{t("candidates")}</h3>
       <p className="text-xs text-muted-foreground">{t("comparisonHelp")}</p>
       {state.study.candidates.map((candidate, index) => (
         <article key={candidate.id} className="grid gap-2 rounded-md border p-3">
-          <h4 className="text-sm font-medium">
+          <h4 className="text-xs font-medium">
             {t("candidate", { index: index + 1, material: candidate.materialName })}
           </h4>
           <dl className="grid grid-cols-1 gap-2 text-xs @xs:grid-cols-2">

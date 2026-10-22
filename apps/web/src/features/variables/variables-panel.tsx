@@ -25,11 +25,11 @@ function VariablesPanelMessage({
 
   return (
     <section
-      className="min-h-0 overflow-auto bg-background p-4"
+      className="min-h-0 overflow-auto bg-background p-3"
       aria-labelledby="variables-title"
       data-document-status={status}
     >
-      <h1 id="variables-title" className="text-base font-semibold">
+      <h1 id="variables-title" className="text-xs font-medium">
         {t("title")}
       </h1>
       {isError ? (
@@ -90,10 +90,10 @@ function ReadyVariablesPanel({
   }
 
   return (
-    <section className="min-h-0 overflow-auto bg-background p-4" aria-labelledby="variables-title">
-      <div className="mx-auto grid max-w-6xl gap-4">
+    <section className="min-h-0 overflow-auto bg-background p-3" aria-labelledby="variables-title">
+      <div className="mx-auto grid max-w-6xl gap-2">
         <div>
-          <h1 id="variables-title" className="text-base font-semibold">
+          <h1 id="variables-title" className="text-xs font-medium">
             {t("title")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">{t("description")}</p>

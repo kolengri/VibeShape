@@ -50,7 +50,7 @@ function AssemblySection({
     <section className="min-w-0">
       <h2>
         <Button
-          size="sm"
+          size="xs"
           variant="ghost"
           className={modelBrowserGroupRow}
           aria-expanded={expanded}

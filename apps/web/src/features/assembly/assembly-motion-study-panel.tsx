@@ -326,7 +326,9 @@ function StudyPlayback({
         <output>{motion.value ?? 0}</output>
       </label>
       <details>
-        <summary className="cursor-pointer py-1 text-sm">{t("motionPlaybackOptions")}</summary>
+        <summary className="font-medium cursor-pointer py-1 text-xs">
+          {t("motionPlaybackOptions")}
+        </summary>
         <AssemblyPlaybackSettings
           value={options}
           onChange={setOptions}
@@ -482,7 +484,9 @@ export function AssemblyMotionStudyPanel({ view, session }: StudyPanelProps) {
         disabled={busy || solving}
       />
       <details>
-        <summary className="cursor-pointer py-1 text-sm">{t("motionExportOptions")}</summary>
+        <summary className="font-medium cursor-pointer py-1 text-xs">
+          {t("motionExportOptions")}
+        </summary>
         <StudyExport session={session} revision={task.revision} disabled={busy || solving} />
       </details>
       <StudyFailure view={view} session={session} error={error} />

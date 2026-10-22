@@ -24,7 +24,7 @@ export function ParameterPanel({
   message?: ReactNode
 }) {
   return (
-    <div className="grid min-w-0 gap-4">
+    <div className="grid min-w-0 gap-2">
       <TaskPanelHeader title={copy.title} description={copy.description} actions={actions} />
       {message ? <Alert>{message}</Alert> : null}
       <fieldset disabled={disabled} className="grid min-w-0 gap-3">

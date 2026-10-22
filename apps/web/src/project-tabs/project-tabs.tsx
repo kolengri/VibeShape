@@ -1,11 +1,12 @@
 import { useReportBlockingActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
-import { FilesIcon, NewProjectIcon, X } from "@vibeshape/ui/components/icons"
+import { X } from "@vibeshape/ui/components/icons"
 import { Tabs, TabsList, TabsTrigger } from "@vibeshape/ui/components/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useEffect, useId } from "react"
+import { useEffect, useId, useState } from "react"
 import type { DocumentControllerState, ProjectSwitchResult } from "../document/document-controller"
+import { DocumentRenameDialog, projectRenameAvailable } from "../document/document-rename-dialog"
 import { useReportApplicationError } from "../shell/application-notices"
 import { useProjectTabsController } from "./use-project-tabs"
 
@@ -14,8 +15,6 @@ export const projectTabId = (documentId: string) => `project-tab-${documentId}`
 
 export type ProjectTabsCopy = Readonly<{
   label: string
-  newProject: string
-  openProjects: string
   closeProject: (name: string) => string
   blocked: string
   switchFailed: string
@@ -38,6 +37,8 @@ export function ProjectTabs({
   const tabs = useProjectTabsController(controller, onOpenProjects)
   useReportBlockingActivity(tabs.pending, copy.working)
   const feedbackId = useId()
+  const [renameOpen, setRenameOpen] = useState(false)
+  const canRename = projectRenameAvailable(controller)
   const message = tabs.feedback ? copy[tabs.feedback] : null
   const centralized = useReportApplicationError(message, tabs.feedbackAttempt)
   const storageCentralized = useReportApplicationError(
@@ -78,11 +79,21 @@ export function ProjectTabs({
               disabled={disabled}
               closeLabel={copy.closeProject(tab.name)}
               onClose={tabs.close}
+              onRename={canRename ? () => setRenameOpen(true) : undefined}
             />
           ))}
         </TabsList>
-        <ProjectTabActions tabs={tabs} disabled={disabled} copy={copy} />
       </Tabs>
+      <DocumentRenameDialog
+        controller={controller}
+        showTrigger={false}
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          if (tabs.activeId) document.getElementById(projectTabId(tabs.activeId))?.focus()
+        }}
+      />
       {message && !centralized && (
         <p id={feedbackId} role="alert" className="sr-only">
           {message}
@@ -103,12 +114,14 @@ function ProjectTab({
   disabled,
   closeLabel,
   onClose,
+  onRename,
 }: {
   tab: ReturnType<typeof useProjectTabsController>["tabs"][number]
   active: boolean
   disabled: boolean
   closeLabel: string
   onClose: ReturnType<typeof useProjectTabsController>["close"]
+  onRename: (() => void) | undefined
 }) {
   return (
     <div className={cn("flex min-w-0 shrink-0 items-center rounded-md", active && "bg-secondary")}>
@@ -118,7 +131,13 @@ function ProjectTab({
         aria-controls={PROJECT_EDITOR_PANEL_ID}
         disabled={disabled}
         className="max-w-44 truncate py-1 pl-2 pr-1 text-xs"
+        onDoubleClick={active ? onRename : undefined}
         onKeyDown={(event) => {
+          if (event.key === "F2" && active && onRename) {
+            event.preventDefault()
+            onRename()
+            return
+          }
           if (event.key !== "Delete") return
           event.preventDefault()
           void onClose(tab.documentId)
@@ -142,50 +161,5 @@ function ProjectTab({
         <TooltipContent>{closeLabel}</TooltipContent>
       </Tooltip>
     </div>
-  )
-}
-
-function ProjectTabActions({
-  tabs,
-  disabled,
-  copy,
-}: {
-  tabs: ReturnType<typeof useProjectTabsController>
-  disabled: boolean
-  copy: ProjectTabsCopy
-}) {
-  return (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            disabled={disabled || Boolean(tabs.blocked)}
-            aria-label={copy.newProject}
-            onClick={tabs.create}
-          >
-            <NewProjectIcon aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{tabs.blocked ? copy.blocked : copy.newProject}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            disabled={disabled}
-            aria-label={copy.openProjects}
-            onClick={tabs.openLibrary}
-          >
-            <FilesIcon aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{copy.openProjects}</TooltipContent>
-      </Tooltip>
-    </>
   )
 }

@@ -1959,6 +1959,7 @@
         "library": "Library…",
         "extensions": "Plugins…",
         "openingProjects": "Opening projects…",
+        "projectCreationFailed": "Could not create a project. The current project remains open.",
         "projectNavigationFailed": "Finish or cancel the current edit and wait for saving to complete, then open Projects again."
       },
       "cadError": {

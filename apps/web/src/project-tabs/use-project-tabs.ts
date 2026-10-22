@@ -3,7 +3,6 @@ import {
   type AutomationProjectExpectation,
   activateProjectTab,
   closeProjectRuntime,
-  createNewLocalProject,
   type DocumentControllerState,
   getDocumentControllerState,
   getProjectCloseBlock,
@@ -121,13 +120,9 @@ export function useProjectTabsController(
     }
   }
 
-  const navigate = (documentId: string | null, closingId?: string) => {
+  const navigate = (documentId: string, closingId?: string) => {
     if (documentId === activeId) return
-    return transition(
-      (expected) =>
-        documentId ? activateProjectTab(documentId, expected) : createNewLocalProject(),
-      closingId,
-    )
+    return transition((expected) => activateProjectTab(documentId, expected), closingId)
   }
 
   const openLibrary = (closingId?: string) => transition(onOpenProjects, closingId, false)
@@ -173,7 +168,6 @@ export function useProjectTabsController(
     feedbackAttempt,
     refresh,
     activate: (documentId: string) => navigate(documentId),
-    create: () => navigate(null),
     close,
     openLibrary: () => openLibrary(),
   }

@@ -117,7 +117,7 @@ function taskPresentation(compact: boolean, collapsed: boolean, active: boolean)
   if (!active)
     return { min: 0, max: 0, centerMin: compact ? 160 : 320, collapsed: true, hidden: true }
   if (compact) return { min: 0, max: 0, centerMin: 160, collapsed: true, hidden: false }
-  return { min: 280, max: 480, centerMin: 320, collapsed, hidden: collapsed }
+  return { min: 280, max: 480, centerMin: 280, collapsed, hidden: collapsed }
 }
 
 function IdleModelTreeToggle({ taskActive, narrow }: { taskActive: boolean; narrow: boolean }) {
@@ -200,7 +200,7 @@ function WorkspaceHistory({ children }: { children: ReactNode }) {
     }
   }, [])
   return (
-    <div ref={history} className="min-w-0 shrink-0">
+    <div ref={history} className="workspace-history min-w-0 shrink-0">
       {children}
     </div>
   )

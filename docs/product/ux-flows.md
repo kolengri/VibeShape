@@ -147,8 +147,9 @@ the model to send another command. Saved batches expose **View before** / **View
 the existing internal checkpoint. These controls remain hidden while the agent is busy and do not
 move the transcript when the person is reading earlier messages. Inspection locks do not open
 connection settings, and control/display changes do not trigger transcript following without new
-message content. The chat header contains the chat title, project name, and actions without a
-working-status label. Hiding chat preserves its mounted transcript, draft,
+message content. The compact chat header contains the chat title and actions in one row. The project
+name remains in the top project navigation; working status stays in the composer. Hiding chat preserves
+its mounted transcript, draft,
 attachment reads, scroll position, settings and active connection. The header AI chat toggle reopens
 the same panel; show/hide and message updates do not resize or remount the viewport canvas.
 
@@ -194,10 +195,16 @@ failures retain their specific diagnostics.
 
 ## Application menu
 
-The VibeShape menu groups global actions into Project (files, local projects, and geometry export),
+The VibeShape menu groups global actions into Project (New project, Rename project, Projects, local
+files, and geometry export),
 Workspace (settings and command palette), AI (connection and session controls when available), and
-Help (FAQ, MCP setup, and keyboard shortcuts). The header retains the project name, rename action,
-save status, and the Model / Assembly mode switch. Mode selection stays above the command toolbar
+Help (FAQ, MCP setup, and keyboard shortcuts). The header retains project tabs, save status, and the
+Model / Assembly mode switch. Create, open, and rename actions live in the application menu instead
+of repeated header buttons. Double-clicking the active project title or pressing F2 while its tab
+is focused opens the same revision-checked rename dialog as Rename project in the menu. Rename
+is unavailable for read-only documents or while project actions are blocked. Closing the dialog
+restores focus to its originating tab or the application-menu trigger. Mode selection stays above
+the command toolbar
 and is unavailable while a feature or sketch is being edited or the document is saving.
 The status bar exposes local **AI access** as an outlined button. It stays disabled with
 the visible **MCP client not connected** explanation until a client is available. An active

@@ -2,7 +2,9 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import * as React from "react"
 import { StrictMode } from "react"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import {
   ActivityProvider,
   useActivityPending,
@@ -33,6 +35,38 @@ function BlockingWork({ active, label }: { active: boolean; label: string }) {
 function BlockingStatus() {
   return <output aria-label="Blocking activity">{useBlockingActivity() ?? "none"}</output>
 }
+
+it("registers blocking work before passive effects without changing background timing", () => {
+  let holdPassive = false
+  const originalEffect = React.useEffect
+  const passiveEffect = vi.spyOn(React, "useEffect").mockImplementation((setup, dependencies) =>
+    originalEffect(() => {
+      if (!holdPassive) return setup()
+    }, dependencies),
+  )
+  const view = (background: boolean, blocking: boolean) => (
+    <ActivityProvider>
+      <ActivityStatus />
+      <BlockingStatus />
+      <OwnedWork active={background} />
+      <BlockingWork active={blocking} label="Opening project" />
+    </ActivityProvider>
+  )
+  try {
+    const result = render(view(false, false))
+    holdPassive = true
+    result.rerender(view(true, false))
+    expect(screen.getByLabelText("Application activity").textContent).toBe("idle")
+    result.rerender(view(true, true))
+    expect(screen.getByLabelText("Blocking activity").textContent).toBe("Opening project")
+    expect(screen.getByLabelText("Application activity").textContent).toBe("working")
+    result.rerender(view(true, false))
+    expect(screen.getByLabelText("Blocking activity").textContent).toBe("none")
+    expect(screen.getByLabelText("Application activity").textContent).toBe("idle")
+  } finally {
+    passiveEffect.mockRestore()
+  }
+})
 
 it("retains blocking work until every blocking owner settles without promoting background work", () => {
   const view = (first: boolean, second: boolean) => (

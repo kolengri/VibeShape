@@ -10,6 +10,7 @@ export function AssistantIconAction({
   pressed,
   onAction,
   primary = false,
+  size = "icon-sm",
 }: {
   label: string
   children: ReactNode
@@ -18,13 +19,14 @@ export function AssistantIconAction({
   pressed?: boolean
   onAction: () => unknown
   primary?: boolean
+  size?: "icon-xs" | "icon-sm"
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
           type="button"
-          size="icon-sm"
+          size={size}
           variant={primary ? "default" : pressed ? "secondary" : "ghost"}
           aria-label={label}
           aria-expanded={expanded}

@@ -400,7 +400,7 @@ function RevolveAxisField({
 }>) {
   return (
     <fieldset className="grid min-w-0 gap-2" disabled={disabled}>
-      <legend className="text-sm font-medium">{copy.axis}</legend>
+      <legend className="text-xs font-medium">{copy.axis}</legend>
       <div className="flex min-w-0 gap-2">
         {(["x", "y"] as const).map((axis) => {
           const selected = value.kind === "origin-axis" && value.axis === axis

@@ -491,7 +491,7 @@ function HolePoints({
       aria-invalid={Boolean(error) || undefined}
       aria-describedby={error ? errorId : undefined}
     >
-      <legend className="text-sm font-medium">{copy.points}</legend>
+      <legend className="text-xs font-medium">{copy.points}</legend>
       <p className="text-xs text-muted-foreground">{copy.pointsDescription}</p>
       {points.length === 0 ? (
         <p className="text-xs text-muted-foreground">{copy.noPoints}</p>

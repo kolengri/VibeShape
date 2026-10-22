@@ -52,11 +52,11 @@ function lifecycleActionLayout(
   const showReason = Boolean(label) && disabled && Boolean(reason)
   return showReason
     ? {
-        group: "w-full grid-cols-[minmax(0,1fr)_2rem_2rem]",
+        group: "w-full grid-cols-[minmax(0,1fr)_1.5rem_1.5rem]",
         cancel: "col-start-2",
         accept: "col-start-3",
       }
-    : { group: "w-fit grid-flow-col auto-cols-[2rem]", cancel: undefined, accept: undefined }
+    : { group: "w-fit grid-flow-col auto-cols-[1.5rem]", cancel: undefined, accept: undefined }
 }
 
 function TaskPanelAcceptAction({

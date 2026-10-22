@@ -429,7 +429,7 @@ export function AuthoredPartsGroup(props: PartsProps) {
       <Button
         type="button"
         variant="ghost"
-        size="sm"
+        size="xs"
         role="treeitem"
         tabIndex={-1}
         aria-expanded={expanded}
@@ -461,7 +461,7 @@ export function AuthoredPartsGroup(props: PartsProps) {
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
+                size="xs"
                 role="treeitem"
                 tabIndex={-1}
                 aria-expanded={consumedExpanded}
