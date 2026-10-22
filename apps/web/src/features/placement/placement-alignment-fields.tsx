@@ -169,7 +169,16 @@ export function PlacementAlignmentFields({
   }
   return (
     <details open={available || undefined}>
-      <summary className="cursor-pointer text-xs font-medium" aria-label={t("alignmentTitle")}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: Summary has native keyboard activation; cancel only embedded help activation. */}
+      <summary
+        className="cursor-pointer text-xs font-medium"
+        aria-label={t("alignmentTitle")}
+        onClick={(event) => {
+          if (event.target instanceof Element && event.target.closest('[data-slot="field-help"]')) {
+            event.preventDefault()
+          }
+        }}
+      >
         <span className="inline-flex items-center gap-1">
           <span>{t("alignmentTitle")}</span>
           <FieldHelp label={t("alignmentTitle")}>{t("alignmentDescription")}</FieldHelp>
