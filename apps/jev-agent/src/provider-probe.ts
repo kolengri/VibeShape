@@ -62,9 +62,11 @@ export async function probeProviders(
   let stage: "jev" | "arguments" = "jev"
   let httpStatus: number | undefined
   const controller = new AbortController()
+  // Cold inbox PowerShell/Add-Type startup can exceed the ordinary provider probe budget.
+  const budget = configuration.argumentsAgent && process.platform === "win32" ? 50_000 : 20_000
   const timer = setTimeout(
     () => controller.abort(),
-    Math.min(options.timeoutMs ?? configuration.timeoutMs, 20_000),
+    Math.min(options.timeoutMs ?? configuration.timeoutMs, budget),
   )
   const request: Fetch = async (url, init) => {
     controller.signal.throwIfAborted()

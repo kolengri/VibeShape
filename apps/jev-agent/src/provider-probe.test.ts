@@ -60,7 +60,7 @@ describe("read-only provider connection probe", () => {
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
-  })
+  }, 65_000)
   test.each([false, true])(
     "validates the configured providers with minimal isolated requests (helper=%s)",
     async (helper) => {

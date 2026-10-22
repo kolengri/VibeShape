@@ -61,9 +61,13 @@ kill-on-close Job Object before launching the agent. Its descendants inherit job
 leader exit, cancellation and host termination close the owning process and terminate the job.
 Jev waits for a private per-launch readiness receipt on stderr before sending ACP initialization;
 supervisor setup remains within the request's existing deadline.
+The Windows local-agent connection probe allows up to 50 seconds within the configured request
+timeout, with a 60-second desktop deadline to include startup and cleanup. This accommodates
+cold PowerShell/.NET setup; API and other-platform probe budgets remain 20 seconds in Jev.
 The supervisor also waits on the host process handle, because forced Windows process termination
-cannot run JavaScript signal handlers. Arguments are passed as data and stdout/stdin are inherited
-directly; no shell command evaluates the agent arguments. A blocked PowerShell or `Add-Type` policy
+cannot run JavaScript signal handlers. Arguments are passed as data; `CreateProcessW` explicitly
+assigns stdin/stdout/stderr and limits handle inheritance to those three streams. No shell command
+evaluates the agent arguments. A blocked PowerShell or `Add-Type` policy
 fails the launch without an unsupervised fallback. Temporary-directory removal has bounded retries
 for asynchronous Windows handle release. Job termination is not a promise of synchronous OS reaping.
 Standard Windows npm `.cmd` launchers are resolved to their Node entrypoint before supervision;

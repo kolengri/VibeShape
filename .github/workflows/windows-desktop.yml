@@ -31,11 +31,13 @@ jobs:
       - name: Check native host types
         run: bun run --cwd apps/desktop typecheck
       - name: Check Windows packaging and native boundaries
-        run: bun test apps/desktop/src/package-target.test.ts apps/desktop/src/windows-archive.test.ts apps/desktop/src/windows-updates.test.ts apps/desktop/src/private-files.test.ts apps/desktop/src/startup-profile.test.ts apps/desktop/src/start.test.ts packages/automation-api/src/desktop-host.test.ts
+        run: bun test apps/desktop/src/package-target.test.ts apps/desktop/src/windows-archive.test.ts apps/desktop/src/windows-updates.test.ts apps/desktop/src/private-files.test.ts apps/desktop/src/startup-profile.test.ts apps/desktop/src/start.test.ts apps/desktop/src/assistant-connection-test.test.ts packages/automation-api/src/desktop-host.test.ts
       - name: Build the source editor and native host
         run: |
           bun run build
           bun run desktop:build
+      - name: Check cold local argument provider probe
+        run: bun test apps/jev-agent/src/provider-probe.test.ts
       - name: Check local argument helper launch and process trees
         run: bun test apps/jev-agent/src/windows-agent-command.test.ts apps/jev-agent/src/local-arguments.test.ts
       - name: Exercise Windows native CAD and persistence

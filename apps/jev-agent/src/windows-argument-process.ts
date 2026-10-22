@@ -25,13 +25,14 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 
 public static class VibeShapeArgumentJob {
+  static readonly string TracePath = Environment.GetEnvironmentVariable("VIBESHAPE_ARGUMENT_TRACE");
   static void Trace(string stage) {
-    string path = Environment.GetEnvironmentVariable("VIBESHAPE_ARGUMENT_TRACE");
-    if (String.IsNullOrEmpty(path)) return;
+    if (String.IsNullOrEmpty(TracePath)) return;
     try {
-      System.IO.File.AppendAllText(path, "{\\"entryPoint\\":\\"windows-argument-supervisor\\",\\"time\\":\\"" +
+      System.IO.File.AppendAllText(TracePath, "{\\"entryPoint\\":\\"windows-argument-supervisor\\",\\"time\\":\\"" +
         DateTime.UtcNow.ToString("o") + "\\",\\"stage\\":\\"" + stage + "\\"}\\n");
     } catch {}
   }
@@ -41,6 +42,86 @@ public static class VibeShapeArgumentJob {
   static extern uint GetFileType(IntPtr handle);
   [DllImport("kernel32.dll", SetLastError = true)]
   static extern bool GetHandleInformation(IntPtr handle, out uint flags);
+
+  [StructLayout(LayoutKind.Sequential)]
+  struct StartupInfo {
+    public uint Size;
+    public IntPtr Reserved, Desktop, Title;
+    public uint X, Y, Width, Height, Columns, Rows, Fill, Flags;
+    public ushort ShowWindow, ReservedSize;
+    public IntPtr ReservedData, Input, Output, Error;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  struct StartupInfoEx {
+    public StartupInfo Startup;
+    public IntPtr Attributes;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  struct ProcessInfo {
+    public IntPtr Process, Thread;
+    public uint ProcessId, ThreadId;
+  }
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool DuplicateHandle(IntPtr sourceProcess, IntPtr source, IntPtr targetProcess,
+    out IntPtr target, uint access, bool inherit, uint options);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool InitializeProcThreadAttributeList(IntPtr list, int count, int flags, ref IntPtr size);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool UpdateProcThreadAttribute(IntPtr list, uint flags, IntPtr attribute,
+    IntPtr value, IntPtr size, IntPtr previous, IntPtr returnedSize);
+  [DllImport("kernel32.dll")]
+  static extern void DeleteProcThreadAttributeList(IntPtr list);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool CreateProcessW(string application, StringBuilder commandLine,
+    IntPtr processAttributes, IntPtr threadAttributes, bool inherit, uint flags,
+    IntPtr environment, string directory, ref StartupInfoEx startup, out ProcessInfo process);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool GetExitCodeProcess(IntPtr process, out uint code);
+  [DllImport("kernel32.dll")]
+  static extern bool CloseHandle(IntPtr handle);
+
+  static ProcessInfo StartChild(string command, string arguments, string directory) {
+    IntPtr[] handles = new IntPtr[3];
+    IntPtr attributes = IntPtr.Zero, handleList = IntPtr.Zero;
+    bool initialized = false;
+    try {
+      for (int i = 0; i < handles.Length; i++) {
+        IntPtr source = GetStdHandle(-10 - i);
+        if (source == IntPtr.Zero || source == new IntPtr(-1)) throw new Win32Exception();
+        if (!DuplicateHandle(GetCurrentProcess(), source, GetCurrentProcess(),
+          out handles[i], 0, true, 2)) throw new Win32Exception(); // DUPLICATE_SAME_ACCESS
+      }
+      IntPtr size = IntPtr.Zero;
+      InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
+      if (size == IntPtr.Zero) throw new Win32Exception();
+      attributes = Marshal.AllocHGlobal(size);
+      if (!InitializeProcThreadAttributeList(attributes, 1, 0, ref size)) throw new Win32Exception();
+      initialized = true;
+      handleList = Marshal.AllocHGlobal(IntPtr.Size * handles.Length);
+      Marshal.Copy(handles, 0, handleList, handles.Length);
+      // Restrict inheritance to the three raw ACP streams; the job handle must stay with us.
+      if (!UpdateProcThreadAttribute(attributes, 0, new IntPtr(0x20002), handleList,
+        new IntPtr(IntPtr.Size * handles.Length), IntPtr.Zero, IntPtr.Zero)) throw new Win32Exception();
+      StartupInfoEx startup = new StartupInfoEx();
+      startup.Startup.Size = (uint)Marshal.SizeOf(startup);
+      startup.Startup.Flags = 0x100; // STARTF_USESTDHANDLES
+      startup.Startup.Input = handles[0];
+      startup.Startup.Output = handles[1];
+      startup.Startup.Error = handles[2];
+      startup.Attributes = attributes;
+      ProcessInfo child;
+      StringBuilder line = new StringBuilder(((char)34) + command + ((char)34) + " " + arguments);
+      // EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW; argv is already CRT-quoted by the host.
+      if (!CreateProcessW(command, line, IntPtr.Zero, IntPtr.Zero, true, 0x08080000,
+        IntPtr.Zero, directory, ref startup, out child)) throw new Win32Exception();
+      return child;
+    } finally {
+      if (initialized) DeleteProcThreadAttributeList(attributes);
+      if (attributes != IntPtr.Zero) Marshal.FreeHGlobal(attributes);
+      if (handleList != IntPtr.Zero) Marshal.FreeHGlobal(handleList);
+      foreach (IntPtr handle in handles) if (handle != IntPtr.Zero) CloseHandle(handle);
+    }
+  }
 
   [StructLayout(LayoutKind.Sequential)]
   struct BasicLimits {
@@ -89,7 +170,7 @@ public static class VibeShapeArgumentJob {
       IntPtr parentHandle = parent.Handle;
       InstallJob();
       Trace("job-ready");
-      if (!String.IsNullOrEmpty(Environment.GetEnvironmentVariable("VIBESHAPE_ARGUMENT_TRACE"))) {
+      if (!String.IsNullOrEmpty(TracePath)) {
         foreach (int id in new int[] { -10, -11, -12 }) {
           IntPtr handle = GetStdHandle(id);
           uint flags;
@@ -98,23 +179,25 @@ public static class VibeShapeArgumentJob {
           Trace("stdio:" + id + ":" + handle.ToInt64() + ":" + GetFileType(handle) + ":" + valid + ":" + flags + ":" + error);
         }
       }
-      ProcessStartInfo start = new ProcessStartInfo(command, arguments);
-      start.UseShellExecute = false;
-      start.CreateNoWindow = true;
-      start.WorkingDirectory = directory;
-      start.EnvironmentVariables.Remove("VIBESHAPE_ARGUMENT_LAUNCH");
-      start.EnvironmentVariables.Remove("VIBESHAPE_ARGUMENT_TRACE");
+      Environment.SetEnvironmentVariable("VIBESHAPE_ARGUMENT_LAUNCH", null);
+      Environment.SetEnvironmentVariable("VIBESHAPE_ARGUMENT_TRACE", null);
       Trace("child-start");
-      using (Process child = Process.Start(start)) {
-        Trace("child-ready:" + child.Id);
+      ProcessInfo child = StartChild(command, arguments, directory);
+      try {
+        Trace("child-ready:" + child.ProcessId);
         Console.Error.WriteLine(ready);
         Console.Error.Flush();
         Trace("protocol-ready");
-        uint stopped = WaitForMultipleObjects(2, new IntPtr[] { parentHandle, child.Handle }, false, UInt32.MaxValue);
+        uint stopped = WaitForMultipleObjects(2, new IntPtr[] { parentHandle, child.Process }, false, UInt32.MaxValue);
         Trace("wait:" + stopped);
         if (stopped == 0) return 1;
         if (stopped != 1) throw new Win32Exception();
-        return child.ExitCode;
+        uint code;
+        if (!GetExitCodeProcess(child.Process, out code)) throw new Win32Exception();
+        return unchecked((int)code);
+      } finally {
+        CloseHandle(child.Thread);
+        CloseHandle(child.Process);
       }
     }
   }

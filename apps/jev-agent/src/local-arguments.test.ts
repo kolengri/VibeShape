@@ -119,6 +119,10 @@ describe("local ACP argument helper", () => {
       expect(log[0]).not.toHaveProperty("electron")
       expect(log[0]).not.toHaveProperty("trace")
       expect(log[0].args).toEqual(literalArgs)
+      if (process.platform === "win32")
+        expect(log[0].stdio).toEqual(
+          [0, 1, 2].map((fd) => ({ fd, pipe: true, character: false, file: false })),
+        )
       expect(log.find((e) => e.method === "initialize").params.clientCapabilities).toEqual({})
       expect(log.find((e) => e.method === "session/new").params.mcpServers).toEqual([])
       expect(log.find((e) => e.method === "session/prompt").params.prompt[0].text).toContain(
@@ -227,6 +231,9 @@ describe("local ACP argument helper", () => {
         await complete(tool, state, {}, budget())
         const log = await events(receipt)
         expect(log[0].args).toEqual(literalArgs)
+        expect(log[0].stdio).toEqual(
+          [0, 1, 2].map((fd) => ({ fd, pipe: true, character: false, file: false })),
+        )
         const backend = log.find((event) => event.backendPid)?.backendPid
         expect(backend).toBeNumber()
         await expectExited(log[0].pid)
