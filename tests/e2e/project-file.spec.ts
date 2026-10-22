@@ -200,16 +200,13 @@ test.describe("native project file", () => {
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
-    await page
-      .locator("header")
-      .getByRole("button", { name: "Rename Untitled project", exact: true })
-      .click()
+    await openApplicationMenuItem(page, "Rename project")
     const renameDialog = page.getByRole("dialog", { name: "Rename project" })
     await renameDialog.getByRole("textbox", { name: "Project name" }).fill("Calibration bracket")
     await renameDialog.getByRole("button", { name: "Rename project", exact: true }).dblclick()
     await expect(renameDialog).toHaveCount(0)
     await expect(
-      page.locator("header").first().getByText("Calibration bracket", { exact: true }),
+      page.getByRole("tab", { name: "Calibration bracket", exact: true, selected: true }),
     ).toBeVisible()
 
     const backupDownload = page.waitForEvent("download")
@@ -273,7 +270,7 @@ test.describe("native project file", () => {
       buffer: backupBytes,
     })
     await expect(
-      page.locator("header").first().getByText("Calibration bracket imported", { exact: true }),
+      page.getByRole("tab", { name: "Calibration bracket imported", exact: true, selected: true }),
     ).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     const copiedProjectId = await page.evaluate(() =>
@@ -383,6 +380,7 @@ test.describe("native project file", () => {
     await page
       .getByRole("dialog", { name: "Variables", exact: true })
       .getByRole("button", { name: "Done", exact: true })
+      .filter({ hasText: "Done" })
       .click()
     await invokeModelCommand(page, "Primitives", "Box")
     const createBox = page.getByRole("form", { name: "Create box" })
@@ -440,6 +438,7 @@ test.describe("native project file", () => {
     await page
       .getByRole("dialog", { name: "Variables", exact: true })
       .getByRole("button", { name: "Done", exact: true })
+      .filter({ hasText: "Done" })
       .click()
     await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     await expect(
@@ -475,7 +474,9 @@ test.describe("native project file", () => {
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    await expect(page.getByText("Untitled project copy", { exact: true })).toBeVisible()
+    await expect(
+      page.getByRole("tab", { name: "Untitled project copy", exact: true, selected: true }),
+    ).toBeVisible()
     await openApplicationMenuItem(page, "Projects")
     await expect(page.getByRole("main").getByRole("listitem")).toHaveCount(2)
   })
@@ -565,10 +566,11 @@ test("round trips reversed independent V5 extrusion depths through Save and a fr
     buffer: source.bytes,
   })
   await expect(
-    page
-      .locator("header")
-      .first()
-      .getByText(`${source.project.snapshot.name} imported`, { exact: true }),
+    page.getByRole("tab", {
+      name: `${source.project.snapshot.name} imported`,
+      exact: true,
+      selected: true,
+    }),
   ).toBeVisible({ timeout: 30_000 })
   await expect(saved).toBeVisible()
   await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(

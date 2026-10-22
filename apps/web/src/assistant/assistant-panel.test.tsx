@@ -33,7 +33,6 @@ const i18n = createI18n({
 })
 const defaults: PanelProps = {
   open: true,
-  projectName: "Bracket",
   messages: [],
   busy: false,
   canSend: true,

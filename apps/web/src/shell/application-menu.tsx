@@ -21,15 +21,21 @@ import {
   ImportSketchIcon,
   Keyboard,
   LibraryIcon,
+  NewProjectIcon,
+  PenLine,
   Settings,
 } from "@vibeshape/ui/components/icons"
 import { type ReactNode, useRef, useState } from "react"
 import { NativeApplicationCommandBridge } from "../desktop/native-editor-commands"
 import {
+  createNewLocalProject,
   type DocumentControllerState,
   getProjectActionBlock,
+  getProjectNavigationBlock,
+  type ProjectSwitchResult,
   showProjectLibrary,
 } from "../document/document-controller"
+import { DocumentRenameDialog, projectRenameAvailable } from "../document/document-rename-dialog"
 import { useProjectBackup } from "../document/use-project-backup"
 import { useReportApplicationError } from "./application-notices"
 import { ApplicationWordmark } from "./application-wordmark"
@@ -37,6 +43,7 @@ import { FaqDialog } from "./faq-dialog"
 import { SettingsDialog } from "./settings-dialog"
 
 type MenuDialog =
+  | "rename"
   | "export"
   | "settings"
   | "faq"
@@ -69,25 +76,28 @@ type ApplicationMenuProps = {
 
 const libraryCommands = ["settings", "faq"] as const
 
-function useProjectLibraryNavigation(failureMessage: string) {
+function useProjectNavigation(failureMessage: string) {
   const [navigating, setNavigating] = useState(false)
-  const [navigationFailed, setNavigationFailed] = useState(false)
+  const [navigationFailure, setNavigationFailure] = useState<string | null>(null)
   const [navigationAttempt, setNavigationAttempt] = useState(0)
-  const message = navigationFailed ? failureMessage : null
+  const message = navigationFailure
   const centralized = useReportApplicationError(message, navigationAttempt)
   const navigationPending = useRef(false)
   useReportActivity(navigating)
-  const navigateProjects = async () => {
+  const navigateProjects = async (
+    action: () => Promise<ProjectSwitchResult> = showProjectLibrary,
+    actionFailureMessage = failureMessage,
+  ) => {
     if (navigationPending.current) return
     navigationPending.current = true
     setNavigationAttempt((attempt) => attempt + 1)
     setNavigating(true)
-    setNavigationFailed(false)
+    setNavigationFailure(null)
     try {
-      const result = await showProjectLibrary()
-      if (!result.ok) setNavigationFailed(true)
+      const result = await action()
+      if (!result.ok) setNavigationFailure(actionFailureMessage)
     } catch {
-      setNavigationFailed(true)
+      setNavigationFailure(actionFailureMessage)
     } finally {
       navigationPending.current = false
       setNavigating(false)
@@ -108,14 +118,37 @@ function ApplicationProjectMenu({
   unitChangesBlocked: boolean
   hideModelExport: boolean
   backup: ReturnType<typeof useProjectBackup>
-  navigation: ReturnType<typeof useProjectLibraryNavigation>
+  navigation: ReturnType<typeof useProjectNavigation>
   launchDialog: (next: MenuDialog) => void
 }) {
   const t = useTranslations("app.shell.applicationMenu")
   const backupT = useTranslations("app.projectFile.backup")
+  const tabsT = useTranslations("app.projectTabs")
+  const renameT = useTranslations("app.projectRename")
   return (
     <DropdownMenuGroup aria-label={t("project")}>
       <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("project")}</p>
+      <DropdownMenuItem
+        disabled={
+          navigation.navigating ||
+          controller.status !== "ready" ||
+          Boolean(getProjectNavigationBlock())
+        }
+        onSelect={() =>
+          void navigation.navigateProjects(createNewLocalProject, t("projectCreationFailed"))
+        }
+      >
+        <NewProjectIcon aria-hidden="true" />
+        {tabsT("newProject")}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        aria-haspopup="dialog"
+        disabled={navigation.navigating || !projectRenameAvailable(controller)}
+        onSelect={() => launchDialog("rename")}
+      >
+        <PenLine aria-hidden="true" />
+        {renameT("title")}
+      </DropdownMenuItem>
       <DropdownMenuItem
         disabled={navigation.navigating}
         onSelect={() => void navigation.navigateProjects()}
@@ -253,6 +286,15 @@ function ApplicationMenuDialogs({
 }) {
   return (
     <>
+      {dialog === "rename" && (
+        <DocumentRenameDialog
+          controller={controller}
+          showTrigger={false}
+          open
+          onOpenChange={onOpenChange}
+          onCloseAutoFocus={onCloseAutoFocus}
+        />
+      )}
       {editor?.renderDialogs({
         dialog,
         onOpenChange: onOpenChange,
@@ -312,7 +354,7 @@ export function ApplicationMenu(props: ApplicationMenuProps) {
   const backup = useProjectBackup(controller)
   const [open, setOpen] = useState(false)
   const [dialog, setDialog] = useState<MenuDialog | null>(null)
-  const navigation = useProjectLibraryNavigation(t("projectNavigationFailed"))
+  const navigation = useProjectNavigation(t("projectNavigationFailed"))
   const trigger = useRef<HTMLButtonElement>(null)
   const openingCommandDialog = useRef(false)
   const closeDialogMenu = (event: Event) => {

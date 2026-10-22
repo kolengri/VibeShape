@@ -95,7 +95,7 @@ export function TextureGallery({
   return (
     <section aria-label={t("gallery")} className="grid gap-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-medium">{t("gallery")}</h2>
+        <h2 className="text-xs font-medium">{t("gallery")}</h2>
         <Button type="button" size="sm" onClick={onDone}>
           {t("done")}
         </Button>

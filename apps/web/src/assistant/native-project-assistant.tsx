@@ -44,7 +44,6 @@ export function NativeProjectAssistant({
       key={project.id}
       bridge={bridge}
       projectId={project.id}
-      projectName={project.name}
       draftDisplay={draftDisplay}
       open={open}
       onClose={onClose}
@@ -56,7 +55,6 @@ export function NativeProjectAssistant({
 function NativeProjectChat({
   bridge,
   projectId,
-  projectName,
   draftDisplay,
   open,
   onClose,
@@ -64,7 +62,6 @@ function NativeProjectChat({
 }: {
   bridge: AssistantBridge
   projectId: string
-  projectName: string
   draftDisplay?: AssistantDraftDisplay | undefined
   open: boolean
   onClose: () => void
@@ -75,7 +72,6 @@ function NativeProjectChat({
   return (
     <AssistantPanel
       open={open}
-      projectName={projectName}
       messages={state.messages}
       draftDisplay={draftDisplay}
       onToolHighlight={onToolHighlight}

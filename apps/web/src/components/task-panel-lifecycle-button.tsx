@@ -27,7 +27,7 @@ export function TaskPanelLifecycleButton({
           <Button
             {...props}
             aria-label={label}
-            size="icon-sm"
+            size="icon-xs"
             variant={kind === "cancel" ? "ghost" : destructive ? "destructive" : "default"}
             className={cn(
               kind === "cancel" && "text-destructive hover:text-destructive",

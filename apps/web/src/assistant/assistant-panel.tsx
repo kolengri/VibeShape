@@ -33,7 +33,6 @@ import type { ChatMessage } from "./chat-history"
 
 type AssistantPanelProps = AssistantComposerProps & {
   open: boolean
-  projectName: string
   messages: readonly ChatMessage[]
   onToolHighlight?: AssistantToolHighlight | undefined
   draftDisplay?: AssistantDraftDisplay | undefined
@@ -213,7 +212,6 @@ function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
 
 function AssistantHeader({
   titleId,
-  projectName,
   settingsOpen,
   onSettings,
   onClose,
@@ -221,7 +219,6 @@ function AssistantHeader({
   canReset,
 }: {
   titleId: string
-  projectName: string
   settingsOpen: boolean
   onSettings: () => void
   onClose: () => void
@@ -230,22 +227,27 @@ function AssistantHeader({
 }) {
   const t = useTranslations("app.assistant")
   return (
-    <header className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <h2 id={titleId} className="truncate font-medium">
-            {t("title")}
-          </h2>
-        </div>
-        <p className="truncate text-xs text-muted-foreground">{projectName}</p>
-      </div>
-      <AssistantIconAction label={t("newChat")} disabled={!canReset} onAction={onReset}>
+    <header className="flex shrink-0 items-center gap-2 border-b px-3 py-1">
+      <h2 id={titleId} className="min-w-0 flex-1 truncate text-xs font-medium">
+        {t("title")}
+      </h2>
+      <AssistantIconAction
+        size="icon-xs"
+        label={t("newChat")}
+        disabled={!canReset}
+        onAction={onReset}
+      >
         <MessageSquarePlus aria-hidden="true" />
       </AssistantIconAction>
-      <AssistantIconAction label={t("settingsTitle")} expanded={settingsOpen} onAction={onSettings}>
+      <AssistantIconAction
+        size="icon-xs"
+        label={t("settingsTitle")}
+        expanded={settingsOpen}
+        onAction={onSettings}
+      >
         <Settings aria-hidden="true" />
       </AssistantIconAction>
-      <AssistantIconAction label={t("close")} onAction={onClose}>
+      <AssistantIconAction size="icon-xs" label={t("close")} onAction={onClose}>
         <X aria-hidden="true" />
       </AssistantIconAction>
     </header>
@@ -336,7 +338,6 @@ export function AssistantPanel(props: AssistantPanelProps) {
       >
         <AssistantHeader
           titleId={titleId}
-          projectName={props.projectName}
           settingsOpen={settings.open}
           onSettings={settings.show}
           onClose={props.onClose}

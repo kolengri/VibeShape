@@ -54,8 +54,6 @@ const { ProjectTabsProvider } = await import("./project-tabs-provider")
 const { ProjectTabs, PROJECT_EDITOR_PANEL_ID, projectTabId } = await import("./project-tabs")
 const copy = {
   label: "Open projects",
-  newProject: "New project tab",
-  openProjects: "Open project tab",
   closeProject: (name: string) => `Close ${name}`,
   blocked: "Finish or cancel the current edit, save, or AI operation before switching projects.",
   switchFailed: "Could not open the project. The current project remains open.",
@@ -206,7 +204,7 @@ describe("project tabs", () => {
     setup()
     const tab = await screen.findByRole("tab", { name: "Enclosure" })
     expect(tab.hasAttribute("title")).toBe(false)
-    for (const name of ["Close Enclosure", copy.newProject, copy.openProjects]) {
+    for (const name of ["Close Enclosure"]) {
       const action = screen.getByRole("button", { name })
       expect(action.getAttribute("aria-label")).toBe(name)
       expect(action.hasAttribute("title")).toBe(false)
@@ -283,11 +281,11 @@ describe("project tabs", () => {
     await waitFor(() => expect(actions.activate).toHaveBeenCalledTimes(2))
   })
 
-  it("adds projects created through the existing action and refreshes renamed labels", async () => {
+  it("adds externally created projects and refreshes renamed labels", async () => {
     setup()
-    await userEvent.click(await screen.findByRole("button", { name: copy.newProject }))
+    await screen.findByRole("tab", { name: "Bracket" })
+    act(() => publish(state(thirdId)))
     await screen.findByRole("tab", { name: "Reference plate" })
-    expect(actions.create).toHaveBeenCalledTimes(1)
     act(() => publish(state(thirdId, "Reference plate v2")))
     await screen.findByRole("tab", { name: "Reference plate v2" })
     expect(screen.getAllByRole("tab")).toHaveLength(3)
@@ -306,18 +304,44 @@ describe("project tabs", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(2)
     expect(actions.activate).not.toHaveBeenCalled()
   })
-  it("routes header Open to the shared chooser without closing cached project tabs", async () => {
-    const openProjects = vi.fn(async () => {
-      publish({ ...current, status: "library", report: null })
-      return { ok: true as const }
-    })
-    setup([firstId, secondId], openProjects)
-    await userEvent.click(await screen.findByRole("button", { name: copy.openProjects }))
-    await screen.findByRole("main", { name: "Projects" })
-    expect(openProjects).toHaveBeenCalledTimes(1)
+  it("keeps project actions out of the tab strip", async () => {
+    setup()
+    await screen.findByRole("tab", { name: "Bracket" })
+    expect(screen.queryByRole("button", { name: "New project" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Open project…" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Rename Bracket" })).toBeNull()
+  })
+
+  it("opens rename from a double click or F2 and restores focus to the active tab", async () => {
+    setup()
+    const tab = await screen.findByRole("tab", { name: "Bracket" })
+    await userEvent.dblClick(tab)
+    expect(screen.getByRole("dialog", { name: "Rename project" })).toBeTruthy()
+    expect((screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement).value).toBe(
+      "Bracket",
+    )
+    await userEvent.keyboard("{Escape}")
+    await waitFor(() => expect(document.activeElement).toBe(tab))
+    await userEvent.keyboard("{F2}")
+    expect(screen.getByRole("dialog", { name: "Rename project" })).toBeTruthy()
+  })
+
+  it("does not open rename for a read-only project or blocked editing", async () => {
+    setup()
+    const tab = await screen.findByRole("tab", { name: "Bracket" })
+    act(() =>
+      publish({
+        ...current,
+        report: current.report ? { ...current.report, mode: "read-only" } : null,
+      }),
+    )
+    await userEvent.dblClick(tab)
     expect(screen.queryByRole("dialog")).toBeNull()
-    const remembered = JSON.parse(localStorage.getItem("vibeshape.open-project-tabs.v1") ?? "null")
-    expect(remembered.tabs).toHaveLength(2)
+    blocked = "editor-draft"
+    act(() => publish(state()))
+    tab.focus()
+    await userEvent.keyboard("{F2}")
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 
   it("removes the last tab only after the full chooser transition succeeds", async () => {

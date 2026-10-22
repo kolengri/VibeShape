@@ -218,8 +218,8 @@ export function TopologyMeasurementPanel({
     ? `${report.rebuild.response.generation}:${report.rebuild.response.requestId}`
     : "unavailable"
   return (
-    <section className="mt-4 grid gap-3 border-t pt-4" aria-label={t("title")}>
-      <h3 className="text-sm font-medium">{t("title")}</h3>
+    <section className="mt-2 grid gap-2 border-t pt-2" aria-label={t("title")}>
+      <h3 className="text-xs font-medium">{t("title")}</h3>
       <p className="text-xs text-muted-foreground">{t("description")}</p>
       {elements ? (
         <AvailableTopologyMeasurements

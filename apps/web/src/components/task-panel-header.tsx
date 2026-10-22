@@ -31,14 +31,14 @@ export function TaskPanelHeader({
     <header
       data-slot="task-panel-header"
       className={cn(
-        "sticky top-0 z-10 grid min-w-0 gap-2 bg-transparent max-lg:bg-panel",
+        "sticky top-0 z-10 grid min-w-0 gap-1 bg-transparent max-lg:bg-panel",
         // Cover the compact scrollport's top padding without moving the header or its actions.
-        "max-lg:before:pointer-events-none max-lg:before:absolute max-lg:before:inset-x-0 max-lg:before:-top-4 max-lg:before:h-4 max-lg:before:bg-panel max-lg:before:content-['']",
+        "max-lg:before:pointer-events-none max-lg:before:absolute max-lg:before:inset-x-0 max-lg:before:-top-3 max-lg:before:h-3 max-lg:before:bg-panel max-lg:before:content-['']",
         className,
       )}
     >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-        <h2 className="min-w-0 truncate text-sm font-medium" title={title}>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+        <h2 className="min-w-0 truncate py-1 text-xs font-medium" title={title}>
           {title}
         </h2>
         <div className="min-w-0 max-w-40 justify-self-end">{actions}</div>

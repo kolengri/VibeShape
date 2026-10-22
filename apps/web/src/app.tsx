@@ -1272,8 +1272,6 @@ function LocalizedProjectTabs({
       className="min-w-0 flex-1"
       copy={{
         label: t("label"),
-        newProject: t("newProject"),
-        openProjects: t("openProjects"),
         closeProject: (name) => t("closeProject", { name }),
         blocked: t("blocked"),
         switchFailed: t("switchFailed"),

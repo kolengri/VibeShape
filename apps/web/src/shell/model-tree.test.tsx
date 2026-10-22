@@ -568,6 +568,25 @@ function timeline() {
   return within(screen.getByRole("region", { name: "Feature history" }))
 }
 
+it("shows one compact model heading without repeating the project name", () => {
+  if (!controller.report) throw new Error("Expected a loaded document")
+  renderTree({
+    controller: {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { ...controller.report.snapshot, name: "Project name belongs in navigation" },
+      },
+    },
+  })
+  const heading = browser().getByRole("heading", { name: "Model" })
+  expect(heading.classList.contains("text-xs")).toBe(true)
+  expect(heading.closest("header")?.textContent).toBe("Model")
+  expect(browser().queryByText("Project name belongs in navigation")).toBeNull()
+  expect(browser().getByRole("treeitem", { name: "Bodies" }).getAttribute("data-size")).toBe("xs")
+  expect(browser().getByRole("treeitem", { name: "Body 1" }).getAttribute("data-size")).toBe("sm")
+})
+
 describe("ModelTree browser search", () => {
   it.each(["xy", "xz", "yz"] as const)(
     "finds the hidden %s origin plane and activates it with the keyboard",

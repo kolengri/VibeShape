@@ -150,7 +150,7 @@ Button sizing is owned by the shared `Button` primitive:
 | Context | Text action | Icon action |
 |---|---|---|
 | Application bar, toolbar, viewport controls, forms, dialogs, and primary actions | `default` / `sm`: 32 px high, 12 px horizontal padding, 14 px text | `icon` / `icon-sm`: 32 × 32 px, 16 px icon |
-| Dense list and History rows, status bar, and inline sketch editors | `xs`: 24 px high, 12 px text | `icon-xs`: 24 × 24 px, 12 px icon |
+| Panel-header actions, browser group headings, dense list and History rows, status bar, and inline sketch editors | `xs`: 24 px high, 12 px text | `icon-xs`: 24 × 24 px, 12 px icon |
 | Multiline selection rows and visual library tiles | `content`: natural height, at least 32 px, wrapping text | Use the ordinary icon action beside the content |
 
 Actions in the same group MUST use the same size tier. Text length determines width; it must not
@@ -161,15 +161,16 @@ ordinary actions retain their height when disabled or pending. Spatial constrain
 their geometry-driven annotation placement and double-click editing contract. The `sm` and `icon-sm` names are
 compatibility aliases for the standard tier, not additional densities.
 
-The model browser uses one 32 px row and 14 px label tier for origin planes, authored datum planes,
-Parts and sketches. The owning row paints selection across labels and trailing controls; child
-hover fills must not mask that state. Compact chronological History retains its separate density.
+The model browser uses 24 px group headings with 12 px medium labels, and 32 px object rows with
+14 px labels for origin planes, authored datum planes, parts and sketches. The owning row paints
+selection across labels and trailing controls; child hover fills must not mask that state. Compact chronological History retains its separate density.
 
 ### Typography
 
 - Use the bundled system UI stack initially; CAD operation must not depend on network fonts.
 - Default editor text is 13 px with a 18 px line height.
-- Panel section headings and dialog body text are 14 px.
+- Editor panel and section headings use 12 px medium text, 24 px header actions, and 4–8 px internal gaps. Dialog body text remains 14 px.
+- Show the active project name only in the top project navigation; panel headings identify their purpose without repeating that name.
 - Application and dialog titles are 16–18 px; large display headings do not belong in the editor.
 - Labels use sentence case. Do not use all caps for navigation or section headings.
 - Numeric fields use tabular numerals. Monospace is reserved for expressions, IDs, file diagnostics, and command shortcuts.

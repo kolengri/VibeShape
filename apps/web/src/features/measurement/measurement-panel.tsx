@@ -145,7 +145,7 @@ export function MeasurementPanel({
 }: MeasurementPanelProps) {
   const t = useTranslations("app.shell.taskPanel.measurement")
   return (
-    <aside aria-label={t("title")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+    <aside aria-label={t("title")} className="min-h-0 overflow-auto border-l bg-panel p-3">
       <TaskPanelHeader
         title={t("title")}
         description={t("description")}

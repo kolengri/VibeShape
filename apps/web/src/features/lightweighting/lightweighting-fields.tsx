@@ -164,7 +164,7 @@ function ObjectiveControls({
   const t = useTranslations("app.lightweighting")
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-      <legend className="mb-2 font-medium">{t("objective")}</legend>
+      <legend className="text-xs mb-2 font-medium">{t("objective")}</legend>
       <SelectField
         id="lightweighting-objective"
         label={t("objective")}
@@ -267,7 +267,7 @@ export function LightweightingParameters({
   const advanced = (
     <>
       <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="mb-2 font-medium">{t("preservation")}</legend>
+        <legend className="text-xs mb-2 font-medium">{t("preservation")}</legend>
         <p className="text-xs text-muted-foreground">{t("preservationDescription")}</p>
         <FacePicker
           label={t("pickPreserve")}
@@ -287,7 +287,7 @@ export function LightweightingParameters({
         <p className="text-xs text-muted-foreground">{t("surfaceDepthDescription")}</p>
       </fieldset>
       <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="mb-2 font-medium">{t("constraints")}</legend>
+        <legend className="text-xs mb-2 font-medium">{t("constraints")}</legend>
         <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
           {numeric("safetyFactor", 1)}
           {numeric("maxDisplacementMm", 0)}
@@ -305,7 +305,7 @@ export function LightweightingParameters({
         <ObjectiveControls fields={fields} onChange={onChange} />
       )}
       <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="mb-2 font-medium">{t("material")}</legend>
+        <legend className="text-xs mb-2 font-medium">{t("material")}</legend>
         <LightweightingMaterialSelector fields={fields} onChange={onChange} compact={compact}>
           <div className="grid grid-cols-1 gap-3 @xs:grid-cols-2">
             {numeric("youngModulusMpa", 0)}
@@ -316,7 +316,9 @@ export function LightweightingParameters({
         </LightweightingMaterialSelector>
       </fieldset>
       <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="mb-2 font-medium">{compact ? g("fixedFaces") : t("support")}</legend>
+        <legend className="text-xs mb-2 font-medium">
+          {compact ? g("fixedFaces") : t("support")}
+        </legend>
         <p className="text-xs text-muted-foreground">{t("supportDescription")}</p>
         <FacePicker
           id="lightweighting-support-pick"
@@ -329,11 +331,13 @@ export function LightweightingParameters({
         />
       </fieldset>
       <fieldset className="grid min-w-0 grid-cols-1 gap-3">
-        <legend className="mb-2 font-medium">{compact ? g("loadedFaces") : t("loadCases")}</legend>
+        <legend className="text-xs mb-2 font-medium">
+          {compact ? g("loadedFaces") : t("loadCases")}
+        </legend>
         <p className="text-xs text-muted-foreground">{t("loadDescription")}</p>
         {fields.loadCases.map((load, index) => (
           <fieldset key={load.id} className="grid min-w-0 grid-cols-1 gap-3 rounded-md border p-3">
-            <legend className="px-1 text-sm font-medium">
+            <legend className="px-1 text-xs font-medium">
               {t("loadCase", { index: index + 1 })}
             </legend>
             {compact ? (

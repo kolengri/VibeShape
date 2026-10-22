@@ -326,7 +326,7 @@ function HistoryItemActions({ children }: { children: ReactNode }) {
     <div
       className={
         timeline && !detailed
-          ? "pointer-events-none absolute -right-2 -top-2 opacity-0 focus-within:opacity-100 group-hover/history-item:opacity-100 [&_button]:pointer-events-auto"
+          ? "pointer-events-none absolute right-0 -top-2 opacity-0 focus-within:opacity-100 group-hover/history-item:opacity-100 [&_button]:pointer-events-auto"
           : "contents"
       }
     >
@@ -911,9 +911,9 @@ function ModelTreeGroupItem({
     <Button
       type="button"
       variant="ghost"
-      size="sm"
+      size="xs"
       className={cn(
-        timeline ? "w-full justify-start font-normal" : modelBrowserGroupRow,
+        timeline ? "w-full justify-start text-xs font-medium" : modelBrowserGroupRow,
         className,
       )}
       role="treeitem"
@@ -2883,17 +2883,12 @@ export function ModelTree(props: ModelTreeProps) {
       className="min-h-0 overflow-auto border-r bg-panel p-2"
       onKeyDown={deletion.onKeyDown}
     >
-      <div className="mb-1 flex items-center gap-2 border-b px-2 pb-3 pt-1">
-        <div className="min-w-0">
-          <h2 className="flex h-8 items-center gap-2 pl-6 text-sm font-medium">
-            <Cuboid aria-hidden="true" className="size-4 text-muted-foreground" />
-            {t("title")}
-          </h2>
-          {snapshot?.name && (
-            <p className="truncate pl-12 text-xs text-muted-foreground">{snapshot.name}</p>
-          )}
-        </div>
-      </div>
+      <header className="mb-1 border-b px-2 py-1">
+        <h2 className="flex min-w-0 items-center gap-2 pl-6 text-xs font-medium">
+          <Cuboid aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">{t("title")}</span>
+        </h2>
+      </header>
       <ModelBrowserSearch
         entries={[
           ...modelSearchBodyEntries({ ...props, t, view: historyView }),

@@ -1,5 +1,6 @@
 import type { Page, Route } from "@playwright/test"
 import { z } from "zod"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const endpoint = "https://api.example.test/v1/chat/completions"
@@ -278,10 +279,7 @@ test("Stop discards a real pending CAD review and keeps credentials only in memo
   await expect(review).toHaveCount(0)
   expect(await inspectProject(page)).toEqual(before)
   expect(api.calls()).toBe(6)
-  await page
-    .getByRole("navigation", { name: "Open projects", exact: true })
-    .getByRole("button", { name: "New project", exact: true })
-    .click()
+  await openApplicationMenuItem(page, "New project")
   await expect.poll(async () => (await inspectProject(page)).id).not.toBe(before.id)
   await saved(page)
   const next = await openChat(page)
@@ -321,10 +319,7 @@ test("ignores a late API response after Stop and switching to another project", 
   await panel.getByRole("button", { name: "Send", exact: true }).click()
   await expect.poll(() => Boolean(held)).toBe(true)
   await panel.getByRole("button", { name: "Stop", exact: true }).click()
-  await page
-    .getByRole("navigation", { name: "Open projects", exact: true })
-    .getByRole("button", { name: "New project", exact: true })
-    .click()
+  await openApplicationMenuItem(page, "New project")
   await expect.poll(async () => (await inspectProject(page)).id).not.toBe(before.id)
   await saved(page)
   const next = await inspectProject(page)

@@ -152,7 +152,7 @@ export function QuickLightweightingTaskPanel({
   return (
     <section
       aria-label={t("title")}
-      className="grid h-full min-h-0 content-start gap-5 overflow-y-auto p-4"
+      className="grid h-full min-h-0 content-start gap-2 overflow-y-auto p-3"
     >
       <TaskPanelHeader
         title={t("title")}
@@ -178,7 +178,7 @@ function QuickModeControls({ state, disabled }: { state: QuickState; disabled: b
     state.changeSettings({ ...state.settings, ...next })
   return (
     <fieldset className="grid gap-2">
-      <legend className="text-sm font-medium">{t("mode")}</legend>
+      <legend className="text-xs font-medium">{t("mode")}</legend>
       <div className="grid grid-cols-2 gap-2">
         <Button
           type="button"

@@ -115,7 +115,7 @@ export function SectionViewControls({
           {t("enabled")}
         </label>
         <fieldset className="grid gap-2">
-          <legend className="mb-2 font-medium">{t("axis")}</legend>
+          <legend className="text-xs mb-2 font-medium">{t("axis")}</legend>
           <div className="grid grid-cols-3 gap-2">
             {sectionPlanes.map(({ axis: next, plane, icon: Icon }) => (
               <label key={next} className="relative cursor-pointer">
