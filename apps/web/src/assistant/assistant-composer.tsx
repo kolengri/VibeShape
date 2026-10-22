@@ -314,14 +314,16 @@ function AssistantTurnActions({
 
 function AssistantComposerActions(props: ComposerActionsProps) {
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-2 px-2 pb-2">
-      <div className="min-w-0">{props.sessionControls}</div>
-      <div className="flex shrink-0 items-center justify-self-end gap-1">
+    <div className="space-y-2 px-2 pb-2">
+      {props.sessionControls && <div className="min-w-0">{props.sessionControls}</div>}
+      <div className="flex min-w-0 items-center gap-1">
         <AssistantAttachmentAction {...props} />
         {props.attachmentCapabilities?.images && props.onCaptureView && (
           <AssistantCaptureAction {...props} />
         )}
-        <AssistantTurnActions {...props} />
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <AssistantTurnActions {...props} />
+        </div>
       </div>
     </div>
   )
@@ -610,7 +612,7 @@ export function AssistantComposer({
         {...drop.handlers}
         aria-label={t("prompt")}
         className={cn(
-          "@container/composer min-w-0 overflow-hidden rounded-xl border bg-background focus-within:border-ring",
+          "min-w-0 overflow-hidden rounded-xl border bg-background transition-colors focus-within:border-ring",
           drop.active && "border-ring ring-2 ring-ring/50",
         )}
       >
@@ -635,9 +637,9 @@ export function AssistantComposer({
         <Textarea
           id={id}
           ref={composer}
-          className="resize-none rounded-none border-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="field-sizing-content min-h-16 max-h-40 resize-none rounded-none border-0 bg-transparent py-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
           value={draft.text}
-          rows={3}
+          rows={2}
           maxLength={16_000}
           placeholder={t("placeholder")}
           disabled={!props.canSend || submission.pending}

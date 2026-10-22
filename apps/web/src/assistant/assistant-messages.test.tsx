@@ -554,6 +554,39 @@ describe("assistant tool messages", () => {
     expect(screen.getByText(expected)).toBeTruthy()
   })
 
+  it("returns to the bottom for a new user turn and follows its reply after reading older messages", () => {
+    const user: ChatMessage = { id: "first-turn", role: "user", text: "First question" }
+    const reply: ChatMessage = { id: "first-reply", role: "assistant", text: "First answer" }
+    const { rerender } = transcript([user, reply])
+    const log = screen.getByRole("log")
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 900 },
+    })
+    log.scrollTop = 100
+    fireEvent.scroll(log)
+    rerender(view([user, { ...reply, text: "Updated first answer" }]))
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+
+    const next: ChatMessage = { id: "next-turn", role: "user", text: "Next question" }
+    rerender(view([user, reply, next]))
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenLastCalledWith({ block: "end" })
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(2)
+    const conversation: ChatMessage[] = [
+      user,
+      reply,
+      next,
+      { id: "next-reply", role: "assistant", text: "Reply" },
+    ]
+    rerender(view(conversation))
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(3)
+    log.scrollTop = 100
+    fireEvent.scroll(log)
+    const calls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    rerender(view(structuredClone(conversation)))
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
+  })
+
   it("follows updates only while pinned and resumes after returning to the bottom", () => {
     const message: ChatMessage = { id: "reply", role: "assistant", text: "First" }
     const { rerender } = transcript([message])
