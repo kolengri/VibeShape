@@ -50,7 +50,9 @@ export function useProjectTabsController(
     const before = getDocumentControllerState()
     const active = before.report?.snapshot
     if (before.status !== "ready" || !active) return
-    const result = await listLocalProjects().catch(() => ({ ok: false as const }))
+    const result = await listLocalProjects({ includeThumbnails: false }).catch(() => ({
+      ok: false as const,
+    }))
     const current = getDocumentControllerState()
     if (
       request !== listRequest.current ||

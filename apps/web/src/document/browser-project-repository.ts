@@ -63,8 +63,8 @@ export class BrowserProjectRepository {
     return counts.some((count) => count > 0)
   }
 
-  listProjects() {
-    return this.versioned.listProjects()
+  listProjects(options?: Parameters<VersionedLocalDocumentRepository["listProjects"]>[0]) {
+    return this.versioned.listProjects(options)
   }
 
   async exportPortableProject(documentId: DocumentId) {

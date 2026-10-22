@@ -2980,6 +2980,23 @@ describe("GeometryViewport", () => {
     expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
   })
 
+  it("reuses a saved thumbnail when returning to a retained project and regenerates a new revision", async () => {
+    vi.useFakeTimers()
+    const controller = thumbnailController(1)
+    const first = renderViewport(controller)
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    first.unmount()
+    const returned = renderViewport(controller)
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    returned.rerenderController(thumbnailController(2))
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(2)
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(2)
+  })
+
   it("aborts an obsolete thumbnail and never saves its late result over the newer revision", async () => {
     vi.useFakeTimers()
     let finish: ((value: { mediaType: "image/png"; bytes: Uint8Array }) => void) | undefined

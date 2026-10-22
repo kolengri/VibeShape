@@ -94,10 +94,11 @@ async function currentProjectThumbnails(
 export async function summarizeProjects(
   database: VibeShapeDatabase,
   projects: readonly ProjectCatalogRecord[],
+  includeThumbnails = true,
 ): Promise<readonly LocalProjectSummary[]> {
-  const thumbnails = await currentProjectThumbnails(database, projects)
+  const thumbnails = includeThumbnails ? await currentProjectThumbnails(database, projects) : null
   const summaries = projects.map((project) => {
-    const thumbnail = thumbnails.get(project.documentId)
+    const thumbnail = thumbnails?.get(project.documentId)
     return localProjectSummarySchema.parse({
       documentId: project.documentId,
       name: project.name,
