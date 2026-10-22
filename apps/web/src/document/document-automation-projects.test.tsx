@@ -198,7 +198,16 @@ async function ready(
   const source = persistedSession(document)
   ports.open.mockImplementation(async (_dependencies, { documentId }) => {
     const stored = projects.get(documentId)
-    if (!stored) throw new Error("Unexpected project open.")
+    if (!stored)
+      return {
+        ok: false,
+        diagnostic: {
+          code: "persistence-failed",
+          message: "The local project does not exist.",
+          retryable: false,
+          sourceCode: "document-not-found",
+        },
+      }
     return persistedSession(stored)
   })
   if (!library) ports.open.mockResolvedValueOnce(source)
@@ -247,6 +256,14 @@ async function ready(
 }
 
 describe("in-place automation project management", () => {
+  it("opens the selected project without loading the unrelated catalog or thumbnails", async () => {
+    const { controller } = await ready()
+    ports.list.mockRejectedValue(new Error("The catalog must not be read to open one project."))
+    expect(await controller.activateLocalProject(targetId)).toEqual({ ok: true })
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(targetId)
+    expect(ports.list).not.toHaveBeenCalled()
+  })
+
   it("validates captured draft authority without saving or requesting a review", async () => {
     const { controller, source } = await ready()
     const factory = controller.createActiveDocumentAutomationSession()

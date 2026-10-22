@@ -81,6 +81,22 @@ afterEach(() => {
 })
 
 describe("assistant transcript and composer", () => {
+  it("defers hidden transcript rendering until first opened and retains its DOM on later closes", () => {
+    const messages: PanelProps["messages"] = [
+      { id: "history", role: "assistant", text: "## Saved modeling discussion" },
+    ]
+    const view = render(panel({ open: false, messages }))
+    expect(view.container.querySelector('[role="log"]')).toBeNull()
+    expect(view.container.textContent).not.toContain("Saved modeling discussion")
+    view.rerender(panel({ open: true, messages }))
+    const log = screen.getByRole("log")
+    expect(log.textContent).toContain("Saved modeling discussion")
+    view.rerender(panel({ open: false, messages }))
+    expect(view.container.querySelector('[role="log"]')).toBe(log)
+    view.rerender(panel({ open: true, messages }))
+    expect(screen.getByRole("log")).toBe(log)
+  })
+
   it("shows Thinking above the composer while busy and preserves the chat heading", () => {
     const view = render(panel({ busy: true }))
     const chat = screen.getByRole("complementary", { name: "AI chat" })

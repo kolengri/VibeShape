@@ -141,7 +141,9 @@ test("retains an active draft when switching or closing its project tab is block
   const width = form.getByRole("combobox", { name: "Width", exact: true })
   await width.fill("37 mm")
   await tabs.getByRole("tab", { name: "Draft target", exact: true }).click()
-  await expect(tabs.getByRole("alert")).toContainText("Finish or cancel")
+  await expect(
+    page.getByRole("region", { name: "Notifications", exact: true }).getByRole("alert"),
+  ).toContainText("Finish or cancel")
   expect(projectId(page)).toBe(firstId)
   await expect(width).toHaveValue("37 mm")
   await tabs.getByRole("button", { name: "Close Draft source", exact: true }).click()

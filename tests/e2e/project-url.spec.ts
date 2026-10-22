@@ -62,24 +62,30 @@ test("project URLs select local projects across switching, history, direct links
   await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible()
   expect(new URL(page.url()).searchParams.get("project")).toBeNull()
   await page.goBack()
-  await expect(page.locator("header").getByText("First URL project", { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("tab", { name: "First URL project", exact: true, selected: true }),
+  ).toBeVisible()
   await expect.poll(() => activeId(page)).toBe(firstId)
   expect(page.url()).toBe(firstUrl)
   await page.goForward()
   await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible()
   await page.goForward()
   await expect(
-    page.locator("header").getByText("Second URL project", { exact: true }),
+    page.getByRole("tab", { name: "Second URL project", exact: true, selected: true }),
   ).toBeVisible()
   await expect.poll(() => activeId(page)).toBe(secondId)
   expect(page.url()).toBe(secondUrl)
 
   // The explicit link wins even though the second project was the last local selection.
   await page.goto(firstUrl)
-  await expect(page.locator("header").getByText("First URL project", { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("tab", { name: "First URL project", exact: true, selected: true }),
+  ).toBeVisible()
   await expect.poll(() => activeId(page)).toBe(firstId)
   await page.reload()
-  await expect(page.locator("header").getByText("First URL project", { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("tab", { name: "First URL project", exact: true, selected: true }),
+  ).toBeVisible()
   expect(page.url()).toBe(firstUrl)
 
   await openApplicationMenuItem(page, "Projects")
@@ -90,7 +96,7 @@ test("project URLs select local projects across switching, history, direct links
   await project.getByRole("button", { name: /^Open / }).click()
   await expect(page).toHaveURL(secondUrl)
   await expect(
-    page.locator("header").getByText("Second URL project", { exact: true }),
+    page.getByRole("tab", { name: "Second URL project", exact: true, selected: true }),
   ).toBeVisible()
 })
 
