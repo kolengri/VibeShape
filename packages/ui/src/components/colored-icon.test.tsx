@@ -2,7 +2,8 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import { createRef } from "react"
-import { FolderOpen, LoadingIcon } from "./icons"
+import * as icons from "./icons"
+import { CancelIcon, CloseIcon, FolderOpen, LoadingIcon, X } from "./icons"
 
 afterEach(cleanup)
 
@@ -39,4 +40,66 @@ it("preserves host dimensions, classes, refs and explicitly named status semanti
   expect(svg.getAttribute("height")).toBe("48")
   expect(svg.getAttribute("class")).toBe("size-5")
   expect(svg.getAttribute("viewBox")).toBe("0 0 256 256")
+})
+
+it("keeps gradients and masks local to each icon instance, including after a sibling unmounts", () => {
+  const components = [...new Set(Object.values(icons))]
+  const gallery = (copies: number) => (
+    <>
+      {components.map((Icon, index) => (
+        <span key={index}>
+          {Array.from({ length: copies }, (_, copy) => (
+            <Icon key={copy} />
+          ))}
+        </span>
+      ))}
+    </>
+  )
+  const { container, rerender } = render(gallery(2))
+  const verifyReferences = () => {
+    const ids = [...container.querySelectorAll("[id]")].map((element) => element.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const svg of container.querySelectorAll("svg")) {
+      expect(svg.querySelector("path, rect, circle, ellipse")).not.toBeNull()
+      const localIds = new Set([...svg.querySelectorAll("[id]")].map((element) => element.id))
+      for (const element of svg.querySelectorAll("*")) {
+        for (const attribute of element.attributes) {
+          for (const reference of attribute.value.matchAll(/url\(#([^)]+)\)/g)) {
+            expect(localIds.has(reference[1] ?? "")).toBe(true)
+          }
+        }
+      }
+      for (const mask of svg.querySelectorAll("mask")) {
+        expect(mask.style.maskType).toBe("luminance")
+      }
+    }
+  }
+  expect(container.querySelectorAll("svg")).toHaveLength(348)
+  verifyReferences()
+  const survivingIds = [...container.querySelectorAll("span")].map(
+    (span) => span.querySelector("[id]")?.id,
+  )
+  rerender(gallery(1))
+  expect(container.querySelectorAll("svg")).toHaveLength(174)
+  expect(
+    [...container.querySelectorAll("span")].map((span) => span.querySelector("[id]")?.id),
+  ).toEqual(survivingIds)
+  verifyReferences()
+})
+
+it("uses the neutral close glyph for generic dismissal while preserving explicit cancellation", () => {
+  expect(X).toBe(CloseIcon)
+  const { container } = render(
+    <>
+      <CloseIcon />
+      <CancelIcon />
+    </>,
+  )
+  expect([...container.querySelectorAll("svg")].map((svg) => svg.dataset.icon)).toEqual([
+    "close",
+    "cancel",
+  ])
+  expect(container.querySelector('[data-icon="close"] circle')).toBeNull()
+  expect(container.querySelector('[data-icon="close"] defs')).toBeNull()
+  expect(container.querySelector('[data-icon="cancel"] circle')).not.toBeNull()
 })

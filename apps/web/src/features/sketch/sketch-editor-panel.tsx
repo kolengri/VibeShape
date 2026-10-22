@@ -14,6 +14,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import {
+  CancelIcon,
   CircleAlert,
   Layers3,
   Link2,
@@ -268,7 +269,7 @@ function ConstraintRowActions({
               aria-pressed={isEditing}
               onClick={() => onEdit(!isEditing)}
             >
-              {isEditing ? <X aria-hidden="true" /> : <Pencil aria-hidden="true" />}
+              {isEditing ? <CancelIcon aria-hidden="true" /> : <Pencil aria-hidden="true" />}
             </Button>
           </TooltipTrigger>
           <TooltipContent>{isEditing ? copy.cancel : copy.editConstraint}</TooltipContent>

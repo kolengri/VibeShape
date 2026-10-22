@@ -1,5 +1,5 @@
 import { Button, type ButtonProps } from "@vibeshape/ui/components/button"
-import { Check, X } from "@vibeshape/ui/components/icons"
+import { CancelIcon, Check } from "@vibeshape/ui/components/icons"
 import {
   Tooltip,
   TooltipContent,
@@ -21,7 +21,7 @@ export function TaskPanelLifecycleButton({
   presentation?: "icon" | "text"
   destructive?: boolean
 }) {
-  const Icon = kind === "accept" ? Check : X
+  const Icon = kind === "accept" ? Check : CancelIcon
   if (presentation === "text")
     return (
       <Button

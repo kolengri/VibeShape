@@ -1,9 +1,10 @@
 import type { ReactNode, SVGProps } from "react"
+import { useId } from "react"
 
 export type ColoredIconProps = SVGProps<SVGSVGElement> & { size?: number | string }
 
 /** Keep approved optical geometry independent of host text color and control size. */
-export function coloredIcon(id: string, drawing: ReactNode) {
+export function coloredIcon(id: string, drawing: ReactNode | ((instanceId: string) => ReactNode)) {
   function ColoredIcon({
     size = 20,
     width = size,
@@ -11,6 +12,7 @@ export function coloredIcon(id: string, drawing: ReactNode) {
     children,
     ...props
   }: ColoredIconProps) {
+    const instanceId = useId()
     return (
       <svg
         aria-hidden="true"
@@ -22,7 +24,7 @@ export function coloredIcon(id: string, drawing: ReactNode) {
         viewBox="0 0 256 256"
         data-icon={id}
       >
-        {drawing}
+        {typeof drawing === "function" ? drawing(instanceId) : drawing}
         {children}
       </svg>
     )

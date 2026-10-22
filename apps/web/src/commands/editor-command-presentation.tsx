@@ -1,6 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import {
   AlignedRectangleIcon,
+  CancelIcon,
   CenterArcIcon,
   CenteredAlignedRectangleIcon,
   CenteredSlotIcon,
@@ -85,7 +86,6 @@ import {
   Undo2,
   UnionIcon,
   UseExternalGeometryIcon,
-  X,
 } from "@vibeshape/ui/components/icons"
 import type { ComponentType, SVGProps } from "react"
 import type {
@@ -115,7 +115,7 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   "aligned-rectangle": AlignedRectangleIcon,
   arc: CenterArcIcon,
   box: PrimitiveBoxIcon,
-  cancel: X,
+  cancel: CancelIcon,
   circle: SketchCircleIcon,
   ellipse: EllipseIcon,
   "elliptical-arc": EllipticalArcIcon,

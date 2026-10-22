@@ -11,6 +11,9 @@
     "scripts/agent-skill-links.ts",
     "scripts/agent-skill-links.test.ts",
     "scripts/validate-agent-skills.ts",
+    "scripts/generate-ui-icons.ts",
+    "scripts/ui-icon-source.ts",
+    "scripts/ui-icon-source.test.ts",
     "tests/site/**/*.ts"
   ],
   "exclude": []
