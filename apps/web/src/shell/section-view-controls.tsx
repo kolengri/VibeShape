@@ -85,6 +85,7 @@ export function SectionViewControls({
   meshes: readonly ViewerMesh[]
 }) {
   const t = useTranslations("app.sectionView")
+  const [open, setOpen] = useState(false)
   const axisId = useId()
   const { length: unit } = useDocumentDisplayUnits()
   const { offset, setOffset, flipped, setFlipped, changeSection } = useSectionControlDraft(
@@ -109,7 +110,7 @@ export function SectionViewControls({
   const parsedOffset = parseOffset(offset)
   if (disabled || meshes.length === 0) return null
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -125,7 +126,7 @@ export function SectionViewControls({
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>{t("title")}</TooltipContent>
+        <TooltipContent onEscapeKeyDown={() => setOpen(false)}>{t("title")}</TooltipContent>
       </Tooltip>
       <PopoverContent
         align="end"
@@ -162,7 +163,7 @@ export function SectionViewControls({
                         }}
                       />
                     </TooltipTrigger>
-                    <TooltipContent>{label}</TooltipContent>
+                    <TooltipContent onEscapeKeyDown={() => setOpen(false)}>{label}</TooltipContent>
                   </Tooltip>
                   <span
                     className={cn(
@@ -209,7 +210,7 @@ export function SectionViewControls({
               <MirrorIcon aria-hidden="true" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{t("flip")}</TooltipContent>
+          <TooltipContent onEscapeKeyDown={() => setOpen(false)}>{t("flip")}</TooltipContent>
         </Tooltip>
       </PopoverContent>
     </Popover>

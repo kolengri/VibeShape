@@ -21,6 +21,27 @@ test("clips the viewport with reversible sections while preserving saved solids"
   await expect(
     viewControls.getByRole("button", { name: "Section view", exact: true }),
   ).toBeVisible()
+  await expect(
+    page.getByRole("tooltip", { name: "Disable section view", exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(section).toBeHidden()
+  await expect(sectionButton).toBeFocused()
+  await sectionButton.press("Enter")
+  await section.getByRole("radio", { name: "XY plane, normal Z", exact: true }).focus()
+  await expect(page.getByRole("tooltip", { name: "XY plane, normal Z", exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(section).toBeHidden()
+  await expect(sectionButton).toBeFocused()
+  await sectionButton.press("Enter")
+  await section.getByRole("button", { name: "Keep the opposite side", exact: true }).focus()
+  await expect(
+    page.getByRole("tooltip", { name: "Keep the opposite side", exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(section).toBeHidden()
+  await expect(sectionButton).toBeFocused()
+  await sectionButton.press("Enter")
   await section.getByRole("radio", { name: "XY plane, normal Z", exact: true }).check()
   await expect(section.getByRole("radio", { name: "XY plane, normal Z" })).toBeChecked()
   await section.getByRole("radio", { name: "XY plane, normal Z" }).focus()
