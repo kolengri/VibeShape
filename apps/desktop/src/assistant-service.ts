@@ -19,6 +19,7 @@ import {
 import { JEV_IMAGE_CONSTRAINTS } from "@vibeshape/automation-api/assistant-jev"
 import { type DesktopMcpSetup, desktopMcpSetupSchema } from "@vibeshape/automation-api/desktop-host"
 import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
+import { z } from "zod"
 import { createAssistantConnectionTests } from "./assistant-connection-test"
 import type { createAssistantLaunchResolver } from "./assistant-jev-runtime"
 import { createAssistantPermissions } from "./assistant-permissions"
@@ -347,6 +348,34 @@ export function createAssistantService(options: AssistantServiceOptions) {
       emitUpdate(owner, params.update)
     }
   }
+  async function loadSession(
+    owner: Owner,
+    agent: acp.ClientConnection["agent"],
+    input: acp.LoadSessionRequest,
+  ) {
+    try {
+      return await bounded(
+        owner,
+        agent.request<acp.LoadSessionResponse, acp.LoadSessionRequest>(
+          acp.methods.agent.session.load,
+          input,
+        ),
+      )
+    } catch (error) {
+      // Codex can advertise resume before an unused thread has a persisted rollout.
+      if (
+        error instanceof acp.RequestError &&
+        error.code === -32603 &&
+        z
+          .object({
+            details: z.literal(`no rollout found for thread id ${input.sessionId}`),
+          })
+          .safeParse(error.data).success
+      )
+        throw new AssistantFailure("session-unavailable")
+      throw error
+    }
+  }
   async function openSession(owner: Owner) {
     const agent = owner.connection?.agent
     if (!agent) throw new AssistantFailure("agent-exited")
@@ -354,13 +383,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
     let session: acp.LoadSessionResponse
     let sessionId = owner.resumeSessionId
     if (owner.resumeSessionId) {
-      session = await bounded(
-        owner,
-        agent.request<acp.LoadSessionResponse, acp.LoadSessionRequest>(
-          acp.methods.agent.session.load,
-          { ...input, sessionId: owner.resumeSessionId },
-        ),
-      )
+      session = await loadSession(owner, agent, { ...input, sessionId: owner.resumeSessionId })
     } else {
       const created = await bounded(
         owner,

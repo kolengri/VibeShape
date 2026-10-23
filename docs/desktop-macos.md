@@ -146,6 +146,7 @@ project settles accepted persistence work. The new turn first reconciles the aut
 draft and revisions; it never resends the interrupted prompt or uncertain CAD writes. A provider
 without session restoration reports that limitation instead of starting an unrelated conversation.
 Recovery does not open the configuration drawer or move the transcript reading position.
+
 After authenticated local resume, the assistant can inspect `list_recoverable_drafts` and explicitly
 adopt compatible semantic intent with `restore_draft`. Adoption requires the exact committed base,
 creates a new private draft attributed to the current actor, and still requires ordinary preview
@@ -243,6 +244,30 @@ Browser chat discovers and executes CAD through `discover_cad_tools` and `call_c
 `ask_user_question` function requests the same bounded non-secret form answers. API forms expire
 after two minutes. Dismissal, expiry or Stop ends dependent same-response tool execution and pauses
 the queue rather than returning a successful empty answer.
+
+### Recover an unavailable native agent session
+
+Use this procedure for a project whose ACP test succeeds but whose chat cannot connect:
+
+1. Keep the affected project open and confirm its save status is **Saved**. Preserve its transcript;
+   do not clear browser storage or create a replacement project to repair agent context.
+2. Open **AI settings**. For an external ACP agent, **Test connection** checks process startup and
+   the protocol handshake only. It does not open the saved conversation or verify CAD access.
+3. Choose the intended agent and click **Connect agent**. VibeShape first attempts the saved session.
+   When Codex reports `no rollout found for thread id` for that exact session, this explicit action
+   starts a new agent session. The saved model, display transcript, and accepted agent settings remain.
+   The new agent context does not contain the old provider conversation. Automatic recovery stops
+   on this permanent failure rather than repeatedly loading the missing thread.
+4. Confirm the message field is enabled and the footer shows project AI access. Model loading and
+   project pairing are separate from ACP initialization; a complex model may still be settling.
+5. If work was interrupted, first inspect the saved model and recoverable drafts before requesting
+   further changes. An uncertain CAD action may already have committed. Reconnection never resends
+   that action or the interrupted prompt.
+
+Authentication, settings, protocol, and transport errors do not trigger the missing-session fallback.
+If connection still fails, record the project name/ID, saved revision, exact error message, and whether
+the failure occurs during the ACP test, session restoration, or model pairing. Diagnose that layer
+before another retry. Do not include credentials or private MCP descriptors in shared evidence.
 
 ## Mesh handoff
 
