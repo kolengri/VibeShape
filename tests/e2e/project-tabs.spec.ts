@@ -167,3 +167,148 @@ test("retains an active draft when switching or closing its project tab is block
   )
   await expect(form).toHaveCount(0)
 })
+
+const projectRebuildGate = `(() => {
+    const NativeWorker = window.Worker
+    const requests = []
+    Object.assign(window, { projectMeshRequests: requests })
+    const postMessage = NativeWorker.prototype.postMessage
+    NativeWorker.prototype.postMessage = function (message, transferOrOptions) {
+      if (message?.type === "rebuildDocument") requests.push(message.mesh)
+      Reflect.apply(postMessage, this, [message, transferOrOptions])
+    }
+    window.Worker = class extends NativeWorker {
+      constructor(...args) {
+        super(...args)
+        const held = []
+        const released = new WeakSet()
+        this.addEventListener("message", (event) => {
+          if (event.data?.type !== "documentRebuilt" || released.has(event)) return
+          event.stopImmediatePropagation()
+          held.push(event)
+        })
+        window.addEventListener("release-project-rebuild", () => {
+          const event = held.shift()
+          if (!event) return
+          const replay = new MessageEvent("message", { data: event.data })
+          released.add(replay)
+          this.dispatchEvent(replay)
+        })
+      }
+    }
+})()`
+
+test("selects and reloads a cold project with progressive viewport loading", async ({
+  page,
+}, info) => {
+  test.setTimeout(150_000)
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/")
+  await rename(page, "Detailed project")
+  await primitive(page, "Cylinder")
+  const detailedId = projectId(page)
+  await newProject(page, "Current project")
+  await page.reload()
+  await saved(page)
+
+  // Hold real worker responses so each presentation stage is observable without timing races.
+  await page.evaluate(projectRebuildGate)
+  const tabs = projectTabs(page)
+  await tabs.getByRole("tab", { name: "Detailed project", exact: true }).click()
+  await expect.poll(() => projectId(page)).toBe(detailedId)
+  await expect(tabs.getByRole("tab", { name: "Detailed project", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
+  await expect(page.locator('[data-slot="blocking-loader-overlay"]')).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeEnabled()
+  await expect
+    .poll(() => page.evaluate<unknown[]>("window.projectMeshRequests"))
+    .toEqual([{ chordTolerance: 0.5, angularTolerance: 0.5 }])
+  await expect(async () => {
+    await page.evaluate('window.dispatchEvent(new Event("release-project-rebuild"))')
+    await expect(page.getByText("Refining model detail…", { exact: true })).toBeVisible()
+  }).toPass({ timeout: 30_000 })
+  await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
+  await expect(page.locator('[data-rendered-feature-count="1"]')).toBeVisible()
+  expect(
+    await page.evaluate<boolean>(`(() => {
+    const canvas = document.querySelector('canvas[aria-label="3D viewport"]')
+    const bounds = canvas.getBoundingClientRect()
+    return document.elementFromPoint(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.5) === canvas
+  })()`),
+  ).toBe(true)
+  await expect(
+    page.getByRole("progressbar", { name: "Project loading progress" }),
+  ).not.toHaveAttribute("aria-valuenow")
+  await expect(page.locator('[data-slot="blocking-loader-overlay"]')).toHaveCount(0)
+  await page.setViewportSize({ width: 1024, height: 768 })
+  const progress = page.getByRole("progressbar", { name: "Project loading progress" })
+  const history = page.locator(".workspace-history")
+  const progressBounds = await progress.boundingBox()
+  const historyBounds = await history.boundingBox()
+  expect(progressBounds).not.toBeNull()
+  expect(historyBounds).not.toBeNull()
+  if (progressBounds && historyBounds) {
+    expect(progressBounds.y + progressBounds.height).toBeLessThan(historyBounds.y)
+  }
+  await expect(
+    page.getByText("Opening the local document and geometry engine…", { exact: true }),
+  ).toHaveCount(0)
+  await page.screenshot({ animations: "disabled", path: info.outputPath("project-refining.png") })
+  await tabs.getByRole("tab", { name: "Current project", exact: true }).click()
+  await saved(page)
+  await expect(tabs.getByRole("tab", { name: "Current project", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  await expect(page.getByRole("progressbar", { name: "Project loading progress" })).toHaveCount(0)
+  await tabs.getByRole("tab", { name: "Detailed project", exact: true }).click()
+  await expect(page.getByText("Refining model detail…", { exact: true })).toBeVisible()
+  await expect
+    .poll(() => page.evaluate<unknown[]>("window.projectMeshRequests"))
+    .toEqual([
+      { chordTolerance: 0.5, angularTolerance: 0.5 },
+      { chordTolerance: 0.05, angularTolerance: 0.1 },
+    ])
+  await expect(async () => {
+    await page.evaluate('window.dispatchEvent(new Event("release-project-rebuild"))')
+    await saved(page)
+  }).toPass({ timeout: 30_000 })
+  await expect(page.getByRole("progressbar", { name: "Project loading progress" })).toHaveCount(0)
+  await expect(page.locator('[data-rendered-feature-count="1"]')).toBeVisible()
+  await tabs.getByRole("tab", { name: "Current project", exact: true }).click()
+  await saved(page)
+  await tabs.getByRole("tab", { name: "Detailed project", exact: true }).click()
+  await saved(page)
+  expect(await page.evaluate<unknown[]>("window.projectMeshRequests")).toHaveLength(2)
+
+  await page.addInitScript(projectRebuildGate)
+  await page.reload()
+  await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
+  await expect(tabs.getByRole("tab", { name: "Detailed project", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  await expect(page.locator('[data-slot="blocking-loader-overlay"]')).toHaveCount(0)
+  await expect
+    .poll(() => page.evaluate<unknown[]>("window.projectMeshRequests"))
+    .toEqual([{ chordTolerance: 0.5, angularTolerance: 0.5 }])
+  await expect(async () => {
+    await page.evaluate('window.dispatchEvent(new Event("release-project-rebuild"))')
+    await expect(page.getByText("Refining model detail…", { exact: true })).toBeVisible()
+  }).toPass({ timeout: 30_000 })
+  await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
+  await expect(async () => {
+    await page.evaluate('window.dispatchEvent(new Event("release-project-rebuild"))')
+    await saved(page)
+  }).toPass({ timeout: 30_000 })
+  await expect
+    .poll(() => page.evaluate<unknown[]>("window.projectMeshRequests"))
+    .toEqual([
+      { chordTolerance: 0.5, angularTolerance: 0.5 },
+      { chordTolerance: 0.05, angularTolerance: 0.1 },
+    ])
+  await expect(page.getByRole("progressbar", { name: "Project loading progress" })).toHaveCount(0)
+})

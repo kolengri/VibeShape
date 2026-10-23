@@ -46,6 +46,7 @@ export function BrowserProjectAssistant({
     <BrowserProjectChat
       key={project.id}
       projectId={project.id}
+      ready={controller.status === "ready"}
       draftDisplay={draftDisplay}
       open={open}
       onClose={onClose}
@@ -56,12 +57,14 @@ export function BrowserProjectAssistant({
 
 function BrowserProjectChat({
   projectId,
+  ready,
   draftDisplay,
   open,
   onClose,
   onCaptureView,
 }: {
   projectId: string
+  ready: boolean
   draftDisplay?: AssistantDraftDisplay | undefined
   open: boolean
   onClose: () => void
@@ -71,8 +74,8 @@ function BrowserProjectChat({
   const state = useSyncExternalStore(chat.subscribe, chat.getSnapshot, chat.getSnapshot)
   const error = useApiChatError(state)
   useEffect(() => {
-    void chats.activate(projectId)
-  }, [projectId, state.busy])
+    if (ready) void chats.activate(projectId)
+  }, [projectId, ready, state.busy])
   return (
     <AssistantPanel
       open={open}
@@ -81,7 +84,7 @@ function BrowserProjectChat({
       onToolHighlight={onToolHighlight}
       onApplyDraft={chat.applyDraft}
       busy={state.busy}
-      canSend={state.connected && !assistantCheckpointBusy(state)}
+      canSend={ready && state.connected && !assistantCheckpointBusy(state)}
       configurationRequired={!state.connected}
       canUndoAgentChanges={state.canUndoAgentChanges}
       undoingAgentChanges={state.undoingAgentChanges}
@@ -120,7 +123,7 @@ function BrowserProjectChat({
             connect: (input) => chats.connect(projectId, input),
             disconnect: () => chats.disconnect(projectId),
           }}
-          busy={state.busy}
+          busy={!ready || state.busy}
           connected={state.connected}
         />
       }

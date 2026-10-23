@@ -232,7 +232,7 @@ export function DocumentProjectPage({
   const [duplicatingDocumentId, setDuplicatingDocumentId] = useState<string | null>(null)
   useReportActivity(library.status === "loading")
   useReportBlockingActivity(
-    activity !== "idle",
+    !["idle", "switching"].includes(activity),
     t("activity", { activity: activity === "opening-file" ? "openingFile" : activity }),
   )
   const available = projectLibraryIsAvailable(controller.status)
