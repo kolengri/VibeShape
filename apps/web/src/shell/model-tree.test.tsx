@@ -568,7 +568,7 @@ function timeline() {
   return within(screen.getByRole("region", { name: "Feature history" }))
 }
 
-it("shows one compact model heading without repeating the project name", () => {
+it("starts the object browser without a redundant heading or project name", () => {
   if (!controller.report) throw new Error("Expected a loaded document")
   renderTree({
     controller: {
@@ -579,11 +579,7 @@ it("shows one compact model heading without repeating the project name", () => {
       },
     },
   })
-  const heading = browser().getByRole("heading", { name: "Model" })
-  expect(heading.classList.contains("text-base")).toBe(true)
-  expect(heading.classList.contains("font-semibold")).toBe(true)
-  expect(heading.querySelector("svg")).toBeNull()
-  expect(heading.closest("header")?.textContent).toBe("Model")
+  expect(browser().queryByRole("heading")).toBeNull()
   expect(browser().queryByText("Project name belongs in navigation")).toBeNull()
   expect(browser().getByRole("treeitem", { name: "Bodies" }).getAttribute("data-size")).toBe("xs")
   expect(browser().getByRole("treeitem", { name: "Body 1" }).getAttribute("data-size")).toBe("sm")
