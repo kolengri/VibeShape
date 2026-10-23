@@ -72,6 +72,7 @@ function ChoiceOption({
         "forced-colors:has-checked:outline-2 forced-colors:has-checked:outline-solid forced-colors:has-checked:-outline-offset-3 forced-colors:has-checked:outline-[Highlight]",
         "forced-colors:has-focus-visible:outline-2 forced-colors:has-focus-visible:outline-dashed forced-colors:has-focus-visible:outline-offset-2 forced-colors:has-focus-visible:outline-[Highlight]",
         "has-disabled:cursor-not-allowed has-disabled:opacity-50",
+        "[&>[data-slot=field-help]]:relative [&>[data-slot=field-help]]:z-10",
       )}
     >
       <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
@@ -95,7 +96,7 @@ function ChoiceOption({
           onChange={(event) => {
             if (event.currentTarget.checked) onValueChange?.(event.currentTarget.value)
           }}
-          className="sr-only"
+          className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
         />
         <span className="min-w-0 wrap-anywhere">
           <span id={`${id}-label`}>{option.label}</span>

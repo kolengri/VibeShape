@@ -155,7 +155,7 @@ test("question choices wrap to readable rows and retain native keyboard selectio
           width: bounds.width,
           height: bounds.height,
           overflowing: card.scrollWidth > card.clientWidth,
-          inputWidth: input.getBoundingClientRect().width,
+          inputOpacity: input.ownerDocument.defaultView?.getComputedStyle(input).opacity,
         }
       }),
     )
@@ -168,38 +168,58 @@ test("question choices wrap to readable rows and retain native keyboard selectio
       expect(card.x + card.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1)
       expect(card.height).toBeLessThan(100)
       expect(card.overflowing).toBe(false)
-      expect(card.inputWidth).toBeLessThanOrEqual(1)
+      expect(card.inputOpacity).toBe("0")
     }
   }
   const first = field.getByRole("radio", { name: standard, exact: true })
   const second = field.getByRole("radio", { name: custom, exact: true })
-  await field.getByText(standard, { exact: true }).click()
+  const firstCard = first.locator("xpath=ancestor::label/..")
+  const secondCard = second.locator("xpath=ancestor::label/..")
+  await secondCard.click({ position: { x: 2, y: 2 } })
+  await expect(second).toBeChecked()
+  await field.getByRole("button", { name: `Help for ${standard}`, exact: true }).click()
+  const help = page.getByRole("dialog", { name: standard, exact: true })
+  await expect(help).toContainText("Measure the holder before printing.")
+  await expect(second).toBeChecked()
+  await expect(first).not.toBeChecked()
+  await help.press("Escape")
+  await firstCard.click({ position: { x: 2, y: 2 } })
   await expect(first).toBeChecked()
   await first.focus()
   await first.press("Space")
-  const selected = first.locator("xpath=ancestor::label/..")
-  const unselected = second.locator("xpath=ancestor::label/..")
-  const background = await selected.evaluate((node) => getComputedStyle(node).backgroundColor)
-  expect(await unselected.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(
-    background,
+  const background = await firstCard.evaluate(
+    (node) => node.ownerDocument.defaultView?.getComputedStyle(node).backgroundColor,
   )
-  expect(await selected.evaluate((node) => getComputedStyle(node).boxShadow)).not.toBe("none")
+  expect(
+    await secondCard.evaluate(
+      (node) => node.ownerDocument.defaultView?.getComputedStyle(node).backgroundColor,
+    ),
+  ).not.toBe(background)
+  expect(
+    await firstCard.evaluate(
+      (node) => node.ownerDocument.defaultView?.getComputedStyle(node).boxShadow ?? "none",
+    ),
+  ).not.toBe("none")
   await first.press("ArrowDown")
   await expect(second).toBeChecked()
   await expect(second).toBeFocused()
   await expect(first).not.toBeChecked()
   await page.emulateMedia({ forcedColors: "active" })
   await second.evaluate((node) => node.blur())
-  const checkedOutline = await unselected.evaluate((node) => {
-    const style = getComputedStyle(node)
-    return { style: style.outlineStyle, width: style.outlineWidth, offset: style.outlineOffset }
+  const checkedOutline = await secondCard.evaluate((node) => {
+    const style = node.ownerDocument.defaultView?.getComputedStyle(node)
+    return { style: style?.outlineStyle, width: style?.outlineWidth, offset: style?.outlineOffset }
   })
   expect(checkedOutline).toEqual({ style: "solid", width: "2px", offset: "-3px" })
-  expect(await selected.evaluate((node) => getComputedStyle(node).outlineStyle)).toBe("none")
+  expect(
+    await firstCard.evaluate(
+      (node) => node.ownerDocument.defaultView?.getComputedStyle(node).outlineStyle,
+    ),
+  ).toBe("none")
   await second.focus()
-  const focusedOutline = await unselected.evaluate((node) => {
-    const style = getComputedStyle(node)
-    return { style: style.outlineStyle, width: style.outlineWidth, offset: style.outlineOffset }
+  const focusedOutline = await secondCard.evaluate((node) => {
+    const style = node.ownerDocument.defaultView?.getComputedStyle(node)
+    return { style: style?.outlineStyle, width: style?.outlineWidth, offset: style?.outlineOffset }
   })
   expect(focusedOutline).toEqual({ style: "dashed", width: "2px", offset: "2px" })
 })
