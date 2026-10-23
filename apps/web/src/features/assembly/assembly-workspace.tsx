@@ -15,6 +15,7 @@ import { AssemblyTaskPanelContext } from "./assembly-forms"
 import { AssemblyInstanceForm } from "./assembly-instance-form"
 import { AssemblyInterference } from "./assembly-interference"
 import { AssemblyJointForm } from "./assembly-joint-form"
+import { assemblyDocumentContext } from "./assembly-model"
 import {
   AssemblyMotionPreviewBadge,
   type AssemblyMotionSession,
@@ -26,8 +27,14 @@ import {
   type AssemblyMotionStudySession,
   useAssemblyMotionStudySession,
 } from "./assembly-motion-study-panel"
+import {
+  AssemblyPlaybackToolbar,
+  type AssemblyToolbarPlayback,
+  useAssemblyToolbarPlayback,
+} from "./assembly-playback-toolbar"
 import { AssemblyRemoveDialog } from "./assembly-remove-dialog"
 import { AssemblyToolbar } from "./assembly-toolbar"
+import { AssemblyToolbarPortal } from "./assembly-toolbar-portal"
 import { AssemblyTree } from "./assembly-tree"
 import { AssemblyViewport } from "./assembly-viewport"
 import {
@@ -156,7 +163,6 @@ function AssemblyActions({ view }: { view: AssemblyWorkspaceView }) {
   const t = useTranslations("app.assembly")
   return (
     <>
-      <AssemblyToolbar view={view} />
       <GeneralMateStatus view={view} />
       <p className="text-xs text-muted-foreground">{t("frozenExplanation")}</p>
       <FrozenDefinitionReference selected={view.selected} />
@@ -271,13 +277,22 @@ function AssemblyPanel({
     </ResponsiveTaskPanel>
   )
 }
+function assemblyMotionPreview(
+  motion: AssemblyMotionSession,
+  study: AssemblyMotionStudySession,
+  playback: AssemblyToolbarPlayback,
+) {
+  return study.motion.inspection ?? motion.state.inspection ?? playback.motion.inspection
+}
+
 function useAssemblyScenePresentation(
   controller: DocumentControllerState,
   view: AssemblyWorkspaceView,
   motion: AssemblyMotionSession,
   study: AssemblyMotionStudySession,
+  playback: AssemblyToolbarPlayback,
 ) {
-  const preview = study.motion.inspection ?? motion.state.inspection
+  const preview = assemblyMotionPreview(motion, study, playback)
   const checkpoint = assistantCheckpointForController(controller)
   useEffect(() => {
     if (checkpoint && (!view.idle || view.removal))
@@ -309,9 +324,19 @@ export function AssemblyWorkspace({
   const view = useAssemblyWorkspace(controller)
   const motion = useAssemblyMotionSession(view)
   const study = useAssemblyMotionStudySession(view)
-  const presentation = useAssemblyScenePresentation(controller, view, motion, study)
+  const playback = useAssemblyToolbarPlayback(
+    view,
+    assemblyDocumentContext(controller)?.revision ?? -1,
+  )
+  const presentation = useAssemblyScenePresentation(controller, view, motion, study, playback)
   return (
     <>
+      <AssemblyToolbarPortal>
+        <AssemblyToolbar
+          view={view}
+          playback={<AssemblyPlaybackToolbar view={view} playback={playback} />}
+        />
+      </AssemblyToolbarPortal>
       <WorkspacePanels
         allowTransparency={false}
         left={
@@ -339,7 +364,7 @@ export function AssemblyWorkspace({
           inspection={presentation.inspection}
           selectedId={presentation.selectedId}
           onSelect={view.selectInstance}
-          autoFit={!view.motionActive}
+          autoFit={playback.autoFit}
           readOnly={presentation.readOnly}
         />
         <AssemblyMotionPreviewBadge visible={presentation.showMotionPreview} />

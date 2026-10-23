@@ -2973,6 +2973,8 @@
       "jointEndpoints": "{parent} → {child}",
       "driveJointBetween": "Drive {parent} → {child}",
       "motionStudies": "Motion studies",
+      "motionPlaybackCase": "Animation case",
+      "motionSelectCase": "Select animation case",
       "motionNewStudy": "New study",
       "motionEditStudy": "Edit study",
       "motionStudyName": "Study name",

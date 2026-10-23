@@ -53,12 +53,18 @@ test("solves topology-bound ball and cylindrical mates in the real worker and pr
     .getByRole("group", { name: "Geometry workspace" })
     .getByRole("button", { name: "Assembly", exact: true })
     .click()
-  await panel(page).getByRole("button", { name: "Create definition", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Create definition", exact: true })
+    .click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Frozen link")
   await apply(page)
   const legacy = await authority(page),
     anchor = required(legacy.assembly.instances[0])
-  await panel(page).getByRole("button", { name: "More assembly actions", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "More assembly actions", exact: true })
+    .click()
   await page.getByRole("menuitem", { name: "Enable general mates", exact: true }).click()
   await expect(panel(page).getByText(/Fully constrained · 0 degrees of freedom/)).toBeVisible({
     timeout: 60_000,
@@ -70,7 +76,10 @@ test("solves topology-bound ball and cylindrical mates in the real worker and pr
   await page.getByRole("button", { name: "Redo", exact: true }).click()
   await settle(page)
   await page.locator(`[data-assembly-instance-id="${anchor.id}"]`).click()
-  await panel(page).getByRole("button", { name: "Add joint", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Add joint", exact: true })
+    .click()
   await choose(page, "Joint type", "Ball")
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Ball link")
   await planeBinding(page)
@@ -85,7 +94,10 @@ test("solves topology-bound ball and cylindrical mates in the real worker and pr
   })
   expect(JSON.stringify(ball.assembly.joints)).not.toContain("candidateId")
   await page.locator(`[data-assembly-instance-id="${anchor.id}"]`).click()
-  await panel(page).getByRole("button", { name: "Add joint", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Add joint", exact: true })
+    .click()
   await choose(page, "Joint type", "Cylindrical")
   await panel(page)
     .getByRole("checkbox", { name: "Create a new child instance with this joint", exact: true })
@@ -116,7 +128,10 @@ test("solves topology-bound ball and cylindrical mates in the real worker and pr
   expect((await authority(page)).assembly).toEqual(mated.assembly)
   // A conflicting fixed mate must fail in preflight without changing authority.
   await page.locator(`[data-assembly-instance-id="${anchor.id}"]`).click()
-  await panel(page).getByRole("button", { name: "Add joint", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Add joint", exact: true })
+    .click()
   await panel(page)
     .getByRole("checkbox", { name: "Create a new child instance with this joint", exact: true })
     .uncheck()
