@@ -2,8 +2,10 @@ import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { vi } from "../../../../../tests/unit/support/bun-test"
+import { i18n } from "../../i18n"
 import {
   PrimitiveParameterPanel,
   type PrimitiveParameterPanelCopy,
@@ -48,6 +50,7 @@ describe("PrimitiveParameterPanel", () => {
         }
         placementFields={<TextField label="Origin X" defaultValue="0 mm" />}
       />,
+      { wrapper: ({ children }) => <I18nProvider i18n={i18n}>{children}</I18nProvider> },
     )
 
     const radius = screen.getByRole("textbox", { name: "Radius" }) as HTMLInputElement

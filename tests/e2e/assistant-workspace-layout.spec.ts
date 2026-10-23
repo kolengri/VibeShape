@@ -28,12 +28,16 @@ function taskWidthFor(page: Page) {
 async function expectWorkspaceLayout(page: Page, chat: Locator, size: { width: number }) {
   await expect(page.locator("#workspace-task")).toHaveAttribute(
     "data-viewport-area",
-    size.width === 1920 ? "right" : "bottom",
+    size.width >= 1024 ? "right" : "bottom",
   )
-  if (size.width === 1024 || size.width === 720 || size.width === 390) {
+  if (size.width === 390) {
     await page.getByRole("button", { name: "Show model tree", exact: true }).click()
-    await expectSeparate(chat, page.locator(".workspace-panel--tree"))
+    const drawer = page.locator(".workspace-panel--tree")
+    await expect(drawer.getByRole("heading", { name: "Model tree", exact: true })).toBeVisible()
+    // A narrow drawer temporarily covers lower panels when they exhaust the central body.
     await page.getByRole("button", { name: "Hide model tree", exact: true }).click()
+    await expect(drawer).toBeHidden()
+    await expect(chat).toBeVisible()
   }
   if (size.width === 1024) {
     await openApplicationMenuItem(page, "Settings…")
@@ -47,14 +51,11 @@ async function expectWorkspaceLayout(page: Page, chat: Locator, size: { width: n
       "Model tree background opacity",
       "Task panel background opacity",
     ]) {
-      await expect(settings.getByRole("slider", { name, exact: true })).toBeDisabled()
+      await expect(settings.getByRole("slider", { name, exact: true })).toBeEnabled()
     }
-    await expect(
-      settings.getByRole("button", { name: "Hide Model tree", exact: true }),
-    ).toBeDisabled()
-    await expect(
-      settings.getByRole("button", { name: "Hide Task panel", exact: true }),
-    ).toBeDisabled()
+    for (const name of ["Hide Model tree", "Hide Task panel"]) {
+      await expect(settings.getByRole("button", { name, exact: true })).toBeEnabled()
+    }
     await page.keyboard.press("Escape")
   }
   for (const surface of [
@@ -83,10 +84,7 @@ async function expectStableTaskTransitions(
 ) {
   for (const viewportWidth of [1920, 1440]) {
     await page.setViewportSize({ width: viewportWidth, height: 900 })
-    await expect(page.locator("#workspace-task")).toHaveAttribute(
-      "data-viewport-area",
-      viewportWidth === 1920 ? "right" : "bottom",
-    )
+    await expect(page.locator("#workspace-task")).toHaveAttribute("data-viewport-area", "right")
     if (viewportWidth === 1920) {
       await expect.poll(() => taskWidthFor(page)).toBe(320)
     }
@@ -169,7 +167,7 @@ for (const theme of ["light", "dark"] as const) {
     }
 
     await page.setViewportSize({ width: 1440, height: 900 })
-    await expect(page.locator("#workspace-task")).toHaveAttribute("data-viewport-area", "bottom")
+    await expect(page.locator("#workspace-task")).toHaveAttribute("data-viewport-area", "right")
     await expectStableTaskTransitions(page, form, chat, canvas)
     await chat.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
     await expect(chat).toBeHidden()

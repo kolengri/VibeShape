@@ -26,9 +26,6 @@ import {
   addSketch,
   createBrowserFeatureId,
   type DocumentControllerState,
-  getDocumentControllerState,
-  removeFeature,
-  removeFeaturePreservingModelReferenceIntent,
   resolveDocumentFeatureParameters,
   saveFeatureEdits,
   saveSketchEdits,
@@ -70,11 +67,6 @@ import {
   type BasicPrimitiveKind,
 } from "../features/part-design/basic-primitive-form"
 import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
-import { FeatureDeleteAction } from "../features/part-design/feature-delete-action"
-import {
-  type FeatureDeleteEligibility,
-  featureDeleteEligibility,
-} from "../features/part-design/feature-delete-eligibility"
 import {
   type ActivePartDesignTool,
   isBooleanFeature,
@@ -605,146 +597,6 @@ function featureTaskContext(
     : { key: `create:${revision}`, onSave: addFeature }
 }
 
-type FeatureDeleteReport = NonNullable<DocumentControllerState["report"]>
-
-function useFeatureDeleteBlockedReason(eligibility: FeatureDeleteEligibility) {
-  const t = useTranslations("app.shell.taskPanel.featureDelete")
-  return eligibility.unavailable ? t("unavailable") : null
-}
-
-function useAffectedFeatureReferences(
-  report: FeatureDeleteReport,
-  eligibility: FeatureDeleteEligibility,
-) {
-  const t = useTranslations("app.shell.taskPanel.featureDelete")
-  const modelTreeT = useTranslations("app.shell.modelTree")
-  const viewportT = useTranslations("app.shell.viewport")
-  const referenceLabelCopy = {
-    curve: (feature, kind, ordinal) =>
-      viewportT("externalModelCurveCandidate", {
-        feature,
-        kind: externalModelCurveLabelKind(kind),
-        ordinal,
-      }),
-    face: (feature, ordinal) => viewportT("externalModelFaceReference", { feature, ordinal }),
-    line: (feature, ordinal) => viewportT("externalModelLineCandidate", { feature, ordinal }),
-    point: (feature, ordinal) => viewportT("externalModelPointCandidate", { feature, ordinal }),
-    problem: (feature, kind, status) =>
-      viewportT("externalModelReferenceProblem", { feature, kind, status }),
-    unknownFeature: viewportT("unknownFeature"),
-  } satisfies Parameters<typeof externalModelReferenceLabels>[3]
-  const sketchesById = new Map(report.snapshot.sketches.map((sketch) => [sketch.id, sketch]))
-  const labelsBySketchId = new Map(
-    [...new Set(eligibility.preservableReferences.map(({ sketchId }) => sketchId))].map(
-      (sketchId) => {
-        const sketch = sketchesById.get(sketchId)
-        return [
-          sketchId,
-          externalModelReferenceLabels(
-            report.rebuild.ok ? report.rebuild.response.geometry : [],
-            report.snapshot.features,
-            sketch?.externalReferences,
-            referenceLabelCopy,
-          ),
-        ] as const
-      },
-    ),
-  )
-  return eligibility.preservableReferences.map(({ referenceId, sketchId }) => {
-    const sketch = sketchesById.get(sketchId)
-    return {
-      id: referenceId,
-      label: t("affectedReference", {
-        reference: labelsBySketchId.get(sketchId)?.get(referenceId) ?? t("unknownReference"),
-        sketch: sketch?.label ?? modelTreeT("unnamedSketch"),
-      }),
-    }
-  })
-}
-
-function ActiveFeatureDeleteAction({
-  feature,
-  onDeleted,
-  report,
-}: {
-  feature: FeatureRecord
-  onDeleted: () => void
-  report: FeatureDeleteReport
-}) {
-  const t = useTranslations("app.shell.taskPanel.featureDelete")
-  const modelTreeT = useTranslations("app.shell.modelTree")
-  const featureLabel = feature.label ?? modelTreeT("unnamedFeature")
-  const savedController = getDocumentControllerState()
-  const saved = savedController.report
-  const snapshot = saved?.snapshot.id === report.snapshot.id ? saved.snapshot : report.snapshot
-  const eligibility = featureDeleteEligibility(
-    snapshot,
-    feature.id,
-    savedController.authoredSnapshot,
-  )
-  const blockedReason = useFeatureDeleteBlockedReason(eligibility)
-  const affectedItems = useAffectedFeatureReferences(report, eligibility)
-  const remainingAffectedItems =
-    eligibility.preservableReferenceCount - eligibility.preservableReferences.length
-  const preserveIntent = eligibility.preserveIntentAllowed
-    ? {
-        action: t("preserveAction"),
-        title: t("preserveTitle", { feature: featureLabel }),
-        description: t("preserveDescription"),
-        confirm: t("preserveConfirm"),
-        affectedReferences: t("affectedReferences"),
-        affectedItems,
-        remainingAffectedItems:
-          remainingAffectedItems > 0
-            ? t("moreAffectedReferences", { count: remainingAffectedItems })
-            : null,
-        failed: t("preserveFailed"),
-      }
-    : null
-  return (
-    <FeatureDeleteAction
-      baseRevision={report.snapshot.revision}
-      copy={{
-        action: t("action"),
-        title: t("title", { feature: featureLabel }),
-        description: t("description"),
-        confirm: t("confirm"),
-        cancel: t("cancel"),
-        failed: t("failed"),
-        readOnly: t("readOnly"),
-      }}
-      blockedReason={blockedReason}
-      disabled={report.mode === "read-only"}
-      feature={feature}
-      onDeleted={onDeleted}
-      onRemove={removeFeature}
-      {...(preserveIntent
-        ? { onRemovePreservingIntent: removeFeaturePreservingModelReferenceIntent, preserveIntent }
-        : {})}
-    />
-  )
-}
-
-function EditFeatureDeleteAction({
-  mode,
-  onDeleted,
-  report,
-}: {
-  mode:
-    | EdgeTreatmentFormMode
-    | BoxFormMode
-    | CylinderFormMode
-    | BooleanFormMode
-    | ExtrusionFormMode
-    | RevolveFormMode
-    | DatumPlaneFormMode
-  onDeleted: () => void
-  report: FeatureDeleteReport
-}) {
-  if (mode.kind !== "edit") return null
-  return <ActiveFeatureDeleteAction feature={mode.feature} onDeleted={onDeleted} report={report} />
-}
-
 function ExtrusionTaskPanel({
   distanceRequest,
   mode,
@@ -781,12 +633,7 @@ function ExtrusionTaskPanel({
   )
   const profileLabel = profileLabels.join(", ")
   return (
-    <TaskPanelSurface
-      aria-label={t("ariaLabel")}
-      trailingContent={
-        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-      }
-    >
+    <TaskPanelSurface aria-label={t("ariaLabel")}>
       <TaskPanelContentProvider
         content={
           previewStatus === "error" && diagnostics ? (
@@ -906,12 +753,7 @@ function RevolveTaskPanel({
   const copy = useRevolveFormCopy(mode.kind)
   const task = featureTaskContext(mode, snapshot.revision)
   return (
-    <TaskPanelSurface
-      aria-label={panelT("ariaLabel")}
-      trailingContent={
-        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-      }
-    >
+    <TaskPanelSurface aria-label={panelT("ariaLabel")}>
       <RevolveForm
         angleRequest={angleRequest}
         axisLineLabel={axisLineLabel}
@@ -964,12 +806,7 @@ function BoxTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <TaskPanelSurface
-      aria-label={t("ariaLabel")}
-      trailingContent={
-        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-      }
-    >
+    <TaskPanelSurface aria-label={t("ariaLabel")}>
       <BoxForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -1008,12 +845,7 @@ function DatumPlaneTaskPanel({
   const task = featureTaskContext(mode, snapshot.revision)
   const t = useTranslations("app.shell.taskPanel")
   return (
-    <TaskPanelSurface
-      aria-label={t("ariaLabel")}
-      trailingContent={
-        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-      }
-    >
+    <TaskPanelSurface aria-label={t("ariaLabel")}>
       <DatumPlaneForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -1054,12 +886,7 @@ function CylinderTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <TaskPanelSurface
-      aria-label={t("ariaLabel")}
-      trailingContent={
-        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-      }
-    >
+    <TaskPanelSurface aria-label={t("ariaLabel")}>
       <CylinderForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -1102,12 +929,7 @@ function BooleanTaskPanel({
   const t = useTranslations("app.shell.taskPanel")
 
   return (
-    <TaskPanelSurface
-      aria-label={t("ariaLabel")}
-      trailingContent={
-        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-      }
-    >
+    <TaskPanelSurface aria-label={t("ariaLabel")}>
       <BooleanForm
         key={task.key}
         baseRevision={snapshot.revision}
@@ -1708,12 +1530,7 @@ function ActiveBasicPrimitiveTaskPanel({
   if (!mode) return null
   const task = featureTaskContext(mode, report.snapshot.revision)
   return (
-    <TaskPanelSurface
-      aria-label={t("ariaLabel")}
-      trailingContent={
-        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCompleteTool} />
-      }
-    >
+    <TaskPanelSurface aria-label={t("ariaLabel")}>
       <BasicPrimitiveForm
         key={`${primitiveKind}:${task.key}`}
         primitiveKind={primitiveKind}
@@ -1952,12 +1769,7 @@ function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
   const copy = edgeTreatmentCopy(t, operation, mode.kind)
 
   return (
-    <TaskPanelSurface
-      aria-label={taskT("ariaLabel")}
-      trailingContent={
-        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
-      }
-    >
+    <TaskPanelSurface aria-label={taskT("ariaLabel")}>
       <EdgeTreatmentForm
         key={`${operation}:${task.key}`}
         baseRevision={report.snapshot.revision}
@@ -2061,12 +1873,7 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
     pointLabel: (ordinal) => t("pointLabel", { ordinal }),
   }
   return (
-    <TaskPanelSurface
-      aria-label={taskT("ariaLabel")}
-      trailingContent={
-        <EditFeatureDeleteAction mode={mode} report={report} onDeleted={props.onCompleteTool} />
-      }
-    >
+    <TaskPanelSurface aria-label={taskT("ariaLabel")}>
       <HoleForm
         key={`hole:${task.key}`}
         baseRevision={report.snapshot.revision}
@@ -2090,45 +1897,36 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
   )
 }
 
-function featureTaskDeleteAction(props: ActiveTaskPanelProps) {
-  return (feature: FeatureRecord) => (
-    <ActiveFeatureDeleteAction
-      feature={feature}
-      onDeleted={props.onCompleteTool}
-      report={props.report}
-    />
-  )
-}
 function PlacementToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <PlacementTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <PlacementTaskPanel {...props} renderDelete={() => null} />
 }
 function PressPullToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <PressPullTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <PressPullTaskPanel {...props} renderDelete={() => null} />
 }
 function ShellToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <ShellTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <ShellTaskPanel {...props} renderDelete={() => null} />
 }
 
 function SweepLoftToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <SweepLoftTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <SweepLoftTaskPanel {...props} renderDelete={() => null} />
 }
 function ThreadToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <ThreadTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <ThreadTaskPanel {...props} renderDelete={() => null} />
 }
 function FdmToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <FdmTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <FdmTaskPanel {...props} renderDelete={() => null} />
 }
 function PatternToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <PatternTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <PatternTaskPanel {...props} renderDelete={() => null} />
 }
 function SplitToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <SplitTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <SplitTaskPanel {...props} renderDelete={() => null} />
 }
 function MirrorToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <MirrorTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <MirrorTaskPanel {...props} renderDelete={() => null} />
 }
 function CombinationToolTaskPanel(props: ActiveTaskPanelProps) {
-  return <BodyCombinationTaskPanel {...props} renderDelete={featureTaskDeleteAction(props)} />
+  return <BodyCombinationTaskPanel {...props} renderDelete={() => null} />
 }
 
 function ImportedSourceTaskPanel(props: ActiveTaskPanelProps) {
@@ -2158,11 +1956,7 @@ function ImportedSourceTaskPanel(props: ActiveTaskPanelProps) {
           />
         }
       >
-        <ActiveFeatureDeleteAction
-          feature={feature}
-          onDeleted={props.onCompleteTool}
-          report={props.report}
-        />
+        {null}
       </TaskPanelLayout>
     </aside>
   )
@@ -2731,15 +2525,7 @@ export function TaskPanel(props: TaskPanelProps) {
       controller={props.controller}
       tool={props.activeTool}
       onClose={props.onCloseTool}
-      renderDelete={(feature) =>
-        props.controller.report && (
-          <ActiveFeatureDeleteAction
-            feature={feature}
-            report={props.controller.report}
-            onDeleted={props.onCompleteTool}
-          />
-        )
-      }
+      renderDelete={() => null}
     >
       {(controller) => <Panel {...props} controller={controller} />}
     </HistoryFeatureRepair>

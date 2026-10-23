@@ -3,8 +3,10 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { TaskPanelLayout } from "../components/task-panel-layout"
+import { i18n } from "../i18n"
 import { ResponsiveTaskPanel } from "./responsive-task-panel"
 
 function setCompactLayout(matches: boolean) {
@@ -54,7 +56,9 @@ describe("ResponsiveTaskPanel", () => {
         </aside>
       </ResponsiveTaskPanel>
     )
-    const { rerender } = render(panel("cylinder:first"))
+    const { rerender } = render(panel("cylinder:first"), {
+      wrapper: ({ children }) => <I18nProvider i18n={i18n}>{children}</I18nProvider>,
+    })
     const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Radius" })
     const scroller = input.closest<HTMLElement>("[data-slot='task-panel-content']")
     if (!scroller) throw new Error("Expected the task field scrollport.")

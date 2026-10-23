@@ -1,6 +1,8 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it, mock } from "bun:test"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../../tests/unit/support/bun-test"
+import { i18n } from "../../i18n"
 
 class ResizeObserverMock {
   observe() {}
@@ -25,26 +27,28 @@ function FormActionsHarness({
 }) {
   const form = useAppForm({ defaultValues: { name: "Feature" }, onSubmit })
   return (
-    <TooltipProvider>
-      <Form form={form} aria-label="Feature form">
-        <ParameterPanel
-          copy={{ title: "Feature", description: "Edit feature parameters.", cancel: "Cancel" }}
-          legend="Feature parameters"
-          actions={
-            <TaskPanelFormActions
-              acceptLabel="Create feature"
-              ariaLabel="Feature actions"
-              cancelLabel="Cancel"
-              onCancel={vi.fn()}
-              {...(previewStatus ? { previewStatus } : {})}
-            />
-          }
-        >
-          <label htmlFor="feature-name">Feature name</label>
-          <input id="feature-name" name="name" defaultValue="Feature" />
-        </ParameterPanel>
-      </Form>
-    </TooltipProvider>
+    <I18nProvider i18n={i18n}>
+      <TooltipProvider>
+        <Form form={form} aria-label="Feature form">
+          <ParameterPanel
+            copy={{ title: "Feature", description: "Edit feature parameters.", cancel: "Cancel" }}
+            legend="Feature parameters"
+            actions={
+              <TaskPanelFormActions
+                acceptLabel="Create feature"
+                ariaLabel="Feature actions"
+                cancelLabel="Cancel"
+                onCancel={vi.fn()}
+                {...(previewStatus ? { previewStatus } : {})}
+              />
+            }
+          >
+            <label htmlFor="feature-name">Feature name</label>
+            <input id="feature-name" name="name" defaultValue="Feature" />
+          </ParameterPanel>
+        </Form>
+      </TooltipProvider>
+    </I18nProvider>
   )
 }
 
