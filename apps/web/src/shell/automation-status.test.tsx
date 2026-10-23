@@ -71,12 +71,16 @@ const ports = {
   nativeB: localConnection(true),
   remote: remoteConnection(),
   startNative: vi.fn(),
+  createExternal: vi.fn(),
 }
 mock.module("../assistant/native-assistant-bridge", () => ({
   getNativeAssistant: () => ({ protocolVersion: 1 }),
 }))
 mock.module("../automation/local-automation-connection", () => ({
-  createLocalAutomationConnection: () => ports.external,
+  createLocalAutomationConnection: (options: unknown) => {
+    ports.createExternal(options)
+    return ports.external
+  },
 }))
 mock.module("../automation/native-project-automation", () => ({
   getNativeProjectAutomationConnection: (projectId: string) =>
@@ -94,6 +98,7 @@ const { getProjectActiveWorkBlock, getProjectNavigationBlock } = await import(
 const { EditorSessionProvider, useEditorSessionStoreApi } = await import(
   "../editor-session/editor-session-provider"
 )
+const { DesktopMcpSettings } = await import("../desktop/desktop-mcp-settings")
 const {
   AutomationConnectionsProvider,
   AutomationEditorScope,
@@ -176,6 +181,7 @@ function Workspace({
         {showStatus ? (
           <I18nProvider i18n={i18n} initialLocale="en">
             <AutomationStatus controller={controller(projectId)} />
+            <DesktopMcpSettings />
           </I18nProvider>
         ) : null}
       </EditorSessionProvider>
@@ -189,8 +195,77 @@ beforeEach(() => {
   ports.nativeB = localConnection(true)
   ports.remote = remoteConnection()
   ports.startNative.mockClear()
+  ports.createExternal.mockClear()
+  delete window.vibeshapeDesktop
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  delete window.vibeshapeDesktop
+})
+
+describe("desktop external status policy", () => {
+  it("keeps an assistant bridge alone on manual external access", () => {
+    render(<Workspace />)
+    expect(ports.createExternal).toHaveBeenCalledWith({ accessPolicy: "manual" })
+  })
+
+  it.each([false, true])(
+    "hides initial Enable for desktop primary and secondary status (native connected: %s)",
+    (nativeConnected) => {
+      window.vibeshapeDesktop = {
+        protocolVersion: 1,
+        localAutomationAccess: "current-project",
+        platform: "darwin",
+        windowChrome: "unified",
+        getMcpSetup: vi.fn(),
+        onCommand: () => () => {},
+        updateCommandState: vi.fn(),
+        editText: vi.fn(),
+      }
+      ports.nativeA.publish({
+        connected: nativeConnected,
+        recovering: false,
+        client: null,
+        available: nativeConnected,
+      })
+      ports.external.publish({
+        connected: false,
+        defaultAccess: true,
+        client: { name: "Diagnostics", version: "1" },
+      })
+      render(<Workspace showStatus />)
+      expect(ports.createExternal).toHaveBeenCalledWith({ accessPolicy: "desktop-external" })
+      expect(screen.queryByRole("button", { name: "Enable AI session" })).toBeNull()
+      expect(screen.queryByRole("button", { name: "Restart local MCP" })).toBeNull()
+    },
+  )
+
+  it("restarts stopped desktop external access deliberately from Connections", async () => {
+    window.vibeshapeDesktop = {
+      protocolVersion: 1,
+      localAutomationAccess: "current-project",
+      platform: "darwin",
+      windowChrome: "unified",
+      getMcpSetup: vi.fn(),
+      onCommand: () => () => {},
+      updateCommandState: vi.fn(),
+      editText: vi.fn(),
+    }
+    ports.external.publish({
+      connected: false,
+      defaultAccess: true,
+      recoveryBlocked: true,
+      client: { name: "Diagnostics", version: "1" },
+    })
+    render(<Workspace showStatus />)
+    expect(screen.queryByRole("button", { name: "Enable AI session" })).toBeNull()
+    const restart = screen.getByRole("button", { name: "Restart local MCP" })
+    expect(ports.external.enable).not.toHaveBeenCalled()
+    await act(async () => fireEvent.click(restart))
+    expect(ports.external.enable).toHaveBeenCalledTimes(1)
+    expect(ports.nativeA.enable).not.toHaveBeenCalled()
+  })
+})
 
 describe("all-transport editor activity guard", () => {
   it.each(["connected", "recovering"] as const)(

@@ -96,6 +96,7 @@ export type DesktopHostBridge = Readonly<{
   protocolVersion: 1
   platform: "darwin" | "other"
   windowChrome: "unified" | "standard"
+  localAutomationAccess?: "current-project"
   onFullScreenChange?(callback: (fullScreen: boolean) => void): () => void
   getMcpSetup(): Promise<DesktopMcpSetup>
   onCommand(callback: (command: DesktopCommand) => void): () => void

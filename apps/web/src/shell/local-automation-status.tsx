@@ -47,6 +47,7 @@ export function LocalAutomationStatus({
   connection,
   current,
   showStopControl = true,
+  hideEnableControl = false,
 }: {
   connection: Pick<
     Connection,
@@ -54,6 +55,7 @@ export function LocalAutomationStatus({
   >
   current: ReturnType<Connection["getSnapshot"]>
   showStopControl?: boolean
+  hideEnableControl?: boolean
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const approval = useExternalConnectionApproval()
@@ -64,7 +66,11 @@ export function LocalAutomationStatus({
       ) : current.connected ? (
         <ExternalConnectionApproval connection={connection} current={current} approval={approval} />
       ) : (
-        <InactiveConnectionStatus connection={connection} current={current} />
+        <InactiveConnectionStatus
+          connection={connection}
+          current={current}
+          hideEnableControl={hideEnableControl}
+        />
       )}
       {showStopControl ? <StopConnectionControl connection={connection} current={current} /> : null}
       {approval.failed && !approval.open ? (
@@ -301,13 +307,27 @@ function ProjectManagementControl({
 function InactiveConnectionStatus({
   connection,
   current,
+  hideEnableControl,
 }: {
   connection: Pick<Connection, "enable">
   current: ReturnType<Connection["getSnapshot"]>
+  hideEnableControl: boolean
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const waitingDescriptionId = useId()
   const waitingForClient = current.client === null
+  if (hideEnableControl || current.defaultAccess)
+    return (
+      <span role="status" className="px-2 text-xs text-muted-foreground">
+        {t(
+          current.recoveryBlocked
+            ? "aiStopped"
+            : current.client
+              ? "aiRecovering"
+              : "aiWaitingForClient",
+        )}
+      </span>
+    )
   return current.recovering ? (
     <span role="status" className="px-2 text-xs text-muted-foreground">
       {t("aiRecovering")}

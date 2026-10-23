@@ -86,14 +86,19 @@ async function askQuestion(
 export function createLocalMcpAdapter(
   broker: Broker,
   exports: ReturnType<typeof createExportResources>,
-  options: { accessPolicy?: "native-project"; questions?: AssistantQuestionHost } = {},
+  options: {
+    accessPolicy?: "native-project" | "desktop-external"
+    questions?: AssistantQuestionHost
+  } = {},
 ) {
   const questionHost = options.accessPolicy === "native-project" ? options.questions : undefined
   const canInvokeCad = () => questionHost === undefined || questionHost.canInvoke()
   const pairingInstructions =
     options.accessPolicy === "native-project"
       ? "VibeShape automatically connects this embedded assistant to its current project's read and model-editing tools. Connecting the built-in chat authorizes validated model commits without another Apply step. The first model_info may wait up to five seconds for that connection. Respect Stop AI; never enable access or switch projects to bypass it."
-      : "Open the editor and explicitly enable the AI session for one document. The person approves model changes in the browser unless they explicitly chose a supported automatic approval mode."
+      : options.accessPolicy === "desktop-external"
+        ? "The desktop host automatically connects this authenticated local client to the current project. The first model_info may wait up to five seconds for discovery. Model changes require manual Apply unless the person explicitly chose a supported automatic approval mode. Respect Stop AI; only the person can restart access in Settings > Connections."
+        : "Open the editor and explicitly enable the AI session for one document. The person approves model changes in the browser unless they explicitly chose a supported automatic approval mode."
   const projectInstructions =
     options.accessPolicy === "native-project"
       ? "This attachment is bound to the current project. Project management is unavailable; optional projectId guards CAD tool targets."

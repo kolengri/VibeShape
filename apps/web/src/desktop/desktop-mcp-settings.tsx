@@ -2,6 +2,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Textarea } from "@vibeshape/ui/components/textarea"
 import { useEffect, useId, useState } from "react"
+import { useOptionalAutomationConnections } from "../shell/automation-status"
 import { getDesktopHost, readDesktopMcpSetup } from "./desktop-host"
 
 export function DesktopMcpSettings() {
@@ -34,6 +35,7 @@ export function DesktopMcpSettings() {
       </p>
       {available ? (
         <>
+          <DesktopMcpRestart />
           <Textarea
             aria-label={t("configuration")}
             readOnly
@@ -63,5 +65,30 @@ export function DesktopMcpSettings() {
         </>
       ) : null}
     </section>
+  )
+}
+
+function DesktopMcpRestart() {
+  const t = useTranslations("app.settings.desktopMcp")
+  const connections = useOptionalAutomationConnections()
+  const external = connections?.external
+  const [failed, setFailed] = useState(false)
+  if (!external?.defaultAccess || (!external.recoveryBlocked && !external.recoveryFailed))
+    return null
+  return (
+    <>
+      <p className="text-sm text-muted-foreground">{t("stopped")}</p>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={!external.available || !external.client}
+        onClick={async () => {
+          setFailed(!connections || !(await connections.externalConnection.enable()))
+        }}
+      >
+        {t("restart")}
+      </Button>
+      {failed ? <p role="alert">{t("restartFailed")}</p> : null}
+    </>
   )
 }

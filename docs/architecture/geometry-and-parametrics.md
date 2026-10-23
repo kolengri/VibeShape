@@ -192,6 +192,12 @@ The implemented schema is `TopoRef` version `0`. It validates finite normalized 
 
 A face signature MAY include surface type, normalized analytical parameters, area, centroid, normal or axis, bounding box, loop count, and neighboring edge signatures. An edge signature may include curve type, length, endpoints, center or axis, and adjacent face roles. Values are quantized according to the tolerance policy.
 
+Topology signature bounds come from the exact B-Rep with triangulation disabled. Display or export
+tessellation must not alter an edge or face signature: a selection made in a meshed document must
+resolve against a fresh preview worker with the same exact geometry. Native bounds wrappers are
+released deterministically. Missing and ambiguous references retain the ordinary repair contract;
+mesh-dependent bounds are not a reason to relax the resolver's confidence margin.
+
 ### Resolution algorithm
 
 1. Filter candidates by topology kind.

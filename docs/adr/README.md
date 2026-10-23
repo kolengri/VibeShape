@@ -139,6 +139,7 @@
 | [0127](0127-exact-planar-press-pull.md) | Accepted | Exact planar-face Press Pull with stable body topology references |
 | [0128](0128-saved-authored-part-appearance.md) | Accepted | V6 authored part appearance and portable material/color metadata |
 | [0129](0129-revision-scoped-assembly-inspection.md) | Accepted | Reuse verified frozen geometry in a revision-scoped assembly inspection worker |
+| [0130](0130-default-desktop-external-mcp-access.md) | Accepted | Default authenticated desktop external project access with manual Apply and persistent Stop |
 
 Statuses:
 

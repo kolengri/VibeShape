@@ -16,6 +16,7 @@ import {
   startNativeProjectAutomationConnection,
 } from "../automation/native-project-automation"
 import { createRemoteAutomationConnection } from "../automation/remote-automation-connection"
+import { getDesktopHost } from "../desktop/desktop-host"
 import {
   type DocumentControllerState,
   getProjectActionBlock,
@@ -72,7 +73,14 @@ function useNativeAutomationConnection(
 }
 
 function useCreateAutomationConnections(controller: DocumentControllerState) {
-  const [externalConnection] = useState(() => createLocalAutomationConnection())
+  const [externalConnection] = useState(() =>
+    createLocalAutomationConnection({
+      accessPolicy:
+        getDesktopHost()?.localAutomationAccess === "current-project"
+          ? "desktop-external"
+          : "manual",
+    }),
+  )
   const [remoteConnection] = useState(() =>
     createRemoteAutomationConnection(import.meta.env.VITE_REMOTE_MCP_URL),
   )
@@ -110,7 +118,10 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     return remoteConnection.dispose
   }, [remoteConnection])
   useEffect(() => {
-    for (const local of localConnections) local.validateDocumentScope()
+    for (const local of localConnections)
+      local.validateDocumentScope(
+        controller.status === "ready" ? (controller.report?.snapshot.id ?? null) : null,
+      )
     remoteConnection.validateDocumentScope()
   }, [localConnections, remoteConnection, controller.status, controller.report?.snapshot.id])
   const stopAll = useCallback(async () => {
@@ -147,8 +158,12 @@ export function AutomationConnectionsProvider({
   )
 }
 
+export function useOptionalAutomationConnections() {
+  return useContext(AutomationConnectionsContext)
+}
+
 export function useAutomationConnections() {
-  const connections = useContext(AutomationConnectionsContext)
+  const connections = useOptionalAutomationConnections()
   if (!connections) throw new Error("Automation controls require AutomationConnectionsProvider.")
   return connections
 }
@@ -201,6 +216,7 @@ function ExternalAutomationStatus({
       connection={{ ...externalConnection, disable: connection.disable }}
       current={external}
       showStopControl={false}
+      hideEnableControl={external.defaultAccess === true}
     />
   )
 }
@@ -230,6 +246,7 @@ function AutomationStatusControls({
             key={`${controller.report?.snapshot.id}:${current.connected}`}
             connection={connection}
             current={current}
+            hideEnableControl={external.defaultAccess === true}
           />
           <ExternalAutomationStatus
             connection={connection}

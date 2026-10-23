@@ -493,12 +493,14 @@ export function createBrowserBroker({
   onRevoke,
   recovery,
   projectId,
+  accessPolicy,
 }: {
   origin: string
   now?: () => number
   onRevoke?: () => void
   recovery?: LocalRecoveryStore
   projectId?: string
+  accessPolicy?: "desktop-external"
 }) {
   const allowedOrigin = new URL(origin).origin
   let client: Client | null = null
@@ -677,6 +679,7 @@ export function createBrowserBroker({
         protocolVersion: 1,
         client,
         paired: Boolean(pair && pair.suspendedUntil === null),
+        ...(accessPolicy ? { accessPolicy } : {}),
       }),
     )
   }

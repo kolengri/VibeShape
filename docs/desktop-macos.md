@@ -109,8 +109,10 @@ Each embedded connection supplies a project-stable internal MCP server name, so 
 disabled `vibeshape` entry in the adapter's user configuration does not suppress the project tools.
 Connecting the built-in chat authorizes reads and validated model changes in that project. Valid
 stages save through the ordinary revision-checked commit path without a second Apply action.
-External MCP clients still require their normal pairing consent. **Stop AI** keeps the native
-connection disabled across reload until the person explicitly enables it again.
+Copied desktop external MCP clients automatically receive the current project with manual Apply
+under [ADR-0130](adr/0130-default-desktop-external-mcp-access.md). **Stop AI** revokes all
+current-project transports and persists across reload. Deliberate **Connect** restarts the built-in
+assistant; **Restart local MCP** in Settings > Connections restarts the external client.
 
 The composer footer shows the connected agent's advertised session configuration, including
 model-specific reasoning effort when provided. Choices and effective values come from ACP;
@@ -210,8 +212,11 @@ authority. They describe connected model access and exclude substitute filesyste
 Open **Settings → Connections → Connect an MCP client**, copy the configuration, and add it to the
 external client's MCP settings. It launches the app's bundled stdio forwarder with Electron's own
 runtime and attaches to this open application. It does not launch another editor or require Bun.
-The copied configuration permits one external native MCP client at a time. Select a project, then enable its AI session before
-the client can inspect or modify it; disabling access revokes its drafts. The private credential is
+The copied configuration permits one external native MCP client at a time. Selecting or opening a
+project grants current-project read and proposal access automatically, with no Enable AI session
+option in desktop status. Manual Apply remains the default; supported auto-apply and project
+management require separate explicit choices. Stop AI revokes its drafts and persists across reload
+and project navigation until **Restart local MCP** in Settings > Connections. The private credential is
 not included in the copied configuration. Quit/restart creates a new native descriptor.
 
 The **AI chat** panel connects an installed ACP executable with explicit arguments and uses the
@@ -234,7 +239,9 @@ Replacing or disconnecting a project's ACP agent waits for bounded cleanup of it
 connection. Reopening a closed window preserves that cleanup barrier; Quit drains cleanup before
 stopping the native server. Other projects' agents and the external MCP attachment have separate
 leases. Discovery and ACP readiness alone do not grant model access. The built-in chat selects its trusted
-project policy; external brokers retain explicit pairing and remembered-client approval checks.
+project policy; the external desktop broker requires descriptor authentication and the renderer
+requires both trusted preload and desktop discovery policies. Standalone browser/development and
+remote brokers retain their explicit pairing and approval rules.
 
 The static web application instead connects directly to a user-provided compatible model API. No
 VibeShape AI server or hosted worker is needed. The provider must allow the browser origin through

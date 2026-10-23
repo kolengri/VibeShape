@@ -792,6 +792,7 @@
         "stopAiDescription": "Stop AI ends the entire paired AI session and turns auto-apply off immediately. An edit already saving may finish; use Undo to revert it.",
         "aiConnectionFailed": "AI connection interrupted. An approved local session reconnects automatically while its approval remains valid.",
         "aiRecovering": "Reconnecting AI…",
+        "aiStopped": "AI access stopped",
         "projectUnavailable": "Project unavailable"
       },
       "remoteAi": {
@@ -2248,7 +2249,10 @@
       "workspace": "Workspace",
       "desktopMcp": {
         "title": "Connect an MCP client",
-        "description": "Attach an AI client to this open app. Enable its AI session for the current project before it can read or change a model.",
+        "description": "Attach an AI client to this open app. Local MCP access to the current project starts automatically. Model changes require Apply unless you choose auto-apply. Stop AI keeps access stopped until you restart it here.",
+        "stopped": "Local MCP access is stopped. Restart it to share the current project with the connected client.",
+        "restart": "Restart local MCP",
+        "restartFailed": "Local MCP access could not restart. Check the connected client and try again.",
         "configuration": "MCP client configuration",
         "copy": "Copy configuration",
         "copied": "Configuration copied.",

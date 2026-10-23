@@ -1,6 +1,7 @@
 # ADR-0115: Automatic Native Project MCP Access
 
 - Status: Accepted
+- Partially superseded by: [ADR-0130](0130-default-desktop-external-mcp-access.md) for copied desktop external client access and restart UX
 - Date: 2026-10-19
 - Partially superseded by: [ADR-0126](0126-explicit-native-assistant-project-access.md) for explicit connection after Stop AI
 - Partially superseded by: [ADR-0116](0116-connected-assistant-model-authority-and-checkpoints.md) for built-in chat model-write authorization

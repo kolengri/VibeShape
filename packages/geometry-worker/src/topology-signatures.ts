@@ -63,10 +63,26 @@ function normalizedDirection(vector: Vector): Vector3 | undefined {
 }
 
 function readBounds(shape: Face | Edge) {
-  const boundingBox = shape.boundingBox
+  const opencascade = getOC()
+  const boundingBox = new opencascade.Bnd_Box_1()
   try {
-    const [min, max] = boundingBox.bounds
-    return { min, max }
+    // Display triangulation changes BRepBndLib.Add bounds without changing the exact shape.
+    opencascade.BRepBndLib.AddOptimal(shape.wrapped, boundingBox, false, true)
+    if (boundingBox.IsVoid() || boundingBox.IsOpen())
+      throw new Error("Topology signature bounds must be finite.")
+    const coordinates = [
+      { current: 0 },
+      { current: 0 },
+      { current: 0 },
+      { current: 0 },
+      { current: 0 },
+      { current: 0 },
+    ] as const
+    Reflect.apply(boundingBox.Get, boundingBox, coordinates)
+    return {
+      min: [coordinates[0].current, coordinates[1].current, coordinates[2].current] as Vector3,
+      max: [coordinates[3].current, coordinates[4].current, coordinates[5].current] as Vector3,
+    }
   } finally {
     boundingBox.delete()
   }
