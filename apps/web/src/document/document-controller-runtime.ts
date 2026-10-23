@@ -629,8 +629,11 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
           sourceCode: "invalid-project-url",
         },
       }
-    if (requested.kind === "project")
+    if (requested.kind === "project") {
+      openingPreview = true
+      publish({ ...state, openingProjectId: requested.documentId })
       return openControllerProject(database, repository, requested.documentId)
+    }
     return { ok: true as const, library: true as const }
   }
 
@@ -678,8 +681,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       if (!result.ok) {
         const requested = readProjectUrl(window.location.href)
         publish({
-          ...state,
           status: "error",
+          report: null,
+          saveStatus: "saved",
           diagnostic: result.diagnostic,
           projectNavigationError:
             requested.kind === "default"
@@ -709,8 +713,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       // The runtime registry owns visible-project navigation.
     } catch {
       publish({
-        ...state,
         status: "error",
+        report: null,
+        saveStatus: "saved",
         diagnostic: {
           code: "persistence-failed",
           message: "The local document session could not be started.",

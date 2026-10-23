@@ -3770,6 +3770,7 @@
       }
     },
     "projectTabs": {
+      "closing": "Closing project…",
       "working": "Opening project…",
       "label": "Open projects",
       "newProject": "New project",

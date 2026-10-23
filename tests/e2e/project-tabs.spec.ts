@@ -168,21 +168,7 @@ test("retains an active draft when switching or closing its project tab is block
   await expect(form).toHaveCount(0)
 })
 
-test("selects a cold project immediately and refines its viewport without a modal loader", async ({
-  page,
-}, info) => {
-  test.setTimeout(150_000)
-  await page.emulateMedia({ reducedMotion: "reduce" })
-  await page.goto("/")
-  await rename(page, "Detailed project")
-  await primitive(page, "Cylinder")
-  const detailedId = projectId(page)
-  await newProject(page, "Current project")
-  await page.reload()
-  await saved(page)
-
-  // Hold real worker responses so each presentation stage is observable without timing races.
-  await page.evaluate(`(() => {
+const projectRebuildGate = `(() => {
     const NativeWorker = window.Worker
     const requests = []
     Object.assign(window, { projectMeshRequests: requests })
@@ -210,7 +196,23 @@ test("selects a cold project immediately and refines its viewport without a moda
         })
       }
     }
-})()`)
+})()`
+
+test("selects and reloads a cold project with progressive viewport loading", async ({
+  page,
+}, info) => {
+  test.setTimeout(150_000)
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/")
+  await rename(page, "Detailed project")
+  await primitive(page, "Cylinder")
+  const detailedId = projectId(page)
+  await newProject(page, "Current project")
+  await page.reload()
+  await saved(page)
+
+  // Hold real worker responses so each presentation stage is observable without timing races.
+  await page.evaluate(projectRebuildGate)
   const tabs = projectTabs(page)
   await tabs.getByRole("tab", { name: "Detailed project", exact: true }).click()
   await expect.poll(() => projectId(page)).toBe(detailedId)
@@ -255,6 +257,15 @@ test("selects a cold project immediately and refines its viewport without a moda
     page.getByText("Opening the local document and geometry engine…", { exact: true }),
   ).toHaveCount(0)
   await page.screenshot({ animations: "disabled", path: info.outputPath("project-refining.png") })
+  await tabs.getByRole("tab", { name: "Current project", exact: true }).click()
+  await saved(page)
+  await expect(tabs.getByRole("tab", { name: "Current project", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  await expect(page.getByRole("progressbar", { name: "Project loading progress" })).toHaveCount(0)
+  await tabs.getByRole("tab", { name: "Detailed project", exact: true }).click()
+  await expect(page.getByText("Refining model detail…", { exact: true })).toBeVisible()
   await expect
     .poll(() => page.evaluate<unknown[]>("window.projectMeshRequests"))
     .toEqual([
@@ -272,4 +283,32 @@ test("selects a cold project immediately and refines its viewport without a moda
   await tabs.getByRole("tab", { name: "Detailed project", exact: true }).click()
   await saved(page)
   expect(await page.evaluate<unknown[]>("window.projectMeshRequests")).toHaveLength(2)
+
+  await page.addInitScript(projectRebuildGate)
+  await page.reload()
+  await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
+  await expect(tabs.getByRole("tab", { name: "Detailed project", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  await expect(page.locator('[data-slot="blocking-loader-overlay"]')).toHaveCount(0)
+  await expect
+    .poll(() => page.evaluate<unknown[]>("window.projectMeshRequests"))
+    .toEqual([{ chordTolerance: 0.5, angularTolerance: 0.5 }])
+  await expect(async () => {
+    await page.evaluate('window.dispatchEvent(new Event("release-project-rebuild"))')
+    await expect(page.getByText("Refining model detail…", { exact: true })).toBeVisible()
+  }).toPass({ timeout: 30_000 })
+  await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
+  await expect(async () => {
+    await page.evaluate('window.dispatchEvent(new Event("release-project-rebuild"))')
+    await saved(page)
+  }).toPass({ timeout: 30_000 })
+  await expect
+    .poll(() => page.evaluate<unknown[]>("window.projectMeshRequests"))
+    .toEqual([
+      { chordTolerance: 0.5, angularTolerance: 0.5 },
+      { chordTolerance: 0.05, angularTolerance: 0.1 },
+    ])
+  await expect(page.getByRole("progressbar", { name: "Project loading progress" })).toHaveCount(0)
 })

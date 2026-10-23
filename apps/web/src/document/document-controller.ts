@@ -26,7 +26,6 @@ export type * from "./document-controller-runtime"
 const initial = createDocumentControllerRuntime({ reviews: getActiveAutomationReviews() })
 const runtimes = createProjectRuntimeRegistry(initial)
 let defaultProjectName = "Untitled project"
-let startPromise: Promise<void> | null = null
 let switching = false
 let selectionGeneration = 0
 let visibleSelection: { source: DocumentControllerRuntime } | null = null
@@ -92,6 +91,10 @@ function unavailable(
 ): Extract<AutomationProjectResult, { ok: false }> {
   return { ok: false, diagnostic: { code, message, retryable } }
 }
+function runtimeStartupFailed(runtime: DocumentControllerRuntime) {
+  const state = runtime.getDocumentControllerState()
+  return state.status === "error" && !state.report
+}
 function expectationMatches(expected?: AutomationProjectExpectation, strictRevision = true) {
   const snapshot = getDocumentControllerState().report?.snapshot
   return (
@@ -102,16 +105,26 @@ function expectationMatches(expected?: AutomationProjectExpectation, strictRevis
 }
 async function prepareRuntime(
   options: NonNullable<DocumentRuntimeOptions["initialProject"]>,
+  generation: number,
   present?: (runtime: DocumentControllerRuntime) => void,
 ) {
-  const existing = runtimes.get(options.documentId)
+  let existing = runtimes.get(options.documentId)
+  if (existing && existing !== runtimes.active() && runtimeStartupFailed(existing)) {
+    await discardUnselectedRuntime(existing, false, options.documentId)
+    existing = undefined
+  }
+  if (generation !== selectionGeneration) return null
   if (existing) {
     present?.(existing)
-    await opening.get(options.documentId)
+    await existing.startDocumentController(defaultProjectName)
     return existing
   }
-  const pending = opening.get(options.documentId)
-  if (pending) return pending
+  return opening.get(options.documentId) ?? startOpeningRuntime(options, present)
+}
+function startOpeningRuntime(
+  options: NonNullable<DocumentRuntimeOptions["initialProject"]>,
+  present?: (runtime: DocumentControllerRuntime) => void,
+) {
   const runtime = createDocumentControllerRuntime({
     initialProject: options,
     progressiveOpening: present !== undefined && !options.create,
@@ -248,7 +261,8 @@ function restoreUnreadyPresentation(
   setActiveAutomationReviews(source.reviews)
   runtimes.activate(source)
   if (!signal?.aborted) source.setProjectNavigationError("project-open-failed")
-  const sourceId = source.getDocumentControllerState().report?.snapshot.id
+  const sourceState = source.getDocumentControllerState()
+  const sourceId = sourceState.report?.snapshot.id ?? sourceState.openingProjectId
   if (sourceId) {
     rememberProject(sourceId)
     projectNavigation().sync(sourceId, "replace")
@@ -280,7 +294,6 @@ async function selectProject(
   automatedTransition = false,
   strictRevision = true,
 ): Promise<AutomationProjectResult> {
-  if (["idle", "loading"].includes(getDocumentControllerState().status)) await startPromise
   const source = runtimes.active()
   const blocked =
     selectionBlocked(source, options.documentId, automatedTransition) ??
@@ -292,16 +305,19 @@ async function selectProject(
     options.create,
   )
   const release = automatedTransition ? source.reserveProjectTransition() : () => {}
-  const retained = runtimes.get(options.documentId) !== undefined
+  const retained = runtimes.get(options.documentId)
   let prepared: DocumentControllerRuntime | null = null
   let presented = false
   const present = presentImmediately
     ? (runtime: DocumentControllerRuntime) => {
-        presented = presentOpeningProject(runtime, options.documentId)
+        if (generation === selectionGeneration)
+          presented = presentOpeningProject(runtime, options.documentId)
       }
     : undefined
   try {
-    prepared = await prepareRuntime(options, present)
+    prepared = await prepareRuntime(options, generation, present)
+    if (!prepared)
+      return unavailable("cancelled", "A newer project selection replaced this request.")
     return activatePreparedProject(prepared, {
       generation,
       projectId: options.documentId,
@@ -316,7 +332,7 @@ async function selectProject(
     try {
       if (generation === selectionGeneration)
         restoreUnreadyPresentation(fallback, presented, signal)
-      await discardUnselectedRuntime(prepared, retained, options.documentId)
+      await discardUnselectedRuntime(prepared, prepared === retained, options.documentId)
     } finally {
       release()
       finishProjectSelection(generation)
@@ -360,7 +376,6 @@ export async function createNewLocalProject(): Promise<ProjectSwitchResult> {
   return result.ok ? { ok: true } : result
 }
 export async function showProjectLibrary(signal?: AbortSignal): Promise<ProjectSwitchResult> {
-  await startPromise
   if ((switching && visibleSelection === null) || runtimes.active().getProjectNavigationBlock())
     return unavailable()
   if (signal?.aborted) return unavailable("cancelled", "The project action was cancelled.")
@@ -445,10 +460,10 @@ export function useDocumentController(defaultDocumentName: string) {
   useEffect(() => {
     defaultProjectName = defaultDocumentName
     const stop = projectNavigation().listen()
-    startPromise ??= initial.startDocumentController(defaultDocumentName).then(() => {
+    void initial.startDocumentController(defaultDocumentName).then(() => {
       runtimes.retain(initial)
       const id = initial.getDocumentControllerState().report?.snapshot.id
-      if (id) projectNavigation().sync(id, "replace")
+      if (id && runtimes.active() === initial) projectNavigation().sync(id, "replace")
     })
     const close = () => {
       for (const runtime of runtimes.values()) {

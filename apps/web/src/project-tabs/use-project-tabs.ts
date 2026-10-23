@@ -15,7 +15,14 @@ import { useProjectTabs, useProjectTabsStore } from "./project-tabs-provider"
 
 type ProjectTabsFeedback = "blocked" | "switchFailed" | "listFailed" | null
 
-function projectTransitionExpectation(controller: DocumentControllerState) {
+function projectTransitionExpectation(controller: DocumentControllerState, allowOpening = false) {
+  if (
+    allowOpening &&
+    controller.status === "loading" &&
+    controller.openingProjectId &&
+    !getProjectNavigationBlock()
+  )
+    return undefined
   if (controller.status !== "ready" || getProjectNavigationBlock()) {
     return null
   }
@@ -83,46 +90,63 @@ export function useProjectTabsController(
     }
   }, [refresh])
 
+  async function finishTransition(
+    token: number,
+    closingId: string | undefined,
+    focusAfter: boolean,
+  ) {
+    if (closingId) {
+      store.getState().actions.markClosing(token)
+      const closed = await closeProjectRuntime(closingId)
+      if (!closed.ok) {
+        setFeedback("switchFailed")
+        return
+      }
+      store.getState().actions.remove(closingId)
+    }
+    if (focusAfter) store.getState().actions.requestFocus()
+  }
+
   const transition = async (
-    action: (expected: AutomationProjectExpectation) => Promise<ProjectSwitchResult>,
+    action: (expected: AutomationProjectExpectation | undefined) => Promise<ProjectSwitchResult>,
     closingId?: string,
     focusAfter = true,
+    projectId?: string,
   ) => {
     setFeedbackAttempt((attempt) => attempt + 1)
-    const expected = projectTransitionExpectation(controller)
-    if (!expected) {
+    const expected = projectTransitionExpectation(controller, Boolean(projectId) && !closingId)
+    if (expected === null) {
       setFeedback("blocked")
       return
     }
-    if (!store.getState().actions.beginTransition()) return
+    const token = store.getState().actions.beginTransition("selection", projectId)
+    if (token === null) return
     setFeedback(null)
     try {
       const result = await action(expected)
+      if (!store.getState().actions.isCurrentTransition(token)) return
       if (!result.ok) {
         setFeedback(
           result.diagnostic.code === "project-action-blocked" ? "blocked" : "switchFailed",
         )
         return
       }
-      if (closingId) {
-        const closed = await closeProjectRuntime(closingId)
-        if (!closed.ok) {
-          setFeedback("switchFailed")
-          return
-        }
-        store.getState().actions.remove(closingId)
-      }
-      if (focusAfter) store.getState().actions.requestFocus()
+      await finishTransition(token, closingId, focusAfter)
     } catch {
-      setFeedback("switchFailed")
+      if (store.getState().actions.isCurrentTransition(token)) setFeedback("switchFailed")
     } finally {
-      store.getState().actions.endTransition()
+      store.getState().actions.endTransition(token)
     }
   }
 
   const navigate = (documentId: string, closingId?: string) => {
     if (documentId === activeId) return
-    return transition((expected) => activateProjectTab(documentId, expected), closingId)
+    return transition(
+      (expected) => activateProjectTab(documentId, expected),
+      closingId,
+      true,
+      documentId,
+    )
   }
 
   const openLibrary = (closingId?: string) => transition(onOpenProjects, closingId, false)
@@ -135,7 +159,8 @@ export function useProjectTabsController(
       return
     }
     if (documentId !== activeId) {
-      if (!store.getState().actions.beginTransition()) return
+      const token = store.getState().actions.beginTransition("close")
+      if (token === null) return
       try {
         const result = await closeProjectRuntime(documentId)
         if (!result.ok) {
@@ -145,7 +170,7 @@ export function useProjectTabsController(
         store.getState().actions.remove(documentId)
         store.getState().actions.requestFocus()
       } finally {
-        store.getState().actions.endTransition()
+        store.getState().actions.endTransition(token)
       }
       return
     }
