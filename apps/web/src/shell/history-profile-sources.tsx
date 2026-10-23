@@ -22,17 +22,17 @@ export function HistoryProfileSources({
   const descriptionId = useId()
   const [openingBlocked, setOpeningBlocked] = useState(false)
   return (
-    <div className="ml-8 flex min-w-0 flex-wrap items-center gap-0.5 border-l border-border pl-1">
+    <div className="ml-6 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-0.5 border-l border-border pl-1">
       <Link2 aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
       {profiles.map((profile, index) => {
         if (!labelsByRef.has(`sketch:${profile.sketchId}`)) {
           return (
             <span
               key={canonicalJson(profile)}
-              className="inline-flex min-w-0 items-center gap-1 px-2 text-xs text-destructive"
+              className="col-start-2 inline-flex min-w-0 items-center gap-1 px-2 text-xs text-destructive"
             >
               <PenLine aria-hidden="true" className="size-3 shrink-0" />
-              <span>{t("missingSourceSketch")}</span>
+              <span className="truncate">{t("missingSourceSketch")}</span>
               <span className="sr-only">{t("sourceProfileUnavailable")}</span>
             </span>
           )
@@ -40,7 +40,7 @@ export function HistoryProfileSources({
         const sketch = labelsByRef.get(`sketch:${profile.sketchId}`) || t("unnamedSketch")
         const description = t("sourceProfile", { sketch, number: index + 1 })
         return (
-          <span key={canonicalJson(profile)} className="inline-flex min-w-0 max-w-full">
+          <span key={canonicalJson(profile)} className="col-start-2 inline-flex min-w-0 max-w-full">
             <Button
               type="button"
               variant="ghost"
@@ -86,7 +86,7 @@ export function HistoryProfileSources({
         )
       })}
       <span className="sr-only">{dependencyDescription}</span>
-      {openingBlocked && <Alert>{t("sourceProfileEditBlocked")}</Alert>}
+      {openingBlocked && <Alert className="col-span-2">{t("sourceProfileEditBlocked")}</Alert>}
     </div>
   )
 }
