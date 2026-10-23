@@ -2,7 +2,7 @@ import { cn } from "@vibeshape/ui/lib/cn"
 
 // Keep disclosure, object icons, labels, and trailing controls on shared browser gutters.
 const modelBrowserRow = cn(
-  "h-8 min-w-0 justify-start gap-2 rounded-sm px-2 text-sm font-normal",
+  "h-8 min-w-0 justify-start gap-2 rounded-sm px-2 text-sm font-normal [&_svg:not([role=img])]:size-4",
   "focus-visible:ring-2 focus-visible:ring-inset",
 )
 export const modelBrowserChildRow = cn(modelBrowserRow, "pl-8")

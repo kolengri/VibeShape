@@ -93,6 +93,20 @@
   padding-top: var(--workspace-gap);
 }
 
+[data-history-track]::-webkit-scrollbar {
+  height: 8px;
+}
+
+[data-history-track]::-webkit-scrollbar-thumb {
+  border: 2px solid var(--panel);
+  border-radius: var(--radius);
+  background: var(--muted-foreground);
+}
+
+[data-history-track]::-webkit-scrollbar-track {
+  background: var(--panel);
+}
+
 .cad-shell:has(nav[data-sketch-mode="true"]) {
   /* Keep the native scrollbar below the 32px controls and the toolbar padding. */
   --command-bar-height: calc(3.5rem + 1px);
