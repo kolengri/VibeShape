@@ -21,10 +21,12 @@ export function RemoteAutomationStatus({
   connection,
   current,
   blocked,
+  showStopControl = true,
 }: {
   connection: Connection
   current: ReturnType<Connection["getSnapshot"]>
   blocked: boolean
+  showStopControl?: boolean
 }) {
   const t = useTranslations("app.shell.remoteAi")
   const [open, setOpen] = useState(false)
@@ -52,6 +54,7 @@ export function RemoteAutomationStatus({
   return current.connected ? (
     <LocalAutomationStatus
       approvalLabel={t("approvalSettings")}
+      showStopControl={showStopControl}
       connection={{
         enable: async () => false,
         disable: connection.disable,

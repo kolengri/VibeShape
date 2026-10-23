@@ -236,9 +236,8 @@ function AutomationStatusControls({
 }) {
   if (controller.status !== "ready") return null
   const retainedLocal = hasRetainedLocalApproval(current)
-  const showLocal = retainedLocal
-    ? !remote.connected
-    : current.available && !remote.pairingCode && !remote.connecting
+  const showLocal =
+    retainedLocal || (current.available && !remote.pairingCode && !remote.connecting)
   return (
     <>
       {showLocal ? (
@@ -260,6 +259,7 @@ function AutomationStatusControls({
           connection={remoteConnection}
           current={remote}
           blocked={retainedLocal || blockedReason !== null}
+          showStopControl={!retainedLocal}
         />
       ) : null}
     </>

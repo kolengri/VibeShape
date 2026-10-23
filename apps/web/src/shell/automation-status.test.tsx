@@ -204,6 +204,31 @@ afterEach(() => {
 })
 
 describe("desktop external status policy", () => {
+  it("retains automatic local settings when an earlier remote pairing completes", () => {
+    ports.nativeA.publish({ connected: false, available: false })
+    ports.external.publish({
+      defaultAccess: true,
+      client: { name: "Local diagnostics", version: "1" },
+    })
+    ports.remote.publish({ connecting: true })
+    render(<Workspace showStatus />)
+    expect(
+      screen.getByRole("button", { name: "Local MCP connection and approval mode" }),
+    ).toBeTruthy()
+    act(() => ports.remote.publish({ connected: true, connecting: false }))
+    expect(
+      screen.getByRole("button", { name: "Local MCP connection and approval mode" }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole("button", { name: "Remote AI connection and approval mode" }),
+    ).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Enable AI session" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+    expect(ports.external.disable).toHaveBeenCalledTimes(1)
+    expect(ports.nativeA.disable).toHaveBeenCalledTimes(1)
+    expect(ports.remote.disable).toHaveBeenCalledTimes(1)
+  })
+
   it("keeps an assistant bridge alone on manual external access", () => {
     render(<Workspace />)
     expect(ports.createExternal).toHaveBeenCalledWith({ accessPolicy: "manual" })
@@ -308,6 +333,12 @@ describe("all-transport editor activity guard", () => {
       expect(
         screen.getByRole("button", { name: "Remote AI connection and approval mode" }),
       ).toBeTruthy()
+      if (state === "connected")
+        expect(screen.getByRole("button", { name: "Built-in assistant connection" })).toBeTruthy()
+      fireEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+      expect(ports.nativeA.disable).toHaveBeenCalledTimes(1)
+      expect(ports.external.disable).toHaveBeenCalledTimes(1)
+      expect(ports.remote.disable).toHaveBeenCalledTimes(1)
     },
   )
 
