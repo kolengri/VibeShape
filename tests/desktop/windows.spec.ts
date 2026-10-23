@@ -44,7 +44,7 @@ test("Windows launches with standard chrome and retains projects after restart",
       ).toHaveText("Saved")
     })
     const url = page.url()
-    await test.step("Connect the bundled MCP forwarder and enforce project consent", async () => {
+    await test.step("Connect the bundled MCP forwarder automatically and revoke access", async () => {
       const setup = desktopMcpSetupSchema.parse(
         await page.evaluate("window.vibeshapeDesktop.getMcpSetup()"),
       )
@@ -64,12 +64,15 @@ test("Windows launches with standard chrome and retains projects after restart",
         await client.connect(transport as Transport)
         const discovery = await client.request({ method: "tools/list" }, ListToolsResultSchema)
         expect(discovery.tools.some((tool) => tool.name === "model_info")).toBe(true)
-        expect((await client.callTool({ name: "model_info", arguments: {} })).isError).toBe(true)
-        await page.getByRole("button", { name: "Enable AI session", exact: true }).click()
-        await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
         expect(await client.callTool({ name: "model_info", arguments: {} })).toMatchObject({
           structuredContent: { result: { ok: true } },
         })
+        await expect(
+          page.getByRole("button", { name: "Enable AI session", exact: true }),
+        ).toHaveCount(0)
+        await expect(
+          page.getByRole("button", { name: "Local MCP connection and approval mode", exact: true }),
+        ).toHaveText("AI access on · Approve each change")
         await page.getByRole("button", { name: "Stop AI", exact: true }).click()
         expect(await client.callTool({ name: "model_info", arguments: {} })).toMatchObject({
           isError: true,

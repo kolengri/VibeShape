@@ -116,8 +116,8 @@ bun run test:desktop:packaged
 
 Run packaged acceptance in an isolated Windows account without an existing VibeShape profile.
 It launches without `--user-data-dir`, checks the fresh default profile, creates and reopens a CAD
-model, and connects the bundled MCP forwarder with consent and revocation. The test refuses an
-existing default profile and removes only the profile it creates.
+model, and connects the bundled MCP forwarder automatically with manual approval and Stop AI
+revocation. The test refuses an existing default profile and removes only the profile it creates.
 
 The manual `Windows release validation` workflow performs this check against a draft GitHub
 release. Upload the ZIP, `desktop-build-win-x64.json` and `SHA256SUMS-win-x64`, then supply its `desktop-vX.Y.Z`

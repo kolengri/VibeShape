@@ -10,6 +10,7 @@ import {
 } from "../../apps/desktop/test-support/mcp-client"
 import { assistantResultSchema } from "../../packages/automation-api/src/assistant"
 import { localConnectRequestSchema } from "../../packages/automation-api/src/local-session"
+import { openApplicationMenuItem } from "../e2e/application-menu-support"
 import { createNativeFixture, nativeTestRoot, openNativeEditor } from "./native-fixture"
 
 const scopeSchema = z.object({
@@ -63,10 +64,7 @@ const settings = (page: Page) => page.getByRole("dialog", { name: "AI settings",
 const transcript = (page: Page) =>
   panel(page).getByRole("log", { name: "Project conversation", exact: true })
 async function renameProject(page: Page, name: string) {
-  await page
-    .locator("header")
-    .getByRole("button", { name: /^Rename / })
-    .click()
+  await openApplicationMenuItem(page, "Rename project")
   const dialog = page.getByRole("dialog", { name: "Rename project", exact: true })
   await dialog.getByRole("textbox", { name: "Project name", exact: true }).fill(name)
   await dialog.getByRole("button", { name: "Rename project", exact: true }).click()
@@ -90,7 +88,7 @@ async function ready(page: Page) {
   await expect(panel(page).getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
 }
 async function waitForNativeProjectAccess(page: Page) {
-  const paired = page.getByRole("button", { name: "AI connection and approval mode", exact: true })
+  const paired = page.getByRole("button", { name: "Built-in assistant connection", exact: true })
   await expect(paired).toHaveText("AI access on · Auto-apply on", { timeout: 30_000 })
 }
 
@@ -579,7 +577,7 @@ test("embedded agent reads its project automatically and preserves explicit Stop
     await send(page, "mcp-info")
     await expect(transcript(page)).toContainText(`MCP project identity: ${scope.projectId}`)
     await expect(
-      page.getByRole("button", { name: "AI connection and approval mode", exact: true }),
+      page.getByRole("button", { name: "Built-in assistant connection", exact: true }),
     ).toHaveText("AI access on · Auto-apply on")
     await ready(page)
     const { document } = localConnectRequestSchema.parse((await pairingRequest).postDataJSON())
@@ -588,7 +586,9 @@ test("embedded agent reads its project automatically and preserves explicit Stop
       expect.objectContaining({ projectId: document.id, revision: document.revision }),
     ])
     await page.getByRole("button", { name: "Stop AI", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toHaveCount(
+      0,
+    )
     await page.reload()
     await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toBeVisible()
     expect(new URL(page.url()).searchParams.get("project")).toBe(scope.projectId)
@@ -601,9 +601,11 @@ test("embedded agent reads its project automatically and preserves explicit Stop
     await openChat(page)
     await expect(panel(page).getByRole("textbox", { name: "Message", exact: true })).toBeDisabled()
     await expect(panel(page).getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
-    await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toBeEnabled()
+    await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toHaveCount(
+      0,
+    )
     await expect(
-      page.getByRole("button", { name: "AI connection and approval mode", exact: true }),
+      page.getByRole("button", { name: "Built-in assistant connection", exact: true }),
     ).toHaveCount(0)
     expect(
       (await agentRecords(receipt)).filter((entry) => entry.event === "mcp-read"),
