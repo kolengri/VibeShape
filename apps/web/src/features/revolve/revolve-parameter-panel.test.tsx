@@ -2,8 +2,10 @@ import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { vi } from "../../../../../tests/unit/support/bun-test"
+import { i18n } from "../../i18n"
 import { RevolveParameterPanel } from "./revolve-parameter-panel"
 
 afterEach(cleanup)
@@ -39,6 +41,7 @@ describe("RevolveParameterPanel", () => {
           onProfileSelectionRequest={onProfileSelectionRequest}
         />
       </TooltipProvider>,
+      { wrapper: ({ children }) => <I18nProvider i18n={i18n}>{children}</I18nProvider> },
     )
 
     const clear = screen.getByRole("button", { name: "Clear selected profiles" })

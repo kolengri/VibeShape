@@ -2,8 +2,10 @@ import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { vi } from "../../../../../tests/unit/support/bun-test"
+import { i18n } from "../../i18n"
 import { BooleanParameterPanel, type BooleanParameterPanelCopy } from "./boolean-parameter-panel"
 
 const copy: BooleanParameterPanelCopy = {
@@ -41,6 +43,7 @@ describe("BooleanParameterPanel", () => {
           </>
         }
       />,
+      { wrapper: ({ children }) => <I18nProvider i18n={i18n}>{children}</I18nProvider> },
     )
 
     const target = screen.getByRole("combobox", { name: "Target solid" }) as HTMLSelectElement
