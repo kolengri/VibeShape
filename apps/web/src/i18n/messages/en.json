@@ -360,6 +360,7 @@
       "disabledReasons": {
         "activeFeature": "Finish or cancel the active feature first.",
         "activeSketch": "Finish or cancel the active sketch first.",
+        "documentLoading": "Wait for the project to finish loading.",
         "documentUnavailable": "Open a writable document first.",
         "hideFinalContext": "Hide the final result before referencing earlier geometry.",
         "noActiveCommand": "No command is active.",

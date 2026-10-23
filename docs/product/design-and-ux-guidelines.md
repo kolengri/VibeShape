@@ -153,6 +153,11 @@ Use a 4 px base grid. Default editor spacing is compact:
 
 Do not mix comfortable dashboard spacing into the editor. A settings or onboarding screen MAY use a more comfortable density, but a single page must not switch density arbitrarily.
 
+Forms in dialogs, settings, and task panels MUST preserve a common label/control column boundary
+across their sections. Inline actions belong inside the control column; placing a button beside
+an entire field must not narrow that row's grid or shift its control to the left. Long values,
+help, validation, disabled states, theme changes, and 200% zoom must preserve this alignment.
+
 Pointer targets MUST be at least 24 × 24 CSS px or have the spacing required by WCAG 2.2. Primary toolbar targets SHOULD be 32 × 32 px. A later touch-authoring mode MUST use at least 44 × 44 px targets and cannot be created by simply scaling the desktop shell.
 
 Button sizing is owned by the shared `Button` primitive:
@@ -612,7 +617,7 @@ Status changes that do not move focus use the appropriate live-region semantics.
 - Show named stages such as `Reading STEP`, `Healing geometry`, `Rebuilding features`, and `Tessellating`.
 - Show a percentage only when the underlying operation reports meaningful progress.
 - Opening or switching projects, including initial URL opens and reloads, selects the destination shell immediately. A named indeterminate progress bar covers only the viewport while storage and history load, then while the initial coarse mesh is refined to the product mesh policy. The model tree and history appear with the coarse model; mutation remains unavailable until startup settles. Retained projects reuse their existing geometry. A failed open returns to the source project with a navigation diagnostic.
-- Pending project tabs, commands, model tree, history, status bar, and library cards use layout-matched skeletons until their data is available. The viewport keeps its own skeleton until renderer initialization settles, then reveals the available model while detail refinement continues. Skeletons are decorative, cannot receive focus, respect reduced motion, and yield to actionable errors when loading fails.
+- Show the real command toolbar immediately when opening a project, using the shared command descriptors, icons, labels, menus, and responsive layout. Document commands remain unavailable until the document is ready; menus can expose their disabled commands and prerequisites. Keep known model-tree and History headings visible and show the named loading stage in the status bar. Reserve layout-matched skeletons for pending project tabs, model-tree content, history items, and library cards whose data is unavailable. The viewport keeps its own skeleton until renderer initialization settles, then reveals the available model while detail refinement continues. Skeletons are decorative, cannot receive focus, respect reduced motion, and yield to actionable errors when loading fails.
 - Other blocking work dims the application and presents one centered `BlockingLoader` with a visible loader and named stage. Library mutations other than project selection use this surface. It traps focus, blocks background input, and cannot be dismissed independently of the operation. Overlapping owners keep it visible until every blocking operation settles; completion or failure restores focus where the initiating control still exists.
 - Non-blocking work animates a high-contrast shimmer through the complete VibeShape wordmark and a spinning icon in a reserved slot beside it, preserving the indicator footprint. A reserved-width status in the chat header identifies when the active project's AI is working; it uses the project's authoritative busy state and a static icon with reduced motion. Other buttons, tabs, panels, and dialogs do not add animated loaders. Pending controls retain disabled and accessible busy states; the upper application bar does not fade. Reduced motion keeps a static highlighted wordmark and activity icon.
 - Keep camera navigation and unaffected document inspection responsive.
