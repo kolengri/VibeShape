@@ -35,6 +35,16 @@ See [ADR-0126](../adr/0126-explicit-native-assistant-project-access.md). Connect
 chat authorizes validated model writes under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md);
 external clients retain their separate approval policy.
 
+Native ACP and browser API chat share completion instructions: in-project modeling ends with
+validated commits to the original project's editable History. Before reporting a saved result,
+the assistant must read the saved document identity, revision and relevant model or assembly
+records. An ordinary save request does not request an export. Native `.vshape` backups and geometry
+exports are separate, explicitly requested deliverables; file links, byte counts and hashes do not
+establish that changes are saved in the intended project. A blocked save or verification must be
+reported with the preserved state. These are agent instructions, not a runtime completion gate.
+The existing [operator completion](../../.agents/skills/vibeshape-use/SKILL.md#browser-and-completion)
+and [export workflow](../../.agents/skills/vibeshape-export/SKILL.md) retain that distinction.
+
 The private native-project attachment also exposes `ask_user_question`, a host interaction outside
 the external CAD catalog. Its callback captures the assistant owner/session and MCP client transport
 generation and uses the same desktop question owner as ACP form elicitation. This requires ordinary
