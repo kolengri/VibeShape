@@ -69,3 +69,49 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({ path: `artifacts/right-column-chat-layout/${theme}-workspace.png` })
   })
 }
+
+for (const width of [390, 512]) {
+  test(`releases the mobile chat slot when folded at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto("/")
+    await invokeModelCommand(page, "Primitives", "Cylinder")
+    const form = page.getByRole("form", { name: "Create cylinder", exact: true })
+    const radius = form.getByRole("combobox", { name: "Radius", exact: true })
+    await radius.fill("23 mm")
+    await page.getByRole("button", { name: "AI chat", exact: true }).click()
+    const chat = page.getByRole("complementary", { name: "AI chat", exact: true })
+    const slot = page.locator("#workspace-assistant")
+    await expect(slot).toHaveAttribute("data-viewport-area", "bottom")
+    const originalChat = await chat.elementHandle()
+    const canvas = page.locator(".workspace-viewport canvas").first()
+    const originalCanvas = await canvas.elementHandle()
+    const canvasBounds = await canvas.boundingBox()
+    const expandedSlot = await slot.boundingBox()
+    const workspace = page.locator(".editor-model-area")
+    const initialWorkspace = await workspace.boundingBox()
+    if (!expandedSlot || !initialWorkspace) throw new Error("Workspace slots must be measurable")
+    expect(expandedSlot.height).toBeCloseTo(844 * 0.45, 0)
+
+    await chat.getByRole("button", { name: "Collapse AI chat window", exact: true }).click()
+    await expect.poll(async () => (await slot.boundingBox())?.height).toBeLessThanOrEqual(48)
+    await expect
+      .poll(async () => (await workspace.boundingBox())?.height)
+      .toBeGreaterThan(initialWorkspace.height)
+    await expect(chat.locator(".assistant-panel__body")).toBeHidden()
+    await expect(radius).toHaveValue("23 mm")
+    await expect.poll(() => canvas.boundingBox()).toEqual(canvasBounds)
+
+    await chat.getByRole("button", { name: "Expand AI chat window", exact: true }).click()
+    await expect
+      .poll(async () => (await slot.boundingBox())?.height)
+      .toBeCloseTo(expandedSlot.height, 0)
+    await expect(chat.locator(".assistant-panel__body")).toBeVisible()
+    expect(await chat.evaluate((element, original) => element === original, originalChat)).toBe(
+      true,
+    )
+    expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
+      true,
+    )
+    await expect(radius).toHaveValue("23 mm")
+  })
+}

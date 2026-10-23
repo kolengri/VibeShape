@@ -72,7 +72,8 @@ Clicking a model-tree, task, or chat heading folds its card to the heading; clic
 it. The title is a keyboard-operable button with expanded state. Header actions remain independent,
 and folding preserves fields, scroll positions, chat drafts, and connections.
 The toolbar, History, status, and viewport controls remain usable alongside occupied regions.
-Below 640 CSS px, chat uses its configured lower placement. Width preferences and resizing remain
+Below 640 CSS px, chat uses its configured lower placement. Folding also shrinks its grid slot to
+the heading height, returning the remaining space to the workspace. Width preferences and resizing remain
 independent of content height.
 
 ### Primary Workspaces

@@ -463,6 +463,8 @@ function AssistantConversationHeader({
 }
 
 export function AssistantPanel(props: AssistantPanelProps) {
+  const collapse = useWindowCollapse()
+  if (collapse) return <AssistantPanelContent {...props} />
   return (
     <WindowCollapseProvider>
       <AssistantPanelContent {...props} />
