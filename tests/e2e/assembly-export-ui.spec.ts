@@ -48,6 +48,7 @@ function meshBounds(parsed: ParsedGeometryImport) {
 async function configurePrinter(page: Page) {
   await openApplicationMenuItem(page, "Settings…")
   const settings = page.getByRole("dialog", { name: "Settings", exact: true })
+  await settings.getByRole("tab", { name: "Printer build volume", exact: true }).click()
   await settings.getByLabel("Bed width X (mm)").fill("10")
   await settings.getByLabel("Bed depth Y (mm)").fill("10")
   await settings.getByLabel("Maximum print height Z (mm)").fill("100")
@@ -61,10 +62,16 @@ async function createAssembly(page: Page) {
     .getByRole("group", { name: "Geometry workspace" })
     .getByRole("button", { name: "Assembly", exact: true })
     .click()
-  await panel(page).getByRole("button", { name: "Create definition", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Create definition", exact: true })
+    .click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Export bracket")
   await apply(page)
-  await panel(page).getByRole("button", { name: "Add instance", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Add instance", exact: true })
+    .click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Translated bracket")
   await panel(page).getByRole("spinbutton", { name: "X (mm)", exact: true }).fill("40")
   await apply(page)
@@ -142,7 +149,10 @@ test("exports selected and all frozen assembly poses to STEP/STL/3MF and reviews
   await expect(assemblyViewport.getByText(/X upper boundary: exceeds by/)).toBeVisible()
   const before = await saveProject(page)
   await expect(page.getByRole("button", { name: "Export…", exact: true })).toHaveCount(0)
-  await panel(page).getByRole("button", { name: "Export assembly…", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Export assembly…", exact: true })
+    .click()
   const dialog = page.getByRole("dialog", { name: "Export assembly…", exact: true })
   await choose(page, dialog, "Export bracket instance")
   const single = meshBounds(

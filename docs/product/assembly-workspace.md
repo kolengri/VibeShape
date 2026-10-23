@@ -22,7 +22,7 @@ must be grounded. Passive coordinates remain free; locking a drive adds its equa
 The displayed degrees of freedom describe local mobility at the solved pose. Redundant-consistent
 mates can solve successfully. Conflicts and nonconvergence leave the proposed edit uncommitted.
 
-The Assembly task panel groups common actions into an icon toolbar and a **More assembly actions**
+The top command toolbar replaces Model tools with Assembly actions and a **More assembly actions**
 menu. A dedicated **Motion studies** toolbar control opens new studies, saved studies and joint
 Drive actions. The overflow menu keeps create/connect and selected-item actions. Icon controls have
 names and tooltips; labelled menu items retain visible text.
@@ -77,6 +77,12 @@ Changing the authored revision, closing the project or a worker failure releases
 Exact interference and export build independent native sources.
 
 ## Motion studies
+
+Choose a saved **Animation case** in the top toolbar, then **Play animation**, **Pause**, or
+**Reset preview** to watch it without opening the right task panel. Switching cases, starting an
+authoring task, changing the project revision, or leaving Assembly cancels disposable playback.
+Playback never commits a pose or changes study keys. The camera stays stable while a case is selected.
+
 
 Open **Motion studies** in the Assembly toolbar and choose **New study** or a saved study. A new study
 starts with a bounded sweep of the first movable coordinate. Playback and the time scrubber appear

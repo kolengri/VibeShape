@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/component
 import { cn } from "@vibeshape/ui/lib/cn"
 import {
   type ComponentType,
+  type ReactNode,
   type RefObject,
   type SVGProps,
   useEffect,
@@ -622,7 +623,13 @@ function ModelToolbar({
   )
 }
 
-export function CommandToolbar({ commands }: { commands: readonly ResolvedEditorCommand[] }) {
+export function CommandToolbar({
+  commands,
+  tools,
+}: {
+  commands: readonly ResolvedEditorCommand[]
+  tools?: ReactNode
+}) {
   const t = useTranslations("app.shell.commandToolbar")
   const copy = useEditorCommandCopy()
   const getLabel = (command: ResolvedEditorCommand) => copy.label(command.descriptor)
@@ -680,6 +687,29 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
       [familyId]: command.descriptor.id,
     }))
     command.invoke()
+  }
+
+  if (tools !== undefined) {
+    return (
+      <nav
+        aria-label={t("ariaLabel")}
+        data-sketch-mode={false}
+        className="flex min-w-0 items-center gap-2 border-b bg-toolbar px-2 py-1"
+      >
+        <NativeEditorCommandBridge commands={commands} />
+        {tools}
+        {historyCommands.length > 0 && (
+          <Toolbar aria-label={t("historyLabel")} className="shrink-0 gap-1">
+            <ToolbarCommandGroup
+              commands={historyCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("historyLabel")}
+            />
+          </Toolbar>
+        )}
+      </nav>
+    )
   }
 
   return (

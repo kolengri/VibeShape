@@ -41,13 +41,19 @@ test("previews real assembly drives without saving, pauses and resets, applies o
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   const modes = page.getByRole("group", { name: "Geometry workspace" })
   await modes.getByRole("button", { name: "Assembly", exact: true }).click()
-  await panel(page).getByRole("button", { name: "Create definition", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Create definition", exact: true })
+    .click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Motion bracket")
   await apply(page)
   const parent = (await assembly(page)).assembly.instances[0]
   if (!parent) throw new Error("The motion fixture requires a grounded occurrence.")
   await page.locator(`[data-assembly-instance-id="${parent.id}"]`).click()
-  await panel(page).getByRole("button", { name: "Add joint", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Add joint", exact: true })
+    .click()
   await panel(page).getByRole("combobox", { name: "Joint type", exact: true }).click()
   await page.getByRole("option", { name: "Revolute", exact: true }).click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Motion arm")

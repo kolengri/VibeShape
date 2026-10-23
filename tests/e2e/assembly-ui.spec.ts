@@ -49,7 +49,10 @@ async function pickOccurrence(page: Page, canvas: Locator) {
   throw new Error("A rendered occurrence must be selectable through the assembly canvas.")
 }
 async function addSecondInstance(page: Page) {
-  await panel(page).getByRole("button", { name: "Add instance", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Add instance", exact: true })
+    .click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Second bracket")
   await panel(page).getByRole("spinbutton", { name: "X (mm)", exact: true }).fill("40")
   const definition = panel(page).getByRole("combobox", { name: "Definition", exact: true })
@@ -68,7 +71,10 @@ async function addSecondInstance(page: Page) {
 }
 async function addRevoluteChild(page: Page, parentId: string) {
   await page.locator(`[data-assembly-instance-id="${parentId}"]`).click()
-  await panel(page).getByRole("button", { name: "Add joint", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Add joint", exact: true })
+    .click()
   await choose(page, "Joint type", "Revolute")
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Joint arm")
   await panel(page).getByRole("spinbutton", { name: "Minimum drive", exact: true }).fill("-45")
@@ -93,7 +99,10 @@ test("authors independent assembly instances and an atomic joint, inspects inter
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   const before = await saveProject(page)
   await assemblyMode(page)
-  await panel(page).getByRole("button", { name: "Create definition", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Create definition", exact: true })
+    .click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Bracket")
   await apply(page)
   let authored = await currentAssembly(page)
@@ -182,11 +191,17 @@ test("authors independent assembly instances and an atomic joint, inspects inter
 })
 
 async function assemblyAction(page: Page, name: string) {
-  await panel(page).getByRole("button", { name: "More assembly actions", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "More assembly actions", exact: true })
+    .click()
   await page.getByRole("menuitem", { name, exact: true }).click()
 }
 async function placedMeshVertices(page: Page) {
-  await panel(page).getByRole("button", { name: "Export assembly…", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Export assembly…", exact: true })
+    .click()
   const dialog = page.getByRole("dialog", { name: "Export assembly…", exact: true })
   await dialog.getByRole("combobox", { name: "Instances to export", exact: true }).click()
   await page.getByRole("option", { name: "All assembly instances", exact: true }).click()
@@ -224,7 +239,10 @@ async function placedInstance(
   translation: readonly number[],
   rotation: readonly number[],
 ) {
-  await panel(page).getByRole("button", { name: "Add instance", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Add instance", exact: true })
+    .click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill(name)
   for (const [index, axis] of ["X", "Y", "Z"].entries()) {
     await panel(page)
@@ -247,7 +265,10 @@ test("preserves actual placements through as-built joints and one-Undo rigid gro
   await createSolids(page)
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   await assemblyMode(page)
-  await panel(page).getByRole("button", { name: "Create definition", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Create definition", exact: true })
+    .click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Pose bracket")
   await apply(page)
   await placedInstance(page, "Pose arm", [40, 10, 5], [0, 0, 90])

@@ -59,6 +59,10 @@ import {
   assemblyModeCommands,
   useAssemblyMode,
 } from "./features/assembly/assembly-mode"
+import {
+  AssemblyToolbarProvider,
+  AssemblyToolbarSlot,
+} from "./features/assembly/assembly-toolbar-portal"
 import { edgeTreatmentCreateTool } from "./features/edge-treatment/edge-treatment-activation"
 import { LightweightingWorkspace } from "./features/lightweighting/lightweighting-workspace"
 import { useLightweightingCommand } from "./features/lightweighting/use-lightweighting-command"
@@ -1213,16 +1217,21 @@ function EditorApplication({
           >
             <SketchTextActionsProvider actions={textDialog.actions}>
               <SketchToolbarPortalsProvider>
-                <CommandToolbar commands={commands} />
-                <div className="editor-model-area grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
-                  <AssemblyContent
-                    active={assemblyMode.active}
-                    controller={controller}
-                    selectedPartId={session.selectedPartId}
-                  >
-                    {modelWorkspace}
-                  </AssemblyContent>
-                </div>
+                <AssemblyToolbarProvider>
+                  <CommandToolbar
+                    commands={commands}
+                    tools={assemblyMode.active ? <AssemblyToolbarSlot /> : undefined}
+                  />
+                  <div className="editor-model-area grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
+                    <AssemblyContent
+                      active={assemblyMode.active}
+                      controller={controller}
+                      selectedPartId={session.selectedPartId}
+                    >
+                      {modelWorkspace}
+                    </AssemblyContent>
+                  </div>
+                </AssemblyToolbarProvider>
               </SketchToolbarPortalsProvider>
               <SketchTextDialog
                 target={textDialog.target}

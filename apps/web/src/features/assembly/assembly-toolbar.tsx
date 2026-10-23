@@ -262,6 +262,7 @@ function MoreActions({ view }: { view: AssemblyWorkspaceView }) {
                 size="icon-sm"
                 variant="ghost"
                 aria-label={t("moreActions")}
+                disabled={!view.idle || view.removal !== null}
                 dropdown
               >
                 <Ellipsis aria-hidden="true" />
@@ -280,26 +281,32 @@ function MoreActions({ view }: { view: AssemblyWorkspaceView }) {
     </DropdownMenu>
   )
 }
-export function AssemblyToolbar({ view }: { view: AssemblyWorkspaceView }) {
+export function AssemblyToolbar({
+  view,
+  playback,
+}: {
+  view: AssemblyWorkspaceView
+  playback?: ReactNode
+}) {
   const t = useTranslations("app.assembly")
   return (
-    <Toolbar aria-label={t("actionsLabel")} className="flex-wrap gap-1">
+    <Toolbar aria-label={t("actionsLabel")} className="w-max min-w-full gap-1">
       <IconAction
         label={t("createDefinition")}
         icon={<Box aria-hidden="true" />}
-        disabled={view.disabled || !view.sources.length}
+        disabled={view.taskActionsDisabled || !view.sources.length}
         onClick={() => view.openTask("createDefinition")}
       />
       <IconAction
         label={t("addInstance")}
         icon={<AssemblyInstanceIcon aria-hidden="true" />}
-        disabled={view.disabled || !view.assembly.definitions.length}
+        disabled={view.taskActionsDisabled || !view.assembly.definitions.length}
         onClick={() => view.openTask("addInstance")}
       />
       <IconAction
         label={t("addJoint")}
         icon={<AssemblyJointIcon aria-hidden="true" />}
-        disabled={view.disabled || !view.assembly.instances.length}
+        disabled={view.taskActionsDisabled || !view.assembly.instances.length}
         onClick={() => view.openTask("addJoint")}
       />
       <AssemblyExportDialog
@@ -308,10 +315,11 @@ export function AssemblyToolbar({ view }: { view: AssemblyWorkspaceView }) {
         instances={view.assembly.instances}
         selectedId={view.selected.activeId}
         inspection={view.inspection.inspection}
-        disabled={view.disabled || view.inspection.pending}
+        disabled={view.taskActionsDisabled}
       />
       <MotionActions view={view} />
       <MoreActions view={view} />
+      {playback}
     </Toolbar>
   )
 }

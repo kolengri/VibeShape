@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import type { Locator, Page, TestInfo } from "@playwright/test"
 import { unzipSync } from "fflate"
 import type { AssemblyMotionStudy } from "../../packages/domain/src/assembly-authority"
+import { openApplicationMenuItem } from "./application-menu-support"
 import { createSolids, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 
@@ -30,13 +31,19 @@ async function prepare(page: Page) {
     .getByRole("group", { name: "Geometry workspace" })
     .getByRole("button", { name: "Assembly", exact: true })
     .click()
-  await panel(page).getByRole("button", { name: "Create definition", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Create definition", exact: true })
+    .click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Study bracket")
   await apply(page)
   const parent = (await savedAssembly(page)).assembly.instances[0]
   if (!parent) throw new Error("Expected grounded occurrence.")
   await page.locator(`[data-assembly-instance-id="${parent.id}"]`).click()
-  await panel(page).getByRole("button", { name: "Add joint", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Add joint", exact: true })
+    .click()
   await panel(page).getByRole("combobox", { name: "Joint type", exact: true }).click()
   await page.getByRole("option", { name: "Revolute", exact: true }).click()
   await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill("Study arm")
@@ -54,7 +61,10 @@ test("saves keyed motion separately, seeks and samples real poses, exports PNG/J
   })
   await prepare(page)
   const baseline = await savedAssembly(page)
-  await panel(page).getByRole("button", { name: "Motion studies", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Motion studies", exact: true })
+    .click()
   await page.getByRole("menuitem", { name: "New study", exact: true }).click()
   await panel(page).getByRole("textbox", { name: "Study name", exact: true }).fill("Hinge sweep")
   await panel(page).getByText("Edit keys (2)", { exact: true }).click()
@@ -72,7 +82,10 @@ test("saves keyed motion separately, seeks and samples real poses, exports PNG/J
   await values.nth(0).fill("-30")
   await values.nth(1).fill("30")
   await panel(page).getByRole("button", { name: "Save study", exact: true }).click()
-  await panel(page).getByRole("button", { name: "Motion studies", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Motion studies", exact: true })
+    .click()
   await expect(page.getByRole("menuitem", { name: "Hinge sweep", exact: true })).toBeVisible()
   await page.keyboard.press("Escape")
   const authored = await savedAssembly(page)
@@ -80,7 +93,10 @@ test("saves keyed motion separately, seeks and samples real poses, exports PNG/J
   expect(authored.assembly.joints).toEqual(baseline.assembly.joints)
   expect(authored.assembly.motionStudies?.[0]).toMatchObject({ name: "Hinge sweep", duration: 2 })
   const workersBeforePlayback = geometryWorkers.length
-  await panel(page).getByRole("button", { name: "Motion studies", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Motion studies", exact: true })
+    .click()
   await page.getByRole("menuitem", { name: "Hinge sweep", exact: true }).click()
   const timeline = panel(page).getByRole("slider", { name: "Timeline (s)", exact: true })
   const seekStarted = Date.now()
@@ -157,7 +173,10 @@ test("saves keyed motion separately, seeks and samples real poses, exports PNG/J
     ),
   )
   await panel(page).getByRole("button", { name: "Apply", exact: true }).click()
-  await panel(page).getByRole("button", { name: "Motion studies", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Motion studies", exact: true })
+    .click()
   await expect(page.getByRole("menuitem", { name: "Hinge sweep", exact: true })).toBeVisible()
   await page.keyboard.press("Escape")
   const applied = await savedAssembly(page)
@@ -178,7 +197,10 @@ async function addCranks(page: Page) {
   if (!base) throw new Error("Expected grounded base.")
   for (let index = 2; index <= 7; index++) {
     await page.locator(`[data-assembly-instance-id="${base.id}"]`).click()
-    await panel(page).getByRole("button", { name: "Add joint", exact: true }).click()
+    await page
+      .getByRole("toolbar", { name: "Assembly actions", exact: true })
+      .getByRole("button", { name: "Add joint", exact: true })
+      .click()
     await panel(page).getByRole("combobox", { name: "Joint type", exact: true }).click()
     await page.getByRole("option", { name: "Revolute", exact: true }).click()
     await panel(page).getByRole("textbox", { name: "Name", exact: true }).fill(`Crank ${index}`)
@@ -295,7 +317,10 @@ test("authors seven named drive tracks with degree offsets and graphical key tim
   page.setDefaultTimeout(15000)
   await prepare(page)
   await addCranks(page)
-  await panel(page).getByRole("button", { name: "Motion studies", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Motion studies", exact: true })
+    .click()
   await page.getByRole("menuitem", { name: "New study", exact: true }).click()
   await panel(page)
     .getByRole("textbox", { name: "Study name", exact: true })
@@ -370,7 +395,10 @@ test("authors seven named drive tracks with degree offsets and graphical key tim
     .getByRole("group", { name: "Geometry workspace" })
     .getByRole("button", { name: "Assembly", exact: true })
     .click()
-  await panel(page).getByRole("button", { name: "Motion studies", exact: true }).click()
+  await page
+    .getByRole("toolbar", { name: "Assembly actions", exact: true })
+    .getByRole("button", { name: "Motion studies", exact: true })
+    .click()
   await page.getByRole("menuitem", { name: "Seven coordinated cranks", exact: true }).click()
   await expect(panel(page).getByRole("combobox", { name: "Coordinate", exact: true })).toHaveCount(
     7,
@@ -386,4 +414,59 @@ test("authors seven named drive tracks with degree offsets and graphical key tim
     timeout: 60000,
   })
   await captureStudyLayouts(page, testInfo)
+})
+
+test("plays a saved animation case from the top toolbar with the task panel collapsed", async ({
+  page,
+}) => {
+  test.setTimeout(180000)
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await prepare(page)
+  const toolbar = page.getByRole("toolbar", { name: "Assembly actions", exact: true })
+  await toolbar.getByRole("button", { name: "Motion studies", exact: true }).click()
+  await page.getByRole("menuitem", { name: "New study", exact: true }).click()
+  await panel(page).getByRole("textbox", { name: "Study name", exact: true }).fill("Toolbar sweep")
+  await panel(page).getByRole("button", { name: "Save study", exact: true }).click()
+  await saved(page)
+  const before = await savedAssembly(page)
+  const study = before.assembly.motionStudies?.[0]
+  if (!study) throw new Error("Expected a saved motion study.")
+  await page.setViewportSize({ width: 960, height: 768 })
+  await page.getByRole("button", { name: "Collapse assembly task", exact: true }).click()
+  const choose = toolbar.getByRole("combobox", { name: "Animation case", exact: true })
+  await expect(choose).toBeVisible()
+  await choose.selectOption(study.id)
+  await toolbar.getByRole("button", { name: "Play animation", exact: true }).click()
+  await expect(page.getByText("Unsaved motion preview", { exact: true })).toBeVisible({
+    timeout: 60000,
+  })
+  await expect(
+    page.getByRole("button", { name: "Expand assembly task", exact: true }),
+  ).toBeVisible()
+  await expect(panel(page).getByRole("textbox", { name: "Study name", exact: true })).toHaveCount(0)
+  await toolbar.getByRole("button", { name: "Pause", exact: true }).click()
+  await expect(toolbar.getByRole("button", { name: "Play animation", exact: true })).toBeEnabled()
+  await toolbar.getByRole("button", { name: "Reset preview", exact: true }).click()
+  await expect(page.getByText("Unsaved motion preview", { exact: true })).toHaveCount(0)
+  const after = await savedAssembly(page)
+  expect(after.revision).toBe(before.revision)
+  expect(after.assembly).toEqual(before.assembly)
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  for (const theme of ["Light", "Dark"]) {
+    await openApplicationMenuItem(page, "Settings…")
+    const settings = page.getByRole("dialog", { name: "Settings", exact: true })
+    await settings.getByRole("combobox", { name: "Theme", exact: true }).click()
+    await page.getByRole("option", { name: theme, exact: true }).click()
+    await settings.getByRole("button", { name: "Done", exact: true }).click()
+    await expect(choose).toBeVisible()
+    await page.screenshot({ path: `artifacts/assembly-toolbar/${theme.toLowerCase()}-1024.png` })
+  }
+  await page.locator("html").evaluate((element) => {
+    element.style.zoom = "2"
+  })
+  const reset = toolbar.getByRole("button", { name: "Reset preview", exact: true })
+  await reset.scrollIntoViewIfNeeded()
+  await expect(reset).toBeInViewport()
+  await page.screenshot({ path: "artifacts/assembly-toolbar/zoom-200.png" })
 })
