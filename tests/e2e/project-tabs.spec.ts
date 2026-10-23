@@ -42,8 +42,11 @@ async function primitive(page: Page, name: "Box" | "Cylinder") {
   await saved(page)
 }
 
-async function dragTreeSeparator(page: Page, distance: number) {
-  const bounds = await page.locator('[data-slot="resizable-handle"]').first().boundingBox()
+async function dragTreeSeparator(page: Page, distance: number, interactive = true) {
+  const boundary = interactive
+    ? page.locator('[data-slot="resizable-handle"]').first()
+    : page.locator(".viewport-grid__resizers > .viewport-grid__gap").first()
+  const bounds = await boundary.boundingBox()
   if (!bounds) throw new Error("Expected the model-tree separator bounds.")
   const x = bounds.x + bounds.width / 2
   const y = bounds.y + bounds.height / 2
@@ -251,10 +254,12 @@ test("selects and reloads a cold project with progressive viewport loading", asy
   await expect(page.getByRole("menuitem", { name: "Sphere", exact: true })).toBeDisabled()
   await page.keyboard.press("Escape")
   await expect(page.getByText("Opening local document…", { exact: true })).toBeVisible()
-  await expect(page.locator('[data-slot="resizable-panel-group"]')).toHaveAttribute("inert", "")
   await expect(
     page.getByRole("separator").and(page.locator('[data-slot="resizable-handle"]')),
   ).toHaveCount(0)
+  for (const panel of [".workspace-panel--tree", ".workspace-panel--task"]) {
+    await expect(page.locator(panel)).toHaveAttribute("inert", "")
+  }
   await page.setViewportSize({ width: 512, height: 384 })
   await expect(page.getByRole("button", { name: "Show model tree", exact: true })).toHaveCount(0)
   await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
@@ -277,7 +282,7 @@ test("selects and reloads a cold project with progressive viewport loading", asy
   const layoutBeforeDrag = await page.evaluate(() =>
     localStorage.getItem("vibeshape.workspace-layout.v1"),
   )
-  await dragTreeSeparator(page, 64)
+  await dragTreeSeparator(page, 64, false)
   expect(await treePanel.evaluate((panel) => panel.getBoundingClientRect().width)).toBe(
     initialTreeWidth,
   )

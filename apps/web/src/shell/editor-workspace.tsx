@@ -3041,7 +3041,7 @@ function EditorWorkspaceContent(
             taskPanelActive={taskPanelActivityKey(props, review) !== null}
             revealTreeRequest={revealForSurface(revealRequest, "browser")?.sequence}
             allowTransparency={props.workspace !== "variables"}
-            modelTree={
+            left={
               <EditorModelTree
                 surface="browser"
                 revealRequest={revealRequest}
@@ -3051,7 +3051,7 @@ function EditorWorkspaceContent(
                 onProfilePreview={historySourcePreview.onPreview}
               />
             }
-            history={
+            bottom={
               <EditorModelTree
                 surface="timeline"
                 revealRequest={revealRequest}
@@ -3061,7 +3061,7 @@ function EditorWorkspaceContent(
                 onProfilePreview={historySourcePreview.onPreview}
               />
             }
-            taskPanel={
+            right={
               <WorkspaceTaskPanel
                 activeTaskKey={taskPanelActivityKey(props, review)}
                 autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}

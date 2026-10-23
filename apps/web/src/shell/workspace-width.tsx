@@ -9,6 +9,8 @@ import {
   useState,
 } from "react"
 
+import { ViewportGrid, ViewportGridBottom } from "./viewport-grid"
+
 const WorkspaceWidthContext = createContext<{
   width: number | null
   root: RefObject<HTMLDivElement | null>
@@ -24,10 +26,18 @@ export function WorkspaceWidthProvider({ children }: { children: ReactNode }) {
       const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
       setWidth(element.getBoundingClientRect().width / rem)
     }
+    let frame = 0
+    const schedule = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(update)
+    }
     update()
-    const observer = new ResizeObserver(update)
+    const observer = new ResizeObserver(schedule)
     observer.observe(element)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
   }, [])
   const value = useMemo(() => ({ width, root }), [width])
   return <WorkspaceWidthContext.Provider value={value}>{children}</WorkspaceWidthContext.Provider>
@@ -36,9 +46,12 @@ export function WorkspaceWidthProvider({ children }: { children: ReactNode }) {
 export function WorkspaceWorkbench({ children }: { children: ReactNode }) {
   const context = useContext(WorkspaceWidthContext)
   return (
-    <div ref={context?.root} className="editor-workbench">
-      {children}
-    </div>
+    <ViewportGrid>
+      <div ref={context?.root} className="editor-workbench">
+        {children}
+        <ViewportGridBottom />
+      </div>
+    </ViewportGrid>
   )
 }
 
