@@ -223,6 +223,17 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    }
    return reply(id,{stopReason:"end_turn"});
  }
+ if (prompt === "large-tool-results" || prompt === "oversized-tool-result") {
+   const size = prompt === "large-tool-results" ? 96_000 : 2*1024*1024;
+   for (let stage = 0; stage < 16; stage++) {
+     update({sessionUpdate:"tool_call_update",toolCallId:"stage-"+stage,status:"completed",rawOutput:{content:[{type:"text",text:"x".repeat(size)}],structuredContent:{data:"x".repeat(size)}}});
+   }
+   return reply(id,{stopReason:"end_turn"});
+ }
+ if (prompt === "event-flood") {
+   for (let index = 0; index < 10_001; index++) text("x");
+   return reply(id,{stopReason:"end_turn"});
+ }
  if (prompt === "inspect-mcp") { text(JSON.stringify(attachedMcp)); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "inspect-attachments") { text(JSON.stringify(params.prompt)); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "ask-question" || prompt === "unsupported-question") {
@@ -1690,7 +1701,7 @@ describe("native ACP service", () => {
     ).toEqual({ ok: false, code: "unsupported" })
   })
 
-  it("lets built-in Jev exceed the turn display budget through bounded completed stages", async () => {
+  it("lets native ACP agents exceed the turn display budget through bounded completed stages", async () => {
     const agent = { command: "node", args: [] as string[] }
     const context = await host({ resolveLaunch: () => ({ ok: true, launch: { agent } }) })
     agent.args.push(context.script, "normal")
@@ -1713,7 +1724,7 @@ describe("native ACP service", () => {
         operation: "prompt",
         input: { ...scope(external), text: "many-tool-stages" },
       }),
-    ).toEqual({ ok: false, code: "protocol-error" })
+    ).toMatchObject({ ok: true, value: { status: "ready" } })
     const builtin = ready(
       await context.service.handle({
         operation: "connect",
@@ -1727,6 +1738,43 @@ describe("native ACP service", () => {
       }),
     ).toEqual({ ok: false, code: "protocol-error" })
   })
+
+  it("keeps external ACP connected across large completed CAD tool results", async () => {
+    const context = await host()
+    const session = ready(await context.connect())
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(session), text: "large-tool-results" },
+      }),
+    ).toMatchObject({ ok: true, value: { status: "ready" } })
+    expect(context.events.filter((event) => event.type === "tool")).toHaveLength(16)
+    expect(context.events.some((event) => event.type === "error")).toBe(false)
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(session), text: "Continue working" },
+      }),
+    ).toMatchObject({ ok: true })
+  })
+
+  it.each(["oversized-tool-result", "event-flood"])(
+    "rejects an external ACP %s before completed stages can reset its budget",
+    async (text) => {
+      const context = await host()
+      const session = ready(await context.connect())
+      expect(
+        await context.service.handle({ operation: "prompt", input: { ...scope(session), text } }),
+      ).toMatchObject({ ok: false })
+      expect(context.events.filter((event) => event.type === "error")).toMatchObject([
+        { code: "protocol-error" },
+      ])
+      expect(context.events.at(-1)).toMatchObject({
+        type: "snapshot",
+        snapshot: { status: "error" },
+      })
+    },
+  )
 
   it("advertises Jev limits and rejects invalid image envelopes before the agent receives a prompt", async () => {
     const agent = { command: "node", args: [] as string[] }
