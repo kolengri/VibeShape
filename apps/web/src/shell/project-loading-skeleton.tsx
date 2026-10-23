@@ -59,6 +59,7 @@ export function ProjectWorkbenchSkeleton() {
         <div className="editor-model-area grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
           <WorkspacePanels
             allowTransparency={false}
+            interactive={false}
             taskPanelActive={false}
             taskPanel={null}
             modelTree={<ModelTreeSkeleton />}

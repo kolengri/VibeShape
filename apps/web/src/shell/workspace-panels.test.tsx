@@ -40,12 +40,13 @@ function Preferences() {
     </output>
   )
 }
-function Fixture({ active }: { active: boolean }) {
+function Fixture({ active, interactive = true }: { active: boolean; interactive?: boolean }) {
   return (
     <I18nProvider i18n={i18n} initialLocale="en">
       <WorkspaceLayoutPreferencesProvider>
         <WorkspacePanels
           allowTransparency={false}
+          interactive={interactive}
           taskPanelActive={active}
           modelTree={<aside>Parts</aside>}
           taskPanel={
@@ -93,3 +94,26 @@ it("keeps the narrow model-tree toggle available while no task is active", () =>
   render(<Fixture active={false} />)
   expect(screen.getByRole("button", { name: "Show model tree" })).toBeTruthy()
 })
+
+it.each([false, true])(
+  "keeps loading panel controls inert at narrow=%s without hiding viewport feedback",
+  (narrow) => {
+    vi.stubGlobal("matchMedia", () => ({
+      matches: narrow,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    const view = render(<Fixture active={false} interactive={false} />)
+    const group = view.container.querySelector('[data-slot="resizable-panel-group"]')
+    expect(group?.hasAttribute("inert")).toBe(true)
+    expect(group?.getAttribute("aria-hidden")).toBe("true")
+    expect(screen.queryByRole("separator")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Show model tree" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Viewport" })).toBeTruthy()
+
+    view.rerender(<Fixture active={false} />)
+    expect(group?.hasAttribute("inert")).toBe(false)
+    if (narrow) expect(screen.getByRole("button", { name: "Show model tree" })).toBeTruthy()
+    else expect(screen.getByRole("separator")).toBeTruthy()
+  },
+)

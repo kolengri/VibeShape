@@ -42,6 +42,20 @@ async function primitive(page: Page, name: "Box" | "Cylinder") {
   await saved(page)
 }
 
+async function dragTreeSeparator(page: Page, distance: number) {
+  const bounds = await page.locator('[data-slot="resizable-handle"]').first().boundingBox()
+  if (!bounds) throw new Error("Expected the model-tree separator bounds.")
+  const x = bounds.x + bounds.width / 2
+  const y = bounds.y + bounds.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + distance, y, { steps: 5 })
+  await page.mouse.up()
+  await page.evaluate(
+    "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+  )
+}
+
 test("keeps project tabs, geometry isolation and guarded URLs through switching, closing and reload", async ({
   page,
 }, info) => {
@@ -224,6 +238,12 @@ test("selects and reloads a cold project with progressive viewport loading", asy
   for (const region of ["toolbar", "tree", "history", "viewport", "status"]) {
     await expect(page.locator(`[data-project-skeleton="${region}"]`)).toBeVisible()
   }
+  await expect(page.locator('[data-slot="resizable-panel-group"]')).toHaveAttribute("inert", "")
+  await expect(page.getByRole("separator")).toHaveCount(0)
+  await page.setViewportSize({ width: 512, height: 384 })
+  await expect(page.getByRole("button", { name: "Show model tree", exact: true })).toHaveCount(0)
+  await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 1280, height: 720 })
   await page.screenshot({ animations: "disabled", path: info.outputPath("project-reading.png") })
   await page.setViewportSize({ width: 700, height: 768 })
   const readingCard = page
@@ -237,6 +257,18 @@ test("selects and reloads a cold project with progressive viewport loading", asy
     expect(readingBounds.x).toBeGreaterThanOrEqual(treeBounds.x + treeBounds.width)
     expect(readingBounds.x + readingBounds.width).toBeLessThanOrEqual(700)
   }
+  const treePanel = page.locator(".workspace-panel--tree")
+  const initialTreeWidth = await treePanel.evaluate((panel) => panel.getBoundingClientRect().width)
+  const layoutBeforeDrag = await page.evaluate(() =>
+    localStorage.getItem("vibeshape.workspace-layout.v1"),
+  )
+  await dragTreeSeparator(page, 64)
+  expect(await treePanel.evaluate((panel) => panel.getBoundingClientRect().width)).toBe(
+    initialTreeWidth,
+  )
+  expect(await page.evaluate(() => localStorage.getItem("vibeshape.workspace-layout.v1"))).toBe(
+    layoutBeforeDrag,
+  )
   await expect(page.locator('[data-slot="blocking-loader-overlay"]')).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeEnabled()
   await expect
@@ -248,6 +280,13 @@ test("selects and reloads a cold project with progressive viewport loading", asy
   }).toPass({ timeout: 30_000 })
   await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
   await expect(page.locator("[data-project-skeleton]")).toHaveCount(0)
+  await dragTreeSeparator(page, 64)
+  await expect
+    .poll(() => treePanel.evaluate((panel) => panel.getBoundingClientRect().width))
+    .toBeGreaterThan(initialTreeWidth + 32)
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("vibeshape.workspace-layout.v1")))
+    .not.toBe(layoutBeforeDrag)
   await expect(page.locator('[data-rendered-feature-count="1"]')).toBeVisible()
   expect(
     await page.evaluate<boolean>(`(() => {
