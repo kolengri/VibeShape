@@ -92,6 +92,104 @@ async function contained(page: Page, locator: Locator) {
   ).toBe(true)
 }
 
+test("question choices wrap to readable rows and retain native keyboard selection", async ({
+  page,
+}) => {
+  const standard = "Fit a standard bicycle bottle holder, approximately 74 mm in diameter"
+  const custom = "Use the holder dimensions supplied in the instructions below"
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers })
+      return
+    }
+    await fulfill(
+      route,
+      tool(
+        "ask_user_question",
+        {
+          message: "Choose the container dimensions",
+          fields: [
+            {
+              id: "size",
+              label: "Size for the bicycle bottle holder",
+              required: true,
+              options: [
+                {
+                  id: "standard",
+                  name: standard,
+                  description: "Measure the holder before printing.",
+                },
+                { id: "custom", name: custom },
+                { id: "small", name: "Small" },
+                { id: "large", name: "Large" },
+              ],
+            },
+          ],
+        },
+        "choose-size",
+      ),
+    )
+  })
+  await page.setViewportSize({ width: 1024, height: 800 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/")
+  const panel = await connect(page)
+  await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Choose a size")
+  await panel.getByRole("button", { name: "Send", exact: true }).click()
+  const question = panel.getByRole("form", { name: "Agent question", exact: true })
+  const field = question.locator('[data-component="choice-field"]')
+  await expect(field).toBeVisible()
+  for (const width of [280, 340]) {
+    await field.evaluate((node, width) => {
+      node.style.width = `${width}px`
+      node.style.maxWidth = "100%"
+    }, width)
+    const cards = await field.getByRole("radio").evaluateAll((inputs) =>
+      inputs.map((input) => {
+        const card = input.closest("label")?.parentElement
+        if (!card) throw new Error("The choice must have a card")
+        const bounds = card.getBoundingClientRect()
+        return {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          overflowing: card.scrollWidth > card.clientWidth,
+          inputWidth: input.getBoundingClientRect().width,
+        }
+      }),
+    )
+    const bounds = await field.boundingBox()
+    if (!bounds) throw new Error("The question field must have visible bounds")
+    expect(cards[1]?.y).toBeGreaterThan(cards[0]?.y ?? 0)
+    expect(cards[2]?.y).toBe(cards[3]?.y)
+    for (const card of cards) {
+      expect(card.x).toBeGreaterThanOrEqual(bounds.x)
+      expect(card.x + card.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1)
+      expect(card.height).toBeLessThan(100)
+      expect(card.overflowing).toBe(false)
+      expect(card.inputWidth).toBeLessThanOrEqual(1)
+    }
+  }
+  const first = field.getByRole("radio", { name: standard, exact: true })
+  const second = field.getByRole("radio", { name: custom, exact: true })
+  await field.getByText(standard, { exact: true }).click()
+  await expect(first).toBeChecked()
+  await first.focus()
+  await first.press("Space")
+  const selected = first.locator("xpath=ancestor::label/..")
+  const unselected = second.locator("xpath=ancestor::label/..")
+  const background = await selected.evaluate((node) => getComputedStyle(node).backgroundColor)
+  expect(await unselected.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(
+    background,
+  )
+  expect(await selected.evaluate((node) => getComputedStyle(node).boxShadow)).not.toBe("none")
+  await first.press("ArrowDown")
+  await expect(second).toBeChecked()
+  await expect(second).toBeFocused()
+  await expect(first).not.toBeChecked()
+})
+
 test("keeps previous project chats after reload and continues the selected conversation", async ({
   page,
 }) => {
