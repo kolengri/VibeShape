@@ -113,6 +113,7 @@ import { StatusBar } from "./shell/status-bar"
 import { useViewerPreferences, ViewerPreferencesProvider } from "./shell/viewer-preferences"
 import { useViewportCapture, ViewportCaptureProvider } from "./shell/viewport-capture"
 import { WorkspaceLayoutPreferencesProvider } from "./shell/workspace-layout-preferences"
+import { WorkspaceWidthProvider, WorkspaceWorkbench } from "./shell/workspace-width"
 
 type SketchPersistenceBeforeExtrusionResult = "failed" | "saved" | "unchanged"
 type SketchPersistenceBeforeRevolveResult = SketchPersistenceBeforeExtrusionResult
@@ -1160,85 +1161,89 @@ function EditorApplication({
     </LightweightingWorkspace>
   )
   return (
-    <main
-      className="cad-shell bg-background text-[13px] text-foreground"
-      data-window-chrome={getDesktopHost()?.windowChrome}
-    >
-      <ApplicationBar
-        controller={controller}
-        projectNavigation={<LocalizedProjectTabs controller={controller} />}
-        hideModelExport={assemblyMode.active}
-        onOpenShortcutHelp={shortcutHelp.show}
-        onOpenCommandPalette={(returnFocusTarget) =>
-          commandPaletteFocus.setOpen(true, returnFocusTarget)
-        }
+    <WorkspaceWidthProvider>
+      <main
+        className="cad-shell bg-background text-[13px] text-foreground"
+        data-window-chrome={getDesktopHost()?.windowChrome}
       >
-        {assistant.toggle}
-        <AssemblyModeSwitch
-          active={assemblyMode.active}
-          disabled={assemblySwitchDisabled(controller, session)}
-          onChange={assemblyMode.onChange}
-        />
-      </ApplicationBar>
-      {assistant.panel}
-      <ShortcutHelpDialog
-        commands={commands}
-        open={shortcutHelp.open}
-        onOpenChange={shortcutHelp.setOpen}
-        returnFocusRef={shortcutHelp.returnFocusRef}
-      />
-      <EditorCommandPalette
-        commands={commands}
-        open={session.commandPaletteOpen}
-        returnFocusRef={commandPaletteFocus.returnFocusRef}
-        onOpenChange={commandPaletteFocus.setOpen}
-      />
-      <SketchShortcutToolbar
-        anchor={sketchShortcutAnchor}
-        commands={commands}
-        open={sketchShortcutToolbarOpen}
-        returnFocusRef={sketchShortcutReturnFocusRef}
-        onOpenChange={setSketchShortcutToolbarOpenWithAnchor}
-      />
-      <div
-        className="contents"
-        id={PROJECT_EDITOR_PANEL_ID}
-        role="tabpanel"
-        aria-labelledby={
-          controller.report ? projectTabId(controller.report.snapshot.id) : undefined
-        }
-      >
-        <SketchTextActionsProvider actions={textDialog.actions}>
-          <SketchToolbarPortalsProvider>
-            <CommandToolbar commands={commands} />
-            <div className="editor-model-area grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
-              <AssemblyContent
-                active={assemblyMode.active}
-                controller={controller}
-                selectedPartId={session.selectedPartId}
-              >
-                {modelWorkspace}
-              </AssemblyContent>
-            </div>
-          </SketchToolbarPortalsProvider>
-          <SketchTextDialog
-            target={textDialog.target}
-            getDraft={textDialog.getDraft}
-            onDraftChange={textDialog.commitDraft}
-            onClose={textDialog.close}
+        <ApplicationBar
+          controller={controller}
+          projectNavigation={<LocalizedProjectTabs controller={controller} />}
+          hideModelExport={assemblyMode.active}
+          onOpenShortcutHelp={shortcutHelp.show}
+          onOpenCommandPalette={(returnFocusTarget) =>
+            commandPaletteFocus.setOpen(true, returnFocusTarget)
+          }
+        >
+          {assistant.toggle}
+          <AssemblyModeSwitch
+            active={assemblyMode.active}
+            disabled={assemblySwitchDisabled(controller, session)}
+            onChange={assemblyMode.onChange}
           />
-        </SketchTextActionsProvider>
-      </div>
-      <StatusBar
-        selectedBody={session.selectedBody}
-        controller={controller}
-        selectedOriginPlane={session.selectedOriginPlane}
-        selection={session.selection}
-        selectedModelEdges={session.selectedModelEdges}
-        modelEdgeSelectionEnabled={session.modelEdgeSelectionEnabled}
-        onModelEdgeSelectionEnabledChange={sessionActions.setModelEdgeSelectionEnabled}
-      />
-    </main>
+        </ApplicationBar>
+        {assistant.panel}
+        <ShortcutHelpDialog
+          commands={commands}
+          open={shortcutHelp.open}
+          onOpenChange={shortcutHelp.setOpen}
+          returnFocusRef={shortcutHelp.returnFocusRef}
+        />
+        <EditorCommandPalette
+          commands={commands}
+          open={session.commandPaletteOpen}
+          returnFocusRef={commandPaletteFocus.returnFocusRef}
+          onOpenChange={commandPaletteFocus.setOpen}
+        />
+        <SketchShortcutToolbar
+          anchor={sketchShortcutAnchor}
+          commands={commands}
+          open={sketchShortcutToolbarOpen}
+          returnFocusRef={sketchShortcutReturnFocusRef}
+          onOpenChange={setSketchShortcutToolbarOpenWithAnchor}
+        />
+        <WorkspaceWorkbench>
+          <div
+            className="contents"
+            id={PROJECT_EDITOR_PANEL_ID}
+            role="tabpanel"
+            aria-labelledby={
+              controller.report ? projectTabId(controller.report.snapshot.id) : undefined
+            }
+          >
+            <SketchTextActionsProvider actions={textDialog.actions}>
+              <SketchToolbarPortalsProvider>
+                <CommandToolbar commands={commands} />
+                <div className="editor-model-area grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
+                  <AssemblyContent
+                    active={assemblyMode.active}
+                    controller={controller}
+                    selectedPartId={session.selectedPartId}
+                  >
+                    {modelWorkspace}
+                  </AssemblyContent>
+                </div>
+              </SketchToolbarPortalsProvider>
+              <SketchTextDialog
+                target={textDialog.target}
+                getDraft={textDialog.getDraft}
+                onDraftChange={textDialog.commitDraft}
+                onClose={textDialog.close}
+              />
+            </SketchTextActionsProvider>
+          </div>
+          <StatusBar
+            selectedBody={session.selectedBody}
+            controller={controller}
+            selectedOriginPlane={session.selectedOriginPlane}
+            selection={session.selection}
+            selectedModelEdges={session.selectedModelEdges}
+            modelEdgeSelectionEnabled={session.modelEdgeSelectionEnabled}
+            onModelEdgeSelectionEnabledChange={sessionActions.setModelEdgeSelectionEnabled}
+          />
+        </WorkspaceWorkbench>
+      </main>
+    </WorkspaceWidthProvider>
   )
 }
 

@@ -59,8 +59,12 @@ An idle workspace has no onboarding task panel: Create sketch and the modeling t
 
 Model-tree and task windows fit their content height up to the available workspace height. When
 content exceeds that limit, the body scrolls while the heading and lifecycle footer remain visible.
-AI chat always fills the available workspace height so the transcript and composer retain a stable
-reading area. Panel width preferences and resizing remain independent of content height.
+AI chat occupies a separate column beside the editor, keeping the command toolbar, model tree, task
+panel, History, and status bar unobstructed. Panel breakpoints use the editor's available width after
+chat is allocated. Below 640 CSS px, chat occupies a separate lower row. Opening, closing, or resizing
+chat preserves the mounted viewport and active task draft. On desktop, chat fills the available
+workspace height so the transcript and composer retain a stable reading area. Panel width preferences
+and resizing remain independent of content height.
 
 ### Primary Workspaces
 
@@ -89,7 +93,7 @@ The target reference canvas is 1440 × 900 CSS px. The supported authoring minim
 
 Panel sizes are user preferences. Double-clicking a separator restores its default. The thin resize separator has an equivalent keyboard path plus labeled collapse and reset controls that meet the pointer-target baseline. Edge pixels are never the only resize or restore mechanism.
 
-A horizontally scrolling sketch toolbar MUST reserve native scrollbar space below its 32 × 32 px controls. The scrollbar MUST NOT reduce their usable pointer area. The shell row MUST reserve the same toolbar-height value so the extra lane cannot overlap the workspace. AI chat floats above the editor beneath the application bar without resizing its regions.
+A horizontally scrolling sketch toolbar MUST reserve native scrollbar space below its 32 × 32 px controls. The scrollbar MUST NOT reduce their usable pointer area. The shell row MUST reserve the same toolbar-height value so the extra lane cannot overlap the workspace. AI chat reserves its own region beneath the application bar; the toolbar, History, status bar, and work panels fit beside it.
 
 Long tool menus (more than six commands) open a bounded searchable picker. Search retains command
 icons, shortcuts, active state, and prerequisite explanations, and invokes the same registered

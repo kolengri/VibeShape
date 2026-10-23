@@ -16,6 +16,7 @@ import {
 } from "react"
 
 import { CompactModelTreeToggle } from "./compact-model-tree"
+import { useWorkspaceWidth } from "./workspace-width"
 
 const compactTaskPanelQuery = "(width < 64rem)"
 
@@ -33,7 +34,13 @@ function compactTaskPanelSnapshot() {
 }
 
 export function useCompactTaskPanel() {
-  return useSyncExternalStore(subscribeToCompactTaskPanel, compactTaskPanelSnapshot, () => false)
+  const width = useWorkspaceWidth()
+  const fallback = useSyncExternalStore(
+    subscribeToCompactTaskPanel,
+    compactTaskPanelSnapshot,
+    () => false,
+  )
+  return width === null ? fallback : width < 63
 }
 
 export type ResponsiveTaskPanelProps = Readonly<{
