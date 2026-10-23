@@ -28,7 +28,6 @@ import {
   SketchIcon,
 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import { WindowHeader, WindowTitle } from "@vibeshape/ui/components/window-header"
 import { cn } from "@vibeshape/ui/lib/cn"
 import {
   type ViewerOriginPlane,
@@ -1484,7 +1483,7 @@ function HistoryRowPresentation({
   const className = cn(
     historyRowLayout(timeline, compact),
     feedback.className,
-    sourcePresentation.highlighted && "bg-accent ring-1 ring-primary ring-inset",
+    sourcePresentation.highlighted && "bg-accent",
     !reorderLocked &&
       "cursor-grab active:cursor-grabbing [&_[role=treeitem]]:cursor-grab [&_[role=treeitem]]:active:cursor-grabbing",
   )
@@ -1972,7 +1971,7 @@ function HistoryGroup({
             onDragEnd={handleDragEnd}
           >
             <div
-              className="relative flex min-w-0 items-start overflow-x-auto overflow-y-hidden pb-4 pl-2 pr-8 [scrollbar-width:thin]"
+              className="relative flex min-w-0 items-start overflow-x-auto overflow-y-hidden py-2 pl-2 pr-8"
               data-history-track
             >
               {folderGroups.map((group) => {
@@ -2852,9 +2851,6 @@ export function ModelTree(props: ModelTreeProps) {
       className="flex min-h-0 flex-col overflow-hidden border-r bg-panel"
       onKeyDown={deletion.onKeyDown}
     >
-      <WindowHeader>
-        <WindowTitle>{t("title")}</WindowTitle>
-      </WindowHeader>
       <div data-slot="model-tree-content" className="min-h-0 overflow-auto p-2">
         <ModelBrowserSearch
           entries={[
