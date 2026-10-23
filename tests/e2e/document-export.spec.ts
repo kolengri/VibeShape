@@ -8,7 +8,7 @@ async function createBox(page: import("@playwright/test").Page) {
   await invokeModelCommand(page, "Primitives", "Box")
   await page
     .getByRole("form", { name: "Create box" })
-    .getByRole("button", { name: "Create box" })
+    .getByRole("button", { name: "Create box", exact: true })
     .click()
   await expect(page.getByRole("treeitem", { name: "Part Box 1", exact: true })).toBeVisible()
 }
@@ -78,13 +78,13 @@ test.describe("document export", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await expect(page.getByRole("treeitem", { name: "Part Box 1", exact: true })).toBeVisible()
     await invokeModelCommand(page, "Primitives", "Cylinder")
     await page
       .getByRole("form", { name: "Create cylinder" })
-      .getByRole("button", { name: "Create cylinder" })
+      .getByRole("button", { name: "Create cylinder", exact: true })
       .click()
     await expect(page.getByRole("treeitem", { name: "Part Cylinder 1", exact: true })).toBeVisible()
 
@@ -182,9 +182,50 @@ test.describe("document export", () => {
     })
     await page.goto("/")
     await createBox(page)
+    const longName =
+      "Lid - continuous half-round ribs without spherical bulges and with a reinforced mounting rim"
+    await page.getByRole("button", { name: "Rename part Box 1", exact: true }).click()
+    const rename = page.getByRole("dialog", { name: "Rename item", exact: true })
+    await rename.getByRole("textbox", { name: "Name", exact: true }).fill(longName)
+    await rename.getByRole("button", { name: "Rename", exact: true }).click()
+    await expect(rename).toBeHidden()
     await openApplicationMenuItem(page, "Export geometry…")
     const dialog = page.getByRole("dialog", { name: "Export model" })
     await dialog.getByRole("combobox", { name: "Destination" }).selectOption("slicer")
+    const scope = dialog.getByRole("combobox", { name: "Export scope", exact: true })
+    await scope.click()
+    await page.getByRole("option", { name: longName, exact: true }).click()
+    for (const width of [1024, 512]) {
+      await page.setViewportSize({ width, height: 768 })
+      await expect(scope).toContainText(longName)
+      expect((await scope.boundingBox())?.height).toBe(32)
+      expect(
+        await scope
+          .locator("span")
+          .first()
+          .evaluate((element) => {
+            const style = element.ownerDocument.defaultView?.getComputedStyle(element)
+            return { whiteSpace: style?.whiteSpace, textOverflow: style?.textOverflow }
+          }),
+      ).toEqual({ whiteSpace: "nowrap", textOverflow: "ellipsis" })
+      expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true,
+      )
+      const choose = dialog.getByRole("button", { name: "Choose slicer application…", exact: true })
+      await expect(choose).toHaveText("")
+      const select = await dialog
+        .getByRole("combobox", { name: "Slicer", exact: true })
+        .boundingBox()
+      const action = await choose.boundingBox()
+      if (!select || !action) throw new Error("Slicer controls must be measurable")
+      expect(select.y).toBe(action.y)
+      expect(select.x + select.width).toBeLessThanOrEqual(action.x)
+      await page.screenshot({
+        path: test.info().outputPath(`native-export-long-scope-${width}.png`),
+      })
+    }
+    await scope.click()
+    await page.getByRole("option", { name: "All parts", exact: true }).click()
     await dialog.getByRole("button", { name: "Choose slicer application…" }).click()
     await expect(dialog.getByRole("combobox", { name: "Slicer", exact: true })).toHaveValue(
       "custom-00000000-0000-4000-8000-000000000002",

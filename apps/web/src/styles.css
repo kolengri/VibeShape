@@ -43,7 +43,8 @@
   --workspace-radius: 0.625rem;
   --application-bar-height: 5rem;
   --command-bar-height: 2.25rem;
-  --assistant-width: clamp(208px, 40vw, 420px);
+  --assistant-width: min(420px, calc(100% - 2 * var(--workspace-gap)));
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows:
@@ -112,13 +113,17 @@
 }
 
 .assistant-panel {
-  grid-column: 2;
-  grid-row: 2 / -1;
+  position: absolute;
+  z-index: 40;
+  top: calc(var(--application-bar-height) + var(--workspace-gap));
+  right: var(--workspace-gap);
+  bottom: var(--workspace-gap);
+  width: var(--assistant-width);
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--workspace-radius);
-  box-shadow: none;
+  box-shadow: var(--shadow-lg);
 }
 
 .application-bar[data-unified-chrome] {
@@ -161,18 +166,6 @@
 
 .cad-workspace-grid[data-task-active="false"] .workspace-viewport {
   --workspace-chrome-right: var(--workspace-gap);
-}
-
-/* Chat owns a column outside the complete editor, including toolbar and History. */
-.cad-shell:has(.assistant-panel:not([hidden])) {
-  grid-template-columns: minmax(0, 1fr) var(--assistant-width);
-  column-gap: var(--workspace-gap);
-}
-
-@media (min-width: 64rem) {
-  .cad-shell {
-    --assistant-width: clamp(208px, calc(100vw - 816px), 420px);
-  }
 }
 
 .workspace-panel {

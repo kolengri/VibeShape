@@ -25,7 +25,7 @@ test.describe("foundation CAD shell", () => {
     await expect(
       page
         .getByRole("tree", { name: "Feature history", exact: true })
-        .getByRole("treeitem", { name: "History", exact: true }),
+        .getByRole("button", { name: "Details", exact: true }),
     ).toBeVisible()
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Task panel" })).toBeVisible()

@@ -70,6 +70,7 @@ async function openSettings(configuration: ReactNode) {
 }
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.scrollTo = vi.fn()
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false)
   vi.stubGlobal(
     "ResizeObserver",

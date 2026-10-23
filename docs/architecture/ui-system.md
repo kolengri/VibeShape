@@ -128,7 +128,7 @@ The Model workspace composes two presentations of the same document command call
 
 A transient reveal request connects a terminal feature result to its browser row, expands the browser and object group, and restores focus there. It never changes geometry or becomes saved document data. Origin plane controls and object-folder actions remain application commands and view preferences. Sidebar backgrounds default to 94% opacity without overriding saved preferences. The orientation inset labels its actual camera-aligned positive axis endpoints and distinguishes negative endpoints; it reuses the existing render schedule and owns/disposes its glyph resources.
 
-The viewport and active task stay mounted when History collapses or Details changes. Toolbar grouping composes the resolved editor commands rather than installing another registry or eligibility path.
+The viewport and active task stay mounted when the single History disclosure arrow switches between the existing icon strip and detailed rows. The track stays visible and reserves a separate lower lane for native horizontal scrollbars, keeping overlay scrollbars clear of operation controls; the header omits its redundant title and total count. A current/total position control exposes the full position description on hover or focus. Detailed rows put dependency and rollback explanations in a keyboard-accessible information tooltip while retaining visible repair diagnostics and interactive source links. Toolbar grouping composes the resolved editor commands rather than installing another registry or eligibility path. Visible category buttons and the inert fit probe share the same indicator sizing contract.
 
 The History transport resolves positions against the complete interleaved order and reuses guarded
 History insertion actions. Its draggable vertical divider commits on release and shares one navigation lock with the
@@ -304,7 +304,7 @@ separately. See [the interaction audit](../product/direct-manipulation-and-short
 `WindowHeader` and `WindowTitle` in `packages/ui` own the shared heading spacing and typography
 for dialogs, destructive confirmations, task windows, Model, and AI chat. Feature compositions
 provide content and functional actions without redefining title size or weight. The AI header
-collapses the retained chat column; the application-bar AI control reopens it without resetting
+hides the retained chat overlay; the application-bar AI control reopens it without resetting
 the conversation, scroll position, or draft.
 
 Dialog and destructive-confirmation surfaces share a bordered header, a scrollable body, and a
@@ -313,13 +313,13 @@ scrolling; headers and footers remain reachable when content exceeds the viewpor
 native submission through an enclosing form or an explicit HTML form association. Item-level
 controls remain beside the content they operate on. Titles use 16 px semibold text with a 24 px
 line height, wrap rather than overlap controls, and contain no decorative icons. Close controls
-remain independently named actions in the header.
+remain independently named actions in the header. Select triggers keep long selected labels on one truncated line; their bounded menus wrap the full option text. The export dialog keeps format explanations in field help and places the icon-only application chooser beside the installed-slicer selector.
 
 ## Task panel lifecycle controls
 
 Task windows use a separate command heading, scrollable parameter body, and non-scrolling lifecycle footer.
 Model-tree and task surfaces grow with content up to the available workspace height; the AI chat
-column always fills that height. Compact task sheets fit their content within the workspace-bounded compact-sheet cap.
+overlay always fills that height. Compact task sheets fit their content within the workspace-bounded compact-sheet cap.
 `TaskPanelLifecycleActions` and `TaskPanelLifecycleButton` share action order, labels, pending state,
 and disabled feedback. Task footers use 32 px text buttons; independent compact controls retain
 their icon presentation and tooltips. Feature parameter forms retain their TanStack
@@ -368,12 +368,10 @@ Record the preset in the repository. Running `init --force` without review is pr
 
 The project-keyed editor scope owns a small assistant presentation context. Only the toggle and
 mounted panel consume its visibility; chat updates remain inside the project chat controller. Chat
-occupies a separate shell grid column outside the editor. Opening it resizes the complete editor,
-including the toolbar, canvas, History, and status bar, while preserving the mounted viewport and task
-form. CSS safe insets keep viewport controls clear of the floating editor tools. The display
+is positioned above the editor beneath the application bar. Opening it preserves the bounds of the toolbar, canvas, History, status bar, and active task form. The overlay has a bounded width and fits narrow windows without horizontal overflow. CSS safe insets keep viewport controls clear of the floating editor tools. The display
 transcript mounts on the first explicit panel opening, so project navigation
 does not parse Markdown or construct message DOM for a closed chat. Later closes retain that DOM,
-its scroll state, the controller, and transient composer state.
+its scroll state, the controller, and transient composer state. Automatic transcript following scrolls only the log element; it never scrolls an end marker through ancestor containers. Wheel overscroll stays inside the transcript.
 
 A separate scope-local capture port registers the currently visible viewport. An explicit composer
 action requests a fresh render and synchronous copy of its WebGL buffer before asynchronous PNG
