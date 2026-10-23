@@ -8,6 +8,7 @@ const headSchema = z.strictObject({
   version: z.literal(1),
   projectId: documentIdSchema,
   revision: z.number().int().nonnegative(),
+  conversationId: z.uuid().optional(),
   session: z.json().optional(),
 })
 const entrySchema = z.strictObject({
@@ -32,6 +33,7 @@ type Archive = z.infer<typeof archiveSchema>
 export type TranscriptArchiveSummary = { id: string; title: string; updatedAt: number }
 export type TranscriptSnapshot = {
   revision: number
+  conversationId?: string
   entries: readonly { id: string; position: number; value: JsonValue }[]
   session?: JsonValue | undefined
 }
@@ -45,7 +47,11 @@ export type TranscriptPatch = {
 export interface TranscriptStore {
   load(projectId: string): Promise<TranscriptSnapshot | null>
   commit(patch: TranscriptPatch): Promise<number>
-  reset(projectId: string, expectedRevision: number, assertCurrent?: () => void): Promise<number>
+  reset(
+    projectId: string,
+    expectedRevision: number,
+    assertCurrent?: () => void,
+  ): Promise<TranscriptSnapshot>
   listArchives(projectId: string): Promise<TranscriptArchiveSummary[]>
   switchConversation(
     projectId: string,
@@ -55,6 +61,20 @@ export interface TranscriptStore {
     assertCurrent?: () => void,
     validateSnapshot?: (snapshot: TranscriptSnapshot) => void,
   ): Promise<TranscriptSnapshot>
+}
+
+function headConversationId(projectId: string, head: Head | null) {
+  // Legacy heads share one deterministic identity without a write-on-load migration.
+  return head?.conversationId ?? projectId
+}
+
+function selectedSnapshot(archive: Archive | null, revision: number) {
+  return {
+    revision,
+    conversationId: archive?.id ?? crypto.randomUUID(),
+    entries: archive?.entries ?? [],
+    session: archive?.session,
+  }
 }
 
 function parseArchive(projectId: string, raw: unknown): Archive {
@@ -131,7 +151,12 @@ export class IndexedDbTranscriptStore implements TranscriptStore {
         "corrupt-history",
         "The transcript contains unreadable positions.",
       )
-    return { revision: head.revision, session: head.session, entries }
+    return {
+      revision: head.revision,
+      conversationId: headConversationId(projectId, head),
+      session: head.session,
+      entries,
+    }
   }
 
   private async nextHead(projectId: string, expectedRevision: number, session?: JsonValue) {
@@ -142,7 +167,13 @@ export class IndexedDbTranscriptStore implements TranscriptStore {
     const revision = parsed?.revision ?? 0
     if (revision !== expectedRevision)
       throw persistenceInvariantError("stale-revision", "The transcript changed in another writer.")
-    return headSchema.parse({ version: 1, projectId, revision: revision + 1, session })
+    return headSchema.parse({
+      version: 1,
+      projectId,
+      revision: revision + 1,
+      conversationId: headConversationId(projectId, parsed),
+      session,
+    })
   }
 
   async commit(patch: TranscriptPatch) {
@@ -169,13 +200,14 @@ export class IndexedDbTranscriptStore implements TranscriptStore {
     documentIdSchema.parse(projectId)
     return this.database.transaction("rw", this.database.heads, this.database.entries, async () => {
       const head = await this.nextHead(projectId, expectedRevision)
+      head.conversationId = crypto.randomUUID()
       assertCurrent()
       await this.database.entries.where("projectId").equals(projectId).delete()
       assertCurrent()
       // Keep a tombstone so a failed legacy-key cleanup cannot resurrect a reset conversation.
       await this.database.heads.put(head)
       assertCurrent()
-      return head.revision
+      return { revision: head.revision, conversationId: head.conversationId, entries: [] }
     })
   }
 
@@ -212,20 +244,18 @@ export class IndexedDbTranscriptStore implements TranscriptStore {
           targetId === null
             ? null
             : parseArchive(projectId, await this.database.archives.get([projectId, targetId]))
-        const selected = {
-          revision: head.revision,
-          entries: target?.entries ?? [],
-          session: target?.session,
-        }
+        const selected = selectedSnapshot(target, head.revision)
         // The consumer validates its display/session schema before any conversation is replaced.
-        validateSnapshot(current ?? { revision: input.revision, entries: [] })
+        validateSnapshot(
+          current ?? { revision: input.revision, conversationId: projectId, entries: [] },
+        )
         validateSnapshot(selected)
         assertCurrent()
         if (current?.entries.length) {
           const archive = parseArchive(projectId, {
             version: 1,
             projectId,
-            id: crypto.randomUUID(),
+            id: current.conversationId,
             title,
             updatedAt: Date.now(),
             entries: current.entries,
@@ -243,6 +273,7 @@ export class IndexedDbTranscriptStore implements TranscriptStore {
           assertCurrent()
         }
         head.session = selected.session
+        head.conversationId = selected.conversationId
         // A blank active transcript still owns a head, preventing legacy history resurrection.
         await this.database.heads.put(head)
         assertCurrent()

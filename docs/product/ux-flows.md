@@ -140,6 +140,7 @@ current project, titled from their first user message. **New chat** saves the cu
 before opening an empty one. Selecting a previous conversation preserves the current chat and opens
 the selected transcript for continued conversation. The list and messages survive reloading the
 project. Switching is disabled while a response, queued work, or checkpoint action is active.
+Undo agent changes, View before, and Apply remain disabled until a conversation switch finishes.
 Conversation navigation leaves the CAD document unchanged; it does not undo modeling operations.
 
 The API request context is separate from transcript storage. It retains complete conversational

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test"
-import { type ChatMessage, legacyChatHistoryKey, retainChatMessages } from "./chat-history"
+import {
+  type AgentChatSession,
+  type ChatMessage,
+  legacyChatHistoryKey,
+  retainChatMessages,
+} from "./chat-history"
 import { MemoryTranscriptStore } from "./chat-history.test-fixture"
 import { createChatHistoryCoordinator } from "./chat-history-coordinator"
 import { loadChatHistory } from "./chat-history-storage"
@@ -24,14 +29,16 @@ function message(text = "message"): ChatMessage {
 }
 function fixture(store = new MemoryTranscriptStore(), storage = disk(), id = projectId) {
   let messages: readonly ChatMessage[] = []
+  let agentSession: AgentChatSession | undefined
   let failed = false
   const history = createChatHistoryCoordinator({
     projectId: id,
     store,
     storage,
-    current: () => ({ messages }),
+    current: () => ({ messages, agentSession }),
     restored: (saved) => {
       messages = saved.messages
+      agentSession = saved.agentSession
     },
     failed: (value) => {
       failed = value
@@ -46,6 +53,12 @@ function fixture(store = new MemoryTranscriptStore(), storage = disk(), id = pro
     },
     set messages(value: readonly ChatMessage[]) {
       messages = value
+    },
+    get agentSession() {
+      return agentSession
+    },
+    set agentSession(value: AgentChatSession | undefined) {
+      agentSession = value
     },
     get failed() {
       return failed
@@ -254,6 +267,87 @@ it("refuses a stale save after another writer resets the project", async () => {
   await f.history.save()
   expect(f.failed).toBe(true)
   expect((await f.store.load(projectId))?.entries).toEqual([])
+})
+
+it.each(["new chat", "reset"] as const)(
+  "keeps a stale owner's messages and session on retry after another client's %s",
+  async (operation) => {
+    const first = fixture()
+    await first.history.ready
+    first.messages = [message("Conversation A")]
+    first.agentSession = {
+      agent: { command: "/fixture/acp", args: [] },
+      sessionId: "session-a",
+    }
+    await first.history.save()
+    const originalIdentity = (await first.store.load(projectId))?.conversationId
+    const stale = fixture(new MemoryTranscriptStore(first.store), first.storage)
+    await stale.history.ready
+    expect(stale.agentSession).toEqual(first.agentSession)
+    expect(
+      await (operation === "reset"
+        ? first.history.reset()
+        : first.history.switchConversation(null)),
+    ).toBe(true)
+    first.messages = []
+    first.agentSession = undefined
+    const blank = await first.store.load(projectId)
+    expect(blank?.conversationId).toBeDefined()
+    expect(blank?.conversationId).not.toBe(originalIdentity)
+    stale.messages = [...stale.messages, message("Unsaved continuation of A")]
+    const local = [...stale.messages]
+    const localSession = stale.agentSession
+    await stale.history.save()
+    expect(stale.failed).toBe(true)
+    await stale.history.retry()
+    expect(stale.failed).toBe(true)
+    expect(stale.messages).toEqual(local)
+    expect(stale.agentSession).toEqual(localSession)
+    expect(await first.store.load(projectId)).toEqual(blank)
+
+    first.messages = [message("Conversation B")]
+    first.agentSession = {
+      agent: { command: "/fixture/acp", args: [] },
+      sessionId: "session-b",
+    }
+    await first.history.save()
+    const active = await first.store.load(projectId)
+    const archives = await first.store.listArchives(projectId)
+    await stale.history.retry()
+    await stale.history.save()
+    expect(stale.failed).toBe(true)
+    expect(stale.messages).toEqual(local)
+    expect(stale.agentSession).toEqual(localSession)
+    expect(await first.store.load(projectId)).toEqual(active)
+    expect(await first.store.listArchives(projectId)).toEqual(archives)
+    expect(stale.store.patches).toHaveLength(0)
+  },
+)
+
+it("recovers a same-conversation revision conflict across separate clients", async () => {
+  const first = fixture()
+  await first.history.ready
+  first.messages = [message("Shared conversation")]
+  await first.history.save()
+  const stale = fixture(new MemoryTranscriptStore(first.store), first.storage)
+  await stale.history.ready
+  const identity = (await first.store.load(projectId))?.conversationId
+  if (!identity) throw new Error("Expected a persisted conversation identity")
+  first.messages = [...first.messages, message("Other client's message")]
+  await first.history.save()
+  stale.messages = [...stale.messages, message("Local continuation")]
+  await stale.history.save()
+  expect(stale.failed).toBe(true)
+  await stale.history.retry()
+  expect(stale.failed).toBe(false)
+  expect(stale.messages.map(({ text }) => text)).toEqual([
+    "Other client's message",
+    "Shared conversation",
+    "Local continuation",
+  ])
+  const saved = await loadChatHistory(projectId, first.storage, first.store)
+  expect(saved.messages).toEqual([...stale.messages])
+  expect(saved.conversationId).toBe(identity)
 })
 
 it.each(["role", "identity", "session"] as const)(

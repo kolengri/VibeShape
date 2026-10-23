@@ -37,6 +37,7 @@ export function createChatHistoryCoordinator(options: {
 }) {
   const store = options.store ?? createChatHistoryStore()
   let revision = 0
+  let conversationId: string | undefined
   let persisted: readonly ChatMessage[] = []
   let loaded = false
   let loadFailed = false
@@ -46,10 +47,13 @@ export function createChatHistoryCoordinator(options: {
   let resetting = false
   let running: Promise<void> = Promise.resolve()
   const restore = (saved: Awaited<ReturnType<typeof loadChatHistory>>) => {
+    if (conversationId !== undefined && saved.conversationId !== conversationId)
+      throw new Error("The active conversation changed in another writer.")
     const current = options.current()
     const liveIds = new Set(current.messages.map(({ id }) => id))
     const removedIds = new Set(persisted.filter(({ id }) => !liveIds.has(id)).map(({ id }) => id))
     revision = saved.revision
+    conversationId = saved.conversationId
     persisted = saved.messages
     loaded = true
     loadFailed = false
@@ -119,11 +123,13 @@ export function createChatHistoryCoordinator(options: {
     await running
     try {
       if (!loaded || loadFailed) throw new Error("Transcript storage is unavailable.")
-      revision = await serialize(store, options.projectId, () =>
+      const saved = await serialize(store, options.projectId, () =>
         store.reset(options.projectId, revision, () => {
           if (!isCurrent()) throw new Error("The transcript reset was superseded.")
         }),
       )
+      revision = saved.revision
+      conversationId = saved.conversationId ?? options.projectId
       persisted = []
       dirty = false
       options.storage.removeItem(legacyChatHistoryKey(options.projectId))
@@ -181,6 +187,7 @@ export function createChatHistoryCoordinator(options: {
           ),
         )
         revision = saved.revision
+        conversationId = saved.conversationId ?? options.projectId
         persisted = saved.messages
         epoch += 1
         dirty = false

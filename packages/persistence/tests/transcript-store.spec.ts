@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test"
+import type { AgentChatSession, ChatMessage } from "../../../apps/web/src/assistant/chat-history"
+import type * as CoordinatorModule from "../../../apps/web/src/assistant/chat-history-coordinator"
 import type * as TranscriptModule from "../src/transcript-store"
 
 const modulePath = `/@fs${new URL("../src/transcript-store.ts", import.meta.url).pathname}`
+const coordinatorPath = `/@fs${new URL("../../../apps/web/src/assistant/chat-history-coordinator.ts", import.meta.url).pathname}`
 const projectId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac"
 const otherProjectId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ad"
 
@@ -64,7 +67,15 @@ test("migrates v1 transcripts without loss and preserves archives across reopen"
       try {
         const migrated = await store.load(projectId)
         const migrationPreserved =
-          JSON.stringify(migrated) === JSON.stringify({ revision: 9, session, entries })
+          JSON.stringify(migrated) ===
+          JSON.stringify({ revision: 9, conversationId: projectId, session, entries })
+        const secondDatabase = new TranscriptDatabase(name)
+        const secondIdentity = (await new IndexedDbTranscriptStore(secondDatabase).load(projectId))
+          ?.conversationId
+        secondDatabase.close()
+        const legacyHeadUnchanged =
+          JSON.stringify(await database.heads.get(projectId)) ===
+          JSON.stringify({ version: 1, projectId, revision: 9, session })
         const initiallyEmpty = await store.listArchives(projectId)
         const blank = await store.switchConversation(projectId, 9, null, "Original prompt")
         const [archive] = await store.listArchives(projectId)
@@ -77,14 +88,21 @@ test("migrates v1 transcripts without loss and preserves archives across reopen"
         const restored = await store.switchConversation(projectId, 10, archive.id, "Unused")
         return {
           migrationPreserved,
+          legacyHeadUnchanged,
+          clientsAgreeOnLegacyIdentity: secondIdentity === projectId,
           initiallyEmpty,
           schemaVersion: database.verno,
           blankRevision: blank.revision,
           reopenedBlank,
+          blankIdentityPreserved:
+            blank.conversationId !== projectId &&
+            reopenedBlank?.conversationId === blank.conversationId,
+          archiveIdentity: archive.id,
           archivePreserved: JSON.stringify(reopenedArchives) === JSON.stringify([archive]),
           restoredEntries: JSON.stringify(restored.entries) === JSON.stringify(entries),
           restoredSession: restored.session,
           restoredRevision: restored.revision,
+          restoredIdentity: restored.conversationId,
           remainingArchives: await store.listArchives(projectId),
         }
       } finally {
@@ -95,10 +113,14 @@ test("migrates v1 transcripts without loss and preserves archives across reopen"
   )
   expect(report).toEqual({
     migrationPreserved: true,
+    legacyHeadUnchanged: true,
+    clientsAgreeOnLegacyIdentity: true,
     initiallyEmpty: [],
     schemaVersion: 2,
     blankRevision: 10,
-    reopenedBlank: { revision: 10, entries: [] },
+    reopenedBlank: { revision: 10, conversationId: expect.any(String), entries: [] },
+    blankIdentityPreserved: true,
+    archiveIdentity: projectId,
     archivePreserved: true,
     restoredEntries: true,
     restoredSession: {
@@ -107,6 +129,7 @@ test("migrates v1 transcripts without loss and preserves archives across reopen"
       context: [1, true, null],
     },
     restoredRevision: 11,
+    restoredIdentity: projectId,
     remainingArchives: [],
   })
 })
@@ -141,9 +164,18 @@ test("exchanges inactive snapshots, isolates projects, and retains reset tombsto
         const [otherArchive] = await store.listArchives(otherProjectId)
         if (!otherArchive) throw new Error("Expected the other project's archive")
         const otherBefore = await store.load(otherProjectId)
-        await store.switchConversation(projectId, 1, null, "First prompt")
+        const secondBlank = await store.switchConversation(projectId, 1, null, "First prompt")
+        // Pre-identity archives already have unique IDs and need no record rewrite on load.
+        const [legacyArchive] = await database.archives.toArray()
+        if (!legacyArchive) throw new Error("Expected a legacy archive fixture")
+        const legacyId = crypto.randomUUID()
+        await database.archives.delete([projectId, legacyArchive.id])
+        await database.archives.add({ ...legacyArchive, id: legacyId })
+        const legacyBefore = JSON.stringify(await database.archives.toArray())
         const [firstArchive] = await store.listArchives(projectId)
         if (!firstArchive) throw new Error("Expected the first archive")
+        const legacyArchiveUnchanged =
+          JSON.stringify(await database.archives.toArray()) === legacyBefore
         await store.commit({
           projectId,
           expectedRevision: 2,
@@ -151,6 +183,7 @@ test("exchanges inactive snapshots, isolates projects, and retains reset tombsto
           deletedIds: [],
           session: { sessionId: "second" },
         })
+        const secondActive = await store.load(projectId)
         const crossProjectRejected = await store
           .switchConversation(projectId, 3, otherArchive.id, "Second prompt")
           .then(
@@ -173,12 +206,16 @@ test("exchanges inactive snapshots, isolates projects, and retains reset tombsto
           "First again",
         )
         const [firstAgain] = await store.listArchives(projectId)
-        const resetRevision = await store.reset(projectId, 5)
+        const reset = await store.reset(projectId, 5)
         const tombstone = await store.load(projectId)
         const archivesAfterReset = await store.listArchives(projectId)
-        await store.switchConversation(projectId, 6, null, "Empty")
+        const empty = await store.switchConversation(projectId, 6, null, "Empty")
         return {
           missing,
+          legacyArchiveUnchanged,
+          legacyIdentityAdopted: selected.conversationId === legacyId,
+          normalCommitPreservedIdentity:
+            secondActive?.conversationId === secondBlank.conversationId,
           crossProjectRejected,
           selected: {
             revision: selected.revision,
@@ -192,10 +229,13 @@ test("exchanges inactive snapshots, isolates projects, and retains reset tombsto
             values: selectedSecond.entries.map((e) => e.value),
             session: selectedSecond.session,
           },
-          freshArchiveId: firstAgain?.id !== firstArchive.id,
+          stableArchiveId: firstAgain?.id === firstArchive.id,
           firstAgainTitle: firstAgain?.title,
-          resetRevision,
+          resetRevision: reset.revision,
           tombstone,
+          resetChangedIdentity: reset.conversationId !== selectedSecond.conversationId,
+          resetResultMatchesHead: JSON.stringify(reset) === JSON.stringify(tombstone),
+          emptyChatChangedIdentity: empty.conversationId !== tombstone?.conversationId,
           resetPreservedArchive:
             JSON.stringify(archivesAfterReset) === JSON.stringify([firstAgain]),
           blankDidNotArchive:
@@ -215,6 +255,9 @@ test("exchanges inactive snapshots, isolates projects, and retains reset tombsto
   )
   expect(report).toEqual({
     missing: null,
+    legacyArchiveUnchanged: true,
+    legacyIdentityAdopted: true,
+    normalCommitPreservedIdentity: true,
     crossProjectRejected: true,
     selected: { revision: 4, values: [{ text: "First prompt" }], session: { sessionId: "first" } },
     outgoingTitle: "Second prompt",
@@ -224,10 +267,13 @@ test("exchanges inactive snapshots, isolates projects, and retains reset tombsto
       values: [{ text: "Second prompt" }],
       session: { sessionId: "second" },
     },
-    freshArchiveId: true,
+    stableArchiveId: true,
     firstAgainTitle: "First again",
     resetRevision: 6,
-    tombstone: { revision: 6, entries: [] },
+    tombstone: { revision: 6, conversationId: expect.any(String), entries: [] },
+    resetChangedIdentity: true,
+    resetResultMatchesHead: true,
+    emptyChatChangedIdentity: true,
     resetPreservedArchive: true,
     blankDidNotArchive: true,
     otherUnchanged: true,
@@ -588,4 +634,119 @@ test("serializes a competing commit and conversation switch at the project revis
       archivedValues: [],
     },
   ]).toContainEqual(report)
+})
+
+test("fences cross-conversation retries across IndexedDB clients and recovers the original identity", async ({
+  page,
+}) => {
+  const report = await page.evaluate(
+    async ({ path, coordinatorPath, projectId }) => {
+      const { TranscriptDatabase, IndexedDbTranscriptStore }: typeof TranscriptModule =
+        await import(path)
+      const { createChatHistoryCoordinator }: typeof CoordinatorModule = await import(
+        coordinatorPath
+      )
+      const database = new TranscriptDatabase(`transcript-identity-${crypto.randomUUID()}`)
+      const secondDatabase = new TranscriptDatabase(database.name)
+      const firstStore = new IndexedDbTranscriptStore(database)
+      const secondStore = new IndexedDbTranscriptStore(secondDatabase)
+      function client(store: TranscriptModule.TranscriptStore) {
+        const state: {
+          messages: readonly ChatMessage[]
+          agentSession?: AgentChatSession | undefined
+        } = { messages: [] }
+        let failed = false
+        const history = createChatHistoryCoordinator({
+          projectId,
+          store,
+          storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+          current: () => state,
+          restored: (saved) => {
+            state.messages = saved.messages
+            state.agentSession = saved.agentSession
+          },
+          failed: (value) => {
+            failed = value
+          },
+        })
+        return {
+          state,
+          history,
+          get failed() {
+            return failed
+          },
+        }
+      }
+      const message = (text: string): ChatMessage => ({
+        id: crypto.randomUUID(),
+        role: "user",
+        text,
+      })
+      try {
+        const first = client(firstStore)
+        await first.history.ready
+        first.state.messages = [message("Conversation A")]
+        first.state.agentSession = {
+          agent: { command: "/fixture/acp", args: [] },
+          sessionId: "session-a",
+        }
+        await first.history.save()
+        const stale = client(secondStore)
+        await stale.history.ready
+        if (!(await first.history.switchConversation(null))) throw new Error("Switch failed")
+        first.state.messages = [message("Conversation B")]
+        first.state.agentSession = {
+          agent: { command: "/fixture/acp", args: [] },
+          sessionId: "session-b",
+        }
+        await first.history.save()
+        const activeBefore = JSON.stringify(await firstStore.load(projectId))
+        const archivesBefore = JSON.stringify(await database.archives.toArray())
+        stale.state.messages = [...stale.state.messages, message("Local A continuation")]
+        const localBefore = JSON.stringify(stale.state)
+        await stale.history.save()
+        const staleSaveFailed = stale.failed
+        await stale.history.retry()
+        await stale.history.flush()
+        const rejected = {
+          staleSaveFailed,
+          retryFailed: stale.failed,
+          localUnchanged: JSON.stringify(stale.state) === localBefore,
+          activeUnchanged: JSON.stringify(await firstStore.load(projectId)) === activeBefore,
+          archivesUnchanged: JSON.stringify(await database.archives.toArray()) === archivesBefore,
+        }
+        const [archive] = await firstStore.listArchives(projectId)
+        if (!archive || !(await first.history.switchConversation(archive.id)))
+          throw new Error("Original conversation could not be reactivated")
+        await stale.history.retry()
+        const recovered = await secondStore.load(projectId)
+        return {
+          ...rejected,
+          recovered: !stale.failed,
+          recoveredIdentity: recovered?.conversationId,
+          recoveredMessages: stale.state.messages.map(({ text }) => text),
+          recoveredSession: stale.state.agentSession?.sessionId,
+          savedMatchesLocal:
+            JSON.stringify(recovered?.entries.map(({ value }) => value)) ===
+            JSON.stringify(stale.state.messages),
+        }
+      } finally {
+        secondDatabase.close()
+        await database.delete()
+      }
+    },
+    { path: modulePath, coordinatorPath, projectId },
+  )
+  expect(report).toEqual({
+    staleSaveFailed: true,
+    retryFailed: true,
+    localUnchanged: true,
+    activeUnchanged: true,
+    archivesUnchanged: true,
+    recovered: true,
+    recoveredIdentity: projectId,
+    recoveredMessages: ["Conversation A", "Local A continuation"],
+    recoveredSession: "session-a",
+    savedMatchesLocal: true,
+  })
 })

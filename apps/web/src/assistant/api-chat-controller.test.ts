@@ -146,6 +146,59 @@ async function delayedHistoryRetry() {
 }
 
 describe("browser API project chat", () => {
+  it("blocks checkpoint operations throughout a delayed conversation switch and releases the lock", async () => {
+    const storage = disk(),
+      model = checkpointFixture()
+    const chat = createApiChatController({
+      projectId,
+      storage,
+      fetch: async () => completion("Saved reply"),
+      createTools: tools,
+      checkpointHost: () => model.host,
+    })
+    await chat.connect(configuration)
+    expect(await chat.send("Archived conversation")).toBe(true)
+    await idle(chat)
+    await chat.reset()
+    const target = chat.getSnapshot().previousChats[0]
+    if (!target) throw new Error("Expected an archived conversation")
+    expect(
+      await chat.applyDraft(async () => {
+        model.save()
+        return true
+      }),
+    ).toBe(true)
+    expect(chat.getSnapshot().canUndoAgentChanges).toBe(true)
+    let release = () => {}
+    historyStoreFor(storage).resetGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const switching = chat.openChat(target.id)
+    expect(chat.getSnapshot().switchingChat).toBe(true)
+    expect(await chat.undoAgentChanges()).toBe(false)
+    expect(await chat.viewBefore()).toBe(false)
+    let applied = false
+    expect(
+      await chat.applyDraft(async () => {
+        applied = true
+        return true
+      }),
+    ).toBe(false)
+    expect(applied).toBe(false)
+    expect(model.restores).toEqual([])
+    expect(model.previews).toEqual([])
+    release()
+    expect(await switching).toBe(true)
+    expect(chat.getSnapshot().switchingChat).toBe(false)
+    expect(chat.getSnapshot().messages[0]?.text).toBe("Archived conversation")
+    expect(
+      await chat.applyDraft(async () => {
+        model.save()
+        return true
+      }),
+    ).toBe(true)
+    chat.dispose()
+  })
   it("applies an idle draft through the existing checkpoint without sending an API prompt", async () => {
     const model = checkpointFixture()
     const api = deferredApiRequests()

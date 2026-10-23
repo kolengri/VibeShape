@@ -576,17 +576,18 @@ export function createApiChatController(options: ApiChatOptions) {
     },
     cancel,
     async undoAgentChanges() {
-      if (active) return false
+      if (active || state.switchingChat) return false
       return checkpoints?.undo() ?? false
     },
     async applyDraft(operation: () => Promise<boolean>) {
-      if (disposed || active || state.busy || queued.length || !checkpoints) return false
+      if (disposed || active || state.busy || state.switchingChat || queued.length || !checkpoints)
+        return false
       const applied = await checkpoints.applyDraft(operation)
       drainQueue()
       return applied
     },
     async viewBefore() {
-      if (active) return false
+      if (active || state.switchingChat) return false
       return checkpoints?.viewBefore() ?? false
     },
     async reset() {

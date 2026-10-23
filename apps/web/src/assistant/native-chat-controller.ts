@@ -1383,13 +1383,15 @@ export function createNativeChatController({
     },
     steerQueued,
     async undoAgentChanges() {
-      if (state.busy || promptInFlight || steering || activeControl) return false
+      if (state.busy || state.switchingChat || promptInFlight || steering || activeControl)
+        return false
       return checkpoints?.undo() ?? false
     },
     async applyDraft(operation: () => Promise<boolean>) {
       if (
         disposed ||
         state.busy ||
+        state.switchingChat ||
         promptInFlight ||
         steering ||
         activeControl ||
@@ -1402,7 +1404,8 @@ export function createNativeChatController({
       return applied
     },
     async viewBefore() {
-      if (state.busy || promptInFlight || steering || activeControl) return false
+      if (state.busy || state.switchingChat || promptInFlight || steering || activeControl)
+        return false
       return checkpoints?.viewBefore() ?? false
     },
     removeQueued(id: string) {

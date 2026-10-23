@@ -89,6 +89,35 @@ afterEach(() => {
 })
 
 describe("assistant transcript and composer", () => {
+  it("disables checkpoint and Apply controls while conversation history is switching", async () => {
+    const apply = vi.fn(async () => true),
+      undo = vi.fn(async () => true),
+      before = vi.fn(async () => true)
+    const props: Partial<PanelProps> = {
+      historyBusy: true,
+      canUndoAgentChanges: true,
+      onUndoAgentChanges: undo,
+      onViewBefore: before,
+      onApplyDraft: async (operation) => operation(),
+      draftDisplay: {
+        mode: "changes",
+        onChange: () => {},
+        application: { status: "ready", diagnostic: null, onApply: apply },
+      },
+    }
+    const view = render(panel(props))
+    for (const name of ["Undo agent changes", "View before", "Confirm changes"]) {
+      const button = screen.getByRole("button", { name })
+      expect(button.hasAttribute("disabled")).toBe(true)
+      await userEvent.click(button)
+    }
+    expect(apply).not.toHaveBeenCalled()
+    expect(undo).not.toHaveBeenCalled()
+    expect(before).not.toHaveBeenCalled()
+    view.rerender(panel({ ...props, historyBusy: false }))
+    for (const name of ["Undo agent changes", "View before", "Confirm changes"])
+      expect(screen.getByRole("button", { name }).hasAttribute("disabled")).toBe(false)
+  })
   it("opens previous project chats from the header and disables switching while work is active", async () => {
     const onOpenChat = vi.fn(async () => true)
     const previousChats = [{ id: "previous", title: "Removable lid", updatedAt: 1 }]

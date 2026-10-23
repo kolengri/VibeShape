@@ -25,6 +25,7 @@ export const createChatHistoryStore = () => (localStore ??= new IndexedDbTranscr
 export function parseChatHistory(saved: TranscriptSnapshot) {
   return {
     revision: saved.revision,
+    conversationId: z.uuid().optional().parse(saved.conversationId),
     messages: saved.entries.map(({ id, value }) => {
       const message = chatMessageSchema.parse(value)
       if (message.id !== id) throw new Error("The stored transcript message identity is invalid.")
@@ -41,9 +42,11 @@ export async function loadChatHistory(
   store: ChatHistoryStore,
 ) {
   const saved = await store.load(projectId)
-  if (saved) return parseChatHistory(saved)
+  if (saved)
+    return { ...parseChatHistory(saved), conversationId: saved.conversationId ?? projectId }
   const raw = storage.getItem(legacyChatHistoryKey(projectId))
-  if (raw === null) return { revision: 0, messages: [], agentSession: undefined }
+  if (raw === null)
+    return { revision: 0, conversationId: projectId, messages: [], agentSession: undefined }
   const legacy = legacyChatHistorySchema.parse(JSON.parse(raw))
   if (legacy.projectId !== projectId) throw new Error("The legacy transcript project is invalid.")
   const revision = await store.commit({
@@ -58,7 +61,12 @@ export async function loadChatHistory(
     session: legacy.agentSession ? storedJson(legacy.agentSession) : undefined,
   })
   storage.removeItem(legacyChatHistoryKey(projectId))
-  return { revision, messages: legacy.messages, agentSession: legacy.agentSession }
+  return {
+    revision,
+    conversationId: projectId,
+    messages: legacy.messages,
+    agentSession: legacy.agentSession,
+  }
 }
 
 export async function writeChatHistory(

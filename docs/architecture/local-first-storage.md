@@ -105,14 +105,24 @@ See [ADR-0125](../adr/0125-durable-saved-change-navigation.md) for durable navig
 
 `vibeshape-assistant-transcripts` is a separate version-2 IndexedDB/Dexie database; it does not change
 CAD authority or the document database schema. Project heads carry a compare-and-swap revision and
-optional validated provider-session metadata. Message rows are keyed by project and message ID,
+an optional UUID conversation identity alongside validated provider-session metadata. Legacy heads
+without that identity use the project ID deterministically, without writing during load. Normal
+commits preserve the identity; reset and new chat create fresh identities, including empty chats.
+Reset returns its committed snapshot so its owner adopts the new identity atomically. Archived row
+IDs are stable conversation identities: archiving retains the active identity, and activation adopts
+the selected archive's ID, including for preexisting archives. No table migration or archive rewrite
+is required. Message rows are keyed by project and message ID,
 ordered by a project/position index and read in pages of 64. Incremental message upserts/deletions
 and the head advance share one transaction. Storage contains validated display text, tool targets,
 status and attachment names, not attachment bytes, credentials or raw provider payloads.
 
 The asynchronous chat coordinator merges restored records with messages already received in memory,
 serializes writes and reset, and fences superseded/disposed owners. A failed write leaves the prior
-committed transcript intact and exposes retry without truncating live conversation. Legacy local
+committed transcript intact and exposes retry without truncating live conversation. Transcript
+restoration and retry merge only within the loaded conversation identity. If another client has
+changed the active identity, retry keeps the failure indication and local messages/session intact,
+without advancing its revision or changing either persisted conversation. Same-conversation revision
+conflicts can still reload and merge. Legacy local
 storage version-1 history is deleted only after successful import. Reset retains a revisioned empty
 head and affects only the selected project. Transcript history is independent of the API request's
 bounded context; older stored messages are not silently deleted to satisfy provider request limits.

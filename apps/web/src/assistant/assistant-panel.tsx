@@ -164,6 +164,7 @@ function AssistantDraftActions({
         commands={"kind" in review.input ? [] : review.input.commands}
         t={reviewTranslations}
         applyLabel={t("applyChanges")}
+        ready={!busy}
       />
     )
   if (!application || application.status === "error" || !onApplyDraft) return null
@@ -199,6 +200,7 @@ function AssistantDraftCaption({ display }: { display: AssistantPanelProps["draf
 function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
   const t = useTranslations("app.assistant")
   const display = props.draftDisplay
+  const busy = Boolean(props.busy || props.historyBusy)
   const applying =
     display?.application?.status === "applying" || display?.review?.status === "applying"
   return (
@@ -209,17 +211,13 @@ function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
       <AssistantDraftCaption display={display} />
       <div className="flex flex-wrap items-center gap-1">
         <AssistantDraftModes display={display} />
-        <AssistantDraftActions
-          display={display}
-          busy={props.busy}
-          onApplyDraft={props.onApplyDraft}
-        />
+        <AssistantDraftActions display={display} busy={busy} onApplyDraft={props.onApplyDraft} />
         {applying && (
           <p role="status" className="text-xs text-muted-foreground">
             {t("applyingChanges")}
           </p>
         )}
-        <AssistantCheckpointActions checkpoint={{ ...props, busy: props.busy || applying }} />
+        <AssistantCheckpointActions checkpoint={{ ...props, busy: busy || applying }} />
       </div>
     </section>
   )
