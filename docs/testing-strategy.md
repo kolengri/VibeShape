@@ -61,7 +61,7 @@ changed-file selection, coverage, reporters, name/shard filters, bail thresholds
 and other partial/output-producing options bypass the cache. Reporter filenames
 and DOM preloads retain the native launcher contract.
 
-CI runs static/integration checks and the `--group=node` and `--group=dom`
+Hosted CI runs static/integration checks and the `--group=node` and `--group=dom`
 corpora in independent jobs. GitHub-hosted CI splits Node tests across three native
 Bun `--shard=i/3` jobs, balanced using the committed `scripts/unit-test-timings.json`.
 Every shard is required; none may be skipped after another fails. Shards bypass
@@ -72,19 +72,21 @@ environment and does not select a Node.js runtime. Group selection preserves com
 combining it with a path/name/shard filter still disables caching. Omitting `--group`
 retains the local Node-then-DOM run. Hosted CI test jobs use their available CPUs and
 publish the shard, runner/architecture, worker count, and elapsed duration. The `Fast PR checks` aggregate
-fails when any required job fails, is canceled, or is skipped. Typecheck results
+requires complete verification on the selected executor; a failed or canceled required job cannot pass. Typecheck results
 and their incremental outputs travel in one Turbo archive.
 
-Hybrid execution (`VIBESHAPE_CI_HYBRID=true` or the CI workflow's `hybrid` input)
-keeps the three-shard matrix and requests Node shard `3/3` from the private Mac broker.
-All public jobs still run on GitHub-hosted runners. A hosted waiter accepts only the owner's
-result for its exact checkout SHA, run ID, and attempt; failure, stale identity, cancellation,
-and timeout cannot become a successful shard. The broker independently verifies the current
-owner-authored, same-repository PR or owner-triggered current branch, including synthetic merge
-parents. Fork and non-owner PRs stay entirely hosted. Static checks, the other two Node shards,
-DOM, the aggregate, and publication remain hosted. The retired `VIBESHAPE_CI_RUNNER` selector
-has no effect. See [Mac CI isolation](github-runner.md) for the disposable VM boundary,
-activation, queueing, and offline limitations.
+Owner Mac preference (`VIBESHAPE_CI_HYBRID=true` or the CI workflow's `hybrid`
+input) runs all CI checks and both complete unit-test groups inside a private,
+disposable Mac-hosted Linux VM. It does not shard the local corpus. A hosted waiter
+accepts only the owner's complete-CI result for the exact checkout SHA, run ID,
+and attempt. The broker independently verifies the current owner-authored,
+same-repository PR or owner-triggered current branch, including synthetic merge
+parents. Forks and non-owner PRs stay entirely hosted. If the Mac is unavailable
+or stops sending heartbeats for 90 seconds, the same run executes the full hosted
+checks and test matrix. Repository verification failures remain terminal. The
+aggregate permits skipped hosted jobs only after complete Mac success. Publication
+and desktop releases remain hosted. The retired `VIBESHAPE_CI_RUNNER` selector has
+no effect. See [Mac CI isolation](github-runner.md) for trust boundaries and fallback.
 
 The cache hashes workspace dependency closure, undeclared relative imports and
 literal assets, actual ignored/untracked fixtures and WASM, installed dependency

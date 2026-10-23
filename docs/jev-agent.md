@@ -57,8 +57,13 @@ that the provider account has access to that model.
 
 Switching agents discards the previous agent's saved resume record and starts a fresh native
 session, including when returning from Jev to an earlier agent. Reconnecting to the same agent
-retains its advertised session-resume behavior. Provider-scoped model settings remain separate
-from session history and are preserved when switching back.
+first attempts its advertised session-resume behavior. If Codex definitively reports that the saved
+thread has no rollout, explicit **Connect agent** starts a new agent session while preserving the
+project and display transcript. Automatic recovery stops with a specific error instead of replacing
+missing context or replaying a prompt; other startup errors do not trigger this fallback.
+Provider-scoped model settings remain separate from session history and are preserved when switching
+back. Follow the [native session recovery procedure](desktop-macos.md#recover-an-unavailable-native-agent-session)
+when the ACP test succeeds but the project chat cannot connect.
 
 Choose **Argument model → Codex / Claude Code / OpenCode** to reuse the installed ACP agent's
 existing sign-in. A previously saved custom ACP command is also available and selected when switching

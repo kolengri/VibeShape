@@ -46,6 +46,7 @@ mock.module("../document/document-controller", () => ({
 const { act, cleanup, render, screen, waitFor } = await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
+const { ActivityProvider, useBlockingActivity } = await import("@vibeshape/ui/components/activity")
 const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
 const { ApplicationNoticesProvider } = await import("../shell/application-notices")
 const { i18n } = await import("../i18n")
@@ -90,6 +91,9 @@ function Shell({ onOpenProjects }: { onOpenProjects?: () => Promise<ProjectSwitc
     </div>
   )
 }
+function BlockingStatus() {
+  return <output aria-label="Blocking project activity">{useBlockingActivity() ?? "none"}</output>
+}
 function setup(
   open = [firstId, secondId],
   onOpenProjects?: () => Promise<ProjectSwitchResult>,
@@ -103,19 +107,22 @@ function setup(
     }),
   )
   return render(
-    <I18nProvider i18n={i18n} initialLocale="en">
-      <TooltipProvider>
-        <ProjectTabsProvider>
-          {withNotices ? (
-            <ApplicationNoticesProvider>
+    <ActivityProvider>
+      <BlockingStatus />
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <TooltipProvider>
+          <ProjectTabsProvider>
+            {withNotices ? (
+              <ApplicationNoticesProvider>
+                <Shell {...(onOpenProjects ? { onOpenProjects } : {})} />
+              </ApplicationNoticesProvider>
+            ) : (
               <Shell {...(onOpenProjects ? { onOpenProjects } : {})} />
-            </ApplicationNoticesProvider>
-          ) : (
-            <Shell {...(onOpenProjects ? { onOpenProjects } : {})} />
-          )}
-        </ProjectTabsProvider>
-      </TooltipProvider>
-    </I18nProvider>,
+            )}
+          </ProjectTabsProvider>
+        </TooltipProvider>
+      </I18nProvider>
+    </ActivityProvider>,
   )
 }
 function projectList() {
@@ -224,6 +231,91 @@ describe("project tabs", () => {
       expect(action.getAttribute("aria-label")).toBe(name)
       expect(action.hasAttribute("title")).toBe(false)
     }
+  })
+
+  it.each(["inactive", "active", "last"])(
+    "blocks during %s tab disposal and releases on settlement",
+    async (kind) => {
+      let finish!: (result: ProjectSwitchResult) => void
+      actions.close.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          }),
+      )
+      setup(kind === "last" ? [firstId] : [firstId, secondId])
+      await userEvent.click(
+        await screen.findByRole("button", {
+          name: kind === "inactive" ? "Close Enclosure" : "Close Bracket",
+        }),
+      )
+      await waitFor(() => expect(actions.close).toHaveBeenCalledTimes(1))
+      expect(screen.getByLabelText("Blocking project activity").textContent).toBe(
+        "Closing project…",
+      )
+      if (kind === "last") expect(screen.getByRole("main", { name: "Projects" })).toBeTruthy()
+      await act(async () => {
+        finish({ ok: true })
+      })
+      await waitFor(() =>
+        expect(screen.getByLabelText("Blocking project activity").textContent).toBe("none"),
+      )
+    },
+  )
+
+  it("keeps progressive selection non-blocking until an active close starts disposal", async () => {
+    let finish!: (result: ProjectSwitchResult) => void
+    actions.activate.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    setup()
+    await userEvent.click(await screen.findByRole("button", { name: "Close Bracket" }))
+    expect(actions.activate).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText("Blocking project activity").textContent).toBe("none")
+    await act(async () => {
+      finish({ ok: false, diagnostic: { code: "project-open-failed", message: "Unavailable." } })
+    })
+    expect(actions.close).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("Blocking project activity").textContent).toBe("none")
+  })
+
+  it("returns to a loaded tab while another project is refining and ignores its late failure", async () => {
+    let finish!: (result: ProjectSwitchResult) => void
+    actions.activate.mockImplementationOnce(() => {
+      publish({
+        ...state(secondId),
+        status: "loading",
+        openingProjectId: documentIdSchema.parse(secondId),
+      })
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    })
+    setup()
+    await userEvent.click(await screen.findByRole("tab", { name: "Enclosure" }))
+    const source = screen.getByRole("tab", { name: "Bracket" })
+    expect((source as HTMLButtonElement).disabled).toBe(false)
+    expect(
+      (screen.getByRole("button", { name: "Close Enclosure" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    await userEvent.click(source)
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Bracket" }).getAttribute("aria-selected")).toBe(
+        "true",
+      ),
+    )
+    expect(actions.activate).toHaveBeenLastCalledWith(firstId, undefined)
+    await act(async () => {
+      finish({ ok: false, diagnostic: { code: "cancelled", message: "Superseded." } })
+    })
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.getByRole("tab", { name: "Bracket" }).getAttribute("aria-selected")).toBe("true")
+    expect(
+      (screen.getByRole("button", { name: "Close Bracket" }) as HTMLButtonElement).disabled,
+    ).toBe(false)
   })
 
   it("closes an inactive tab without changing the current model", async () => {

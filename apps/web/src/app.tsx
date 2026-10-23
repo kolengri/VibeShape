@@ -30,6 +30,7 @@ import {
   addSketch,
   createBrowserSketchConstraintId,
   createBrowserSketchId,
+  type DocumentControllerState,
   getDocumentControllerState,
   redoDocument,
   saveSketchEdits,
@@ -91,7 +92,8 @@ import { PROJECT_EDITOR_PANEL_ID, ProjectTabs, projectTabId } from "./project-ta
 import { ProjectTabsProvider } from "./project-tabs/project-tabs-provider"
 import { ApplicationActivity } from "./shell/application-activity"
 import { ApplicationBar } from "./shell/application-bar"
-import { ApplicationChromeProvider } from "./shell/application-header"
+import { ApplicationChromeProvider, ApplicationHeader } from "./shell/application-header"
+import { ApplicationMenu } from "./shell/application-menu"
 import { currentAuthoredParts, selectedAuthoredBody } from "./shell/authored-tree-state"
 import { AutomationConnectionsProvider, AutomationEditorScope } from "./shell/automation-status"
 import { EditorCommandPalette, useCommandPaletteFocus } from "./shell/command-palette"
@@ -100,6 +102,7 @@ import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-wor
 import { historyInsertionAnchor, historyInsertionContext } from "./shell/history-insertion-context"
 import { historyFeatureForEditing, historySketchForEditing } from "./shell/history-repair-context"
 import { partForModelBody } from "./shell/model-tree-selection"
+import { ProjectLoadingProgress } from "./shell/project-loading-progress"
 import { ShortcutHelpDialog, useShortcutHelp } from "./shell/shortcut-help-dialog"
 import { SketchNavigationControl } from "./shell/sketch-navigation-control"
 import {
@@ -1239,6 +1242,48 @@ function EditorApplication({
   )
 }
 
+function ProjectApplication({ controller }: { controller: DocumentControllerState }) {
+  return controller.status === "ready" || controller.openingProjectId ? (
+    <EditorSessionProvider
+      key={controller.report?.snapshot.id}
+      documentId={controller.report?.snapshot.id}
+    >
+      <AutomationEditorScope />
+      <ViewportCaptureProvider>
+        <AssistantPresentationProvider>
+          {controller.report ? (
+            <EditorApplication controller={controller} />
+          ) : (
+            <OpeningProjectApplication controller={controller} />
+          )}
+        </AssistantPresentationProvider>
+      </ViewportCaptureProvider>
+    </EditorSessionProvider>
+  ) : (
+    <DocumentProjectPage controller={controller} />
+  )
+}
+
+function OpeningProjectApplication({ controller }: { controller: DocumentControllerState }) {
+  return (
+    <main className="flex h-svh min-h-0 flex-col bg-background text-foreground">
+      <ApplicationHeader busy>
+        <ApplicationMenu controller={controller} scope="library" busy />
+        <LocalizedProjectTabs controller={controller} />
+      </ApplicationHeader>
+      <div className="flex min-h-0 flex-1">
+        <aside aria-hidden="true" className="hidden w-60 shrink-0 border-r bg-card p-4 md:block">
+          <div className="h-4 w-24 rounded bg-muted" />
+          <div className="mt-4 h-3 w-36 rounded bg-muted" />
+        </aside>
+        <section className="relative min-w-0 flex-1" aria-busy="true">
+          <ProjectLoadingProgress />
+        </section>
+      </div>
+    </main>
+  )
+}
+
 export function App() {
   const t = useTranslations("app.shell.applicationBar")
   const controller = useDocumentController(t("untitledProject"))
@@ -1255,21 +1300,7 @@ export function App() {
             <AutomationConnectionsProvider controller={controller}>
               <ApiAssistantProvider>
                 <ProjectTabsProvider>
-                  {controller.status === "ready" ? (
-                    <EditorSessionProvider
-                      key={controller.report?.snapshot.id ?? "loading"}
-                      documentId={controller.report?.snapshot.id}
-                    >
-                      <AutomationEditorScope />
-                      <ViewportCaptureProvider>
-                        <AssistantPresentationProvider>
-                          <EditorApplication controller={controller} />
-                        </AssistantPresentationProvider>
-                      </ViewportCaptureProvider>
-                    </EditorSessionProvider>
-                  ) : (
-                    <DocumentProjectPage controller={controller} />
-                  )}
+                  <ProjectApplication controller={controller} />
                 </ProjectTabsProvider>
               </ApiAssistantProvider>
             </AutomationConnectionsProvider>

@@ -16,6 +16,8 @@ type StorageLike = Pick<Storage, "getItem" | "setItem">
 type ProjectTabsState = {
   tabs: readonly ProjectTab[]
   pending: boolean
+  closing: boolean
+  pendingProjectId: string | null
   replacingDocumentId: string | null
   storageFailed: boolean
   focusRequested: boolean
@@ -24,8 +26,10 @@ type ProjectTabsState = {
     reconcile: (projects: readonly ProjectTab[], active: ProjectTab) => void
     remove: (documentId: string) => void
     replaceOnActivation: (documentId: string | null) => void
-    beginTransition: () => boolean
-    endTransition: () => void
+    beginTransition: (kind?: "selection" | "close", projectId?: string) => number | null
+    isCurrentTransition: (token: number) => boolean
+    markClosing: (token: number) => void
+    endTransition: (token: number) => void
     requestFocus: () => void
     clearFocus: () => void
   }
@@ -82,9 +86,12 @@ function rememberProject(state: ProjectTabsState, project: ProjectTab) {
 }
 
 export function createProjectTabsStore(storage: StorageLike | null = browserStorage()) {
+  let generation = 0
   const store = createStore<ProjectTabsState>()((set, get) => ({
     ...readTabs(storage),
     pending: false,
+    closing: false,
+    pendingProjectId: null,
     replacingDocumentId: null,
     focusRequested: false,
     actions: {
@@ -104,12 +111,27 @@ export function createProjectTabsStore(storage: StorageLike | null = browserStor
       remove: (documentId) =>
         set((state) => ({ tabs: state.tabs.filter((tab) => tab.documentId !== documentId) })),
       replaceOnActivation: (documentId) => set({ replacingDocumentId: documentId }),
-      beginTransition: () => {
-        if (get().pending) return false
-        set({ pending: true })
-        return true
+      beginTransition: (kind = "selection", projectId) => {
+        const current = get()
+        if (
+          current.pending &&
+          (kind === "close" ||
+            current.closing ||
+            !projectId ||
+            current.pendingProjectId === projectId)
+        )
+          return null
+        const token = ++generation
+        set({ pending: true, closing: kind === "close", pendingProjectId: projectId ?? null })
+        return token
       },
-      endTransition: () => set({ pending: false }),
+      isCurrentTransition: (token) => token === generation,
+      markClosing: (token) => {
+        if (token === generation) set({ closing: true })
+      },
+      endTransition: (token) => {
+        if (token === generation) set({ pending: false, closing: false, pendingProjectId: null })
+      },
       requestFocus: () => set({ focusRequested: true }),
       clearFocus: () => set({ focusRequested: false }),
     },
