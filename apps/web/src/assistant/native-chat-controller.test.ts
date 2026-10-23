@@ -800,6 +800,92 @@ describe("project-scoped agent chat", () => {
     chat.dispose()
   })
 
+  it.each(["setMode", "setModel", "setConfigOption", "authenticate"] as const)(
+    "keeps the conversation and session while %s is pending",
+    async (method) => {
+      const f = fixture(),
+        waiting = deferred()
+      const control = async (): Promise<AssistantResult> => {
+        await waiting.promise
+        return { ok: true, value: { ...f.snapshot(), currentModeId: "selected" } }
+      }
+      const bridge: AssistantBridge = {
+        ...f.bridge,
+        setMode: control,
+        setModel: control,
+        setConfigOption: control,
+        authenticate: control,
+      }
+      const chat = createNativeChatController({ projectId, bridge, storage: storage() })
+      chat.start()
+      try {
+        await chat.connect(agent)
+        await chat.send("Archived conversation")
+        f.finish()
+        await until(() => !chat.getSnapshot().busy)
+        await chat.reset()
+        const target = chat.getSnapshot().previousChats[0]
+        if (!target) throw new Error("Expected an archived conversation")
+        const session = chat.getSnapshot().snapshot?.sessionToken
+        const disconnects = f.disconnected.length
+        const updates: boolean[] = []
+        const unsubscribe = chat.subscribe(() => updates.push(chat.getSnapshot().controlBusy))
+        const pending =
+          method === "setConfigOption" ? chat[method]("reasoning", "high") : chat[method]("choice")
+        expect(chat.getSnapshot().busy).toBe(false)
+        expect(updates.at(-1)).toBe(true)
+        expect(await chat.reset()).toBe(false)
+        expect(await chat.openChat(target.id)).toBe(false)
+        expect(f.disconnected).toHaveLength(disconnects)
+        expect(chat.getSnapshot().snapshot?.sessionToken).toBe(session)
+        expect(chat.getSnapshot().previousChats[0]?.id).toBe(target.id)
+        waiting.resolve()
+        await pending
+        expect(updates.at(-1)).toBe(false)
+        expect(chat.getSnapshot().snapshot?.currentModeId).toBe("selected")
+        expect(await chat.openChat(target.id)).toBe(true)
+        expect(chat.getSnapshot().messages[0]?.text).toBe("Archived conversation")
+        expect(await chat.reset()).toBe(true)
+        unsubscribe()
+      } finally {
+        waiting.resolve()
+        chat.dispose()
+      }
+    },
+  )
+
+  it.each(["failure", "rejection"])(
+    "releases the conversation lock after configuration %s",
+    async (outcome) => {
+      const f = fixture(),
+        waiting = deferred()
+      const bridge: AssistantBridge = {
+        ...f.bridge,
+        async setMode() {
+          await waiting.promise
+          if (outcome === "rejection") throw new Error("Fixture configuration failed")
+          return { ok: false, code: "request-failed" }
+        },
+      }
+      const chat = createNativeChatController({ projectId, bridge, storage: storage() })
+      chat.start()
+      try {
+        await chat.connect(agent)
+        const pending = chat.setMode("choice")
+        expect(chat.getSnapshot().controlBusy).toBe(true)
+        expect(await chat.reset()).toBe(false)
+        waiting.resolve()
+        await pending
+        expect(chat.getSnapshot().controlBusy).toBe(false)
+        expect(chat.getSnapshot().error).toBe("request-failed")
+        expect(await chat.reset()).toBe(true)
+      } finally {
+        waiting.resolve()
+        chat.dispose()
+      }
+    },
+  )
+
   it("queues Send until an in-flight configuration change completes without showing inference busy", async () => {
     const f = fixture(),
       chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })
@@ -808,11 +894,13 @@ describe("project-scoped agent chat", () => {
     const release = f.deferConfiguration()
     const configuring = chat.setConfigOption("reasoning", "high")
     expect(chat.getSnapshot().busy).toBe(false)
+    expect(chat.getSnapshot().controlBusy).toBe(true)
     expect(await chat.send("Use the chosen reasoning effort")).toBe(true)
     expect(f.prompts).toHaveLength(0)
     expect(chat.getSnapshot().queuedMessages).toHaveLength(1)
     release()
     await configuring
+    expect(chat.getSnapshot().controlBusy).toBe(false)
     await until(() => f.prompts.length === 1)
     expect(f.promptedConfigurations).toEqual(["high"])
     expect(chat.getSnapshot().queuedMessages).toHaveLength(0)

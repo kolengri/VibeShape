@@ -67,6 +67,7 @@ export function createNativeProjectChatRegistry(
         const state = controller.getSnapshot()
         return (
           state.busy ||
+          state.controlBusy ||
           state.switchingChat ||
           state.connecting ||
           state.undoingAgentChanges ||
@@ -97,6 +98,7 @@ export function createNativeProjectChatRegistry(
         const state = chat.getSnapshot()
         return (
           state.busy ||
+          state.controlBusy ||
           state.switchingChat ||
           state.connecting ||
           state.undoingAgentChanges ||
