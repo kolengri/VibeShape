@@ -1270,12 +1270,12 @@ describe("ModelTree History presentation", () => {
       const link = screen.getByRole("button", { name: "Source region 1 from Profile" })
       expect(link.textContent).toBe(kind === "legacy" ? "Profile" : "Profile1")
       await user.hover(link)
-      expect(onPreview).toHaveBeenLastCalledWith(profile)
+      await waitFor(() => expect(onPreview).toHaveBeenLastCalledWith(profile))
       await user.unhover(link)
       expect(onPreview).toHaveBeenLastCalledWith(null)
       if (kind === "multi") {
         await user.hover(screen.getByRole("button", { name: "Source region 2 from Profile" }))
-        expect(onPreview).toHaveBeenLastCalledWith(secondProfile)
+        await waitFor(() => expect(onPreview).toHaveBeenLastCalledWith(secondProfile))
       }
       const sketchRow = timeline().getByRole("treeitem", { name: "Edit Profile" })
       expect(
@@ -2018,7 +2018,7 @@ describe("ModelTree selection", () => {
     const featureItem = screen.getByRole("treeitem", { name: "Box 1" })
 
     await user.hover(featureItem)
-    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(featureId)
+    await waitFor(() => expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(featureId))
     await user.unhover(featureItem)
     expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(null)
 
@@ -2108,6 +2108,139 @@ describe("ModelTree selection", () => {
         name: "Replace the missing support for Face sketch",
       }),
     ).toBeNull()
+  })
+})
+
+describe("History pointer preselection", () => {
+  afterEach(() => vi.useRealTimers())
+
+  it("debounces source profiles and cancels their previews on scroll without delaying focus", async () => {
+    vi.useFakeTimers()
+    const profile = {
+      schemaVersion: 0 as const,
+      sketchId,
+      outerBoundaryEntityIds: [sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2901")],
+      holeBoundaryEntityIds: [],
+    }
+    const extrusion = featureRecordSchema.parse({
+      ...feature,
+      type: legacyExtrusionFeatureType.type,
+      parameters: {
+        profile,
+        distance: createLengthQuantity(10),
+        symmetric: false,
+        operation: "new",
+      },
+    })
+    const onPreview = vi.fn()
+    const onFeaturePreselectionChange = vi.fn()
+    renderTree({
+      controller: {
+        ...controller,
+        report: {
+          ...controllerReport,
+          snapshot: { ...controllerReport.snapshot, features: [extrusion] },
+        },
+      } as DocumentControllerState,
+      onSourceProfilePreview: onPreview,
+      onFeaturePreselectionChange,
+    })
+    const link = timeline().getByRole("button", { name: "Source region 1 from Profile" })
+    fireEvent.pointerOver(link, { pointerType: "mouse", buttons: 0 })
+    await act(async () => vi.advanceTimersByTimeAsync(100))
+    fireEvent.scroll(link.closest("[data-history-track]") as Element)
+    await act(async () => vi.advanceTimersByTimeAsync(300))
+    expect(onPreview).not.toHaveBeenCalled()
+    fireEvent.pointerMove(link, { pointerType: "mouse", buttons: 0 })
+    await act(async () => vi.advanceTimersByTimeAsync(200))
+    expect(onPreview).toHaveBeenLastCalledWith(profile)
+    expect(onFeaturePreselectionChange).not.toHaveBeenCalledWith(featureId)
+    fireEvent.wheel(link)
+    expect(onPreview).toHaveBeenLastCalledWith(null)
+    link.focus()
+    expect(onPreview).toHaveBeenLastCalledWith(profile)
+  })
+
+  it("requires a dwell, cancels transient rows, and keeps keyboard focus immediate", async () => {
+    vi.useFakeTimers()
+    const onFeaturePreselectionChange = vi.fn()
+    const onSketchPreselectionChange = vi.fn()
+    renderTree({ onFeaturePreselectionChange, onSketchPreselectionChange })
+    const featureItem = timeline().getByRole("treeitem", { name: "Box 1" })
+    const sketchItem = timeline().getByRole("treeitem", { name: "Edit Profile" })
+
+    fireEvent.pointerOver(featureItem, { pointerType: "mouse", buttons: 0 })
+    await act(async () => vi.advanceTimersByTimeAsync(100))
+    expect(onFeaturePreselectionChange).not.toHaveBeenCalled()
+    fireEvent.pointerOut(featureItem, { relatedTarget: sketchItem })
+    fireEvent.pointerOver(sketchItem, { pointerType: "mouse", buttons: 0 })
+    await act(async () => vi.advanceTimersByTimeAsync(199))
+    expect(onSketchPreselectionChange).not.toHaveBeenCalled()
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(onSketchPreselectionChange).toHaveBeenLastCalledWith(sketchId)
+    expect(onFeaturePreselectionChange).not.toHaveBeenCalledWith(featureId)
+    fireEvent.pointerOut(sketchItem)
+    expect(onSketchPreselectionChange).toHaveBeenLastCalledWith(null)
+
+    fireEvent.pointerOver(sketchItem, { pointerType: "mouse", buttons: 0 })
+    featureItem.focus()
+    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(featureId)
+    await act(async () => vi.advanceTimersByTimeAsync(300))
+    expect(onSketchPreselectionChange).not.toHaveBeenLastCalledWith(sketchId)
+  })
+
+  it.each(["wheel", "scroll"] as const)(
+    "cancels pending and active previews during %s, including nested scroll containers",
+    async (gesture) => {
+      vi.useFakeTimers()
+      const onFeaturePreselectionChange = vi.fn()
+      renderTree({ onFeaturePreselectionChange })
+      const featureItem = timeline().getByRole("treeitem", { name: "Box 1" })
+      const track = featureItem.closest("[data-history-track]")
+      if (!track) throw new Error("Expected the History scroll track")
+
+      fireEvent.pointerOver(featureItem, { pointerType: "mouse", buttons: 0 })
+      await act(async () => vi.advanceTimersByTimeAsync(100))
+      fireEvent[gesture](track)
+      fireEvent.pointerMove(featureItem, { pointerType: "mouse", buttons: 0 })
+      await act(async () => vi.advanceTimersByTimeAsync(500))
+      expect(onFeaturePreselectionChange).not.toHaveBeenCalled()
+
+      fireEvent.pointerMove(featureItem, { pointerType: "mouse", buttons: 0 })
+      await act(async () => vi.advanceTimersByTimeAsync(200))
+      expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(featureId)
+      fireEvent[gesture](track)
+      expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(null)
+      onFeaturePreselectionChange.mockClear()
+      for (let index = 0; index < 4; index++) {
+        await act(async () => vi.advanceTimersByTimeAsync(100))
+        fireEvent[gesture](track)
+        fireEvent.pointerOver(featureItem, { pointerType: "mouse", buttons: 0 })
+      }
+      await act(async () => vi.advanceTimersByTimeAsync(500))
+      expect(onFeaturePreselectionChange).not.toHaveBeenCalled()
+    },
+  )
+
+  it("discards pending work on cancellation, pointer drag, revision change, and unmount", async () => {
+    vi.useFakeTimers()
+    const onFeaturePreselectionChange = vi.fn()
+    const tree = renderTree({ onFeaturePreselectionChange })
+    const featureItem = timeline().getByRole("treeitem", { name: "Box 1" })
+    for (const cancel of [fireEvent.pointerCancel, fireEvent.pointerDown]) {
+      fireEvent.pointerOver(featureItem, { pointerType: "mouse", buttons: 0 })
+      cancel(featureItem)
+      await act(async () => vi.advanceTimersByTimeAsync(300))
+      expect(onFeaturePreselectionChange).not.toHaveBeenCalled()
+    }
+    fireEvent.pointerOver(featureItem, { pointerType: "mouse", buttons: 0 })
+    tree.rerenderTree({ controller: suppressedController })
+    await act(async () => vi.advanceTimersByTimeAsync(300))
+    expect(onFeaturePreselectionChange).not.toHaveBeenCalled()
+    fireEvent.pointerMove(featureItem, { pointerType: "mouse", buttons: 0 })
+    tree.unmount()
+    await act(async () => vi.advanceTimersByTimeAsync(300))
+    expect(onFeaturePreselectionChange).not.toHaveBeenCalled()
   })
 })
 
