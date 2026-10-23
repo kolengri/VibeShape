@@ -2255,6 +2255,7 @@
         "title": "Connect an MCP client",
         "description": "Attach an AI client to this open app. Local MCP access to the current project starts automatically. Model changes require Apply unless you choose auto-apply. Stop AI keeps access stopped until you restart it here.",
         "stopped": "Local MCP access is stopped. Restart it to share the current project with the connected client.",
+        "connectionFailed": "Local MCP connection failed. Check the connected client, then restart local MCP to share the current project.",
         "restart": "Restart local MCP",
         "restartFailed": "Local MCP access could not restart. Check the connected client and try again.",
         "configuration": "MCP client configuration",

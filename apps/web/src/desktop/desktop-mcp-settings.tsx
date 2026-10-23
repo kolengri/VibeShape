@@ -77,7 +77,9 @@ function DesktopMcpRestart() {
     return null
   return (
     <>
-      <p className="text-sm text-muted-foreground">{t("stopped")}</p>
+      <p className="text-sm text-muted-foreground">
+        {t(external.recoveryBlocked ? "stopped" : "connectionFailed")}
+      </p>
       <Button
         type="button"
         variant="outline"

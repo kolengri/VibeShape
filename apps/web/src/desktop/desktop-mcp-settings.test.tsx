@@ -1,7 +1,16 @@
 import "../../../../tests/unit/support/dom"
-import { afterEach, expect, it } from "bun:test"
+import { afterEach, beforeEach, expect, it, mock } from "bun:test"
 import type { DesktopHostBridge, DesktopMcpSetup } from "@vibeshape/automation-api/desktop-host"
 import { vi } from "../../../../tests/unit/support/bun-test"
+import type { createLocalAutomationConnection } from "../automation/local-automation-connection"
+
+type LocalSnapshot = ReturnType<ReturnType<typeof createLocalAutomationConnection>["getSnapshot"]>
+let external: LocalSnapshot | null = null
+const restart = vi.fn(async () => true)
+mock.module("../shell/automation-status", () => ({
+  useOptionalAutomationConnections: () =>
+    external ? { external, externalConnection: { enable: restart } } : null,
+}))
 
 const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
@@ -35,6 +44,10 @@ const host: DesktopHostBridge = {
   async editText() {},
 }
 const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard")
+beforeEach(() => {
+  external = null
+  restart.mockClear()
+})
 afterEach(() => {
   cleanup()
   delete window.vibeshapeDesktop
@@ -82,4 +95,39 @@ it("keeps native setup unavailable in a normal web browser", () => {
   renderSettings()
   expect(screen.queryByRole("textbox")).toBeNull()
   expect(screen.queryByRole("button", { name: "Copy configuration" })).toBeNull()
+})
+
+it.each([
+  { recoveryBlocked: false, recoveryFailed: true },
+  { recoveryBlocked: true, recoveryFailed: false },
+  { recoveryBlocked: true, recoveryFailed: true },
+])("distinguishes failed access from intentional Stop: %j", async (recovery) => {
+  window.vibeshapeDesktop = host
+  external = {
+    available: true,
+    connected: false,
+    recovering: false,
+    autoApply: false,
+    projectManagement: false,
+    defaultAccess: true,
+    busy: false,
+    client: { name: "Test CAD client", version: "1" },
+    error: recovery.recoveryFailed,
+    ...recovery,
+  }
+  await act(async () => {
+    renderSettings()
+  })
+  const stopped =
+    "Local MCP access is stopped. Restart it to share the current project with the connected client."
+  const failed =
+    "Local MCP connection failed. Check the connected client, then restart local MCP to share the current project."
+  expect(screen.queryByText(recovery.recoveryBlocked ? stopped : failed)).not.toBeNull()
+  expect(screen.queryByText(recovery.recoveryBlocked ? failed : stopped)).toBeNull()
+  expect(screen.queryByRole("button", { name: "Enable AI session" })).toBeNull()
+  expect(restart).not.toHaveBeenCalled()
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Restart local MCP" }))
+  })
+  expect(restart).toHaveBeenCalledTimes(1)
 })

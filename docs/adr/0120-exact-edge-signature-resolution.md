@@ -1,6 +1,7 @@
 # ADR-0120: Exact Edge Signature Resolution
 
 - Status: Accepted
+- Face-resolution scope superseded by [ADR-0131](0131-exact-face-signature-resolution.md).
 - Date: 2026-10-21
 - Extends: [ADR-0003](0003-parametric-dag-and-toporef.md) and [ADR-0040](0040-selected-edge-treatments.md)
 

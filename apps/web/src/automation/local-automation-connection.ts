@@ -493,11 +493,12 @@ export function createLocalAutomationConnection(
     if (saved) retryRestore()
     else {
       clearResume()
-      connectDiscoveredClient(value.client)
+      connectDiscoveredClient(value)
     }
   }
-  function connectDiscoveredClient(client: LocalConnection["client"] | null) {
-    if (automaticConnectionBlocked || !client) return
+  function connectDiscoveredClient({ client, paired }: z.infer<typeof localStatusSchema>) {
+    // Navigation may discover the old active pairing before its revoke completes.
+    if (automaticConnectionBlocked || !client || paired) return
     if (automaticProjectAccess) {
       if (accessRecoveryPending || accessRecoveryFailed) return
       void enable(client)

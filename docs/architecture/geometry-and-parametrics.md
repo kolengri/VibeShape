@@ -203,7 +203,7 @@ mesh-dependent bounds are not a reason to relax the resolver's confidence margin
 1. Filter candidates by topology kind.
 2. Resolve an exact semantic role. A missing or duplicated authoritative role returns `missing` or `ambiguous`; it never falls through to a similar shape.
 3. Resolve an exact immediate lineage token. A missing token returns `missing`; multiple descendants are ranked only within that lineage set.
-4. Before approximate edge ranking, an edge without an explicit intent hint resolves one identical full geometric/adjacency signature within the eligible candidate set. Duplicate identical signatures remain ambiguous. This does not override authoritative semantic roles or missing lineage. See [ADR-0120](../adr/0120-exact-edge-signature-resolution.md).
+4. Before approximate edge or face ranking, a reference without an explicit intent hint resolves one identical full geometric/adjacency signature within the eligible candidate set. Duplicate identical signatures remain ambiguous. This does not override authoritative semantic roles, lineage or output-body scope. See [ADR-0120](../adr/0120-exact-edge-signature-resolution.md) and [ADR-0131](../adr/0131-exact-face-signature-resolution.md).
 5. Otherwise filter by geometry class and score measure, centroid or intent point, direction, bounds, boundary count, and adjacency.
 6. If one candidate passes the versioned score threshold and confidence margin, return `resolved`.
 7. If candidates are close, return `ambiguous`; never evaluate downstream features silently.
