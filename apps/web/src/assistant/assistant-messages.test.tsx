@@ -15,6 +15,7 @@ import type { ChatMessage } from "./chat-history"
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.scrollTo = vi.fn()
 })
 afterEach(cleanup)
 
@@ -138,11 +139,11 @@ describe("assistant Markdown", () => {
     })
     log.scrollTop = 40
     fireEvent.scroll(log)
-    const scrollCalls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    const scrollCalls = vi.mocked(HTMLElement.prototype.scrollTo).mock.calls.length
     rendered.rerender(view([{ id: "reply", role: "assistant", text: "Wall **2.0 mm**." }]))
     expect(screen.getByText("2.0 mm", { selector: "strong" })).toBeTruthy()
     expect(log.scrollTop).toBe(40)
-    expect(vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls).toHaveLength(scrollCalls)
+    expect(vi.mocked(HTMLElement.prototype.scrollTo).mock.calls).toHaveLength(scrollCalls)
   })
 
   it("keeps footnote references, labels, and return links inside their own reply", () => {
@@ -445,7 +446,7 @@ describe("assistant tool messages", () => {
       screen.getAllByRole("region", { name: "Output" }).map((output) => output.textContent),
     ).toEqual(["OutputFirst resource", "OutputSecond resource", "OutputThird resource"])
     expect(log.scrollTop).toBe(100)
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(1)
   })
 
   it.each(["", "  \n\t ", "{}", " { } ", "[]", "null", '"  "'])(
@@ -566,12 +567,13 @@ describe("assistant tool messages", () => {
     log.scrollTop = 100
     fireEvent.scroll(log)
     rerender(view([user, { ...reply, text: "Updated first answer" }]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(1)
 
     const next: ChatMessage = { id: "next-turn", role: "user", text: "Next question" }
     rerender(view([user, reply, next]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenLastCalledWith({ block: "end" })
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(2)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenLastCalledWith({ top: 900 })
+    expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled()
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(2)
     const conversation: ChatMessage[] = [
       user,
       reply,
@@ -579,12 +581,12 @@ describe("assistant tool messages", () => {
       { id: "next-reply", role: "assistant", text: "Reply" },
     ]
     rerender(view(conversation))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(3)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(3)
     log.scrollTop = 100
     fireEvent.scroll(log)
-    const calls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    const calls = vi.mocked(HTMLElement.prototype.scrollTo).mock.calls.length
     rerender(view(structuredClone(conversation)))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(calls)
   })
 
   it("follows updates only while pinned and resumes after returning to the bottom", () => {
@@ -595,22 +597,22 @@ describe("assistant tool messages", () => {
       clientHeight: { configurable: true, value: 300 },
       scrollHeight: { configurable: true, value: 900 },
     })
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(1)
     log.scrollTop = 600
     fireEvent.scroll(log)
     rerender(view([{ ...message, text: "First update" }]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(2)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(2)
 
     log.scrollTop = 100
     fireEvent.scroll(log)
     rerender(view([{ ...message, text: "Reading older messages" }]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(2)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(2)
     expect(log.scrollTop).toBe(100)
 
     log.scrollTop = 560
     fireEvent.scroll(log)
     rerender(view([{ ...message, text: "Near the bottom again" }]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(3)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(3)
   })
 
   it.each([600, 560, 100])(
@@ -632,7 +634,7 @@ describe("assistant tool messages", () => {
       })
       log.scrollTop = scrollTop
       fireEvent.scroll(log)
-      const initial = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+      const initial = vi.mocked(HTMLElement.prototype.scrollTo).mock.calls.length
       for (const footer of [
         null,
         <button key="current" type="button">
@@ -647,10 +649,10 @@ describe("assistant tool messages", () => {
       ]) {
         rendered.rerender(view([structuredClone(message)], undefined, footer))
         expect(log.scrollTop).toBe(scrollTop)
-        expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(initial)
+        expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(initial)
       }
       rendered.rerender(view([{ ...message, text: "The next streamed reply." }]))
-      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(
+      expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(
         initial + (scrollTop >= 552 ? 1 : 0),
       )
     },
@@ -665,14 +667,14 @@ describe("assistant tool messages", () => {
     }
     const rendered = render(view([tool]))
     rendered.rerender(view([structuredClone(tool)]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(1)
     rendered.rerender(view([{ ...tool, tool: { ...tool.tool, status: "completed" } }]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(2)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(2)
     const reply: ChatMessage = { id: "reply", role: "assistant", text: "Ready." }
     rendered.rerender(view([tool, reply]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(3)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(3)
     rendered.rerender(view([tool, { ...reply, attachments: [{ id: "file", name: "Part.step" }] }]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(4)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(4)
   })
 
   it("does not jump to streaming updates after expanded tool content moves the bottom away", () => {
@@ -698,7 +700,7 @@ describe("assistant tool messages", () => {
       fireEvent(details, new Event("toggle", { bubbles: true }))
     }
     rerender(view([{ ...tool, text: "An updated long detailed report" }]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(1)
     expect(log.scrollTop).toBe(600)
   })
 
@@ -731,13 +733,13 @@ describe("assistant tool messages", () => {
       fireEvent(technical, new Event("toggle", { bubbles: true }))
     }
     rerender(view([{ ...tool, text: "An updated detailed report" }]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(1)
     expect(log.scrollTop).toBe(600)
     expect(output.scrollTop).toBe(100)
     output.scrollTop = 500
     fireEvent.scroll(output)
     rerender(view([{ ...tool, text: "At the end of the report" }]))
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(2)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(2)
   })
 
   it.each([600, 100])(
@@ -774,13 +776,13 @@ describe("assistant tool messages", () => {
       technical.open = false
       fireEvent(technical, new Event("toggle"))
       rerender(view([{ ...tool, text: "Reading tool output" }]))
-      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+      expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(1)
       expect(output.scrollTop).toBe(100)
 
       details.open = false
       fireEvent(details, new Event("toggle"))
       rerender(view([{ ...tool, text: "The next assistant update" }]))
-      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(scrollTop === 600 ? 2 : 1)
+      expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(scrollTop === 600 ? 2 : 1)
       expect(log.scrollTop).toBe(scrollTop)
     },
   )

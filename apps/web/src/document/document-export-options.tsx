@@ -25,6 +25,7 @@ export function DocumentExportFormatField({
   return (
     <NativeSelectField
       label={t("formatLabel")}
+      description={t(formatDescriptions[format])}
       value={format}
       disabled={disabled}
       onChange={(event) => {
@@ -79,13 +80,9 @@ export function DocumentExportOptions({
           meshOnly={meshOnly || destination === "slicer"}
         />
       </div>
-      <p className="text-xs text-muted-foreground">
-        {t(
-          destination === "slicer" && !native
-            ? "destination.desktopRequired"
-            : formatDescriptions[format],
-        )}
-      </p>
+      {destination === "slicer" && !native ? (
+        <p className="text-xs text-muted-foreground">{t("destination.desktopRequired")}</p>
+      ) : null}
     </>
   )
 }

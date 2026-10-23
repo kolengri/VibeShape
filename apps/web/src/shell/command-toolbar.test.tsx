@@ -135,7 +135,7 @@ function measuredToolbar(initialWidth: number) {
     } else if (this.hasAttribute("data-fit-icon")) measured = 32
     else if (this.hasAttribute("data-fit-leading")) measured = 104
     else if (this.hasAttribute("data-fit-separator")) measured = 9
-    else if (this.hasAttribute("data-fit-menu")) measured = 32
+    else if (this.hasAttribute("data-fit-menu")) measured = 40
     return measured === undefined ? original.call(this) : new DOMRect(0, 0, measured, 32)
   })
   return {

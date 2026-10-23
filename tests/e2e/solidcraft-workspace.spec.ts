@@ -73,12 +73,12 @@ test("separates objects and feature order while preserving the mounted task and 
   await history.getByRole("treeitem", { name: "Box 1", exact: true }).click()
   const form = page.getByRole("form", { name: "Edit box", exact: true })
   await form.getByRole("combobox", { name: "Width", exact: true }).fill("27 mm")
-  const disclosure = history.getByRole("treeitem", { name: "History", exact: true })
+  const disclosure = history.getByRole("button", { name: "Details", exact: true })
   await disclosure.click()
-  await expect(disclosure).toHaveAttribute("aria-expanded", "false")
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true")
   await expect(form.getByRole("combobox", { name: "Width", exact: true })).toHaveValue("27 mm")
   await disclosure.click()
-  await history.getByRole("button", { name: "Details", exact: true }).click()
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false")
   await expect(form.getByRole("combobox", { name: "Width", exact: true })).toHaveValue("27 mm")
   expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
     true,
@@ -133,7 +133,7 @@ for (const theme of ["dark", "light"] as const) {
 
     // A 512 CSS px viewport exercises the effective width of 1024 px at 200% zoom.
     await page.setViewportSize({ width: 512, height: 360 })
-    await expect(history.getByRole("treeitem", { name: "History", exact: true })).toBeVisible()
+    await expect(history.getByRole("button", { name: "Details", exact: true })).toBeVisible()
     await expect(history.getByRole("button", { name: "Details", exact: true })).toBeInViewport()
     expect(
       await page.locator("html").evaluate((element) => element.scrollWidth <= element.clientWidth),

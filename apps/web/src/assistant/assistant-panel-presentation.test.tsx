@@ -11,6 +11,7 @@ import { AssistantPanel } from "./assistant-panel"
 type PanelProps = ComponentProps<typeof AssistantPanel>
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.scrollTo = vi.fn()
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -135,7 +136,7 @@ it("retains mounted composer, pending attachments, transcript expansion, setting
   })
   log.scrollTop = 120
   fireEvent.scroll(log)
-  const scrollCalls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+  const scrollCalls = vi.mocked(HTMLElement.prototype.scrollTo).mock.calls.length
   fireEvent.change(screen.getByLabelText("Attach files", { selector: "input" }), {
     target: { files: [new File(["pending"], "pending.txt", { type: "text/plain" })] },
   })
@@ -185,7 +186,7 @@ it("retains mounted composer, pending attachments, transcript expansion, setting
   )
   expect(details?.open).toBe(true)
   expect(log.scrollTop).toBe(120)
-  expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(scrollCalls)
+  expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(scrollCalls)
   expect(screen.getByRole("button", { name: "Remove pending.txt" })).toBeTruthy()
   await userEvent.click(screen.getByRole("button", { name: "AI settings" }))
   expect(screen.getByRole("textbox", { name: "Connection label" })).toBe(setting)

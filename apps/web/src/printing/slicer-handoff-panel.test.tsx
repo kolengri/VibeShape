@@ -12,6 +12,7 @@ mock.module("../document/document-export", () => ({
   downloadDocumentExport: downloaded,
 }))
 const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { i18n } = await import("../i18n")
 const { createTestBrowserStorage } = await import("../test-support/browser-storage")
@@ -61,11 +62,13 @@ function panel(applicationNotices = false) {
   )
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      {applicationNotices ? (
-        <ApplicationNoticesProvider>{content}</ApplicationNoticesProvider>
-      ) : (
-        content
-      )}
+      <TooltipProvider>
+        {applicationNotices ? (
+          <ApplicationNoticesProvider>{content}</ApplicationNoticesProvider>
+        ) : (
+          content
+        )}
+      </TooltipProvider>
     </I18nProvider>,
   )
 }

@@ -255,12 +255,26 @@ export function HistoryNavigationControls() {
           <TooltipContent>{t(key)}</TooltipContent>
         </Tooltip>
       ))}
-      <span
-        role="status"
-        aria-label={t("positionLabel")}
-        className="max-w-32 truncate text-xs tabular-nums text-muted-foreground"
-      >
-        {t("positionDescription", { position: value, total: items.length, item: description })}
+      <span role="status" aria-label={t("positionLabel")}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="xs"
+              variant="ghost"
+              className="tabular-nums text-muted-foreground"
+              aria-label={t("positionDescription", {
+                position: value,
+                total: items.length,
+                item: description,
+              })}
+            >
+              {t("positionCount", { position: value, total: items.length })}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t("positionDescription", { position: value, total: items.length, item: description })}
+          </TooltipContent>
+        </Tooltip>
       </span>
       {failed ? (
         <Alert>{t("failed")}</Alert>

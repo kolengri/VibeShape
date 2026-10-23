@@ -84,12 +84,12 @@ The target reference canvas is 1440 × 900 CSS px. The supported authoring minim
 | Model tree | 240 px | 200–420 px |
 | Task panel | 320 px | 280–480 px |
 | Side-panel background opacity | 94% | 0–100%; compact sheets stay opaque |
-| Feature history | One bottom row on desktop, with 32 px operation slots | Collapsible; narrow layouts wrap controls above the track; Details reveals labels and source links |
+| Feature history | One bottom row on desktop, with 32 px operation slots | One arrow switches between icons and detailed rows; metadata uses tooltips; source links stay interactive |
 | Panel resize hit area | 8 px | At least 8 px |
 
 Panel sizes are user preferences. Double-clicking a separator restores its default. The thin resize separator has an equivalent keyboard path plus labeled collapse and reset controls that meet the pointer-target baseline. Edge pixels are never the only resize or restore mechanism.
 
-A horizontally scrolling sketch toolbar MUST reserve native scrollbar space below its 32 × 32 px controls. The scrollbar MUST NOT reduce their usable pointer area. The shell row and docked assistant offset MUST share the same toolbar-height value so the extra lane cannot overlap the workspace or chat.
+A horizontally scrolling sketch toolbar MUST reserve native scrollbar space below its 32 × 32 px controls. The scrollbar MUST NOT reduce their usable pointer area. The shell row MUST reserve the same toolbar-height value so the extra lane cannot overlap the workspace. AI chat floats above the editor beneath the application bar without resizing its regions.
 
 Long tool menus (more than six commands) open a bounded searchable picker. Search retains command
 icons, shortcuts, active state, and prerequisite explanations, and invokes the same registered

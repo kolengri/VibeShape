@@ -1,16 +1,25 @@
 import "../../../../../tests/unit/support/dom"
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
 import { modelBodyTopologyEvidenceSchema } from "@vibeshape/domain/model-body-topology"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
 import messages from "../../i18n/messages/en.json"
 import { ShellForm } from "./shell-form"
 import { formatShellMeasurement, type ShellFormMode, shellFormFeature } from "./shell-form-model"
 import type { ShellPickRequest } from "./shell-picking"
+
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
+afterAll(() => vi.unstubAllGlobals())
 
 const sourceId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f7801")
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f7802")
@@ -51,6 +60,9 @@ const mode: ShellFormMode = {
 const copy = {
   ...messages.app.shellOperation,
   submit: messages.app.shellOperation.create,
+  openingCount: ({ selected, total }: { selected: number; total: number }) =>
+    `${selected} / ${total} faces selected`,
+  faceName: ({ number }: { number: number }) => `Face ${number}`,
   face: ({ area, z }: { number: number; area: string; x: string; y: string; z: string }) =>
     `Top face: ${area} mm² at z=${z} mm`,
 }
@@ -59,6 +71,7 @@ function setup(
   source = evidence,
   status: "ready" | "loading" | "error" = "ready",
   pickingRequest: ShellPickRequest | null = null,
+  expandList = true,
 ) {
   const onSave = vi.fn(async (_revision: number, _feature: FeatureRecord) => ({
     ok: true as const,
@@ -68,22 +81,26 @@ function setup(
     onPreviewChange = vi.fn()
   const renderForm = (previewStatus: "ready" | "loading" | "error") => (
     <I18nProvider i18n={i18n} initialLocale="en">
-      <ShellForm
-        baseRevision={7}
-        copy={copy}
-        mode={formMode}
-        evidence={source}
-        variables={[]}
-        onSave={onSave}
-        onSaved={onSaved}
-        onCancel={onCancel}
-        onPreviewChange={onPreviewChange}
-        previewStatus={previewStatus}
-        pickingRequest={pickingRequest}
-      />
+      <TooltipProvider delayDuration={0}>
+        <ShellForm
+          baseRevision={7}
+          copy={copy}
+          mode={formMode}
+          evidence={source}
+          variables={[]}
+          onSave={onSave}
+          onSaved={onSaved}
+          onCancel={onCancel}
+          onPreviewChange={onPreviewChange}
+          previewStatus={previewStatus}
+          pickingRequest={pickingRequest}
+        />
+      </TooltipProvider>
     </I18nProvider>
   )
   const view = render(renderForm(status))
+  const list = view.container.querySelector("details")
+  if (list && expandList) list.open = true
   return {
     ...view,
     onSave,
@@ -292,4 +309,24 @@ describe("Shell form and explicit opening repair", () => {
     })
     expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false)
   })
+})
+
+it("keeps the face list collapsed until requested and reports viewport selections", () => {
+  const { container } = setup(
+    mode,
+    evidence,
+    "ready",
+    {
+      sequence: 1,
+      featureId,
+      sourceContentHash: evidence.contentHash,
+      candidateId: "face:top",
+    },
+    false,
+  )
+  const list = container.querySelector("details")
+  if (!list) throw new Error("Expected the opening face disclosure")
+  expect(list.open).toBe(false)
+  expect(screen.getByText("1 / 1 faces selected")).toBeTruthy()
+  expect((screen.getByRole("checkbox", { hidden: true }) as HTMLInputElement).checked).toBe(true)
 })
