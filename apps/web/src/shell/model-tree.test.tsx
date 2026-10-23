@@ -568,7 +568,7 @@ function timeline() {
   return within(screen.getByRole("region", { name: "Feature history" }))
 }
 
-it("starts the object browser without a redundant heading or project name", () => {
+it("keeps a collapsible object-browser heading without repeating the project name", () => {
   if (!controller.report) throw new Error("Expected a loaded document")
   renderTree({
     controller: {
@@ -579,7 +579,12 @@ it("starts the object browser without a redundant heading or project name", () =
       },
     },
   })
-  expect(browser().queryByRole("heading")).toBeNull()
+  expect(browser().getByRole("heading", { name: "Model tree" })).toBeTruthy()
+  expect(
+    browser()
+      .getByRole("button", { name: "Collapse Model tree window" })
+      .getAttribute("aria-expanded"),
+  ).toBe("true")
   expect(browser().queryByText("Project name belongs in navigation")).toBeNull()
   expect(browser().getByRole("treeitem", { name: "Bodies" }).getAttribute("data-size")).toBe("xs")
   expect(browser().getByRole("treeitem", { name: "Body 1" }).getAttribute("data-size")).toBe("sm")

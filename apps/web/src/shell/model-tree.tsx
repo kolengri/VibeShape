@@ -28,6 +28,7 @@ import {
   SketchIcon,
 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import { WindowHeader, WindowTitle } from "@vibeshape/ui/components/window-header"
 import { cn } from "@vibeshape/ui/lib/cn"
 import {
   type ViewerOriginPlane,
@@ -48,6 +49,11 @@ import {
   useState,
 } from "react"
 import type { SemanticRenameResult } from "../components/semantic-rename-dialog"
+import {
+  useWindowCollapse,
+  WindowCollapseProvider,
+  WindowCollapseTitle,
+} from "../components/window-collapse"
 import type {
   DocumentControllerState,
   DocumentMutationResult,
@@ -2834,24 +2840,42 @@ function modelSearchBodyEntries(props: ModelTreeHistoryBranchProps): ModelBrowse
 }
 
 export function ModelTree(props: ModelTreeProps) {
-  const t = useTranslations("app.shell.modelTree")
-  const browser = useRef<HTMLElement>(null)
-  useEffect(() => {
-    const request = props.revealRequest
-    if (!request || props.surface === "timeline") return
-    const frame = requestAnimationFrame(() => {
-      const target = findModelTreeRow(browser.current, "data-feature-id", request.featureId)
-      target?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
-      target?.querySelector<HTMLElement>('[role="treeitem"]')?.focus()
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [props.revealRequest, props.surface])
-  const report = props.controller.report
+  return (
+    <WindowCollapseProvider>
+      <ModelTreeContent {...props} />
+    </WindowCollapseProvider>
+  )
+}
+
+function useModelBrowserDeletion(props: ModelTreeProps) {
+  const parts = currentAuthoredParts(historyInsertionContext(props.controller))
+  const deleteTargets = (props.modelTreeSelection ?? []).flatMap<HistorySelectionDeleteTarget>(
+    (item) => {
+      if (item.kind !== "body") return [item]
+      const owner = partForModelBody(parts, item)
+      return owner ? [{ kind: "part", id: owner.part.id }] : []
+    },
+  )
+  return useHistorySelectionDelete({
+    controller: props.controller,
+    targets: deleteTargets,
+    disabled: Boolean(
+      props.authoredMetadataBlocked ||
+        props.activeFeatureId ||
+        props.activeSketchId ||
+        deleteTargets.length !== (props.modelTreeSelection?.length ?? 0),
+    ),
+    onDeleted: () => props.onModelTreeSelectionChange?.([]),
+  })
+}
+
+function useModelTreeHistoryView(controller: DocumentControllerState) {
+  const report = controller.report
   const snapshot = report?.snapshot
   const rebuild = report?.rebuild
   const modelReferenceEvidence = rebuild?.ok ? rebuild.response.modelReferenceEvidence : undefined
   const rebuiltResponse = rebuild?.ok ? rebuild.response : undefined
-  const historyView = useMemo(
+  return useMemo(
     () =>
       selectModelTreeHistory(
         {
@@ -2864,26 +2888,27 @@ export function ModelTree(props: ModelTreeProps) {
       ),
     [modelReferenceEvidence, rebuiltResponse, report?.historyItems, snapshot],
   )
+}
+
+function ModelTreeContent(props: ModelTreeProps) {
+  const collapse = useWindowCollapse()
+  const expandWindow = collapse?.expand
+  const t = useTranslations("app.shell.modelTree")
+  const browser = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const request = props.revealRequest
+    if (!request || props.surface === "timeline") return
+    expandWindow?.()
+    const frame = requestAnimationFrame(() => {
+      const target = findModelTreeRow(browser.current, "data-feature-id", request.featureId)
+      target?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+      target?.querySelector<HTMLElement>('[role="treeitem"]')?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [expandWindow, props.revealRequest, props.surface])
+  const historyView = useModelTreeHistoryView(props.controller)
   const selectTreeItem = useModelTreeSelection(props, historyView)
-  const parts = currentAuthoredParts(historyInsertionContext(props.controller))
-  const deleteTargets = (props.modelTreeSelection ?? []).flatMap<HistorySelectionDeleteTarget>(
-    (item) => {
-      if (item.kind !== "body") return [item]
-      const owner = partForModelBody(parts, item)
-      return owner ? [{ kind: "part", id: owner.part.id }] : []
-    },
-  )
-  const deletion = useHistorySelectionDelete({
-    controller: props.controller,
-    targets: deleteTargets,
-    disabled: Boolean(
-      props.authoredMetadataBlocked ||
-        props.activeFeatureId ||
-        props.activeSketchId ||
-        deleteTargets.length !== (props.modelTreeSelection?.length ?? 0),
-    ),
-    onDeleted: () => props.onModelTreeSelectionChange?.([]),
-  })
+  const deletion = useModelBrowserDeletion(props)
   if (props.surface === "timeline") return <ModelTimeline {...props} t={t} view={historyView} />
 
   return (
@@ -2891,9 +2916,20 @@ export function ModelTree(props: ModelTreeProps) {
       ref={browser}
       aria-label={t("ariaLabel")}
       className="flex min-h-0 flex-col overflow-hidden border-r bg-panel"
+      data-window-collapsed={collapse?.collapsed}
       onKeyDown={deletion.onKeyDown}
     >
-      <div data-slot="model-tree-content" className="min-h-0 overflow-auto p-2">
+      <WindowHeader className="gap-1 px-2 py-1">
+        <WindowTitle aria-label={t("ariaLabel")} className="text-sm leading-5">
+          <WindowCollapseTitle>{t("ariaLabel")}</WindowCollapseTitle>
+        </WindowTitle>
+      </WindowHeader>
+      <div
+        data-slot="model-tree-content"
+        id={collapse?.contentId}
+        inert={collapse?.collapsed}
+        className="min-h-0 overflow-auto p-2"
+      >
         <ModelBrowserSearch
           entries={[
             ...modelSearchBodyEntries({ ...props, t, view: historyView }),

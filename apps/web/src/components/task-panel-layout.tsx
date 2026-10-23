@@ -2,6 +2,7 @@ import { cn } from "@vibeshape/ui/lib/cn"
 import { type ComponentProps, createContext, type ReactNode, useContext } from "react"
 import { TaskPanelFooter } from "./task-panel-footer"
 import { TaskPanelHeader } from "./task-panel-header"
+import { useWindowCollapse, WindowCollapseProvider } from "./window-collapse"
 
 const supplementalContent = createContext<{ before: ReactNode; after: ReactNode }>({
   before: null,
@@ -59,7 +60,15 @@ export function TaskPanelSurface({
 }
 
 /** Keeps command identity and lifecycle actions outside the field scrollport, inside the owning form. */
-export function TaskPanelLayout({
+export function TaskPanelLayout(props: Parameters<typeof TaskPanelLayoutContent>[0]) {
+  return (
+    <WindowCollapseProvider>
+      <TaskPanelLayoutContent {...props} />
+    </WindowCollapseProvider>
+  )
+}
+
+function TaskPanelLayoutContent({
   title,
   description,
   instruction,
@@ -79,20 +88,28 @@ export function TaskPanelLayout({
   contentClassName?: string
 }) {
   const supplement = useContext(supplementalContent)
+  const collapse = useWindowCollapse()
   return (
     <div
       data-slot="task-panel-layout"
-      className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", className)}
+      data-window-collapsed={collapse?.collapsed}
+      className={cn(
+        "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+        "[&_[data-slot=input]]:h-7 [&_[data-slot=input]]:px-2 [&_[data-slot=input]]:text-xs",
+        className,
+      )}
     >
       <TaskPanelHeader title={title} description={description} />
       <div
         data-slot="task-panel-content"
+        id={collapse?.contentId}
+        inert={collapse?.collapsed}
         className={cn(
           "min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain",
           contentClassName,
         )}
       >
-        <div className="grid min-w-0 content-start gap-2 p-3">
+        <div className="grid min-w-0 content-start gap-1.5 p-2">
           {instruction ? (
             <p className="break-words text-xs leading-4 text-muted-foreground">{instruction}</p>
           ) : null}

@@ -61,11 +61,16 @@ Model-tree and task windows fit their content height up to the available workspa
 content exceeds that limit, the body scrolls while the heading and lifecycle footer remain visible.
 AI chat overlays the full-size viewport, like the model tree and task panel. Opening or closing
 chat MUST NOT resize, shift, or remount the viewport canvas. On desktop, chat stays anchored to the
-right edge below the application bar; an active task panel opens beside it without moving chat.
+right edge of the workspace, below the command toolbar and above History; an active compact
+parameter window opens beside it without moving chat. Toolbar, History, and status span the full
+workspace width. Opening chat does not reduce the width used to choose the task panel presentation.
 The grid marks left, right, and bottom placement regions, each accepting multiple elements.
 Element settings determine placement: full-height elements take a separate side column, while
 content-sized elements stack by their measured size and continue in another column when necessary.
 Opening, closing, or redistributing elements preserves their mounted content and active drafts.
+Clicking a model-tree, task, or chat heading folds its card to the heading; clicking again restores
+it. The title is a keyboard-operable button with expanded state. Header actions remain independent,
+and folding preserves fields, scroll positions, chat drafts, and connections.
 The toolbar, History, status, and viewport controls remain usable alongside occupied regions.
 Below 640 CSS px, chat uses its configured lower placement. Width preferences and resizing remain
 independent of content height.

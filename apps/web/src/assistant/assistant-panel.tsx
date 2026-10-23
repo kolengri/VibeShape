@@ -29,6 +29,11 @@ import {
 } from "react"
 import { ReviewActions } from "../automation/automation-review-actions"
 import { TaskPanelLifecycleButton } from "../components/task-panel-lifecycle-button"
+import {
+  useWindowCollapse,
+  WindowCollapseProvider,
+  WindowCollapseTitle,
+} from "../components/window-collapse"
 import { useReportApplicationError } from "../shell/application-notices"
 import {
   AssistantComposer,
@@ -246,10 +251,10 @@ function AssistantHeader({
 }) {
   const t = useTranslations("app.assistant")
   return (
-    <WindowHeader>
+    <WindowHeader className="gap-1 px-2 py-1">
       <div className="flex min-w-0 items-start gap-2">
-        <WindowTitle id={titleId} className="flex-1">
-          {t("title")}
+        <WindowTitle id={titleId} aria-label={t("title")} className="flex-1 text-sm leading-5">
+          <WindowCollapseTitle>{t("title")}</WindowCollapseTitle>
         </WindowTitle>
         <div className="flex shrink-0 items-center gap-2">
           {onHistory && (
@@ -458,6 +463,25 @@ function AssistantConversationHeader({
 }
 
 export function AssistantPanel(props: AssistantPanelProps) {
+  return (
+    <WindowCollapseProvider>
+      <AssistantPanelContent {...props} />
+    </WindowCollapseProvider>
+  )
+}
+
+function AssistantReviewControls({ props }: { props: AssistantPanelProps }) {
+  const available =
+    !props.busy ||
+    props.draftDisplay?.review ||
+    props.draftDisplay?.application?.status === "applying"
+  return available && (props.draftDisplay || hasAssistantCheckpoint(props)) ? (
+    <AssistantChangeReview props={props} />
+  ) : null
+}
+
+function AssistantPanelContent(props: AssistantPanelProps) {
+  const collapse = useWindowCollapse()
   const t = useTranslations("app.assistant")
   const titleId = useId()
   const settings = useAssistantSettings(props.open)
@@ -466,6 +490,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
     <TooltipProvider>
       <aside
         hidden={!props.open}
+        data-window-collapsed={collapse?.collapsed}
         className={cn(
           "assistant-panel min-h-0 flex-col border-l bg-panel shadow-lg",
           props.open ? "flex" : "hidden",
@@ -478,38 +503,39 @@ export function AssistantPanel(props: AssistantPanelProps) {
           settings={settings}
           onOpened={() => setDraft({ text: "", attachments: [] })}
         />
-        {(props.configurationRequired ?? !props.canSend) && (
-          <Button size="sm" variant="outline" className="m-3" onClick={settings.show}>
-            {t("configure")}
-          </Button>
-        )}
-        <AssistantPanelMessages
-          open={props.open}
-          messages={props.messages}
-          onHighlight={props.onToolHighlight}
-        />
-        {props.busy && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-muted-foreground"
-          >
-            <AssistantThinkingIcon aria-hidden="true" className="size-4 shrink-0" />
-            <span className="application-wordmark-ink">{t("thinking")}</span>
-          </div>
-        )}
-        {(!props.busy ||
-          props.draftDisplay?.review ||
-          props.draftDisplay?.application?.status === "applying") &&
-        (props.draftDisplay || hasAssistantCheckpoint(props)) ? (
-          <AssistantChangeReview props={props} />
-        ) : null}
-        <AssistantComposer
-          {...props}
-          draft={draft}
-          onDraftChange={setDraft}
-          feedback={<AssistantFeedback {...props} />}
-        />
+        <div
+          id={collapse?.contentId}
+          className="assistant-panel__body flex min-h-0 flex-1 flex-col"
+          inert={collapse?.collapsed}
+        >
+          {(props.configurationRequired ?? !props.canSend) && (
+            <Button size="sm" variant="outline" className="m-3" onClick={settings.show}>
+              {t("configure")}
+            </Button>
+          )}
+          <AssistantPanelMessages
+            open={props.open}
+            messages={props.messages}
+            onHighlight={props.onToolHighlight}
+          />
+          {props.busy && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-muted-foreground"
+            >
+              <AssistantThinkingIcon aria-hidden="true" className="size-4 shrink-0" />
+              <span className="application-wordmark-ink">{t("thinking")}</span>
+            </div>
+          )}
+          <AssistantReviewControls props={props} />
+          <AssistantComposer
+            {...props}
+            draft={draft}
+            onDraftChange={setDraft}
+            feedback={<AssistantFeedback {...props} />}
+          />
+        </div>
       </aside>
       <AssistantSettingsDialog
         {...settings.dialog}
