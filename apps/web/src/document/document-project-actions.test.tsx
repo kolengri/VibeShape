@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { ProjectBackupRequest } from "./project-backup-contract"
+import { registerProjectRuntimeResource } from "./project-runtime-resources"
 
 const mocks = (() => ({
   open: vi.fn(),
@@ -65,12 +66,12 @@ const { createTestBrowserStorage } = await import("../test-support/browser-stora
 
 const id = "0195b5ac-b250-7a2c-8c33-000000000101"
 const issuedAt = "2026-09-01T12:00:00.000Z"
-function sourceProject() {
+function sourceProject(documentId = id) {
   const result = applyVersionedDocumentCommand(null, {
     kind: "org.vibeshape.document.create",
     schemaVersion: 1,
     commandId: "0195b5ac-b250-7a2c-8c33-000000000103",
-    documentId: id,
+    documentId,
     baseRevision: 0,
     issuedAt,
     actor: { type: "user", userId: null },
@@ -242,6 +243,141 @@ describe("project file identity and active-work guards", () => {
     expect(mocks.copyProject).not.toHaveBeenCalled()
     expect(mocks.close).not.toHaveBeenCalled()
   })
+  it("selects the destination before recovery finishes and reuses retained project sessions", async () => {
+    const { controller, session } = await ready()
+    const secondId = "0195b5ac-b250-7a2c-8c33-000000000201"
+    const destination = sourceProject(secondId).snapshot
+    const recovery = deferred<Awaited<ReturnType<typeof mocks.open>>>()
+    mocks.open.mockReturnValueOnce(recovery.promise)
+    let switching!: Promise<unknown>
+    act(() => {
+      switching = controller.activateProjectTab(secondId, {
+        documentId: id,
+        revision: session.snapshot.revision,
+      })
+    })
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "loading",
+      openingProjectId: secondId,
+      report: null,
+    })
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(secondId)
+    expect(controller.getProjectActionBlock()).toBe("unavailable")
+    expect(mocks.close).not.toHaveBeenCalled()
+    await act(async () => {
+      recovery.resolve({
+        ok: true,
+        session: { ...session, snapshot: destination },
+        report: { snapshot: destination, mode: "read-write", writeAccessDiagnostic: null },
+      })
+      expect(await switching).toEqual({ ok: true })
+    })
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(destination.id)
+    await act(async () => {
+      expect(await controller.activateProjectTab(id)).toEqual({ ok: true })
+      expect(await controller.activateProjectTab(secondId)).toEqual({ ok: true })
+    })
+    expect(mocks.open).toHaveBeenCalledTimes(2)
+  })
+
+  it("keeps a newer selection active when an earlier cold open completes later", async () => {
+    const { controller, session } = await ready()
+    const destination = sourceProject("0195b5ac-b250-7a2c-8c33-000000000203").snapshot
+    const recovery = deferred<Awaited<ReturnType<typeof mocks.open>>>()
+    const disposal = deferred<{ ok: true }>()
+    const disposeResource = vi.fn().mockResolvedValue(undefined)
+    const unregisterResource = registerProjectRuntimeResource(destination.id, {
+      isBusy: () => false,
+      dispose: disposeResource,
+    })
+    const closeDestination = vi.fn().mockImplementation(() => {
+      expect(disposeResource).toHaveBeenCalledTimes(1)
+      return disposal.promise
+    })
+    mocks.open.mockReturnValueOnce(recovery.promise)
+    let earlier!: Promise<unknown>
+    act(() => {
+      earlier = controller.activateLocalProject(destination.id)
+    })
+    expect(controller.getDocumentControllerState().openingProjectId).toBe(destination.id)
+    await act(async () => {
+      expect(await controller.activateLocalProject(id)).toEqual({ ok: true })
+    })
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(session.snapshot.id)
+    await act(async () => {
+      recovery.resolve({
+        ok: true,
+        session: { ...session, snapshot: destination, close: closeDestination },
+        report: { snapshot: destination, mode: "read-write", writeAccessDiagnostic: null },
+      })
+    })
+    await waitFor(() => expect(closeDestination).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      expect(await controller.activateLocalProject(destination.id)).toMatchObject({
+        ok: false,
+        diagnostic: { code: "project-action-blocked" },
+      })
+      disposal.resolve({ ok: true })
+      expect(await earlier).toMatchObject({ ok: false, diagnostic: { code: "cancelled" } })
+    })
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(session.snapshot.id)
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(id)
+    expect(closeDestination).toHaveBeenCalledTimes(1)
+    expect(mocks.close).not.toHaveBeenCalled()
+    unregisterResource()
+  })
+
+  it("returns to the project library while a cold open is still pending", async () => {
+    const { controller, session } = await ready()
+    const destination = sourceProject("0195b5ac-b250-7a2c-8c33-000000000204").snapshot
+    const recovery = deferred<Awaited<ReturnType<typeof mocks.open>>>()
+    mocks.open.mockReturnValueOnce(recovery.promise)
+    let earlier!: Promise<unknown>
+    act(() => {
+      earlier = controller.activateLocalProject(destination.id)
+    })
+    await act(async () => {
+      expect(await controller.showProjectLibrary()).toEqual({ ok: true })
+    })
+    expect(controller.getDocumentControllerState().status).toBe("library")
+    await act(async () => {
+      recovery.resolve({
+        ok: true,
+        session: { ...session, snapshot: destination },
+        report: { snapshot: destination, mode: "read-write", writeAccessDiagnostic: null },
+      })
+      expect(await earlier).toMatchObject({ ok: false, diagnostic: { code: "cancelled" } })
+    })
+    expect(controller.getDocumentControllerState().status).toBe("library")
+    expect(new URL(window.location.href).searchParams.has("project")).toBe(false)
+  })
+
+  it("restores the source project and reports a failed destination without closing the source", async () => {
+    const { controller } = await ready()
+    const recovery = deferred<Awaited<ReturnType<typeof mocks.open>>>()
+    mocks.open.mockReturnValueOnce(recovery.promise)
+    let switching!: Promise<unknown>
+    act(() => {
+      switching = controller.activateLocalProject("0195b5ac-b250-7a2c-8c33-000000000202")
+    })
+    expect(controller.getDocumentControllerState().status).toBe("loading")
+    await act(async () => {
+      recovery.resolve({
+        ok: false,
+        diagnostic: { code: "document-not-found", message: "Missing project.", retryable: false },
+      })
+      expect(await switching).toMatchObject({ ok: false })
+    })
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "ready",
+      report: { snapshot: { id } },
+      projectNavigationError: "project-open-failed",
+    })
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(id)
+    expect(localStorage.getItem("vibeshape-active-document-id")).toBe(id)
+    expect(mocks.close).not.toHaveBeenCalled()
+  })
+
   it("blocks downloads while manual AI review is ready or applying and allows tab navigation", async () => {
     const { controller } = await ready()
     for (const status of ["ready", "applying"]) {

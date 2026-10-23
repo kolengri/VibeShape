@@ -752,6 +752,11 @@
       }
     },
     "shell": {
+      "projectLoading": {
+        "reading": "Loading project and history…",
+        "refining": "Refining model detail…",
+        "progress": "Project loading progress"
+      },
       "applicationBar": {
         "loading": "Opening local document…",
         "saveFailed": "Could not save",

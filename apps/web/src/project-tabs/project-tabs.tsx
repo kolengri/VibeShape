@@ -1,4 +1,4 @@
-import { useReportBlockingActivity } from "@vibeshape/ui/components/activity"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
 import { X } from "@vibeshape/ui/components/icons"
 import { Tabs, TabsList, TabsTrigger } from "@vibeshape/ui/components/tabs"
@@ -35,7 +35,7 @@ export function ProjectTabs({
   onOpenProjects?: () => Promise<ProjectSwitchResult>
 }) {
   const tabs = useProjectTabsController(controller, onOpenProjects)
-  useReportBlockingActivity(tabs.pending, copy.working)
+  useReportActivity(tabs.pending)
   const feedbackId = useId()
   const [renameOpen, setRenameOpen] = useState(false)
   const canRename = projectRenameAvailable(controller)

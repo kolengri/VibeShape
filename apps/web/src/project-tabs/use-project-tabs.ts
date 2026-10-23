@@ -33,7 +33,7 @@ export function useProjectTabsController(
   const [feedbackAttempt, setFeedbackAttempt] = useState(0)
   const listRequest = useRef(0)
   const snapshot = controller.report?.snapshot
-  const activeId = snapshot?.id
+  const activeId = controller.openingProjectId ?? snapshot?.id
   const activeName = snapshot?.name
   const ready = controller.status === "ready"
   const blocked = getProjectNavigationBlock()

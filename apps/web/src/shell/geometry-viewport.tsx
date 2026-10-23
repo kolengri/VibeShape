@@ -99,6 +99,7 @@ import {
   useModelEdgeViewport,
 } from "./model-edge-viewport"
 import { partForModelBody } from "./model-tree-selection"
+import { ProjectLoadingProgress } from "./project-loading-progress"
 import { SectionViewControls } from "./section-view-controls"
 import {
   useSectionViewportFactory,
@@ -380,7 +381,7 @@ function documentViewportMessage(
   copy: { loading: string; loadFailed: string; rebuildFailed: string },
 ) {
   if (controller.status === "idle" || controller.status === "loading") {
-    return { kind: "status" as const, text: copy.loading }
+    return controller.report ? null : { kind: "status" as const, text: copy.loading }
   }
   if (controller.status === "error") return { kind: "error" as const, text: copy.loadFailed }
   if (controller.report && !controller.report.rebuild.ok) {
@@ -3739,6 +3740,7 @@ function GeometryViewport(props: GeometryViewportProps) {
       />
       <ViewportAxialControls props={props} axial={axial} />
       <ModelEdgeViewportChrome edges={model.modelEdges} selectOther={modelEdgeSelectOther} />
+      {props.controller.status === "loading" && <ProjectLoadingProgress refining />}
     </section>
   )
 }
