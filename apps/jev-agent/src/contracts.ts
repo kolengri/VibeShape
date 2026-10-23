@@ -7,6 +7,14 @@ export type DecisionState = {
   instructions: string
   history: Observation[]
   photos: Photo[]
+  session?: {
+    requests: string[]
+    omittedRequests?: number
+    answeredQuestions: Observation[]
+    omittedAnsweredQuestions?: number
+    activeDraft?: Observation
+    readSkills: string[]
+  }
   uncertainOutcome?: Observation
 }
 export type NextAction =

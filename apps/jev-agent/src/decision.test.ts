@@ -20,6 +20,7 @@ import { createJevDecision } from "./decision"
 const state: DecisionState = {
   goal: "Create a box",
   instructions: "Use millimetres.",
+  session: { requests: ["Create a bracket"], answeredQuestions: [], readSkills: [] },
   history: [],
   photos: [],
 }
@@ -133,6 +134,7 @@ describe("Jev decision batching", () => {
       assistantQuestionTool.description,
     ])
     expect(context.history).toEqual(history)
+    expect(context.session).toEqual(state.session)
     expect(history).toHaveLength(2)
     expect(Object.values(payload.questions.action?.criteria ?? {})).toEqual(
       expect.arrayContaining(tools.map((tool) => tool.name)),
@@ -203,7 +205,6 @@ describe("Jev decision batching", () => {
           },
         },
         decide,
-        maxSteps: 1,
         minConfidence: 0.5,
         timeoutMs: 10_000,
         images: false,

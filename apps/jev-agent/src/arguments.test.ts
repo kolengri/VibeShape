@@ -16,6 +16,7 @@ const tool: Tool = {
 const state: DecisionState = {
   goal: "Create a 20 mm square",
   instructions: "Use XY.",
+  session: { requests: ["Create a bracket"], answeredQuestions: [], readSkills: [] },
   history: [{ tool: "model_info", arguments: {}, result: { documentId: "observed-id" } }],
   photos: [],
 }
@@ -80,6 +81,7 @@ describe("low-confidence decision resolution", () => {
     )
     expect(context.tool.description).not.toContain("inputSchema")
     expect(context.state.history).toEqual(state.history)
+    expect(context.state.session).toEqual(state.session)
     expect(calls).toHaveLength(1)
   })
   test.each(["done", "blocked"])("supports the terminal action %s", async (action) => {
@@ -152,6 +154,7 @@ describe("argument completion", () => {
       tool,
       state: {
         goal: state.goal,
+        session: state.session,
         instructions: state.instructions,
         history: state.history,
         photoCount: 0,

@@ -4018,7 +4018,6 @@
         "helperModel": "Argument model name",
         "helperKey": "Argument model API key",
         "advanced": "Jev advanced settings",
-        "maxSteps": "Decisions per turn",
         "minConfidence": "Minimum decision confidence",
         "timeoutMs": "Provider timeout (ms)",
         "invalid": "Check the model and limits. Set both the argument endpoint and model, using HTTPS or local HTTP without embedded credentials."

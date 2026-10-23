@@ -54,7 +54,6 @@ type Session = {
   port: Awaited<ReturnType<typeof connectMcp>>
   controller: ReturnType<typeof createController>
   active: AbortController | null
-  previous: string[]
 }
 
 function toolDisplayText(value: unknown) {
@@ -146,13 +145,11 @@ export function createJevAgent(configuration: Configuration, dependencies: Depen
           id,
           port,
           active: null,
-          previous: [],
           controller: createController({
             port,
             decide: dependencies.decide,
             completeArguments: dependencies.completeArguments,
             resolveDecision: dependencies.resolveDecision,
-            maxSteps: configuration.maxSteps,
             minConfidence: configuration.minConfidence,
             timeoutMs: configuration.timeoutMs,
             images: configuration.images,
@@ -173,13 +170,12 @@ export function createJevAgent(configuration: Configuration, dependencies: Depen
       current.active = pending
       const turnSignal = AbortSignal.any([signal, pending.signal])
       try {
-        const goal = current.previous.length
-          ? JSON.stringify({ previousRequests: current.previous, currentRequest: content.goal })
-          : content.goal
-        const message = await current.controller.run(goal, content.photos, turnSignal, (event) =>
-          toolUpdate(client, current.id, event),
+        const message = await current.controller.run(
+          content.goal,
+          content.photos,
+          turnSignal,
+          (event) => toolUpdate(client, current.id, event),
         )
-        current.previous = [...current.previous, content.goal.slice(-4000)].slice(-2)
         await client.notify(acp.methods.client.session.update, {
           sessionId: current.id,
           update: {

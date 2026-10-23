@@ -50,7 +50,6 @@ function fixture(
     ids?: string[]
     failure?: boolean
     transportError?: boolean
-    maxSteps?: number
     timeoutMs?: number
   } = {},
 ) {
@@ -101,7 +100,6 @@ function fixture(
     decide,
     resolveDecision: options.resolveDecision,
     completeArguments: options.completeArguments,
-    maxSteps: options.maxSteps ?? 4,
     minConfidence: 0.5,
     timeoutMs: options.timeoutMs ?? 1000,
     images: false,
@@ -141,7 +139,437 @@ function questionFixture() {
   return f
 }
 
+describe("Jev continuous execution", () => {
+  it("continues beyond the former maximum with retained answers and draft state", async () => {
+    const read: Tool = { name: "model_info", inputSchema: { type: "object" } }
+    const commit: Tool = { name: "commit_draft", inputSchema: { type: "object" } }
+    let decisions = 0
+    let questions = 0
+    const reply = { action: "accept", content: { material: "pla" } }
+    const draft = {
+      result: {
+        ok: true,
+        value: {
+          schemaVersion: 1,
+          draftId: documentId,
+          documentId,
+          baseRevision: 0,
+          revision: 0,
+          commandCount: 0,
+          expiresAt: "2026-10-23T20:00:00.000Z",
+        },
+      },
+    }
+    const action = (tool: Tool, args: Record<string, unknown>): Decision => ({
+      kind: "tool",
+      tool,
+      arguments: args,
+      needsArguments: false,
+      confidence: 1,
+    })
+    const sequence: Decision[] = [
+      action(question, questionInput),
+      action(tool, { baseRevision: 0 }),
+      ...Array.from({ length: 60 }, () => action(read, {})),
+      action(question, questionInput),
+      action(question, questionInput),
+      action(commit, { draftId: documentId }),
+      action(read, {}),
+      { kind: "done", confidence: 1 },
+    ]
+    const f = fixture({
+      decide: async (state) => {
+        const index = decisions++
+        if (index > 2) {
+          expect(state.session?.requests).toEqual([])
+          expect(state.session?.answeredQuestions[0]?.result).toEqual(reply)
+          if (index <= 64) expect(state.session?.activeDraft?.result).toEqual(draft)
+          else expect(state.session?.activeDraft).toBeUndefined()
+        }
+        return sequence[index] ?? { kind: "done", confidence: 1 }
+      },
+    })
+    f.port.tools = [tool, read, question, commit]
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name === question.name) {
+        questions++
+        return { value: reply, photos: [], failed: false }
+      }
+      if (name === tool.name) return { value: draft, photos: [], failed: false }
+      return original(name, args, signal)
+    }
+    expect(
+      await f.controller.run(
+        "Create the full container",
+        [],
+        new AbortController().signal,
+        async () => {},
+      ),
+    ).toContain("ended the turn")
+    expect(decisions).toBe(67)
+    expect(questions).toBe(1)
+  })
+
+  it.each([
+    ["assembly", "commit_assembly_draft"],
+    ["assembly", "discard_assembly_draft"],
+    ["restored", "commit_draft"],
+    ["restored", "discard_draft"],
+  ])("retains a %s draft across rollover and continuation until %s", async (kind, finishName) => {
+    const draft = {
+      schemaVersion: 1,
+      draftId: documentId,
+      documentId,
+      baseRevision: 0,
+      expiresAt: "2026-10-23T20:00:00.000Z",
+    }
+    const value =
+      kind === "assembly"
+        ? { ...draft, draftVersion: 2, changeCount: 2 }
+        : {
+            schemaVersion: 1,
+            recoveryId: documentId,
+            attribution: {
+              type: "current-actor",
+              actor: { type: "system", source: "org.vibeshape.assistant" },
+            },
+            draft: { ...draft, revision: 2, commandCount: 2 },
+          }
+    const receipt = { result: { ok: true, value } }
+    const open: Tool = {
+      name: kind === "assembly" ? "create_assembly_draft" : "restore_draft",
+      inputSchema: { type: "object" },
+    }
+    const read: Tool = { name: "model_info", inputSchema: { type: "object" } }
+    const finish: Tool = { name: finishName, inputSchema: { type: "object" } }
+    const action = (tool: Tool, args: Record<string, unknown>): Decision => ({
+      kind: "tool",
+      tool,
+      arguments: args,
+      needsArguments: false,
+      confidence: 1,
+    })
+    const reads = Array.from({ length: 16 }, () => action(read, {}))
+    const sequence: Decision[] = [
+      action(
+        open,
+        kind === "assembly" ? { baseRevision: 0 } : { recoveryId: documentId, baseRevision: 0 },
+      ),
+      ...reads,
+      { kind: "done", confidence: 1 },
+      ...reads,
+      action(
+        finish,
+        kind === "assembly"
+          ? { draftId: documentId, baseRevision: 0, draftVersion: 2 }
+          : { draftId: documentId },
+      ),
+      { kind: "done", confidence: 1 },
+    ]
+    let finalized = false
+    let decisions = 0
+    const f = fixture({
+      decide: async (state) => {
+        if (decisions > 0 && !finalized) {
+          expect(state.session?.activeDraft).toMatchObject({
+            arguments: { draftId: documentId },
+            result: receipt,
+          })
+        }
+        if (state.goal === "Continue") {
+          expect(state.session?.requests).toEqual(["Complete the model"])
+          expect(state.history.some((item) => item.tool === open.name)).toBe(false)
+        }
+        if (finalized) expect(state.session?.activeDraft).toBeUndefined()
+        decisions++
+        return sequence.shift() ?? { kind: "done", confidence: 1 }
+      },
+    })
+    f.port.tools = [open, read, finish]
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name === open.name) return { value: receipt, photos: [], failed: false }
+      if (name === finish.name) finalized = true
+      return original(name, args, signal)
+    }
+    await f.controller.run("Complete the model", [], new AbortController().signal, async () => {})
+    await f.controller.run("Continue", [], new AbortController().signal, async () => {})
+    expect(finalized).toBe(true)
+  })
+
+  it.each([
+    ["ASCII", "x".repeat(20_000)],
+    ["Unicode", "界".repeat(12_000)],
+    ["JSON escapes", '"\n'.repeat(5000)],
+  ])(
+    "bounds repeated long requests without losing original and latest excerpts (%s)",
+    async (_label, filler) => {
+      const goals = Array.from(
+        { length: 8 },
+        (_, index) =>
+          `Request ${index}: ${index === 0 ? "Build a container" : "Correct the lid"}.\n${filler}\nRequest ${index}: required wall ${index + 2} mm.`,
+      )
+      let completed = 0
+      let current = ""
+      const f = fixture({
+        decide: async (state) => {
+          expect(state.goal).toBe(current)
+          expect(Buffer.byteLength(JSON.stringify({ ...state, photos: [] }))).toBeLessThanOrEqual(
+            64_000,
+          )
+          if (completed > 0) {
+            const requests = state.session?.requests ?? []
+            expect(Buffer.byteLength(JSON.stringify(requests))).toBeLessThanOrEqual(24_000)
+            expect(requests[0]).toContain("Request 0: Build a container")
+            expect(requests[0]).toContain("Request 0: required wall 2 mm.")
+            expect(requests.at(-1)).toContain(`Request ${completed - 1}:`)
+            expect(requests.at(-1)).toContain(`required wall ${completed + 1} mm.`)
+            expect(requests[0]).toContain("[Earlier request text truncated.]")
+            if (completed === goals.length)
+              expect(state.session?.omittedRequests).toBeGreaterThan(0)
+          }
+          return { kind: "done", confidence: 1 }
+        },
+      })
+      for (const goal of goals) {
+        current = goal
+        expect(
+          await f.controller.run(goal, [], new AbortController().signal, async () => {}),
+        ).toContain("ended the turn")
+        completed++
+      }
+      current = "Continue"
+      expect(
+        await f.controller.run(current, [], new AbortController().signal, async () => {}),
+      ).toContain("ended the turn")
+    },
+  )
+
+  it("compacts prior requests for a near-budget current request and still accepts Continue", async () => {
+    let current = ""
+    let expectedLatest = ""
+    const f = fixture({
+      decide: async (state) => {
+        expect(state.goal).toBe(current)
+        expect(Buffer.byteLength(JSON.stringify({ ...state, photos: [] }))).toBeLessThanOrEqual(
+          64_000,
+        )
+        if (expectedLatest) {
+          const requests = state.session?.requests ?? []
+          expect(requests[0]).toContain("Original: container")
+          expect(requests[0]).toContain("original: wall 2 mm")
+          expect(requests.at(-1)).toContain(expectedLatest)
+        }
+        return { kind: "done", confidence: 1 }
+      },
+    })
+    for (const goal of [
+      `Original: container ${"x".repeat(20_000)} original: wall 2 mm`,
+      `Latest: lid ${"y".repeat(20_000)} latest: lid 4 mm`,
+    ]) {
+      current = goal
+      await f.controller.run(current, [], new AbortController().signal, async () => {})
+    }
+    expectedLatest = "latest: lid 4 mm"
+    current = `Keep the lid; ${"z".repeat(47_000)}`
+    expect(
+      await f.controller.run(current, [], new AbortController().signal, async () => {}),
+    ).toContain("ended the turn")
+    expectedLatest = "Keep the lid"
+    current = "Continue"
+    expect(
+      await f.controller.run(current, [], new AbortController().signal, async () => {}),
+    ).toContain("ended the turn")
+  })
+
+  it("preserves the original request across repeated continuations and honors Stop", async () => {
+    const signal = new AbortController()
+    let decisions = 0
+    const requests: string[] = []
+    const f = fixture({
+      decide: async (state) => {
+        expect(state.session?.requests).toEqual(requests.slice(0, -1))
+        if (state.goal === "Long task") {
+          if (++decisions === 60) signal.abort()
+          return {
+            kind: "tool",
+            tool,
+            arguments: { baseRevision: 0 },
+            needsArguments: false,
+            confidence: 1,
+          }
+        }
+        return { kind: "done", confidence: 1 }
+      },
+    })
+    requests.push("Long task")
+    await expect(f.controller.run("Long task", [], signal.signal, async () => {})).rejects.toThrow()
+    for (const request of ["Continue", "Add a lid", "Continue", "Continue"]) {
+      requests.push(request)
+      expect(
+        await f.controller.run(request, [], new AbortController().signal, async () => {}),
+      ).toContain("ended the turn")
+    }
+  })
+})
+
 describe("Jev structured questions", () => {
+  it.each(["x", "界"])(
+    "retains large accepted answers without poisoning continuation (%s)",
+    async (character) => {
+      const input: AssistantQuestionInput = {
+        message: "Describe each container requirement",
+        fields: Array.from({ length: 5 }, (_, index) => ({
+          id: `detail${index}`,
+          label: `Detail ${index}`,
+          required: true,
+          secret: false,
+        })),
+      }
+      const content = Object.fromEntries(
+        input.fields.map((field) => [field.id, character.repeat(13_000)]),
+      )
+      const read: Tool = { name: "model_info", inputSchema: { type: "object" } }
+      let decisions = 0
+      let asks = 0
+      const f = fixture({
+        decide: async (state) => {
+          const index = decisions++
+          expect(Buffer.byteLength(JSON.stringify({ ...state, photos: [] }))).toBeLessThanOrEqual(
+            64_000,
+          )
+          if (index > 0)
+            expect(state.session?.answeredQuestions[0]?.result).toMatchObject({ truncated: true })
+          if (state.goal === "Continue") {
+            expect(state.session?.requests).toEqual(["Build the container"])
+            return { kind: "done", confidence: 1 }
+          }
+          if (index >= 17) return { kind: "done", confidence: 1 }
+          return {
+            kind: "tool",
+            tool: [0, 16].includes(index) ? question : read,
+            arguments: [0, 16].includes(index) ? input : {},
+            needsArguments: false,
+            confidence: 1,
+          }
+        },
+      })
+      f.port.tools = [question, read]
+      const original = f.port.call
+      f.port.call = async (name, args, signal) => {
+        if (name !== question.name) return original(name, args, signal)
+        asks++
+        return { value: { action: "accept", content }, photos: [], failed: false }
+      }
+      expect(
+        await f.controller.run(
+          "Build the container",
+          [],
+          new AbortController().signal,
+          async () => {},
+        ),
+      ).toContain("ended the turn")
+      expect(asks).toBe(1)
+      expect(
+        await f.controller.run("Continue", [], new AbortController().signal, async () => {}),
+      ).toContain("ended the turn")
+    },
+  )
+
+  it("bounds accumulated accepted answers and reports omitted evidence", async () => {
+    let asks = 0
+    let decisions = 0
+    const f = fixture({
+      decide: async (state) => {
+        const index = decisions++
+        expect(Buffer.byteLength(JSON.stringify({ ...state, photos: [] }))).toBeLessThanOrEqual(
+          64_000,
+        )
+        if (index >= 10) {
+          expect(state.session?.omittedAnsweredQuestions).toBeGreaterThan(0)
+          expect(state.session?.answeredQuestions.length).toBeLessThan(10)
+          return { kind: "done", confidence: 1 }
+        }
+        return {
+          kind: "tool",
+          tool: question,
+          arguments: {
+            ...questionInput,
+            message: `Describe requirement ${index}`,
+            fields: [{ id: "detail", label: "Requirement", required: true, secret: false }],
+          },
+          needsArguments: false,
+          confidence: 1,
+        }
+      },
+    })
+    f.port.tools = [question]
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name !== question.name) return original(name, args, signal)
+      asks++
+      return {
+        value: { action: "accept", content: { detail: "x".repeat(10_000) } },
+        photos: [],
+        failed: false,
+      }
+    }
+    expect(
+      await f.controller.run(
+        "Build the container",
+        [],
+        new AbortController().signal,
+        async () => {},
+      ),
+    ).toContain("ended the turn")
+    expect(asks).toBe(10)
+    expect(
+      await f.controller.run("Continue", [], new AbortController().signal, async () => {}),
+    ).toContain("ended the turn")
+  })
+
+  it("asks again for a different question with the same fields and after a new user request", async () => {
+    const nextQuestion = {
+      ...questionInput,
+      message: "Choose the lid material",
+    }
+    let asks = 0
+    let step = 0
+    const f = fixture({
+      decide: async () =>
+        step++ % 3 === 2
+          ? { kind: "done", confidence: 1 }
+          : {
+              kind: "tool",
+              tool: question,
+              arguments: step % 3 === 1 ? questionInput : nextQuestion,
+              needsArguments: false,
+              confidence: 1,
+            },
+    })
+    f.port.tools = [question]
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name !== question.name) return original(name, args, signal)
+      asks++
+      return {
+        value: { action: "accept", content: { material: "pla" } },
+        failed: false,
+        photos: [],
+      }
+    }
+    await f.controller.run("Create the container", [], new AbortController().signal, async () => {})
+    expect(asks).toBe(2)
+    await f.controller.run(
+      "Reconsider both materials",
+      [],
+      new AbortController().signal,
+      async () => {},
+    )
+    expect(asks).toBe(4)
+  })
+
   it("waits beyond the ordinary timeout and executes dependent CAD only after a valid answer", async () => {
     const f = questionFixture()
     const started = Promise.withResolvers<AbortSignal>()
@@ -509,7 +937,6 @@ describe("Jev CAD control loop", () => {
         draftVersion: 0,
         cascade: true,
       }),
-      maxSteps: 2,
       minConfidence: 0.5,
       timeoutMs: 1000,
       images: false,
@@ -685,16 +1112,14 @@ describe("Jev CAD control loop", () => {
     },
   )
   it("rechecks the document revision after helper selection instead of applying stale arguments", async () => {
+    let resolutions = 0
     const f = fixture({
       revisions: [0, 1],
-      maxSteps: 1,
       decide: async () => ({ kind: "blocked", confidence: 0.1 }),
-      resolveDecision: async () => ({
-        kind: "tool",
-        tool,
-        arguments: { baseRevision: 0 },
-        needsArguments: false,
-      }),
+      resolveDecision: async () =>
+        resolutions++ === 0
+          ? { kind: "tool", tool, arguments: { baseRevision: 0 }, needsArguments: false }
+          : { kind: "done" },
     })
     await f.controller.run("Create", [], new AbortController().signal, async () => {})
     expect(f.calls).not.toContain("create_draft")
@@ -749,12 +1174,12 @@ describe("Jev CAD control loop", () => {
       expect(f.calls).not.toContain("create_draft")
     }
   })
-  it("bounds repeated no-progress steps and releases the turn lock after cancellation", async () => {
-    const f = fixture({ maxSteps: 1 })
+  it("releases the turn lock after cancellation", async () => {
+    const f = fixture()
     const cancelled = AbortSignal.abort()
     await expect(f.controller.run("Create", [], cancelled, async () => {})).rejects.toThrow()
     expect(
       await f.controller.run("Create", [], new AbortController().signal, async () => {}),
-    ).toContain("JEV_MAX_STEPS")
+    ).toContain("ended the turn")
   })
 })

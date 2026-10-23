@@ -195,6 +195,7 @@ function decisionContent(state: DecisionState, catalog: Record<string, string>) 
     throw new JevFailure("The Jev tool description catalog exceeds its text budget.")
   const content = {
     goal: state.goal,
+    session: state.session,
     instructions: state.instructions,
     history: [...state.history],
     catalog,
