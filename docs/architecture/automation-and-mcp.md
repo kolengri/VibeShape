@@ -62,8 +62,8 @@ escalation keep their separate bounds; a stalled turn remains cancellable by the
 The native ACP transport uses the pinned SDK's bounded 32 MiB frame limit so loading a saved
 session can receive historical prompts with embedded attachments. Historical replay is not
 published as new live output or resent as a modeling prompt. The separate 2 MiB / 10,000-update
-live-event budget applies per turn for external ACP agents. The bundled Jev controller renews it
-at each completed tool stage so long modeling tasks can continue; each individual stage remains
+live-event budget renews at each completed tool stage for all native ACP agents, including external
+agents and the bundled Jev controller, so long modeling tasks can continue; each individual stage remains
 bounded. The 64 KiB handshake-probe limit remains unchanged. Model context compaction does not
 guarantee that archived ACP replay frames are small.
 

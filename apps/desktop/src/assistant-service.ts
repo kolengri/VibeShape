@@ -69,7 +69,6 @@ type Owner = {
   acceptingUpdates: boolean
   eventBytes: number
   eventCount: number
-  continuousTools: boolean
   cancelTimer: ReturnType<typeof setTimeout> | undefined
   failureCode: AssistantErrorCode | undefined
   stopping: Promise<void> | undefined
@@ -111,12 +110,8 @@ function consumeEventBudget(owner: Owner, params: acp.SessionNotification) {
   owner.eventBytes += Buffer.byteLength(JSON.stringify(params))
   owner.eventCount += 1
   if (owner.eventBytes > 2 * 1024 * 1024 || owner.eventCount > 10_000) return false
-  // The bundled Jev controller can complete arbitrarily many bounded tool stages per turn.
-  if (
-    owner.continuousTools &&
-    params.update.sessionUpdate === "tool_call_update" &&
-    params.update.status === "completed"
-  ) {
+  // Long CAD turns can complete many bounded tool stages with any ACP agent.
+  if (params.update.sessionUpdate === "tool_call_update" && params.update.status === "completed") {
     owner.eventBytes = 0
     owner.eventCount = 0
   }
@@ -569,7 +564,6 @@ export function createAssistantService(options: AssistantServiceOptions) {
       acceptingUpdates: false,
       eventBytes: 0,
       eventCount: 0,
-      continuousTools: "kind" in input.agent && input.agent.kind === "jev",
       cancelTimer: undefined,
       failureCode: undefined,
       stopping: undefined,
