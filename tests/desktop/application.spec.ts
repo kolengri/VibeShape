@@ -111,9 +111,9 @@ test("native launch preserves CAD, backups and the profile across window close a
     ).toBe(true)
     expect(await page.evaluate(() => typeof Reflect.get(globalThis, "require"))).toBe("undefined")
     expect(await page.evaluate(() => typeof Reflect.get(globalThis, "process"))).toBe("undefined")
-    await expect(
-      page.getByRole("button", { name: "Enable AI session", exact: true }),
-    ).toBeDisabled()
+    await expect(page.getByRole("button", { name: "Enable AI session", exact: true })).toHaveCount(
+      0,
+    )
     expect(await fetch(`${origin}/__vibeshape/automation/status`).then((r) => r.status)).toBe(403)
 
     await invokeModelCommand(page, "Primitives", "Box")
