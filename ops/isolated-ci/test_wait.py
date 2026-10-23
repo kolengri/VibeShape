@@ -1,3 +1,5 @@
+import contextlib
+import io
 import unittest
 
 from wait import REPOSITORY, result_context, result_state, wait, wait_primary
@@ -71,6 +73,25 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.primary(responses), (0, 160))
         self.assertEqual(self.primary(lambda t: [self.receipt(identity=int(t) + 1)], timeout=100),
                          (75, 100))
+
+    def test_stage_changes_are_printed_once_without_suppressing_failure(self):
+        def responses(seconds):
+            return [self.receipt("failure" if seconds >= 60 else "pending", identity=int(seconds) + 1,
+                                 description="Mac CI: " + ("Running Node tests" if seconds >= 30 else "Linting"))]
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(self.primary(responses), (1, 60))
+        self.assertEqual(output.getvalue().count("Mac CI: Linting"), 1)
+        self.assertEqual(output.getvalue().count("Mac CI: Running Node tests"), 1)
+
+    def test_missing_or_unsafe_stage_copy_does_not_change_heartbeat_policy(self):
+        for description in (None, "legacy heartbeat", "Mac CI: build\n::error::injected",
+                            "Mac CI: \x1b[31mLinting", "Mac CI: " + "a" * 200):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(self.primary(lambda t: [self.receipt(
+                    identity=int(t) + 1, description=description)], timeout=100), (75, 100))
+            self.assertNotIn("Mac CI:", output.getvalue())
 
     def test_test_failure_is_terminal_and_infrastructure_error_requests_full_hosted_ci(self):
         for state, expected in (("success", 0), ("failure", 1), ("error", 75)):
