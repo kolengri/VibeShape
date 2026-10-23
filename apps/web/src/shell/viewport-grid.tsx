@@ -518,12 +518,12 @@ function GridSlots({
             className="viewport-grid__drawer"
             style={{
               top: bounds.bodyTop,
-              height: bounds.bottomBudget,
+              height: bounds.bodyHeight,
               width: Math.max(0, Math.min(288, bounds.workbenchWidth, bounds.width - 48)),
               [item.area === "right" ? "right" : "left"]: 0,
             }}
           >
-            <ItemHost item={item} registration={items.get(item.id)} cap={bounds.bottomBudget} />
+            <ItemHost item={item} registration={items.get(item.id)} cap={bounds.bodyHeight} />
           </div>
         ))}
       </div>

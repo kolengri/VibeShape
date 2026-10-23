@@ -22,6 +22,33 @@ async function width(locator: Locator) {
   return locator.evaluate((element) => Math.round(element.getBoundingClientRect().width))
 }
 
+async function expectTallTreeAboveBottomSlots(page: Page) {
+  const content = page.locator('[data-slot="model-tree-content"]')
+  await content.evaluate((element) => {
+    const rows = element.ownerDocument.createElement("div")
+    rows.style.height = "2000px"
+    rows.textContent = "Long model tree content"
+    element.append(rows)
+  })
+  await expect
+    .poll(async () => {
+      const tree = await page.locator(".workspace-panel--tree").boundingBox()
+      const bottom = await page.locator(".viewport-grid__bottom").boundingBox()
+      return Boolean(tree && bottom && tree.y + tree.height <= bottom.y)
+    })
+    .toBe(true)
+  await content.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  expect(
+    await page.locator(".viewport-grid__bottom").evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      return element.contains(element.ownerDocument.elementFromPoint(bounds.x + 20, bounds.y + 10))
+    }),
+  ).toBe(true)
+}
+
 async function openWorkspaceSettings(page: Page) {
   await openApplicationMenuItem(page, "Settings…")
   const settings = page
@@ -230,6 +257,7 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
   await page.getByRole("button", { name: "Show model tree", exact: true }).click()
   await expect(narrowTree).toBeVisible()
   await expect.poll(() => width(narrowTree)).toBeGreaterThanOrEqual(240)
+  await expectTallTreeAboveBottomSlots(page)
   await page.getByRole("button", { name: "Hide model tree", exact: true }).click()
   await expect(narrowTree).toBeHidden()
   expect(await form.evaluate((element, original) => element === original, formElement)).toBe(true)
@@ -401,6 +429,7 @@ for (const theme of ["light", "dark"] as const) {
       if (chatOpen) await page.getByRole("button", { name: "AI chat", exact: true }).click()
       await toggle.click({ timeout: 3_000 })
       await expect(tree).toBeVisible()
+      await expectTallTreeAboveBottomSlots(page)
       await page.getByRole("button", { name: "Hide model tree", exact: true }).click()
       await expect(tree).toBeHidden()
       await expect(toggle).toBeFocused()
