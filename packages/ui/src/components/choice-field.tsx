@@ -69,6 +69,8 @@ function ChoiceOption({
         "relative flex min-w-0 max-w-full flex-auto cursor-pointer items-center gap-2 rounded-md border border-input px-2 py-1.5 text-sm",
         "has-checked:border-ring has-checked:bg-accent has-checked:text-accent-foreground",
         "has-focus-visible:border-ring has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50",
+        "forced-colors:has-checked:outline-2 forced-colors:has-checked:outline-solid forced-colors:has-checked:-outline-offset-3 forced-colors:has-checked:outline-[Highlight]",
+        "forced-colors:has-focus-visible:outline-2 forced-colors:has-focus-visible:outline-dashed forced-colors:has-focus-visible:outline-offset-2 forced-colors:has-focus-visible:outline-[Highlight]",
         "has-disabled:cursor-not-allowed has-disabled:opacity-50",
       )}
     >

@@ -18,6 +18,8 @@ Choice fields use wrapping label/control rows instead of the fixed split when sp
 Choice cards size from their content and move to another row before wrapping long labels within a
 full-width card. The selected border and background replace the visible radio dot; the native radio
 remains available to keyboard navigation, validation, assistive technology, and form submission.
+Forced-colors mode uses an inset solid outline for selection and an outer dashed outline for keyboard
+focus. Callers requiring a single-column choice field override both its display and grid columns.
 Compose inline controls within its control cell. `NativeSelectField.trailingAction` places an
 adjacent action in that cell without changing the label/control split; its caller owns the action's
 accessible name, tooltip, and disabled state independently of the select.

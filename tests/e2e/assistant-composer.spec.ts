@@ -188,6 +188,20 @@ test("question choices wrap to readable rows and retain native keyboard selectio
   await expect(second).toBeChecked()
   await expect(second).toBeFocused()
   await expect(first).not.toBeChecked()
+  await page.emulateMedia({ forcedColors: "active" })
+  await second.evaluate((node) => node.blur())
+  const checkedOutline = await unselected.evaluate((node) => {
+    const style = getComputedStyle(node)
+    return { style: style.outlineStyle, width: style.outlineWidth, offset: style.outlineOffset }
+  })
+  expect(checkedOutline).toEqual({ style: "solid", width: "2px", offset: "-3px" })
+  expect(await selected.evaluate((node) => getComputedStyle(node).outlineStyle)).toBe("none")
+  await second.focus()
+  const focusedOutline = await unselected.evaluate((node) => {
+    const style = getComputedStyle(node)
+    return { style: style.outlineStyle, width: style.outlineWidth, offset: style.outlineOffset }
+  })
+  expect(focusedOutline).toEqual({ style: "dashed", width: "2px", offset: "2px" })
 })
 
 test("keeps previous project chats after reload and continues the selected conversation", async ({
