@@ -29,6 +29,8 @@ export function useHistoryHover(onPreselect: (target: HTMLElement | null) => voi
     if (event.pointerType === "touch" || event.buttons !== 0) return
     const row = rowAt(event.target)
     if (!row || !event.currentTarget.contains(row) || candidate.current === row) return
+    // A focused source profile owns its preview until blur.
+    if (row === row.ownerDocument.activeElement) return
     cancel()
     if (Date.now() < blockedUntil.current) return
     candidate.current = row

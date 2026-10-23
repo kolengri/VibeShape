@@ -2159,6 +2159,16 @@ describe("History pointer preselection", () => {
     expect(onPreview).toHaveBeenLastCalledWith(null)
     link.focus()
     expect(onPreview).toHaveBeenLastCalledWith(profile)
+    onPreview.mockClear()
+    fireEvent.pointerOver(link, { pointerType: "mouse", buttons: 0 })
+    await act(async () => vi.advanceTimersByTimeAsync(200))
+    fireEvent.pointerOut(link)
+    fireEvent.wheel(link)
+    fireEvent.scroll(link.closest("[data-history-track]") as Element)
+    expect(document.activeElement).toBe(link)
+    expect(onPreview).not.toHaveBeenCalled()
+    link.blur()
+    expect(onPreview).toHaveBeenLastCalledWith(null)
   })
 
   it("requires a dwell, cancels transient rows, and keeps keyboard focus immediate", async () => {
