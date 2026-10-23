@@ -216,6 +216,13 @@ readline.createInterface({input:process.stdin}).on("line", line => {
  const prompt = params.prompt.filter(block=>block.type === "text").at(-1).text;
  if (scenario === "resume-large" && (prompt !== "Continue after loading" || historyPromptCalls++ !== 0)) return process.exit(16);
  if (scenario.startsWith("reconnect") && prompt === "inspect-settings") { text(JSON.stringify({settingCalls,selectedBehavior,configs:reconnectConfigs()})); return reply(id,{stopReason:"end_turn"}); }
+ if (prompt === "many-tool-stages") {
+   for (let stage = 0; stage < 80; stage++) {
+     text("x".repeat(32_000));
+     update({sessionUpdate:"tool_call_update",toolCallId:"stage-"+stage,status:"completed"});
+   }
+   return reply(id,{stopReason:"end_turn"});
+ }
  if (prompt === "inspect-mcp") { text(JSON.stringify(attachedMcp)); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "inspect-attachments") { text(JSON.stringify(params.prompt)); return reply(id,{stopReason:"end_turn"}); }
  if (prompt === "ask-question" || prompt === "unsupported-question") {
@@ -1681,6 +1688,44 @@ describe("native ACP service", () => {
         input: { ...scope(unsupported), text: "inspect-attachments", attachments },
       }),
     ).toEqual({ ok: false, code: "unsupported" })
+  })
+
+  it("lets built-in Jev exceed the turn display budget through bounded completed stages", async () => {
+    const agent = { command: "node", args: [] as string[] }
+    const context = await host({ resolveLaunch: () => ({ ok: true, launch: { agent } }) })
+    agent.args.push(context.script, "normal")
+    const session = ready(
+      await context.service.handle({
+        operation: "connect",
+        input: { projectId: "project-a", agent: { kind: "jev", settings: {} } },
+      }),
+    )
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(session), text: "many-tool-stages" },
+      }),
+    ).toMatchObject({ ok: true })
+    expect(context.events.filter((event) => event.type === "text")).toHaveLength(80)
+    const external = ready(await context.connect())
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(external), text: "many-tool-stages" },
+      }),
+    ).toEqual({ ok: false, code: "protocol-error" })
+    const builtin = ready(
+      await context.service.handle({
+        operation: "connect",
+        input: { projectId: "project-a", agent: { kind: "jev", settings: {} } },
+      }),
+    )
+    expect(
+      await context.service.handle({
+        operation: "prompt",
+        input: { ...scope(builtin), text: "oversized" },
+      }),
+    ).toEqual({ ok: false, code: "protocol-error" })
   })
 
   it("advertises Jev limits and rejects invalid image envelopes before the agent receives a prompt", async () => {

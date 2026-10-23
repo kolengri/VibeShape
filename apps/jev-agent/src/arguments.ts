@@ -97,6 +97,7 @@ function argumentRequest(
       tool: { name: tool.name, description: tool.description, inputSchema: tool.inputSchema },
       state: {
         goal: state.goal,
+        session: state.session,
         instructions: state.instructions,
         history: state.history,
         ...(state.uncertainOutcome ? { uncertainOutcome: state.uncertainOutcome } : {}),
