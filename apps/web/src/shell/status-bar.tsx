@@ -131,7 +131,7 @@ export function StatusBar({
       {onModelEdgeSelectionEnabledChange ? (
         <NativeSelect
           aria-label={t("selectionFilter")}
-          className="h-5 w-auto shrink-0 border-0 bg-transparent py-0 text-xs"
+          className="h-6 w-auto shrink-0 border-0 bg-transparent py-0 text-xs"
           value={modelEdgeSelectionEnabled ? "edges" : "any"}
           onChange={(event) =>
             onModelEdgeSelectionEnabledChange(event.currentTarget.value === "edges")
