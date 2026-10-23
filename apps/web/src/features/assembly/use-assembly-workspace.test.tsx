@@ -142,7 +142,7 @@ describe("Assembly Apply publication", () => {
     await act(async () => {
       await Promise.resolve()
     })
-    expect(ports.inspect).toHaveBeenCalledWith([])
+    expect(ports.inspect).toHaveBeenCalledWith([], expect.any(AbortSignal))
     expect(hook.result.current.disabled).toBe(false)
   })
 

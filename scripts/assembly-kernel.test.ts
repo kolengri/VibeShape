@@ -1,6 +1,7 @@
 import { expect, it } from "bun:test"
 import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
+import { AssemblyMaterializationCache } from "../packages/application/src/assembly-materialization"
 import {
   type FeatureGeometryEvaluationRequest,
   rebuildDocumentFeatures,
@@ -194,11 +195,50 @@ it("rebuilds frozen exact assembly sources after their live Part is deleted and 
   )
   const { engine, disposed, document, types, baseBounds, frozen, input, liveInput } =
     await nativeAssemblyFixture()
-  const inspection = await inspectAssemblyRuntime(engine, types.registry, null, input, {
-    documentId: frozen.id,
-    revision: 4,
-    generation: 0,
-  })
+  const cache = new AssemblyMaterializationCache()
+  const evaluate = vi.spyOn(engine, "evaluateFeature")
+  const displayInput = { ...input, interferencePairs: [] }
+  const identity = { documentId: frozen.id, revision: 4, generation: 0 }
+  const first = await inspectAssemblyRuntime(
+    engine,
+    types.registry,
+    null,
+    displayInput,
+    identity,
+    undefined,
+    cache,
+  )
+  expect(evaluate).toHaveBeenCalledTimes(1)
+  const again = await inspectAssemblyRuntime(
+    engine,
+    types.registry,
+    null,
+    displayInput,
+    identity,
+    undefined,
+    cache,
+  )
+  expect(evaluate).toHaveBeenCalledTimes(1)
+  expect(again.occurrences.map(({ bounds }) => bounds)).toEqual(
+    first.occurrences.map(({ bounds }) => bounds),
+  )
+  expect(disposed).toHaveBeenCalledTimes(1)
+  evaluate.mockClear()
+  disposed.mockClear()
+  const inspection = await inspectAssemblyRuntime(
+    engine,
+    types.registry,
+    null,
+    input,
+    {
+      documentId: frozen.id,
+      revision: 4,
+      generation: 0,
+    },
+    undefined,
+    cache,
+  )
+  expect(evaluate).toHaveBeenCalledTimes(1)
   expect(inspection.occurrences).toHaveLength(3)
   for (const [index, offset] of [0, 1, 20].entries())
     expect(inspection.occurrences[index]?.bounds.min[0]).toBeCloseTo(baseBounds.min[0] + offset, 8)

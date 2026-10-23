@@ -48,6 +48,10 @@ test("saves keyed motion separately, seeks and samples real poses, exports PNG/J
   page,
 }) => {
   test.setTimeout(240000)
+  const geometryWorkers: string[] = []
+  page.on("worker", (worker) => {
+    if (worker.url().includes("document-worker")) geometryWorkers.push(worker.url())
+  })
   await prepare(page)
   const baseline = await savedAssembly(page)
   await panel(page).getByRole("button", { name: "Motion studies", exact: true }).click()
@@ -75,6 +79,7 @@ test("saves keyed motion separately, seeks and samples real poses, exports PNG/J
   expect(authored.revision).toBe(baseline.revision + 1)
   expect(authored.assembly.joints).toEqual(baseline.assembly.joints)
   expect(authored.assembly.motionStudies?.[0]).toMatchObject({ name: "Hinge sweep", duration: 2 })
+  const workersBeforePlayback = geometryWorkers.length
   await panel(page).getByRole("button", { name: "Motion studies", exact: true }).click()
   await page.getByRole("menuitem", { name: "Hinge sweep", exact: true }).click()
   const timeline = panel(page).getByRole("slider", { name: "Timeline (s)", exact: true })
@@ -98,6 +103,7 @@ test("saves keyed motion separately, seeks and samples real poses, exports PNG/J
     timeout: 60000,
   })
   const threeSampleMilliseconds = Date.now() - samplesStarted
+  expect(geometryWorkers.length).toBe(workersBeforePlayback)
   await panel(page).getByText("Export solved motion", { exact: true }).click()
   const jsonDownload = page.waitForEvent("download")
   await panel(page).getByRole("button", { name: "Export solved JSON", exact: true }).click()

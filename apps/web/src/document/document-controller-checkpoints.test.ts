@@ -421,7 +421,7 @@ describe("assistant checkpoint baseline reuse", () => {
     expect(ports.rebuild).not.toHaveBeenCalled()
   })
 
-  it("cancels an in-flight assembly inspection before publishing retained Before", async () => {
+  it("cancels assembly preparation before allocating a worker or publishing retained Before", async () => {
     const f = await fixture(undefined, true)
     let finish!: (assets: never[]) => void
     ports.assemblyAssets.mockImplementationOnce(
@@ -436,7 +436,36 @@ describe("assistant checkpoint baseline reuse", () => {
     finish([])
     expect(await pending).toBe(false)
     expect(ports.inspectAssembly).not.toHaveBeenCalled()
-    expect(ports.terminate).toHaveBeenCalled()
+    expect(ports.createWorker).not.toHaveBeenCalled()
+    expect(ports.terminate).not.toHaveBeenCalled()
+    expect(
+      f.runtime.getDocumentControllerState().assistantCheckpointPresentation ?? null,
+    ).toBeNull()
+  })
+
+  it("terminates an active assembly inspection and does not publish retained Before", async () => {
+    const f = await fixture(undefined, true)
+    let started!: () => void
+    const inspecting = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    ports.inspectAssembly.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          ports.terminate.mockImplementationOnce(() => reject(new Error("Worker terminated")))
+          started()
+        }),
+    )
+    const pending = f.port.viewBefore(f.handle, f.revision)
+    await inspecting
+    f.port.clearPreview()
+    expect(await pending).toBe(false)
+    expect(ports.createWorker).toHaveBeenCalledTimes(1)
+    expect(ports.inspectAssembly).toHaveBeenCalledTimes(1)
+    expect(ports.terminate).toHaveBeenCalledTimes(1)
+    expect(
+      f.runtime.getDocumentControllerState().assistantCheckpointPresentation ?? null,
+    ).toBeNull()
   })
 
   it("lets a newer Before request supersede an unpublished retained presentation", async () => {
