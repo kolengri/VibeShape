@@ -1,12 +1,17 @@
-import { type EdgePreparationRequest, parsePreparedEdgePositions } from "./edge-preparation-schema"
+import {
+  type EdgePreparationRequest,
+  type PreparedMeshData,
+  parsePreparedMeshData,
+} from "./edge-preparation-schema"
 
 export type EdgePreparationSource = Readonly<{
   positions: Float32Array
   indices: Uint32Array
+  preparePicking?: boolean
 }>
 
 export type EdgePreparationJob = Readonly<{
-  result: Promise<Float32Array>
+  result: Promise<PreparedMeshData>
   cancel: () => void
 }>
 
@@ -27,7 +32,7 @@ type PendingJob = {
   source: EdgePreparationSource | null
   maxOutputLength: number
   settled: boolean
-  resolve: (positions: Float32Array) => void
+  resolve: (data: PreparedMeshData) => void
   reject: (error: Error) => void
 }
 
@@ -59,7 +64,7 @@ export class EdgePreparationClient implements EdgePreparationPort {
     if (previous) this.#cancel(previous)
     if (this.#active?.owner === owner) this.#cancel(this.#active)
     let task: PendingJob
-    const result = new Promise<Float32Array>((resolve, reject) => {
+    const result = new Promise<PreparedMeshData>((resolve, reject) => {
       task = {
         id: ++this.#nextId,
         owner,
@@ -113,11 +118,12 @@ export class EdgePreparationClient implements EdgePreparationPort {
         this.#worker.addEventListener("messageerror", this.#onWorkerError)
       }
       // Original model buffers remain attached for rendering and authoritative synchronous picking.
+      const preparePicking = task.source.preparePicking ?? false
       const positions = new Float32Array(task.source.positions)
       const indices = new Uint32Array(task.source.indices)
       task.source = null
       this.#worker.postMessage(
-        { version: 1, type: "prepareEdges", jobId: task.id, positions, indices },
+        { version: 1, type: "prepareEdges", jobId: task.id, positions, indices, preparePicking },
         [positions.buffer, indices.buffer],
       )
     } catch (cause) {
@@ -133,7 +139,7 @@ export class EdgePreparationClient implements EdgePreparationPort {
       return
     }
     try {
-      const positions = parsePreparedEdgePositions(
+      const data = parsePreparedMeshData(
         event instanceof MessageEvent ? event.data : undefined,
         task.id,
         task.maxOutputLength,
@@ -141,7 +147,7 @@ export class EdgePreparationClient implements EdgePreparationPort {
       this.#active = null
       if (!task.settled) {
         task.settled = true
-        task.resolve(positions)
+        task.resolve(data)
       }
       this.#pump()
     } catch (cause) {

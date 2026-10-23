@@ -1,15 +1,21 @@
 import { describe, expect, it } from "bun:test"
 import { appearanceColorSchema, appearancePresets } from "@vibeshape/domain/part-appearance"
 import {
+  BoxGeometry,
   BufferAttribute,
+  type BufferGeometry,
+  DoubleSide,
   LineBasicMaterial,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  Plane,
   Raycaster,
+  SphereGeometry,
   Vector3,
 } from "three"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { edgePreparationFixture } from "../tests/edge-preparation-fixture"
+import { createViewerGeometry } from "./mesh-geometry"
 import { ModelMeshPresentation } from "./model-meshes"
 import type { ViewerMesh } from "./three-viewport"
 import { viewerBodyColor } from "./viewer-appearance"
@@ -40,7 +46,125 @@ function fixture() {
   return { presentation, materials, preparation, dispose }
 }
 
+function denseMesh(geometry: BufferGeometry = new SphereGeometry(3, 128, 64)): ViewerMesh {
+  const index = geometry.getIndex()
+  if (!index) throw new Error("Expected indexed test geometry.")
+  const source = {
+    featureId: "dense-body",
+    positions: new Float32Array(geometry.getAttribute("position").array),
+    normals: new Float32Array(geometry.getAttribute("normal").array),
+    indices: new Uint32Array(index.array),
+    triangleFaceIds: Uint32Array.from({ length: index.count / 3 }, (_, i) => 500 + i),
+  }
+  geometry.dispose()
+  return source
+}
+
 describe("current model mesh resource ownership", () => {
+  it("accelerates dense all-hit picking without changing face identity, clipping, or model buffers", async () => {
+    const { presentation, preparation, dispose } = fixture()
+    const source = denseMesh()
+    const indices = source.indices.slice()
+    const [entry] = presentation.setMeshes([source])
+    if (!entry) throw new Error("Expected a dense body.")
+    const material = entry.surface.material
+    if (!(material instanceof MeshStandardMaterial)) throw new Error("Expected a model material.")
+    material.side = DoubleSide
+    const ray = new Raycaster(new Vector3(0.123, 0.234, 10), new Vector3(0, 0, -1))
+    presentation.group.updateMatrixWorld(true)
+    const before = ray.intersectObject(entry.surface)
+    expect(before).toHaveLength(2)
+    expect(entry.surface.geometry.boundsTree).toBeUndefined()
+    preparation.worker.complete()
+    await Promise.resolve()
+    expect(entry.surface.geometry.boundsTree).toBeDefined()
+    const after = ray.intersectObject(entry.surface)
+    expect(after.map((hit) => [hit.faceIndex, hit.distance])).toEqual(
+      before.map((hit) => [hit.faceIndex, hit.distance]),
+    )
+    const clip = new Plane(new Vector3(0, 0, -1), 0)
+    expect(
+      after.filter((hit) => clip.distanceToPoint(hit.point) >= 0).map((hit) => hit.faceIndex),
+    ).toEqual(
+      before.filter((hit) => clip.distanceToPoint(hit.point) >= 0).map((hit) => hit.faceIndex),
+    )
+    expect(source.indices).toEqual(indices)
+    expect(entry.surface.geometry.index?.array).toBe(source.indices)
+    expect(entry.surface.geometry.getAttribute("position").array).toBe(source.positions)
+    expect(after.map((hit) => source.triangleFaceIds[hit.faceIndex ?? -1])).toEqual(
+      before.map((hit) => source.triangleFaceIds[hit.faceIndex ?? -1]),
+    )
+    const [equal] = presentation.setMeshes([
+      {
+        ...structuredClone(source),
+        triangleFaceIds: new Uint32Array(source.triangleFaceIds.length).fill(42),
+      },
+    ])
+    expect(equal).toBe(entry)
+    expect(
+      ray
+        .intersectObject(entry.surface)
+        .map((hit) => entry.surface.geometry.userData.triangleFaceIds[hit.faceIndex ?? -1]),
+    ).toEqual([42, 42])
+    presentation.setMeshes([])
+    expect(entry.surface.geometry.boundsTree).toBeUndefined()
+    dispose()
+  })
+
+  it("retains stock face ordering when a ray hits an exact dense cube corner", async () => {
+    const { presentation, preparation, dispose } = fixture()
+    const [entry] = presentation.setMeshes([denseMesh(new BoxGeometry(2, 2, 2, 50, 50, 50))])
+    if (!entry) throw new Error("Expected a subdivided cube.")
+    presentation.group.updateMatrixWorld(true)
+    const ray = new Raycaster(new Vector3(3, 3, 3), new Vector3(-1, -1, -1).normalize())
+    const before = ray.intersectObject(entry.surface)
+    expect(before.length).toBeGreaterThan(1)
+    expect(new Set(before.map((hit) => hit.distance)).size).toBe(1)
+    preparation.worker.complete()
+    await Promise.resolve()
+    expect(entry.surface.geometry.boundsTree).toBeDefined()
+    expect(ray.intersectObject(entry.surface).map((hit) => hit.faceIndex)).toEqual(
+      before.map((hit) => hit.faceIndex),
+    )
+    dispose()
+  })
+
+  it("prepares edges without unused picking indexes for dense previews and highlight fallbacks", async () => {
+    const { presentation, preparation, dispose } = fixture()
+    const source = denseMesh()
+    const [preview] = presentation.setMeshes([{ ...source, appearance: "preview" }])
+    if (!preview) throw new Error("Expected a preview surface.")
+    expect(preparation.worker.requests[0]?.preparePicking).toBe(false)
+    preparation.worker.complete()
+    await Promise.resolve()
+    expect(preview.surface.geometry.boundsTree).toBeUndefined()
+    const surface = createViewerGeometry(source)
+    const fallback = presentation.createEdges(source, surface)
+    expect(preparation.worker.requests[1]?.preparePicking).toBe(false)
+    preparation.worker.complete(1)
+    await Promise.resolve()
+    expect(surface.boundsTree).toBeUndefined()
+    fallback.dispose()
+    surface.dispose()
+    dispose()
+  })
+
+  it("discards a dense picking index when its body is replaced before preparation finishes", async () => {
+    const { presentation, preparation, dispose } = fixture()
+    const [old] = presentation.setMeshes([denseMesh()])
+    const [next] = presentation.setMeshes([mesh])
+    if (!old || !next) throw new Error("Expected replacement bodies.")
+    preparation.worker.complete()
+    await Promise.resolve()
+    expect(old.surface.geometry.boundsTree).toBeUndefined()
+    expect(next.surface.geometry.boundsTree).toBeUndefined()
+    preparation.worker.complete(1)
+    await Promise.resolve()
+    expect(next.surface.geometry.boundsTree).toBeUndefined()
+    expect(next.edges.geometry.getAttribute("position").count).toBe(6)
+    dispose()
+  })
+
   it("retains equal pending work and prevents replaced owners from publishing late edges", async () => {
     const { presentation, preparation, dispose } = fixture()
     try {

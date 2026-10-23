@@ -1,5 +1,5 @@
 import type { ReactNode, SVGProps } from "react"
-import { useId } from "react"
+import { useId, useMemo } from "react"
 
 export type ColoredIconProps = SVGProps<SVGSVGElement> & { size?: number | string }
 
@@ -13,6 +13,11 @@ export function coloredIcon(id: string, drawing: ReactNode | ((instanceId: strin
     ...props
   }: ColoredIconProps) {
     const instanceId = useId()
+    // Artwork depends only on its instance-local SVG IDs, not changing host control props.
+    const artwork = useMemo(
+      () => (typeof drawing === "function" ? drawing(instanceId) : drawing),
+      [instanceId],
+    )
     return (
       <svg
         aria-hidden="true"
@@ -24,7 +29,7 @@ export function coloredIcon(id: string, drawing: ReactNode | ((instanceId: strin
         viewBox="0 0 256 256"
         data-icon={id}
       >
-        {typeof drawing === "function" ? drawing(instanceId) : drawing}
+        {artwork}
         {children}
       </svg>
     )

@@ -101,3 +101,53 @@ Chromium browser coverage verifies successful preview PNGs, camera preservation,
 and cancellation in both themes, and unchanged saved solids. Reproduction fixtures, source hashes,
 raw timing samples and logs are retained in the task's local artifact directory under
 `artifacts/ux-tool-usability/performance/`; these local artifacts are not distributed application data.
+
+## October 23 context-menu picking
+
+Dense model surfaces now receive an indirect `three-mesh-bvh` index from the existing viewer
+preparation worker. Bodies below 10,000 triangles retain ordinary Three.js raycasting. The worker
+uses copied model buffers, preserves original triangle order, and transfers the index with its crease
+edges. Preview surfaces and edge-only historical highlights do not request an index. Until completion, or on preparation failure, surfaces use stock picking. Each surface installs
+its own accelerated raycast; no global Three.js prototype is patched. All-hit selection, stock triangle tie-breaking at exact seams/corners and section
+filtering remain available, and replaced or disposed bodies cannot receive a stale index.
+
+A local Chromium headless probe on macOS arm64, Bun 1.4.3 and Three.js 0.185.1 exercised the production
+`ModelMeshPresentation`, real module worker and raycast path. A synthetic torus knot used 16 radial
+segments and 10,000 or 40,000 tubular segments. Eleven fixed parallel rays were sampled after one
+warmup, before and after preparation on the same surface. Triangle indices and distances matched.
+
+| Display triangles | Stock median per ray | Indexed range per ray | Index memory | Worker completion elapsed |
+| --- | --- | --- | --- | --- |
+| 320,000 | 8.2 ms | 0–0.1 ms | 4,021,536 bytes | 614 ms |
+| 1,280,000 | 32.7 ms | 0–0.1 ms | 16,038,368 bytes | 2,523 ms |
+
+Browser timer resolution rounds some indexed samples to zero; these are not zero-cost operations.
+Completion elapsed includes crease-edge generation, worker startup, transfers and the intervening
+baseline picks. Index construction itself is off the UI thread. Initial surface publication took
+4.4 and 10.1 ms respectively. The index adds memory proportional to mesh size and is released with
+its owning surface. These synthetic ray timings exclude menu mounting, React updates, GPU drawing
+and exact geometry work; they do not establish end-to-end right-click latency on a user's project.
+
+Repeated equivalent face selection also preserves the editor-session state and its subscribers,
+including the face ordinal. Competing edge/body/part/tree selections still clear, and tool-specific
+viewport callbacks still run. Explicit face picks skip empty edge-clear callbacks, preventing the
+application from clearing and republishing an unchanged face. Source-owned icons retain their immutable
+per-instance JSX artwork across host updates while preserving instance-local gradient/mask IDs and
+dynamic sizing, props, refs, children and CSS theme tokens. The first selection of a different face continues to update commands
+and the shell normally. No document, persistence or MCP operator contract changes.
+
+Regression coverage checks native worker transfers, all-hit and clipped picking equivalence,
+triangle-to-face identity after equal-buffer replacement, malformed output bounds, superseded-body
+completion, index disposal, and redundant selection notifications. Local probe inputs and raw samples
+are retained under `artifacts/slow-part-context-click/` and are not distributed application data.
+
+A separate development-mode Chromium comparison opened the same 20 mm box menu eight times, after
+waiting one second for initial background work. The baseline intercepted only the selection action,
+empty edge-clear callback and icon-artwork calculation to restore their prior implementations; the
+model, Vite server, menu, browser settings and profiler were otherwise the same. The baseline and final
+runs were serial and used fresh contexts. First-open DOM latency was 121.2 → 96.2 ms. The seven repeated
+openings had overlapping ranges, 36.8–102.1 → 41.1–52.2 ms; median DOM latency did not improve
+(40.9 → 50.6 ms), while the observed slowest repeat decreased. Median time to the second animation frame
+after insertion was 96.8 → 70.4 ms. That frame timestamp is a paint proxy, not an input-to-photon
+measurement. These small development-mode samples establish reduced redundant work and a narrower
+observed tail, not a production latency guarantee or a uniform speedup on small parts.

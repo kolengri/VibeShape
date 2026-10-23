@@ -28,7 +28,7 @@ export function processEdgePreparation(value: unknown): EdgePreparationResponse 
       version: 1,
       type: "edgesPrepared",
       jobId: request.jobId,
-      positions: prepareCreaseEdges(request),
+      ...prepareCreaseEdges(request),
     }
   } catch {
     return {

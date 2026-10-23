@@ -6,12 +6,15 @@ import {
   DoubleSide,
   FrontSide,
   Group,
+  type Intersection,
   LineBasicMaterial,
   LineSegments,
   Mesh,
   type MeshBasicMaterial,
   MeshStandardMaterial,
+  type Raycaster,
 } from "three"
+import { acceleratedRaycast } from "three-mesh-bvh"
 import type { EdgePreparationPort } from "./edge-preparation"
 import { createViewerGeometry, viewerBodyKey } from "./mesh-geometry"
 import { PreparedEdges } from "./prepared-edges"
@@ -92,6 +95,21 @@ function disposeEntry(entry: ModelMeshEntry) {
   disposeEntryMaterials(entry)
 }
 
+function raycastModelSurface(this: Mesh, raycaster: Raycaster, hits: Intersection[]) {
+  if (!this.geometry.boundsTree) {
+    Mesh.prototype.raycast.call(this, raycaster, hits)
+    return
+  }
+  const prepared: Intersection[] = []
+  acceleratedRaycast.call(this, raycaster, prepared)
+  // Stock Mesh visits original triangle order. Preserve that tie-break at shared seams/corners.
+  prepared.sort(
+    (left, right) =>
+      left.distance - right.distance || (left.faceIndex ?? 0) - (right.faceIndex ?? 0),
+  )
+  for (const hit of prepared) hits.push(hit)
+}
+
 /** Owns only the currently presented bodies; hidden and replaced resources are released immediately. */
 export class ModelMeshPresentation {
   readonly group = new Group()
@@ -107,8 +125,8 @@ export class ModelMeshPresentation {
     this.#onChange = onChange
   }
 
-  createEdges(source: ViewerMesh, surface: BufferGeometry) {
-    return new PreparedEdges(this.#preparation, source, surface, this.#onChange)
+  createEdges(source: ViewerMesh, surface: BufferGeometry, preparePicking = false) {
+    return new PreparedEdges(this.#preparation, source, surface, this.#onChange, preparePicking)
   }
 
   geometryFor(source: ViewerMesh) {
@@ -180,8 +198,14 @@ export class ModelMeshPresentation {
   #createEntry(source: ViewerMesh): ModelMeshEntry {
     const materials = this.#entryMaterials(source)
     const surface = new Mesh(createViewerGeometry(source), materials.surface)
+    // Per-instance acceleration falls back to stock Three until asynchronous preparation finishes.
+    surface.raycast = raycastModelSurface
     surface.name = viewerBodyKey(source)
-    const preparedEdges = this.createEdges(source, surface.geometry)
+    const preparedEdges = this.createEdges(
+      source,
+      surface.geometry,
+      source.appearance !== "preview",
+    )
     const edges = new LineSegments(preparedEdges.geometry, materials.edges)
     edges.name = `${surface.name}:edges`
     return {

@@ -38,7 +38,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | React DOM | MIT | Include a third-party notice |
 | react-markdown 10.1.0 / remark-gfm 4.0.1 | MIT | Browser-shipped assistant Markdown renderer and GFM extension; preserve their notices and exact locked transitive licenses in the generated third-party bundle |
 | Three.js | MIT | Include a third-party notice |
-| three-mesh-bvh 0.9.15 | MIT | Browser-shipped bounded shell-containment and intersection queries for valid cavity-aware 3MF export; preserve its upstream notice |
+| three-mesh-bvh 0.9.15 | MIT | Browser-shipped bounded shell-containment and intersection queries for valid cavity-aware 3MF export, plus worker-prepared indirect viewport picking indexes; preserve its upstream notice |
 | Vite | MIT | Include a build-time notice according to release policy |
 | Vite React plugin | MIT | Include a build-time notice according to release policy |
 | Zustand | MIT | Include a third-party notice |

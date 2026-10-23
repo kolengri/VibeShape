@@ -11,7 +11,9 @@ remain separate assets.
 - `scripts/generate-ui-icons.ts` produces `src/generated/colored-icons.tsx` and the public `icons.tsx` barrel.
 - `colored-icon.tsx` supplies a decorative SVG wrapper, host sizing and SVG props/ref support.
   Each instance scopes its gradient and mask IDs with React `useId`; references must resolve inside
-  that SVG, including repeated icons in toolbars, menus and hidden panels.
+  that SVG, including repeated icons in toolbars, menus and hidden panels. The immutable artwork is
+  memoized per instance so host control updates retain its JSX subtree; dimensions, SVG props, refs,
+  children and inherited CSS material tokens continue to update normally.
 - `cad-icons.tsx` preserves the original CAD import surface as compatibility re-exports.
 
 Run `bun run icons:generate` after a source/catalog edit. `bun run icons:check` detects stale generated

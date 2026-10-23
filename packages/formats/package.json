@@ -27,7 +27,7 @@
     "saxes": "6.0.0",
     "svgpath": "2.6.0",
     "three": "catalog:",
-    "three-mesh-bvh": "0.9.15",
+    "three-mesh-bvh": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

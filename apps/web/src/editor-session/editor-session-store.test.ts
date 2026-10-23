@@ -1295,6 +1295,54 @@ describe("constituent body selection", () => {
   })
 })
 
+describe("repeated viewport face selection", () => {
+  it("does not publish an equivalent face or an already empty selection", () => {
+    const store = createEditorSessionStore()
+    const notifications: unknown[] = []
+    store.subscribe((state) => notifications.push(state))
+    const actions = store.getState().actions
+    const initial = store.getState()
+    actions.setSelection(null)
+    expect(store.getState()).toBe(initial)
+    const face = { featureId, outputRole: "result", faceId: 7, faceOrdinal: 2 }
+    actions.setSelection(face)
+    const selected = store.getState()
+    actions.setSelection({ ...face })
+    expect(store.getState()).toBe(selected)
+    expect(notifications).toHaveLength(1)
+    for (const changed of [
+      { ...face, faceOrdinal: 3 },
+      { ...face, faceId: 8 },
+      { ...face, outputRole: "pattern.instance.1" },
+    ]) {
+      actions.setSelection(changed)
+      expect(store.getState().selection).toEqual(changed)
+    }
+    expect(notifications).toHaveLength(4)
+    actions.setSelection(null)
+    const cleared = store.getState()
+    actions.setSelection(null)
+    expect(store.getState()).toBe(cleared)
+    expect(notifications).toHaveLength(5)
+  })
+
+  it("still clears competing selections on repeated empty picks and preserves origin planes", () => {
+    const store = createEditorSessionStore()
+    const actions = store.getState().actions
+    actions.setSelectedBody({ featureId, outputRole: "result" })
+    actions.setSelection(null)
+    expect(store.getState().selectedBody).toBeNull()
+    actions.setModelTreeSelection([{ kind: "feature", id: featureId }])
+    actions.setSelection(null)
+    expect(store.getState().modelTreeSelection).toEqual([])
+    actions.setSelectedOriginPlane("xy")
+    const before = store.getState()
+    actions.setSelection(null)
+    expect(store.getState()).toBe(before)
+    expect(store.getState().selectedOriginPlane).toBe("xy")
+  })
+})
+
 describe("Idle exact CAD edge selection", () => {
   function edgeSelection(role = "result", semanticRole = "box.edge.z-max.x-min") {
     const targetBody = { schemaVersion: 0 as const, featureId, outputRole: role }
