@@ -311,7 +311,7 @@ export function ShellForm({
               <form.AppField name="direction">
                 {(field) => (
                   <field.ChoiceField
-                    className="[&>fieldset]:grid-cols-1"
+                    className="[&>fieldset]:grid [&>fieldset]:grid-cols-1"
                     label={copy.direction}
                     description={copy.directionDescription}
                     onValueChange={() => {
@@ -327,7 +327,7 @@ export function ShellForm({
               <form.Field name="closed">
                 {(field) => (
                   <ChoiceField
-                    className="[&>fieldset]:grid-cols-1"
+                    className="[&>fieldset]:grid [&>fieldset]:grid-cols-1"
                     name={field.name}
                     label={copy.cavity}
                     value={String(field.state.value)}
