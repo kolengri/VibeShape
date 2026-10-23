@@ -77,13 +77,13 @@ export function playbackOptions(
 }
 export const AssemblyPlaybackSettings = withFieldGroup({
   defaultValues: playbackFieldValues(),
-  props: { disabled: false },
-  render: function AssemblyPlaybackSettings({ group, disabled }) {
+  props: { disabled: false, locked: false },
+  render: function AssemblyPlaybackSettings({ group, disabled, locked }) {
     const t = useTranslations("app.assembly")
     return (
       <fieldset disabled={disabled} className="grid gap-2 text-sm">
         <group.AppField name="reverse">
-          {(field) => <field.CheckboxField label={t("motionReverse")} />}
+          {(field) => <field.CheckboxField label={t("motionReverse")} disabled={locked} />}
         </group.AppField>
         <group.AppField name="loop">
           {(field) => <field.CheckboxField label={t("motionLoop")} />}
@@ -115,6 +115,7 @@ export const AssemblyPlaybackSettings = withFieldGroup({
           {(field) => (
             <field.TextField
               label={t("motionSampleCount")}
+              disabled={locked}
               type="number"
               min={2}
               max={256}
@@ -489,6 +490,10 @@ function useStudyForm({ view, session, draft, task }: ReadyStudyPanelProps) {
       duration: String(draft.duration),
       playback: playbackFieldValues(),
     },
+    listeners: {
+      onChange: ({ formApi }) =>
+        motion.updatePlayback(playbackOptions(formApi.state.values.playback)),
+    },
     onSubmit: async ({ value, formApi }) => {
       if (view.disabled || motion.applying || motion.pending || motion.playing) return
       motion.pause()
@@ -534,7 +539,6 @@ function StudyEditor(props: ReadyStudyPanelProps) {
   const busy = view.disabled || motion.applying || submitting
   const solving = motion.pending || motion.playing
   const editingDisabled = busy || solving
-  const playbackDisabled = busy || motion.playing
   const close = () => {
     motion.reset()
     view.closeStudy()
@@ -575,7 +579,12 @@ function StudyEditor(props: ReadyStudyPanelProps) {
           options={playbackOptions(options)}
           disabled={busy}
           settings={
-            <AssemblyPlaybackSettings form={form} fields="playback" disabled={playbackDisabled} />
+            <AssemblyPlaybackSettings
+              form={form}
+              fields="playback"
+              disabled={busy}
+              locked={solving}
+            />
           }
         />
         <StudyFields
