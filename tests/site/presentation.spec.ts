@@ -408,7 +408,8 @@ test("modified section navigation preserves native new-tab activation", async ({
     modifiers: ["ControlOrMeta"],
   })
   const destination = await newPage
-  await expect(destination).toHaveURL(/#features$/)
+  // Native link activation is complete at commit; media loading is covered separately.
+  await destination.waitForURL(/#features$/, { waitUntil: "commit" })
   await expect(page).toHaveURL(/#features$/)
   await destination.close()
 })
