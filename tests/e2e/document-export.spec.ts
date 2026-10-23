@@ -203,10 +203,10 @@ test.describe("document export", () => {
         await scope
           .locator("span")
           .first()
-          .evaluate((element) => ({
-            whiteSpace: getComputedStyle(element).whiteSpace,
-            textOverflow: getComputedStyle(element).textOverflow,
-          })),
+          .evaluate((element) => {
+            const style = element.ownerDocument.defaultView?.getComputedStyle(element)
+            return { whiteSpace: style?.whiteSpace, textOverflow: style?.textOverflow }
+          }),
       ).toEqual({ whiteSpace: "nowrap", textOverflow: "ellipsis" })
       expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
         true,

@@ -53,7 +53,10 @@ for (const width of [512, 800, 1024, 1440]) {
       await chat.evaluate((element) => {
         const bounds = element.getBoundingClientRect()
         return element.contains(
-          document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2),
+          element.ownerDocument.elementFromPoint(
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2,
+          ),
         )
       }),
     ).toBe(true)
@@ -181,16 +184,22 @@ test("shows Thinking by the composer with the wordmark shimmer and respects redu
     expect(await canvas.boundingBox()).toEqual(canvasBounds)
     expect(await composer.boundingBox()).toEqual(composerBoundsAfterReply)
     expect(
-      await page.evaluate(() => ({
-        y: scrollY,
-        documentOverflow: document.documentElement.scrollHeight > innerHeight,
-        shellScroll: document.querySelector(".cad-shell")?.scrollTop,
-      })),
+      await page.locator("html").evaluate((element) => {
+        const browser = element.ownerDocument.defaultView
+        if (!browser) throw new Error("The editor must have a browser window")
+        return {
+          y: browser.scrollY,
+          documentOverflow: element.scrollHeight > browser.innerHeight,
+          shellScroll: element.ownerDocument.querySelector(".cad-shell")?.scrollTop,
+        }
+      }),
     ).toEqual({ y: 0, documentOverflow: false, shellScroll: 0 })
   }
   await log.hover()
   await page.mouse.wheel(0, 5000)
-  expect(await page.evaluate(() => scrollY)).toBe(0)
+  expect(
+    await page.locator("html").evaluate((element) => element.ownerDocument.defaultView?.scrollY),
+  ).toBe(0)
   await page.screenshot({ path: test.info().outputPath("chat-long-transcript-contained.png") })
 })
 
@@ -343,7 +352,8 @@ test("reserves a separate History scrollbar lane below operation controls", asyn
       if (!bounds) throw new Error("History operation control must be measurable")
       expect(
         await control.evaluate(
-          (element, point) => element.contains(document.elementFromPoint(point.x, point.y)),
+          (element, point) =>
+            element.contains(element.ownerDocument.elementFromPoint(point.x, point.y)),
           {
             x: bounds.x + bounds.width / 2,
             y: bounds.y + bounds.height - 2,
