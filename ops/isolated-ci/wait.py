@@ -2,6 +2,7 @@
 """Wait for a run-scoped result from the private, host-installed Mac broker."""
 
 import argparse
+from datetime import datetime, timezone
 import json
 import re
 import subprocess
@@ -10,6 +11,13 @@ import time
 
 REPOSITORY = "kolengri/VibeShape"
 OWNER = "kolengri"
+
+
+def report_progress(receipt):
+    description = receipt.get("description")
+    if not isinstance(description, str) or not re.fullmatch(r"Mac CI: [A-Za-z0-9 /().-]{1,110}", description):
+        return None
+    return description
 
 
 def result_context(run_id, attempt, scope="node3"):
@@ -87,9 +95,16 @@ def wait_primary(sha, run_id, attempt, timeout=1800, unavailable_after=90,
         raise ValueError("Invalid result timeout")
     started = last_progress = now()
     last_id = None
+    last_stage = None
+    print("Waiting for isolated Mac CI to start.", flush=True)
     while now() - started < timeout:
         receipt = result_receipt(fetch(sha), run_id, attempt, "ci")
         if receipt:
+            stage = report_progress(receipt)
+            if stage is not None and stage != last_stage:
+                timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+                print(f"[{timestamp}] {stage}", flush=True)
+                last_stage = stage
             state = receipt["state"]
             if state == "success":
                 print("Complete isolated Mac CI passed.")

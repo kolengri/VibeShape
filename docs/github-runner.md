@@ -35,6 +35,13 @@ no timeout or missing result counts as success. The broker sends a fresh heartbe
 every 30 seconds while its request remains eligible. Busy, offline, sleeping, or
 restarting Macs therefore do not block CI indefinitely.
 
+The pending commit status reports the current Mac stage every 30 seconds. The
+`Await isolated Mac CI` step logs observed stage changes with UTC times: VM startup,
+source/dependency preparation, checks, build, Node/DOM tests, and cleanup. Short
+stages may finish between heartbeats. These labels are advisory and never replace
+the final verification result. Older host installations keep their generic
+heartbeat until the reviewed controller and golden-image guest helper are updated.
+
 A reported repository verification failure fails CI immediately and does not
 trigger fallback. Invalid result identities, canceled/stale requests, and GitHub
 API verification errors also fail closed. `Fast PR checks` accepts either complete
