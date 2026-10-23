@@ -3,6 +3,8 @@ import { Button } from "@vibeshape/ui/components/button"
 import { PanelLeftClose, PanelLeftOpen } from "@vibeshape/ui/components/icons"
 import { type ContextType, createContext, useContext, useSyncExternalStore } from "react"
 
+import { useWorkspaceWidth } from "./workspace-width"
+
 const narrowQuery = "(width < 40rem)"
 function subscribe(change: () => void) {
   if (typeof window === "undefined" || !window.matchMedia) return () => undefined
@@ -14,7 +16,9 @@ function snapshot() {
   return typeof window !== "undefined" && Boolean(window.matchMedia?.(narrowQuery).matches)
 }
 export function useNarrowWorkspace() {
-  return useSyncExternalStore(subscribe, snapshot, () => false)
+  const width = useWorkspaceWidth()
+  const fallback = useSyncExternalStore(subscribe, snapshot, () => false)
+  return width === null ? fallback : width < 39
 }
 
 export const CompactModelTreeContext = createContext<{
