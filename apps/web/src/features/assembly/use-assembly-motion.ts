@@ -76,6 +76,12 @@ export function useAssemblyMotion({
   const generation = useRef(0)
   const applyLock = useRef(false)
   const serial = useRef<Promise<void> | null>(null)
+  const playback = useRef<AssemblyPlaybackOptions>({})
+  const updatePlayback = (options: Pick<AssemblyPlaybackOptions, "speed" | "loop">) => {
+    const speed = options.speed ?? 1
+    if (Number.isFinite(speed) && speed >= 0.1 && speed <= 10) playback.current.speed = speed
+    playback.current.loop = options.loop ?? false
+  }
   const stop = useCallback(() => {
     generation.current += 1
     request.current?.abort()
@@ -128,6 +134,7 @@ export function useAssemblyMotion({
     const abort = new AbortController()
     const active = () => token === generation.current && !abort.signal.aborted
     request.current = abort
+    playback.current = { ...options }
     setState((previous) => ({ ...previous, pending: true, playing, error: null, samples: [] }))
     const previous = serial.current
     let finish!: () => void
@@ -158,7 +165,7 @@ export function useAssemblyMotion({
               ],
             }))
         },
-        options,
+        options: playback.current,
       })
       if (active()) setState((previous) => ({ ...previous, playing: false, pending: false }))
     } catch (error) {
@@ -225,6 +232,6 @@ export function useAssemblyMotion({
       applyLock.current = false
     }
   }
-  return { ...current, reset, pause, preview, play, apply, invalid }
+  return { ...current, reset, pause, preview, play, apply, invalid, updatePlayback }
 }
 export type AssemblyMotionView = ReturnType<typeof useAssemblyMotion>

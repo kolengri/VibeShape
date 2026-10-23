@@ -82,6 +82,15 @@ test("previews real assembly drives without saving, pauses and resets, applies o
   await expect(panel(page).getByText("Preview: -10 deg", { exact: true })).toBeVisible({
     timeout: 60_000,
   })
+  await expect(
+    panel(page).getByRole("spinbutton", { name: "Playback speed", exact: true }),
+  ).toBeEnabled()
+  await expect(panel(page).getByRole("checkbox", { name: "Loop", exact: true })).toBeEnabled()
+  await expect(
+    panel(page).getByRole("spinbutton", { name: "Sample count", exact: true }),
+  ).toBeDisabled()
+  await panel(page).getByRole("spinbutton", { name: "Playback speed", exact: true }).fill("4")
+  await panel(page).getByRole("checkbox", { name: "Loop", exact: true }).check()
   await panel(page).getByRole("button", { name: "Pause", exact: true }).click()
   await page.clock.resume()
   await expect(panel(page).getByRole("button", { name: "Pause", exact: true })).toHaveCount(0)
