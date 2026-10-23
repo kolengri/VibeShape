@@ -9,6 +9,7 @@ export type DecisionState = {
   photos: Photo[]
   session?: {
     requests: string[]
+    omittedRequests?: number
     answeredQuestions: Observation[]
     omittedAnsweredQuestions?: number
     activeDraft?: Observation

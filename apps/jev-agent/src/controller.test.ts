@@ -298,6 +298,91 @@ describe("Jev continuous execution", () => {
     expect(finalized).toBe(true)
   })
 
+  it.each([
+    ["ASCII", "x".repeat(20_000)],
+    ["Unicode", "界".repeat(12_000)],
+    ["JSON escapes", '"\n'.repeat(5000)],
+  ])(
+    "bounds repeated long requests without losing original and latest excerpts (%s)",
+    async (_label, filler) => {
+      const goals = Array.from(
+        { length: 8 },
+        (_, index) =>
+          `Request ${index}: ${index === 0 ? "Build a container" : "Correct the lid"}.\n${filler}\nRequest ${index}: required wall ${index + 2} mm.`,
+      )
+      let completed = 0
+      let current = ""
+      const f = fixture({
+        decide: async (state) => {
+          expect(state.goal).toBe(current)
+          expect(Buffer.byteLength(JSON.stringify({ ...state, photos: [] }))).toBeLessThanOrEqual(
+            64_000,
+          )
+          if (completed > 0) {
+            const requests = state.session?.requests ?? []
+            expect(Buffer.byteLength(JSON.stringify(requests))).toBeLessThanOrEqual(24_000)
+            expect(requests[0]).toContain("Request 0: Build a container")
+            expect(requests[0]).toContain("Request 0: required wall 2 mm.")
+            expect(requests.at(-1)).toContain(`Request ${completed - 1}:`)
+            expect(requests.at(-1)).toContain(`required wall ${completed + 1} mm.`)
+            expect(requests[0]).toContain("[Earlier request text truncated.]")
+            if (completed === goals.length)
+              expect(state.session?.omittedRequests).toBeGreaterThan(0)
+          }
+          return { kind: "done", confidence: 1 }
+        },
+      })
+      for (const goal of goals) {
+        current = goal
+        expect(
+          await f.controller.run(goal, [], new AbortController().signal, async () => {}),
+        ).toContain("ended the turn")
+        completed++
+      }
+      current = "Continue"
+      expect(
+        await f.controller.run(current, [], new AbortController().signal, async () => {}),
+      ).toContain("ended the turn")
+    },
+  )
+
+  it("compacts prior requests for a near-budget current request and still accepts Continue", async () => {
+    let current = ""
+    let expectedLatest = ""
+    const f = fixture({
+      decide: async (state) => {
+        expect(state.goal).toBe(current)
+        expect(Buffer.byteLength(JSON.stringify({ ...state, photos: [] }))).toBeLessThanOrEqual(
+          64_000,
+        )
+        if (expectedLatest) {
+          const requests = state.session?.requests ?? []
+          expect(requests[0]).toContain("Original: container")
+          expect(requests[0]).toContain("original: wall 2 mm")
+          expect(requests.at(-1)).toContain(expectedLatest)
+        }
+        return { kind: "done", confidence: 1 }
+      },
+    })
+    for (const goal of [
+      `Original: container ${"x".repeat(20_000)} original: wall 2 mm`,
+      `Latest: lid ${"y".repeat(20_000)} latest: lid 4 mm`,
+    ]) {
+      current = goal
+      await f.controller.run(current, [], new AbortController().signal, async () => {})
+    }
+    expectedLatest = "latest: lid 4 mm"
+    current = `Keep the lid; ${"z".repeat(47_000)}`
+    expect(
+      await f.controller.run(current, [], new AbortController().signal, async () => {}),
+    ).toContain("ended the turn")
+    expectedLatest = "Keep the lid"
+    current = "Continue"
+    expect(
+      await f.controller.run(current, [], new AbortController().signal, async () => {}),
+    ).toContain("ended the turn")
+  })
+
   it("preserves the original request across repeated continuations and honors Stop", async () => {
     const signal = new AbortController()
     let decisions = 0

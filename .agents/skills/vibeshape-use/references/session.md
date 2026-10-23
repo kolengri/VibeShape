@@ -105,6 +105,8 @@ requests, accepted answers and the active draft receipt beyond recent observatio
 existing task and reuse those answers; repeated identical question messages and fields in one turn reuse the
 validated reply without another dialog. Oversized accepted answers have explicit truncation markers;
 context pressure can omit older answer observations, reported by `omittedAnsweredQuestions`.
+Earlier requests retain bounded head/tail excerpts anchored to the original task and newest
+corrections; `omittedRequests` reports omitted intermediate requests. The current request stays exact.
 Never infer omitted design details from these markers. A process restart does not restore that
 runtime context.
 They do not add MCP tools or permissions. Jev

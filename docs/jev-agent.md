@@ -218,8 +218,12 @@ ACP JSON-RPC, so it is intended for an ACP client rather than an interactive ter
   validated full reply. If accumulated answers still exceed the available context after history
   trimming, oldest answer observations are omitted and counted in `omittedAnsweredQuestions`.
   Truncated or omitted evidence never establishes missing design details. A large accepted answer
-  does not prevent a subsequent short request from running. Requests that cannot fit even after
-  answer compaction are rejected before decision execution. Inspect
+  does not prevent a subsequent short request from running. Retained requests use marked head/tail
+  excerpts of at most 8 KB each within a 24 KB aggregate JSON budget, preserving the original request
+  and newest corrections. Older intermediate requests can be omitted, counted in `omittedRequests`.
+  If a new request needs more context space, retained excerpts shrink further while keeping the
+  original and latest request anchors. The current request is never truncated. Requests that cannot
+  fit even after history, answer and request compaction are rejected before decision execution. Inspect
   the model again when a required identity or parameter is absent.
   The description catalog has a separate 128 KB ceiling, and decision state has a 192 KB ceiling,
   reserving space for the full 64 KB controller context alongside the catalog. History and uncertain outcomes
