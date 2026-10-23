@@ -7,7 +7,7 @@ const modelBrowserRow = cn(
 )
 export const modelBrowserChildRow = cn(modelBrowserRow, "pl-8")
 export const modelBrowserGroupRow = cn(
-  "min-w-0 w-full justify-start gap-2 rounded-sm px-2 pr-9 text-xs font-medium",
+  "min-w-0 w-full justify-start gap-2 rounded-sm px-2 pr-9 text-xs font-medium [&_svg:not([role=img])]:size-4",
   "focus-visible:ring-2 focus-visible:ring-inset",
 )
 export const modelBrowserSelectedRow = "bg-accent text-accent-foreground hover:bg-accent"

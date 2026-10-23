@@ -107,8 +107,8 @@ menus, and a single remaining command stays a direct action.
 
 The model browser supports name/type search across Parts, unowned bodies, sketches, planes, and
 History operations. Results include source paths to distinguish repeated names and use the existing
-selection and preselection handlers. Type filters stay visible so focus changes do not move the tree;
-origin planes use their existing selection action. An explicit notice
+selection and preselection handlers. The search field is the only control above the tree; names and
+types are matched through the query. Origin planes use their existing selection action. An explicit notice
 identifies selected items outside the result set. Clearing search restores the mounted tree and its
 collapse state. Search does not change History insertion eligibility or object identity.
 
@@ -181,7 +181,8 @@ their geometry-driven annotation placement and double-click editing contract. Th
 compatibility aliases for the standard tier, not additional densities.
 
 The model browser uses 24 px group headings with 12 px medium labels, and 32 px object rows with
-14 px labels for origin planes, authored datum planes, parts and sketches. The owning row paints
+14 px labels for origin planes, authored datum planes, parts and sketches. Search, group, object, and
+visibility icons use the same 16 px box. The owning row paints
 selection across labels and trailing controls; child hover fills must not mask that state. Compact chronological History retains its separate density.
 
 ### Typography

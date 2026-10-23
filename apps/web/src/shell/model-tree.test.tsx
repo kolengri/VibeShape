@@ -643,7 +643,7 @@ describe("ModelTree browser search", () => {
     },
   )
 
-  it("lists all origin planes in the Planes filter and preserves disabled and saving guards", async () => {
+  it("finds all origin planes by type and preserves disabled and saving guards", async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
     const origin = {
@@ -654,7 +654,7 @@ describe("ModelTree browser search", () => {
       disabled: false,
     }
     const { rerenderTree } = renderTree({ origin })
-    await user.click(browser().getByRole("button", { name: /^Planes$/ }))
+    await user.type(browser().getByRole("searchbox"), "plane")
     const results = browser().getByRole("tree", { name: "Model search results" })
     const planes = within(results).getByRole("group", { name: "Planes" })
     expect(
@@ -762,8 +762,10 @@ describe("ModelTree browser search", () => {
       onFeaturePreselectionChange,
       onModelTreeSelectionChange,
     })
-    await user.type(browser().getByRole("searchbox", { name: "Search model" }), "shared bracket")
-    await user.click(browser().getByRole("button", { name: "Operations" }))
+    await user.type(
+      browser().getByRole("searchbox", { name: "Search model" }),
+      "shared bracket operations",
+    )
     const first = browser().getByRole("treeitem", {
       name: "Shared bracket",
       description: "History / Left housing / Shared bracket / Operations 1",
@@ -772,7 +774,9 @@ describe("ModelTree browser search", () => {
       name: "Shared bracket",
       description: "History / Right housing / Shared bracket / Operations 2",
     })
-    expect(browser().getAllByRole("treeitem")).toHaveLength(2)
+    expect(
+      within(browser().getByRole("group", { name: /^History$/ })).getAllByRole("treeitem"),
+    ).toHaveLength(2)
     await user.hover(second)
     expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(fixture.transformerId)
     await user.unhover(second)
@@ -886,7 +890,7 @@ describe("ModelTree browser search", () => {
     expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
   })
 
-  it("offers compact type buttons and keeps later Parts unavailable at the History insertion point", async () => {
+  it("searches by type without filter buttons and keeps later Parts unavailable at the History insertion point", async () => {
     const user = userEvent.setup()
     const fixture = authoredInsertionController()
     const onPartSelect = vi.fn()
@@ -899,11 +903,9 @@ describe("ModelTree browser search", () => {
       onBodyPreselectionChange,
       onAuthoredMetadata,
     })
-    await user.click(browser().getByRole("searchbox"))
-    const filters = browser().getByRole("group", { name: "Filter model results by type" })
-    expect(within(filters).getAllByRole("button")).toHaveLength(6)
+    expect(browser().queryByRole("group", { name: "Filter model results by type" })).toBeNull()
     expect(browser().queryByRole("combobox")).toBeNull()
-    await user.click(within(filters).getByRole("button", { name: "Parts" }))
+    await user.type(browser().getByRole("searchbox"), "part")
     const current = browser().getByRole("treeitem", { name: "Part 1" })
     const later = browser().getByRole("treeitem", { name: "Part 2" }) as HTMLButtonElement
     expect(later.disabled).toBe(true)
