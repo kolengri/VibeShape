@@ -29,7 +29,11 @@ descriptor paths exactly as copied, including JSON backslash escaping. Windows c
 require private current-user ACLs; a permission failure is not a reason to weaken descriptor checks.
 Do not substitute the standalone stdio server,
 which opens a separate editor profile. The copied configuration permits one external client. The
-in-app ACP agent instead receives a separate project-bound MCP attachment automatically when its
+status bar offers a waiting external client's separate approval control, including while the native
+assistant is connected or recovering. **Stop AI** still stops every transport for the current project.
+The external client requires its own explicit **Enable AI session** approval; native project authority
+and approval preferences never transfer to it.
+The in-app ACP agent instead receives a separate project-bound MCP attachment automatically when its
 configured agent connects. Its internal server name is project-specific; discover advertised tool
 names instead of assuming `vibeshape` is the namespace. Select the intended project, discover tools,
 and call `model_info`; no external MCP configuration or initial **Enable AI session** action is

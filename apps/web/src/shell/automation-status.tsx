@@ -64,7 +64,8 @@ function useNativeAutomationConnection(
   useEffect(() => {
     if (projectId) startNativeProjectAutomationConnection(projectId)
   }, [projectId])
-  const available = native.available || native.connected || native.recovering
+  const available =
+    native.connected || native.recovering || (native.available && external.client === null)
   return nativeConnection && available
     ? { connection: nativeConnection, current: native, nativeConnection }
     : { connection: externalConnection, current: external, nativeConnection }
@@ -125,7 +126,7 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     }),
     [connection, remoteConnection, stopAll],
   )
-  return { ...controls, current, remote, localConnections }
+  return { ...controls, current, remote, localConnections, externalConnection, external }
 }
 
 type AutomationConnections = ReturnType<typeof useCreateAutomationConnections>
@@ -181,6 +182,29 @@ function editorDraftBlock(state: EditorSessionState) {
 function hasRetainedLocalApproval(current: AutomationConnections["current"]) {
   return current.connected || current.recovering
 }
+
+function ExternalAutomationStatus({
+  connection,
+  current,
+  externalConnection,
+  external,
+}: Pick<AutomationConnections, "connection" | "current" | "externalConnection" | "external">) {
+  if (
+    !current.projectBound ||
+    !hasRetainedLocalApproval(current) ||
+    !external.available ||
+    !external.client
+  )
+    return null
+  return (
+    <LocalAutomationStatus
+      connection={{ ...externalConnection, disable: connection.disable }}
+      current={external}
+      showStopControl={false}
+    />
+  )
+}
+
 function AutomationStatusControls({
   controller,
   blockedReason,
@@ -188,6 +212,8 @@ function AutomationStatusControls({
   remoteConnection,
   current,
   remote,
+  externalConnection,
+  external,
 }: AutomationConnections & {
   controller: DocumentControllerState
   blockedReason: ReturnType<typeof getProjectActionBlock>
@@ -199,11 +225,19 @@ function AutomationStatusControls({
   return (
     <>
       {showLocal && controller.status === "ready" ? (
-        <LocalAutomationStatus
-          key={`${controller.report?.snapshot.id}:${current.connected}`}
-          connection={connection}
-          current={current}
-        />
+        <>
+          <LocalAutomationStatus
+            key={`${controller.report?.snapshot.id}:${current.connected}`}
+            connection={connection}
+            current={current}
+          />
+          <ExternalAutomationStatus
+            connection={connection}
+            current={current}
+            externalConnection={externalConnection}
+            external={external}
+          />
+        </>
       ) : null}
       {remote.available && controller.status === "ready" ? (
         <RemoteAutomationStatus

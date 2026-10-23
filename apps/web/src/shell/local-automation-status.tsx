@@ -46,12 +46,14 @@ function useExternalConnectionApproval() {
 export function LocalAutomationStatus({
   connection,
   current,
+  showStopControl = true,
 }: {
   connection: Pick<
     Connection,
     "enable" | "disable" | "enableAutoApply" | "disableAutoApply" | "setProjectManagement"
   >
   current: ReturnType<Connection["getSnapshot"]>
+  showStopControl?: boolean
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const approval = useExternalConnectionApproval()
@@ -64,7 +66,7 @@ export function LocalAutomationStatus({
       ) : (
         <InactiveConnectionStatus connection={connection} current={current} />
       )}
-      <StopConnectionControl connection={connection} current={current} />
+      {showStopControl ? <StopConnectionControl connection={connection} current={current} /> : null}
       {approval.failed && !approval.open ? (
         <span role="alert" className="sr-only">
           {t("autoApplyBusy")}

@@ -1,10 +1,12 @@
 import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { createLocalAutomationConnection } from "../automation/local-automation-connection"
 import type { createRemoteAutomationConnection } from "../automation/remote-automation-connection"
 import type { DocumentControllerState } from "../document/document-controller"
+import { i18n } from "../i18n"
 
 type LocalSnapshot = ReturnType<ReturnType<typeof createLocalAutomationConnection>["getSnapshot"]>
 type RemoteSnapshot = ReturnType<ReturnType<typeof createRemoteAutomationConnection>["getSnapshot"]>
@@ -29,6 +31,7 @@ function connection<State extends { busy: boolean }>(initial: State) {
     start: vi.fn(),
     status: vi.fn(async () => {}),
     dispose: vi.fn(),
+    enable: vi.fn(async () => {}),
     disable: vi.fn(async () => {}),
   }
 }
@@ -91,8 +94,12 @@ const { getProjectActiveWorkBlock, getProjectNavigationBlock } = await import(
 const { EditorSessionProvider, useEditorSessionStoreApi } = await import(
   "../editor-session/editor-session-provider"
 )
-const { AutomationConnectionsProvider, AutomationEditorScope, useAutomationConnections } =
-  await import("./automation-status")
+const {
+  AutomationConnectionsProvider,
+  AutomationEditorScope,
+  AutomationStatus,
+  useAutomationConnections,
+} = await import("./automation-status")
 
 function controller(projectId = projectA): DocumentControllerState {
   return {
@@ -139,7 +146,10 @@ function ControlsProbe() {
         {connections.current.projectBound ? "native" : "external"}
       </output>
       <button type="button" onClick={() => connections.connection.disable()}>
-        Stop AI
+        Stop selected connection
+      </button>
+      <button type="button" onClick={() => connections.connection.enable()}>
+        Enable selected connection
       </button>
       <button
         type="button"
@@ -151,12 +161,23 @@ function ControlsProbe() {
   )
 }
 
-function Workspace({ projectId = projectA }: { projectId?: string }) {
+function Workspace({
+  projectId = projectA,
+  showStatus = false,
+}: {
+  projectId?: string
+  showStatus?: boolean
+}) {
   return (
     <AutomationConnectionsProvider controller={controller(projectId)}>
       <EditorSessionProvider documentId={projectId}>
         <AutomationEditorScope />
         <ControlsProbe />
+        {showStatus ? (
+          <I18nProvider i18n={i18n} initialLocale="en">
+            <AutomationStatus controller={controller(projectId)} />
+          </I18nProvider>
+        ) : null}
       </EditorSessionProvider>
     </AutomationConnectionsProvider>
   )
@@ -172,6 +193,66 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe("all-transport editor activity guard", () => {
+  it.each(["connected", "recovering"] as const)(
+    "allows explicit external approval while native access is %s and preserves its Stop control",
+    (state) => {
+      ports.nativeA.publish({
+        connected: state === "connected",
+        recovering: state === "recovering",
+      })
+      ports.external.publish({ connected: false, client: { name: "Diagnostics", version: "1" } })
+      render(<Workspace showStatus />)
+      const enable = screen.getByRole("button", { name: "Enable AI session" }) as HTMLButtonElement
+      expect(enable.disabled).toBe(false)
+      expect(ports.external.enable).not.toHaveBeenCalled()
+      fireEvent.click(enable)
+      expect(ports.external.enable).toHaveBeenCalledTimes(1)
+      expect(ports.nativeA.enable).not.toHaveBeenCalled()
+      expect(screen.getByLabelText("Selected local transport").textContent).toBe("native")
+      act(() => ports.external.publish({ connected: true }))
+      fireEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+      expect(ports.nativeA.disable).toHaveBeenCalledTimes(1)
+      expect(ports.external.disable).toHaveBeenCalledTimes(1)
+      expect(ports.remote.disable).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it("offers the waiting external client after native access fails without granting it native authority", () => {
+    ports.nativeA.publish({ connected: false, recovering: false, client: null, error: true })
+    ports.external.publish({
+      connected: false,
+      client: { name: "VibeShape diagnostics", version: "1" },
+    })
+    render(<Workspace />)
+    expect(screen.getByLabelText("Selected local transport").textContent).toBe("external")
+    expect(ports.external.enable).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Enable selected connection" }))
+    expect(ports.external.enable).toHaveBeenCalledTimes(1)
+    expect(ports.nativeA.enable).not.toHaveBeenCalled()
+    expect(ports.external.getSnapshot()).toMatchObject({
+      connected: false,
+      autoApply: false,
+      projectManagement: false,
+      projectBound: false,
+    })
+    act(() => ports.external.publish({ client: null }))
+    expect(screen.getByLabelText("Selected local transport").textContent).toBe("native")
+  })
+
+  it.each(["connected", "recovering"] as const)(
+    "retains the %s native connection while another client waits for external approval",
+    (state) => {
+      ports.nativeA.publish({
+        connected: state === "connected",
+        recovering: state === "recovering",
+      })
+      ports.external.publish({ connected: false, client: { name: "Other client", version: "1" } })
+      render(<Workspace />)
+      expect(screen.getByLabelText("Selected local transport").textContent).toBe("native")
+      expect(ports.external.enable).not.toHaveBeenCalled()
+    },
+  )
+
   it("blocks generic local work while idle native status is displayed and releases the guard on completion", () => {
     const view = render(<Workspace />)
     expect(screen.getByLabelText("Selected local transport").textContent).toBe("native")
@@ -222,7 +303,7 @@ describe("all-transport editor activity guard", () => {
     expect(ports.remote.validateDocumentScope).toHaveBeenCalledTimes(2)
     act(() => ports.external.publish({ busy: true }))
     expect(getProjectActiveWorkBlock()).toBe("automation-busy")
-    fireEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+    fireEvent.click(screen.getByRole("button", { name: "Stop selected connection" }))
     expect(ports.external.disable).toHaveBeenCalledTimes(1)
     expect(ports.nativeB.disable).toHaveBeenCalledTimes(1)
     expect(ports.remote.disable).toHaveBeenCalledTimes(1)
@@ -234,7 +315,7 @@ describe("all-transport editor activity guard", () => {
     render(<Workspace />)
     expect(screen.getByLabelText("Selected local transport").textContent).toBe("external")
     expect(getProjectActiveWorkBlock()).toBe("automation-busy")
-    fireEvent.click(screen.getByRole("button", { name: "Stop AI" }))
+    fireEvent.click(screen.getByRole("button", { name: "Stop selected connection" }))
     expect(ports.nativeA.disable).toHaveBeenCalledTimes(1)
     expect(ports.external.disable).toHaveBeenCalledTimes(1)
     expect(ports.remote.disable).toHaveBeenCalledTimes(1)
