@@ -1,13 +1,35 @@
+import { useTranslations } from "@vibeshape/i18n"
 import { Skeleton } from "@vibeshape/ui/components/skeleton"
+import { builtInEditorCommandDescriptors } from "../commands/built-in-editor-commands"
+import { editorCommandIds, type ResolvedEditorCommand } from "../commands/editor-command"
+import { CommandToolbar } from "./command-toolbar"
 import { ProjectLoadingProgress } from "./project-loading-progress"
 import { WorkspacePanels } from "./workspace-panels"
 import { WorkspaceWorkbench } from "./workspace-width"
 
+const openingCommands: readonly ResolvedEditorCommand[] = builtInEditorCommandDescriptors
+  .filter(
+    ({ toolbarGroup, id }) =>
+      toolbarGroup === "model-primary" ||
+      toolbarGroup === "model-primitives" ||
+      toolbarGroup === "model-inspection" ||
+      id === editorCommandIds.documentUndo ||
+      id === editorCommandIds.documentRedo,
+  )
+  .map((descriptor) => ({
+    descriptor,
+    active: false,
+    toolbarVisible: true,
+    eligibility: { enabled: false, reason: "documentLoading" },
+    invoke: () => undefined,
+  }))
+
 function ModelTreeSkeleton() {
+  const t = useTranslations("app.shell.modelTree")
   return (
-    <div aria-hidden="true" data-project-skeleton="tree" className="grid content-start gap-5 p-3">
-      <Skeleton className="h-4 w-24" />
-      <div className="grid gap-3">
+    <div data-project-skeleton="tree" className="grid content-start gap-5 p-3">
+      <h2 className="text-xs font-medium">{t("ariaLabel")}</h2>
+      <div aria-hidden="true" className="grid gap-3">
         {["h-3 w-28", "h-3 w-20", "h-3 w-32", "h-3 w-24"].map((className) => (
           <div key={className} className="flex items-center gap-2">
             <Skeleton className="size-4 shrink-0" />
@@ -44,18 +66,11 @@ export function ViewportLoadingSkeleton() {
 }
 
 export function ProjectWorkbenchSkeleton() {
+  const t = useTranslations("app.shell")
   return (
     <WorkspaceWorkbench>
       <div className="contents">
-        <div
-          aria-hidden="true"
-          data-project-skeleton="toolbar"
-          className="flex min-w-0 items-center gap-2 overflow-hidden rounded-md border bg-toolbar px-2"
-        >
-          {["workspace", "sketch", "solid", "modify", "view", "inspect"].map((item) => (
-            <Skeleton key={item} className="h-6 w-16 shrink-0" />
-          ))}
-        </div>
+        <CommandToolbar commands={openingCommands} />
         <div className="editor-model-area grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
           <WorkspacePanels
             allowTransparency={false}
@@ -65,13 +80,12 @@ export function ProjectWorkbenchSkeleton() {
             modelTree={<ModelTreeSkeleton />}
             history={
               <section
-                aria-hidden="true"
                 data-project-skeleton="history"
                 className="flex h-14 items-center gap-3 overflow-hidden bg-card px-3"
               >
-                <Skeleton className="h-3 w-16 shrink-0" />
+                <span className="shrink-0 text-xs font-medium">{t("modelTree.items.history")}</span>
                 {["first", "second", "third", "fourth"].map((item) => (
-                  <Skeleton key={item} className="size-8 shrink-0" />
+                  <Skeleton key={item} aria-hidden="true" className="size-8 shrink-0" />
                 ))}
               </section>
             }
@@ -80,13 +94,8 @@ export function ProjectWorkbenchSkeleton() {
             <ProjectLoadingProgress />
           </WorkspacePanels>
         </div>
-        <footer
-          aria-hidden="true"
-          data-project-skeleton="status"
-          className="flex items-center justify-between gap-4"
-        >
-          <Skeleton className="h-3 w-28" />
-          <Skeleton className="h-3 w-20" />
+        <footer className="flex min-w-0 items-center text-xs text-muted-foreground">
+          <span>{t("applicationBar.loading")}</span>
         </footer>
       </div>
     </WorkspaceWorkbench>
