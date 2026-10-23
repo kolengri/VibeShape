@@ -129,6 +129,30 @@ describe("native private files", () => {
     await expect(readPrivateFile(path, 65537)).rejects.toThrow("size limit")
   }, 30_000)
 
+  it.skipIf(!windows)(
+    "uses the system compiler with an unrelated inherited module path",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "vibeshape-private-module-path-"))
+      roots.push(root)
+      const modulePath = join(root, "unrelated-modules")
+      await mkdir(modulePath)
+      const previous = process.env.PSModulePath
+      process.env.PSModulePath = modulePath
+      try {
+        const privateDirectory = join(root, "private")
+        preparePrivateDirectory(privateDirectory)
+        const path = join(privateDirectory, "private.json")
+        await writePrivateFile(path, "private")
+        expect((await readPrivateFile(path, 7)).toString()).toBe("private")
+        await expect(readPrivateFile(path, 6)).rejects.toThrow()
+      } finally {
+        if (previous === undefined) delete process.env.PSModulePath
+        else process.env.PSModulePath = previous
+      }
+    },
+    60_000,
+  )
+
   it("preserves remembered custom slicer identities across a host restart", async () => {
     const root = await directory()
     const executable = join(root, "Custom slicer.exe")

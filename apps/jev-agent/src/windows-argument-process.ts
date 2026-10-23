@@ -19,6 +19,16 @@ function Trace($stage) {
 Trace 'script-start'
 Trace ('runtime:' + $PSVersionTable.PSVersion + ':' + [Environment]::Version + ':' + [Environment]::Is64BitProcess)
 try {
+  # Load the inbox module directly instead of scanning installed modules for Add-Type.
+  Trace 'module-load-start'
+  $utility = [IO.Path]::Combine($PSHOME, 'Modules', 'Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Utility.psd1')
+  Import-Module -Name $utility -ErrorAction Stop
+  Trace 'module-load-ready'
+  if ($trace) {
+    Trace 'resolve-start'
+    $resolved = $ExecutionContext.InvokeCommand.GetCommand('Add-Type', [System.Management.Automation.CommandTypes]::Cmdlet)
+    Trace ('resolve-ready:' + ($null -ne $resolved))
+  }
   Trace 'compile-start'
   Add-Type -TypeDefinition @'
 using System;

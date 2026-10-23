@@ -49,9 +49,11 @@ const windowsScript = `
 $ErrorActionPreference = 'Stop'
 try {
   [Console]::Error.WriteLine('VIBESHAPE_PRIVATE:compile')
-  $addType = Get-Command 'Microsoft.PowerShell.Utility\\Add-Type' -ErrorAction Stop
+  # Load the inbox module directly instead of scanning installed modules for Add-Type.
+  $utility = [IO.Path]::Combine($PSHOME, 'Modules', 'Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Utility.psd1')
+  Import-Module -Name $utility -ErrorAction Stop
   [Console]::Error.WriteLine('VIBESHAPE_PRIVATE:resolved')
-  & $addType -TypeDefinition @'
+  Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.IO;
