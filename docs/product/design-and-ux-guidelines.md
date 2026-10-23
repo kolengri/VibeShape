@@ -153,6 +153,11 @@ Use a 4 px base grid. Default editor spacing is compact:
 
 Do not mix comfortable dashboard spacing into the editor. A settings or onboarding screen MAY use a more comfortable density, but a single page must not switch density arbitrarily.
 
+Forms in dialogs, settings, and task panels MUST preserve a common label/control column boundary
+across their sections. Inline actions belong inside the control column; placing a button beside
+an entire field must not narrow that row's grid or shift its control to the left. Long values,
+help, validation, disabled states, theme changes, and 200% zoom must preserve this alignment.
+
 Pointer targets MUST be at least 24 × 24 CSS px or have the spacing required by WCAG 2.2. Primary toolbar targets SHOULD be 32 × 32 px. A later touch-authoring mode MUST use at least 44 × 44 px targets and cannot be created by simply scaling the desktop shell.
 
 Button sizing is owned by the shared `Button` primitive:

@@ -12,6 +12,7 @@ export type NativeSelectFieldProps = Omit<
   error?: React.ReactNode
   label: React.ReactNode
   selectClassName?: string
+  trailingAction?: React.ReactNode
 }
 
 function hasContent(value: React.ReactNode): boolean {
@@ -27,6 +28,7 @@ function NativeSelectField({
   label,
   required,
   selectClassName,
+  trailingAction,
   ...props
 }: NativeSelectFieldProps) {
   const generatedId = React.useId()
@@ -38,6 +40,17 @@ function NativeSelectField({
   const describedBy = [hasDescription ? descriptionId : undefined, hasError ? errorId : undefined]
     .filter(Boolean)
     .join(" ")
+  const select = (
+    <NativeSelect
+      {...props}
+      id={selectId}
+      disabled={disabled}
+      required={required}
+      aria-describedby={describedBy || undefined}
+      aria-invalid={hasError || undefined}
+      className={selectClassName}
+    />
+  )
 
   return (
     <Field
@@ -54,15 +67,14 @@ function NativeSelectField({
       >
         {label}
       </FieldLabel>
-      <NativeSelect
-        {...props}
-        id={selectId}
-        disabled={disabled}
-        required={required}
-        aria-describedby={describedBy || undefined}
-        aria-invalid={hasError || undefined}
-        className={selectClassName}
-      />
+      {trailingAction ? (
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-1">
+          {select}
+          {trailingAction}
+        </div>
+      ) : (
+        select
+      )}
       <FieldError id={errorId}>{error}</FieldError>
     </Field>
   )
