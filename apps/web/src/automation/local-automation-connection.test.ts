@@ -196,6 +196,344 @@ describe("unpaired local client discovery", () => {
   })
 })
 
+describe("desktop external access", () => {
+  function useDesktop() {
+    connection.dispose()
+    connection = createLocalAutomationConnection({ accessPolicy: "desktop-external" })
+  }
+  function desktopHost() {
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/status"
+        ? ok({ protocolVersion: 1, client, paired: false, accessPolicy: "desktop-external" })
+        : original?.(path, ...args),
+    )
+  }
+
+  it("requires the desktop broker policy and leaves a standalone endpoint unpaired", async () => {
+    useDesktop()
+    await ready()
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: false,
+      available: false,
+      error: true,
+    })
+    expect(mocks.createHandle).not.toHaveBeenCalled()
+  })
+
+  it("automatically grants read/proposal access without connected-assistant authority or auto-apply", async () => {
+    useDesktop()
+    desktopHost()
+    await ready()
+    await vi.waitFor(() => expect(connection.getSnapshot().connected).toBe(true))
+    expect(mocks.createHandle).toHaveBeenCalledWith()
+    expect(connection.getSnapshot()).toMatchObject({
+      autoApply: false,
+      projectManagement: false,
+      defaultAccess: true,
+    })
+    expect(enableAutoApply).not.toHaveBeenCalled()
+    expect(connection.setProjectManagement(true)).toBe(true)
+    expect(mocks.request.mock.calls.find(([path]) => path === "/connect")?.[4]).toBeUndefined()
+  })
+
+  it("persists Stop across desktop namespace recreation independently of browser preferences", async () => {
+    desktopHost()
+    localStorage.setItem(
+      "vibeshape-local-ai-preferences",
+      JSON.stringify({ client, autoApply: true }),
+    )
+    useDesktop()
+    await ready()
+    await vi.waitFor(() => expect(connection.getSnapshot().connected).toBe(true))
+    expect(connection.getSnapshot().autoApply).toBe(false)
+    await connection.disable()
+    const grants = mocks.request.mock.calls.filter(([path]) => path === "/connect").length
+    useDesktop()
+    await ready()
+    connection.validateDocumentScope("0195b5ac-b250-7a2c-8c33-000000000002")
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryBlocked: true })
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(grants)
+    expect(localStorage.getItem("vibeshape-local-ai-preferences")).not.toBeNull()
+    expect(await connection.enable()).toBe(true)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      autoApply: false,
+      recoveryBlocked: false,
+    })
+  })
+
+  it("starts a fresh recovery budget when a project opens after chooser readiness expires", async () => {
+    desktopHost()
+    useDesktop()
+    const availableDocument = mocks.createHandle.getMockImplementation()
+    if (!availableDocument) throw new Error("The document fixture is unavailable.")
+    mocks.createHandle.mockReturnValue({
+      ok: false,
+      diagnostic: {
+        code: "document-write-unavailable",
+        message: "No project is open.",
+        retryable: true,
+      },
+    })
+    await ready()
+    await vi.advanceTimersByTimeAsync(135_000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryFailed: true })
+    mocks.createHandle.mockImplementation(availableDocument)
+    connection.validateDocumentScope(id)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      recoveryFailed: false,
+      autoApply: false,
+    })
+  })
+
+  it("preserves an exhausted current-project recovery budget through internal and same-project validation", async () => {
+    desktopHost()
+    useDesktop()
+    connection.validateDocumentScope(id)
+    const availableDocument = mocks.createHandle.getMockImplementation()
+    if (!availableDocument) throw new Error("The document fixture is unavailable.")
+    mocks.createHandle.mockReturnValue({
+      ok: false,
+      diagnostic: {
+        code: "document-write-unavailable",
+        message: "Project is loading.",
+        retryable: true,
+      },
+    })
+    await ready()
+    await vi.advanceTimersByTimeAsync(135_000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryFailed: true })
+    const attempts = mocks.createHandle.mock.calls.length
+    connection.validateDocumentScope()
+    connection.validateDocumentScope(id)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(mocks.createHandle.mock.calls).toHaveLength(attempts)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryFailed: true })
+    await connection.disable()
+    connection.validateDocumentScope()
+    connection.validateDocumentScope(null)
+    connection.validateDocumentScope(id)
+    mocks.createHandle.mockImplementation(availableDocument)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(mocks.createHandle.mock.calls).toHaveLength(attempts)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryBlocked: true })
+  })
+
+  it("keeps desktop Stop authoritative when storage is full", async () => {
+    desktopHost()
+    useDesktop()
+    await ready()
+    await vi.waitFor(() => expect(connection.getSnapshot().connected).toBe(true))
+    const storage = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage quota exceeded", "QuotaExceededError")
+    })
+    try {
+      await connection.disable()
+      useDesktop()
+      await ready()
+      expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryBlocked: true })
+      expect(await connection.enable()).toBe(false)
+      expect(connection.getSnapshot().connected).toBe(false)
+    } finally {
+      storage.mockRestore()
+    }
+  })
+
+  it("revokes a late automatic grant after Stop and never recovers it", async () => {
+    useDesktop()
+    desktopHost()
+    const pending = deferred<ReturnType<typeof ok>>()
+    const original = mocks.request.getMockImplementation()
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+      path === "/connect" ? pending.promise : original?.(path, ...args),
+    )
+    await ready()
+    await connection.disable()
+    pending.resolve(ok(credential))
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
+    expect(connection.getSnapshot()).toMatchObject({ connected: false, recoveryBlocked: true })
+  })
+
+  it("revokes the old document before automatically capturing a different current project", async () => {
+    useDesktop()
+    desktopHost()
+    await ready()
+    await vi.waitFor(() => expect(connection.getSnapshot().connected).toBe(true))
+    const nextId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    const initial = mocks.createHandle.mock.results.at(-1)?.value
+    initial.readIdentity = () => null
+    mocks.createHandle.mockImplementation(() => ({
+      ...initial,
+      readIdentity: () => ({ id: nextId, revision: 0, name: "Next" }),
+    }))
+    connection.validateDocumentScope()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(mocks.request).toHaveBeenCalledWith("/revoke", {}, credential.token, true)
+    expect(mocks.request).toHaveBeenLastCalledWith(
+      "/poll",
+      expect.objectContaining({ document: { id: nextId, revision: 0, name: "Next" } }),
+      credential.token,
+    )
+    expect(connection.currentActor()).toEqual(commandActorSchema.parse(credential.actor))
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      autoApply: false,
+      projectManagement: false,
+    })
+  })
+
+  function pendingProjectHandoff(nextClient = client) {
+    const revocation = deferred<{ ok: boolean; status: number; data: null }>()
+    const original = mocks.request.getMockImplementation()
+    const nextId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    const nextCredential = {
+      ...credential,
+      token: "B".repeat(43),
+      actor: { ...credential.actor, sessionId: nextId },
+      client: nextClient,
+    }
+    let paired = true
+    mocks.request.mockImplementation((path: string, ...args: unknown[]) => {
+      if (path === "/status")
+        return ok({
+          protocolVersion: 1,
+          client: nextClient,
+          paired,
+          accessPolicy: "desktop-external",
+        })
+      if (path === "/revoke") return revocation.promise
+      if (path === "/connect" && paired)
+        return {
+          ok: false,
+          status: 409,
+          data: {
+            ok: false,
+            diagnostic: {
+              code: "already-paired",
+              message: "A local automation session is already paired.",
+              retryable: false,
+            },
+          },
+        }
+      if (path === "/connect") return ok(nextCredential)
+      return original?.(path, ...args)
+    })
+    const initial = mocks.createHandle.mock.results.at(-1)?.value
+    initial.readIdentity = () => null
+    mocks.createHandle.mockImplementation(() => ({
+      ...initial,
+      readIdentity: () => ({ id: nextId, revision: 0, name: "Next" }),
+    }))
+    connection.validateDocumentScope(nextId)
+    return { revocation, unpair: () => (paired = false), nextId, nextCredential }
+  }
+
+  it.each(["acknowledged", "lost"] as const)(
+    "waits for the old pairing to clear before granting the next document after a %s revoke",
+    async (outcome) => {
+      useDesktop()
+      desktopHost()
+      await ready()
+      await vi.waitFor(() => expect(connection.getSnapshot().connected).toBe(true))
+      const handoff = pendingProjectHandoff()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+      expect(connection.getSnapshot()).toMatchObject({
+        connected: false,
+        recoveryFailed: false,
+        error: false,
+      })
+      expect(connection.currentActor()).toBeNull()
+      if (outcome === "lost") {
+        handoff.revocation.reject(new LocalAutomationTransportError("Revoke timed out."))
+        // The broker suspends an abandoned active pairing after its existing 15-second lease.
+        await vi.advanceTimersByTimeAsync(14_000)
+        expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+        expect(connection.getSnapshot().recoveryFailed).toBe(false)
+      } else {
+        handoff.revocation.resolve({ ok: true, status: 204, data: null })
+        await handoff.revocation.promise
+      }
+      handoff.unpair()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(2)
+      expect(mocks.request).toHaveBeenLastCalledWith(
+        "/poll",
+        expect.objectContaining({ document: { id: handoff.nextId, revision: 0, name: "Next" } }),
+        handoff.nextCredential.token,
+      )
+      expect(connection.getSnapshot()).toMatchObject({
+        connected: true,
+        recoveryFailed: false,
+        autoApply: false,
+        projectManagement: false,
+        error: false,
+      })
+      expect(mocks.createHandle).toHaveBeenCalledTimes(2)
+      expect(mocks.createHandle).toHaveBeenLastCalledWith()
+      expect(connection.currentActor()).toEqual(
+        commandActorSchema.parse(handoff.nextCredential.actor),
+      )
+      expect(enableAutoApply).not.toHaveBeenCalled()
+      expect(mocks.execute).not.toHaveBeenCalled()
+    },
+  )
+
+  it("accepts a broker-cleared replacement client without inheriting authority or awaiting the old revoke", async () => {
+    useDesktop()
+    desktopHost()
+    await ready()
+    await vi.waitFor(() => expect(connection.getSnapshot().connected).toBe(true))
+    expect(connection.enableAutoApply()).toBe(true)
+    const replacement = { name: "Replacement CAD client", version: "2" }
+    const handoff = pendingProjectHandoff(replacement)
+    // Broker client replacement revokes the old pair before advertising the new client.
+    handoff.unpair()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: true,
+      client: replacement,
+      autoApply: false,
+      projectManagement: false,
+      recoveryFailed: false,
+    })
+    expect(connection.currentActor()).toEqual(
+      commandActorSchema.parse(handoff.nextCredential.actor),
+    )
+    handoff.revocation.resolve({ ok: false, status: 401, data: null })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, error: false })
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(2)
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/revoke")).toHaveLength(1)
+    expect(enableAutoApply).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps Stop authoritative while the old document revocation is in flight", async () => {
+    useDesktop()
+    desktopHost()
+    await ready()
+    await vi.waitFor(() => expect(connection.getSnapshot().connected).toBe(true))
+    const handoff = pendingProjectHandoff()
+    await connection.disable()
+    handoff.revocation.resolve({ ok: true, status: 204, data: null })
+    handoff.unpair()
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(connection.getSnapshot()).toMatchObject({
+      connected: false,
+      recoveryBlocked: true,
+      autoApply: false,
+      projectManagement: false,
+    })
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/connect")).toHaveLength(1)
+    expect(connection.currentActor()).toBeNull()
+  })
+})
+
 describe("embedded project access", () => {
   function useNativeProject(projectId = id) {
     connection.dispose()
@@ -1137,7 +1475,7 @@ describe("local AI project management consent", () => {
         }),
       }),
     )
-    fireEvent.pointerDown(screen.getByRole("button", { name: "AI connection and approval mode" }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Built-in assistant connection" }), {
       button: 0,
       ctrlKey: false,
       pointerType: "mouse",

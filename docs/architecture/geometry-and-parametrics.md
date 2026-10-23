@@ -192,12 +192,18 @@ The implemented schema is `TopoRef` version `0`. It validates finite normalized 
 
 A face signature MAY include surface type, normalized analytical parameters, area, centroid, normal or axis, bounding box, loop count, and neighboring edge signatures. An edge signature may include curve type, length, endpoints, center or axis, and adjacent face roles. Values are quantized according to the tolerance policy.
 
+Topology signature bounds come from the exact B-Rep with triangulation disabled. Display or export
+tessellation must not alter an edge or face signature: a selection made in a meshed document must
+resolve against a fresh preview worker with the same exact geometry. Native bounds wrappers are
+released deterministically. Missing and ambiguous references retain the ordinary repair contract;
+mesh-dependent bounds are not a reason to relax the resolver's confidence margin.
+
 ### Resolution algorithm
 
 1. Filter candidates by topology kind.
 2. Resolve an exact semantic role. A missing or duplicated authoritative role returns `missing` or `ambiguous`; it never falls through to a similar shape.
 3. Resolve an exact immediate lineage token. A missing token returns `missing`; multiple descendants are ranked only within that lineage set.
-4. Before approximate edge ranking, an edge without an explicit intent hint resolves one identical full geometric/adjacency signature within the eligible candidate set. Duplicate identical signatures remain ambiguous. This does not override authoritative semantic roles or missing lineage. See [ADR-0120](../adr/0120-exact-edge-signature-resolution.md).
+4. Before approximate edge or face ranking, a reference without an explicit intent hint resolves one identical full geometric/adjacency signature within the eligible candidate set. Duplicate identical signatures remain ambiguous. This does not override authoritative semantic roles, lineage or output-body scope. See [ADR-0120](../adr/0120-exact-edge-signature-resolution.md) and [ADR-0131](../adr/0131-exact-face-signature-resolution.md).
 5. Otherwise filter by geometry class and score measure, centroid or intent point, direction, bounds, boundary count, and adjacency.
 6. If one candidate passes the versioned score threshold and confidence margin, return `resolved`.
 7. If candidates are close, return `ambiguous`; never evaluate downstream features silently.

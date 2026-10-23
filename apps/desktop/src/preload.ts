@@ -20,6 +20,7 @@ z.config({ jitless: true })
 
 const bridge: DesktopHostBridge = Object.freeze({
   protocolVersion: 1,
+  localAutomationAccess: "current-project",
   platform: process.platform === "darwin" ? "darwin" : "other",
   windowChrome: process.argv.includes("--vibeshape-unified-chrome") ? "unified" : "standard",
   onFullScreenChange(callback) {

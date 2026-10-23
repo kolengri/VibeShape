@@ -341,18 +341,18 @@ function exactSignatureKey(signature: TopoRef["signature"]) {
   })
 }
 
-function resolveExactEdgeSignature(
+function resolveExactGeometrySignature(
   reference: TopoRef,
   candidates: readonly TopologyCandidate[],
   method: "history" | "signature",
 ): TopologyResolution | null {
-  // A freshly picked edge must survive nearby, geometrically similar edges. Identical
+  // A freshly picked edge or face must survive nearby, geometrically similar candidates. Identical
   // signatures still fail closed; semantic/history ownership and explicit intent win.
-  if (reference.kind !== "edge" || reference.intent) return null
+  if (reference.kind === "vertex" || reference.intent) return null
   const signature = exactSignatureKey(reference.signature)
   const exact = candidates.filter(
     (candidate) =>
-      candidate.kind === "edge" && exactSignatureKey(candidate.signature) === signature,
+      candidate.kind === reference.kind && exactSignatureKey(candidate.signature) === signature,
   )
   if (exact.length === 1)
     return {
@@ -379,7 +379,7 @@ function rankCandidates(
   policy: TopologyResolutionPolicy,
   method: "history" | "signature",
 ): TopologyResolution {
-  const exact = resolveExactEdgeSignature(reference, candidates, method)
+  const exact = resolveExactGeometrySignature(reference, candidates, method)
   if (exact) return exact
   const ranked = candidates
     .map((candidate) => ({ candidate, score: scoreSignature(reference, candidate, policy) }))

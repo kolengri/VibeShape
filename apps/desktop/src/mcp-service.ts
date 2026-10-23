@@ -40,7 +40,7 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
   const broker = createBrowserBroker({
     origin,
     onRevoke: resources.clear,
-    ...(projectId ? { projectId } : {}),
+    ...(projectId ? { projectId } : { accessPolicy: "desktop-external" }),
   })
   let client: Client | null = null
   let questions: AssistantQuestionHost | undefined
@@ -154,14 +154,14 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
             },
             invoke: (...args) => invokeWhenReady(owner, ...args),
           }
-        : broker,
+        : { ...broker, invoke: (...args) => invokeWhenReady(owner, ...args) },
       resources,
       projectId
         ? {
             accessPolicy: "native-project",
             ...(nativeQuestions ? { questions: nativeQuestions } : {}),
           }
-        : {},
+        : { accessPolicy: "desktop-external" },
     )
     let resolveReleased = () => {}
     const released = new Promise<void>((resolve) => {

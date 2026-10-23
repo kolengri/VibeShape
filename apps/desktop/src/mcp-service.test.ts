@@ -580,7 +580,7 @@ describe("app-owned native MCP attachment", () => {
     expect(await (await browser(context)).json()).toMatchObject({ paired: false, client: null })
   })
 
-  it("discovers existing tools before consent, reserves one client and revokes it when its stream closes", async () => {
+  it("discovers existing tools before document access, reserves one client and revokes it when its stream closes", async () => {
     const context = await host()
     if (process.platform !== "win32")
       expect((await lstat(context.descriptorPath)).mode & 0o777).toBe(0o600)
@@ -589,7 +589,7 @@ describe("app-owned native MCP attachment", () => {
     )
     const { client } = await connect(context)
     expect(client.getInstructions()).toContain(
-      "Open the editor and explicitly enable the AI session",
+      "automatically connects this authenticated local client",
     )
     const released = context.service.whenClientReleased()
     let detached = false

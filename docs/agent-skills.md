@@ -63,7 +63,8 @@ Preserve existing model intent and use the ordinary browser review path.
 
 ## Connect separately
 
-- **Local:** follow the [local MCP quickstart](mcp-quickstart.md). Read the advertised session/authoring-guide resources, open the returned editor URL, and have the owner enable the AI session.
+- **Desktop:** use the app's copied configuration from Settings > Connections. Its authenticated external client automatically receives current-project access, with manual Apply by default. Stop persists until the person chooses Restart local MCP there. See [desktop AI connections](desktop-macos.md#ai-connections).
+- **Standalone local/development:** follow the [local MCP quickstart](mcp-quickstart.md). Read the advertised session/authoring-guide resources, open the returned editor URL, and have the owner enable the AI session.
 - **Remote:** follow [remote MCP operation](remote-mcp.md) and the deployed endpoint shown in the editor FAQ. Complete OAuth/PKCE and approval in the exact target tab. Remote exposes the bundled skill resources and shared modeling tools, and omits MCP binary export; files use the visible editor's export controls.
 
 After tool discovery and pairing, use one safe `model_info` invocation to establish current access. A configuration file or OAuth success alone is not this evidence. Live server schemas are authoritative; supported operations can change without a skill update.

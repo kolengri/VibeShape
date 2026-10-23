@@ -28,8 +28,16 @@ origin; no external Bun or Node runtime is needed. Keep absolute Windows executa
 descriptor paths exactly as copied, including JSON backslash escaping. Windows credential files
 require private current-user ACLs; a permission failure is not a reason to weaken descriptor checks.
 Do not substitute the standalone stdio server,
-which opens a separate editor profile. The copied configuration permits one external client. The
-in-app ACP agent instead receives a separate project-bound MCP attachment automatically when its
+which opens a separate editor profile. The copied configuration permits one authenticated external
+client. Selecting or opening a project automatically grants it current-project read and proposal
+access; call `model_info` without an Enable AI session action. Desktop primary and secondary status
+controls have no initial Enable option. External changes default to manual Apply; native project
+write authority never transfers to this client. Supported auto-apply and project management remain
+separate explicit choices. **Stop AI** revokes every transport for the current project and persists
+external Stop across reload, connection-owner recreation and project navigation. Only the person's
+**Restart local MCP** in Settings > Connections restores this external access. Do not operate that
+control to bypass Stop. Standalone browser/development and remote clients retain manual pairing.
+The in-app ACP agent instead receives a separate project-bound MCP attachment automatically when its
 configured agent connects. Its internal server name is project-specific; discover advertised tool
 names instead of assuming `vibeshape` is the namespace. Select the intended project, discover tools,
 and call `model_info`; no external MCP configuration or initial **Enable AI session** action is
@@ -38,11 +46,12 @@ access, including after a previous Stop AI. The host registers the private assis
 lazy MCP initialization, and chat waits for project readiness before accepting modeling prompts.
 Connecting authorizes validated changes to that project, without a second
 Apply action. The same policy applies to the built-in browser API chat; external clients keep their
-separate pairing and approval policy. A copied external configuration still requires explicit **Enable AI session** approval;
-successful tool discovery alone does not grant document authority. Manual project navigation
+separate manual Apply policy. The copied desktop configuration selects automatic access only through
+the trusted preload and matching desktop host discovery policy; a query parameter or assistant bridge
+alone does not grant external authority. Manual project navigation
 replaces the external client's document scope.
 
-The first native `model_info` may wait up to five seconds for the editor's automatic connection.
+The first desktop `model_info` on an embedded or copied external attachment may wait up to five seconds for the editor's automatic connection.
 Other tools never wait for future pairing; establish project identity before modeling. After Stop
 or any prior grant, unpaired reads fail immediately. A timeout or failed invocation is not an empty
 model and does not authorize another project or a replacement CAD workflow.
@@ -53,7 +62,8 @@ session. Read `model_info` after recovery, inspect the saved revision and affect
 decide what remains. In the same authenticated local tab, `list_recoverable_drafts` can expose
 unapplied semantic intent; follow the explicit adoption procedure in
 [transactions](transactions.md). Never replay an uncertain write. Explicit Stop AI
-still prevents automatic reconnection and requires the person's intentional Connect or Enable action.
+still prevents automatic reconnection and requires the person's intentional Connect (embedded),
+Restart local MCP (desktop external), or Enable action (standalone browser).
 
 The embedded desktop chat retries temporary ACP and native project-connection failures up to five
 times before exposing manual retry, waiting 5, 10, 20, 40 and 60 seconds between attempts.
@@ -83,7 +93,7 @@ it does not spawn a local stdio agent or publish the browser's project as a reac
 
 Native connection state is retained per project, separately from external clients. **Stop AI**
 revokes that project's access and keeps it disabled across reload or reopening until the person
-chooses **Connect** in AI settings or **Enable AI session**. Automatic ACP recovery and New chat do not undo Stop. No tool can change
+chooses **Connect** in AI settings (or **Enable AI session** in standalone web status). Automatic ACP recovery and New chat do not undo Stop. No tool can change
 the approval mode or restore a stopped connection.
 
 ## Jev ACP client

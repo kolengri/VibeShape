@@ -496,9 +496,19 @@ The browser still needs an explicit local session with the bridge. The initial a
 The embedded native ACP assistant automatically establishes that session through its private
 project-bound attachment under [ADR-0115](../adr/0115-automatic-native-project-mcp-access.md). Its
 stable internal server name avoids collisions with external provider configuration. Native access is isolated per project. Connecting the built-in chat authorizes its validated model
-commits without separate Apply prompts under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md). Explicit Stop persists across reload until deliberate Connect or Enable AI session. This policy uses the
+commits without separate Apply prompts under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md). Explicit Stop persists across reload until deliberate Connect (or Enable AI session in standalone web status). This policy uses the
 ordinary broker, credentials, exact previews, revisions and commit path; it grants no project
-management authority. External clients retain the initial pairing action below.
+management authority. Standalone browser, development HTTP and remote clients retain their initial pairing action.
+
+Copied-descriptor-authenticated desktop external clients automatically receive the current project
+under [ADR-0130](../adr/0130-default-desktop-external-mcp-access.md). Both the isolated preload
+capability and matching desktop broker discovery policy are required; an assistant bridge or query
+parameter cannot grant it. This separate external session defaults to manual Apply and does not
+inherit connected-assistant writes or project management. Its first never-granted `model_info` can
+wait up to five seconds for discovery. Desktop status has no initial Enable control. Stop AI revokes
+all current-project transports and persists in a separate desktop-external namespace across reload
+and navigation; only deliberate **Restart local MCP** in Settings > Connections reopens external
+access. Existing storage sentinels, late-grant revocation and bounded recovery also apply.
 
 The embedded native chat and its project automation connection bound transient recovery to five
 attempts before explicit retry, with increasing delays of 5, 10, 20, 40 and 60 seconds.
@@ -523,7 +533,7 @@ The loopback origin has these requirements:
 
 - bind only to `127.0.0.1`; a stable per-profile origin preserves browser storage identity;
 - validate the exact `Host` and `Origin`, reject absent or unexpected origins, and provide no wildcard CORS;
-- require an initial host-owned **Enable AI session** user action for external clients; remember local access and approval
+- require an initial host-owned **Enable AI session** user action for standalone browser/development clients; desktop external access follows ADR-0130; remember local access and approval
   mode for the approved client and browser origin under [ADR-0100](../adr/0100-remembered-local-mcp-preferences.md);
 - authenticate every browser request with a session-bound, same-origin credential that is never placed in a URL;
 - bind one bridge session to an explicit set of shared documents and capabilities;
@@ -616,7 +626,8 @@ unchanged. See [ADR-0077](../adr/0077-mirror-copies-and-draft-shell-selection.md
 
 ## Security and privacy
 
-The user explicitly pairs an external client and chooses which document sessions are shared. The
+The user explicitly pairs a standalone browser/development or remote external client. Copied native
+desktop configuration authorizes automatic current-project access under ADR-0130. The
 embedded native assistant receives only its own project's connected model authority under ADR-0116. Pairing one
 document does not expose the project library, recent files, other tabs, extension storage, or browser
 origin data.

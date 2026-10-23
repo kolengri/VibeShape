@@ -42,7 +42,9 @@ function setup(current: Props["current"] = manual) {
 }
 
 async function openSetup() {
-  await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+  await userEvent.click(
+    screen.getByRole("button", { name: "Local MCP connection and approval mode" }),
+  )
   await userEvent.click(screen.getByRole("menuitemradio", { name: "Apply automatically" }))
 }
 
@@ -62,6 +64,45 @@ afterEach(() => {
 })
 
 describe("local AI auto-apply controls", () => {
+  it.each([
+    {
+      state: "exhausted recovery",
+      snapshot: { recoveryFailed: true, recoveryAttempt: 5, error: true },
+      expected: "Local MCP connection failed. Restart local MCP in Settings > Connections.",
+    },
+    {
+      state: "non-retryable failure",
+      snapshot: { recoveryFailed: true, recoveryAttempt: 0, error: true },
+      expected: "Local MCP connection failed. Restart local MCP in Settings > Connections.",
+    },
+    {
+      state: "active recovery",
+      snapshot: { recovering: true },
+      expected: "Reconnecting AI…",
+    },
+    {
+      state: "waiting for a client",
+      snapshot: { client: null },
+      expected: "MCP client not connected",
+    },
+    {
+      state: "persistent Stop",
+      snapshot: { recoveryBlocked: true },
+      expected: "AI access stopped",
+    },
+  ])("announces desktop $state accurately without offering Enable", ({ snapshot, expected }) => {
+    const { connection } = setup({
+      ...manual,
+      defaultAccess: true,
+      connected: false,
+      ...snapshot,
+    })
+    expect(screen.getByText(expected).classList.contains("sr-only")).toBe(false)
+    expect(screen.getByRole("status").textContent).toBe(expected)
+    expect(screen.queryByRole("button", { name: "Enable AI session" })).toBeNull()
+    expect(connection.enable).not.toHaveBeenCalled()
+  })
+
   it.each([false, true])(
     "shows internal automatic access without approval or project-management setup (busy: %s)",
     async (busy) => {
@@ -73,10 +114,10 @@ describe("local AI auto-apply controls", () => {
         client: { name: "Embedded assistant", version: "1" },
       })
       expect(screen.getByRole("status").textContent).toBe("AI access on · Auto-apply on")
-      const info = screen.getByRole("button", { name: "AI connection and approval mode" })
+      const info = screen.getByRole("button", { name: "Built-in assistant connection" })
       await userEvent.click(info)
       expect(
-        screen.getByRole("dialog", { name: "AI connection and approval mode" }).textContent,
+        screen.getByRole("dialog", { name: "Built-in assistant connection" }).textContent,
       ).toBe("Embedded assistant")
       expect(screen.queryByRole("menuitemradio")).toBeNull()
       expect(
@@ -127,7 +168,7 @@ describe("local AI auto-apply controls", () => {
 
   it("uses unobtrusive status-bar actions for active AI access and Stop AI", () => {
     setup()
-    const settings = screen.getByRole("button", { name: "AI connection and approval mode" })
+    const settings = screen.getByRole("button", { name: "Local MCP connection and approval mode" })
     expect(settings.textContent).toBe("AI access on · Approve each change")
     expect(settings.getAttribute("data-variant")).toBe("ghost")
     expect(screen.getByRole("button", { name: "Stop AI" }).getAttribute("data-variant")).toBe(
@@ -139,7 +180,11 @@ describe("local AI auto-apply controls", () => {
     "keeps error diagnostics on the actual active status trigger (project bound: %s)",
     async (projectBound) => {
       const { connection } = setup({ ...manual, projectBound, error: true })
-      const button = screen.getByRole("button", { name: "AI connection and approval mode" })
+      const button = screen.getByRole("button", {
+        name: projectBound
+          ? "Built-in assistant connection"
+          : "Local MCP connection and approval mode",
+      })
       const diagnostic =
         "AI connection interrupted. An approved local session reconnects automatically while its approval remains valid."
       expect(button.classList.contains("text-destructive")).toBe(true)
@@ -191,7 +236,7 @@ describe("local AI auto-apply controls", () => {
     rerender({ ...manual, error: false })
     expect(
       screen
-        .getByRole("button", { name: "AI connection and approval mode" })
+        .getByRole("button", { name: "Local MCP connection and approval mode" })
         .classList.contains("text-destructive"),
     ).toBe(false)
     expect(screen.queryByText(/AI connection interrupted/)).toBeNull()
@@ -199,7 +244,9 @@ describe("local AI auto-apply controls", () => {
 
   it("offers project management as a separate explicit grant with a described browser-local scope", async () => {
     const { connection, rerender } = setup()
-    await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: "Local MCP connection and approval mode" }),
+    )
     const grant = screen.getByRole("menuitemcheckbox", { name: "Allow project management" })
     expect(grant.getAttribute("aria-checked")).toBe("false")
     expect(
@@ -210,7 +257,9 @@ describe("local AI auto-apply controls", () => {
     expect(connection.enableAutoApply).not.toHaveBeenCalled()
     expect(connection.disable).not.toHaveBeenCalled()
     rerender({ ...manual, projectManagement: true })
-    await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: "Local MCP connection and approval mode" }),
+    )
     expect(
       screen
         .getByRole("menuitemcheckbox", { name: "Allow project management" })
@@ -231,7 +280,9 @@ describe("local AI auto-apply controls", () => {
   })
   it("offers explicit setup only after pairing and preserves manual session actions", async () => {
     const { connection, rerender } = setup({ ...manual, connected: false })
-    expect(screen.queryByRole("button", { name: "AI connection and approval mode" })).toBeNull()
+    expect(
+      screen.queryByRole("button", { name: "Local MCP connection and approval mode" }),
+    ).toBeNull()
     await userEvent.click(screen.getByRole("button", { name: "Enable AI session" }))
     expect(connection.enable).toHaveBeenCalledTimes(1)
     expect(connection.enableAutoApply).not.toHaveBeenCalled()
@@ -267,7 +318,7 @@ describe("local AI auto-apply controls", () => {
 
   it("closes setup on disconnect and supports cancellation with focus restoration", async () => {
     const { rerender } = setup()
-    const trigger = screen.getByRole("button", { name: "AI connection and approval mode" })
+    const trigger = screen.getByRole("button", { name: "Local MCP connection and approval mode" })
     await openSetup()
     await userEvent.keyboard("{Escape}")
     expect(screen.queryByRole("dialog")).toBeNull()
@@ -280,14 +331,16 @@ describe("local AI auto-apply controls", () => {
   it("exposes the active indicator and stops the whole AI session without another confirmation", async () => {
     const { connection } = setup({ ...manual, autoApply: true })
     expect(screen.getByRole("status").textContent).toBe("AI access on · Auto-apply on")
-    expect(screen.getByRole("button", { name: "AI connection and approval mode" })).toBeTruthy()
+    expect(
+      screen.getByRole("button", { name: "Local MCP connection and approval mode" }),
+    ).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: "Stop AI" }))
     expect(connection.disable).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("dialog")).toBeNull()
   })
   it("switches to manual approval without disconnecting and restores menu focus", async () => {
     const { connection } = setup({ ...manual, autoApply: true })
-    const trigger = screen.getByRole("button", { name: "AI connection and approval mode" })
+    const trigger = screen.getByRole("button", { name: "Local MCP connection and approval mode" })
     trigger.focus()
     await userEvent.keyboard("{Enter}")
     expect(
@@ -303,7 +356,9 @@ describe("local AI auto-apply controls", () => {
 
   it("blocks mode changes during an AI operation while keeping Stop AI available", async () => {
     const { connection } = setup({ ...manual, autoApply: true, busy: true })
-    await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+    await userEvent.click(
+      screen.getByRole("button", { name: "Local MCP connection and approval mode" }),
+    )
     expect(
       screen
         .getByRole("menuitemradio", { name: "Approve each change" })

@@ -18,7 +18,12 @@ const clientSchema = z
   .object({ name: z.string().min(1).max(120), version: z.string().max(64) })
   .strict()
 export const localStatusSchema = z
-  .object({ protocolVersion, client: clientSchema.nullable(), paired: z.boolean() })
+  .object({
+    protocolVersion,
+    client: clientSchema.nullable(),
+    paired: z.boolean(),
+    accessPolicy: z.literal("desktop-external").optional(),
+  })
   .strict()
 export const localConnectRequestSchema = z
   .object({ protocolVersion, document: localDocumentSchema })

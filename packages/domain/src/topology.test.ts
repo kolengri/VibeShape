@@ -169,6 +169,84 @@ describe("resolveTopologyReference", () => {
     })
   })
 
+  it.each([1, 10, 100])(
+    "resolves one identical annular face beside a similar coplanar land at scale %s",
+    (scale) => {
+      const annulus = (inner: number, outer: number): TopoRef["signature"] =>
+        faceSignature({
+          measure: Math.PI * (outer ** 2 - inner ** 2) * scale ** 2,
+          centroid: [0, 0, 10 * scale],
+          bounds: {
+            min: [-outer * scale, -outer * scale, 10 * scale],
+            max: [outer * scale, outer * scale, 10 * scale],
+          },
+          boundaryCount: 2,
+          adjacentGeometryClasses: ["cylinder", "cylinder"],
+        })
+      const signature = annulus(31.6, 32.4)
+      const picked = reference({ signature })
+      const lands = [
+        candidate("neighbor", { signature: annulus(32.5, 33.3) }),
+        candidate("picked", { signature }),
+      ]
+      expect(resolveTopologyReference(picked, lands)).toMatchObject({
+        status: "resolved",
+        candidateId: "picked",
+        method: "signature",
+        score: 0,
+      })
+      expect(resolveTopologyReference(picked, [...lands].reverse())).toMatchObject({
+        status: "resolved",
+        candidateId: "picked",
+      })
+      expect(
+        resolveTopologyReference(picked, [...lands, candidate("coincident", { signature })]),
+      ).toMatchObject({ status: "ambiguous", candidateIds: ["coincident", "picked"] })
+      expect(
+        resolveTopologyReference(reference({ signature: annulus(31.61, 32.41) }), lands),
+      ).toMatchObject({ status: "ambiguous" })
+      expect(
+        resolveTopologyReference({ ...picked, intent: { nearPoint: [0, 0, 10 * scale] } }, lands),
+      ).toMatchObject({ status: "ambiguous" })
+    },
+  )
+
+  it("restricts identical face precedence to the authoritative lineage descendants", () => {
+    const signature = faceSignature()
+    const result = resolveTopologyReference(reference({ lineageToken: "face:owned" }), [
+      candidate("outside", { signature, lineageTokens: ["face:other"] }),
+      candidate("picked", { signature, lineageTokens: ["face:owned"] }),
+      candidate("neighbor", {
+        signature: faceSignature({ measure: 101 }),
+        lineageTokens: ["face:owned"],
+      }),
+    ])
+    expect(result).toMatchObject({
+      status: "resolved",
+      candidateId: "picked",
+      method: "history",
+      score: 0,
+    })
+  })
+
+  it("retains approximate ambiguity for neighboring vertices despite one identical signature", () => {
+    const point = (x: number): TopoRef["signature"] => ({
+      kind: "vertex",
+      geometryClass: "POINT",
+      measure: 0,
+      centroid: [x, 0, 0],
+      bounds: { min: [x, 0, 0], max: [x, 0, 0] },
+      boundaryCount: 0,
+      adjacentGeometryClasses: ["LINE"],
+    })
+    expect(
+      resolveTopologyReference(reference({ kind: "vertex", signature: point(0) }), [
+        candidate("picked", { kind: "vertex", signature: point(0) }),
+        candidate("neighbor", { kind: "vertex", signature: point(1e-10) }),
+      ]),
+    ).toMatchObject({ status: "ambiguous" })
+  })
+
   it.each([1, 5, 100])(
     "resolves a picked circular edge beside a similar ring at radius %s",
     (radius) => {

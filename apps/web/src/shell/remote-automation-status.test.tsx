@@ -74,7 +74,9 @@ it("shows the exact consent client and return address, approves explicitly and d
   await waitFor(() => expect(document.activeElement).toBe(editorAction))
   expect(connection.enableAutoApply).not.toHaveBeenCalled()
   rendered.rerender(view({ ...current, consent: null, connected: true }))
-  await userEvent.click(screen.getByRole("button", { name: "AI connection and approval mode" }))
+  await userEvent.click(
+    screen.getByRole("button", { name: "Remote AI connection and approval mode" }),
+  )
   await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Allow project management" }))
   expect(connection.setProjectManagement).toHaveBeenCalledWith(true)
   expect(connection.enableAutoApply).not.toHaveBeenCalled()

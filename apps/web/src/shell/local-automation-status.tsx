@@ -46,12 +46,18 @@ function useExternalConnectionApproval() {
 export function LocalAutomationStatus({
   connection,
   current,
+  showStopControl = true,
+  hideEnableControl = false,
+  approvalLabel,
 }: {
   connection: Pick<
     Connection,
     "enable" | "disable" | "enableAutoApply" | "disableAutoApply" | "setProjectManagement"
   >
   current: ReturnType<Connection["getSnapshot"]>
+  showStopControl?: boolean
+  hideEnableControl?: boolean
+  approvalLabel?: string
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const approval = useExternalConnectionApproval()
@@ -60,17 +66,26 @@ export function LocalAutomationStatus({
       {current.connected && current.projectBound ? (
         <ProjectAssistantConnectionStatus current={current} />
       ) : current.connected ? (
-        <ExternalConnectionApproval connection={connection} current={current} approval={approval} />
+        <ExternalConnectionApproval
+          connection={connection}
+          current={current}
+          approval={approval}
+          label={approvalLabel ?? t("approvalSettings")}
+        />
       ) : (
-        <InactiveConnectionStatus connection={connection} current={current} />
+        <InactiveConnectionStatus
+          connection={connection}
+          current={current}
+          hideEnableControl={hideEnableControl}
+        />
       )}
-      <StopConnectionControl connection={connection} current={current} />
+      {showStopControl ? <StopConnectionControl connection={connection} current={current} /> : null}
       {approval.failed && !approval.open ? (
         <span role="alert" className="sr-only">
           {t("autoApplyBusy")}
         </span>
       ) : null}
-      {current.error ? (
+      {current.error && !(current.defaultAccess && current.recoveryFailed) ? (
         <span role="status" className="sr-only">
           {t("aiConnectionFailed")}
         </span>
@@ -138,10 +153,12 @@ function ExternalConnectionApproval({
   connection,
   current,
   approval,
+  label,
 }: {
   connection: Pick<Connection, "enableAutoApply" | "disableAutoApply" | "setProjectManagement">
   current: ReturnType<Connection["getSnapshot"]>
   approval: ReturnType<typeof useExternalConnectionApproval>
+  label: string
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const { open, setOpen, failed, setFailed, trigger, openingDialog, projectScopeId } = approval
@@ -162,7 +179,7 @@ function ExternalConnectionApproval({
             size="xs"
             variant="ghost"
             className="text-foreground"
-            aria-label={t("approvalSettings")}
+            aria-label={label}
           >
             <span role="status" className="whitespace-nowrap">
               {t("approvalStatus", {
@@ -245,7 +262,7 @@ function ProjectAssistantConnectionStatus({
           size="xs"
           variant="ghost"
           className="text-foreground"
-          aria-label={t("approvalSettings")}
+          aria-label={t("nativeConnectionSettings")}
         >
           <span role="status" className="whitespace-nowrap">
             {current.autoApply
@@ -257,7 +274,7 @@ function ProjectAssistantConnectionStatus({
       <PopoverContent
         side="top"
         align="end"
-        aria-label={t("approvalSettings")}
+        aria-label={t("nativeConnectionSettings")}
         className="max-w-72 p-3 text-xs"
       >
         <p className="break-words font-medium">{current.client?.name ?? t("aiConnectedShort")}</p>
@@ -296,16 +313,30 @@ function ProjectManagementControl({
     </>
   )
 }
+function automaticAccessStatusMessage(current: ReturnType<Connection["getSnapshot"]>) {
+  if (current.recoveryBlocked) return "aiStopped"
+  if (current.defaultAccess && current.recoveryFailed) return "desktopMcpRecoveryFailed"
+  return current.client ? "aiRecovering" : "aiWaitingForClient"
+}
+
 function InactiveConnectionStatus({
   connection,
   current,
+  hideEnableControl,
 }: {
   connection: Pick<Connection, "enable">
   current: ReturnType<Connection["getSnapshot"]>
+  hideEnableControl: boolean
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const waitingDescriptionId = useId()
   const waitingForClient = current.client === null
+  if (hideEnableControl || current.defaultAccess)
+    return (
+      <span role="status" className="px-2 text-xs text-muted-foreground">
+        {t(automaticAccessStatusMessage(current))}
+      </span>
+    )
   return current.recovering ? (
     <span role="status" className="px-2 text-xs text-muted-foreground">
       {t("aiRecovering")}
