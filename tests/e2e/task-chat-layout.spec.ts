@@ -21,7 +21,7 @@ test("opens model toolbar categories through named icon buttons", async ({ page 
 })
 
 for (const width of [512, 800, 1024, 1440]) {
-  test(`overlays AI chat without moving the editor at ${width}px`, async ({ page }) => {
+  test(`allocates space for AI chat while retaining the editor at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto("/")
     await invokeModelCommand(page, "Primitives", "Box")
@@ -43,12 +43,42 @@ for (const width of [512, 800, 1024, 1440]) {
     expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
       true,
     )
-    expect(await Promise.all(regions.map((region) => region.boundingBox()))).toEqual(before)
+    await expect
+      .poll(async () => {
+        const current = await canvas.boundingBox()
+        return Boolean(
+          current &&
+            before[0] &&
+            (current.width < before[0].width || current.height < before[0].height),
+        )
+      })
+      .toBe(true)
+    for (const region of regions) {
+      await expect
+        .poll(async () => {
+          const a = await region.boundingBox()
+          const b = await chat.boundingBox()
+          return Boolean(
+            a &&
+              b &&
+              (a.x + a.width <= b.x ||
+                b.x + b.width <= a.x ||
+                a.y + a.height <= b.y ||
+                b.y + b.height <= a.y),
+          )
+        })
+        .toBe(true)
+    }
     await expect(draft).toHaveValue("77")
     const bounds = await chat.boundingBox()
     if (!bounds) throw new Error("Chat must have measurable bounds")
     expect(bounds.x + bounds.width).toBe(width - 8)
-    expect(bounds.y).toBe(before[1]?.y)
+    if (width >= 640) expect(bounds.y).toBe(before[1]?.y)
+    else {
+      const workbench = await page.locator(".editor-workbench").boundingBox()
+      if (!workbench) throw new Error("The editor must remain measurable above chat")
+      expect(bounds.y).toBeGreaterThanOrEqual(workbench.y + workbench.height)
+    }
     expect(
       await chat.evaluate((element) => {
         const bounds = element.getBoundingClientRect()
@@ -61,11 +91,13 @@ for (const width of [512, 800, 1024, 1440]) {
       }),
     ).toBe(true)
     if (width === 1440)
-      await page.screenshot({ path: test.info().outputPath("chat-over-editor.png") })
+      await page.screenshot({ path: test.info().outputPath("chat-beside-editor.png") })
     await chat.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
     await expect(chat).toHaveCount(0)
     await expect(draft).toHaveValue("77")
-    expect(await Promise.all(regions.map((region) => region.boundingBox()))).toEqual(before)
+    await expect
+      .poll(() => Promise.all(regions.map((region) => region.boundingBox())))
+      .toEqual(before)
   })
 }
 
@@ -78,7 +110,7 @@ for (const theme of ["light", "dark"]) {
     }, theme)
     const canvas = page.locator(".workspace-viewport canvas").first()
     const header = page.locator(".application-bar")
-    const footer = page.locator(".cad-shell > footer")
+    const footer = page.locator(".editor-workbench > footer")
     const bounds = await canvas.boundingBox()
     const headerBounds = await header.boundingBox()
     const footerBounds = await footer.boundingBox()
@@ -325,7 +357,10 @@ test("keeps every toolbar action inside its measured budget near category fit th
   }
 })
 
-test("reserves a separate History scrollbar lane below operation controls", async ({ page }) => {
+test("keeps symmetric History spacing and a separate scrollbar lane below operation controls", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
   await invokeModelCommand(page, "Primitives", "Box")
   await page
@@ -342,10 +377,14 @@ test("reserves a separate History scrollbar lane below operation controls", asyn
   for (const detailed of [false, true]) {
     if (detailed) await history.getByRole("button", { name: "Details", exact: true }).click()
     expect(await track.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
-    const rail = await track.boundingBox()
-    const row = await history.locator("[data-history-id]").first().boundingBox()
-    if (!rail || !row) throw new Error("History track and operation must be measurable")
-    expect(rail.y + rail.height - (row.y + row.height)).toBeGreaterThanOrEqual(16)
+    await expect
+      .poll(async () => {
+        const rail = await track.boundingBox()
+        const row = await history.locator("[data-history-id]").first().boundingBox()
+        if (!rail || !row) throw new Error("History track and operation must be measurable")
+        return { top: row.y - rail.y, bottom: rail.y + rail.height - (row.y + row.height) }
+      })
+      .toEqual({ top: 8, bottom: 8 })
     const control = history.getByRole("treeitem", { name: "Box 1", exact: true })
     if (!detailed) {
       const bounds = await control.boundingBox()
@@ -369,4 +408,30 @@ test("reserves a separate History scrollbar lane below operation controls", asyn
       element.scrollLeft = 0
     })
   }
+})
+
+test("keeps browser icons uniform without an Operations heading or a History hover outline", async ({
+  page,
+}) => {
+  await page.goto("/")
+  const browser = page.getByRole("complementary", { name: "Model tree", exact: true })
+  await expect(browser.getByRole("heading")).toHaveCount(0)
+  for (const name of ["Variables", "Planes", "Parts"]) {
+    const row = browser.getByRole("treeitem", { name: new RegExp(`^${name}(?: \\d+)?$`) })
+    const icon = await row.locator("svg").last().boundingBox()
+    expect(icon?.width).toBe(16)
+    expect(icon?.height).toBe(16)
+  }
+  await invokeModelCommand(page, "Primitives", "Box")
+  await page
+    .getByRole("form", { name: "Create box", exact: true })
+    .getByRole("button", { name: "Create box", exact: true })
+    .click()
+  const row = page.locator("[data-history-id]").first()
+  await row.getByRole("treeitem", { name: "Box 1", exact: true }).hover()
+  await expect(row).toHaveAttribute("data-history-source-highlighted", "true")
+  await expect(row).toHaveCSS("box-shadow", "none")
+  const operation = row.getByRole("treeitem", { name: "Box 1", exact: true })
+  await operation.focus()
+  await expect(operation).toBeFocused()
 })

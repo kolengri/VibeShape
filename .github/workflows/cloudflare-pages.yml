@@ -162,13 +162,25 @@ jobs:
     steps:
       - name: Restore this run's verified relay transfer
         id: transfer
+        continue-on-error: true
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: relay
+          key: ${{ needs.build.outputs.relay-cache-key }}
+          fail-on-cache-miss: true
+      - name: Back off after a relay transfer failure
+        if: steps.transfer.outcome == 'failure'
+        run: sleep 30
+      - name: Retry this run's verified relay transfer
+        if: steps.transfer.outcome == 'failure'
+        id: transfer-retry
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: relay
           key: ${{ needs.build.outputs.relay-cache-key }}
           fail-on-cache-miss: true
       - name: Require an exact transfer match
-        run: test '${{ steps.transfer.outputs.cache-hit }}' = true
+        run: test '${{ (steps.transfer.outcome == 'success' && steps.transfer.outputs.cache-hit == 'true') || (steps.transfer-retry.outcome == 'success' && steps.transfer-retry.outputs.cache-hit == 'true') }}' = true
       - name: Validate exact relay artifact and current main head
         env:
           GH_TOKEN: ${{ github.token }}
@@ -218,13 +230,25 @@ jobs:
     steps:
       - name: Restore this run's verified site transfer
         id: transfer
+        continue-on-error: true
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: site
+          key: ${{ needs.build.outputs.site-cache-key }}
+          fail-on-cache-miss: true
+      - name: Back off after a site transfer failure
+        if: steps.transfer.outcome == 'failure'
+        run: sleep 30
+      - name: Retry this run's verified site transfer
+        if: steps.transfer.outcome == 'failure'
+        id: transfer-retry
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: site
           key: ${{ needs.build.outputs.site-cache-key }}
           fail-on-cache-miss: true
       - name: Require an exact transfer match
-        run: test '${{ steps.transfer.outputs.cache-hit }}' = true
+        run: test '${{ (steps.transfer.outcome == 'success' && steps.transfer.outputs.cache-hit == 'true') || (steps.transfer-retry.outcome == 'success' && steps.transfer-retry.outputs.cache-hit == 'true') }}' = true
       - name: Validate artifact, destination and current main head
         id: config
         env:

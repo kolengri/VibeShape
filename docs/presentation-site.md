@@ -129,6 +129,11 @@ still matches current `main`. It compares the deployed HTML with the built HTML 
 Concurrency serializes presentation deployments. The existing environment allows deployment only
 from `main`; the workflow cannot publish this task branch or be initially dispatched until merged.
 
+The workflow retries a failed Pages publication once after 30 seconds, allowing Cloudflare's
+transient API throttling to clear. It rechecks the current `main` commit before retrying, requires
+a successful attempt with a deployment URL, and verifies the published HTML against the tested
+build. A repeated failure still fails the workflow.
+
 Use the previous successful production deployment in the `vibeshape-site` Pages dashboard for
 rollback. Keep the editor project and relay separate. DNS, TLS, and public-domain verification remain
 part of the domain setup handoff.

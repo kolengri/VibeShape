@@ -54,7 +54,7 @@ test("native AI settings retain their footer and form association after a failed
     .getByRole("complementary", { name: "AI chat", exact: true })
     .boundingBox()
   const toolbarBounds = await page.locator("nav[data-sketch-mode]").boundingBox()
-  const statusBounds = await page.locator(".cad-shell > footer").boundingBox()
+  const statusBounds = await page.locator(".editor-workbench > footer").boundingBox()
   if (!chatBounds || !toolbarBounds || !statusBounds)
     throw new Error("The editor column and chat must have bounds.")
   expect(chatBounds.y).toBe(toolbarBounds.y)
