@@ -1182,7 +1182,6 @@ function EditorApplication({
             onChange={assemblyMode.onChange}
           />
         </ApplicationBar>
-        {assistant.panel}
         <ShortcutHelpDialog
           commands={commands}
           open={shortcutHelp.open}
@@ -1203,6 +1202,7 @@ function EditorApplication({
           onOpenChange={setSketchShortcutToolbarOpenWithAnchor}
         />
         <WorkspaceWorkbench>
+          {assistant.panel}
           <div
             className="contents"
             id={PROJECT_EDITOR_PANEL_ID}

@@ -19,11 +19,17 @@ async function expectSeparate(first: Locator, second: Locator) {
     .toBe(true)
 }
 
+function taskWidthFor(page: Page) {
+  return page
+    .locator("#workspace-task")
+    .evaluate((element) => element.getBoundingClientRect().width)
+}
+
 async function expectWorkspaceLayout(page: Page, chat: Locator, size: { width: number }) {
-  const taskWidth = () =>
-    page.locator("#workspace-task").evaluate((element) => element.getBoundingClientRect().width)
-  if (size.width === 1920) await expect.poll(taskWidth).toBeGreaterThan(0)
-  else await expect.poll(taskWidth).toBe(0)
+  await expect(page.locator("#workspace-task")).toHaveAttribute(
+    "data-viewport-area",
+    size.width === 1920 ? "right" : "bottom",
+  )
   if (size.width === 1024 || size.width === 720 || size.width === 390) {
     await page.getByRole("button", { name: "Show model tree", exact: true }).click()
     await expectSeparate(chat, page.locator(".workspace-panel--tree"))
@@ -67,6 +73,44 @@ async function expectWorkspaceLayout(page: Page, chat: Locator, size: { width: n
       }),
     )
     .toBe(true)
+}
+
+async function expectStableTaskTransitions(
+  page: Page,
+  form: Locator,
+  chat: Locator,
+  canvas: Locator,
+) {
+  for (const viewportWidth of [1920, 1440]) {
+    await page.setViewportSize({ width: viewportWidth, height: 900 })
+    await expect(page.locator("#workspace-task")).toHaveAttribute(
+      "data-viewport-area",
+      viewportWidth === 1920 ? "right" : "bottom",
+    )
+    if (viewportWidth === 1920) {
+      await expect.poll(() => taskWidthFor(page)).toBe(320)
+    }
+    const chatBounds = await chat.boundingBox()
+    const canvasBounds = await canvas.boundingBox()
+    if (viewportWidth === 1920) {
+      const separator = page.getByRole("separator", { name: "Task panel width", exact: true })
+      await separator.press("ArrowLeft")
+      await expect.poll(() => taskWidthFor(page)).toBeGreaterThan(320)
+      await expect.poll(() => chat.boundingBox()).toEqual(chatBounds)
+      await expect.poll(() => canvas.boundingBox()).toEqual(canvasBounds)
+      await separator.dblclick()
+    }
+    await form.getByRole("button", { name: "Cancel", exact: true }).click()
+    await expect(form).toBeHidden()
+    await expect.poll(() => chat.boundingBox()).toEqual(chatBounds)
+    await expect.poll(() => canvas.boundingBox()).toEqual(canvasBounds)
+    await invokeModelCommand(page, "Primitives", "Box")
+    await expect(form).toBeVisible()
+    await expect.poll(() => chat.boundingBox()).toEqual(chatBounds)
+    await expect.poll(() => canvas.boundingBox()).toEqual(canvasBounds)
+    await form.getByRole("combobox", { name: "Width", exact: true }).fill("77")
+    await expectSeparate(chat, page.locator(".workspace-panel--task"))
+  }
 }
 
 for (const theme of ["light", "dark"] as const) {
@@ -119,13 +163,14 @@ for (const theme of ["light", "dark"] as const) {
       expect(
         await canvas.evaluate((element, original) => element === original, canvasElement),
       ).toBe(true)
-      if (size.width === 1440 || size.width === 1024) {
+      if (size.width === 1920 || size.width === 1440 || size.width === 1024) {
         await page.screenshot({ path: `artifacts/ai-chat-panel-layout/${theme}-${size.width}.png` })
       }
     }
 
     await page.setViewportSize({ width: 1440, height: 900 })
-    await expect(page.locator("#workspace-task")).toHaveCSS("flex-basis", "0px")
+    await expect(page.locator("#workspace-task")).toHaveAttribute("data-viewport-area", "bottom")
+    await expectStableTaskTransitions(page, form, chat, canvas)
     await chat.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
     await expect(chat).toBeHidden()
     await expect(page.locator(".workspace-panel--task")).toHaveAttribute("data-collapsed", "false")

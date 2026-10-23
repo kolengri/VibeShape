@@ -314,7 +314,7 @@ export function AssemblyWorkspace({
     <>
       <WorkspacePanels
         allowTransparency={false}
-        modelTree={
+        left={
           <AssemblyTree
             assembly={view.assembly}
             selectedId={view.selected.activeId}
@@ -326,7 +326,7 @@ export function AssemblyWorkspace({
             motionDisabled={view.taskActionsDisabled}
           />
         }
-        taskPanel={
+        right={
           <AssemblyPanel
             view={view}
             selectedPartId={selectedPartId}

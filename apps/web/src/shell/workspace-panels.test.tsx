@@ -10,6 +10,7 @@ import {
   WorkspaceLayoutPreferencesProvider,
 } from "./workspace-layout-preferences"
 import { WorkspacePanels } from "./workspace-panels"
+import { WorkspaceWorkbench } from "./workspace-width"
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -44,19 +45,23 @@ function Fixture({ active, interactive = true }: { active: boolean; interactive?
   return (
     <I18nProvider i18n={i18n} initialLocale="en">
       <WorkspaceLayoutPreferencesProvider>
-        <WorkspacePanels
-          allowTransparency={false}
-          interactive={interactive}
-          taskPanelActive={active}
-          modelTree={<aside>Parts</aside>}
-          taskPanel={
-            <aside>
-              <input aria-label="Task value" defaultValue="12 mm" />
-            </aside>
-          }
-        >
-          <button type="button">Viewport</button>
-        </WorkspacePanels>
+        <WorkspaceWorkbench>
+          <div className="editor-model-area">
+            <WorkspacePanels
+              allowTransparency={false}
+              interactive={interactive}
+              taskPanelActive={active}
+              left={<aside>Parts</aside>}
+              right={
+                <aside>
+                  <input aria-label="Task value" defaultValue="12 mm" />
+                </aside>
+              }
+            >
+              <button type="button">Viewport</button>
+            </WorkspacePanels>
+          </div>
+        </WorkspaceWorkbench>
         <Preferences />
       </WorkspaceLayoutPreferencesProvider>
     </I18nProvider>
@@ -104,15 +109,18 @@ it.each([false, true])(
       removeEventListener: vi.fn(),
     }))
     const view = render(<Fixture active={false} interactive={false} />)
-    const group = view.container.querySelector('[data-slot="resizable-panel-group"]')
-    expect(group?.hasAttribute("inert")).toBe(true)
-    expect(group?.getAttribute("aria-hidden")).toBe("true")
+    expect(view.container.querySelector(".workspace-panel--tree")?.hasAttribute("inert")).toBe(true)
+    expect(
+      view.container.querySelector(".workspace-panel--tree")?.getAttribute("aria-hidden"),
+    ).toBe("true")
     expect(screen.queryByRole("separator")).toBeNull()
     expect(screen.queryByRole("button", { name: "Show model tree" })).toBeNull()
     expect(screen.getByRole("button", { name: "Viewport" })).toBeTruthy()
 
     view.rerender(<Fixture active={false} />)
-    expect(group?.hasAttribute("inert")).toBe(false)
+    expect(view.container.querySelector(".workspace-panel--tree")?.hasAttribute("inert")).toBe(
+      narrow,
+    )
     if (narrow) expect(screen.getByRole("button", { name: "Show model tree" })).toBeTruthy()
     else expect(screen.getByRole("separator")).toBeTruthy()
   },

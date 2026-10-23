@@ -59,12 +59,16 @@ An idle workspace has no onboarding task panel: Create sketch and the modeling t
 
 Model-tree and task windows fit their content height up to the available workspace height. When
 content exceeds that limit, the body scrolls while the heading and lifecycle footer remain visible.
-AI chat occupies a separate column beside the editor, keeping the command toolbar, model tree, task
-panel, History, and status bar unobstructed. Panel breakpoints use the editor's available width after
-chat is allocated. Below 640 CSS px, chat occupies a separate lower row. Opening, closing, or resizing
-chat preserves the mounted viewport and active task draft. On desktop, chat fills the available
-workspace height so the transcript and composer retain a stable reading area. Panel width preferences
-and resizing remain independent of content height.
+AI chat overlays the full-size viewport, like the model tree and task panel. Opening or closing
+chat MUST NOT resize, shift, or remount the viewport canvas. On desktop, chat stays anchored to the
+right edge below the application bar; an active task panel opens beside it without moving chat.
+The grid marks left, right, and bottom placement regions, each accepting multiple elements.
+Element settings determine placement: full-height elements take a separate side column, while
+content-sized elements stack by their measured size and continue in another column when necessary.
+Opening, closing, or redistributing elements preserves their mounted content and active drafts.
+The toolbar, History, status, and viewport controls remain usable alongside occupied regions.
+Below 640 CSS px, chat uses its configured lower placement. Width preferences and resizing remain
+independent of content height.
 
 ### Primary Workspaces
 

@@ -13,6 +13,8 @@
     "playwright.desktop-packaged.config.ts",
     // Electron integration tests spawn this harmless ACP protocol fixture by filename.
     "tests/desktop/fixtures/acp-agent.cjs",
+    // Playwright imports this renderer through Vite's browser module URL.
+    "apps/web/src/test-support/viewport-grid-fixture.tsx",
     "apps/web/public/persistence-spike-sw.js",
     "apps/web/src/spikes/geometry-worker.ts",
     "apps/web/src/spikes/body-selection.tsx",

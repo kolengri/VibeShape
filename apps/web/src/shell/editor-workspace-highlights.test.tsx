@@ -106,6 +106,7 @@ const { authoredTestBody, authoredTestId, authoredTreeFixture, requireAuthoredFi
 const { EditorWorkspace } = await import("./editor-workspace")
 const { ViewerPreferencesProvider } = await import("./viewer-preferences")
 const { WorkspaceLayoutPreferencesProvider } = await import("./workspace-layout-preferences")
+const { WorkspaceWorkbench } = await import("./workspace-width")
 
 type WorkspaceProps = ComponentProps<typeof EditorWorkspace>
 const fixture = authoredTreeFixture()
@@ -276,38 +277,40 @@ function WorkspaceHarness({
       <TooltipProvider>
         <ViewerPreferencesProvider>
           <WorkspaceLayoutPreferencesProvider>
-            <EditorWorkspace
-              actions={actions}
-              activeTool={activeTool}
-              activeSketchId={null}
-              activeSketchTool={null}
-              controller={controller}
-              assistantToolTargets={toolTargets}
-              hiddenFeatureIds={hiddenFeatureIds}
-              hiddenSketchIds={[]}
-              originPlaneVisibility={{ xy: true, xz: true, yz: true }}
-              onSketchFinalContextChange={noop}
-              preselectedFeatureId={preselectedFeatureId}
-              modelTreeSelection={treeSelection}
-              extrusionDistanceRequest={null}
-              primitivePlacementRequest={null}
-              revolveAngleRequest={null}
-              selectedOriginPlane={null}
-              selection={null}
-              sketchConstruction={false}
-              sketchCameraMode="normal"
-              sketchFinalContext={false}
-              sketchDraft={null}
-              sketchEditorTool="select"
-              sketchFailedConstraintIds={[]}
-              sketchProfiles={[]}
-              sketchReferenceDimensionLabels={{}}
-              sketchRepairReferenceId={null}
-              sketchSelectedConstraintId={null}
-              sketchSelectedEntityIds={[]}
-              sketchSelectedProfile={null}
-              workspace="model"
-            />
+            <WorkspaceWorkbench>
+              <EditorWorkspace
+                actions={actions}
+                activeTool={activeTool}
+                activeSketchId={null}
+                activeSketchTool={null}
+                controller={controller}
+                assistantToolTargets={toolTargets}
+                hiddenFeatureIds={hiddenFeatureIds}
+                hiddenSketchIds={[]}
+                originPlaneVisibility={{ xy: true, xz: true, yz: true }}
+                onSketchFinalContextChange={noop}
+                preselectedFeatureId={preselectedFeatureId}
+                modelTreeSelection={treeSelection}
+                extrusionDistanceRequest={null}
+                primitivePlacementRequest={null}
+                revolveAngleRequest={null}
+                selectedOriginPlane={null}
+                selection={null}
+                sketchConstruction={false}
+                sketchCameraMode="normal"
+                sketchFinalContext={false}
+                sketchDraft={null}
+                sketchEditorTool="select"
+                sketchFailedConstraintIds={[]}
+                sketchProfiles={[]}
+                sketchReferenceDimensionLabels={{}}
+                sketchRepairReferenceId={null}
+                sketchSelectedConstraintId={null}
+                sketchSelectedEntityIds={[]}
+                sketchSelectedProfile={null}
+                workspace="model"
+              />
+            </WorkspaceWorkbench>
           </WorkspaceLayoutPreferencesProvider>
         </ViewerPreferencesProvider>
       </TooltipProvider>

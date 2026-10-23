@@ -22,6 +22,33 @@ async function width(locator: Locator) {
   return locator.evaluate((element) => Math.round(element.getBoundingClientRect().width))
 }
 
+async function expectTallTreeAboveBottomSlots(page: Page) {
+  const content = page.locator('[data-slot="model-tree-content"]')
+  await content.evaluate((element) => {
+    const rows = element.ownerDocument.createElement("div")
+    rows.style.height = "2000px"
+    rows.textContent = "Long model tree content"
+    element.append(rows)
+  })
+  await expect
+    .poll(async () => {
+      const tree = await page.locator(".workspace-panel--tree").boundingBox()
+      const bottom = await page.locator(".viewport-grid__bottom").boundingBox()
+      return Boolean(tree && bottom && tree.y + tree.height <= bottom.y)
+    })
+    .toBe(true)
+  await content.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  expect(
+    await page.locator(".viewport-grid__bottom").evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      return element.contains(element.ownerDocument.elementFromPoint(bounds.x + 20, bounds.y + 10))
+    }),
+  ).toBe(true)
+}
+
 async function openWorkspaceSettings(page: Page) {
   await openApplicationMenuItem(page, "Settings…")
   const settings = page
@@ -218,18 +245,19 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
     })
     .toBe(true)
   await expect(input).toHaveValue("77")
-  await expect.poll(() => width(page.locator("#workspace-task"))).toBe(0)
+  await expect(page.locator("#workspace-task")).toHaveAttribute("data-viewport-area", "bottom")
   expect(await form.evaluate((element, original) => element === original, formElement)).toBe(true)
   await page.setViewportSize({ width: 390, height: 844 })
   const narrowTree = page.getByRole("complementary", { name: "Model tree", exact: true })
   await expect(narrowTree).toBeHidden()
   await expect.poll(() => width(page.locator(".workspace-viewport"))).toBe(390)
-  await expect.poll(() => width(page.locator(".workspace-panel--task"))).toBe(390)
+  await expect.poll(() => width(page.locator(".workspace-panel--task"))).toBe(374)
   await expect.poll(() => width(form)).toBeGreaterThan(350)
   await expect(input).toHaveValue("77")
   await page.getByRole("button", { name: "Show model tree", exact: true }).click()
   await expect(narrowTree).toBeVisible()
   await expect.poll(() => width(narrowTree)).toBeGreaterThanOrEqual(240)
+  await expectTallTreeAboveBottomSlots(page)
   await page.getByRole("button", { name: "Hide model tree", exact: true }).click()
   await expect(narrowTree).toBeHidden()
   expect(await form.evaluate((element, original) => element === original, formElement)).toBe(true)
@@ -384,3 +412,36 @@ test("offers readable independent extrusion depths beside a temporary model tree
   await expect.poll(() => width(page.locator("#workspace-tree"))).toBe(240)
   await expect.poll(() => width(page.locator("#workspace-task"))).toBe(320)
 })
+
+for (const theme of ["light", "dark"] as const) {
+  test(`keeps the idle model-tree toggle above bottom slots in ${theme} theme`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto("/")
+    const toggle = page.getByRole("button", { name: "Show model tree", exact: true })
+    const tree = page.getByRole("complementary", { name: "Model tree", exact: true })
+    const canvas = page.locator(".workspace-viewport canvas").first()
+    const bounds = await canvas.boundingBox()
+    const original = await canvas.elementHandle()
+    for (const chatOpen of [false, true]) {
+      if (chatOpen) await page.getByRole("button", { name: "AI chat", exact: true }).click()
+      await toggle.click({ timeout: 3_000 })
+      await expect(tree).toBeVisible()
+      await expectTallTreeAboveBottomSlots(page)
+      await page.getByRole("button", { name: "Hide model tree", exact: true }).click()
+      await expect(tree).toBeHidden()
+      await expect(toggle).toBeFocused()
+      await expect.poll(() => canvas.boundingBox()).toEqual(bounds)
+    }
+    await toggle.press("Enter")
+    const close = page.getByRole("button", { name: "Hide model tree", exact: true })
+    await expect(close).toBeFocused()
+    await close.press("Enter")
+    await expect(tree).toBeHidden()
+    await expect(toggle).toBeFocused()
+    await expect.poll(() => canvas.boundingBox()).toEqual(bounds)
+    expect(await canvas.evaluate((node, original) => node === original, original)).toBe(true)
+  })
+}
