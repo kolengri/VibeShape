@@ -1430,7 +1430,7 @@ function HistoryRowDetails({
 
 function historyRowLayout(timeline: boolean, compact: boolean) {
   if (!timeline) return undefined
-  return compact ? "relative size-8 shrink-0" : "relative w-64 shrink-0 border-r px-2 py-1"
+  return compact ? "relative size-8 shrink-0" : "relative w-48 shrink-0 border-r px-1"
 }
 
 function HistoryRepairTooltip({
@@ -1974,7 +1974,7 @@ function HistoryGroup({
             onDragEnd={handleDragEnd}
           >
             <div
-              className="relative flex min-w-0 items-start overflow-x-auto overflow-y-hidden py-2 pl-2 pr-8"
+              className="relative flex min-w-0 items-start overflow-x-auto overflow-y-hidden py-1 pl-2 pr-8"
               data-history-track
             >
               {folderGroups.map((group) => {

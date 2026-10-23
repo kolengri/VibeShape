@@ -15,7 +15,6 @@ import {
 import { modelBrowserSelectedRow } from "./model-browser-styles"
 
 type SearchType = "part" | "body" | "sketch" | "plane" | "operation"
-const searchTypes = ["all", "part", "body", "sketch", "plane", "operation"] as const
 const searchGroups = ["parts", "planes", "history"] as const
 
 export type ModelBrowserSearchEntry = Readonly<{
@@ -37,10 +36,8 @@ function modelSearchGroup(entry: ModelBrowserSearchEntry) {
 function modelSearchMatches(
   entry: ModelBrowserSearchEntry,
   terms: readonly string[],
-  type: (typeof searchTypes)[number],
   typeLabel: string,
 ) {
-  if (type !== "all" && entry.type !== type) return false
   const text = `${entry.label} ${entry.path} ${typeLabel} ${entry.searchText}`.toLocaleLowerCase()
   return terms.every((term) => text.includes(term))
 }
@@ -72,12 +69,11 @@ export function ModelBrowserSearch({
   const results = useRef<HTMLDivElement>(null)
   const preview = useRef<ModelBrowserSearchEntry | null>(null)
   const [query, setQuery] = useState("")
-  const [type, setType] = useState<(typeof searchTypes)[number]>("all")
   const [focusedKey, setFocusedKey] = useState<string | null>(null)
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
-  const active = query.length > 0 || type !== "all"
+  const active = query.length > 0
   const matches = entries
-    .filter((entry) => modelSearchMatches(entry, terms, type, t(`types.${entry.type}`)))
+    .filter((entry) => modelSearchMatches(entry, terms, t(`types.${entry.type}`)))
     .sort(
       (a, b) =>
         searchGroups.indexOf(modelSearchGroup(a)) - searchGroups.indexOf(modelSearchGroup(b)),
@@ -104,7 +100,6 @@ export function ModelBrowserSearch({
   const clear = () => {
     clearPreview()
     setQuery("")
-    setType("all")
     setFocusedKey(null)
     input.current?.focus()
   }
@@ -123,11 +118,11 @@ export function ModelBrowserSearch({
 
   return (
     <>
-      <div className="mb-2 grid gap-1.5">
+      <div className="mb-2">
         <div className="relative flex min-w-0 items-center">
           <SearchIcon
             aria-hidden="true"
-            className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground"
+            className="pointer-events-none absolute left-2 size-4 text-muted-foreground"
           />
           <Input
             ref={input}
@@ -159,18 +154,10 @@ export function ModelBrowserSearch({
               onClick={clear}
               onKeyDown={handleEscape}
             >
-              <X aria-hidden="true" className="size-3.5" />
+              <X aria-hidden="true" />
             </Button>
           )}
         </div>
-        <ModelSearchFilters
-          type={type}
-          onTypeChange={(value) => {
-            clearPreview()
-            setType(value)
-          }}
-          onKeyDown={handleEscape}
-        />
       </div>
       {active && (
         <div>
@@ -207,36 +194,6 @@ export function ModelBrowserSearch({
       )}
       <div hidden={active}>{children}</div>
     </>
-  )
-}
-
-function ModelSearchFilters({
-  type,
-  onTypeChange,
-  onKeyDown,
-}: {
-  type: (typeof searchTypes)[number]
-  onTypeChange: (value: (typeof searchTypes)[number]) => void
-  onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
-}) {
-  const t = useTranslations("app.shell.modelTree.search")
-  return (
-    <fieldset aria-label={t("filters")} className="flex flex-wrap gap-1">
-      {searchTypes.map((value) => (
-        <Button
-          key={value}
-          type="button"
-          variant="ghost"
-          size="xs"
-          aria-pressed={type === value}
-          className="h-6 px-1.5 text-xs"
-          onClick={() => onTypeChange(value)}
-          onKeyDown={onKeyDown}
-        >
-          {t(`types.${value}`)}
-        </Button>
-      ))}
-    </fieldset>
   )
 }
 
