@@ -98,6 +98,8 @@ Tracing explicitly resolves `Add-Type` before compilation and records both inter
 Tracing is off by default. Windows request and connection-probe fixtures enable it to distinguish
 command resolution, compilation, process startup and ACP transport delays. The Windows connection-probe
 fixture prints its result, supervisor trace and synthetic ACP receipt before temporary-directory cleanup.
+The Windows cold connection probe first asserts the default untraced startup path, then runs a separate
+traced case. Both retain the production connection-probe deadline.
 The agent uses its own default model; Jev does not select or change that agent's model settings.
 
 **API connection (advanced)** retains the compatible endpoint, model name and optional key option.

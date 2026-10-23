@@ -33,55 +33,59 @@ const helperResponse = (content = '{"ok":true}') =>
   })
 
 describe("read-only provider connection probe", () => {
-  test("checks a local signed-in agent with an isolated JSON request after Jev succeeds", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "local-probe-"))
-    const receipt = join(directory, "receipt")
-    const trace = join(directory, "supervisor.jsonl")
-    const tracing = process.platform === "win32"
-    const previousTrace = process.env.VIBESHAPE_ARGUMENT_TRACE
-    if (tracing) process.env.VIBESHAPE_ARGUMENT_TRACE = trace
-    try {
-      const script = fileURLToPath(
-        new URL("../../../tests/desktop/fixtures/argument-agent.cjs", import.meta.url),
-      )
-      const argumentsAgent = {
-        command: process.execPath,
-        args: [script, "probe", receipt],
-      }
-      const config = readConfiguration({
-        TYPESAFE_API_KEY: "test-key",
-        JEV_ARGUMENTS_AGENT: JSON.stringify(argumentsAgent),
-      })
-      const result = await probeProviders(config, { fetch: async () => jevResponse() })
-      if (tracing) {
-        console.info(
-          "Windows local provider probe:",
-          JSON.stringify({
-            result,
-            supervisor: await readFile(trace, "utf8").catch(() => "absent"),
-            // This fixture contains only the synthetic connection-check exchange.
-            receipt: await readFile(receipt, "utf8").catch(() => "absent"),
-          }),
+  test.each(process.platform === "win32" ? [false, true] : [false])(
+    "checks a local signed-in agent with an isolated JSON request after Jev succeeds (trace=%s)",
+    async (tracing) => {
+      const directory = await mkdtemp(join(tmpdir(), "local-probe-"))
+      const receipt = join(directory, "receipt")
+      const trace = join(directory, "supervisor.jsonl")
+      const previousTrace = process.env.VIBESHAPE_ARGUMENT_TRACE
+      if (tracing) process.env.VIBESHAPE_ARGUMENT_TRACE = trace
+      else if (process.platform === "win32") delete process.env.VIBESHAPE_ARGUMENT_TRACE
+      try {
+        const script = fileURLToPath(
+          new URL("../../../tests/desktop/fixtures/argument-agent.cjs", import.meta.url),
         )
+        const argumentsAgent = {
+          command: process.execPath,
+          args: [script, "probe", receipt],
+        }
+        const config = readConfiguration({
+          TYPESAFE_API_KEY: "test-key",
+          JEV_ARGUMENTS_AGENT: JSON.stringify(argumentsAgent),
+        })
+        const result = await probeProviders(config, { fetch: async () => jevResponse() })
+        if (tracing) {
+          console.info(
+            "Windows local provider probe:",
+            JSON.stringify({
+              result,
+              supervisor: await readFile(trace, "utf8").catch(() => "absent"),
+              // This fixture contains only the synthetic connection-check exchange.
+              receipt: await readFile(receipt, "utf8").catch(() => "absent"),
+            }),
+          )
+        }
+        expect(result).toEqual({
+          ok: true,
+          checks: ["agent", "jev", "arguments"],
+        })
+        expect(
+          await probeProviders(
+            { ...config, argumentsAgent: { command: "/missing-agent", args: [] } },
+            { fetch: async () => jevResponse() },
+          ),
+        ).toEqual({ ok: false, code: "request-failed", stage: "arguments" })
+      } finally {
+        if (process.platform === "win32") {
+          if (previousTrace === undefined) delete process.env.VIBESHAPE_ARGUMENT_TRACE
+          else process.env.VIBESHAPE_ARGUMENT_TRACE = previousTrace
+        }
+        await rm(directory, { recursive: true, force: true })
       }
-      expect(result).toEqual({
-        ok: true,
-        checks: ["agent", "jev", "arguments"],
-      })
-      expect(
-        await probeProviders(
-          { ...config, argumentsAgent: { command: "/missing-agent", args: [] } },
-          { fetch: async () => jevResponse() },
-        ),
-      ).toEqual({ ok: false, code: "request-failed", stage: "arguments" })
-    } finally {
-      if (tracing) {
-        if (previousTrace === undefined) delete process.env.VIBESHAPE_ARGUMENT_TRACE
-        else process.env.VIBESHAPE_ARGUMENT_TRACE = previousTrace
-      }
-      await rm(directory, { recursive: true, force: true })
-    }
-  }, 65_000)
+    },
+    65_000,
+  )
   test.each([false, true])(
     "validates the configured providers with minimal isolated requests (helper=%s)",
     async (helper) => {
