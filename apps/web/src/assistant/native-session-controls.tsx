@@ -55,7 +55,7 @@ function SessionSelector({
                 type="button"
                 size="xs"
                 variant="ghost"
-                className="max-w-full min-w-0 rounded-md bg-muted/50 text-muted-foreground [&_svg:not([role=img])]:size-3"
+                className="max-w-full min-w-0 rounded-md text-muted-foreground [&_svg:not([role=img])]:size-3"
                 aria-label={label}
                 aria-description={selected}
                 aria-describedby={description ? descriptionId : undefined}
