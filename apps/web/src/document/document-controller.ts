@@ -26,8 +26,9 @@ export type * from "./document-controller-runtime"
 const initial = createDocumentControllerRuntime({ reviews: getActiveAutomationReviews() })
 const runtimes = createProjectRuntimeRegistry(initial)
 let defaultProjectName = "Untitled project"
-let startPromise: Promise<void> | null = null
 let switching = false
+let selectionGeneration = 0
+let visibleSelection: { source: DocumentControllerRuntime } | null = null
 let libraryRuntime: DocumentControllerRuntime | null = null
 let navigation: ReturnType<typeof createProjectNavigation> | null = null
 const opening = new Map<string, Promise<DocumentControllerRuntime>>()
@@ -90,6 +91,10 @@ function unavailable(
 ): Extract<AutomationProjectResult, { ok: false }> {
   return { ok: false, diagnostic: { code, message, retryable } }
 }
+function runtimeStartupFailed(runtime: DocumentControllerRuntime) {
+  const state = runtime.getDocumentControllerState()
+  return state.status === "error" && !state.report
+}
 function expectationMatches(expected?: AutomationProjectExpectation, strictRevision = true) {
   const snapshot = getDocumentControllerState().report?.snapshot
   return (
@@ -98,12 +103,33 @@ function expectationMatches(expected?: AutomationProjectExpectation, strictRevis
       (!strictRevision || snapshot.revision === expected.revision))
   )
 }
-async function prepareRuntime(options: NonNullable<DocumentRuntimeOptions["initialProject"]>) {
-  const existing = runtimes.get(options.documentId)
-  if (existing) return existing
-  const pending = opening.get(options.documentId)
-  if (pending) return pending
-  const runtime = createDocumentControllerRuntime({ initialProject: options })
+async function prepareRuntime(
+  options: NonNullable<DocumentRuntimeOptions["initialProject"]>,
+  generation: number,
+  present?: (runtime: DocumentControllerRuntime) => void,
+) {
+  let existing = runtimes.get(options.documentId)
+  if (existing && existing !== runtimes.active() && runtimeStartupFailed(existing)) {
+    await discardUnselectedRuntime(existing, false, options.documentId)
+    existing = undefined
+  }
+  if (generation !== selectionGeneration) return null
+  if (existing) {
+    present?.(existing)
+    await existing.startDocumentController(defaultProjectName)
+    return existing
+  }
+  return opening.get(options.documentId) ?? startOpeningRuntime(options, present)
+}
+function startOpeningRuntime(
+  options: NonNullable<DocumentRuntimeOptions["initialProject"]>,
+  present?: (runtime: DocumentControllerRuntime) => void,
+) {
+  const runtime = createDocumentControllerRuntime({
+    initialProject: options,
+    progressiveOpening: present !== undefined && !options.create,
+  })
+  present?.(runtime)
   const ready = runtime
     .startDocumentController(defaultProjectName)
     .then(() => {
@@ -174,13 +200,15 @@ function selectionBlocked(
   const sourceBlock = automatedTransition
     ? source.getProjectActionBlock()
     : getProjectNavigationBlock()
-  return switching || closing.has(projectId) || (getDocumentControllerState().report && sourceBlock)
+  const exclusive = switching && (automatedTransition || visibleSelection === null)
+  return exclusive || closing.has(projectId) || (getDocumentControllerState().report && sourceBlock)
     ? unavailable()
     : null
 }
 function activatePreparedProject(
   runtime: DocumentControllerRuntime,
   authority: {
+    generation: number
     projectId: string
     expected: AutomationProjectExpectation | undefined
     signal: AbortSignal | undefined
@@ -188,6 +216,8 @@ function activatePreparedProject(
     writable: boolean
   },
 ): AutomationProjectResult {
+  if (authority.generation !== selectionGeneration)
+    return unavailable("cancelled", "A newer project selection replaced this request.")
   const result = selectedProject(runtime, authority.writable)
   if (!result.ok) return result
   const blocked =
@@ -206,7 +236,56 @@ async function discardUnselectedRuntime(
   projectId: string,
 ) {
   if (!runtime || retained || runtime === runtimes.active() || closing.has(projectId)) return
-  await discardRuntime(runtime)
+  closing.add(projectId)
+  try {
+    await disposeProjectRuntimeResources(projectId)
+    await discardRuntime(runtime)
+  } finally {
+    closing.delete(projectId)
+  }
+}
+function presentOpeningProject(runtime: DocumentControllerRuntime, projectId: string) {
+  if (rememberProject(projectId)) return false
+  setActiveAutomationReviews(runtime.reviews)
+  runtimes.activate(runtime)
+  projectNavigation().sync(projectId)
+  return true
+}
+function restoreUnreadyPresentation(
+  source: DocumentControllerRuntime,
+  presented: boolean,
+  signal?: AbortSignal,
+) {
+  if (!presented) return
+  if (!signal?.aborted && runtimes.active().getDocumentControllerState().status === "ready") return
+  setActiveAutomationReviews(source.reviews)
+  runtimes.activate(source)
+  if (!signal?.aborted) source.setProjectNavigationError("project-open-failed")
+  const sourceState = source.getDocumentControllerState()
+  const sourceId = sourceState.report?.snapshot.id ?? sourceState.openingProjectId
+  if (sourceId) {
+    rememberProject(sourceId)
+    projectNavigation().sync(sourceId, "replace")
+  } else {
+    projectNavigation().clear("replace")
+  }
+}
+function beginProjectSelection(
+  source: DocumentControllerRuntime,
+  automatedTransition: boolean,
+  create: boolean | undefined,
+) {
+  const generation = ++selectionGeneration
+  const fallback = visibleSelection?.source ?? source
+  const presentImmediately = !automatedTransition && !create
+  visibleSelection = presentImmediately ? { source: fallback } : null
+  switching = true
+  return { generation, fallback, presentImmediately }
+}
+function finishProjectSelection(generation: number) {
+  if (generation !== selectionGeneration) return
+  switching = false
+  visibleSelection = null
 }
 async function selectProject(
   options: NonNullable<DocumentRuntimeOptions["initialProject"]>,
@@ -215,21 +294,34 @@ async function selectProject(
   automatedTransition = false,
   strictRevision = true,
 ): Promise<AutomationProjectResult> {
-  if (["idle", "loading"].includes(getDocumentControllerState().status)) await startPromise
   const source = runtimes.active()
   const blocked =
     selectionBlocked(source, options.documentId, automatedTransition) ??
     selectionInterruption(expected, signal, strictRevision)
   if (blocked) return blocked
-  switching = true
+  const { generation, fallback, presentImmediately } = beginProjectSelection(
+    source,
+    automatedTransition,
+    options.create,
+  )
   const release = automatedTransition ? source.reserveProjectTransition() : () => {}
-  const retained = runtimes.get(options.documentId) !== undefined
+  const retained = runtimes.get(options.documentId)
   let prepared: DocumentControllerRuntime | null = null
+  let presented = false
+  const present = presentImmediately
+    ? (runtime: DocumentControllerRuntime) => {
+        if (generation === selectionGeneration)
+          presented = presentOpeningProject(runtime, options.documentId)
+      }
+    : undefined
   try {
-    prepared = await prepareRuntime(options)
+    prepared = await prepareRuntime(options, generation, present)
+    if (!prepared)
+      return unavailable("cancelled", "A newer project selection replaced this request.")
     return activatePreparedProject(prepared, {
+      generation,
       projectId: options.documentId,
-      expected,
+      expected: presented ? undefined : expected,
       signal,
       strictRevision,
       writable: automatedTransition,
@@ -238,10 +330,12 @@ async function selectProject(
     return unavailable("persistence-failed", "The project could not be selected.")
   } finally {
     try {
-      await discardUnselectedRuntime(prepared, retained, options.documentId)
+      if (generation === selectionGeneration)
+        restoreUnreadyPresentation(fallback, presented, signal)
+      await discardUnselectedRuntime(prepared, prepared === retained, options.documentId)
     } finally {
       release()
-      switching = false
+      finishProjectSelection(generation)
     }
   }
 }
@@ -282,9 +376,11 @@ export async function createNewLocalProject(): Promise<ProjectSwitchResult> {
   return result.ok ? { ok: true } : result
 }
 export async function showProjectLibrary(signal?: AbortSignal): Promise<ProjectSwitchResult> {
-  await startPromise
-  if (switching || runtimes.active().getProjectNavigationBlock()) return unavailable()
+  if ((switching && visibleSelection === null) || runtimes.active().getProjectNavigationBlock())
+    return unavailable()
   if (signal?.aborted) return unavailable("cancelled", "The project action was cancelled.")
+  const generation = ++selectionGeneration
+  visibleSelection = null
   switching = true
   try {
     libraryRuntime ??= createDocumentControllerRuntime({ initialProject: null })
@@ -307,7 +403,7 @@ export async function showProjectLibrary(signal?: AbortSignal): Promise<ProjectS
     runtimes.activate(libraryRuntime)
     return { ok: true }
   } finally {
-    switching = false
+    finishProjectSelection(generation)
   }
 }
 export function createAutomationProject(
@@ -364,10 +460,10 @@ export function useDocumentController(defaultDocumentName: string) {
   useEffect(() => {
     defaultProjectName = defaultDocumentName
     const stop = projectNavigation().listen()
-    startPromise ??= initial.startDocumentController(defaultDocumentName).then(() => {
+    void initial.startDocumentController(defaultDocumentName).then(() => {
       runtimes.retain(initial)
       const id = initial.getDocumentControllerState().report?.snapshot.id
-      if (id) projectNavigation().sync(id, "replace")
+      if (id && runtimes.active() === initial) projectNavigation().sync(id, "replace")
     })
     const close = () => {
       for (const runtime of runtimes.values()) {

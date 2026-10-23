@@ -207,6 +207,7 @@ type SaveStatus = "saved" | "saving" | "save-error"
 export type DocumentControllerState = Readonly<{
   assistantCheckpointPresentation?: AssistantCheckpointPresentation | null
   status: ControllerStatus
+  openingProjectId?: DocumentSnapshot["id"]
   report: PersistentDocumentSessionReport | null
   authoredSnapshot?: DocumentAuthoritySnapshot | null
   saveStatus: SaveStatus
@@ -286,6 +287,7 @@ export type DocumentRuntimeOptions = Readonly<{
     name?: string
     actor?: CommandActor
   } | null
+  progressiveOpening?: boolean
   reviews?: ReturnType<typeof createAutomationReviewController>
 }>
 export function createDocumentControllerRuntime(options: DocumentRuntimeOptions = {}) {
@@ -314,10 +316,12 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
 
   let state: DocumentControllerState = {
     status: "idle",
+    ...(options.initialProject ? { openingProjectId: options.initialProject.documentId } : {}),
     report: null,
     saveStatus: "saved",
     diagnostic: null,
   }
+  let openingPreview = options.progressiveOpening === true
   let session: PersistentDocumentSession | null = null
   let activeRepository: BrowserProjectRepository | null = null
   let activeDatabase: VibeShapeDatabase | null = null
@@ -535,8 +539,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         release: (input: Parameters<typeof releaseDocumentLease>[1]) =>
           releaseDocumentLease(database, input),
       },
-      createRebuildPort: (documentId: ReturnType<typeof documentIdSchema.parse>) =>
-        createDocumentWorkerSession(documentId, {
+      createRebuildPort: (documentId: ReturnType<typeof documentIdSchema.parse>) => {
+        const worker = createDocumentWorkerSession(documentId, {
           materializeSourceAssets: (document) =>
             materializeDocumentSourceAssets(
               database,
@@ -547,7 +551,17 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
               },
               document.features,
             ),
-        }),
+        })
+        const rebuild = worker.rebuild.bind(worker)
+        worker.rebuild = (input, requestOptions) =>
+          rebuild(
+            openingPreview
+              ? { ...input, mesh: { chordTolerance: 0.5, angularTolerance: 0.5 } }
+              : input,
+            requestOptions,
+          )
+        return worker
+      },
       now: () => Date.now(),
     }
   }
@@ -615,8 +629,11 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
           sourceCode: "invalid-project-url",
         },
       }
-    if (requested.kind === "project")
+    if (requested.kind === "project") {
+      openingPreview = true
+      publish({ ...state, openingProjectId: requested.documentId })
       return openControllerProject(database, repository, requested.documentId)
+    }
     return { ok: true as const, library: true as const }
   }
 
@@ -632,6 +649,31 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     })
   }
 
+  function openingReportDiagnostic(report: PersistentDocumentSessionReport) {
+    if (report.writeAccessDiagnostic) return report.writeAccessDiagnostic
+    return report.rebuild && !report.rebuild.ok
+      ? report.rebuild.diagnostic
+      : report.writeAccessDiagnostic
+  }
+
+  async function refineOpeningReport(
+    report: PersistentDocumentSessionReport,
+    active: PersistentDocumentSession,
+  ) {
+    const refine = openingPreview && report.rebuild?.ok && report.snapshot.features.length > 0
+    openingPreview = false
+    if (!refine) return report
+    publish({
+      status: "loading",
+      openingProjectId: report.snapshot.id,
+      report,
+      saveStatus: "saved",
+      diagnostic: report.writeAccessDiagnostic,
+    })
+    const rebuild = await active.retryRebuild()
+    return { ...report, rebuild }
+  }
+
   async function start() {
     publish({ ...state, status: "loading", diagnostic: null })
     try {
@@ -639,8 +681,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       if (!result.ok) {
         const requested = readProjectUrl(window.location.href)
         publish({
-          ...state,
           status: "error",
+          report: null,
+          saveStatus: "saved",
           diagnostic: result.diagnostic,
           projectNavigationError:
             requested.kind === "default"
@@ -660,17 +703,19 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       session = result.session
       if (!options.initialProject)
         writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, session.snapshot.id)
+      const report = await refineOpeningReport(result.report, session)
       publish({
         status: "ready",
-        report: result.report,
+        report,
         saveStatus: "saved",
-        diagnostic: result.report.writeAccessDiagnostic,
+        diagnostic: openingReportDiagnostic(report),
       })
       // The runtime registry owns visible-project navigation.
     } catch {
       publish({
-        ...state,
         status: "error",
+        report: null,
+        saveStatus: "saved",
         diagnostic: {
           code: "persistence-failed",
           message: "The local document session could not be started.",

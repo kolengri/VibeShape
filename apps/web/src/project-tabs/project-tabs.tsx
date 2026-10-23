@@ -1,4 +1,4 @@
-import { useReportBlockingActivity } from "@vibeshape/ui/components/activity"
+import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
 import { X } from "@vibeshape/ui/components/icons"
 import { Tabs, TabsList, TabsTrigger } from "@vibeshape/ui/components/tabs"
@@ -35,7 +35,7 @@ export function ProjectTabs({
   onOpenProjects?: () => Promise<ProjectSwitchResult>
 }) {
   const tabs = useProjectTabsController(controller, onOpenProjects)
-  useReportBlockingActivity(tabs.pending, copy.working)
+  useReportActivity(tabs.pending)
   const feedbackId = useId()
   const [renameOpen, setRenameOpen] = useState(false)
   const canRename = projectRenameAvailable(controller)
@@ -44,7 +44,7 @@ export function ProjectTabs({
   const storageCentralized = useReportApplicationError(
     tabs.storageFailed ? copy.storageFailed : null,
   )
-  const disabled = tabs.pending || controller.status !== "ready"
+  const { navigationDisabled, closeDisabled } = projectTabAvailability(controller.status, tabs)
   useEffect(() => {
     if (!tabs.focusRequested || tabs.pending || !tabs.activeId) return
     const target = document.getElementById(projectTabId(tabs.activeId))
@@ -76,7 +76,8 @@ export function ProjectTabs({
               key={tab.documentId}
               tab={tab}
               active={tab.documentId === tabs.activeId}
-              disabled={disabled}
+              disabled={navigationDisabled || tab.documentId === tabs.pendingProjectId}
+              closeDisabled={closeDisabled}
               closeLabel={copy.closeProject(tab.name)}
               onClose={tabs.close}
               onRename={canRename ? () => setRenameOpen(true) : undefined}
@@ -108,10 +109,21 @@ export function ProjectTabs({
   )
 }
 
+function projectTabAvailability(
+  status: DocumentControllerState["status"],
+  transition: { pending: boolean; closing: boolean },
+) {
+  return {
+    navigationDisabled: transition.closing || !["ready", "loading"].includes(status),
+    closeDisabled: transition.pending || status !== "ready",
+  }
+}
+
 function ProjectTab({
   tab,
   active,
   disabled,
+  closeDisabled,
   closeLabel,
   onClose,
   onRename,
@@ -119,6 +131,7 @@ function ProjectTab({
   tab: ReturnType<typeof useProjectTabsController>["tabs"][number]
   active: boolean
   disabled: boolean
+  closeDisabled: boolean
   closeLabel: string
   onClose: ReturnType<typeof useProjectTabsController>["close"]
   onRename: (() => void) | undefined
@@ -151,7 +164,7 @@ function ProjectTab({
             type="button"
             size="icon-xs"
             variant="ghost"
-            disabled={disabled}
+            disabled={closeDisabled}
             aria-label={closeLabel}
             onClick={() => onClose(tab.documentId)}
           >

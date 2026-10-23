@@ -256,6 +256,200 @@ async function ready(
 }
 
 describe("in-place automation project management", () => {
+  it("publishes a deep-link destination while initial recovery is pending", async () => {
+    window.history.replaceState(null, "", `/?project=${initialId}`)
+    const recovery = deferred<ReturnType<typeof openResult>>()
+    ports.open.mockReturnValueOnce(recovery.promise)
+    const { createDocumentControllerRuntime } = await import("./document-controller-runtime")
+    const runtime = createDocumentControllerRuntime()
+    const starting = runtime.startDocumentController("Untitled")
+    expect(runtime.getDocumentControllerState()).toMatchObject({
+      status: "loading",
+      openingProjectId: initialId,
+      report: null,
+    })
+    expect(runtime.getProjectActionBlock()).toBe("unavailable")
+    recovery.resolve(openResult(snapshot()))
+    await starting
+    expect(runtime.getDocumentControllerState()).toMatchObject({
+      status: "ready",
+      report: { snapshot: { id: initialId } },
+    })
+    await runtime.closeRuntime()
+  })
+
+  it.each(["failure", "rejection"])(
+    "clears initial loading presentation after recovery %s",
+    async (outcome) => {
+      window.history.replaceState(null, "", `/?project=${initialId}`)
+      if (outcome === "rejection")
+        ports.open.mockRejectedValueOnce(new Error("Storage unavailable."))
+      else
+        ports.open.mockResolvedValueOnce({
+          ok: false,
+          diagnostic: {
+            code: "persistence-failed",
+            sourceCode: "document-not-found",
+            message: "Missing project.",
+            retryable: false,
+          },
+        })
+      const { createDocumentControllerRuntime } = await import("./document-controller-runtime")
+      const runtime = createDocumentControllerRuntime()
+      await runtime.startDocumentController("Untitled")
+      const state = runtime.getDocumentControllerState()
+      expect(state.status).toBe("error")
+      expect(state).not.toHaveProperty("openingProjectId")
+      expect(state.report).toBeNull()
+    },
+  )
+
+  it.each(["project", "library"])(
+    "allows initial URL loading to be superseded by a %s without restoring its URL",
+    async (destination) => {
+      window.history.replaceState(null, "", `/?project=${initialId}`)
+      const startup = deferred<ReturnType<typeof openResult>>()
+      ports.open
+        .mockReturnValueOnce(startup.promise)
+        .mockResolvedValueOnce(openResult(snapshot(targetId, "Target")))
+      const controller = (await import(
+        `./document-controller?test=${moduleRevision}`
+      )) as typeof import("./document-controller")
+      renderHook(() => controller.useDocumentController("Untitled"))
+      await waitFor(() => expect(controller.getDocumentControllerState().status).toBe("loading"))
+      const result =
+        destination === "project"
+          ? await controller.activateProjectTab(targetId)
+          : await controller.showProjectLibrary()
+      expect(result.ok).toBe(true)
+      startup.resolve(openResult(snapshot()))
+      await waitFor(() =>
+        expect(controller.getProjectRuntime(initialId)?.getDocumentControllerState().status).toBe(
+          "ready",
+        ),
+      )
+      if (destination === "project") {
+        expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(targetId)
+        expect(new URL(window.location.href).searchParams.get("project")).toBe(targetId)
+      } else {
+        expect(controller.getDocumentControllerState().status).toBe("library")
+        expect(new URL(window.location.href).searchParams.has("project")).toBe(false)
+      }
+    },
+  )
+
+  it("reopens a failed initial project with a fresh runtime after returning to the library", async () => {
+    window.history.replaceState(null, "", `/?project=${initialId}`)
+    ports.open
+      .mockRejectedValueOnce(new Error("Storage temporarily unavailable."))
+      .mockResolvedValueOnce(openResult(snapshot()))
+    const controller = (await import(
+      `./document-controller?test=${moduleRevision}`
+    )) as typeof import("./document-controller")
+    renderHook(() => controller.useDocumentController("Untitled"))
+    await waitFor(() => expect(controller.getDocumentControllerState().status).toBe("error"))
+    const failedRuntime = controller.getProjectRuntime(initialId)
+    expect(failedRuntime).toBeDefined()
+    expect(await controller.showProjectLibrary()).toEqual({ ok: true })
+    expect(await controller.activateProjectTab(initialId)).toEqual({ ok: true })
+    expect(ports.open).toHaveBeenCalledTimes(2)
+    expect(controller.getProjectRuntime(initialId)).not.toBe(failedRuntime)
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "ready",
+      report: { snapshot: { id: initialId } },
+    })
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(initialId)
+  })
+
+  it("cancels a stale retry before startup and preserves a later selection of the same project", async () => {
+    window.history.replaceState(null, "", `/?project=${initialId}`)
+    ports.open.mockRejectedValueOnce(new Error("Storage temporarily unavailable."))
+    const controller = (await import(
+      `./document-controller?test=${moduleRevision}`
+    )) as typeof import("./document-controller")
+    renderHook(() => controller.useDocumentController("Untitled"))
+    await waitFor(() => expect(controller.getDocumentControllerState().status).toBe("error"))
+    expect(await controller.showProjectLibrary()).toEqual({ ok: true })
+    const { registerProjectRuntimeResource } = await import("./project-runtime-resources")
+    const disposal = deferred<void>()
+    const dispose = vi.fn(() => disposal.promise)
+    const unregister = registerProjectRuntimeResource(initialId, { isBusy: () => false, dispose })
+    const reopened = openResult(snapshot())
+    const startup = deferred<ReturnType<typeof openResult>>()
+    ports.open.mockImplementation(async (_dependencies, { documentId }) =>
+      documentId === initialId ? startup.promise : openResult(snapshot(targetId)),
+    )
+    const retry = controller.activateProjectTab(initialId)
+    await waitFor(() => expect(dispose).toHaveBeenCalledTimes(1))
+    expect(await controller.activateProjectTab(targetId)).toEqual({ ok: true })
+    disposal.resolve()
+    expect(await retry).toMatchObject({ ok: false, diagnostic: { code: "cancelled" } })
+    expect(ports.open).toHaveBeenCalledTimes(2)
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(targetId)
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(targetId)
+    expect(controller.getProjectRuntime(initialId)).toBeUndefined()
+    const latestSelection = controller.activateProjectTab(initialId)
+    await waitFor(() => expect(ports.open).toHaveBeenCalledTimes(3))
+    startup.resolve(reopened)
+    expect(await latestSelection).toEqual({ ok: true })
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "ready",
+      report: { snapshot: { id: initialId } },
+    })
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(initialId)
+    expect(controller.getProjectRuntime(initialId)).toBeDefined()
+    expect(reopened.session.close).not.toHaveBeenCalled()
+    unregister()
+  })
+
+  it("restores a pending initial project's URL when a superseding selection fails", async () => {
+    window.history.replaceState(null, "", `/?project=${initialId}&layout=wide#model`)
+    const startup = deferred<ReturnType<typeof openResult>>()
+    ports.open
+      .mockReturnValueOnce(startup.promise)
+      .mockRejectedValueOnce(new Error("Target storage unavailable."))
+    const controller = (await import(
+      `./document-controller?test=${moduleRevision}`
+    )) as typeof import("./document-controller")
+    renderHook(() => controller.useDocumentController("Untitled"))
+    await waitFor(() =>
+      expect(controller.getDocumentControllerState().openingProjectId).toBe(initialId),
+    )
+    expect(await controller.activateProjectTab(targetId)).toMatchObject({ ok: false })
+    expect(controller.getDocumentControllerState()).toMatchObject({
+      status: "loading",
+      openingProjectId: initialId,
+      report: null,
+    })
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(initialId)
+    expect(new URL(window.location.href).searchParams.get("layout")).toBe("wide")
+    expect(window.location.hash).toBe("#model")
+    startup.resolve(openResult(snapshot()))
+    await waitFor(() => expect(controller.getDocumentControllerState().status).toBe("ready"))
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(initialId)
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(initialId)
+  })
+
+  it("reselects the initial project before its first startup finishes", async () => {
+    window.history.replaceState(null, "", `/?project=${initialId}`)
+    const startup = deferred<ReturnType<typeof openResult>>()
+    ports.open
+      .mockReturnValueOnce(startup.promise)
+      .mockResolvedValueOnce(openResult(snapshot(targetId, "Target")))
+    const controller = (await import(
+      `./document-controller?test=${moduleRevision}`
+    )) as typeof import("./document-controller")
+    renderHook(() => controller.useDocumentController("Untitled"))
+    await waitFor(() => expect(controller.getDocumentControllerState().status).toBe("loading"))
+    expect(await controller.activateProjectTab(targetId)).toEqual({ ok: true })
+    const returning = controller.activateProjectTab(initialId)
+    expect(controller.getDocumentControllerState().openingProjectId).toBe(initialId)
+    startup.resolve(openResult(snapshot()))
+    expect(await returning).toEqual({ ok: true })
+    expect(controller.getDocumentControllerState().report?.snapshot.id).toBe(initialId)
+    expect(new URL(window.location.href).searchParams.get("project")).toBe(initialId)
+  })
+
   it("opens the selected project without loading the unrelated catalog or thumbnails", async () => {
     const { controller } = await ready()
     ports.list.mockRejectedValue(new Error("The catalog must not be read to open one project."))

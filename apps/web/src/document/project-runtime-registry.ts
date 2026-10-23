@@ -1,5 +1,8 @@
 type Runtime = {
-  getDocumentControllerState(): { report: { snapshot: { id: string } } | null }
+  getDocumentControllerState(): {
+    report: { snapshot: { id: string } } | null
+    openingProjectId?: string
+  }
   subscribeDocumentController(listener: () => void): () => void
 }
 
@@ -12,7 +15,8 @@ export function createProjectRuntimeRegistry<T extends Runtime>(initial: T) {
   function retain(runtime: T) {
     if (retained.has(runtime)) return
     const changed = () => {
-      const id = runtime.getDocumentControllerState().report?.snapshot.id
+      const state = runtime.getDocumentControllerState()
+      const id = state.report?.snapshot.id ?? state.openingProjectId
       if (id) projects.set(id, runtime)
       if (active === runtime) for (const listener of listeners) listener()
     }
