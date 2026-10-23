@@ -9,14 +9,14 @@ on:
         type: string
         default: ''
       hybrid:
-        description: Request one Node shard from the private isolated Mac broker
+        description: Prefer complete isolated Mac CI for owner runs, with hosted fallback
         required: false
         type: boolean
         default: false
   workflow_dispatch:
     inputs:
       hybrid:
-        description: Request one Node shard from the private isolated Mac broker
+        description: Prefer complete isolated Mac CI for owner runs, with hosted fallback
         required: false
         type: boolean
         default: false
@@ -33,7 +33,41 @@ permissions:
   statuses: read
 
 jobs:
+  mac-ci:
+    name: Isolated Mac CI
+    if: ${{ (vars.VIBESHAPE_CI_HYBRID == 'true' || inputs.hybrid) && (startsWith(github.workflow_ref, 'kolengri/VibeShape/.github/workflows/ci.yml@') || startsWith(github.workflow_ref, 'kolengri/VibeShape/.github/workflows/cloudflare-pages.yml@')) && github.repository == 'kolengri/VibeShape' && github.actor == github.repository_owner && (github.triggering_actor == '' || github.triggering_actor == github.repository_owner) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == github.repository_owner)) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      result: ${{ steps.mac.outputs.result }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.source_ref }}
+
+      - name: Await isolated Mac CI ${{ inputs.source_ref || github.sha }}
+        id: mac
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
+          SOURCE_RUN: ${{ github.run_id }}
+          SOURCE_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          if python3 ops/isolated-ci/wait.py --scope ci --sha "$SOURCE_SHA" --run-id "$SOURCE_RUN" --attempt "$SOURCE_ATTEMPT"; then
+            echo "result=success" >> "$GITHUB_OUTPUT"
+            echo "Complete CI passed in the isolated Mac worker." >> "$GITHUB_STEP_SUMMARY"
+          else
+            code=$?
+            if [[ "$code" != 75 ]]; then exit "$code"; fi
+            echo "result=unavailable" >> "$GITHUB_OUTPUT"
+            echo "Mac unavailable: running complete CI on GitHub." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   checks:
+    needs: mac-ci
+    if: ${{ !cancelled() && (needs.mac-ci.result == 'skipped' || (needs.mac-ci.result == 'success' && needs.mac-ci.outputs.result == 'unavailable')) }}
     name: Static and integration checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -102,6 +136,8 @@ jobs:
         run: bun run fallow:audit -- --no-cache
 
   unit-tests:
+    needs: mac-ci
+    if: ${{ !cancelled() && (needs.mac-ci.result == 'skipped' || (needs.mac-ci.result == 'success' && needs.mac-ci.outputs.result == 'unavailable')) }}
     name: Bun unit tests (${{ matrix.group }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -117,12 +153,6 @@ jobs:
           - { group: dom, shard: "2/3" }
           - { group: dom, shard: "3/3" }
     steps:
-      - name: Select test executor
-        id: executor
-        env:
-          ISOLATED: ${{ (vars.VIBESHAPE_CI_HYBRID == 'true' || inputs.hybrid) && matrix.group == 'node' && matrix.shard == '3/3' && (startsWith(github.workflow_ref, 'kolengri/VibeShape/.github/workflows/ci.yml@') || startsWith(github.workflow_ref, 'kolengri/VibeShape/.github/workflows/cloudflare-pages.yml@')) && github.repository == 'kolengri/VibeShape' && github.actor == github.repository_owner && (github.triggering_actor == '' || github.triggering_actor == github.repository_owner) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == github.repository_owner)) }}
-        run: echo "isolated=$ISOLATED" >> "$GITHUB_OUTPUT"
-
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -131,17 +161,15 @@ jobs:
           ref: ${{ inputs.source_ref }}
 
       - name: Set up Bun
-        if: steps.executor.outputs.isolated != 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
 
       - name: Install dependencies
-        if: steps.executor.outputs.isolated != 'true'
         run: bun ci
 
       - name: Restore dependency-aware unit test results
-        if: ${{ matrix.shard == '' && steps.executor.outputs.isolated != 'true' }}
+        if: ${{ matrix.shard == '' }}
         id: unit-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
@@ -151,7 +179,6 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-unit-tests-v2-${{ matrix.group }}-${{ hashFiles('bun.lock', 'package.json', 'scripts/run-unit-tests.ts', 'scripts/unit-test-*.ts', 'scripts/workspace-graph.ts', 'tests/unit/support/**') }}-
 
       - name: Test
-        if: steps.executor.outputs.isolated != 'true'
         env:
           UNIT_TEST_GROUP: ${{ matrix.group }}
           UNIT_TEST_SHARD: ${{ matrix.shard }}
@@ -174,17 +201,6 @@ jobs:
             echo "- Duration: $((SECONDS - start))s"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Await isolated Mac node shard ${{ inputs.source_ref || github.sha }}
-        if: steps.executor.outputs.isolated == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
-          SOURCE_RUN: ${{ github.run_id }}
-          SOURCE_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          python3 ops/isolated-ci/wait.py --sha "$SOURCE_SHA" --run-id "$SOURCE_RUN" --attempt "$SOURCE_ATTEMPT"
-          echo "Node shard 3/3 passed in the private isolated Mac executor." >> "$GITHUB_STEP_SUMMARY"
-
       - name: Save successful unit test receipts even when another scope fails
         if: ${{ !cancelled() && steps.unit-cache.outcome == 'success' && steps.unit-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -195,12 +211,22 @@ jobs:
   verify:
     name: Fast PR checks
     if: always()
-    needs: [checks, unit-tests]
+    needs: [mac-ci, checks, unit-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Require every verification job
         env:
+          MAC_RESULT: ${{ needs.mac-ci.result }}
+          MAC_OUTCOME: ${{ needs.mac-ci.outputs.result }}
           CHECKS_RESULT: ${{ needs.checks.result }}
           UNIT_TESTS_RESULT: ${{ needs.unit-tests.result }}
-        run: test "$CHECKS_RESULT" = success && test "$UNIT_TESTS_RESULT" = success
+        run: |
+          if [[ "$MAC_RESULT" == success && "$MAC_OUTCOME" == success ]]; then
+            test "$CHECKS_RESULT" = skipped || exit 1
+            test "$UNIT_TESTS_RESULT" = skipped || exit 1
+          else
+            [[ "$MAC_RESULT" == skipped || ( "$MAC_RESULT" == success && "$MAC_OUTCOME" == unavailable ) ]] || exit 1
+            test "$CHECKS_RESULT" = success || exit 1
+            test "$UNIT_TESTS_RESULT" = success || exit 1
+          fi
