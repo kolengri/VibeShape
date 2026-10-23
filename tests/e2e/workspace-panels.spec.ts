@@ -384,3 +384,28 @@ test("offers readable independent extrusion depths beside a temporary model tree
   await expect.poll(() => width(page.locator("#workspace-tree"))).toBe(240)
   await expect.poll(() => width(page.locator("#workspace-task"))).toBe(320)
 })
+
+for (const theme of ["light", "dark"] as const) {
+  test(`keeps the idle model-tree toggle above bottom slots in ${theme} theme`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto("/")
+    const toggle = page.getByRole("button", { name: "Show model tree", exact: true })
+    const tree = page.getByRole("complementary", { name: "Model tree", exact: true })
+    const canvas = page.locator(".workspace-viewport canvas").first()
+    const bounds = await canvas.boundingBox()
+    const original = await canvas.elementHandle()
+    for (const chatOpen of [false, true]) {
+      if (chatOpen) await page.getByRole("button", { name: "AI chat", exact: true }).click()
+      await toggle.click({ timeout: 3_000 })
+      await expect(tree).toBeVisible()
+      await page.getByRole("button", { name: "Hide model tree", exact: true }).click()
+      await expect(tree).toBeHidden()
+      await expect(toggle).toBeFocused()
+      await expect.poll(() => canvas.boundingBox()).toEqual(bounds)
+    }
+    expect(await canvas.evaluate((node, original) => node === original, original)).toBe(true)
+  })
+}

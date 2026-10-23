@@ -3,10 +3,40 @@ import { ViewportGrid, ViewportGridBottom, ViewportGridItem } from "../shell/vie
 
 let root: Root | undefined
 
+function LeftFixtureItems({
+  fullHeight,
+  visible,
+  inner,
+}: {
+  fullHeight: boolean
+  visible: boolean
+  inner: boolean
+}) {
+  const fullHeightId = inner ? "left-second" : "left-first"
+  return [
+    { id: "left-first", height: 120, label: "Left first" },
+    { id: "left-second", height: 80, label: "Left second" },
+  ].map(({ id, height, label }) => (
+    <ViewportGridItem
+      key={id}
+      id={id}
+      area="left"
+      width={200}
+      fullHeight={fullHeight && id === fullHeightId}
+      visible={visible || id !== fullHeightId}
+    >
+      <div style={{ height }}>{label}</div>
+    </ViewportGridItem>
+  ))
+}
+
 export function renderViewportGridFixture({
   firstFullHeight = false,
   firstVisible = true,
   firstHeight = "",
+  leftFullHeight = false,
+  leftVisible = true,
+  innerFullHeight = false,
 } = {}) {
   if (!root) {
     const host = document.createElement("div")
@@ -24,12 +54,11 @@ export function renderViewportGridFixture({
             <div className="workspace-viewport">
               <canvas aria-label="Fixture viewport" style={{ width: "100%", height: "100%" }} />
             </div>
-            <ViewportGridItem id="left-first" area="left" width={200}>
-              <div style={{ height: 120 }}>Left first</div>
-            </ViewportGridItem>
-            <ViewportGridItem id="left-second" area="left" width={200}>
-              <div style={{ height: 80 }}>Left second</div>
-            </ViewportGridItem>
+            <LeftFixtureItems
+              fullHeight={leftFullHeight}
+              visible={leftVisible}
+              inner={innerFullHeight}
+            />
             <ViewportGridItem
               id="right-first"
               area="right"
@@ -45,7 +74,13 @@ export function renderViewportGridFixture({
             <ViewportGridItem id="right-second" area="right" width={240}>
               <div style={{ height: 160 }}>Right second</div>
             </ViewportGridItem>
-            <ViewportGridItem id="right-fill" area="right" width={240} fullHeight order={100}>
+            <ViewportGridItem
+              id="right-fill"
+              area="right"
+              width={240}
+              fullHeight
+              order={innerFullHeight ? -100 : 100}
+            >
               <div>Full-height item</div>
             </ViewportGridItem>
             <ViewportGridItem id="bottom-first" area="bottom">

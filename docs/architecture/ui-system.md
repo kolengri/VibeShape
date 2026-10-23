@@ -156,7 +156,9 @@ presentation state and grants no feature, worker, or extension authority.
 
 The viewport is an absolute layer anchored to the outer grid, behind all slots. Its rectangle and
 camera do not change when items move. The grid measures occupied regions for safe viewport-control
-insets. Only occupied items and resize handles receive pointer input; empty slot space passes
+insets, including the idle model-tree toggle. Full-height lanes reserve toolbar, bottom-slot, and
+status width on either side; content-sized lanes occupy the body region. Only occupied items and
+resize handles receive pointer input; empty slot space passes
 viewport gestures through. Compact placement uses the same measured available width as panel controls.
 
 ## Browser and feature timeline

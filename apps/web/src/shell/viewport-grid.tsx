@@ -119,12 +119,22 @@ function measureOccupiedRegions(
   for (const [edge, pixels] of Object.entries(occupiedInsets(regions, measurement, scene))) {
     element.style.setProperty(`--workspace-chrome-${edge}`, `${pixels}px`)
   }
-  const inset = regions
-    .filter(
-      ({ item }) => item.fullHeight && item.host.dataset.viewportArea === "right" && !item.overlay,
-    )
-    .reduce((sum, { rect }) => sum + rect.width + measurement.bounds.gap, 0)
-  element.style.setProperty("--viewport-right-inset", `${inset}px`)
+  const fullHeight = regions.filter(({ item }) => item.fullHeight && !item.overlay)
+  for (const area of ["left", "right"] as const) {
+    const inset = fullHeight
+      .filter(({ item }) => item.host.dataset.viewportArea === area)
+      .reduce(
+        (inset, { rect }) =>
+          Math.max(
+            inset,
+            (area === "left"
+              ? rect.right - measurement.rect.left
+              : measurement.rect.right - rect.left) + measurement.bounds.gap,
+          ),
+        0,
+      )
+    element.style.setProperty(`--viewport-${area}-inset`, `${inset}px`)
+  }
   return new Map(
     regions.filter(({ rect }) => rect.height > 0).map(({ item, rect }) => [item.id, rect.height]),
   )

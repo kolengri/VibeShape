@@ -1,5 +1,14 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useId, useState } from "react"
+import {
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react"
 import {
   CompactModelTreeContext,
   CompactModelTreeToggle,
@@ -13,7 +22,7 @@ import { useWorkspaceTask } from "./workspace-task-context"
 function IdleModelTreeToggle({ taskActive, narrow }: { taskActive: boolean; narrow: boolean }) {
   if (taskActive || !narrow) return null
   return (
-    <div className="pointer-events-auto absolute bottom-2 left-2 z-30">
+    <div className="pointer-events-auto absolute bottom-[calc(var(--workspace-chrome-bottom,0px)+var(--workspace-gap))] left-[calc(var(--workspace-chrome-left,0px)+var(--workspace-gap))] z-30">
       <CompactModelTreeToggle />
     </div>
   )
@@ -25,7 +34,11 @@ type PanelPresentation = {
   children: ReactNode
 }
 
-function useTreeDrawer(narrow: boolean, revealTreeRequest: number | undefined) {
+function useTreeDrawer(
+  narrow: boolean,
+  revealTreeRequest: number | undefined,
+  root: RefObject<HTMLDivElement | null>,
+) {
   const actions = useWorkspaceLayoutPreferences((state) => state.actions)
   const panelId = useId()
   const [open, setOpen] = useState(false)
@@ -40,11 +53,11 @@ function useTreeDrawer(narrow: boolean, revealTreeRequest: number | undefined) {
   const toggle = useCallback(() => {
     setOpen((value) => !value)
     if (!open) return
-    const grid = document.activeElement?.closest(".viewport-grid")
+    const grid = root.current?.closest(".viewport-grid")
     requestAnimationFrame(() =>
       grid?.querySelector<HTMLButtonElement>('[data-model-tree-toggle="outside"]')?.focus(),
     )
-  }, [open])
+  }, [open, root])
   return { narrow, open, panelId, toggle }
 }
 
@@ -164,11 +177,13 @@ export function WorkspacePanels({
   const hasTransparentPanel = useWorkspaceLayoutPreferences(
     (state) => state.treeOpacity < 100 || state.taskOpacity < 100,
   )
-  const drawer = useTreeDrawer(narrow, revealTreeRequest)
+  const root = useRef<HTMLDivElement>(null)
+  const drawer = useTreeDrawer(narrow, revealTreeRequest, root)
   const transparent = allowTransparency && !compact
   return (
     <CompactModelTreeContext.Provider value={drawer}>
       <div
+        ref={root}
         className="cad-workspace-grid min-h-0"
         data-task-active={taskActive}
         data-compact={compact}

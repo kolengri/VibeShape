@@ -1,4 +1,5 @@
 .viewport-grid {
+  --viewport-left-inset: 0px;
   --viewport-right-inset: 0px;
   --viewport-status-height: 1.5rem;
   --workspace-solid-panel: var(--panel);
