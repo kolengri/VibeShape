@@ -156,10 +156,13 @@ presentation state and grants no feature, worker, or extension authority.
 
 The viewport is an absolute layer anchored to the outer grid, behind all slots. Its rectangle and
 camera do not change when items move. The grid measures occupied regions for safe viewport-control
-insets, including the idle model-tree toggle. Full-height lanes reserve toolbar, bottom-slot, and
-status width on either side; content-sized lanes occupy the body region. Only occupied items and
+insets, including the idle model-tree toggle. All side lanes, including full-height chat, occupy
+only the body region between the command toolbar and bottom slots. Toolbar, History, and status
+retain their full width; opening chat does not change the task panel breakpoint. Only occupied items and
 resize handles receive pointer input; empty slot space passes
-viewport gestures through. Compact placement uses the same measured available width as panel controls.
+viewport gestures through. A narrow model-tree drawer can temporarily cover lower panels when
+they exhaust the central body, retaining a reachable close control. Compact placement uses the
+same measured available width as panel controls.
 
 ## Browser and feature timeline
 
@@ -357,8 +360,14 @@ remain independently named actions in the header. Select triggers keep long sele
 ## Task panel lifecycle controls
 
 Task windows use a separate command heading, scrollable parameter body, and non-scrolling lifecycle footer.
+Window headings toggle retained content through the shared window-collapse context. Folding hides
+the parameter body and lifecycle footer, or the model-tree/chat body, without unmounting it.
+Header action buttons are separate from the title toggle; expanded state and controlled content
+IDs remain available to assistive technology. A folded chat releases pointer input below its heading
+while retaining its right-side lane, so other windows do not move.
 Model-tree and task surfaces grow with content up to the available workspace height; the AI chat
-overlay always fills that height. Compact task sheets fit their content within the workspace-bounded compact-sheet cap.
+overlay always fills that height. Task headings and footers use 4 px vertical and 8 px horizontal padding; parameter bodies use 8 px padding,
+28 px expression inputs, and compact label/value rows. Compact task sheets fit their content within the workspace-bounded compact-sheet cap.
 `TaskPanelLifecycleActions` and `TaskPanelLifecycleButton` share action order, labels, pending state,
 and disabled feedback. Task footers use 32 px text buttons; independent compact controls retain
 their icon presentation and tooltips. Feature parameter forms retain their TanStack
@@ -371,9 +380,9 @@ The lifecycle group locks cancellation while its asynchronous accept callback is
 releases the lock on fulfillment or rejection. Forms also expose their own submission state.
 Manual automation reviews retain their original decision controller and use the accept renderer
 only to preserve a destructive confirmation trigger. Item deletion and navigation within a
-subtask remain separate from panel cancellation. Edit-feature deletion controls and their
-explanations belong to the field scrollport, after parameter controls, so long dependency or
-repair details cannot displace the fixed lifecycle footer. Generate and analysis cancellation are
+subtask remain separate from panel cancellation. Feature deletion belongs to the History actions
+menu, including dependency explanations and the preserve-reference-intent variant. Edit forms
+contain parameters and lifecycle actions without destructive deletion controls. Generate and analysis cancellation are
 computational actions, rather than additional Save/Close controls.
 
 ## Verification

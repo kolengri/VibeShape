@@ -23,13 +23,17 @@ mock.module("../document/document-controller", () => ({
 const { act, cleanup, render, screen, within } = await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
 const {
+  boxFeatureType,
+  createAngleQuantity,
   createLengthQuantity,
+  cylinderFeatureType,
   createEmptySketch,
   datumPlaneFeatureTypeV1,
   documentSnapshotSchema,
   featureRecordSchema,
   sketchIdSchema,
 } = await import("@vibeshape/domain")
+const { placementFeatureType } = await import("@vibeshape/domain/part-design-placement")
 const { meshImportFeatureType } = await import("@vibeshape/domain/part-design-mesh-import")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { removeFeature } = await import("../document/document-controller")
@@ -236,18 +240,11 @@ describe("captured-source History task", () => {
     expect(removeFeature).not.toHaveBeenCalled()
   })
 
-  it("deletes an organic lightweighting feature through the ordinary confirmed removal command", async () => {
-    const user = userEvent.setup()
-    const { onCompleteTool } = renderFeatureTask()
+  it("keeps captured-source inspection free of deletion controls", () => {
+    renderFeatureTask()
     expect(screen.getByRole("heading", { name: "Organic lightweighting" })).toBeTruthy()
-    await user.click(screen.getByRole("button", { name: "Delete feature" }))
+    expect(screen.queryByRole("button", { name: /Delete/ })).toBeNull()
     expect(removeFeature).not.toHaveBeenCalled()
-    await user.click(
-      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete feature" }),
-    )
-    expect(removeFeature).toHaveBeenCalledTimes(1)
-    expect(removeFeature).toHaveBeenCalledWith(7, feature.id)
-    expect(onCompleteTool).toHaveBeenCalledTimes(1)
   })
 
   it("closes the captured-source task without changing History", async () => {
@@ -260,48 +257,67 @@ describe("captured-source History task", () => {
     expect(
       screen.getByRole("heading", { name: "Organic lightweighting" }).closest("header"),
     ).not.toBeNull()
-    expect(screen.getByRole("button", { name: "Delete feature" }).closest("footer")).not.toBe(
-      footer,
-    )
+    expect(screen.queryByRole("button", { name: /Delete/ })).toBeNull()
     expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(1)
     await user.click(close)
     expect(onCloseTool).toHaveBeenCalledTimes(1)
     expect(removeFeature).not.toHaveBeenCalled()
   })
 
-  it("keeps deletion unavailable with a visible reason in a read-only document", () => {
-    renderFeatureTask("read-only")
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Delete feature" }).disabled).toBe(
-      true,
-    )
-    expect(screen.getByText("Open the document with write access to delete features.")).toBeTruthy()
-  })
-
-  it("keeps edit deletion and its explanation in the field scrollport above lifecycle actions", () => {
-    const datum = featureRecordSchema.parse({
-      ...feature,
-      type: datumPlaneFeatureTypeV1.type,
-      parameters: {
-        mode: "offset",
-        support: { kind: "origin-plane", plane: "xy" },
-        offset: createLengthQuantity(8),
-      },
-      label: "Datum plane",
-    })
-    renderFeatureTask("read-only", undefined, datum)
-    const form = screen.getByRole("form", { name: "Edit datum plane" })
-    const deletion = within(form).getByRole("region", { name: "Delete feature" })
-    const scrollport = deletion.closest("[data-slot='task-panel-content']")
-    expect(scrollport).not.toBeNull()
-    expect(deletion.closest("[data-slot='task-panel-footer']")).toBeNull()
-    expect(
-      within(deletion).getByText("Open the document with write access to delete features."),
-    ).toBeTruthy()
-    expect(
-      within(deletion).getByRole<HTMLButtonElement>("button", { name: "Delete feature" }).disabled,
-    ).toBe(true)
-    const cancel = within(form).getByRole("button", { name: "Cancel" })
-    expect(cancel.closest("[data-slot='task-panel-footer']")).not.toBeNull()
-    expect(cancel.closest("[data-slot='task-panel-content']")).toBeNull()
-  })
+  it.each(["read-write", "read-only"] as const)(
+    "keeps deletion out of %s feature editors while retaining their lifecycle actions",
+    (mode) => {
+      const quantity = createLengthQuantity(8)
+      const fixtures = [
+        {
+          type: boxFeatureType.type,
+          parameters: { width: quantity, depth: quantity, height: quantity, centered: false },
+          title: "Edit box",
+        },
+        {
+          type: cylinderFeatureType.type,
+          parameters: { radius: quantity, height: quantity, centered: false },
+          title: "Edit cylinder",
+        },
+        {
+          type: datumPlaneFeatureTypeV1.type,
+          parameters: {
+            mode: "offset",
+            support: { kind: "origin-plane", plane: "xy" },
+            offset: quantity,
+          },
+          title: "Edit datum plane",
+        },
+        {
+          type: placementFeatureType.type,
+          parameters: {
+            targetBody: { schemaVersion: 0, featureId: feature.id, outputRole: "result" },
+            translation: { x: quantity, y: quantity, z: quantity },
+            rotation: {
+              x: createAngleQuantity(0),
+              y: createAngleQuantity(0),
+              z: createAngleQuantity(0),
+            },
+          },
+          title: "Edit placement",
+        },
+      ]
+      for (const fixture of fixtures) {
+        const edited = featureRecordSchema.parse({
+          ...feature,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f2791",
+          type: fixture.type,
+          parameters: fixture.parameters,
+        })
+        const task = renderFeatureTask(mode, undefined, edited)
+        const form = screen.getByRole("form", { name: fixture.title })
+        expect(within(form).queryByRole("button", { name: /Delete/ })).toBeNull()
+        expect(screen.queryByRole("region", { name: "Delete feature" })).toBeNull()
+        const cancel = within(form).getByRole("button", { name: "Cancel" })
+        expect(cancel.closest("[data-slot='task-panel-footer']")).not.toBeNull()
+        task.unmount()
+      }
+      expect(removeFeature).not.toHaveBeenCalled()
+    },
+  )
 })

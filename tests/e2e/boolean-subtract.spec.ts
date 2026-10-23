@@ -1,6 +1,6 @@
 import { saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
-import { invokeModelCommand, openModelCommand } from "./model-command-support"
+import { expandHistoryDetails, invokeModelCommand, openModelCommand } from "./model-command-support"
 
 test.describe("Boolean subtraction", () => {
   test("restores selectable sources after a failed cut and preserves saved repair inputs", async ({
@@ -189,10 +189,16 @@ test.describe("Boolean subtraction", () => {
       throw new Error("Expected both ordered source and Boolean records.")
     await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     await expect(page.getByRole("form", { name: "Edit box", exact: true })).toBeVisible()
-    await expect(page.getByRole("button", { name: "Delete feature" })).toBeEnabled()
-    await expect(page.getByRole("button", { name: "Delete and keep references" })).toHaveCount(0)
+    await expect(page.getByRole("button", { name: /Delete/ })).toHaveCount(0)
+    await page
+      .getByRole("form", { name: "Edit box", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click()
+    await expandHistoryDetails(page)
+    await page.getByRole("button", { name: "Actions for Box 1", exact: true }).click()
+    await expect(page.getByRole("menuitem", { name: "Delete and keep references" })).toHaveCount(0)
     // Retained History removal keeps the downstream recipe repairable (ADR-0103).
-    await page.getByRole("button", { name: "Delete feature", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Delete Box 1…", exact: true }).click()
     const sourceDeleteDialog = page.getByRole("alertdialog", { name: "Delete Box 1?", exact: true })
     await sourceDeleteDialog.getByRole("button", { name: "Delete feature", exact: true }).click()
     await expect(sourceDeleteDialog).not.toBeVisible()
@@ -233,8 +239,9 @@ test.describe("Boolean subtraction", () => {
     await expect(restoredForm.getByRole("checkbox", { name: "Keep tool solid" })).not.toBeChecked()
     await restoredForm.getByRole("button", { name: "Cancel", exact: true }).click()
 
-    await page.getByRole("treeitem", { name: "Subtract 1", exact: true }).click()
-    await page.getByRole("button", { name: "Delete feature" }).click()
+    await expandHistoryDetails(page)
+    await page.getByRole("button", { name: "Actions for Subtract 1", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Delete Subtract 1…", exact: true }).click()
     const deleteDialog = page.getByRole("alertdialog", { name: "Delete Subtract 1?" })
     await expect(deleteDialog).toContainText("Later sketches and features are kept")
     await expect(deleteDialog).toContainText("Undo restores the feature and its references.")
@@ -250,8 +257,9 @@ test.describe("Boolean subtraction", () => {
     await expect(page.getByRole("treeitem", { name: "Subtract 1", exact: true })).not.toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
 
-    await page.getByRole("treeitem", { name: "Cylinder 2", exact: true }).click()
-    await page.getByRole("button", { name: "Delete feature" }).click()
+    await expandHistoryDetails(page)
+    await page.getByRole("button", { name: "Actions for Cylinder 2", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Delete Cylinder 2…", exact: true }).click()
     await page
       .getByRole("alertdialog", { name: "Delete Cylinder 2?" })
       .getByRole("button", { name: "Delete feature", exact: true })

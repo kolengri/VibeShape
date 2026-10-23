@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
-import { invokeModelCommand } from "./model-command-support"
+import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test("undoes saved feature edits and deletion, then reopens and copies replayable history", async ({
@@ -46,7 +46,11 @@ test("undoes saved feature edits and deletion, then reopens and copies replayabl
   await expect(redo).toBeDisabled()
   await box.click()
   await expect(edit.getByRole("combobox", { name: "Width", exact: true })).toHaveValue("30 mm")
-  await page.getByRole("button", { name: "Delete feature", exact: true }).click()
+  await expect(edit.getByRole("button", { name: /Delete/ })).toHaveCount(0)
+  await edit.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expandHistoryDetails(page)
+  await page.getByRole("button", { name: "Actions for Box 1", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Delete Box 1…", exact: true }).click()
   await page
     .getByRole("alertdialog")
     .getByRole("button", { name: "Delete feature", exact: true })

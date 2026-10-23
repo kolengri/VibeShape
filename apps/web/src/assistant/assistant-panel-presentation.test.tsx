@@ -55,8 +55,11 @@ it("keeps one compact chat header without project copy and retains cancellation 
   expect(header?.textContent).toBe("AI chat")
   expect(header?.querySelector("p")).toBeNull()
   expect(heading.hasAttribute("data-window-title")).toBe(true)
-  expect(heading.querySelector("svg")).toBeNull()
-  for (const button of header?.querySelectorAll("button") ?? []) {
+  const fold = screen.getByRole("button", { name: "Collapse AI chat window" })
+  expect(heading.contains(fold)).toBe(true)
+  expect(fold.getAttribute("aria-expanded")).toBe("true")
+  expect(heading.querySelectorAll("svg")).toHaveLength(1)
+  for (const button of header?.querySelectorAll("button[data-slot=button]") ?? []) {
     expect(button.getAttribute("data-size")).toBe("icon-xs")
   }
   view.rerender(panel({ busy: true }))

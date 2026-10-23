@@ -67,8 +67,7 @@
   grid-template-rows: var(--command-bar-height) minmax(0, 1fr) auto var(--status-bar-height);
   grid-template-areas: "top" "workspace" "bottom" "status";
   row-gap: var(--workspace-gap);
-  width: calc(100% - var(--viewport-left-inset, 0px) - var(--viewport-right-inset, 0px));
-  margin-left: var(--viewport-left-inset, 0px);
+  width: 100%;
   min-width: 0;
   min-height: 0;
 }
@@ -284,4 +283,37 @@
 :is(input, textarea, [contenteditable="true"]) {
   -webkit-user-select: text;
   user-select: text;
+}
+
+/* A folded window retains its fields and session while exposing only its heading. */
+[data-window-collapsed="true"]
+> :is(
+  [data-slot="task-panel-content"],
+  [data-slot="task-panel-footer"],
+  [data-slot="model-tree-content"],
+  .assistant-panel__body
+) {
+  display: none;
+}
+
+.assistant-panel[data-window-collapsed="true"] {
+  flex: none;
+}
+
+.assistant-panel[data-window-collapsed="true"] > :not([data-slot="window-header"]) {
+  display: none;
+}
+
+.viewport-grid__item:has(.assistant-panel[data-window-collapsed="true"]) {
+  pointer-events: none;
+}
+
+.assistant-panel {
+  pointer-events: auto;
+}
+
+@media (max-height: 480px) {
+  .cad-shell {
+    --workspace-gap: 0.25rem;
+  }
 }
