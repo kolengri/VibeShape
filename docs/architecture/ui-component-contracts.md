@@ -13,6 +13,10 @@ fields use this disclosure for optional guidance and keep stable `aria-described
 section headings without importing form state; labels and help controls remain separate targets.
 `Field` defaults to a horizontal 2:3 label/control grid; use its explicit vertical orientation for
 full-width compound content. Empty error slots are omitted by standard field compositions.
+Keep every horizontal field at the same available row width, including across section dividers.
+Compose inline controls within its control cell. `NativeSelectField.trailingAction` places an
+adjacent action in that cell without changing the label/control split; its caller owns the action's
+accessible name, tooltip, and disabled state independently of the select.
 Help triggers have distinct contextual names, such as “Help for Width”, while the popover is named
 by its subject. `FieldHelpProvider` binds this shared `ui` catalog copy to the application locale;
 isolated shared controls use the same English source catalog. This avoids adding a second control

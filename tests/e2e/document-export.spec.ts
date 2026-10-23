@@ -41,6 +41,26 @@ async function reviewExportLayout(page: import("@playwright/test").Page) {
   await page.setViewportSize({ width: 1024, height: 768 })
 }
 
+async function expectNativeExportGrid(dialog: import("@playwright/test").Locator) {
+  const choose = dialog.getByRole("button", { name: "Choose slicer application…", exact: true })
+  await expect(choose).toHaveText("")
+  const select = await dialog.getByRole("combobox", { name: "Slicer", exact: true }).boundingBox()
+  const action = await choose.boundingBox()
+  if (!select || !action) throw new Error("Slicer controls must be measurable")
+  const destination = await dialog
+    .getByRole("combobox", { name: "Destination", exact: true })
+    .boundingBox()
+  if (!destination) throw new Error("Destination must be measurable")
+  for (const control of await dialog.getByRole("combobox").all()) {
+    const bounds = await control.boundingBox()
+    if (!bounds) throw new Error("Export controls must be measurable")
+    expect(Math.abs(bounds.x - destination.x)).toBeLessThan(1)
+  }
+  expect(Math.abs(action.x + action.width - destination.x - destination.width)).toBeLessThan(1)
+  expect(select.y).toBe(action.y)
+  expect(select.x + select.width).toBeLessThanOrEqual(action.x)
+}
+
 test.describe("document export", () => {
   test("remembers the last format and mesh quality after export and reload", async ({ page }) => {
     await page.goto("/")
@@ -195,10 +215,23 @@ test.describe("document export", () => {
     const scope = dialog.getByRole("combobox", { name: "Export scope", exact: true })
     await scope.click()
     await page.getByRole("option", { name: longName, exact: true }).click()
-    for (const width of [1024, 512]) {
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    for (const { width, dark, zoom } of [
+      { width: 1024, dark: false, zoom: 1 },
+      { width: 1024, dark: true, zoom: 1 },
+      { width: 1024, dark: true, zoom: 2 },
+      { width: 390, dark: false, zoom: 1 },
+    ]) {
       await page.setViewportSize({ width, height: 768 })
+      await page.locator("html").evaluate(
+        (element, appearance) => {
+          element.classList.toggle("dark", appearance.dark)
+          element.style.zoom = String(appearance.zoom)
+        },
+        { dark, zoom },
+      )
       await expect(scope).toContainText(longName)
-      expect((await scope.boundingBox())?.height).toBe(32)
+      expect((await scope.boundingBox())?.height).toBe(32 * zoom)
       expect(
         await scope
           .locator("span")
@@ -211,19 +244,17 @@ test.describe("document export", () => {
       expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
         true,
       )
-      const choose = dialog.getByRole("button", { name: "Choose slicer application…", exact: true })
-      await expect(choose).toHaveText("")
-      const select = await dialog
-        .getByRole("combobox", { name: "Slicer", exact: true })
-        .boundingBox()
-      const action = await choose.boundingBox()
-      if (!select || !action) throw new Error("Slicer controls must be measurable")
-      expect(select.y).toBe(action.y)
-      expect(select.x + select.width).toBeLessThanOrEqual(action.x)
+      await expectNativeExportGrid(dialog)
       await page.screenshot({
-        path: test.info().outputPath(`native-export-long-scope-${width}.png`),
+        path: test
+          .info()
+          .outputPath(`native-export-${width}-${dark ? "dark" : "light"}-${zoom}x.png`),
       })
     }
+    await page.locator("html").evaluate((element) => {
+      element.style.zoom = ""
+    })
+    await page.setViewportSize({ width: 1024, height: 768 })
     await scope.click()
     await page.getByRole("option", { name: "All parts", exact: true }).click()
     await dialog.getByRole("button", { name: "Choose slicer application…" }).click()

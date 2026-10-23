@@ -34,45 +34,43 @@ function SlicerApplicationField({ handoff, disabled }: Controls) {
   const { targets, selected, loading } = handoff
   return (
     <div className="grid gap-2">
-      <div className="flex min-w-0 items-start gap-1">
-        <div className="min-w-0 flex-1">
-          <NativeSelectField
-            label={t("targetLabel")}
-            description={t("targetDescription")}
-            value={selected?.id ?? ""}
-            disabled={disabled || loading || targets.length === 0}
-            onChange={(event) => {
-              const target = targets.find((item) => item.id === event.currentTarget.value)
-              if (target) handoff.choosePreference(target.id, handoff.preference.format)
-            }}
-          >
-            {targets.length === 0 ? (
-              <option value="" />
-            ) : (
-              targets.map((target) => (
-                <option key={target.id} value={target.id}>
-                  {target.name}
-                </option>
-              ))
-            )}
-          </NativeSelectField>
-        </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              aria-label={t("choose")}
-              disabled={disabled}
-              onClick={handoff.chooseApplication}
-            >
-              <FolderOpen aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t("choose")}</TooltipContent>
-        </Tooltip>
-      </div>
+      <NativeSelectField
+        label={t("targetLabel")}
+        description={t("targetDescription")}
+        value={selected?.id ?? ""}
+        disabled={disabled || loading || targets.length === 0}
+        onChange={(event) => {
+          const target = targets.find((item) => item.id === event.currentTarget.value)
+          if (target) handoff.choosePreference(target.id, handoff.preference.format)
+        }}
+        trailingAction={
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                aria-label={t("choose")}
+                disabled={disabled}
+                onClick={handoff.chooseApplication}
+              >
+                <FolderOpen aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("choose")}</TooltipContent>
+          </Tooltip>
+        }
+      >
+        {targets.length === 0 ? (
+          <option value="" />
+        ) : (
+          targets.map((target) => (
+            <option key={target.id} value={target.id}>
+              {target.name}
+            </option>
+          ))
+        )}
+      </NativeSelectField>
       {!loading && targets.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("noApplications")}</p>
       ) : null}
