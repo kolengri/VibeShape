@@ -330,6 +330,120 @@ describe("Jev continuous execution", () => {
 })
 
 describe("Jev structured questions", () => {
+  it.each(["x", "界"])(
+    "retains large accepted answers without poisoning continuation (%s)",
+    async (character) => {
+      const input: AssistantQuestionInput = {
+        message: "Describe each container requirement",
+        fields: Array.from({ length: 5 }, (_, index) => ({
+          id: `detail${index}`,
+          label: `Detail ${index}`,
+          required: true,
+          secret: false,
+        })),
+      }
+      const content = Object.fromEntries(
+        input.fields.map((field) => [field.id, character.repeat(13_000)]),
+      )
+      const read: Tool = { name: "model_info", inputSchema: { type: "object" } }
+      let decisions = 0
+      let asks = 0
+      const f = fixture({
+        decide: async (state) => {
+          const index = decisions++
+          expect(Buffer.byteLength(JSON.stringify({ ...state, photos: [] }))).toBeLessThanOrEqual(
+            64_000,
+          )
+          if (index > 0)
+            expect(state.session?.answeredQuestions[0]?.result).toMatchObject({ truncated: true })
+          if (state.goal === "Continue") {
+            expect(state.session?.requests).toEqual(["Build the container"])
+            return { kind: "done", confidence: 1 }
+          }
+          if (index >= 17) return { kind: "done", confidence: 1 }
+          return {
+            kind: "tool",
+            tool: [0, 16].includes(index) ? question : read,
+            arguments: [0, 16].includes(index) ? input : {},
+            needsArguments: false,
+            confidence: 1,
+          }
+        },
+      })
+      f.port.tools = [question, read]
+      const original = f.port.call
+      f.port.call = async (name, args, signal) => {
+        if (name !== question.name) return original(name, args, signal)
+        asks++
+        return { value: { action: "accept", content }, photos: [], failed: false }
+      }
+      expect(
+        await f.controller.run(
+          "Build the container",
+          [],
+          new AbortController().signal,
+          async () => {},
+        ),
+      ).toContain("ended the turn")
+      expect(asks).toBe(1)
+      expect(
+        await f.controller.run("Continue", [], new AbortController().signal, async () => {}),
+      ).toContain("ended the turn")
+    },
+  )
+
+  it("bounds accumulated accepted answers and reports omitted evidence", async () => {
+    let asks = 0
+    let decisions = 0
+    const f = fixture({
+      decide: async (state) => {
+        const index = decisions++
+        expect(Buffer.byteLength(JSON.stringify({ ...state, photos: [] }))).toBeLessThanOrEqual(
+          64_000,
+        )
+        if (index >= 10) {
+          expect(state.session?.omittedAnsweredQuestions).toBeGreaterThan(0)
+          expect(state.session?.answeredQuestions.length).toBeLessThan(10)
+          return { kind: "done", confidence: 1 }
+        }
+        return {
+          kind: "tool",
+          tool: question,
+          arguments: {
+            ...questionInput,
+            message: `Describe requirement ${index}`,
+            fields: [{ id: "detail", label: "Requirement", required: true, secret: false }],
+          },
+          needsArguments: false,
+          confidence: 1,
+        }
+      },
+    })
+    f.port.tools = [question]
+    const original = f.port.call
+    f.port.call = async (name, args, signal) => {
+      if (name !== question.name) return original(name, args, signal)
+      asks++
+      return {
+        value: { action: "accept", content: { detail: "x".repeat(10_000) } },
+        photos: [],
+        failed: false,
+      }
+    }
+    expect(
+      await f.controller.run(
+        "Build the container",
+        [],
+        new AbortController().signal,
+        async () => {},
+      ),
+    ).toContain("ended the turn")
+    expect(asks).toBe(10)
+    expect(
+      await f.controller.run("Continue", [], new AbortController().signal, async () => {}),
+    ).toContain("ended the turn")
+  })
+
   it("asks again for a different question with the same fields and after a new user request", async () => {
     const nextQuestion = {
       ...questionInput,

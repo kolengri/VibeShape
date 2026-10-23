@@ -213,8 +213,13 @@ ACP JSON-RPC, so it is intended for an ACP client rather than an interactive ter
   not restore an interrupted draft or replay the previous turn.
 - Up to 256 catalog entries, a 128 KiB question catalog, 12 recent observations and a 64 KB text context. Large observations
   are explicitly marked as truncated; earlier routine observations may leave the bounded window.
-  Retained session context shares the 64 KB text budget and is never silently evicted. Requests that
-  cannot fit are rejected before decision execution. Inspect
+  Retained session context shares the 64 KB text budget. Oversized accepted-question observations
+  use the same marked truncation as recent history; the turn-local replay cache retains the
+  validated full reply. If accumulated answers still exceed the available context after history
+  trimming, oldest answer observations are omitted and counted in `omittedAnsweredQuestions`.
+  Truncated or omitted evidence never establishes missing design details. A large accepted answer
+  does not prevent a subsequent short request from running. Requests that cannot fit even after
+  answer compaction are rejected before decision execution. Inspect
   the model again when a required identity or parameter is absent.
   The description catalog has a separate 128 KB ceiling, and decision state has a 192 KB ceiling,
   reserving space for the full 64 KB controller context alongside the catalog. History and uncertain outcomes

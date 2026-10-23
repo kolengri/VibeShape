@@ -7,6 +7,7 @@ import {
 import { restoredDraftViewSchema } from "@vibeshape/automation-api/draft-recovery"
 import { automationDraftStateSchema } from "@vibeshape/automation-api/drafts"
 import { z } from "zod"
+import { boundedObservation } from "./context-budget"
 import type { DecisionState, Observation } from "./contracts"
 
 const draftResult = z.object({
@@ -46,7 +47,7 @@ export function createSessionContext() {
         (item) => questionKey(item.arguments) === key,
       )
       if (previous !== -1) state.answeredQuestions.splice(previous, 1)
-      state.answeredQuestions.push(observation)
+      state.answeredQuestions.push(boundedObservation(observation))
     }
   }
   function rememberDraft(observation: Observation) {

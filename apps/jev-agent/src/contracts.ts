@@ -10,6 +10,7 @@ export type DecisionState = {
   session?: {
     requests: string[]
     answeredQuestions: Observation[]
+    omittedAnsweredQuestions?: number
     activeDraft?: Observation
     readSkills: string[]
   }
