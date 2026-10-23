@@ -1338,6 +1338,8 @@ describe("ModelTree History presentation", () => {
     const source = timeline().getByRole("button", { name: sourceName })
     act(() => actions.focus())
     await user.tab()
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Information about Box 1")
+    await user.tab()
     expect(document.activeElement === source).toBe(true)
     expect(onPreview).toHaveBeenLastCalledWith(profile)
   })
@@ -1493,10 +1495,11 @@ describe("ModelTree History presentation", () => {
     ).toBeTruthy()
   })
 
-  it("separates graph-ordered History from browser workspaces, bodies, and sketches", () => {
+  it("separates graph-ordered History from browser workspaces, bodies, and sketches", async () => {
+    const user = userEvent.setup()
     const { container } = renderTree()
 
-    expect(timeline().getByRole("treeitem", { name: "History" })).toBeTruthy()
+    expect(timeline().getByRole("button", { name: "Details" })).toBeTruthy()
     expect(browser().queryByRole("treeitem", { name: "History" })).toBeNull()
     for (const name of ["Variables", "Bodies", "Sketches", "Body 1", "Profile"]) {
       expect(browser().getByRole("treeitem", { name })).toBeTruthy()
@@ -1513,7 +1516,9 @@ describe("ModelTree History presentation", () => {
     expect(screen.getByRole("treeitem", { name: "Body 1" })).toBeTruthy()
     expect(screen.getByText("Result of Box 1")).toBeTruthy()
     expect(screen.getByRole("treeitem", { name: "Box 1" }).querySelector("svg")).toBeTruthy()
-    expect(timeline().getByText("Supported by XY plane")).toBeTruthy()
+    await user.hover(timeline().getByRole("button", { name: "Information about Profile" }))
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Supported by XY plane")
+    await user.unhover(timeline().getByRole("button", { name: "Information about Profile" }))
   })
 
   it("shows a transient rollback boundary only during active sketch editing", () => {
@@ -1602,7 +1607,8 @@ describe("ModelTree History presentation", () => {
     await user.keyboard("{ArrowLeft}")
     expect(document.activeElement).toBe(planes)
     expect(screen.queryByText("Result of Offset plane")).toBeNull()
-    expect(screen.getByText("Supported by XZ plane")).toBeTruthy()
+    await user.hover(timeline().getByRole("button", { name: "Information about Offset plane" }))
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Supported by XZ plane")
   })
 
   it("reveals newly created planes in a previously collapsed group", async () => {
@@ -1649,10 +1655,10 @@ describe("ModelTree History disclosure", () => {
       onSketchActivate,
     })
 
-    const history = timeline().getByRole("treeitem", { name: "History" })
+    const history = timeline().getByRole("button", { name: "Details" })
     await user.click(history)
     expect(history.getAttribute("aria-expanded")).toBe("false")
-    expect(timeline().queryByRole("treeitem", { name: "Edit Profile" })).toBeNull()
+    expect(timeline().getByRole("treeitem", { name: "Edit Profile" })).toBeTruthy()
     expect(browser().getByRole("treeitem", { name: "Profile" })).toBeTruthy()
 
     await user.click(history)
@@ -1742,13 +1748,10 @@ describe("ModelTree History disclosure", () => {
   it("navigates horizontal History with left and right arrows and keeps its tab stop scoped", async () => {
     const user = userEvent.setup()
     renderTree({}, false)
-    const history = timeline().getByRole("treeitem", { name: "History" })
     const featureItem = timeline().getByRole("treeitem", { name: "Box 1" })
     const sketchItem = timeline().getByRole("treeitem", { name: "Edit Profile" })
     expect(timeline().getByRole("tree").getAttribute("aria-orientation")).toBe("horizontal")
-    history.focus()
-    await user.keyboard("{ArrowRight}")
-    expect(document.activeElement).toBe(featureItem)
+    featureItem.focus()
     await user.keyboard("{ArrowRight}")
     expect(document.activeElement).toBe(sketchItem)
     expect(sketchItem.tabIndex).toBe(0)
@@ -1758,7 +1761,7 @@ describe("ModelTree History disclosure", () => {
     await user.keyboard("{End}")
     expect(document.activeElement).toBe(sketchItem)
     await user.keyboard("{Home}")
-    expect(document.activeElement).toBe(history)
+    expect(document.activeElement).toBe(featureItem)
     expect(browser().getByRole("treeitem", { name: "Variables" }).tabIndex).toBe(0)
   })
 
@@ -1808,7 +1811,9 @@ describe("ModelTree History disclosure", () => {
     await user.click(details)
     expect(within(featureItem).getByText("Box 1").classList.contains("sr-only")).toBe(false)
     expect(timeline().getByRole("button", { name: "Hide Box 1" })).toBeTruthy()
-    expect(timeline().getByText("Supported by XY plane")).toBeTruthy()
+    await user.hover(timeline().getByRole("button", { name: "Information about Profile" }))
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Supported by XY plane")
+    await user.unhover(timeline().getByRole("button", { name: "Information about Profile" }))
     await user.click(details)
     expect(within(featureItem).getByText("Box 1").classList.contains("sr-only")).toBe(true)
     expect(timeline().queryByRole("button", { name: "Hide Box 1" })).toBeNull()

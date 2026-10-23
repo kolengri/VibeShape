@@ -7,7 +7,7 @@ import {
   CommandItem,
   CommandList,
 } from "@vibeshape/ui/components/command"
-import { Check, ChevronDown, Ellipsis } from "@vibeshape/ui/components/icons"
+import { Check, ChevronDown } from "@vibeshape/ui/components/icons"
 import { Popover, PopoverContent, PopoverTrigger } from "@vibeshape/ui/components/popover"
 import { ToolbarButton } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
@@ -19,13 +19,16 @@ import {
   useEditorCommandCopy,
 } from "../commands/editor-command-presentation"
 
+export const toolbarMenuTriggerClassName =
+  "data-[has-indicator=true]:w-10 data-[has-indicator=true]:justify-start data-[has-indicator=true]:px-1"
+
 export function ToolbarCommandPicker({
   commands,
   getLabel,
   getDisabledReason,
   label,
   showLabel,
-  icon: Icon = Ellipsis,
+  icon: Icon = ChevronDown,
   focusId,
   triggerRef,
   onOpenChange,
@@ -45,6 +48,7 @@ export function ToolbarCommandPicker({
   const [open, setOpen] = useState(false)
   const id = useId()
   const active = commands.some((command) => command.active)
+  const iconDropdown = !showLabel && Icon !== ChevronDown
   const changeOpen = (value: boolean) => {
     setOpen(value)
     onOpenChange?.(value)
@@ -60,7 +64,9 @@ export function ToolbarCommandPicker({
           aria-label={label}
           aria-current={active ? "true" : undefined}
           data-toolbar-menu={focusId}
-          dropdown={!showLabel}
+          dropdown={iconDropdown}
+          data-has-indicator={iconDropdown}
+          className={toolbarMenuTriggerClassName}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {
               event.preventDefault()

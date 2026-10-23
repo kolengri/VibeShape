@@ -30,6 +30,7 @@ test("previews Shell, replaces the same part, edits, undoes, reopens, exports an
   const initialBox = before.project.snapshot.features.find(({ label }) => label === "Box 1")
   const height = boxFeatureParametersSchema.parse(initialBox?.parameters).height.value
   const top = new RegExp(`center \\(0\\.00, 0\\.00, ${height.toFixed(2).replace(".", "\\.")}\\)`)
+  await form.locator("summary").click()
   await form.getByRole("checkbox", { name: top }).check()
   await expect(form.getByRole("button", { name: "Apply shell", exact: true })).toBeEnabled({
     timeout: 30_000,
@@ -41,6 +42,7 @@ test("previews Shell, replaces the same part, edits, undoes, reopens, exports an
   await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
   await page.getByRole("button", { name: "Shell", exact: true }).click()
   form = page.getByRole("form", { name: "Shell", exact: true })
+  await form.locator("summary").click()
   await form.getByRole("checkbox", { name: top }).check()
   await expect(form.getByRole("button", { name: "Apply shell", exact: true })).toBeEnabled({
     timeout: 30_000,
@@ -62,6 +64,7 @@ test("previews Shell, replaces the same part, edits, undoes, reopens, exports an
   expect(JSON.stringify(shell.parameters)).not.toContain("candidateId")
   await page.getByRole("treeitem", { name: "Shell 1", exact: true }).click()
   form = page.getByRole("form", { name: "Edit shell", exact: true })
+  await form.locator("summary").click()
   await expect(form.getByRole("checkbox", { name: top })).toBeChecked()
   await form.getByRole("radio", { name: /Outward/ }).check()
   await expect(form.getByRole("button", { name: "Update shell", exact: true })).toBeEnabled({

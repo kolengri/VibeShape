@@ -73,6 +73,7 @@ function selectFiles(files: File[]) {
 }
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.scrollTo = vi.fn()
 })
 afterEach(() => {
   cleanup()
@@ -246,13 +247,13 @@ describe("assistant transcript and composer", () => {
     })
     log.scrollTop = 100
     fireEvent.scroll(log)
-    const scrollCalls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    const scrollCalls = vi.mocked(HTMLElement.prototype.scrollTo).mock.calls.length
     rendered.rerender(panel(props))
     const review = screen.getByRole("region", { name: "Agent changes" })
     expect(within(review).getByText("Changes saved to this project")).toBeTruthy()
     expect(within(review).queryByRole("button", { name: "Changes" })).toBeNull()
     expect(log.scrollTop).toBe(100)
-    expect(vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls).toHaveLength(scrollCalls)
+    expect(vi.mocked(HTMLElement.prototype.scrollTo).mock.calls).toHaveLength(scrollCalls)
     rendered.rerender(panel({ ...props, viewingBefore: true }))
     expect(screen.getByRole("button", { name: "View current" }).getAttribute("aria-pressed")).toBe(
       "true",
@@ -275,7 +276,7 @@ describe("assistant transcript and composer", () => {
     })
     log.scrollTop = 560
     fireEvent.scroll(log)
-    const calls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    const calls = vi.mocked(HTMLElement.prototype.scrollTo).mock.calls.length
     rendered.rerender(
       panel({
         ...props,
@@ -286,13 +287,13 @@ describe("assistant transcript and composer", () => {
     )
     expect(screen.queryByText("Connection setup")).toBeNull()
     expect(log.scrollTop).toBe(560)
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(calls)
     rendered.rerender(
       panel({ ...props, viewingBefore: true, messages: structuredClone(props.messages) }),
     )
     expect(screen.getByRole("button", { name: "View current" })).toBeTruthy()
     expect(screen.queryByText("Connection setup")).toBeNull()
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(calls)
     rendered.rerender(panel({ ...props, canSend: false, configurationRequired: true }))
     await userEvent.click(screen.getByRole("button", { name: "Configure AI" }))
     expect(screen.getByRole("dialog", { name: "AI settings" }).textContent).toContain(
@@ -314,7 +315,7 @@ describe("assistant transcript and composer", () => {
     })
     log.scrollTop = 100
     fireEvent.scroll(log)
-    const calls = vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length
+    const calls = vi.mocked(HTMLElement.prototype.scrollTo).mock.calls.length
     for (const attempt of [1, 2, 3, 4, 5]) {
       rendered.rerender(
         panel({
@@ -326,7 +327,7 @@ describe("assistant transcript and composer", () => {
       )
       expect(screen.queryByText("Connection setup")).toBeNull()
       expect(log.scrollTop).toBe(100)
-      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
+      expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(calls)
     }
     rendered.rerender(
       panel({
@@ -340,7 +341,7 @@ describe("assistant transcript and composer", () => {
     expect(screen.getByRole("button", { name: "Retry connection" })).toBeTruthy()
     expect(screen.queryByText("Connection setup")).toBeNull()
     expect(log.scrollTop).toBe(100)
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(calls)
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(calls)
   })
 
   it("collapses tool output behind its structured name and status without interpreting assistant prose", async () => {

@@ -321,7 +321,6 @@ export function AssistantMessages({
 }) {
   const t = useTranslations("app.assistant")
   const groups = useMemo(() => groupMessages(messages), [messages])
-  const end = useRef<HTMLDivElement>(null)
   const log = useRef<HTMLDivElement>(null)
   const following = useRef(true)
   const previousMessages = useRef<readonly ChatMessage[] | null>(null)
@@ -345,13 +344,15 @@ export function AssistantMessages({
     if (previous && latestUser && !previous.some((message) => message.id === latestUser.id))
       following.current = true
     // Checkpoint/display publications may clone the transcript without adding content.
-    if (following.current && (!previous || !sameTranscript(previous, messages)))
-      end.current?.scrollIntoView({ block: "end" })
+    const element = log.current
+    // Keep automatic following inside the transcript; scrolling an end marker can move ancestors.
+    if (element && following.current && (!previous || !sameTranscript(previous, messages)))
+      element.scrollTo({ top: element.scrollHeight })
   }, [messages])
   return (
     <div
       ref={log}
-      className="min-h-0 flex-1 overflow-y-auto p-3"
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
       role="log"
       aria-label={t("messages")}
       aria-live="polite"
@@ -402,7 +403,6 @@ export function AssistantMessages({
         )
       })}
       {footer}
-      <div ref={end} />
     </div>
   )
 }

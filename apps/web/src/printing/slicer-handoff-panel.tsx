@@ -2,7 +2,9 @@ import { useTranslations } from "@vibeshape/i18n"
 import { nativeMeshFormatSchema } from "@vibeshape/slicer-handoff/native"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
+import { FolderOpen } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useReportApplicationError } from "../shell/application-notices"
 import { type ActionContainer, OptionalActionPortal } from "./optional-action-portal"
 import { type SlicerHandoffActions, useSlicerHandoff } from "./use-slicer-handoff"
@@ -32,26 +34,45 @@ function SlicerApplicationField({ handoff, disabled }: Controls) {
   const { targets, selected, loading } = handoff
   return (
     <div className="grid gap-2">
-      <NativeSelectField
-        label={t("targetLabel")}
-        description={t("targetDescription")}
-        value={selected?.id ?? ""}
-        disabled={disabled || loading || targets.length === 0}
-        onChange={(event) => {
-          const target = targets.find((item) => item.id === event.currentTarget.value)
-          if (target) handoff.choosePreference(target.id, handoff.preference.format)
-        }}
-      >
-        {targets.length === 0 ? (
-          <option value="" />
-        ) : (
-          targets.map((target) => (
-            <option key={target.id} value={target.id}>
-              {target.name}
-            </option>
-          ))
-        )}
-      </NativeSelectField>
+      <div className="flex min-w-0 items-start gap-1">
+        <div className="min-w-0 flex-1">
+          <NativeSelectField
+            label={t("targetLabel")}
+            description={t("targetDescription")}
+            value={selected?.id ?? ""}
+            disabled={disabled || loading || targets.length === 0}
+            onChange={(event) => {
+              const target = targets.find((item) => item.id === event.currentTarget.value)
+              if (target) handoff.choosePreference(target.id, handoff.preference.format)
+            }}
+          >
+            {targets.length === 0 ? (
+              <option value="" />
+            ) : (
+              targets.map((target) => (
+                <option key={target.id} value={target.id}>
+                  {target.name}
+                </option>
+              ))
+            )}
+          </NativeSelectField>
+        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label={t("choose")}
+              disabled={disabled}
+              onClick={handoff.chooseApplication}
+            >
+              <FolderOpen aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("choose")}</TooltipContent>
+        </Tooltip>
+      </div>
       {!loading && targets.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("noApplications")}</p>
       ) : null}
@@ -64,21 +85,9 @@ function SlicerSecondaryActions({
   compact = false,
 }: Controls & { compact?: boolean }) {
   const t = useTranslations("app.export.slicer.native")
-  if (!handoff.native && !handoff.canReveal) return null
+  if (!handoff.canReveal) return null
   return (
     <div className="flex flex-wrap gap-2">
-      {handoff.native ? (
-        <Button
-          type="button"
-          variant={compact ? "ghost" : "outline"}
-          size="sm"
-          className="h-auto min-h-8 whitespace-normal text-left"
-          disabled={disabled}
-          onClick={handoff.chooseApplication}
-        >
-          {t("choose")}
-        </Button>
-      ) : null}
       {handoff.canReveal ? (
         <Button
           type="button"

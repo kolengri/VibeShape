@@ -22,8 +22,8 @@ import {
   Eye,
   EyeOff,
   Grid2X2,
+  InformationIcon,
   Layers3,
-  ListFilter,
   PenLine,
   SketchIcon,
 } from "@vibeshape/ui/components/icons"
@@ -1154,11 +1154,10 @@ function HistorySummary({
     parents: row.dependencies.length,
     children: row.dependents.length,
   })
-  if (!source && row.dependencies.length === 0 && row.dependents.length === 0) return null
   return (
-    <p className="ml-8 truncate px-2 text-[10px] text-muted-foreground">
+    <p>
       {source ?? dependencies}
-      {source ? <span className="sr-only">. {dependencies}</span> : null}
+      {source ? <span>. {dependencies}</span> : null}
     </p>
   )
 }
@@ -1392,10 +1391,23 @@ function HistoryRowDetails({
 }) {
   return (
     <>
-      <div hidden={compact}>
-        {summary}
-        {details}
-      </div>
+      {!compact && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label={t("itemInformation", { item: row.record.label ?? t("unnamedFeature") })}
+            >
+              <InformationIcon aria-hidden="true" className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs space-y-1">
+            {summary}
+            {marker && <p>{t("rollbackMarker")}</p>}
+          </TooltipContent>
+        </Tooltip>
+      )}
       {compact && repairRequired && (
         <span
           role="img"
@@ -1406,20 +1418,18 @@ function HistoryRowDetails({
         </span>
       )}
       {marker && (
-        <div
-          role="status"
-          className={compact ? "sr-only" : "px-2 text-[11px] text-muted-foreground"}
-        >
-          <span className={compact ? "sr-only" : undefined}>{t("rollbackMarker")}</span>
-        </div>
+        <span role="status" className="sr-only">
+          {t("rollbackMarker")}
+        </span>
       )}
+      <div hidden={compact}>{details}</div>
     </>
   )
 }
 
 function historyRowLayout(timeline: boolean, compact: boolean) {
   if (!timeline) return undefined
-  return compact ? "relative size-8 shrink-0" : "relative w-64 shrink-0 border-r px-2 py-2"
+  return compact ? "relative size-8 shrink-0" : "relative w-64 shrink-0 border-r px-2 py-1"
 }
 
 function HistoryRepairTooltip({
@@ -1493,22 +1503,19 @@ function HistoryRowPresentation({
       {...historyRowStateData(feedback, rolledBack, reorderLocked, sourcePresentation.highlighted)}
       className={className}
     >
-      <div className="flex min-w-0 items-start">
+      <div className="flex min-w-0 flex-wrap items-start">
         <div className="min-w-0 flex-1">{content}</div>
+        <HistoryRowDetails
+          compact={compact}
+          details={details}
+          marker={marker}
+          repairRequired={repairRequired}
+          row={row}
+          summary={<HistorySummary labelsByRef={summaryLabels} row={row} t={t} />}
+          t={t}
+        />
       </div>
-      <HistoryRowDetails
-        compact={compact}
-        details={details}
-        marker={marker}
-        repairRequired={repairRequired}
-        row={row}
-        summary={
-          sourcePresentation.summary ?? (
-            <HistorySummary labelsByRef={summaryLabels} row={row} t={t} />
-          )
-        }
-        t={t}
-      />
+      {!compact && sourcePresentation.summary}
     </div>
   )
   return (
@@ -1746,60 +1753,42 @@ function FeatureHistoryRow({
   )
 }
 
-function HistoryGroupHeader({
-  count,
-  expanded,
-  onDetailedChange,
-  onExpandedChange,
-}: {
-  count: number
-  expanded: boolean
-  onDetailedChange: () => void
-  onExpandedChange: (expanded: boolean) => void
-}) {
+function HistoryGroupHeader({ onDetailedChange }: { onDetailedChange: () => void }) {
   const t = useTranslations("app.shell.modelTree")
   const { detailed } = useContext(HistoryPresentation)
   return (
     <div
-      className={cn(
-        "flex min-w-0 flex-wrap items-center gap-1 px-2",
-        detailed ? "border-b" : "lg:flex-nowrap lg:border-r",
-      )}
+      className={cn("flex min-w-0 items-center gap-1 px-1", detailed ? "border-b" : "lg:border-r")}
     >
-      <ModelTreeGroupItem
-        className="w-auto shrink-0"
-        expanded={expanded}
-        onExpandedChange={onExpandedChange}
-        title={t("items.history")}
-      />
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label={t("timelineDetails")}
+            aria-expanded={detailed}
+            onClick={onDetailedChange}
+          >
+            <ChevronDown
+              aria-hidden="true"
+              className={cn("size-4 transition-transform", detailed && "rotate-180")}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("timelineDetails")}</TooltipContent>
+      </Tooltip>
       <HistoryNavigationControls />
-      <div className="min-w-0 flex-1" />
-      {expanded && <HistoryFolderSelectionControls compact />}
-      <Button
-        size="xs"
-        variant="ghost"
-        aria-pressed={detailed}
-        disabled={!expanded}
-        onClick={onDetailedChange}
-      >
-        <ListFilter aria-hidden="true" className="size-3.5" />
-        {t("timelineDetails")}
-      </Button>
+      <HistoryFolderSelectionControls compact />
     </div>
   )
 }
 
 function HistoryGroup({
-  expanded,
   onDetailedChange,
-  onExpandedChange,
   rollbackIndex,
   ...props
 }: ModelTreeHistoryBranchProps & {
-  expanded: boolean
   onDetailedChange: () => void
-  onExpandedChange: (expanded: boolean) => void
   rollbackIndex: number
 }) {
   const { t, view } = props
@@ -1907,148 +1896,140 @@ function HistoryGroup({
         disabled={metadataDisabled || !completeGraph || busy}
         onCommit={props.onAuthoredMetadata}
       >
-        <HistoryGroupHeader
-          count={view.rows.length}
-          expanded={expanded}
-          onDetailedChange={onDetailedChange}
-          onExpandedChange={onExpandedChange}
-        />
-        {expanded && (
-          <fieldset className="min-w-0">
-            <legend className="sr-only">{t("items.history")}</legend>
-            <p id="history-drag-instructions" className="sr-only">
-              {t("historyDragInstructions", { item: t("items.history") })}
+        <HistoryGroupHeader onDetailedChange={onDetailedChange} />
+        <fieldset className="min-w-0">
+          <legend className="sr-only">{t("items.history")}</legend>
+          <p id="history-drag-instructions" className="sr-only">
+            {t("historyDragInstructions", { item: t("items.history") })}
+          </p>
+          <div aria-live="polite" aria-atomic="true" className="sr-only">
+            {announcement}
+          </div>
+          {view.graphFailed && (
+            <p role="status" className="px-2 text-xs text-muted-foreground">
+              {t("historyUnavailable")}
             </p>
-            <div aria-live="polite" aria-atomic="true" className="sr-only">
-              {announcement}
-            </div>
-            {view.graphFailed && (
-              <p role="status" className="px-2 text-xs text-muted-foreground">
-                {t("historyUnavailable")}
-              </p>
-            )}
-            <DragDropProvider
-              // The tree owns localized announcements and selection semantics, even when reorder is locked.
-              plugins={(defaults) => defaults.filter((plugin) => plugin !== Accessibility)}
-              sensors={[HISTORY_POINTER_SENSOR]}
-              onDragStart={(event) => {
-                if (!isSortable(event.operation.source)) return
-                const source = event.operation.source
-                const report = props.controller.report
-                if (!report || !source) return
-                dragBoundaryRef.current = {
-                  documentId: report.snapshot.id,
-                  revision: report.snapshot.revision,
-                  rollbackIndex,
-                }
-                dragDestinationIndexRef.current = source.initialIndex
-                setDragDestinationIndex(source.initialIndex)
-                setDragSourceKey(String(source.id))
+          )}
+          <DragDropProvider
+            // The tree owns localized announcements and selection semantics, even when reorder is locked.
+            plugins={(defaults) => defaults.filter((plugin) => plugin !== Accessibility)}
+            sensors={[HISTORY_POINTER_SENSOR]}
+            onDragStart={(event) => {
+              if (!isSortable(event.operation.source)) return
+              const source = event.operation.source
+              const report = props.controller.report
+              if (!report || !source) return
+              dragBoundaryRef.current = {
+                documentId: report.snapshot.id,
+                revision: report.snapshot.revision,
+                rollbackIndex,
+              }
+              dragDestinationIndexRef.current = source.initialIndex
+              setDragDestinationIndex(source.initialIndex)
+              setDragSourceKey(String(source.id))
+              setAnnouncement(
+                t("historyDragStarted", {
+                  item: itemLabel(String(source.id)),
+                  position: source.initialIndex + 1,
+                  count: view.rows.length,
+                }),
+              )
+            }}
+            onDragOver={(event) => {
+              if (!isSortableOperation(event.operation)) return
+              const { source, target } = event.operation
+              if (!source || !target) return
+              dragDestinationIndexRef.current = target.index
+              setDragDestinationIndex(target.index)
+              if (String(source.id) === String(target.id)) {
                 setAnnouncement(
-                  t("historyDragStarted", {
+                  t("historyDragOver", {
                     item: itemLabel(String(source.id)),
                     position: source.initialIndex + 1,
                     count: view.rows.length,
                   }),
                 )
-              }}
-              onDragOver={(event) => {
-                if (!isSortableOperation(event.operation)) return
-                const { source, target } = event.operation
-                if (!source || !target) return
-                dragDestinationIndexRef.current = target.index
-                setDragDestinationIndex(target.index)
-                if (String(source.id) === String(target.id)) {
-                  setAnnouncement(
-                    t("historyDragOver", {
+                return
+              }
+              const move = proposeHistoryMoveToIndex(
+                view.rows,
+                String(source.id),
+                target.index,
+                completeGraph,
+              )
+              setAnnouncement(
+                move
+                  ? t("historyDragOver", {
                       item: itemLabel(String(source.id)),
-                      position: source.initialIndex + 1,
-                      count: view.rows.length,
-                    }),
-                  )
-                  return
-                }
-                const move = proposeHistoryMoveToIndex(
-                  view.rows,
-                  String(source.id),
-                  target.index,
-                  completeGraph,
-                )
-                setAnnouncement(
-                  move
-                    ? t("historyDragOver", {
-                        item: itemLabel(String(source.id)),
-                        position:
-                          move.rows.findIndex(
-                            (row) => historyRefKey(row.ref) === String(source.id),
-                          ) + 1,
-                        count: move.rows.length,
-                      })
-                    : t("historyDragInvalid", { item: itemLabel(String(source.id)) }),
-                )
-              }}
-              onDragEnd={handleDragEnd}
+                      position:
+                        move.rows.findIndex((row) => historyRefKey(row.ref) === String(source.id)) +
+                        1,
+                      count: move.rows.length,
+                    })
+                  : t("historyDragInvalid", { item: itemLabel(String(source.id)) }),
+              )
+            }}
+            onDragEnd={handleDragEnd}
+          >
+            <div
+              className="relative flex min-w-0 items-start overflow-x-auto overflow-y-hidden pb-4 pl-2 pr-8 [scrollbar-width:thin]"
+              data-history-track
             >
-              <div
-                className="relative flex min-w-0 items-start overflow-auto pl-2 pr-8"
-                data-history-track
-              >
-                {folderGroups.map((group) => {
-                  const rows = group.rows.map(({ row, index }) => {
-                    const insert = props.onHistoryInsert
-                    const rowProps = {
-                      ...props,
-                      busy,
-                      dragDestinationIndex,
-                      dragSourceKey,
-                      index,
-                      row,
-                      repairRequired: repairIds.has(historyRefKey(row.ref)),
-                      rolledBack:
-                        (Boolean(props.controller.historyInsertion) || rollbackIndex >= 0) &&
-                        index > rollbackIndex,
-                      marker: rollbackIndex === index && index < view.rows.length - 1,
-                    }
-                    return (
-                      <HistoryFolderSelectableRow
-                        key={historyRefKey(row.ref)}
-                        row={row}
-                        insertionDisabled={insertionDisabled}
-                        onInsert={insert ? (side) => insert(row.ref, side) : undefined}
-                      >
-                        {row.kind === "sketch" ? (
-                          <SketchHistoryRow {...rowProps} />
-                        ) : (
-                          <FeatureHistoryRow {...rowProps} />
-                        )}
-                      </HistoryFolderSelectableRow>
-                    )
-                  })
-                  return group.folder && authority && props.onAuthoredMetadata ? (
-                    <HistoryFolderGroup
-                      key={group.folder.id}
-                      folder={group.folder}
-                      horizontal
-                      revealRequest={props.revealRequest}
-                      authority={authority}
-                      rows={view.rows}
-                      disabled={metadataDisabled || !completeGraph || busy}
-                      onCommit={props.onAuthoredMetadata}
+              {folderGroups.map((group) => {
+                const rows = group.rows.map(({ row, index }) => {
+                  const insert = props.onHistoryInsert
+                  const rowProps = {
+                    ...props,
+                    busy,
+                    dragDestinationIndex,
+                    dragSourceKey,
+                    index,
+                    row,
+                    repairRequired: repairIds.has(historyRefKey(row.ref)),
+                    rolledBack:
+                      (Boolean(props.controller.historyInsertion) || rollbackIndex >= 0) &&
+                      index > rollbackIndex,
+                    marker: rollbackIndex === index && index < view.rows.length - 1,
+                  }
+                  return (
+                    <HistoryFolderSelectableRow
+                      key={historyRefKey(row.ref)}
+                      row={row}
+                      insertionDisabled={insertionDisabled}
+                      onInsert={insert ? (side) => insert(row.ref, side) : undefined}
                     >
-                      {rows}
-                    </HistoryFolderGroup>
-                  ) : (
-                    rows
+                      {row.kind === "sketch" ? (
+                        <SketchHistoryRow {...rowProps} />
+                      ) : (
+                        <FeatureHistoryRow {...rowProps} />
+                      )}
+                    </HistoryFolderSelectableRow>
                   )
-                })}
-                {view.rows.length === 0 && (
-                  <p className="px-2 py-2 text-xs text-muted-foreground">{t("emptyHistory")}</p>
-                )}
-                <HistoryTimelineCursor />
-              </div>
-            </DragDropProvider>
-          </fieldset>
-        )}
+                })
+                return group.folder && authority && props.onAuthoredMetadata ? (
+                  <HistoryFolderGroup
+                    key={group.folder.id}
+                    folder={group.folder}
+                    horizontal
+                    revealRequest={props.revealRequest}
+                    authority={authority}
+                    rows={view.rows}
+                    disabled={metadataDisabled || !completeGraph || busy}
+                    onCommit={props.onAuthoredMetadata}
+                  >
+                    {rows}
+                  </HistoryFolderGroup>
+                ) : (
+                  rows
+                )
+              })}
+              {view.rows.length === 0 && (
+                <p className="px-2 py-2 text-xs text-muted-foreground">{t("emptyHistory")}</p>
+              )}
+              <HistoryTimelineCursor />
+            </div>
+          </DragDropProvider>
+        </fieldset>
       </HistoryFolderSelection>
     </div>
   )
@@ -2447,7 +2428,6 @@ function ensureTreeTabStop(root: HTMLElement | null) {
 }
 
 function ModelTimeline(props: ModelTreeHistoryBranchProps) {
-  const [expanded, setExpanded] = useState(true)
   const [detailed, setDetailed] = useState(false)
   const orderedRefs = useMemo(() => props.view.rows.map((row) => row.ref), [props.view.rows])
   const root = useRef<HTMLElement>(null)
@@ -2455,21 +2435,18 @@ function ModelTimeline(props: ModelTreeHistoryBranchProps) {
   const documentId = props.controller.report?.snapshot.id
   const revealRequest = props.revealRequest?.destination === "timeline" ? props.revealRequest : null
   useEffect(() => {
-    if (revealRequest) setExpanded(true)
-  }, [revealRequest])
-  useEffect(() => {
     const request = revealRequest
-    if (!request || !expanded) return
+    if (!request) return
     const frame = requestAnimationFrame(() => {
       const row = findModelTreeRow(root.current, "data-history-id", request.featureId)
       row?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
       row?.querySelector<HTMLElement>('[role="treeitem"]')?.focus()
     })
     return () => cancelAnimationFrame(frame)
-  }, [revealRequest, expanded])
+  }, [revealRequest])
   useEffect(() => {
     ensureTreeTabStop(root.current)
-  }, [expanded, props.view.rows])
+  }, [props.view.rows])
   useEffect(() => {
     const activeId = props.activeSketchId ?? props.activeFeatureId ?? props.selectedResultFeatureId
     if (!activeId) {
@@ -2484,7 +2461,6 @@ function ModelTimeline(props: ModelTreeHistoryBranchProps) {
     revealedSelection.current = key
   }, [
     documentId,
-    expanded,
     props.activeFeatureId,
     props.activeSketchId,
     props.selectedResultFeatureId,
@@ -2518,8 +2494,6 @@ function ModelTimeline(props: ModelTreeHistoryBranchProps) {
             <HistoryGroup
               {...props}
               revealRequest={revealRequest}
-              expanded={expanded}
-              onExpandedChange={setExpanded}
               onDetailedChange={() => setDetailed((value) => !value)}
               rollbackIndex={rollbackHistoryIndex(props.view, props)}
             />

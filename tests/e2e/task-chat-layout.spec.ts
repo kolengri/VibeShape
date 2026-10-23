@@ -20,8 +20,8 @@ test("opens model toolbar categories through named icon buttons", async ({ page 
   }
 })
 
-for (const width of [800, 1024, 1440]) {
-  test(`keeps the task panel beside AI chat at ${width}px`, async ({ page }) => {
+for (const width of [512, 800, 1024, 1440]) {
+  test(`overlays AI chat without moving the editor at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto("/")
     await invokeModelCommand(page, "Primitives", "Box")
@@ -30,63 +30,42 @@ for (const width of [800, 1024, 1440]) {
     await draft.fill("77")
     const canvas = page.locator(".workspace-viewport canvas").first()
     const originalCanvas = await canvas.elementHandle()
+    const regions = [
+      canvas,
+      page.locator("nav[data-sketch-mode]"),
+      page.locator("[data-feature-timeline]"),
+      page.locator(".workspace-panel--task"),
+    ]
+    const before = await Promise.all(regions.map((region) => region.boundingBox()))
     await page.getByRole("button", { name: "AI chat", exact: true }).click()
     const chat = page.getByRole("complementary", { name: "AI chat", exact: true })
     await expect(chat).toBeVisible()
-    await expect(form).toBeVisible()
     expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
       true,
     )
-    await expect
-      .poll(async () => {
-        const taskBounds = await form.boundingBox()
-        const chatBounds = await chat.boundingBox()
-        if (!taskBounds || !chatBounds) return false
-        return taskBounds.x + taskBounds.width <= chatBounds.x + 1
-      })
-      .toBe(true)
+    expect(await Promise.all(regions.map((region) => region.boundingBox()))).toEqual(before)
     await expect(draft).toHaveValue("77")
-    if (width >= 1024) {
-      const treeBounds = await page.locator(".workspace-panel--tree").boundingBox()
-      const taskBounds = await page.locator(".workspace-panel--task").boundingBox()
-      if (!treeBounds || !taskBounds) throw new Error("Side panels must have measurable bounds.")
-      expect(treeBounds.width).toBeGreaterThanOrEqual(200)
-      expect(taskBounds.width).toBeGreaterThanOrEqual(280)
-    }
-    const timeline = page.locator("[data-feature-timeline]")
-    const timelineBounds = await timeline.boundingBox()
-    const chatBounds = await chat.boundingBox()
-    if (!timelineBounds || !chatBounds) throw new Error("Chat and History must be visible.")
-    expect(timelineBounds.x).toBe(8)
-    expect(timelineBounds.x + timelineBounds.width).toBeCloseTo(chatBounds.x - 8, 0)
-    const toolbar = page.locator("nav[data-sketch-mode]")
-    const toolbarBounds = await toolbar.boundingBox()
-    const canvasBounds = await canvas.boundingBox()
-    if (!toolbarBounds || !canvasBounds) throw new Error("Editor must have measurable bounds.")
-    expect(toolbarBounds.x + toolbarBounds.width).toBeCloseTo(chatBounds.x - 8, 0)
-    expect(canvasBounds.x + canvasBounds.width).toBeCloseTo(chatBounds.x, 0)
-    expect(chatBounds.y).toBeCloseTo(toolbarBounds.y, 0)
-    expect(chatBounds.y + chatBounds.height).toBeGreaterThan(
-      timelineBounds.y + timelineBounds.height,
-    )
+    const bounds = await chat.boundingBox()
+    if (!bounds) throw new Error("Chat must have measurable bounds")
+    expect(bounds.x + bounds.width).toBe(width - 8)
+    expect(bounds.y).toBe(before[1]?.y)
+    expect(
+      await chat.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        return element.contains(
+          element.ownerDocument.elementFromPoint(
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2,
+          ),
+        )
+      }),
+    ).toBe(true)
     if (width === 1440)
-      await page.screenshot({ path: test.info().outputPath("floating-tools-with-docked-chat.png") })
-    await timeline.getByRole("treeitem", { name: "History", exact: true }).click()
-    await expect
-      .poll(async () => {
-        const historyBounds = await timeline.boundingBox()
-        const bounds = await chat.boundingBox()
-        if (!historyBounds || !bounds) return false
-        return historyBounds.x + historyBounds.width <= bounds.x - 7
-      })
-      .toBe(true)
+      await page.screenshot({ path: test.info().outputPath("chat-over-editor.png") })
     await chat.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
     await expect(chat).toHaveCount(0)
     await expect(draft).toHaveValue("77")
-    await expect.poll(async () => (await toolbar.boundingBox())?.width).toBe(width - 16)
-    expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
-      true,
-    )
+    expect(await Promise.all(regions.map((region) => region.boundingBox()))).toEqual(before)
   })
 }
 
@@ -127,6 +106,7 @@ for (const theme of ["light", "dark"]) {
 test("shows Thinking by the composer with the wordmark shimmer and respects reduced motion", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
   const endpoint = "https://thinking.example.test/v1/chat/completions"
   let pending: Route | undefined
   const headers = {
@@ -175,10 +155,52 @@ test("shows Thinking by the composer with the wordmark shimmer and respects redu
     headers,
     contentType: "application/json",
     body: JSON.stringify({
-      choices: [{ message: { content: "A new project." }, finish_reason: "stop" }],
+      choices: [
+        {
+          message: {
+            content: Array.from(
+              { length: 40 },
+              (_, i) =>
+                `Review note ${i + 1}: Keep the lid removable and preserve the wall thickness.`,
+            ).join("\n\n"),
+          },
+          finish_reason: "stop",
+        },
+      ],
     }),
   })
   await expect(thinking).toHaveCount(0)
+  const log = chat.getByRole("log")
+  await expect(log).toContainText("Review note 40")
+  expect(await log.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(300)
+  const canvas = page.locator(".workspace-viewport canvas").first()
+  const canvasBounds = await canvas.boundingBox()
+  const composer = chat.getByRole("region", { name: "Message", exact: true })
+  const composerBoundsAfterReply = await composer.boundingBox()
+  for (let reopen = 0; reopen < 3; reopen += 1) {
+    await chat.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
+    await page.getByRole("button", { name: "AI chat", exact: true }).click()
+    await expect(log).toContainText("Review note 40")
+    expect(await canvas.boundingBox()).toEqual(canvasBounds)
+    expect(await composer.boundingBox()).toEqual(composerBoundsAfterReply)
+    expect(
+      await page.locator("html").evaluate((element) => {
+        const browser = element.ownerDocument.defaultView
+        if (!browser) throw new Error("The editor must have a browser window")
+        return {
+          y: browser.scrollY,
+          documentOverflow: element.scrollHeight > browser.innerHeight,
+          shellScroll: element.ownerDocument.querySelector(".cad-shell")?.scrollTop,
+        }
+      }),
+    ).toEqual({ y: 0, documentOverflow: false, shellScroll: 0 })
+  }
+  await log.hover()
+  await page.mouse.wheel(0, 5000)
+  expect(
+    await page.locator("html").evaluate((element) => element.ownerDocument.defaultView?.scrollY),
+  ).toBe(0)
+  await page.screenshot({ path: test.info().outputPath("chat-long-transcript-contained.png") })
 })
 
 for (const theme of ["light", "dark"]) {
@@ -213,3 +235,138 @@ for (const theme of ["light", "dark"]) {
     await expect(form.locator('[data-slot="task-panel-footer"]')).toBeInViewport()
   })
 }
+
+for (const theme of ["light", "dark"]) {
+  test(`keeps History metadata and Shell faces out of the main layout in ${theme} theme`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto("/")
+    await page
+      .locator("html")
+      .evaluate((element, dark) => element.classList.toggle("dark", dark), theme === "dark")
+    await invokeModelCommand(page, "Primitives", "Box")
+    await page
+      .getByRole("form", { name: "Create box", exact: true })
+      .getByRole("button", { name: "Create box", exact: true })
+      .click()
+    const history = page.getByRole("region", { name: "Feature history", exact: true })
+    const disclosure = history.getByRole("button", { name: "Details", exact: true })
+    await expect(disclosure).toHaveText("")
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false")
+    await expect(history.getByRole("status", { name: "History position", exact: true })).toHaveText(
+      "1 / 1",
+    )
+    await disclosure.click()
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true")
+    const row = history.locator("[data-history-id]").first()
+    expect((await row.boundingBox())?.height).toBeLessThanOrEqual(48)
+    const info = history.getByRole("button", { name: "Information about Box 1", exact: true })
+    await info.focus()
+    await expect(page.getByRole("tooltip")).toContainText("Depends on")
+    await page.mouse.move(700, 400)
+    await info.blur()
+    await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
+    await page.getByRole("button", { name: "Shell", exact: true }).click()
+    const form = page.getByRole("form", { name: "Shell", exact: true })
+    const list = form.locator("details")
+    await expect(list).not.toHaveAttribute("open", "")
+    await expect(list.locator("summary")).toHaveText("0 / 6 faces selected")
+    await expect(form.getByRole("radio", { name: "Inward", exact: true })).toBeChecked()
+    expect(
+      (await form.getByRole("group", { name: "Thickness direction", exact: true }).boundingBox())
+        ?.height,
+    ).toBeLessThanOrEqual(64)
+    await page.screenshot({ path: test.info().outputPath(`history-shell-${theme}.png`) })
+    await list.locator("summary").click()
+    const face = form.getByRole("checkbox").first()
+    await face.focus()
+    await expect(page.getByRole("tooltip")).toContainText("center (")
+    await face.check()
+    await expect(list.locator("summary")).toHaveText("1 / 6 faces selected")
+    expect(
+      await list.locator("div").evaluate((element) => element.clientHeight),
+    ).toBeLessThanOrEqual(192)
+  })
+}
+
+// Cover a fit boundary where category indicators add width beyond ordinary action icons.
+test("keeps every toolbar action inside its measured budget near category fit thresholds", async ({
+  page,
+}) => {
+  await page.goto("/")
+  for (const width of [412, 420, 428, 436, 1024]) {
+    await page.setViewportSize({ width, height: 800 })
+    const toolbar = page.locator("[data-responsive-model-toolbar]")
+    await expect
+      .poll(() =>
+        toolbar.evaluate((root) => {
+          const bounds = root.getBoundingClientRect()
+          return [...root.querySelectorAll("button")]
+            .filter((button) => !button.closest("[data-toolbar-measure]"))
+            .every((button) => {
+              const item = button.getBoundingClientRect()
+              return item.left >= bounds.left && item.right <= bounds.right + 1
+            })
+        }),
+      )
+      .toBe(true)
+    for (const category of await toolbar.locator("button[data-has-indicator=true]").all()) {
+      const icon = category.locator("svg").first()
+      const indicator = category.locator("[data-slot=button-dropdown-indicator]")
+      expect((await icon.boundingBox())?.x ?? 0).toBeLessThan(
+        (await indicator.boundingBox())?.x ?? 0,
+      )
+      const main = await icon.boundingBox(),
+        arrow = await indicator.boundingBox()
+      if (!main || !arrow) throw new Error("Category icon and indicator must be measurable")
+      expect(main.x + main.width).toBeLessThanOrEqual(arrow.x)
+    }
+  }
+})
+
+test("reserves a separate History scrollbar lane below operation controls", async ({ page }) => {
+  await page.goto("/")
+  await invokeModelCommand(page, "Primitives", "Box")
+  await page
+    .getByRole("form", { name: "Create box", exact: true })
+    .getByRole("button", { name: "Create box", exact: true })
+    .click()
+  const history = page.getByRole("region", { name: "Feature history", exact: true })
+  const track = history.locator("[data-history-track]")
+  // Overlay scrollbars paint without consuming layout space; reserve their lane explicitly.
+  await page.addStyleTag({ content: "[data-history-track] { scrollbar-width: none; }" })
+  await track.evaluate((element) => {
+    element.style.maxWidth = "48px"
+  })
+  for (const detailed of [false, true]) {
+    if (detailed) await history.getByRole("button", { name: "Details", exact: true }).click()
+    expect(await track.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+    const rail = await track.boundingBox()
+    const row = await history.locator("[data-history-id]").first().boundingBox()
+    if (!rail || !row) throw new Error("History track and operation must be measurable")
+    expect(rail.y + rail.height - (row.y + row.height)).toBeGreaterThanOrEqual(16)
+    const control = history.getByRole("treeitem", { name: "Box 1", exact: true })
+    if (!detailed) {
+      const bounds = await control.boundingBox()
+      if (!bounds) throw new Error("History operation control must be measurable")
+      expect(
+        await control.evaluate(
+          (element, point) =>
+            element.contains(element.ownerDocument.elementFromPoint(point.x, point.y)),
+          {
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height - 2,
+          },
+        ),
+      ).toBe(true)
+    }
+    await track.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+    })
+    expect(await track.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+    await track.evaluate((element) => {
+      element.scrollLeft = 0
+    })
+  }
+})

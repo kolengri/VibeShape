@@ -97,7 +97,10 @@ function navigation() {
 }
 
 function positionDescription() {
-  return navigation().getByRole("status", { name: "History position" }).textContent
+  return navigation()
+    .getByRole("status", { name: "History position" })
+    .querySelector("button")
+    ?.getAttribute("aria-label")
 }
 
 function feedback() {
@@ -272,7 +275,9 @@ describe("History transport", () => {
     expect(
       screen.getByRole("group", { name: "History navigation" }).getAttribute("aria-busy"),
     ).toBe("true")
-    for (const button of navigation().getAllByRole("button"))
+    for (const button of navigation()
+      .getAllByRole("button")
+      .filter((button) => !button.closest('[role="status"]')))
       expect((button as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(navigation().getByRole("button", { name: "Roll back to the start" }))
     fireEvent.click(navigation().getByRole("button", { name: "Return to the full model" }))
@@ -330,7 +335,9 @@ describe("History transport", () => {
         onInsert: reason === "no insert" ? undefined : onInsert,
         onReturnToEnd: reason === "no return" ? undefined : onReturnToEnd,
       })
-      for (const button of navigation().getAllByRole("button")) {
+      for (const button of navigation()
+        .getAllByRole("button")
+        .filter((button) => !button.closest('[role="status"]'))) {
         expect((button as HTMLButtonElement).disabled).toBe(true)
         await userEvent.click(button)
       }

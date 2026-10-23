@@ -59,7 +59,9 @@ function SelectField({
             "disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30",
           )}
         >
-          <SelectPrimitive.Value />
+          <span className="min-w-0 flex-1 truncate text-left">
+            <SelectPrimitive.Value />
+          </span>
           <SelectPrimitive.Icon asChild>
             <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </SelectPrimitive.Icon>
@@ -70,8 +72,7 @@ function SelectField({
             sideOffset={4}
             collisionPadding={8}
             className={cn(
-              "z-50 max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
-              menuLabel && "max-w-[calc(100vw-1rem)]",
+              "z-50 max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
             )}
           >
             <SelectPrimitive.Viewport>
@@ -115,7 +116,7 @@ function SelectOption({
     <SelectPrimitive.Item
       {...props}
       className={cn(
-        "relative flex min-h-8 cursor-default select-none items-center rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none",
+        "relative flex min-h-8 min-w-0 cursor-default select-none items-center rounded-sm py-1.5 pr-8 pl-2 text-sm whitespace-normal wrap-anywhere outline-none",
         "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
         "data-[disabled]:pointer-events-none data-[disabled]:text-muted-foreground",
         className,

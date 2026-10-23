@@ -12,7 +12,6 @@ import {
   AddIcon,
   Check,
   ChevronDown,
-  Ellipsis,
   MeasureIcon,
   ModelIcon,
   ModifyIcon,
@@ -45,7 +44,7 @@ import { ActionAvailability } from "../components/action-availability"
 import { NativeEditorCommandBridge } from "../desktop/native-editor-commands"
 import { SketchConstraintManagerToolbarSlot } from "../features/sketch/sketch-toolbar-portals"
 import { useResponsiveToolbar } from "./responsive-toolbar"
-import { ToolbarCommandPicker } from "./toolbar-command-picker"
+import { ToolbarCommandPicker, toolbarMenuTriggerClassName } from "./toolbar-command-picker"
 
 function ToolbarAction({
   buttonClassName,
@@ -383,7 +382,7 @@ function ToolbarCommandDropdown({
   getDisabledReason,
   getLabel,
   label,
-  icon: Icon = Ellipsis,
+  icon: Icon = ChevronDown,
   focusId,
   onOpenChange,
 }: ToolbarCommandMenuProps & { triggerRef: RefObject<HTMLButtonElement | null> }) {
@@ -403,7 +402,9 @@ function ToolbarCommandDropdown({
                 aria-label={label}
                 aria-current={hasActiveCommand ? "true" : undefined}
                 data-toolbar-menu={focusId}
-                dropdown
+                dropdown={Icon !== ChevronDown}
+                data-has-indicator={Icon !== ChevronDown}
+                className={toolbarMenuTriggerClassName}
               >
                 <Icon aria-hidden="true" />
               </Button>
@@ -517,7 +518,11 @@ function ModelToolbarProbe({
         <span
           key={group.id}
           data-fit-menu={group.id}
-          className={cn(buttonVariants({ size: "icon-sm", variant: "ghost" }))}
+          data-has-indicator={group.icon !== undefined}
+          className={cn(
+            buttonVariants({ size: "icon-sm", variant: "ghost" }),
+            toolbarMenuTriggerClassName,
+          )}
         />
       ))}
     </div>

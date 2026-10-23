@@ -10,6 +10,7 @@ import { AssistantPanel } from "./assistant-panel"
 afterEach(cleanup)
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  HTMLElement.prototype.scrollTo = vi.fn()
 })
 
 type Props = Parameters<typeof AssistantPanel>[0]

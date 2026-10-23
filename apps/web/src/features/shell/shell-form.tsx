@@ -6,6 +6,7 @@ import type {
 } from "@vibeshape/domain"
 import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
 import { ChoiceField } from "@vibeshape/ui/components/choice-field"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
@@ -36,6 +37,7 @@ export type ShellFormCopy = ParameterPanelCopy &
     thickness: string
     lengthDescription: string
     direction: string
+    directionDescription: string
     inward: string
     outward: string
     openings: string
@@ -50,6 +52,8 @@ export type ShellFormCopy = ParameterPanelCopy &
     staleRevision: string
     saveFailed: string
     previewFailed: string
+    openingCount: (values: { selected: number; total: number }) => string
+    faceName: (values: { number: number }) => string
     face: (values: { number: number; area: string; x: string; y: string; z: string }) => string
   }
 type ShellFormProps = FeatureParameterFormProps<ShellFormMode, ShellFormCopy> & {
@@ -307,7 +311,9 @@ export function ShellForm({
               <form.AppField name="direction">
                 {(field) => (
                   <field.ChoiceField
+                    className="[&>fieldset]:grid-cols-1"
                     label={copy.direction}
+                    description={copy.directionDescription}
                     onValueChange={() => {
                       state.clearSubmissionErrors()
                     }}
@@ -321,6 +327,7 @@ export function ShellForm({
               <form.Field name="closed">
                 {(field) => (
                   <ChoiceField
+                    className="[&>fieldset]:grid-cols-1"
                     name={field.name}
                     label={copy.cavity}
                     value={String(field.state.value)}
@@ -346,36 +353,56 @@ export function ShellForm({
                           <p className="text-xs text-muted-foreground">
                             {copy.openingsDescription}
                           </p>
-                          {evidence?.candidates.map((candidate, index) => (
-                            <label
-                              key={candidate.candidateId}
-                              className="flex items-start gap-2 text-xs"
-                            >
-                              <input
-                                type="checkbox"
-                                name="openings"
-                                checked={field.state.value.includes(candidate.candidateId)}
-                                onBlur={field.handleBlur}
-                                onChange={(event) => {
-                                  state.clearSubmissionErrors()
-                                  field.handleChange(
-                                    event.currentTarget.checked
-                                      ? [...field.state.value, candidate.candidateId]
-                                      : field.state.value.filter(
-                                          (id) => id !== candidate.candidateId,
-                                        ),
-                                  )
-                                }}
-                              />
-                              {copy.face({
-                                number: index + 1,
-                                area: formatShellMeasurement(candidate.signature.measure),
-                                x: formatShellMeasurement(candidate.signature.centroid[0]),
-                                y: formatShellMeasurement(candidate.signature.centroid[1]),
-                                z: formatShellMeasurement(candidate.signature.centroid[2]),
+                          <details className="min-w-0 rounded-md border">
+                            <summary className="cursor-pointer px-2 py-1.5 text-xs font-medium">
+                              {copy.openingCount({
+                                selected: field.state.value.length,
+                                total: evidence?.candidates.length ?? 0,
                               })}
-                            </label>
-                          ))}
+                            </summary>
+                            <div className="grid max-h-48 gap-1 overflow-y-auto overscroll-contain border-t p-2">
+                              {evidence?.candidates.map((candidate, index) => {
+                                const measurement = copy.face({
+                                  number: index + 1,
+                                  area: formatShellMeasurement(candidate.signature.measure),
+                                  x: formatShellMeasurement(candidate.signature.centroid[0]),
+                                  y: formatShellMeasurement(candidate.signature.centroid[1]),
+                                  z: formatShellMeasurement(candidate.signature.centroid[2]),
+                                })
+                                return (
+                                  <Tooltip key={candidate.candidateId}>
+                                    <TooltipTrigger asChild>
+                                      <label className="flex min-h-6 items-center gap-2 text-xs">
+                                        <input
+                                          type="checkbox"
+                                          name="openings"
+                                          checked={field.state.value.includes(
+                                            candidate.candidateId,
+                                          )}
+                                          onBlur={field.handleBlur}
+                                          onChange={(event) => {
+                                            state.clearSubmissionErrors()
+                                            field.handleChange(
+                                              event.currentTarget.checked
+                                                ? [...field.state.value, candidate.candidateId]
+                                                : field.state.value.filter(
+                                                    (id) => id !== candidate.candidateId,
+                                                  ),
+                                            )
+                                          }}
+                                        />
+                                        <span aria-hidden="true">
+                                          {copy.faceName({ number: index + 1 })}
+                                        </span>
+                                        <span className="sr-only">{measurement}</span>
+                                      </label>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{measurement}</TooltipContent>
+                                  </Tooltip>
+                                )
+                              })}
+                            </div>
+                          </details>
                         </fieldset>
                       )}
                     </form.Field>
