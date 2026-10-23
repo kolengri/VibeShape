@@ -103,7 +103,7 @@ See [ADR-0125](../adr/0125-durable-saved-change-navigation.md) for durable navig
 
 ## Assistant transcripts
 
-`vibeshape-assistant-transcripts` is a separate version-1 IndexedDB/Dexie database; it does not change
+`vibeshape-assistant-transcripts` is a separate version-2 IndexedDB/Dexie database; it does not change
 CAD authority or the document database schema. Project heads carry a compare-and-swap revision and
 optional validated provider-session metadata. Message rows are keyed by project and message ID,
 ordered by a project/position index and read in pages of 64. Incremental message upserts/deletions
@@ -116,6 +116,18 @@ committed transcript intact and exposes retry without truncating live conversati
 storage version-1 history is deleted only after successful import. Reset retains a revisioned empty
 head and affects only the selected project. Transcript history is independent of the API request's
 bounded context; older stored messages are not silently deleted to satisfy provider request limits.
+The additive version-2 `archives` table holds inactive conversations per project. New chat archives
+the nonempty active transcript and its provider-session metadata before starting an empty transcript.
+Opening an archived chat archives the current nonempty conversation, restores the selected messages
+and session, and removes that selected snapshot from the inactive list. These changes share one
+revision-checked transaction, so a failed or superseded switch preserves the saved conversations.
+The coordinator's synchronous display/session validator runs inside that transaction before either
+conversation changes. An unreadable inactive archive keeps its error and retry indication without
+blocking persistence of a valid active conversation.
+Archive titles come from the first user message, with an untitled fallback for attachment-only chats.
+The history list survives project reopening; native session restoration still depends on provider
+support, while browser API context is rebuilt only from the selected transcript. Chat switching
+does not restore CAD state or carry another conversation's temporary Undo checkpoint.
 API context rebuilt from disk includes explicit unavailable-file markers for stored attachment
 names. Live failure recovery preserves the existing bounded wire context and the failed prompt's
 attachment content; neither path adds file bytes to transcript storage.

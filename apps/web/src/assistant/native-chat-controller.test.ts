@@ -671,6 +671,33 @@ describe("queued native steering", () => {
 })
 
 describe("project-scoped agent chat", () => {
+  it("archives conversations and resumes the selected native session without replaying another chat", async () => {
+    const f = fixture(),
+      disk = storage()
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+    chat.start()
+    await chat.connect(agent)
+    const sessionId = f.snapshot().sessionId
+    expect(sessionId).toBeString()
+    expect(await chat.send("Design the lid")).toBe(true)
+    f.finish()
+    await until(() => !chat.getSnapshot().busy)
+    await chat.flushHistory()
+    const original = chat.getSnapshot().messages
+    await chat.reset()
+    expect(f.connects.at(-1)?.resumeSessionId).toBeUndefined()
+    expect(chat.getSnapshot().messages).toEqual([])
+    expect(await chat.send("Design the hinge")).toBe(true)
+    f.finish()
+    await until(() => !chat.getSnapshot().busy)
+    const archived = chat.getSnapshot().previousChats[0]
+    expect(await chat.openChat(archived?.id ?? "")).toBe(true)
+    expect(f.connects.at(-1)?.resumeSessionId).toBe(sessionId ?? undefined)
+    expect(chat.getSnapshot().messages).toEqual(original)
+    expect(chat.getSnapshot().previousChats.map(({ title }) => title)).toEqual(["Design the hinge"])
+    expect(f.prompts).toHaveLength(2)
+    chat.dispose()
+  })
   it("reports a successful explicit connection and rejects attempts after disposal", async () => {
     const f = fixture()
     const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })

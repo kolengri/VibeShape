@@ -1,5 +1,6 @@
 import {
   IndexedDbTranscriptStore,
+  type TranscriptSnapshot,
   type TranscriptStore,
 } from "@vibeshape/persistence/transcript-store"
 import { z } from "zod"
@@ -21,23 +22,26 @@ export type ChatHistoryStore = TranscriptStore
 let localStore: IndexedDbTranscriptStore | undefined
 export const createChatHistoryStore = () => (localStore ??= new IndexedDbTranscriptStore())
 
+export function parseChatHistory(saved: TranscriptSnapshot) {
+  return {
+    revision: saved.revision,
+    messages: saved.entries.map(({ id, value }) => {
+      const message = chatMessageSchema.parse(value)
+      if (message.id !== id) throw new Error("The stored transcript message identity is invalid.")
+      return message
+    }),
+    agentSession:
+      saved.session === undefined ? undefined : agentChatSessionSchema.parse(saved.session),
+  }
+}
+
 export async function loadChatHistory(
   projectId: string,
   storage: HistoryStorage,
   store: ChatHistoryStore,
 ) {
   const saved = await store.load(projectId)
-  if (saved)
-    return {
-      revision: saved.revision,
-      messages: saved.entries.map(({ id, value }) => {
-        const message = chatMessageSchema.parse(value)
-        if (message.id !== id) throw new Error("The stored transcript message identity is invalid.")
-        return message
-      }),
-      agentSession:
-        saved.session === undefined ? undefined : agentChatSessionSchema.parse(saved.session),
-    }
+  if (saved) return parseChatHistory(saved)
   const raw = storage.getItem(legacyChatHistoryKey(projectId))
   if (raw === null) return { revision: 0, messages: [], agentSession: undefined }
   const legacy = legacyChatHistorySchema.parse(JSON.parse(raw))

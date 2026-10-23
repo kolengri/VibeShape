@@ -84,7 +84,7 @@ function BrowserProjectChat({
       onToolHighlight={onToolHighlight}
       onApplyDraft={chat.applyDraft}
       busy={state.busy}
-      canSend={ready && state.connected && !assistantCheckpointBusy(state)}
+      canSend={ready && state.connected && !state.switchingChat && !assistantCheckpointBusy(state)}
       configurationRequired={!state.connected}
       canUndoAgentChanges={state.canUndoAgentChanges}
       undoingAgentChanges={state.undoingAgentChanges}
@@ -106,6 +106,9 @@ function BrowserProjectChat({
       onResumeQueue={chat.resumeQueue}
       onCancel={chat.cancel}
       onReset={chat.reset}
+      previousChats={state.previousChats}
+      onOpenChat={chat.openChat}
+      historyBusy={state.switchingChat || assistantCheckpointBusy(state)}
       storageFailed={state.storageFailed}
       onRetryHistory={chat.retryHistory}
       contextOmittedMessages={state.contextOmittedMessages}

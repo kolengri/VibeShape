@@ -256,6 +256,64 @@ it("refuses a stale save after another writer resets the project", async () => {
   expect((await f.store.load(projectId))?.entries).toEqual([])
 })
 
+it.each(["role", "identity", "session"] as const)(
+  "rejects an archived chat with invalid %s before replacement and keeps subsequent saves working",
+  async (corruption) => {
+    const f = fixture()
+    await f.history.ready
+    f.messages = [message("Archived conversation")]
+    expect(await f.history.switchConversation(null)).toBe(true)
+    f.messages = [message("Keep the active conversation")]
+    await f.history.save()
+    const archive = [...(f.store.archives.get(projectId)?.values() ?? [])][0]
+    if (!archive) throw new Error("Expected an archived conversation")
+    const entry = archive.snapshot.entries[0]
+    if (!entry) throw new Error("Expected an archived message")
+    if (corruption === "session") archive.snapshot.session = { agent: "invalid", sessionId: 42 }
+    else
+      entry.value = {
+        id: corruption === "identity" ? crypto.randomUUID() : entry.id,
+        role: corruption === "role" ? "invalid" : "user",
+        text: "Invalid archived message",
+      }
+    const active = [...f.messages]
+    expect(await f.history.switchConversation(archive.id)).toBe(false)
+    expect(f.failed).toBe(true)
+    expect(f.messages).toEqual(active)
+    expect((await loadChatHistory(projectId, f.storage, f.store)).messages).toEqual(active)
+    expect((await f.store.listArchives(projectId)).map(({ id }) => id)).toEqual([archive.id])
+    f.messages = [...active, message("Still saves after rejection")]
+    await f.history.save()
+    expect(f.failed).toBe(false)
+    expect((await loadChatHistory(projectId, f.storage, f.store)).messages).toEqual([...f.messages])
+  },
+)
+
+it("persists the active chat when an inactive archive cannot be read and retains its retry indication", async () => {
+  const f = fixture()
+  await f.history.ready
+  f.messages = [message("Archived")]
+  await f.history.switchConversation(null)
+  f.messages = [message("Active")]
+  await f.history.save()
+  f.store.archiveFailure = new Error("The persisted archive is malformed")
+  const reopened = fixture(f.store, f.storage)
+  await reopened.history.ready
+  expect(reopened.failed).toBe(true)
+  reopened.messages = [...reopened.messages, message("Persist despite the unreadable archive")]
+  await reopened.history.save()
+  expect(reopened.failed).toBe(true)
+  expect((await loadChatHistory(projectId, f.storage, f.store)).messages).toEqual([
+    ...reopened.messages,
+  ])
+  await reopened.history.retry()
+  expect(reopened.failed).toBe(true)
+  f.store.archiveFailure = undefined
+  await reopened.history.retry()
+  expect(reopened.failed).toBe(false)
+  expect(await f.store.listArchives(projectId)).toHaveLength(1)
+})
+
 it("rolls back a reset whose project owner changed before the storage transaction", async () => {
   const f = fixture()
   await f.history.ready

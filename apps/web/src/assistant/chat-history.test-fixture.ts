@@ -1,4 +1,5 @@
 import type {
+  TranscriptArchiveSummary,
   TranscriptPatch,
   TranscriptSnapshot,
   TranscriptStore,
@@ -10,8 +11,13 @@ import { loadChatHistory } from "./chat-history-storage"
 export class MemoryTranscriptStore implements TranscriptStore {
   readonly projects = new Map<string, TranscriptSnapshot>()
   readonly patches: TranscriptPatch[] = []
+  readonly archives = new Map<
+    string,
+    Map<string, TranscriptArchiveSummary & { snapshot: TranscriptSnapshot }>
+  >()
   failure: Error | undefined
   commitFailure: Error | undefined
+  archiveFailure: Error | undefined
   loadGate: Promise<void> | undefined
   resetGate: Promise<void> | undefined
   async load(projectId: string) {
@@ -45,6 +51,50 @@ export class MemoryTranscriptStore implements TranscriptStore {
     const revision = expectedRevision + 1
     this.projects.set(projectId, { revision, entries: [] })
     return revision
+  }
+  async listArchives(projectId: string) {
+    if (this.failure || this.archiveFailure) throw this.failure ?? this.archiveFailure
+    return [...(this.archives.get(projectId)?.values() ?? [])]
+      .map(({ snapshot: _snapshot, ...summary }) => summary)
+      .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+  }
+  private archivedSnapshot(projectId: string, targetId: string | null): TranscriptSnapshot {
+    if (targetId === null) return { revision: 0, entries: [] }
+    const target = this.archives.get(projectId)?.get(targetId)
+    if (!target) throw new Error("missing conversation")
+    return structuredClone(target.snapshot)
+  }
+  // fallow-ignore-next-line unused-class-member -- Invoked through the injected TranscriptStore port.
+  async switchConversation(
+    projectId: string,
+    expectedRevision: number,
+    targetId: string | null,
+    title: string,
+    assertCurrent: () => void = () => {},
+    validateSnapshot: (snapshot: TranscriptSnapshot) => void = () => {},
+  ) {
+    await this.resetGate
+    assertCurrent()
+    if (this.failure) throw this.failure
+    const previous = this.projects.get(projectId)
+    if ((previous?.revision ?? 0) !== expectedRevision) throw new Error("stale revision")
+    const archives = new Map(this.archives.get(projectId))
+    const target = this.archivedSnapshot(projectId, targetId)
+    validateSnapshot(previous ?? { revision: expectedRevision, entries: [] })
+    validateSnapshot(target)
+    if (previous?.entries.length) {
+      const id = crypto.randomUUID()
+      archives.set(id, { id, title, updatedAt: Date.now(), snapshot: structuredClone(previous) })
+    }
+    if (targetId !== null) archives.delete(targetId)
+    const next = {
+      ...target,
+      revision: expectedRevision + 1,
+    }
+    assertCurrent()
+    this.archives.set(projectId, archives)
+    this.projects.set(projectId, next)
+    return structuredClone(next)
   }
 }
 const stores = new WeakMap<HistoryStorage, MemoryTranscriptStore>()

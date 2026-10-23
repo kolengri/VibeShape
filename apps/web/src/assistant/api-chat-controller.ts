@@ -6,6 +6,7 @@ import {
   assistantQuestionResponseSchema,
 } from "@vibeshape/automation-api/assistant"
 import type { CommandActor } from "@vibeshape/domain/commands"
+import type { TranscriptArchiveSummary } from "@vibeshape/persistence/transcript-store"
 import { z } from "zod"
 import { type ApiToolUpdate, apiAgentMessages, runApiAgentTurn } from "./api-agent-turn"
 import { type ApiConfiguration, apiConfigurationSchema } from "./api-assistant-preferences"
@@ -16,6 +17,7 @@ import { budgetApiContext, rememberedContext } from "./api-remembered-context"
 import {
   type AssistantCheckpointHost,
   type AssistantCheckpointState,
+  assistantCheckpointBusy,
   createAssistantCheckpoints,
 } from "./assistant-checkpoints"
 import type { BrowserToolSession } from "./browser-tool-session"
@@ -36,6 +38,8 @@ type ApiChatState = Readonly<
     busy: boolean
     error: ApiAssistantErrorCode | null
     storageFailed: boolean
+    previousChats: readonly TranscriptArchiveSummary[]
+    switchingChat: boolean
     contextOmittedMessages: number
     queuedMessages: readonly {
       id: string
@@ -102,6 +106,8 @@ export function createApiChatController(options: ApiChatOptions) {
     busy: false,
     error: null,
     storageFailed: false,
+    previousChats: [],
+    switchingChat: false,
     contextOmittedMessages: 0,
     queuedMessages: [],
     queuePaused: false,
@@ -146,6 +152,7 @@ export function createApiChatController(options: ApiChatOptions) {
     current: () => ({ messages: state.messages, agentSession }),
     restored: (saved) => {
       agentSession = saved.agentSession
+      if (saved.replace) liveContextOwned = false
       if (liveContextOwned) {
         const knownIds = new Set(state.messages.map(({ id }) => id))
         const recoveredCount = saved.messages.filter(
@@ -164,6 +171,7 @@ export function createApiChatController(options: ApiChatOptions) {
     failed: (storageFailed) => {
       if (state.storageFailed !== storageFailed) publish({ storageFailed })
     },
+    archived: (previousChats) => publish({ previousChats }),
   })
   const save = () => history.save()
   const messages = (next: readonly ChatMessage[]) => {
@@ -477,6 +485,23 @@ export function createApiChatController(options: ApiChatOptions) {
     releaseTools()
     await turn.done
   }
+  async function switchChat(targetId: string | null) {
+    if (disposed || active || assistantCheckpointBusy(state) || queued.length || resettingHistory)
+      return false
+    resettingHistory = true
+    publish({ switchingChat: true })
+    try {
+      const changed = await history.switchConversation(targetId, () => !disposed)
+      if (!changed || disposed) return false
+      releaseTools()
+      checkpoints?.clear()
+      publish({ error: null, queuePaused: false })
+      return true
+    } finally {
+      resettingHistory = false
+      publish({ switchingChat: false })
+    }
+  }
   return {
     getSnapshot: () => state,
     subscribe(listener: () => void) {
@@ -565,25 +590,9 @@ export function createApiChatController(options: ApiChatOptions) {
       return checkpoints?.viewBefore() ?? false
     },
     async reset() {
-      if (disposed || active || state.settlingCheckpoint || queued.length) return
-      if (resettingHistory) return
-      resettingHistory = true
-      const cleared = await history.reset()
-      resettingHistory = false
-      if (!cleared || disposed || active) return
-      releaseTools()
-      context = []
-      liveContextOwned = false
-      agentSession = undefined
-      checkpoints?.clear()
-      publish({
-        messages: [],
-        contextOmittedMessages: 0,
-        error: null,
-        queuePaused: false,
-        storageFailed: false,
-      })
+      await switchChat(null)
     },
+    openChat: (id: string) => switchChat(id),
     async retryHistory() {
       if (active) return
       await history.retry()

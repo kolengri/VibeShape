@@ -1,9 +1,11 @@
+import type { TranscriptArchiveSummary } from "@vibeshape/persistence/transcript-store"
 import type { AgentChatSession, ChatMessage, HistoryStorage } from "./chat-history"
 import { legacyChatHistoryKey } from "./chat-history"
 import {
   type ChatHistoryStore,
   createChatHistoryStore,
   loadChatHistory,
+  parseChatHistory,
   writeChatHistory,
 } from "./chat-history-storage"
 
@@ -29,7 +31,8 @@ export function createChatHistoryCoordinator(options: {
   storage: HistoryStorage
   store?: ChatHistoryStore | undefined
   current: () => Snapshot
-  restored: (saved: Snapshot) => void
+  restored: (saved: Snapshot & { replace?: boolean }) => void
+  archived?: (chats: readonly TranscriptArchiveSummary[]) => void
   failed: (failed: boolean) => void
 }) {
   const store = options.store ?? createChatHistoryStore()
@@ -37,6 +40,7 @@ export function createChatHistoryCoordinator(options: {
   let persisted: readonly ChatMessage[] = []
   let loaded = false
   let loadFailed = false
+  let archivesFailed = false
   let epoch = 0
   let dirty = false
   let resetting = false
@@ -57,15 +61,28 @@ export function createChatHistoryCoordinator(options: {
       agentSession: current.agentSession ?? saved.agentSession,
     })
   }
-  const load = () => loadChatHistory(options.projectId, options.storage, store).then(restore)
+  const refreshArchives = async () => {
+    try {
+      const chats = await store.listArchives(options.projectId)
+      options.archived?.(chats)
+      archivesFailed = false
+    } catch {
+      archivesFailed = true
+    }
+    options.failed(archivesFailed)
+  }
+  const load = async () => {
+    restore(await loadChatHistory(options.projectId, options.storage, store))
+    await refreshArchives()
+  }
   const ready = serialize(store, options.projectId, load).catch(() => {
     loadFailed = true
     options.failed(true)
   })
-  async function flush() {
+  async function flush(changing = false) {
     await ready
     if (!loaded || loadFailed) return
-    while (dirty && !resetting) {
+    while (dirty && (!resetting || changing)) {
       dirty = false
       const at = epoch
       const snapshot = options.current()
@@ -80,7 +97,7 @@ export function createChatHistoryCoordinator(options: {
         )
         revision = next
         if (at === epoch) persisted = snapshot.messages
-        options.failed(false)
+        options.failed(archivesFailed)
       } catch {
         dirty = true
         options.failed(true)
@@ -110,7 +127,7 @@ export function createChatHistoryCoordinator(options: {
       persisted = []
       dirty = false
       options.storage.removeItem(legacyChatHistoryKey(options.projectId))
-      options.failed(false)
+      options.failed(archivesFailed)
       return true
     } catch {
       if (isCurrent()) options.failed(true)
@@ -131,5 +148,52 @@ export function createChatHistoryCoordinator(options: {
     })
     return running
   }
-  return { ready, save, flush: () => save(), reset, retry }
+  async function switchConversation(
+    targetId: string | null,
+    isCurrent: () => boolean = () => true,
+  ) {
+    if (resetting) return false
+    resetting = true
+    await ready
+    await running
+    try {
+      return await serialize(store, options.projectId, async () => {
+        if (!loaded || loadFailed || !isCurrent()) return false
+        dirty = true
+        await flush(true)
+        if (dirty || !isCurrent()) return false
+        const title =
+          options
+            .current()
+            .messages.find(({ role }) => role === "user")
+            ?.text.trim()
+            .slice(0, 120) ?? ""
+        const saved = parseChatHistory(
+          await store.switchConversation(
+            options.projectId,
+            revision,
+            targetId,
+            title,
+            () => {
+              if (!isCurrent()) throw new Error("The conversation switch was superseded.")
+            },
+            parseChatHistory,
+          ),
+        )
+        revision = saved.revision
+        persisted = saved.messages
+        epoch += 1
+        dirty = false
+        options.restored({ ...saved, replace: true })
+        await refreshArchives()
+        return true
+      })
+    } catch {
+      if (isCurrent()) options.failed(true)
+      return false
+    } finally {
+      resetting = false
+    }
+  }
+  return { ready, save, flush: () => save(), reset, retry, switchConversation }
 }

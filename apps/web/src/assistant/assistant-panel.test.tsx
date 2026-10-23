@@ -72,6 +72,14 @@ function selectFiles(files: File[]) {
   fireEvent.change(input, { target: { files } })
 }
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
   HTMLElement.prototype.scrollIntoView = vi.fn()
   HTMLElement.prototype.scrollTo = vi.fn()
 })
@@ -81,6 +89,30 @@ afterEach(() => {
 })
 
 describe("assistant transcript and composer", () => {
+  it("opens previous project chats from the header and disables switching while work is active", async () => {
+    const onOpenChat = vi.fn(async () => true)
+    const previousChats = [{ id: "previous", title: "Removable lid", updatedAt: 1 }]
+    const view = render(panel({ previousChats, onOpenChat }))
+    const history = screen.getByRole("button", { name: "Chat history" })
+    expect(history.getAttribute("aria-expanded")).toBe("false")
+    await userEvent.click(history)
+    const list = screen.getByRole("region", { name: "Chat history" })
+    await userEvent.click(within(list).getByRole("button", { name: "Removable lid" }))
+    expect(onOpenChat).toHaveBeenCalledWith("previous")
+    expect(screen.queryByRole("region", { name: "Chat history" })).toBeNull()
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Chat history" }))
+    view.rerender(panel({ previousChats, onOpenChat, busy: true }))
+    await userEvent.click(screen.getByRole("button", { name: "Chat history" }))
+    expect(screen.getByRole("button", { name: "Removable lid" }).hasAttribute("disabled")).toBe(
+      true,
+    )
+  })
+  it("shows an empty project history without hiding the composer", async () => {
+    render(panel({ previousChats: [], onOpenChat: async () => true }))
+    await userEvent.click(screen.getByRole("button", { name: "Chat history" }))
+    expect(screen.getByText("No previous chats in this project.")).toBeTruthy()
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeTruthy()
+  })
   it("defers hidden transcript rendering until first opened and retains its DOM on later closes", () => {
     const messages: PanelProps["messages"] = [
       { id: "history", role: "assistant", text: "## Saved modeling discussion" },

@@ -66,7 +66,7 @@ function NativeProjectChat({
   open: boolean
   onClose: () => void
 } & Pick<AssistantComposerProps, "onCaptureView">) {
-  const { chat, state, canSend, activeSteerTurn } = useNativeChat(projectId, bridge)
+  const { chat, state, canSend, activeSteerTurn, historyBusy } = useNativeChat(projectId, bridge)
   const onToolHighlight = useAssistantToolHighlight(projectId)
   const error = useNativeChatError(state)
   return (
@@ -102,6 +102,9 @@ function NativeProjectChat({
       onResumeQueue={chat.resumeQueue}
       onCancel={chat.cancel}
       onReset={chat.reset}
+      previousChats={state.previousChats}
+      onOpenChat={chat.openChat}
+      historyBusy={historyBusy}
       storageFailed={state.storageFailed}
       onRetryHistory={chat.retryHistory}
       error={error}
@@ -136,15 +139,20 @@ function useNativeChat(projectId: string, bridge: AssistantBridge) {
     [chat],
   )
   const status = state.snapshot?.status
+  const historyBusy = nativeHistoryBusy(state)
   return {
     chat,
     state,
-    canSend: nativeCanSend(state),
+    canSend: !historyBusy && nativeCanSend(state),
     activeSteerTurn: state.busy && status === "prompting",
+    historyBusy,
   }
 }
 function nativeCanSend(state: NativeChatState) {
   return state.projectAccessReady && (state.snapshot?.status === "ready" || state.busy)
+}
+function nativeHistoryBusy(state: NativeChatState) {
+  return state.switchingChat || state.connecting || assistantCheckpointBusy(state)
 }
 
 function NativeRecoveryControls({ chat, state }: { chat: NativeChat; state: NativeChatState }) {
