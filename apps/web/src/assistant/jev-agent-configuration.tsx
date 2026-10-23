@@ -37,7 +37,6 @@ type JevFormValues = {
   argumentsEndpoint: string
   argumentsModel: string
   argumentsApiKey: string
-  maxSteps: string
   minConfidence: string
   timeoutMs: string
 }
@@ -90,7 +89,6 @@ function configuration(data: JevFormValues, initial: AssistantJevSettings) {
     ...argumentAgent(data.argumentChoice, initial),
     model: data.model,
     images: true,
-    maxSteps: Number(data.maxSteps),
     minConfidence: data.minConfidence.trim() ? Number(data.minConfidence) : Number.NaN,
     timeoutMs: Number(data.timeoutMs),
     ...argumentApi,
@@ -129,7 +127,6 @@ function initialFormValues(initial: AssistantJevSettings): JevFormValues {
     argumentsEndpoint: initial.argumentsEndpoint ?? "",
     argumentsModel: initial.argumentsModel ?? "",
     argumentsApiKey: "",
-    maxSteps: String(initial.maxSteps),
     minConfidence: String(initial.minConfidence),
     timeoutMs: String(initial.timeoutMs),
   }
@@ -196,7 +193,7 @@ function useJevConnectionForm({
     },
     onSubmitInvalid: ({ formApi }) => {
       if (
-        (["maxSteps", "minConfidence", "timeoutMs"] as const).some(
+        (["minConfidence", "timeoutMs"] as const).some(
           (name) => formApi.getFieldMeta(name)?.errors.length,
         )
       )
@@ -330,7 +327,7 @@ const JevArgumentFields = withFieldGroup({
 })
 
 const JevAdvancedFields = withFieldGroup({
-  defaultValues: { maxSteps: "", minConfidence: "", timeoutMs: "" },
+  defaultValues: { minConfidence: "", timeoutMs: "" },
   props: {} as { open: boolean; onOpenChange: (open: boolean) => void },
   render: function JevAdvancedFields({ group, open, onOpenChange }) {
     const t = useTranslations("app.assistant")
@@ -338,11 +335,6 @@ const JevAdvancedFields = withFieldGroup({
       <details open={open} onToggle={(event) => onOpenChange(event.currentTarget.open)}>
         <summary className="cursor-pointer text-xs font-medium">{t("jev.advanced")}</summary>
         <div className="mt-2 grid gap-2">
-          <group.AppField name="maxSteps">
-            {(field) => (
-              <field.TextField type="number" label={t("jev.maxSteps")} min={1} max={48} required />
-            )}
-          </group.AppField>
           <group.AppField name="minConfidence">
             {(field) => (
               <field.TextField
@@ -415,7 +407,6 @@ export function JevAgentConfiguration(props: JevConfigurationProps) {
                 <JevAdvancedFields
                   form={form}
                   fields={{
-                    maxSteps: "maxSteps",
                     minConfidence: "minConfidence",
                     timeoutMs: "timeoutMs",
                   }}

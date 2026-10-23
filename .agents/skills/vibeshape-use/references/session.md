@@ -99,7 +99,12 @@ the approval mode or restore a stopped connection.
 ## Jev ACP client
 
 The bundled **Jev (TypeSafe)** agent and the compatible source-checkout Custom ACP launch use the
-same injected project attachment described above. They do not add MCP tools or permissions. Jev
+same injected project attachment described above. Jev has no decision-count turn limit: it continues
+until completion, a supported blocker, a failed operation or Stop. Its session retains earlier
+requests, accepted answers and the active draft receipt beyond recent observations. Continue the
+existing task and reuse those answers; repeated identical question messages and fields in one turn reuse the
+validated reply without another dialog. A process restart does not restore that runtime context.
+They do not add MCP tools or permissions. Jev
 selects actions and closed parameter values; a separately configured language model supplies open
 arguments. Native Jev connections enable PNG/JPEG input without a separate opt-in. Custom CLI
 launches may disable images with `JEV_ENABLE_IMAGES=0`. Image input is limited to four PNG/JPEG

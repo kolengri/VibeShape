@@ -10,7 +10,8 @@ Browser-only chat cannot launch the bundled local process.
 
 1. Discover the injected MCP catalog and load the bundled `vibeshape-use` instructions.
 2. Read `model_info`, retaining the actual project identity and revision.
-3. Send the goal, a bounded observation history, operator instructions and optional images to Jev.
+3. Send the goal, retained session context, a bounded recent observation history, operator instructions
+   and optional images to Jev.
    One request uses the complete tool descriptions to select a tool and speculate on its closed
    argument values. The selector catalog stores descriptions once, keyed by action ID; tool names
    belong to action choices and argument schemas belong to parameter questions. Only the selected
@@ -25,8 +26,8 @@ Browser-only chat cannot launch the bundled local process.
    arguments separately. This can select `ask_user_question` for missing design details. The
    replacement goes through the same project, revision and schema checks; no tool has run yet.
 7. Record its result and repeat until the selected action is `done` or `blocked`, a tool fails
-   with a diagnostic other than `command-no-op`, cancellation arrives, or the step budget is
-   exhausted. Without a helper, an uncertain selection asks for argument-model configuration
+   with a diagnostic other than `command-no-op`, or cancellation arrives. There is no decision-count
+   limit. Without a helper, an uncertain selection asks for argument-model configuration
    instead of reporting an internal threshold failure.
 
 Jev chooses actions rather than generating CAD code. Required closed parameters and optional closed
@@ -45,6 +46,14 @@ the process permits only read-only inspection. Inspect saved state and reconnect
 again; an unchanged saved revision does not establish the outcome of an unsaved draft operation.
 Native **Stop AI** still revokes project authority.
 Jev's `done` is a stopping decision, not independent proof of geometric or manufacturing correctness.
+
+Prior requests, validated accepted answers, the latest successful modeling, assembly or restored draft receipt and read skill
+URIs remain available to both Jev and the argument helper outside the rolling observation history.
+A continuation retains the original task and later corrections. Identical questions within one
+turn reuse their validated answer; no second dialog opens. The message and field definitions must
+both match, so different questions with generic field names still ask for their own answer.
+Changed fields or a new user turn can also ask a fresh question. Retained answers are task data, not new
+authority. Successful commit or discard clears the active draft receipt.
 
 ## Configure and connect
 
@@ -158,7 +167,7 @@ use your existing local environment/wrapper setup when launching the app from Fi
 | `JEV_ARGUMENTS_API_KEY` | Optional helper key; omit for a local endpoint without authentication |
 | `JEV_ENABLE_IMAGES` | PNG/JPEG input defaults to `1`; set `0` to disable it for a custom CLI launch |
 | `JEV_MIN_CONFIDENCE` | Minimum selected-branch confidence; default `0.5`, range `0`–`1` |
-| `JEV_MAX_STEPS` | Decisions per turn; default `24`, maximum `48` |
+| `JEV_MAX_STEPS` | Legacy setting accepted for compatibility (`1`–`48`); ignored during execution |
 | `JEV_TIMEOUT_MS` | Provider and ordinary MCP operation timeout; default `60000`, range `1000`–`120000`. Manual-review calls use the separate horizon below. |
 
 Manual-review calls (CAD/assembly commits, import commits, metadata/library changes, history,
@@ -199,10 +208,13 @@ ACP JSON-RPC, so it is intended for an ACP client rather than an interactive ter
 ## Limits and evidence
 
 - One project session and one prompt at a time. Session loading is not advertised. Within that
-  process, recent observations retain draft identifiers across turns; restarting the process does
+  process, retained session context preserves requests, accepted answers and active draft identity
+  across turns; restarting the process does
   not restore an interrupted draft or replay the previous turn.
 - Up to 256 catalog entries, a 128 KiB question catalog, 12 recent observations and a 64 KB text context. Large observations
-  are explicitly marked as truncated; earlier observations may leave the bounded window. Inspect
+  are explicitly marked as truncated; earlier routine observations may leave the bounded window.
+  Retained session context shares the 64 KB text budget and is never silently evicted. Requests that
+  cannot fit are rejected before decision execution. Inspect
   the model again when a required identity or parameter is absent.
   The description catalog has a separate 128 KB ceiling, and decision state has a 192 KB ceiling,
   reserving space for the full 64 KB controller context alongside the catalog. History and uncertain outcomes
@@ -222,8 +234,10 @@ ACP JSON-RPC, so it is intended for an ACP client rather than an interactive ter
 - Chat display has its own budget: only the first tool update carries arguments, and only when
   their JSON fits 8 KiB. Larger arguments are omitted, so that call has no argument-derived target
   hints. Result text uses an 8 KiB JSON budget or a marked 1024-character prefix. Full arguments
-  still reach the tool; controller observations retain their separate bounds. Display updates for
-  the maximum 48 steps stay below the desktop's cumulative 2 MiB turn budget.
+  still reach the tool; controller observations retain their separate bounds. For the bundled Jev
+  controller, each completed tool stage renews the desktop's 2 MiB / 10,000-update display budget.
+  A single stage must fit that bound; other ACP agents retain their cumulative turn budget. Long
+  Jev turns can finish without exhausting a cumulative display allowance.
 - Local regression tests exercise batching, selected arguments, cancellation, ACP updates,
   revision changes and schema rejection with fake providers. No paid API trial, live CAD authoring
   session or performance benchmark is implied by those tests.
