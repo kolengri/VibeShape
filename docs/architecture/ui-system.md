@@ -304,7 +304,7 @@ separately. See [the interaction audit](../product/direct-manipulation-and-short
 `WindowHeader` and `WindowTitle` in `packages/ui` own the shared heading spacing and typography
 for dialogs, destructive confirmations, task windows, Model, and AI chat. Feature compositions
 provide content and functional actions without redefining title size or weight. The AI header
-hides the retained chat overlay; the application-bar AI control reopens it without resetting
+hides the retained chat panel; the application-bar AI control reopens it without resetting
 the conversation, scroll position, or draft.
 
 Dialog and destructive-confirmation surfaces share a bordered header, a scrollable body, and a
@@ -368,7 +368,13 @@ Record the preset in the repository. Running `init --force` without review is pr
 
 The project-keyed editor scope owns a small assistant presentation context. Only the toggle and
 mounted panel consume its visibility; chat updates remain inside the project chat controller. Chat
-is positioned above the editor beneath the application bar. Opening it preserves the bounds of the toolbar, canvas, History, status bar, and active task form. The overlay has a bounded width and fits narrow windows without horizontal overflow. CSS safe insets keep viewport controls clear of the floating editor tools. The display
+occupies a bounded grid column beside the editor beneath the application bar, or a separate lower
+row below 640 CSS px. Opening it reallocates the toolbar, canvas, History, status bar, and task area
+without replacing their mounted content or losing task inputs. A workbench width provider encloses
+application settings as well as the editor; its stable measurement ref attaches to the workbench.
+React panel constraints and CSS container queries share the available editor width, excluding the
+shell's outer gutters, so settings and compact panels agree even while chat is open. CSS safe insets
+keep viewport controls clear of the floating editor tools. The display
 transcript mounts on the first explicit panel opening, so project navigation
 does not parse Markdown or construct message DOM for a closed chat. Later closes retain that DOM,
 its scroll state, the controller, and transient composer state. Automatic transcript following scrolls only the log element; it never scrolls an end marker through ancestor containers. Wheel overscroll stays inside the transcript.

@@ -43,13 +43,11 @@
   --workspace-radius: 0.625rem;
   --application-bar-height: 5rem;
   --command-bar-height: 2.25rem;
-  --assistant-width: min(420px, calc(100% - 2 * var(--workspace-gap)));
+  --assistant-width: min(420px, 40%);
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows:
-    var(--application-bar-height, 2.5rem) var(--command-bar-height)
-    minmax(0, 1fr) 1.5rem;
+  grid-template-rows: var(--application-bar-height) minmax(0, 1fr);
   row-gap: var(--workspace-gap);
   padding: 0 var(--workspace-gap) var(--workspace-gap);
   height: 100svh;
@@ -63,6 +61,22 @@
   margin-inline: calc(-1 * var(--workspace-gap));
 }
 
+.cad-shell:has(.assistant-panel:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) var(--assistant-width);
+  column-gap: var(--workspace-gap);
+}
+
+.editor-workbench {
+  container: editor-workbench / inline-size;
+  display: grid;
+  grid-column: 1;
+  grid-row: 2;
+  grid-template-rows: var(--command-bar-height) minmax(0, 1fr) 1.5rem;
+  row-gap: var(--workspace-gap);
+  min-width: 0;
+  min-height: 0;
+}
+
 .cad-shell nav[data-sketch-mode],
 .workspace-history > section {
   border: 1px solid var(--border);
@@ -73,18 +87,20 @@
   position: relative;
   z-index: 30;
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 1;
 }
 
 .editor-model-area {
   grid-column: 1;
-  grid-row: 3;
+  grid-row: 2;
 }
 
-.cad-shell > footer {
+.editor-workbench > footer {
   position: relative;
+  overflow-x: auto;
+  white-space: nowrap;
   grid-column: 1;
-  grid-row: 4;
+  grid-row: 3;
 }
 
 .workspace-history {
@@ -127,17 +143,31 @@
 }
 
 .assistant-panel {
-  position: absolute;
+  position: relative;
   z-index: 40;
-  top: calc(var(--application-bar-height) + var(--workspace-gap));
-  right: var(--workspace-gap);
-  bottom: var(--workspace-gap);
-  width: var(--assistant-width);
+  grid-column: 2;
+  grid-row: 2;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--workspace-radius);
   box-shadow: var(--shadow-lg);
+}
+
+@media (width < 40rem) {
+  .cad-shell {
+    --workspace-sheet-edge: calc(-1 * var(--workspace-gap));
+  }
+
+  .cad-shell:has(.assistant-panel:not([hidden])) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--application-bar-height) minmax(0, 1fr) minmax(0, 45%);
+  }
+
+  .assistant-panel {
+    grid-column: 1;
+    grid-row: 3;
+  }
 }
 
 .application-bar[data-unified-chrome] {
@@ -241,7 +271,8 @@
   display: none;
 }
 
-@media (width < 64rem) {
+/* Content-width breakpoints exclude the shell's two 0.5rem outer gutters. */
+@container editor-workbench (width < 63rem) {
   .cad-workspace-grid {
     --workspace-sheet-max-height: min(100%, max(50%, 12rem), 32rem);
   }
@@ -294,14 +325,14 @@
   }
 }
 
-@media (width < 40rem) {
+@container editor-workbench (width < 39rem) {
   .workspace-viewport {
     --workspace-chrome-left: var(--workspace-gap);
   }
 
   .workspace-panel--task {
-    right: calc(-1 * var(--workspace-gap));
-    left: calc(-1 * var(--workspace-gap));
+    right: var(--workspace-sheet-edge, 0px);
+    left: var(--workspace-sheet-edge, 0px);
   }
 
   .workspace-panel--tree {
