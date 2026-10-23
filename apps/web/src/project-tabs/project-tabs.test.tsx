@@ -94,6 +94,37 @@ function Shell({ onOpenProjects }: { onOpenProjects?: () => Promise<ProjectSwitc
 function BlockingStatus() {
   return <output aria-label="Blocking project activity">{useBlockingActivity() ?? "none"}</output>
 }
+
+it("shows a placeholder for an opening project whose tab name has not loaded", async () => {
+  current = {
+    status: "loading",
+    openingProjectId: documentIdSchema.parse(thirdId),
+    saveStatus: "saved",
+    diagnostic: null,
+    report: null,
+  }
+  const view = setup([firstId, secondId])
+  const tabs = screen.getByRole("tablist", { name: "Open projects" })
+  expect(tabs.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+  expect(screen.queryByRole("tab", { name: "Reference plate" })).toBeNull()
+
+  act(() =>
+    publish({
+      ...state(thirdId),
+      status: "loading",
+      openingProjectId: documentIdSchema.parse(thirdId),
+    }),
+  )
+  await screen.findByRole("tab", { name: "Reference plate" })
+  expect(view.container.querySelector('[data-slot="skeleton"]')).toBeNull()
+  expect(localStorage.getItem("vibeshape.open-project-tabs.v1")).not.toContain(thirdId)
+  expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(projectTabId(thirdId))
+
+  act(() => publish(state(thirdId)))
+  await waitFor(() =>
+    expect(localStorage.getItem("vibeshape.open-project-tabs.v1")).toContain(thirdId),
+  )
+})
 function setup(
   open = [firstId, secondId],
   onOpenProjects?: () => Promise<ProjectSwitchResult>,

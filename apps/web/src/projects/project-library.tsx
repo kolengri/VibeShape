@@ -3,6 +3,7 @@ import type { LocalProjectSummary } from "@vibeshape/persistence"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Copy } from "@vibeshape/ui/components/icons"
+import { Skeleton } from "@vibeshape/ui/components/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useId } from "react"
@@ -327,9 +328,29 @@ export function ProjectLibrary({
 
   if (library.status === "loading") {
     return (
-      <p className="text-sm text-muted-foreground" role="status">
-        {t("loading")}
-      </p>
+      <section aria-busy="true" aria-label={t("listLabel")} className="grid gap-3">
+        <p className="sr-only" role="status">
+          {t("loading")}
+        </p>
+        <div aria-hidden="true" className="flex items-center justify-between gap-3">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-8 w-28" />
+        </div>
+        <div
+          aria-hidden="true"
+          data-project-skeleton="library"
+          className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+        >
+          {["first", "second", "third", "fourth", "fifth", "sixth"].map((item) => (
+            <div key={item} className="grid gap-3 rounded-md border bg-card p-4">
+              <Skeleton className="h-40 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ))}
+        </div>
+      </section>
     )
   }
 
