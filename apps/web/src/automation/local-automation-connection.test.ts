@@ -1329,7 +1329,7 @@ describe("local AI project management consent", () => {
         }),
       }),
     )
-    fireEvent.pointerDown(screen.getByRole("button", { name: "AI connection and approval mode" }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Built-in assistant connection" }), {
       button: 0,
       ctrlKey: false,
       pointerType: "mouse",

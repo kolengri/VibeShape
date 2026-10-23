@@ -48,6 +48,7 @@ export function LocalAutomationStatus({
   current,
   showStopControl = true,
   hideEnableControl = false,
+  approvalLabel,
 }: {
   connection: Pick<
     Connection,
@@ -56,6 +57,7 @@ export function LocalAutomationStatus({
   current: ReturnType<Connection["getSnapshot"]>
   showStopControl?: boolean
   hideEnableControl?: boolean
+  approvalLabel?: string
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const approval = useExternalConnectionApproval()
@@ -64,7 +66,12 @@ export function LocalAutomationStatus({
       {current.connected && current.projectBound ? (
         <ProjectAssistantConnectionStatus current={current} />
       ) : current.connected ? (
-        <ExternalConnectionApproval connection={connection} current={current} approval={approval} />
+        <ExternalConnectionApproval
+          connection={connection}
+          current={current}
+          approval={approval}
+          label={approvalLabel ?? t("approvalSettings")}
+        />
       ) : (
         <InactiveConnectionStatus
           connection={connection}
@@ -146,10 +153,12 @@ function ExternalConnectionApproval({
   connection,
   current,
   approval,
+  label,
 }: {
   connection: Pick<Connection, "enableAutoApply" | "disableAutoApply" | "setProjectManagement">
   current: ReturnType<Connection["getSnapshot"]>
   approval: ReturnType<typeof useExternalConnectionApproval>
+  label: string
 }) {
   const t = useTranslations("app.shell.applicationBar")
   const { open, setOpen, failed, setFailed, trigger, openingDialog, projectScopeId } = approval
@@ -170,7 +179,7 @@ function ExternalConnectionApproval({
             size="xs"
             variant="ghost"
             className="text-foreground"
-            aria-label={t("approvalSettings")}
+            aria-label={label}
           >
             <span role="status" className="whitespace-nowrap">
               {t("approvalStatus", {
@@ -253,7 +262,7 @@ function ProjectAssistantConnectionStatus({
           size="xs"
           variant="ghost"
           className="text-foreground"
-          aria-label={t("approvalSettings")}
+          aria-label={t("nativeConnectionSettings")}
         >
           <span role="status" className="whitespace-nowrap">
             {current.autoApply
@@ -265,7 +274,7 @@ function ProjectAssistantConnectionStatus({
       <PopoverContent
         side="top"
         align="end"
-        aria-label={t("approvalSettings")}
+        aria-label={t("nativeConnectionSettings")}
         className="max-w-72 p-3 text-xs"
       >
         <p className="break-words font-medium">{current.client?.name ?? t("aiConnectedShort")}</p>

@@ -772,7 +772,8 @@
         "aiWaitingForClient": "MCP client not connected",
         "aiWaitingDescription": "Connect an MCP client, then enable AI access to this project.",
         "aiConnectedShort": "AI on",
-        "approvalSettings": "AI connection and approval mode",
+        "approvalSettings": "Local MCP connection and approval mode",
+        "nativeConnectionSettings": "Built-in assistant connection",
         "approvalStatus": "AI access on · {mode}",
         "manualApproval": "Approve each change",
         "automaticApproval": "Apply automatically",
@@ -797,6 +798,7 @@
         "projectUnavailable": "Project unavailable"
       },
       "remoteAi": {
+        "approvalSettings": "Remote AI connection and approval mode",
         "trigger": "Remote AI…",
         "close": "Close remote pairing dialog",
         "title": "Pair a remote AI client",

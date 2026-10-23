@@ -268,6 +268,49 @@ describe("desktop external status policy", () => {
 })
 
 describe("all-transport editor activity guard", () => {
+  it("distinguishes concurrent native and external connection controls by accessible name", () => {
+    ports.nativeA.publish({ client: { name: "Built-in assistant", version: "1" } })
+    ports.external.publish({ client: { name: "Diagnostics", version: "1" } })
+    render(<Workspace showStatus />)
+    expect(screen.getByRole("button", { name: "Built-in assistant connection" })).toBeTruthy()
+    expect(
+      screen.getByRole("button", { name: "Local MCP connection and approval mode" }),
+    ).toBeTruthy()
+  })
+
+  it.each(["connected", "recovering"] as const)(
+    "retains external approval beside a remote client while native access is %s",
+    (state) => {
+      ports.remote.publish({
+        connected: true,
+        client: {
+          clientId: "remote-diagnostics",
+          name: "Remote diagnostics",
+          redirectUri: "http://127.0.0.1/callback",
+        },
+      })
+      ports.nativeA.publish({
+        connected: state === "connected",
+        recovering: state === "recovering",
+      })
+      ports.external.publish({
+        connected: false,
+        client: { name: "Local diagnostics", version: "1" },
+      })
+      render(<Workspace showStatus />)
+      fireEvent.click(screen.getByRole("button", { name: "Enable AI session" }))
+      expect(ports.external.enable).toHaveBeenCalledTimes(1)
+      expect(ports.nativeA.enable).not.toHaveBeenCalled()
+      act(() => ports.external.publish({ connected: true }))
+      expect(
+        screen.getByRole("button", { name: "Local MCP connection and approval mode" }),
+      ).toBeTruthy()
+      expect(
+        screen.getByRole("button", { name: "Remote AI connection and approval mode" }),
+      ).toBeTruthy()
+    },
+  )
+
   it.each(["connected", "recovering"] as const)(
     "allows explicit external approval while native access is %s and preserves its Stop control",
     (state) => {

@@ -51,6 +51,7 @@ export function RemoteAutomationStatus({
   }, [current.consent])
   return current.connected ? (
     <LocalAutomationStatus
+      approvalLabel={t("approvalSettings")}
       connection={{
         enable: async () => false,
         disable: connection.disable,

@@ -234,29 +234,28 @@ function AutomationStatusControls({
   controller: DocumentControllerState
   blockedReason: ReturnType<typeof getProjectActionBlock>
 }) {
+  if (controller.status !== "ready") return null
   const retainedLocal = hasRetainedLocalApproval(current)
   const showLocal = retainedLocal
     ? !remote.connected
     : current.available && !remote.pairingCode && !remote.connecting
   return (
     <>
-      {showLocal && controller.status === "ready" ? (
-        <>
-          <LocalAutomationStatus
-            key={`${controller.report?.snapshot.id}:${current.connected}`}
-            connection={connection}
-            current={current}
-            hideEnableControl={external.defaultAccess === true}
-          />
-          <ExternalAutomationStatus
-            connection={connection}
-            current={current}
-            externalConnection={externalConnection}
-            external={external}
-          />
-        </>
+      {showLocal ? (
+        <LocalAutomationStatus
+          key={`${controller.report?.snapshot.id}:${current.connected}`}
+          connection={connection}
+          current={current}
+          hideEnableControl={external.defaultAccess === true}
+        />
       ) : null}
-      {remote.available && controller.status === "ready" ? (
+      <ExternalAutomationStatus
+        connection={connection}
+        current={current}
+        externalConnection={externalConnection}
+        external={external}
+      />
+      {remote.available ? (
         <RemoteAutomationStatus
           connection={remoteConnection}
           current={remote}
