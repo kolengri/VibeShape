@@ -1972,7 +1972,7 @@ function HistoryGroup({
             onDragEnd={handleDragEnd}
           >
             <div
-              className="relative flex min-w-0 items-start overflow-auto pl-2 pr-8"
+              className="relative flex min-w-0 items-start overflow-x-auto overflow-y-hidden pb-4 pl-2 pr-8 [scrollbar-width:thin]"
               data-history-track
             >
               {folderGroups.map((group) => {

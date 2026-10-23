@@ -315,3 +315,48 @@ test("keeps every toolbar action inside its measured budget near category fit th
     }
   }
 })
+
+test("reserves a separate History scrollbar lane below operation controls", async ({ page }) => {
+  await page.goto("/")
+  await invokeModelCommand(page, "Primitives", "Box")
+  await page
+    .getByRole("form", { name: "Create box", exact: true })
+    .getByRole("button", { name: "Create box", exact: true })
+    .click()
+  const history = page.getByRole("region", { name: "Feature history", exact: true })
+  const track = history.locator("[data-history-track]")
+  // Overlay scrollbars paint without consuming layout space; reserve their lane explicitly.
+  await page.addStyleTag({ content: "[data-history-track] { scrollbar-width: none; }" })
+  await track.evaluate((element) => {
+    element.style.maxWidth = "48px"
+  })
+  for (const detailed of [false, true]) {
+    if (detailed) await history.getByRole("button", { name: "Details", exact: true }).click()
+    expect(await track.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+    const rail = await track.boundingBox()
+    const row = await history.locator("[data-history-id]").first().boundingBox()
+    if (!rail || !row) throw new Error("History track and operation must be measurable")
+    expect(rail.y + rail.height - (row.y + row.height)).toBeGreaterThanOrEqual(16)
+    const control = history.getByRole("treeitem", { name: "Box 1", exact: true })
+    if (!detailed) {
+      const bounds = await control.boundingBox()
+      if (!bounds) throw new Error("History operation control must be measurable")
+      expect(
+        await control.evaluate(
+          (element, point) => element.contains(document.elementFromPoint(point.x, point.y)),
+          {
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height - 2,
+          },
+        ),
+      ).toBe(true)
+    }
+    await track.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+    })
+    expect(await track.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+    await track.evaluate((element) => {
+      element.scrollLeft = 0
+    })
+  }
+})
