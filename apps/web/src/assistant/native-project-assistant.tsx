@@ -200,12 +200,7 @@ function NativeAutomationRecoveryStatus({
 }
 
 function nativeProjectActionBlocked(state: NativeChatState) {
-  return (
-    state.busy ||
-    state.connecting ||
-    assistantCheckpointBusy(state) ||
-    state.queuedMessages.length > 0
-  )
+  return state.busy || nativeHistoryBusy(state) || state.queuedMessages.length > 0
 }
 
 function useNativeChatError(state: NativeChatState) {

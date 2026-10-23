@@ -59,7 +59,7 @@ type AssistantPanelProps = AssistantComposerProps & {
   contextOmittedMessages?: number | undefined
   onRetryHistory?: (() => Promise<void>) | undefined
   onClose: () => void
-  onReset: () => Promise<void>
+  onReset: () => Promise<boolean> | Promise<void>
   previousChats?: readonly TranscriptArchiveSummary[]
   onOpenChat?: (id: string) => Promise<boolean>
   historyBusy?: boolean
@@ -238,7 +238,7 @@ function AssistantHeader({
   settingsOpen: boolean
   onSettings: () => void
   onClose: () => void
-  onReset: () => Promise<void>
+  onReset: AssistantPanelProps["onReset"]
   canReset: boolean
   historyOpen: boolean
   onHistory?: (() => void) | undefined
@@ -429,7 +429,12 @@ function AssistantConversationHeader({
         settingsOpen={settings.open}
         onSettings={settings.show}
         onClose={props.onClose}
-        onReset={props.onReset}
+        onReset={async () => {
+          if ((await props.onReset()) === true) {
+            setHistoryOpen(false)
+            onOpened()
+          }
+        }}
         canReset={canSwitch && props.messages.length > 0}
         historyOpen={historyOpen}
         historyButtonRef={historyButton}

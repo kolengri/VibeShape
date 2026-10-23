@@ -89,6 +89,32 @@ afterEach(() => {
 })
 
 describe("assistant transcript and composer", () => {
+  it.each([true, false])(
+    "clears a new chat's composer only after a successful reset: %s",
+    async (success) => {
+      const reset = vi.fn(async () => success)
+      render(
+        panel({
+          messages: [{ id: "previous", role: "user", text: "Saved conversation" }],
+          onReset: reset,
+          attachmentCapabilities: { text: true, images: false },
+        }),
+      )
+      selectFiles([new File(["draft bytes"], "draft.txt", { type: "text/plain" })])
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "Remove draft.txt" })).toBeTruthy(),
+      )
+      fireEvent.change(draft(), { target: { value: "Unsent old conversation draft" } })
+      await userEvent.click(screen.getByRole("button", { name: "New chat" }))
+      expect(reset).toHaveBeenCalledTimes(1)
+      await waitFor(() =>
+        expect(draft().value).toBe(success ? "" : "Unsent old conversation draft"),
+      )
+      const remove = screen.queryByRole("button", { name: "Remove draft.txt" })
+      if (success) expect(remove).toBeNull()
+      else expect(remove).toBeTruthy()
+    },
+  )
   it("disables checkpoint and Apply controls while conversation history is switching", async () => {
     const apply = vi.fn(async () => true),
       undo = vi.fn(async () => true),

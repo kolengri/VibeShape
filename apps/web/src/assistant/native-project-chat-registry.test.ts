@@ -5,6 +5,7 @@ import type {
   AssistantEvent,
   AssistantSnapshot,
 } from "@vibeshape/automation-api/assistant"
+import { isProjectRuntimeResourceBusy } from "../document/project-runtime-resources"
 import { checkpointFixture } from "./assistant-checkpoints.test-fixture"
 import { saveAssistantPreferences } from "./assistant-preferences"
 import { createNativeProjectChatRegistry } from "./native-project-chat-registry"
@@ -25,6 +26,7 @@ function fixture() {
   const pending = new Map<string, () => void>()
   const connected: string[] = []
   const disconnected: string[] = []
+  let disconnectGate: Promise<void> | undefined
   const result = async (input: { projectId: string }) => {
     const value = snapshots.get(input.projectId)
     if (!value) throw new Error("The test project has no agent session.")
@@ -53,6 +55,7 @@ function fixture() {
     },
     async disconnect(input) {
       disconnected.push(input.projectId)
+      await disconnectGate
       return result(input)
     },
     async prompt(input) {
@@ -81,6 +84,13 @@ function fixture() {
     storage,
     connected,
     disconnected,
+    deferDisconnect() {
+      let release = () => {}
+      disconnectGate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return release
+    },
     emit: (event: AssistantEvent) => {
       for (const listener of listeners) listener(event)
     },
@@ -88,6 +98,25 @@ function fixture() {
 }
 
 describe("native project chat retention", () => {
+  it("keeps the registry and project resource busy throughout a conversation switch", async () => {
+    const f = fixture()
+    const projectId = "0195b5ac-b250-7a2c-8c33-00000000f001"
+    const registry = createNativeProjectChatRegistry(f.bridge, f.storage)
+    const chat = registry.get(projectId)
+    chat.start()
+    await chat.connect({ command: "/installed/agent", args: [] })
+    const release = f.deferDisconnect()
+    const switching = chat.reset()
+    expect(chat.getSnapshot().switchingChat).toBe(true)
+    expect(registry.isBusy()).toBe(true)
+    expect(isProjectRuntimeResourceBusy(projectId)).toBe(true)
+    release()
+    await switching
+    expect(chat.getSnapshot().switchingChat).toBe(false)
+    expect(registry.isBusy()).toBe(false)
+    expect(isProjectRuntimeResourceBusy(projectId)).toBe(false)
+    registry.dispose()
+  })
   it("enables images on automatic startup from legacy Jev preferences without resubmitting settings", async () => {
     const f = fixture()
     saveAssistantPreferences(

@@ -1442,7 +1442,7 @@ export function createNativeChatController({
       if (current) await run(() => bridge.cancel(current))
     },
     async reset() {
-      await switchChat(null)
+      return switchChat(null)
     },
     openChat: (id: string) => switchChat(id),
     async respondPermission(allow: boolean) {

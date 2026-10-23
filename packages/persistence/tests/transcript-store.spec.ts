@@ -18,120 +18,166 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/transcript-evidence.html")
 })
 
-test("migrates v1 transcripts without loss and preserves archives across reopen", async ({
+test("migrates v1 and v2 transcripts without loss and preserves archives across reopen", async ({
   page,
 }) => {
-  const report = await page.evaluate(
-    async ({ path, projectId }) => {
-      const { TranscriptDatabase, IndexedDbTranscriptStore }: typeof TranscriptModule =
-        await import(path)
-      const name = `transcript-v1-${crypto.randomUUID()}`
-      const entries = Array.from({ length: 137 }, (_, position) => ({
-        version: 1 as const,
-        projectId,
-        id: crypto.randomUUID(),
-        position: position * 2,
-        value: { role: position % 2 ? "assistant" : "user", text: `Message ${position}` },
-      }))
-      const session = {
+  for (const oldVersion of [1, 2]) {
+    const report = await page.evaluate(
+      async ({ path, projectId, oldVersion }) => {
+        const { TranscriptDatabase, IndexedDbTranscriptStore }: typeof TranscriptModule =
+          await import(path)
+        const name = `transcript-v${oldVersion}-${crypto.randomUUID()}`
+        const entries = Array.from({ length: 137 }, (_, position) => ({
+          version: 1 as const,
+          projectId,
+          id: crypto.randomUUID(),
+          position: position * 2,
+          value: { role: position % 2 ? "assistant" : "user", text: `Message ${position}` },
+        }))
+        const session = {
+          provider: "native",
+          sessionId: "retained-session",
+          context: [1, true, null],
+        }
+        const conversationId = oldVersion === 2 ? crypto.randomUUID() : projectId
+        const head = {
+          version: 1,
+          projectId,
+          revision: 9,
+          session,
+          ...(oldVersion === 2 ? { conversationId } : {}),
+        }
+        const previousArchives =
+          oldVersion === 2
+            ? [
+                {
+                  version: 1 as const,
+                  projectId,
+                  id: crypto.randomUUID(),
+                  title: "Earlier prompt",
+                  updatedAt: 1,
+                  entries: [entries[0]],
+                  session: { sessionId: "earlier-session" },
+                },
+              ]
+            : []
+        await new Promise<void>((resolve, reject) => {
+          // Dexie multiplies its schema version by 10 for native IndexedDB.
+          const request = indexedDB.open(name, oldVersion * 10)
+          request.onupgradeneeded = () => {
+            request.result.createObjectStore("heads", { keyPath: "projectId" })
+            const store = request.result.createObjectStore("entries", {
+              keyPath: ["projectId", "id"],
+            })
+            store.createIndex("[projectId+position]", ["projectId", "position"])
+            store.createIndex("projectId", "projectId")
+            if (oldVersion === 2) {
+              const archives = request.result.createObjectStore("archives", {
+                keyPath: ["projectId", "id"],
+              })
+              archives.createIndex("projectId", "projectId")
+            }
+          }
+          request.onerror = () => reject(request.error)
+          request.onsuccess = () => {
+            const old = request.result
+            const transaction = old.transaction(
+              oldVersion === 2 ? ["heads", "entries", "archives"] : ["heads", "entries"],
+              "readwrite",
+            )
+            transaction.objectStore("heads").put(head)
+            for (const entry of entries) transaction.objectStore("entries").put(entry)
+            for (const archive of previousArchives) transaction.objectStore("archives").put(archive)
+            transaction.onabort = () => reject(transaction.error)
+            transaction.oncomplete = () => {
+              old.close()
+              resolve()
+            }
+          }
+        })
+        let database = new TranscriptDatabase(name)
+        let store = new IndexedDbTranscriptStore(database)
+        try {
+          const migrated = await store.load(projectId)
+          const migrationPreserved =
+            JSON.stringify(migrated) ===
+            JSON.stringify({ revision: 9, conversationId, session, entries })
+          const secondDatabase = new TranscriptDatabase(name)
+          const secondIdentity = (
+            await new IndexedDbTranscriptStore(secondDatabase).load(projectId)
+          )?.conversationId
+          secondDatabase.close()
+          const legacyHeadUnchanged =
+            JSON.stringify(await database.heads.get(projectId)) === JSON.stringify(head)
+          const initialArchives = await store.listArchives(projectId)
+          const previousArchivesPreserved =
+            JSON.stringify(await database.archives.toArray()) === JSON.stringify(previousArchives)
+          const previousSummariesPreserved =
+            JSON.stringify(initialArchives) ===
+            JSON.stringify(
+              previousArchives.map(({ id, title, updatedAt }) => ({ id, title, updatedAt })),
+            )
+          const blank = await store.switchConversation(projectId, 9, null, "Original prompt")
+          const summaries = await store.listArchives(projectId)
+          const archive = summaries.find(({ id }) => id === conversationId)
+          if (!archive) throw new Error("Expected an inactive transcript")
+          database.close()
+          database = new TranscriptDatabase(name)
+          store = new IndexedDbTranscriptStore(database)
+          const reopenedArchives = await store.listArchives(projectId)
+          const reopenedBlank = await store.load(projectId)
+          const restored = await store.switchConversation(projectId, 10, archive.id, "Unused")
+          return {
+            migrationPreserved,
+            legacyHeadUnchanged,
+            clientsAgreeOnIdentity: secondIdentity === conversationId,
+            previousArchivesPreserved,
+            previousSummariesPreserved,
+            schemaVersion: database.verno,
+            blankRevision: blank.revision,
+            reopenedBlank,
+            blankIdentityPreserved:
+              blank.conversationId !== conversationId &&
+              reopenedBlank?.conversationId === blank.conversationId,
+            archiveIdentityPreserved: archive.id === conversationId,
+            archivePreserved: JSON.stringify(reopenedArchives) === JSON.stringify(summaries),
+            restoredEntries: JSON.stringify(restored.entries) === JSON.stringify(entries),
+            restoredSession: restored.session,
+            restoredRevision: restored.revision,
+            restoredIdentityPreserved: restored.conversationId === conversationId,
+            remainingArchivesPreserved:
+              JSON.stringify(await database.archives.toArray()) ===
+              JSON.stringify(previousArchives),
+          }
+        } finally {
+          await database.delete()
+        }
+      },
+      { path: modulePath, projectId, oldVersion },
+    )
+    expect(report).toEqual({
+      migrationPreserved: true,
+      legacyHeadUnchanged: true,
+      clientsAgreeOnIdentity: true,
+      previousArchivesPreserved: true,
+      previousSummariesPreserved: true,
+      schemaVersion: 3,
+      blankRevision: 10,
+      reopenedBlank: { revision: 10, conversationId: expect.any(String), entries: [] },
+      blankIdentityPreserved: true,
+      archiveIdentityPreserved: true,
+      archivePreserved: true,
+      restoredEntries: true,
+      restoredSession: {
         provider: "native",
         sessionId: "retained-session",
         context: [1, true, null],
-      }
-      await new Promise<void>((resolve, reject) => {
-        // Dexie schema v1 uses native IndexedDB version 10.
-        const request = indexedDB.open(name, 10)
-        request.onupgradeneeded = () => {
-          request.result.createObjectStore("heads", { keyPath: "projectId" })
-          const store = request.result.createObjectStore("entries", {
-            keyPath: ["projectId", "id"],
-          })
-          store.createIndex("[projectId+position]", ["projectId", "position"])
-          store.createIndex("projectId", "projectId")
-        }
-        request.onerror = () => reject(request.error)
-        request.onsuccess = () => {
-          const old = request.result
-          const transaction = old.transaction(["heads", "entries"], "readwrite")
-          transaction.objectStore("heads").put({ version: 1, projectId, revision: 9, session })
-          for (const entry of entries) transaction.objectStore("entries").put(entry)
-          transaction.onabort = () => reject(transaction.error)
-          transaction.oncomplete = () => {
-            old.close()
-            resolve()
-          }
-        }
-      })
-      let database = new TranscriptDatabase(name)
-      let store = new IndexedDbTranscriptStore(database)
-      try {
-        const migrated = await store.load(projectId)
-        const migrationPreserved =
-          JSON.stringify(migrated) ===
-          JSON.stringify({ revision: 9, conversationId: projectId, session, entries })
-        const secondDatabase = new TranscriptDatabase(name)
-        const secondIdentity = (await new IndexedDbTranscriptStore(secondDatabase).load(projectId))
-          ?.conversationId
-        secondDatabase.close()
-        const legacyHeadUnchanged =
-          JSON.stringify(await database.heads.get(projectId)) ===
-          JSON.stringify({ version: 1, projectId, revision: 9, session })
-        const initiallyEmpty = await store.listArchives(projectId)
-        const blank = await store.switchConversation(projectId, 9, null, "Original prompt")
-        const [archive] = await store.listArchives(projectId)
-        if (!archive) throw new Error("Expected an inactive transcript")
-        database.close()
-        database = new TranscriptDatabase(name)
-        store = new IndexedDbTranscriptStore(database)
-        const reopenedArchives = await store.listArchives(projectId)
-        const reopenedBlank = await store.load(projectId)
-        const restored = await store.switchConversation(projectId, 10, archive.id, "Unused")
-        return {
-          migrationPreserved,
-          legacyHeadUnchanged,
-          clientsAgreeOnLegacyIdentity: secondIdentity === projectId,
-          initiallyEmpty,
-          schemaVersion: database.verno,
-          blankRevision: blank.revision,
-          reopenedBlank,
-          blankIdentityPreserved:
-            blank.conversationId !== projectId &&
-            reopenedBlank?.conversationId === blank.conversationId,
-          archiveIdentity: archive.id,
-          archivePreserved: JSON.stringify(reopenedArchives) === JSON.stringify([archive]),
-          restoredEntries: JSON.stringify(restored.entries) === JSON.stringify(entries),
-          restoredSession: restored.session,
-          restoredRevision: restored.revision,
-          restoredIdentity: restored.conversationId,
-          remainingArchives: await store.listArchives(projectId),
-        }
-      } finally {
-        await database.delete()
-      }
-    },
-    { path: modulePath, projectId },
-  )
-  expect(report).toEqual({
-    migrationPreserved: true,
-    legacyHeadUnchanged: true,
-    clientsAgreeOnLegacyIdentity: true,
-    initiallyEmpty: [],
-    schemaVersion: 2,
-    blankRevision: 10,
-    reopenedBlank: { revision: 10, conversationId: expect.any(String), entries: [] },
-    blankIdentityPreserved: true,
-    archiveIdentity: projectId,
-    archivePreserved: true,
-    restoredEntries: true,
-    restoredSession: {
-      provider: "native",
-      sessionId: "retained-session",
-      context: [1, true, null],
-    },
-    restoredRevision: 11,
-    restoredIdentity: projectId,
-    remainingArchives: [],
-  })
+      },
+      restoredRevision: 11,
+      restoredIdentityPreserved: true,
+      remainingArchivesPreserved: true,
+    })
+  }
 })
 
 test("exchanges inactive snapshots, isolates projects, and retains reset tombstones", async ({
@@ -372,7 +418,7 @@ test("rolls back late write failures and cancellation and rejects stale switches
   })
 })
 
-test("validates persisted archives and rejects corruption before replacing the active transcript", async ({
+test("validates summary metadata and defers corrupt payload rejection until atomic selection", async ({
   page,
 }) => {
   const report = await page.evaluate(
@@ -397,7 +443,9 @@ test("validates persisted archives and rejects corruption before replacing the a
         const corruptions: unknown[] = [
           { ...archive, version: 99 },
           { ...archive, title: 42 },
+          { ...archive, title: undefined },
           { ...archive, updatedAt: Number.NaN },
+          { ...archive, updatedAt: -1 },
           { ...archive, session: new Date() },
           { ...archive, entries: [{ ...archive.entries[0], value: new Map() }] },
           { ...archive, entries: [{ ...archive.entries[0], projectId: otherProjectId }] },
@@ -436,7 +484,20 @@ test("validates persisted archives and rejects corruption before replacing the a
           () => false,
           () => true,
         )
-        return { outcomes, invalidProjectRejected }
+        const corruptBeforeCommit = JSON.stringify(await database.archives.toArray())
+        const activeCommitRevision = await store.commit({
+          projectId,
+          expectedRevision: 3,
+          upserts: [{ ...entry, value: { text: "Still writable" } }],
+          deletedIds: [],
+        })
+        return {
+          outcomes,
+          invalidProjectRejected,
+          activeCommitRevision,
+          corruptArchivePreserved:
+            JSON.stringify(await database.archives.toArray()) === corruptBeforeCommit,
+        }
       } finally {
         await database.delete()
       }
@@ -444,17 +505,23 @@ test("validates persisted archives and rejects corruption before replacing the a
     { path: modulePath, projectId, otherProjectId },
   )
   expect(report).toEqual({
-    outcomes: Array.from({ length: 9 }, () => ({
-      listRejected: true,
-      switchRejected: true,
-      activeUnchanged: true,
-      archiveUnchanged: true,
-    })),
+    outcomes: [false, true, true, true, true, false, false, false, false, false, false].map(
+      (listRejected) => ({
+        listRejected,
+        switchRejected: true,
+        activeUnchanged: true,
+        archiveUnchanged: true,
+      }),
+    ),
     invalidProjectRejected: true,
+    activeCommitRevision: 4,
+    corruptArchivePreserved: true,
   })
 })
 
-test("lists every archive newest first with an ascending ID tie breaker", async ({ page }) => {
+test("lists every archive using only metadata keys, newest first with an ascending ID tie breaker", async ({
+  page,
+}) => {
   const report = await page.evaluate(
     async ({ path, projectId }) => {
       const { TranscriptDatabase, IndexedDbTranscriptStore }: typeof TranscriptModule =
@@ -479,7 +546,30 @@ test("lists every archive newest first with an ascending ID tie breaker", async 
           updatedAt: index < 2 ? 100 : index,
         }))
         await database.archives.bulkAdd(archives.reverse())
-        const summaries = await store.listArchives(projectId)
+        const restoreMethods: (() => void)[] = []
+        for (const prototype of [IDBObjectStore.prototype, IDBIndex.prototype]) {
+          for (const method of ["get", "getAll", "getAllRecords", "openCursor"]) {
+            const descriptor = Object.getOwnPropertyDescriptor(prototype, method)
+            if (!descriptor) continue
+            Object.defineProperty(prototype, method, {
+              ...descriptor,
+              value: new Proxy(descriptor.value, {
+                apply(target, source, args) {
+                  const name = source instanceof IDBIndex ? source.objectStore.name : source.name
+                  if (name === "archives") throw new Error("Archive listing read a transcript body")
+                  return Reflect.apply(target, source, args)
+                },
+              }),
+            })
+            restoreMethods.push(() => Object.defineProperty(prototype, method, descriptor))
+          }
+        }
+        let summaries: Awaited<ReturnType<typeof store.listArchives>>
+        try {
+          summaries = await store.listArchives(projectId)
+        } finally {
+          for (const restore of restoreMethods) restore()
+        }
         return {
           count: summaries.length,
           first: summaries[0],

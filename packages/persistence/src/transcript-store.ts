@@ -29,6 +29,12 @@ const archiveSchema = z.strictObject({
   entries: z.array(entrySchema).nonempty(),
   session: z.json().optional(),
 })
+const archiveSummaryKeySchema = z.tuple([
+  documentIdSchema,
+  archiveSchema.shape.updatedAt,
+  archiveSchema.shape.id,
+  archiveSchema.shape.title,
+])
 type Archive = z.infer<typeof archiveSchema>
 export type TranscriptArchiveSummary = { id: string; title: string; updatedAt: number }
 export type TranscriptSnapshot = {
@@ -107,6 +113,9 @@ export class TranscriptDatabase extends Dexie {
       entries: "[projectId+id], [projectId+position], projectId",
     })
     this.version(2).stores({ archives: "[projectId+id], projectId" })
+    this.version(3).stores({
+      archives: "[projectId+id], projectId, [projectId+updatedAt+id+title]",
+    })
   }
 }
 
@@ -213,13 +222,26 @@ export class IndexedDbTranscriptStore implements TranscriptStore {
 
   async listArchives(projectId: string): Promise<TranscriptArchiveSummary[]> {
     documentIdSchema.parse(projectId)
-    const archives = await this.database.archives.where("projectId").equals(projectId).toArray()
-    return archives
-      .map((raw) => {
-        const { id, title, updatedAt } = parseArchive(projectId, raw)
-        return { id, title, updatedAt }
-      })
-      .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+    return this.database.transaction("r", this.database.archives, async () => {
+      const keys = await this.database.archives
+        .where("[projectId+updatedAt+id+title]")
+        .between([projectId], [projectId, Dexie.maxKey], true, true)
+        .keys()
+      // IndexedDB omits records with missing or non-key metadata from compound indexes.
+      if (
+        keys.length !== (await this.database.archives.where("projectId").equals(projectId).count())
+      )
+        throw persistenceInvariantError(
+          "corrupt-history",
+          "The archived transcripts contain unreadable summary metadata.",
+        )
+      return keys
+        .map((key) => {
+          const [, updatedAt, id, title] = archiveSummaryKeySchema.parse(key)
+          return { id, title, updatedAt }
+        })
+        .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+    })
   }
 
   async switchConversation(

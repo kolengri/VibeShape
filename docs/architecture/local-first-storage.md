@@ -103,7 +103,7 @@ See [ADR-0125](../adr/0125-durable-saved-change-navigation.md) for durable navig
 
 ## Assistant transcripts
 
-`vibeshape-assistant-transcripts` is a separate version-2 IndexedDB/Dexie database; it does not change
+`vibeshape-assistant-transcripts` is a separate version-3 IndexedDB/Dexie database; it does not change
 CAD authority or the document database schema. Project heads carry a compare-and-swap revision and
 an optional UUID conversation identity alongside validated provider-session metadata. Legacy heads
 without that identity use the project ID deterministically, without writing during load. Normal
@@ -132,8 +132,18 @@ Opening an archived chat archives the current nonempty conversation, restores th
 and session, and removes that selected snapshot from the inactive list. These changes share one
 revision-checked transaction, so a failed or superseded switch preserves the saved conversations.
 The coordinator's synchronous display/session validator runs inside that transaction before either
-conversation changes. An unreadable inactive archive keeps its error and retry indication without
-blocking persistence of a valid active conversation.
+conversation changes. Version 3 adds the `[projectId+updatedAt+id+title]` archive index; IndexedDB
+builds it for existing records without a JavaScript payload backfill or duplicate metadata table.
+Listing reads only index keys through Dexie's `keys()` key cursor, validates the metadata tuple,
+and sorts summaries by descending update time with an ascending ID tie breaker. A project-index
+count in the same read transaction detects records omitted from the compound index because of
+missing or invalid metadata. Startup listing therefore reads no transcript bodies and scales with
+summary metadata rather than accumulated message/session bytes, without imposing a retention cap.
+Full archive payload and consumer display/session validation happen only when selecting that archive,
+inside the revision-checked exchange before either conversation changes. A corrupt body can still
+appear in the summary list; selecting it fails without changing the active transcript or archives.
+Unreadable summary metadata keeps its error and retry indication without blocking persistence of a
+valid active conversation.
 Archive titles come from the first user message, with an untitled fallback for attachment-only chats.
 The history list survives project reopening; native session restoration still depends on provider
 support, while browser API context is rebuilt only from the selected transcript. Chat switching

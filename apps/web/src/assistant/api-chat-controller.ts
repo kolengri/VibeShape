@@ -591,7 +591,7 @@ export function createApiChatController(options: ApiChatOptions) {
       return checkpoints?.viewBefore() ?? false
     },
     async reset() {
-      await switchChat(null)
+      return switchChat(null)
     },
     openChat: (id: string) => switchChat(id),
     async retryHistory() {
@@ -659,6 +659,7 @@ export function createApiChatRegistry(
         projectId,
         () =>
           chat.getSnapshot().busy ||
+          chat.getSnapshot().switchingChat ||
           chat.getSnapshot().undoingAgentChanges ||
           chat.getSnapshot().preparingBefore ||
           chat.getSnapshot().settlingCheckpoint ||
@@ -669,6 +670,7 @@ export function createApiChatRegistry(
     created.releaseResource = options.registerResource?.(projectId, {
       isBusy: () =>
         chat.getSnapshot().busy ||
+        chat.getSnapshot().switchingChat ||
         chat.getSnapshot().undoingAgentChanges ||
         chat.getSnapshot().preparingBefore ||
         chat.getSnapshot().settlingCheckpoint ||
@@ -676,6 +678,7 @@ export function createApiChatRegistry(
       dispose() {
         if (
           !chat.getSnapshot().busy &&
+          !chat.getSnapshot().switchingChat &&
           !chat.getSnapshot().undoingAgentChanges &&
           !chat.getSnapshot().preparingBefore &&
           !chat.getSnapshot().settlingCheckpoint &&
@@ -694,6 +697,7 @@ export function createApiChatRegistry(
       [...entries.values()].some(
         ({ chat }) =>
           chat.getSnapshot().busy ||
+          chat.getSnapshot().switchingChat ||
           chat.getSnapshot().undoingAgentChanges ||
           chat.getSnapshot().preparingBefore ||
           chat.getSnapshot().settlingCheckpoint,

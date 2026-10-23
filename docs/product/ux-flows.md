@@ -141,6 +141,9 @@ before opening an empty one. Selecting a previous conversation preserves the cur
 the selected transcript for continued conversation. The list and messages survive reloading the
 project. Switching is disabled while a response, queued work, or checkpoint action is active.
 Undo agent changes, View before, and Apply remain disabled until a conversation switch finishes.
+Project-close guards and activity reporting retain the switch as pending work until it settles.
+New chat clears unsent text and attachments only after a successful switch; storage failures retain
+the draft for retry.
 Conversation navigation leaves the CAD document unchanged; it does not undo modeling operations.
 
 The API request context is separate from transcript storage. It retains complete conversational
