@@ -52,10 +52,10 @@ function useTreeDrawer(
   }, [actions, narrow, revealTreeRequest])
   const toggle = useCallback(() => {
     setOpen((value) => !value)
-    if (!open) return
     const grid = root.current?.closest(".viewport-grid")
+    const target = open ? "outside" : "drawer"
     requestAnimationFrame(() =>
-      grid?.querySelector<HTMLButtonElement>('[data-model-tree-toggle="outside"]')?.focus(),
+      grid?.querySelector<HTMLButtonElement>(`[data-model-tree-toggle="${target}"]`)?.focus(),
     )
   }, [open, root])
   return { narrow, open, panelId, toggle }

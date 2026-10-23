@@ -406,6 +406,13 @@ for (const theme of ["light", "dark"] as const) {
       await expect(toggle).toBeFocused()
       await expect.poll(() => canvas.boundingBox()).toEqual(bounds)
     }
+    await toggle.press("Enter")
+    const close = page.getByRole("button", { name: "Hide model tree", exact: true })
+    await expect(close).toBeFocused()
+    await close.press("Enter")
+    await expect(tree).toBeHidden()
+    await expect(toggle).toBeFocused()
+    await expect.poll(() => canvas.boundingBox()).toEqual(bounds)
     expect(await canvas.evaluate((node, original) => node === original, original)).toBe(true)
   })
 }
