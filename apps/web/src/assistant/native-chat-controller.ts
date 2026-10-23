@@ -271,13 +271,17 @@ export function createNativeChatController({
       drainQueue()
     }
   }
+  function canRecoverTerminalEvent() {
+    // The connect request owns pre-ready failures; later loss also matters while pairing waits.
+    return automaticRecoveryAllowed && (connecting === null || state.snapshot?.status === "ready")
+  }
   function acceptRecoverySnapshot(snapshot: AssistantSnapshot) {
     if (recovery) {
       if (state.recovery?.status !== "failed") publish({ snapshot, busy: recovery.interrupted })
       if (["error", "disconnected"].includes(snapshot.status)) recordRecoveryFailure("agent-exited")
       return true
     }
-    if (automaticRecoveryAllowed && ["disconnected", "error"].includes(snapshot.status)) {
+    if (canRecoverTerminalEvent() && ["disconnected", "error"].includes(snapshot.status)) {
       beginRecovery(state.error ?? "agent-exited")
       return true
     }
@@ -409,7 +413,7 @@ export function createNativeChatController({
       recordRecoveryFailure(code)
       return
     }
-    if (automaticRecoveryAllowed && ["agent-exited", "timeout", "stale-session"].includes(code)) {
+    if (canRecoverTerminalEvent() && ["agent-exited", "timeout", "stale-session"].includes(code)) {
       beginRecovery(code)
       return
     }
@@ -599,6 +603,18 @@ export function createNativeChatController({
   function connectionBlocked() {
     return disposed || resettingHistory || connecting !== null || state.busy
   }
+  function discardMissingResume(at: number, automatic: boolean, result: AssistantResult) {
+    if (automatic || result.ok || result.code !== "session-unavailable" || !isCurrent(at))
+      return false
+    // Only deliberate Connect may replace definitively missing context; never replay a prompt.
+    agentSession = undefined
+    agentSessionOwned = true
+    save()
+    const current = scope()
+    if (current) ignoredTokens.add(current.sessionToken)
+    publish({ snapshot: null, error: null })
+    return true
+  }
   async function openAgentConnection(
     at: number,
     configuration: AssistantAgent,
@@ -616,13 +632,21 @@ export function createNativeChatController({
       save()
     }
     // Clear an earlier Stop at explicit Connect, before ACP startup can publish discovery.
-    const access = automatic ? undefined : ensureAutomationConnection(at, false)
-    const result = await bridge.connect({
+    let access = automatic ? undefined : ensureAutomationConnection(at, false)
+    let result = await bridge.connect({
       projectId,
       agent: configuration,
       ...(jevCredentials ? { jevCredentials } : {}),
       ...(resume ? { resumeSessionId: resume } : {}),
     })
+    if (resume && discardMissingResume(at, automatic, result)) {
+      access = ensureAutomationConnection(at, false)
+      result = await bridge.connect({
+        projectId,
+        agent: configuration,
+        ...(jevCredentials ? { jevCredentials } : {}),
+      })
+    }
     const connected = await receiveConnection(at, result, automatic, access)
     recoverConnectFailure(at, result)
     return connected

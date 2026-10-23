@@ -99,6 +99,9 @@ readline.createInterface({input:process.stdin}).on("line", line => {
  if (method === "authenticate") { authenticated = true; return reply(id,{}); }
  if (method === "session/new" || method === "session/load") {
    if (method === "session/load") sessionId = params.sessionId;
+   if (method === "session/load" && scenario === "resume-missing") return send({id,error:{code:-32603,message:"Internal error",data:{details:"no rollout found for thread id "+params.sessionId}}});
+   if (method === "session/load" && scenario === "resume-other-missing") return send({id,error:{code:-32603,message:"Internal error",data:{details:"no rollout found for thread id another-session"}}});
+   if (method === "session/load" && scenario === "resume-load-fail") return send({id,error:{code:-32603,message:"Internal error",data:{details:"private storage failure"}}});
    if (method === "session/load" && scenario === "resume-large") {
      for (let index = 0; index < 3; index++) update({sessionUpdate:"user_message_chunk",content:{type:"text",text:"h".repeat(3*1024*1024)}});
    }
@@ -2176,6 +2179,28 @@ describe("native ACP service", () => {
       value: { sessionId: "saved-session", canResume: true },
     })
   })
+
+  it.each([
+    ["resume-missing", "session-unavailable"],
+    ["resume-other-missing", "initialization-failed"],
+    ["resume-load-fail", "initialization-failed"],
+  ] as const)(
+    "classifies %s without replacing a session or exposing private details",
+    async (scenario, code) => {
+      const context = await host()
+      expect(await context.connect(scenario, "project-a", "saved-session")).toEqual({
+        ok: false,
+        code,
+      })
+      expect(context.events.filter((event) => event.type === "error")).toMatchObject([{ code }])
+      expect(
+        context.events.some(
+          (event) => event.type === "snapshot" && event.snapshot.status === "ready",
+        ),
+      ).toBe(false)
+      expect(JSON.stringify(context.events)).not.toContain("private storage failure")
+    },
+  )
 
   it("loads attachment-sized history without publishing it as live output or replaying it as a prompt", async () => {
     const context = await host()
