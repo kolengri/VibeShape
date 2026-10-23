@@ -17,7 +17,7 @@ import {
 } from "./assembly-motion-study-panel"
 
 afterEach(cleanup)
-function setup() {
+function setup({ playing = false }: { playing?: boolean } = {}) {
   const f = asBuiltUiFixture(2)
   const joint = assemblyJointRecordSchema.parse({
     schemaVersion: 2,
@@ -52,7 +52,8 @@ function setup() {
   const apply = vi.fn().mockResolvedValue(true),
     close = vi.fn(),
     reset = vi.fn(),
-    play = vi.fn().mockResolvedValue(undefined)
+    play = vi.fn().mockResolvedValue(undefined),
+    updatePlayback = vi.fn()
   const view: ComponentProps<typeof AssemblyMotionStudyPanel>["view"] = {
     assembly: { ...f.assembly, joints: [joint] },
     disabled: false,
@@ -77,7 +78,7 @@ function setup() {
         changes: null,
         inspection: null,
         pending: false,
-        playing: false,
+        playing,
         applying: false,
         error: null,
         samples: [],
@@ -87,6 +88,7 @@ function setup() {
         play,
         apply: vi.fn().mockResolvedValue(true),
         invalid: vi.fn(),
+        updatePlayback,
       },
     }
     return (
@@ -96,9 +98,35 @@ function setup() {
     )
   }
   render(<Harness />)
-  return { apply, close, reset, play, current: () => current }
+  return { apply, close, reset, play, updatePlayback, current: () => current }
 }
 describe("Motion study form submission", () => {
+  it("updates live playback controls while keeping authored study fields locked", () => {
+    const f = setup({ playing: true })
+    fireEvent.click(screen.getByText("Playback settings", { exact: true }))
+    const speed = screen.getByRole<HTMLInputElement>("spinbutton", { name: "Playback speed" })
+    const loop = screen.getByRole<HTMLInputElement>("checkbox", { name: "Loop" })
+    expect(speed.disabled).toBe(false)
+    expect(loop.disabled).toBe(false)
+    expect(
+      screen
+        .getByRole<HTMLInputElement>("spinbutton", { name: "Duration (s)" })
+        .matches(":disabled"),
+    ).toBe(true)
+    expect(
+      screen.getByRole<HTMLInputElement>("spinbutton", { name: "Sample count" }).disabled,
+    ).toBe(true)
+    fireEvent.change(speed, { target: { value: "4" } })
+    fireEvent.click(loop)
+    expect(f.updatePlayback).toHaveBeenLastCalledWith({
+      speed: 4,
+      loop: true,
+      reverse: false,
+      count: 13,
+    })
+    expect(f.apply).not.toHaveBeenCalled()
+    expect(f.reset).not.toHaveBeenCalled()
+  })
   it("commits duration retiming and name edits before one revision-checked save", async () => {
     const f = setup()
     await userEvent.click(screen.getByText("Edit keys (2)", { exact: true }))
