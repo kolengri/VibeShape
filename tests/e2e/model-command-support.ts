@@ -33,6 +33,6 @@ export async function expandHistoryDetails(page: Page) {
       .filter({ hasText: /^Saved$/ }),
   ).toBeAttached()
   const details = page.getByRole("button", { name: "Details", exact: true })
-  if ((await details.getAttribute("aria-pressed")) !== "true") await details.click()
-  await expect(details).toHaveAttribute("aria-pressed", "true")
+  if ((await details.getAttribute("aria-expanded")) !== "true") await details.click()
+  await expect(details).toHaveAttribute("aria-expanded", "true")
 }

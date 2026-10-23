@@ -48,10 +48,7 @@ export function HistoryProfileSources({
               className="min-w-0 max-w-full justify-start font-normal text-muted-foreground"
               aria-label={description}
               aria-describedby={`${descriptionId}-${index}`}
-              onPointerEnter={() => onPreview?.(profile)}
-              onPointerLeave={(event) => {
-                if (event.currentTarget !== document.activeElement) onPreview?.(null)
-              }}
+              data-history-profile-index={index}
               onFocus={() => onPreview?.(profile)}
               onBlur={() => onPreview?.(null)}
               onKeyDown={(event) => {

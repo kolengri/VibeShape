@@ -542,6 +542,7 @@ History uses compact, named feature icons by default, with equal 8 px padding ab
 - Multi-selection follows platform conventions and never changes feature order.
 - Visibility, suppression, active, warning, error, and stale states have independent controls or indicators.
 - Pointer hover and keyboard focus use the same feature preselection contract; active edit uses persistent selection semantics rather than relying on row color alone.
+- History pointer previews require a 200 ms dwell on the same row or source profile. Wheel and scroll events clear active previews and cancel pending work. After 150 ms without scrolling, a new pointer movement can start another dwell; keyboard focus previews remain immediate. History selection and preselection backgrounds use rounded corners.
 - An error badge identifies the owning feature and opens its diagnostic; it is not only a count on an ancestor.
 - Reordering is unavailable until DAG validation can explain whether a move is legal.
 - Context-menu actions are duplicated in the command palette or an accessible action menu.

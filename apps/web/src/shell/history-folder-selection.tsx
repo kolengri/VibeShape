@@ -539,7 +539,7 @@ export function HistoryFolderSelectableRow({
           data-folder-selected={selected ? "true" : undefined}
           className={cn(
             "relative flex min-w-0 shrink-0 items-start",
-            selected && "bg-accent ring-1 ring-primary ring-inset",
+            selected && "rounded-md bg-accent ring-1 ring-primary ring-inset",
           )}
           onContextMenuCapture={() => {
             if (!selected) context.select(key, { additive: false, range: false })

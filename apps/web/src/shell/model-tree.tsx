@@ -40,6 +40,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -101,6 +102,7 @@ import {
   modelTreeSelectionKey,
   partForModelBody,
 } from "./model-tree-selection"
+import { useHistoryHover } from "./use-history-hover"
 import type { EditorWorkspaceName } from "./workspace"
 
 const HistoryPresentation = createContext({ timeline: false, detailed: true })
@@ -382,9 +384,9 @@ function FeatureTreeRow({
         !timeline && active && modelBrowserSelectedRow,
       )}
       data-feature-suppressed={feature.suppressed}
-      onPointerEnter={() => onPreselectionChange(feature.id)}
-      onPointerLeave={() => onPreselectionChange(null)}
-      onPointerCancel={() => onPreselectionChange(null)}
+      onPointerEnter={timeline ? undefined : () => onPreselectionChange(feature.id)}
+      onPointerLeave={timeline ? undefined : () => onPreselectionChange(null)}
+      onPointerCancel={timeline ? undefined : () => onPreselectionChange(null)}
     >
       {timeline && visibilityAction}
       {children}
@@ -620,9 +622,9 @@ function SketchTreeLabelButton({
         data-model-tree-selection-key={`sketch:${sketchId}`}
         aria-describedby={describedBy}
         title={compactHistoryLabelHint(compact, label)}
-        onPointerEnter={() => onPreselectionChange?.(sketchId)}
-        onPointerLeave={() => onPreselectionChange?.(null)}
-        onPointerCancel={() => onPreselectionChange?.(null)}
+        onPointerEnter={timeline ? undefined : () => onPreselectionChange?.(sketchId)}
+        onPointerLeave={timeline ? undefined : () => onPreselectionChange?.(null)}
+        onPointerCancel={timeline ? undefined : () => onPreselectionChange?.(null)}
         onFocus={() => onPreselectionChange?.(sketchId)}
         onBlur={() => onPreselectionChange?.(null)}
         onClick={(event) => {
@@ -1483,7 +1485,7 @@ function HistoryRowPresentation({
   const className = cn(
     historyRowLayout(timeline, compact),
     feedback.className,
-    sourcePresentation.highlighted && "bg-accent",
+    sourcePresentation.highlighted && "rounded-md bg-accent",
     !reorderLocked &&
       "cursor-grab active:cursor-grabbing [&_[role=treeitem]]:cursor-grab [&_[role=treeitem]]:active:cursor-grabbing",
   )
@@ -1614,6 +1616,7 @@ function SketchHistoryRow({
           onSketchDeleted={props.onSketchDeleted}
           onSketchRemove={props.onSketchRemove}
           onSketchRename={props.onSketchRename}
+          onSketchPreselectionChange={props.onSketchPreselectionChange}
           onVisibilityChange={props.onSketchVisibilityChange}
           renameBlocked={row.ref.id === props.sketchRenameBlockedId}
           row={row}
@@ -2426,9 +2429,47 @@ function ensureTreeTabStop(root: HTMLElement | null) {
   if (first && !items.some((item) => item.tabIndex === 0)) first.tabIndex = 0
 }
 
+function historyHoverProfile(row: HistoryViewRow | undefined, index: string) {
+  if (row?.kind !== "feature") return null
+  const feature = row.record as FeatureRecord
+  const profiles = readExtrusionProfileSet(feature) ?? readRevolveProfileSet(feature)
+  return profiles?.profiles[Number(index)] ?? null
+}
+
+function preselectHistoryRow(
+  row: HistoryViewRow | undefined,
+  onFeature: ModelTreeProps["onFeaturePreselectionChange"],
+  onSketch: ModelTreeProps["onSketchPreselectionChange"],
+) {
+  if (row?.kind === "feature") onFeature((row.record as FeatureRecord).id)
+  else if (row?.kind === "sketch" && onSketch) onSketch((row.record as SketchRecord).id)
+  else {
+    onFeature(null)
+    onSketch?.(null)
+  }
+}
+
 function ModelTimeline(props: ModelTreeHistoryBranchProps) {
   const [detailed, setDetailed] = useState(false)
   const orderedRefs = useMemo(() => props.view.rows.map((row) => row.ref), [props.view.rows])
+  const { onFeaturePreselectionChange, onSketchPreselectionChange, onSourceProfilePreview } = props
+  const rows = props.view.rows
+  const preselect = useCallback(
+    (target: HTMLElement | null) => {
+      const id = target?.closest<HTMLElement>("[data-history-id]")?.dataset.historyId
+      const row = rows.find((row) => row.ref.id === id)
+      const profileIndex = target?.dataset.historyProfileIndex
+      if (profileIndex === undefined) {
+        onSourceProfilePreview?.(null)
+        preselectHistoryRow(row, onFeaturePreselectionChange, onSketchPreselectionChange)
+        return
+      }
+      preselectHistoryRow(undefined, onFeaturePreselectionChange, onSketchPreselectionChange)
+      onSourceProfilePreview?.(historyHoverProfile(row, profileIndex))
+    },
+    [rows, onFeaturePreselectionChange, onSketchPreselectionChange, onSourceProfilePreview],
+  )
+  const hover = useHistoryHover(preselect)
   const root = useRef<HTMLElement>(null)
   const revealedSelection = useRef<string | null>(null)
   const documentId = props.controller.report?.snapshot.id
@@ -2478,6 +2519,7 @@ function ModelTimeline(props: ModelTreeHistoryBranchProps) {
     >
       <HistoryPresentation value={{ timeline: true, detailed }}>
         <section
+          {...hover}
           ref={root}
           aria-label={props.t("timelineLabel")}
           className="max-h-56 min-w-0 shrink-0 overflow-y-auto border-t bg-panel"
