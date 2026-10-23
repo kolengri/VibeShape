@@ -21,7 +21,7 @@ test("opens model toolbar categories through named icon buttons", async ({ page 
 })
 
 for (const width of [512, 800, 1024, 1440]) {
-  test(`overlays AI chat without moving the editor at ${width}px`, async ({ page }) => {
+  test(`allocates space for AI chat while retaining the editor at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto("/")
     await invokeModelCommand(page, "Primitives", "Box")
@@ -43,12 +43,42 @@ for (const width of [512, 800, 1024, 1440]) {
     expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
       true,
     )
-    expect(await Promise.all(regions.map((region) => region.boundingBox()))).toEqual(before)
+    await expect
+      .poll(async () => {
+        const current = await canvas.boundingBox()
+        return Boolean(
+          current &&
+            before[0] &&
+            (current.width < before[0].width || current.height < before[0].height),
+        )
+      })
+      .toBe(true)
+    for (const region of regions) {
+      await expect
+        .poll(async () => {
+          const a = await region.boundingBox()
+          const b = await chat.boundingBox()
+          return Boolean(
+            a &&
+              b &&
+              (a.x + a.width <= b.x ||
+                b.x + b.width <= a.x ||
+                a.y + a.height <= b.y ||
+                b.y + b.height <= a.y),
+          )
+        })
+        .toBe(true)
+    }
     await expect(draft).toHaveValue("77")
     const bounds = await chat.boundingBox()
     if (!bounds) throw new Error("Chat must have measurable bounds")
     expect(bounds.x + bounds.width).toBe(width - 8)
-    expect(bounds.y).toBe(before[1]?.y)
+    if (width >= 640) expect(bounds.y).toBe(before[1]?.y)
+    else {
+      const workbench = await page.locator(".editor-workbench").boundingBox()
+      if (!workbench) throw new Error("The editor must remain measurable above chat")
+      expect(bounds.y).toBeGreaterThanOrEqual(workbench.y + workbench.height)
+    }
     expect(
       await chat.evaluate((element) => {
         const bounds = element.getBoundingClientRect()
@@ -61,11 +91,13 @@ for (const width of [512, 800, 1024, 1440]) {
       }),
     ).toBe(true)
     if (width === 1440)
-      await page.screenshot({ path: test.info().outputPath("chat-over-editor.png") })
+      await page.screenshot({ path: test.info().outputPath("chat-beside-editor.png") })
     await chat.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
     await expect(chat).toHaveCount(0)
     await expect(draft).toHaveValue("77")
-    expect(await Promise.all(regions.map((region) => region.boundingBox()))).toEqual(before)
+    await expect
+      .poll(() => Promise.all(regions.map((region) => region.boundingBox())))
+      .toEqual(before)
   })
 }
 
@@ -78,7 +110,7 @@ for (const theme of ["light", "dark"]) {
     }, theme)
     const canvas = page.locator(".workspace-viewport canvas").first()
     const header = page.locator(".application-bar")
-    const footer = page.locator(".cad-shell > footer")
+    const footer = page.locator(".editor-workbench > footer")
     const bounds = await canvas.boundingBox()
     const headerBounds = await header.boundingBox()
     const footerBounds = await footer.boundingBox()
