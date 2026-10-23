@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
-import { invokeModelCommand, openModelCommand } from "./model-command-support"
+import { expandHistoryDetails, invokeModelCommand, openModelCommand } from "./model-command-support"
 
 for (const operation of ["fillet", "chamfer"] as const) {
   test(`${operation} previews, rejects invalid geometry, edits and reopens a variable-driven body`, async ({
@@ -87,7 +87,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
       root.classList.toggle("dark", dark)
     }, operation === "fillet")
     await expect(edit.getByRole("button", { name: `Update ${operation}` })).toBeEnabled()
-    await expect(page.getByRole("button", { name: "Delete feature", exact: true })).toBeEnabled()
+    await expect(edit.getByRole("button", { name: /Delete/ })).toHaveCount(0)
     await page.screenshot({ path: test.info().outputPath(`${operation}-editor.png`) })
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
     await openApplicationMenuItem(page, "Export geometry…")
@@ -103,8 +103,9 @@ for (const operation of ["fillet", "chamfer"] as const) {
     const bytes = await readFile(path)
     expect(bytes.subarray(0, 13).toString("ascii")).toBe("ISO-10303-21;")
     await page.keyboard.press("Escape")
-    await item.click()
-    await page.getByRole("button", { name: "Delete feature", exact: true }).click()
+    await expandHistoryDetails(page)
+    await page.getByRole("button", { name: `Actions for ${title} 1`, exact: true }).click()
+    await page.getByRole("menuitem", { name: `Delete ${title} 1…`, exact: true }).click()
     await page
       .getByRole("alertdialog")
       .getByRole("button", { name: "Delete feature", exact: true })

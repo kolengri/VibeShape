@@ -109,7 +109,7 @@ test("packs explicit side heights and lets full-height occupation override them"
 })
 
 for (const innerFullHeight of [false, true]) {
-  test(`reserves chrome beside ${innerFullHeight ? "inner" : "outer"} full-height lanes on both sides without moving the canvas`, async ({
+  test(`bounds ${innerFullHeight ? "inner" : "outer"} full-height lanes between full-width chrome without moving the canvas`, async ({
     page,
   }) => {
     await openFixturePage(page)
@@ -142,9 +142,12 @@ for (const innerFullHeight of [false, true]) {
           const r = await right.boundingBox()
           const s = await surface.boundingBox()
           if (!l || !r || !s) throw new Error("Chrome and full-height lanes must have bounds.")
-          return { afterLeft: s.x >= l.x + l.width, beforeRight: s.x + s.width <= r.x }
+          const outsideBody =
+            s.y + s.height <= Math.min(l.y, r.y) || s.y >= Math.max(l.y + l.height, r.y + r.height)
+          const spansBothSides = s.x <= l.x && s.x + s.width >= r.x + r.width
+          return { outsideBody, spansBothSides }
         })
-        .toEqual({ afterLeft: true, beforeRight: true })
+        .toEqual({ outsideBody: true, spansBothSides: true })
     }
     await expect.poll(() => canvas.boundingBox()).toEqual(bounds)
     await render(true, false)

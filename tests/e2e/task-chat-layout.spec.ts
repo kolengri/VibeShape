@@ -1,4 +1,4 @@
-import type { Route } from "@playwright/test"
+import type { Locator, Page, Route } from "@playwright/test"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
@@ -19,6 +19,45 @@ test("opens model toolbar categories through named icon buttons", async ({ page 
     await page.keyboard.press("Escape")
   }
 })
+
+async function expectDesktopChatBounds({
+  page,
+  draft,
+  bounds,
+  before,
+  regions,
+  width,
+}: {
+  page: Page
+  draft: Locator
+  bounds: { x: number; y: number; width: number; height: number }
+  before: ({ x: number; y: number; width: number; height: number } | null)[]
+  regions: Locator[]
+  width: number
+}) {
+  const toolbar = before[1]
+  if (!toolbar) throw new Error("Toolbar must be measurable")
+  expect(bounds.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height)
+  const history = await page.locator("[data-feature-timeline]").boundingBox()
+  if (!history) throw new Error("History must be measurable")
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(history.y)
+  for (const index of [1, 2]) {
+    await expect.poll(() => regions[index]?.boundingBox()).toEqual(before[index])
+  }
+  if (width >= 1024) {
+    await expect(page.locator("#workspace-task")).toHaveAttribute("data-viewport-area", "right")
+    const originalTask = before[3]
+    if (!originalTask) throw new Error("Task must be measurable")
+    const task = await regions[3]?.boundingBox()
+    if (!task) throw new Error("Task must remain measurable beside chat")
+    expect(task.y).toBe(originalTask.y)
+    expect(task.width).toBeGreaterThanOrEqual(280)
+    expect(task.width).toBeLessThanOrEqual(originalTask.width)
+    expect(task.height).toBeLessThanOrEqual(450)
+    const inputHeight = await draft.evaluate((element) => element.getBoundingClientRect().height)
+    expect(inputHeight).toBeLessThanOrEqual(28)
+  }
+}
 
 for (const width of [512, 800, 1024, 1440]) {
   test(`overlays AI chat without resizing the viewport at ${width}px`, async ({ page }) => {
@@ -64,8 +103,9 @@ for (const width of [512, 800, 1024, 1440]) {
     const bounds = await chat.boundingBox()
     if (!bounds) throw new Error("Chat must have measurable bounds")
     expect(bounds.x + bounds.width).toBe(width - 8)
-    if (width >= 640) expect(bounds.y).toBe(before[1]?.y)
-    else {
+    if (width >= 640) {
+      await expectDesktopChatBounds({ page, draft, bounds, before, regions, width })
+    } else {
       const task = await page.locator(".workspace-panel--task").boundingBox()
       if (!task) throw new Error("The task must remain measurable above chat")
       expect(bounds.y).toBeGreaterThanOrEqual(task.y + task.height)
@@ -274,10 +314,24 @@ for (const theme of ["light", "dark"]) {
       "rgba(0, 0, 0, 0)",
     )
     const body = form.locator('[data-slot="task-panel-content"]')
-    const headerBounds = await header.boundingBox()
+    let headerBounds = await header.boundingBox()
     const bodyBounds = await body.boundingBox()
     if (!headerBounds || !bodyBounds) throw new Error("Task header and body must have bounds.")
     expect(bodyBounds.y).toBeGreaterThanOrEqual(headerBounds.y + headerBounds.height)
+    await body.evaluate((element) => {
+      const extra = element.ownerDocument.createElement("div")
+      extra.style.height = "1200px"
+      extra.textContent = "Additional parameter rows"
+      element.append(extra)
+    })
+    await expect
+      .poll(() =>
+        page
+          .locator(".workspace-panel--task")
+          .evaluate((element) => element.getBoundingClientRect().height),
+      )
+      .toBe(450)
+    headerBounds = await header.boundingBox()
     await body.evaluate((element) => {
       element.scrollTop = element.scrollHeight
     })
@@ -434,7 +488,8 @@ test("keeps browser icons uniform without an Operations heading or a History hov
 }) => {
   await page.goto("/")
   const browser = page.getByRole("complementary", { name: "Model tree", exact: true })
-  await expect(browser.getByRole("heading")).toHaveCount(0)
+  await expect(browser.getByRole("heading", { name: "Model tree", exact: true })).toBeVisible()
+  await expect(browser.getByRole("heading", { name: "Operations", exact: true })).toHaveCount(0)
   for (const name of ["Variables", "Planes", "Parts"]) {
     const row = browser.getByRole("treeitem", { name: new RegExp(`^${name}(?: \\d+)?$`) })
     const icon = await row.locator("svg").last().boundingBox()
