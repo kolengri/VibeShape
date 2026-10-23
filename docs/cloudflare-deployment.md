@@ -77,6 +77,12 @@ Publication uses the exact key returned by the successful build, including when 
 are rerun in a later attempt. Both Linux runner types provide zstd for compatible cache archives.
 Build jobs do not receive publication secrets; publication jobs still install no project code.
 
+Publication jobs retry a failed cache restore once after 30 seconds to tolerate transient storage
+throttling such as `503 ServerBusy: Egress is over the account limit`. Both attempts use the same
+exact build key; a successful exact match and all existing manifest checks remain required.
+A repeated failure, missing entry or prefix-only match still blocks publication. This backoff
+does not increase storage allowances or resolve persistent service outages.
+
 These caches are temporary transport, not durable release backups. GitHub manages eviction and
 retention; it can remove an unused entry and deployments must fail closed in that case. No cache
 limit, billing setting or paid service is changed. Exact source manifests remain published
