@@ -3629,9 +3629,11 @@ function useGeometryViewportHost(props: GeometryViewportProps) {
     selectOther,
   )
   const modelEdgeSelectOther = useModelEdgeSelectOther(model.modelEdges, sketchReferenceRegionRef)
-  const regionInteraction = model.modelEdges.active
-    ? modelEdgeSelectOther.regionInteraction
-    : referenceInteraction
+  const regionInteraction: ReturnType<typeof viewportRegionInteraction> = model.rendererPending
+    ? {}
+    : model.modelEdges.active
+      ? modelEdgeSelectOther.regionInteraction
+      : referenceInteraction
   const regionClassNames = viewportRegionClassNames(
     passive,
     regionInteraction,
@@ -3712,46 +3714,52 @@ function GeometryViewport(props: GeometryViewportProps) {
       onPointerLeave={referenceInteraction.onPointerLeave}
       tabIndex={referenceInteraction.tabIndex ?? -1}
     >
-      <ViewportContextTrigger
-        viewportRef={viewportRef}
-        selection={props.selection}
-        onSelect={props.onSelectionChange}
-      >
-        <canvas
-          tabIndex={props.readOnlyPresentation ? undefined : 0}
-          aria-label={t("ariaLabel")}
-          aria-hidden={passive ? true : undefined}
-          ref={canvasRef}
-          className={cn("peer", regionClassNames.canvas)}
-        />
-      </ViewportContextTrigger>
-      <PrintViewportStatus
-        profile={props.printerProfile}
-        visible={props.printBedVisible}
-        report={model.printReport}
-        count={model.meshes.length}
-      />
-      {!props.readOnlyPresentation && <SurfaceTextureViewportTools viewportRef={viewportRef} />}
       <div
-        aria-hidden="true"
-        data-viewport-orientation-offset
-        className="pointer-events-none absolute left-0 top-0 box-content h-[var(--workspace-chrome-bottom,0px)] w-[var(--workspace-chrome-left,0px)] pt-[var(--workspace-chrome-top,0px)]"
-      />
-      <GeometryViewportContextChrome
-        viewControls={viewportAdditionalControls(props.viewControls, {
-          disabled: passive || activeSection !== section,
-          section,
-          onChange: setSection,
-          meshes: model.meshes,
-        })}
-        model={model}
-        profileSelectOther={profileSelectOther}
-        props={viewportProps}
-        selectOther={selectOther}
-        supportFaceSelectOther={supportFaceSelectOther}
-      />
-      <ViewportAxialControls props={props} axial={axial} />
-      <ModelEdgeViewportChrome edges={model.modelEdges} selectOther={modelEdgeSelectOther} />
+        className="contents bg-inherit"
+        inert={model.rendererPending}
+        aria-hidden={model.rendererPending}
+      >
+        <ViewportContextTrigger
+          viewportRef={viewportRef}
+          selection={props.selection}
+          onSelect={props.onSelectionChange}
+        >
+          <canvas
+            tabIndex={props.readOnlyPresentation ? undefined : 0}
+            aria-label={t("ariaLabel")}
+            aria-hidden={passive ? true : undefined}
+            ref={canvasRef}
+            className={cn("peer", regionClassNames.canvas)}
+          />
+        </ViewportContextTrigger>
+        <PrintViewportStatus
+          profile={props.printerProfile}
+          visible={props.printBedVisible}
+          report={model.printReport}
+          count={model.meshes.length}
+        />
+        {!props.readOnlyPresentation && <SurfaceTextureViewportTools viewportRef={viewportRef} />}
+        <div
+          aria-hidden="true"
+          data-viewport-orientation-offset
+          className="pointer-events-none absolute left-0 top-0 box-content h-[var(--workspace-chrome-bottom,0px)] w-[var(--workspace-chrome-left,0px)] pt-[var(--workspace-chrome-top,0px)]"
+        />
+        <GeometryViewportContextChrome
+          viewControls={viewportAdditionalControls(props.viewControls, {
+            disabled: passive || activeSection !== section,
+            section,
+            onChange: setSection,
+            meshes: model.meshes,
+          })}
+          model={model}
+          profileSelectOther={profileSelectOther}
+          props={viewportProps}
+          selectOther={selectOther}
+          supportFaceSelectOther={supportFaceSelectOther}
+        />
+        <ViewportAxialControls props={props} axial={axial} />
+        <ModelEdgeViewportChrome edges={model.modelEdges} selectOther={modelEdgeSelectOther} />
+      </div>
       {model.rendererPending && <ViewportLoadingSkeleton />}
       {(model.rendererPending || props.controller.status === "loading") && (
         <ProjectLoadingProgress
