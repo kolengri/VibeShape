@@ -6,19 +6,20 @@ workflow jobs run on GitHub-hosted Ubuntu. The retired full-local fallback,
 Production builds, artifacts, and deployment credentials stay on GitHub. Desktop
 release verification also remains fully hosted, independent of the hybrid flag.
 
-## Hybrid execution
+## Owner Mac preference and hosted fallback
 
-`VIBESHAPE_CI_HYBRID=true` requests Node shard `3/3` from the isolated Mac worker.
-Node shards `1/3` and `2/3`, DOM, static/integration checks, and the required
-`Fast PR checks` aggregate remain hosted. Every shard is required. Partial runs
-never restore or save complete-workspace receipts. A hosted waiter verifies the
-Mac result, so this arrangement still consumes hosted waiting time.
+`VIBESHAPE_CI_HYBRID=true` makes the isolated Mac worker the preferred executor
+for complete CI on eligible owner runs. The legacy variable and `hybrid` input
+names are retained for callers. The worker runs the dependency audit, Python
+policies, skill/format/lint/type checks, remote MCP integration tests, browser
+build, Fallow audit, and both complete Node and DOM unit-test corpora. Publication,
+production builds, desktop releases, and deployment credentials remain hosted.
 
 Only owner-triggered runs from `kolengri/VibeShape` are eligible. PRs must be
 open, owner-authored, from the same repository, and still at the requested head.
-Forks and other authors' PRs run entirely on GitHub. The host broker independently
-checks this policy using GitHub API data; public workflow conditions do not grant
-access to the Mac.
+Forks and other authors' PRs run entirely on GitHub, including owner-triggered
+reruns of contributor PRs. The host broker independently checks this policy using
+GitHub API data; public workflow conditions do not grant access to the Mac.
 
 To try a reviewed branch before enabling the repository variable:
 
@@ -26,11 +27,21 @@ To try a reviewed branch before enabling the repository variable:
 gh workflow run ci.yml --repo kolengri/VibeShape --ref <reviewed-branch> -F hybrid=true
 ```
 
-The Mac processes one shard at a time. An offline, sleeping, or busy Mac delays its
-waiter; missing or failed results fail closed after the waiting deadline. GitHub
-does not automatically reschedule that job on another runner. Disable the flag
-and start a new run to restore fully hosted execution. Changing a variable does
-not move an already running job.
+The Mac processes one complete request at a time. If no result or heartbeat arrives
+for 90 seconds, the hosted waiter requests fallback. The same run then executes
+all hosted checks and all three Node shards plus DOM. Infrastructure errors and
+the overall 30-minute waiting deadline also request complete hosted verification;
+no timeout or missing result counts as success. The broker sends a fresh heartbeat
+every 30 seconds while its request remains eligible. Busy, offline, sleeping, or
+restarting Macs therefore do not block CI indefinitely.
+
+A reported repository verification failure fails CI immediately and does not
+trigger fallback. Invalid result identities, canceled/stale requests, and GitHub
+API verification errors also fail closed. `Fast PR checks` accepts either complete
+Mac success or complete hosted success after an eligible fallback; every other
+result combination fails. A passing run may skip hosted checks only after complete Mac
+success. Set the flag to `false` for new runs to use hosted execution directly.
+A hosted waiter and the aggregate still use standard GitHub runners.
 
 ## Private control plane
 
@@ -41,9 +52,13 @@ installation of that private code; it never loads controller code, commands,
 workflow YAML, or configuration from a public checkout.
 
 The broker uses the owner's existing host GitHub CLI login. It passes only an
-exact public source SHA to its trusted executor. Neither that credential nor a
+exact public source SHA and a fixed verification-scope enum to its trusted executor. Neither that credential nor a
 GitHub job token enters the worker. The executor downloads a bounded public source
-archive and transfers it into the VM without extracting it on macOS.
+archive and transfers it into the VM without extracting it on macOS. The dependency
+phase fetches credential-free Git history from the fixed public repository,
+binds HEAD/index to the validated source SHA, and prepares the base for Fallow.
+Git parsing and checkout stay inside the guest. Electron is fetched and verified
+by its vendor downloader during dependency preparation, so tests need no network.
 
 The result status is bound to the tested checkout SHA and the exact public run ID
 and attempt. The waiter accepts the expected owner's status and run URL only.
@@ -56,7 +71,7 @@ being treated as a fresh successful run.
 
 ## Worker boundary
 
-Each shard receives a fresh Linux VM with its own kernel, cloned from a stopped,
+Each request receives a fresh Linux VM with its own kernel, cloned from a stopped,
 trusted golden image. The worker has six virtual CPUs and 10 GiB RAM on the
 16 GiB Mac; the inner test container is limited to six CPUs and 8 GiB. These are
 resource limits, not measured optimal allocations. One local worker prevents
@@ -71,8 +86,10 @@ attempt; failed cleanup prevents the next worker from starting.
 
 Softnet 0.24.1 enforces network filtering outside the guest. Guest-initiated traffic
 to the VM gateway and all connected host IPv4 networks is denied. A default-deny
-policy permits only the npm registry addresses resolved by the host and two fixed
-public DNS resolvers; private/reserved IPv4 and IPv6 remain denied. A registry or
+policy permits only host-resolved addresses for the npm registry and the
+allowlisted structural-asset hosts, GitHub Git and release-asset endpoints, plus
+two fixed public
+DNS resolvers; private/reserved IPv4 and IPv6 remain denied. A registry or
 DNS address overlapping a connected host network aborts startup. Host-initiated
 management connections can receive replies. The test container itself uses
 `--network=none`. Dependencies requiring other download hosts fail closed.
@@ -81,9 +98,9 @@ A guest-root compromise cannot remove the external filter.
 Inside the VM, source extraction and dependency lifecycle scripts run as a
 non-root container user. The container has a read-only root filesystem, no Linux
 capabilities, no privilege escalation, and bounded memory, processes, temporary
-storage, output, and execution time. The test container runs the complete Node
-corpus with Bun's native `--shard=3/3`, using the same committed timings as the
-hosted shards. It cannot publish production artifacts or reusable test receipts.
+storage, output, and execution time. The test container runs complete Node and DOM
+corpora offline. Legacy shard requests remain supported during controller upgrades,
+using the same committed timings as the hosted shards. It cannot publish production artifacts or reusable test receipts.
 
 ## Host operation and remaining limits
 

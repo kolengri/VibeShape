@@ -12,14 +12,16 @@ REPOSITORY = "kolengri/VibeShape"
 OWNER = "kolengri"
 
 
-def result_context(run_id, attempt):
-    return f"vibeshape/mac-node-3/{run_id}/{attempt}"
+def result_context(run_id, attempt, scope="node3"):
+    if scope not in {"node3", "ci"}:
+        raise ValueError("Invalid verification scope")
+    return f"vibeshape/{'mac-ci' if scope == 'ci' else 'mac-node-3'}/{run_id}/{attempt}"
 
 
-def result_state(statuses, run_id, attempt):
+def result_receipt(statuses, run_id, attempt, scope="node3"):
     if not isinstance(statuses, list):
         raise ValueError("Invalid status response")
-    context = result_context(run_id, attempt)
+    context = result_context(run_id, attempt, scope)
     target = f"https://github.com/{REPOSITORY}/actions/runs/{run_id}"
     for status in statuses:
         if not isinstance(status, dict) or status.get("context") != context:
@@ -31,8 +33,13 @@ def result_state(statuses, run_id, attempt):
         state = status.get("state")
         if state not in {"pending", "success", "failure", "error"}:
             raise ValueError("Invalid result state")
-        return state
-    return "pending"
+        return status
+    return None
+
+
+def result_state(statuses, run_id, attempt):
+    receipt = result_receipt(statuses, run_id, attempt)
+    return receipt["state"] if receipt else "pending"
 
 
 def statuses(sha):
@@ -69,14 +76,53 @@ def wait(sha, run_id, attempt, timeout=1200, fetch=statuses,
     return 1
 
 
+def wait_primary(sha, run_id, attempt, timeout=1800, unavailable_after=90,
+                 fetch=statuses, now=time.monotonic, sleep=time.sleep):
+    """Exit 75 only for absent/stalled infrastructure; verification failures fail CI."""
+    if not re.fullmatch(r"[a-f0-9]{40}", sha):
+        raise ValueError("Expected an exact source SHA")
+    if type(run_id) is not int or type(attempt) is not int or min(run_id, attempt) < 1:
+        raise ValueError("Expected positive run and attempt IDs")
+    if not 1 <= unavailable_after <= timeout <= 1800:
+        raise ValueError("Invalid result timeout")
+    started = last_progress = now()
+    last_id = None
+    while now() - started < timeout:
+        receipt = result_receipt(fetch(sha), run_id, attempt, "ci")
+        if receipt:
+            state = receipt["state"]
+            if state == "success":
+                print("Complete isolated Mac CI passed.")
+                return 0
+            if state == "failure":
+                print("Isolated Mac verification failed.", file=sys.stderr)
+                return 1
+            if state == "error":
+                print("Mac execution unavailable; run complete hosted CI.")
+                return 75
+            identity = receipt.get("id")
+            if type(identity) is not int or identity <= 0:
+                raise ValueError("Invalid heartbeat identity")
+            if last_id is None or identity > last_id:
+                last_id, last_progress = identity, now()
+        if now() - last_progress >= unavailable_after:
+            print("Mac did not start or stopped responding; run complete hosted CI.")
+            return 75
+        sleep(min(10, max(0, timeout - (now() - started))))
+    print("Mac execution exceeded its deadline; run complete hosted CI.")
+    return 75
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--run-id", type=int, required=True)
     parser.add_argument("--attempt", type=int, required=True)
+    parser.add_argument("--scope", choices=("node3", "ci"), default="node3")
     args = parser.parse_args()
     try:
-        return wait(args.sha, args.run_id, args.attempt)
+        function = wait_primary if args.scope == "ci" else wait
+        return function(args.sha, args.run_id, args.attempt)
     except (ValueError, RuntimeError, subprocess.TimeoutExpired):
         print("Isolated Mac result could not be verified.", file=sys.stderr)
         return 1
