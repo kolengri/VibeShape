@@ -11,7 +11,7 @@ for (const theme of ["dark", "light"] as const) {
     await page.locator("html").evaluate((element, theme) => {
       element.classList.toggle("dark", theme === "dark")
     }, theme)
-    for (let index = 0; index < 5; index++) {
+    for (let index = 0; index < 8; index++) {
       await invokeModelCommand(page, "Primitives", "Box")
       await page
         .getByRole("form", { name: "Create box" })
@@ -22,6 +22,7 @@ for (const theme of ["dark", "light"] as const) {
     const history = page.getByRole("region", { name: "Feature history", exact: true })
     const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
     const track = history.locator("[data-history-track]")
+    expect(await track.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
     const firstRow = history.locator('[data-history-kind="feature"]').first()
     const firstId = await firstRow.getAttribute("data-history-id")
     if (!firstId) throw new Error("Expected a stable History feature identity")
