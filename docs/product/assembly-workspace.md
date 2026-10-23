@@ -81,6 +81,10 @@ Exact interference and export build independent native sources.
 Open **Motion studies** in the Assembly toolbar and choose **New study** or a saved study. A new study
 starts with a bounded sweep of the first movable coordinate. Playback and the time scrubber appear
 before the track editor; optional playback settings and solved-motion exports use separate disclosures.
+Loop and Playback speed (0.1–10×) remain editable during both joint animation and motion-study
+playback. Speed changes take effect at the next pose interval; disabling Loop finishes the current
+cycle. Reverse and Sample count remain locked until playback stops. These controls change only
+the disposable preview, and repeated cycles reuse solved poses.
 Saving a study preserves its keys, while **Apply** separately commits the successfully solved pose.
 
 Each track identifies a joint by its type and named component endpoints. Values and limits use the

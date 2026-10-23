@@ -81,6 +81,42 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 describe("Assembly motion controls", () => {
+  it("changes speed and looping during playback without solving the cached poses again", async () => {
+    vi.useFakeTimers({ now: 0 })
+    try {
+      render(<Harness />)
+      fireEvent.change(screen.getByRole("spinbutton", { name: "Sample count" }), {
+        target: { value: "2" },
+      })
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Play animation" }))
+      })
+      const speed = screen.getByRole<HTMLInputElement>("spinbutton", { name: "Playback speed" })
+      const loop = screen.getByRole<HTMLInputElement>("checkbox", { name: "Loop" })
+      expect(speed.disabled).toBe(false)
+      expect(loop.disabled).toBe(false)
+      expect(
+        screen.getByRole<HTMLInputElement>("spinbutton", { name: "Sample count" }).disabled,
+      ).toBe(true)
+      expect(screen.getByRole<HTMLInputElement>("checkbox", { name: "Reverse" }).disabled).toBe(
+        true,
+      )
+      fireEvent.change(speed, { target: { value: "2" } })
+      fireEvent.click(loop)
+      await act(async () => vi.advanceTimersByTimeAsync(200))
+      expect(ports.preview).toHaveBeenCalledTimes(2)
+      expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy()
+      fireEvent.click(loop)
+      await act(async () => vi.advanceTimersByTimeAsync(99))
+      expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy()
+      await act(async () => vi.advanceTimersByTimeAsync(1))
+      expect(screen.queryByRole("button", { name: "Pause" })).toBeNull()
+      expect(ports.preview).toHaveBeenCalledTimes(2)
+      expect(ports.apply).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it("keeps Reset authoritative when a solved preview commits before passive effects", async () => {
     render(<Harness resetOnPreview />)
     const value = screen.getByRole("spinbutton", { name: "Coordinate (in)" }) as HTMLInputElement

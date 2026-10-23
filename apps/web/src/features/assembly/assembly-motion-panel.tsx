@@ -47,6 +47,10 @@ function useMotionInputs(
       end: display(Math.min(coordinate.max, coordinate.value + radius)),
       playback: playbackFieldValues(),
     },
+    listeners: {
+      onChange: ({ formApi }) =>
+        motion.updatePlayback(playbackOptions(formApi.state.values.playback)),
+    },
     onSubmitMeta: { action: "preview" as "preview" | "play" },
     onSubmit: async ({ value, meta }) => {
       if (disabled || motion.applying || motion.pending || motion.playing) return
@@ -311,7 +315,8 @@ export function AssemblyMotionPanel({
         <AssemblyPlaybackSettings
           form={input.form}
           fields="playback"
-          disabled={busy || motion.playing || motion.pending}
+          disabled={busy}
+          locked={motion.playing || motion.pending}
         />
         <MotionStatus motion={motion} coordinate={coordinate} input={input} error={error} />
       </TaskPanelLayout>
