@@ -64,6 +64,45 @@ afterEach(() => {
 })
 
 describe("local AI auto-apply controls", () => {
+  it.each([
+    {
+      state: "exhausted recovery",
+      snapshot: { recoveryFailed: true, recoveryAttempt: 5, error: true },
+      expected: "Local MCP connection failed. Restart local MCP in Settings > Connections.",
+    },
+    {
+      state: "non-retryable failure",
+      snapshot: { recoveryFailed: true, recoveryAttempt: 0, error: true },
+      expected: "Local MCP connection failed. Restart local MCP in Settings > Connections.",
+    },
+    {
+      state: "active recovery",
+      snapshot: { recovering: true },
+      expected: "Reconnecting AI…",
+    },
+    {
+      state: "waiting for a client",
+      snapshot: { client: null },
+      expected: "MCP client not connected",
+    },
+    {
+      state: "persistent Stop",
+      snapshot: { recoveryBlocked: true },
+      expected: "AI access stopped",
+    },
+  ])("announces desktop $state accurately without offering Enable", ({ snapshot, expected }) => {
+    const { connection } = setup({
+      ...manual,
+      defaultAccess: true,
+      connected: false,
+      ...snapshot,
+    })
+    expect(screen.getByText(expected).classList.contains("sr-only")).toBe(false)
+    expect(screen.getByRole("status").textContent).toBe(expected)
+    expect(screen.queryByRole("button", { name: "Enable AI session" })).toBeNull()
+    expect(connection.enable).not.toHaveBeenCalled()
+  })
+
   it.each([false, true])(
     "shows internal automatic access without approval or project-management setup (busy: %s)",
     async (busy) => {

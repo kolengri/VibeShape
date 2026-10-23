@@ -794,6 +794,7 @@
         "stopAiDescription": "Stop AI ends the entire paired AI session and turns auto-apply off immediately. An edit already saving may finish; use Undo to revert it.",
         "aiConnectionFailed": "AI connection interrupted. An approved local session reconnects automatically while its approval remains valid.",
         "aiRecovering": "Reconnecting AI…",
+        "desktopMcpRecoveryFailed": "Local MCP connection failed. Restart local MCP in Settings > Connections.",
         "aiStopped": "AI access stopped",
         "projectUnavailable": "Project unavailable"
       },

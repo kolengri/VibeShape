@@ -85,7 +85,7 @@ export function LocalAutomationStatus({
           {t("autoApplyBusy")}
         </span>
       ) : null}
-      {current.error ? (
+      {current.error && !(current.defaultAccess && current.recoveryFailed) ? (
         <span role="status" className="sr-only">
           {t("aiConnectionFailed")}
         </span>
@@ -313,6 +313,12 @@ function ProjectManagementControl({
     </>
   )
 }
+function automaticAccessStatusMessage(current: ReturnType<Connection["getSnapshot"]>) {
+  if (current.recoveryBlocked) return "aiStopped"
+  if (current.defaultAccess && current.recoveryFailed) return "desktopMcpRecoveryFailed"
+  return current.client ? "aiRecovering" : "aiWaitingForClient"
+}
+
 function InactiveConnectionStatus({
   connection,
   current,
@@ -328,13 +334,7 @@ function InactiveConnectionStatus({
   if (hideEnableControl || current.defaultAccess)
     return (
       <span role="status" className="px-2 text-xs text-muted-foreground">
-        {t(
-          current.recoveryBlocked
-            ? "aiStopped"
-            : current.client
-              ? "aiRecovering"
-              : "aiWaitingForClient",
-        )}
+        {t(automaticAccessStatusMessage(current))}
       </span>
     )
   return current.recovering ? (
