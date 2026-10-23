@@ -302,6 +302,7 @@ export function WorkspacePanels({
   allowTransparency,
   children,
   history,
+  interactive = true,
   modelTree,
   revealTreeRequest,
   taskPanel,
@@ -310,6 +311,7 @@ export function WorkspacePanels({
   allowTransparency: boolean
   children: ReactNode
   history?: ReactNode
+  interactive?: boolean
   modelTree: ReactNode
   revealTreeRequest?: number | undefined
   taskPanel: ReactNode
@@ -353,8 +355,11 @@ export function WorkspacePanels({
           opacity={preferences}
         >
           <div className="workspace-viewport">{children}</div>
-          <IdleModelTreeToggle taskActive={taskActive} narrow={narrow} />
+          {interactive && <IdleModelTreeToggle taskActive={taskActive} narrow={narrow} />}
           <ResizablePanelGroup
+            disabled={!interactive}
+            inert={!interactive}
+            aria-hidden={!interactive}
             className="pointer-events-none absolute inset-0 z-20"
             onLayoutChanged={(_layout, { isUserInteraction }) => {
               if (isUserInteraction)

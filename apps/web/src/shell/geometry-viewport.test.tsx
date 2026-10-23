@@ -767,7 +767,7 @@ describe("GeometryViewport", () => {
       [{ featureId: boxId, geometry: { mesh } }],
     )
     const rendered = renderViewport(controller)
-    await userEvent.click(screen.getByRole("button", { name: "Section view" }))
+    await userEvent.click(await screen.findByRole("button", { name: "Section view" }))
     const xy = screen.getByRole("radio", { name: "XY plane, normal Z" }) as HTMLInputElement
     const off = screen.getByRole("radio", { name: "Disable section view" }) as HTMLInputElement
     expect(screen.getAllByRole("radio")).toHaveLength(4)
@@ -2227,8 +2227,8 @@ describe("GeometryViewport", () => {
     expect(onSelectionChange).toHaveBeenCalledWith(null)
   })
 
-  it("keeps structured Extrude preview diagnostics as a compact status instead of a duplicate alert", () => {
-    renderViewport(readyController([], []), null, undefined, {
+  it("keeps structured Extrude preview diagnostics as a compact status instead of a duplicate alert", async () => {
+    const rendered = renderViewport(readyController([], []), null, undefined, {
       status: "error",
       kind: "extrusion",
       meshes: [],
@@ -2241,18 +2241,20 @@ describe("GeometryViewport", () => {
         },
       ],
     })
+    await waitFor(() => expect(rendered.port.setMeshes).toHaveBeenCalled())
     expect(screen.getByRole("status").textContent).toBe(
       "Preview unavailable. Open the task panel for details.",
     )
     expect(screen.queryByRole("alert")).toBeNull()
   })
 
-  it("retains a preview failure alert when no structured error details are available", () => {
-    renderViewport(readyController([], []), null, undefined, {
+  it("retains a preview failure alert when no structured error details are available", async () => {
+    const rendered = renderViewport(readyController([], []), null, undefined, {
       status: "error",
       kind: "extrusion",
       meshes: [],
     })
+    await waitFor(() => expect(rendered.port.setMeshes).toHaveBeenCalled())
     expect(screen.getByRole("alert").textContent).toBe(
       "The unsaved feature could not be previewed. Adjust its parameters or target.",
     )
@@ -2903,6 +2905,50 @@ describe("GeometryViewport", () => {
     expect(document.querySelector('[data-plane-symbol="YZ"]')).toBeTruthy()
   })
 
+  it("replaces the viewport skeleton only after the renderer has initialized its scene", async () => {
+    let resolveViewport: (viewport: GeometryViewportPort) => void = () => undefined
+    const pendingViewport = new Promise<GeometryViewportPort>((resolve) => {
+      resolveViewport = resolve
+    })
+    const onVisibilityChange = vi.fn()
+    const rendered = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      {
+        visibility: { xy: true, xz: false, yz: false },
+        onChange: onVisibilityChange,
+      },
+      {
+        pendingViewport,
+      },
+    )
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    expect(viewport.getAttribute("aria-busy")).toBe("true")
+    expect(viewport.querySelector('[data-project-skeleton="viewport"]')).not.toBeNull()
+    expect(screen.getByText("Preparing 3D view…")).toBeTruthy()
+    expect(screen.getAllByRole("status")).toHaveLength(1)
+    expect(rendered.port.setMeshes).not.toHaveBeenCalled()
+    const canvas = viewport.querySelector("canvas")
+    if (!canvas) throw new Error("Expected the viewport canvas.")
+    expect(canvas?.parentElement?.hasAttribute("inert")).toBe(true)
+    expect(canvas?.parentElement?.getAttribute("aria-hidden")).toBe("true")
+    expect(screen.queryByRole("button", { name: "Hide XY plane" })).toBeNull()
+
+    await act(async () => resolveViewport(rendered.port))
+
+    expect(rendered.port.setMeshes).toHaveBeenCalled()
+    expect(viewport.getAttribute("aria-busy")).toBe("false")
+    expect(viewport.querySelector("[data-project-skeleton]")).toBeNull()
+    expect(viewport.querySelector("[data-project-loading]")).toBeNull()
+    expect(rendered.createViewport).toHaveBeenCalledTimes(1)
+    expect(canvas?.parentElement?.hasAttribute("inert")).toBe(false)
+    expect(screen.getByLabelText("3D viewport", { selector: "canvas" })).toBe(canvas)
+    fireEvent.click(screen.getByRole("button", { name: "Hide XY plane" }))
+    expect(onVisibilityChange).toHaveBeenCalledWith("xy", false)
+  })
+
   it("contains renderer initialization failures as a localized viewport state", async () => {
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],
@@ -2933,6 +2979,10 @@ describe("GeometryViewport", () => {
         )
       ).textContent,
     ).toBe("WebGL2 is unavailable in this browser or device. Modeling data remains saved.")
+    expect(document.querySelector("[data-project-skeleton]")).toBeNull()
+    expect(screen.getByRole("region", { name: "3D viewport" }).getAttribute("aria-busy")).toBe(
+      "false",
+    )
   })
 
   it("discards a thumbnail render that finishes after its viewport was unmounted", async () => {
@@ -3578,7 +3628,7 @@ describe("constituent viewport projection", () => {
       selectedBody,
       onBodySelectionChange,
     })
-    await userEvent.click(screen.getByRole("button", { name: "Clear selection" }))
+    await userEvent.click(await screen.findByRole("button", { name: "Clear selection" }))
     expect(onBodySelectionChange).toHaveBeenCalledTimes(1)
     expect(onBodySelectionChange).toHaveBeenCalledWith(null)
   })

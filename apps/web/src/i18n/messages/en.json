@@ -755,6 +755,7 @@
       "projectLoading": {
         "reading": "Loading project and history…",
         "refining": "Refining model detail…",
+        "viewport": "Preparing 3D view…",
         "progress": "Project loading progress"
       },
       "applicationBar": {

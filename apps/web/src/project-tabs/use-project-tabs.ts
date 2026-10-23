@@ -187,6 +187,10 @@ export function useProjectTabsController(
 
   return {
     ...state,
+    tabs:
+      snapshot && snapshot.id === activeId && !state.tabs.some((tab) => tab.documentId === activeId)
+        ? [...state.tabs, { documentId: snapshot.id, name: snapshot.name }]
+        : state.tabs,
     activeId,
     blocked,
     feedback,
