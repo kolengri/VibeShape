@@ -92,7 +92,7 @@ The target reference canvas is 1440 × 900 CSS px. The supported authoring minim
 | Model tree | 240 px | 200–420 px |
 | Task panel | 320 px | 280–480 px |
 | Side-panel background opacity | 94% | 0–100%; compact sheets stay opaque |
-| Feature history | One bottom row on desktop, with 32 px operation slots | One arrow switches between icons and detailed rows; metadata uses tooltips; source links stay interactive |
+| Feature history | One bottom row on desktop, with 32 px operation slots | Details uses 192 px cards with 24 px control and source rows; each source link shares a row with its link marker. Diagnostics may expand the card. Metadata uses tooltips; source links stay interactive |
 | Panel resize hit area | 8 px | At least 8 px |
 
 Panel sizes are user preferences. Double-clicking a separator restores its default. The thin resize separator has an equivalent keyboard path plus labeled collapse and reset controls that meet the pointer-target baseline. Edge pixels are never the only resize or restore mechanism.
