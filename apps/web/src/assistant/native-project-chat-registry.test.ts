@@ -117,6 +117,37 @@ describe("native project chat retention", () => {
     expect(isProjectRuntimeResourceBusy(projectId)).toBe(false)
     registry.dispose()
   })
+  it("retains the project resource while native configuration is pending", async () => {
+    const f = fixture()
+    let release = () => {}
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const bridge: AssistantBridge = {
+      ...f.bridge,
+      async setModel(input) {
+        await waiting
+        return f.bridge.setModel(input)
+      },
+    }
+    const registry = createNativeProjectChatRegistry(bridge, f.storage)
+    const projectId = "configuring-project"
+    const chat = registry.get(projectId)
+    chat.start()
+    try {
+      await chat.connect({ command: "/installed/agent", args: [] })
+      const pending = chat.setModel("chosen-model")
+      expect(registry.isBusy()).toBe(true)
+      expect(isProjectRuntimeResourceBusy(projectId)).toBe(true)
+      release()
+      await pending
+      expect(registry.isBusy()).toBe(false)
+      expect(isProjectRuntimeResourceBusy(projectId)).toBe(false)
+    } finally {
+      release()
+      registry.dispose()
+    }
+  })
   it("enables images on automatic startup from legacy Jev preferences without resubmitting settings", async () => {
     const f = fixture()
     saveAssistantPreferences(

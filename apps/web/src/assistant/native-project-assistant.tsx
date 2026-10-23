@@ -139,19 +139,19 @@ function useNativeChat(projectId: string, bridge: AssistantBridge) {
     [chat],
   )
   const status = state.snapshot?.status
-  const historyBusy = nativeHistoryBusy(state)
+  const interactionBusy = nativeInteractionBusy(state)
   return {
     chat,
     state,
-    canSend: !historyBusy && nativeCanSend(state),
+    canSend: !interactionBusy && nativeCanSend(state),
     activeSteerTurn: state.busy && status === "prompting",
-    historyBusy,
+    historyBusy: interactionBusy || state.controlBusy,
   }
 }
 function nativeCanSend(state: NativeChatState) {
   return state.projectAccessReady && (state.snapshot?.status === "ready" || state.busy)
 }
-function nativeHistoryBusy(state: NativeChatState) {
+function nativeInteractionBusy(state: NativeChatState) {
   return state.switchingChat || state.connecting || assistantCheckpointBusy(state)
 }
 
@@ -200,7 +200,12 @@ function NativeAutomationRecoveryStatus({
 }
 
 function nativeProjectActionBlocked(state: NativeChatState) {
-  return state.busy || nativeHistoryBusy(state) || state.queuedMessages.length > 0
+  return (
+    state.busy ||
+    state.controlBusy ||
+    nativeInteractionBusy(state) ||
+    state.queuedMessages.length > 0
+  )
 }
 
 function useNativeChatError(state: NativeChatState) {

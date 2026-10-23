@@ -161,6 +161,16 @@ describe("assistant transcript and composer", () => {
     expect(screen.getByRole("button", { name: "Removable lid" }).hasAttribute("disabled")).toBe(
       true,
     )
+    view.rerender(
+      panel({
+        messages: [{ id: "current", role: "user", text: "Current conversation" }],
+        previousChats,
+        onOpenChat,
+        historyBusy: true,
+      }),
+    )
+    for (const name of ["New chat", "Removable lid"])
+      expect(screen.getByRole("button", { name }).hasAttribute("disabled")).toBe(true)
   })
   it("shows an empty project history without hiding the composer", async () => {
     render(panel({ previousChats: [], onOpenChat: async () => true }))
