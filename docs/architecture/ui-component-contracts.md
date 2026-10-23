@@ -14,6 +14,14 @@ section headings without importing form state; labels and help controls remain s
 `Field` defaults to a horizontal 2:3 label/control grid; use its explicit vertical orientation for
 full-width compound content. Empty error slots are omitted by standard field compositions.
 Keep every horizontal field at the same available row width, including across section dividers.
+Choice fields use wrapping label/control rows instead of the fixed split when space is limited.
+Choice cards size from their content and move to another row before wrapping long labels within a
+full-width card. The selected border and background replace the visible radio dot; the native radio
+remains available to keyboard navigation, validation, assistive technology, and form submission.
+Forced-colors mode uses an inset solid outline for selection and an outer dashed outline for keyboard
+focus. Callers requiring a single-column choice field override both its display and grid columns.
+The transparent native input covers the entire choice card, including padding; option help remains a separate target
+that opens guidance without changing the selected value.
 Compose inline controls within its control cell. `NativeSelectField.trailingAction` places an
 adjacent action in that cell without changing the label/control split; its caller owns the action's
 accessible name, tooltip, and disabled state independently of the select.

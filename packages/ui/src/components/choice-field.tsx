@@ -1,6 +1,6 @@
 import * as React from "react"
 
-import { Field, FieldError, fieldVariants } from "#components/field"
+import { Field, FieldError } from "#components/field"
 import { FieldHelp } from "#components/field-help"
 import { cn } from "#lib/cn"
 
@@ -66,10 +66,13 @@ function ChoiceOption({
   return (
     <div
       className={cn(
-        "relative flex min-w-0 flex-1 basis-20 cursor-pointer items-center gap-2 rounded-md border border-input px-2 py-1.5 text-sm",
+        "relative flex min-w-0 max-w-full flex-auto cursor-pointer items-center gap-2 rounded-md border border-input px-2 py-1.5 text-sm",
         "has-checked:border-ring has-checked:bg-accent has-checked:text-accent-foreground",
         "has-focus-visible:border-ring has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50",
+        "forced-colors:has-checked:outline-2 forced-colors:has-checked:outline-solid forced-colors:has-checked:-outline-offset-3 forced-colors:has-checked:outline-[Highlight]",
+        "forced-colors:has-focus-visible:outline-2 forced-colors:has-focus-visible:outline-dashed forced-colors:has-focus-visible:outline-offset-2 forced-colors:has-focus-visible:outline-[Highlight]",
         "has-disabled:cursor-not-allowed has-disabled:opacity-50",
+        "[&>[data-slot=field-help]]:relative [&>[data-slot=field-help]]:z-10",
       )}
     >
       <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
@@ -93,7 +96,7 @@ function ChoiceOption({
           onChange={(event) => {
             if (event.currentTarget.checked) onValueChange?.(event.currentTarget.value)
           }}
-          className="size-3.5 shrink-0 accent-primary"
+          className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
         />
         <span className="min-w-0 wrap-anywhere">
           <span id={`${id}-label`}>{option.label}</span>
@@ -141,10 +144,10 @@ export function ChoiceField({
         disabled={disabled}
         aria-describedby={describedBy || undefined}
         aria-invalid={hasError || undefined}
-        className={fieldVariants({ orientation: "horizontal" })}
+        className="flex min-w-0 w-full flex-wrap items-center gap-x-2 gap-y-1"
       >
         <legend className="sr-only">{label}</legend>
-        <div className="text-xs font-medium">
+        <div className="min-w-0 flex-1 basis-28 text-xs font-medium wrap-anywhere">
           <span className="inline-flex items-center gap-1">
             <span id={`${id}-label`}>{label}</span>
             <span hidden={!required} className="ml-0.5 text-destructive" aria-hidden="true">
@@ -157,7 +160,7 @@ export function ChoiceField({
             ) : null}
           </span>
         </div>
-        <div className="flex min-w-0 flex-wrap gap-1">
+        <div className="flex min-w-0 flex-[3_1_12rem] flex-wrap gap-1">
           {options.map((option, index) => (
             <ChoiceOption
               key={option.value}
@@ -175,7 +178,9 @@ export function ChoiceField({
             />
           ))}
         </div>
-        <FieldError id={`${id}-error`}>{error}</FieldError>
+        <FieldError id={`${id}-error`} className="basis-full">
+          {error}
+        </FieldError>
       </fieldset>
     </Field>
   )

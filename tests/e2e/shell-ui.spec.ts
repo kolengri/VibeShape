@@ -13,6 +13,49 @@ function shellParameters(project: Awaited<ReturnType<typeof saveProject>>, featu
   return parameters
 }
 
+test("Shell choice fields keep labels above their options in a wide task panel", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 900 })
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "vibeshape.workspace-layout.v1",
+      JSON.stringify({
+        version: 1,
+        treeWidth: 240,
+        taskWidth: 480,
+        treeOpacity: 100,
+        taskOpacity: 100,
+        treeCollapsed: false,
+        taskCollapsed: false,
+      }),
+    )
+  })
+  await page.goto("/")
+  await invokeModelCommand(page, "Primitives", "Box")
+  await page
+    .getByRole("form", { name: "Create box", exact: true })
+    .getByRole("button", { name: "Create box", exact: true })
+    .click()
+  await saved(page)
+  await page.getByRole("treeitem", { name: "Part Box 1", exact: true }).click()
+  await page.getByRole("button", { name: "Shell", exact: true }).click()
+  const form = page.getByRole("form", { name: "Shell", exact: true })
+  const fields = form.locator('[data-component="choice-field"]')
+  await expect(fields).toHaveCount(2)
+  for (const field of await fields.all()) {
+    const rows = await field.locator("fieldset > div").evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const bounds = node.getBoundingClientRect()
+        return { x: bounds.x, y: bounds.y, width: bounds.width, bottom: bounds.bottom }
+      }),
+    )
+    expect(rows[0]?.width).toBeGreaterThan(400)
+    expect(rows[0]?.bottom).toBeLessThanOrEqual(rows[1]?.y ?? 0)
+    expect(rows[0]?.x).toBe(rows[1]?.x)
+  }
+})
+
 test("previews Shell, replaces the same part, edits, undoes, reopens, exports and retains semantic opening faces after source edits", async ({
   page,
 }) => {
