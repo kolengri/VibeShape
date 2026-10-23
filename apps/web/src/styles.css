@@ -63,7 +63,7 @@
 
 .editor-workbench {
   display: grid;
-  grid-template-rows: var(--command-bar-height) minmax(0, 1fr) auto 1.5rem;
+  grid-template-rows: var(--command-bar-height) minmax(0, 1fr) auto auto;
   grid-template-areas: "top" "workspace" "bottom" "status";
   row-gap: var(--workspace-gap);
   width: calc(100% - var(--viewport-left-inset, 0px) - var(--viewport-right-inset, 0px));

@@ -126,12 +126,12 @@ export function StatusBar({
     : ordinarySelection
 
   return (
-    <footer className="flex items-center min-w-0 gap-2 border-t bg-toolbar px-2 text-xs text-muted-foreground">
+    <footer className="flex items-center min-w-0 gap-2 border-t bg-toolbar px-2 py-1 text-xs text-muted-foreground">
       <span>{t("units", displayUnits)}</span>
       {onModelEdgeSelectionEnabledChange ? (
         <NativeSelect
           aria-label={t("selectionFilter")}
-          className="h-5 w-auto shrink-0 border-0 bg-transparent py-0 text-xs"
+          className="h-6 w-auto shrink-0 border-0 bg-transparent py-0 text-xs"
           value={modelEdgeSelectionEnabled ? "edges" : "any"}
           onChange={(event) =>
             onModelEdgeSelectionEnabledChange(event.currentTarget.value === "edges")
