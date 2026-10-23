@@ -108,10 +108,15 @@ test("previews a hidden source region and opens its sketch from History", async 
   await expect(renamedSource).toHaveText(longName)
   await renamedSource.hover()
   const sourceBounds = await renamedSource.boundingBox()
+  const rowBounds = await renamedSource.locator("xpath=ancestor::*[@data-history-id]").boundingBox()
   const treeBounds = await page
     .getByRole("region", { name: "Feature history", exact: true })
     .boundingBox()
   if (!sourceBounds || !treeBounds) throw new Error("Expected visible source and feature history")
+  if (!rowBounds) throw new Error("Expected the source inside a History operation")
+  expect(rowBounds.width).toBeLessThanOrEqual(192)
+  expect(rowBounds.height).toBeLessThanOrEqual(48)
+  expect(sourceBounds.x + sourceBounds.width).toBeLessThanOrEqual(rowBounds.x + rowBounds.width)
   expect(sourceBounds.x + sourceBounds.width).toBeLessThanOrEqual(treeBounds.x + treeBounds.width)
   await page.screenshot({
     path: testInfo.outputPath("source-preview-compact-dark.png"),
@@ -197,17 +202,17 @@ test("autosaves an unsaved sketch and preserves local undo when reactivating the
   const lines = drawing.locator('[data-sketch-entity-type="line"]')
   const addLine = async () => {
     await page.getByRole("button", { name: "Line", exact: true }).click()
-    const [drawingBounds, centerBounds] = await Promise.all([
+    const [drawingBounds, treeBounds, taskBounds] = await Promise.all([
       drawing.boundingBox(),
-      page.locator("#workspace-center").boundingBox(),
+      page.getByRole("complementary", { name: "Model tree", exact: true }).boundingBox(),
+      page.getByRole("complementary", { name: "Sketch task panel", exact: true }).boundingBox(),
     ])
-    if (!drawingBounds || !centerBounds) throw new Error("Missing visible sketch modeling area.")
-    const left = Math.max(drawingBounds.x, centerBounds.x)
-    const top = Math.max(drawingBounds.y, centerBounds.y)
-    const width =
-      Math.min(drawingBounds.x + drawingBounds.width, centerBounds.x + centerBounds.width) - left
-    const height =
-      Math.min(drawingBounds.y + drawingBounds.height, centerBounds.y + centerBounds.height) - top
+    if (!drawingBounds || !treeBounds || !taskBounds)
+      throw new Error("Missing visible sketch modeling area.")
+    const left = Math.max(drawingBounds.x, treeBounds.x + treeBounds.width)
+    const top = drawingBounds.y
+    const width = Math.min(drawingBounds.x + drawingBounds.width, taskBounds.x) - left
+    const height = drawingBounds.height
     if (width <= 0 || height <= 0) throw new Error("The sketch modeling area is obscured.")
     await page.mouse.click(left + width * 0.75, top + height * 0.75)
     await page.mouse.click(left + width * 0.85, top + height * 0.85)
