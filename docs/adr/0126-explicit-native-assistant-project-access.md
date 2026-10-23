@@ -1,6 +1,7 @@
 # ADR-0126: Explicit native assistant project access
 
 - Status: Accepted
+- Partially superseded by: [ADR-0130](0130-default-desktop-external-mcp-access.md) for copied desktop external client access and restart UX
 - Date: 2026-10-22
 - Partially supersedes: [ADR-0115](0115-automatic-native-project-mcp-access.md) for explicit connection after Stop AI
 

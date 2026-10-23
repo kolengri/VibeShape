@@ -46,6 +46,7 @@
     "zustand": "catalog:"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
     "@types/node": "26.1.2",
     "@vibeshape/mcp-server": "workspace:*",
     "rollup-plugin-license": "3.7.1",

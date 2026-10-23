@@ -203,6 +203,14 @@ The message field supplies its description. Capture never includes the surroundi
 camera, or sends automatically. The direct browser API currently advertises text attachments only.
 Queued-message steering uses a compact upper-right icon button with its full accessible name.
 
+The native desktop's copied MCP configuration automatically shares the current project with its
+one authenticated external client. Desktop primary and secondary status controls do not offer
+Enable AI session. External proposals default to manual Apply; auto-apply and project management
+remain separate choices. Stop AI revokes every current-project transport and persists across reload
+and navigation. Settings > Connections shows **Restart local MCP** only after external access has
+stopped; deliberate Connect in AI settings restores the embedded assistant separately. Standalone
+browser, development HTTP and remote pairing retain their explicit Enable/consent flow.
+
 An interrupted embedded desktop connection shows automatic recovery progress for up to five attempts
 per connection owner, followed by an explicit retry action. Recovery retains settings and the reading
 position. A resumable provider session continues only after accepted writes settle and the agent

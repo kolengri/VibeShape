@@ -144,9 +144,10 @@ profiles to come from one sketch.
 
 ## Fillet and Chamfer
 
-A unique identical complete edge signature resolves before approximate matching, including nearby
-circular rims. Coincident identical candidates remain ambiguous and require explicit repair. This
-rule preserves semantic, lineage and exact output-body restrictions.
+A unique identical complete edge or face signature resolves before approximate matching, including
+nearby circular rims and coplanar faces used by Shell or Press Pull. Coincident identical candidates
+remain ambiguous and require explicit repair. This rule preserves semantic, lineage, explicit intent
+and exact output-body restrictions; it does not repair stored references with changed signatures.
 
 In the visible editor, current exact edges can be selected directly in the idle 3D viewport or
 through its focus-revealed keyboard selector. Starting Fillet or Chamfer captures eligible edge intent

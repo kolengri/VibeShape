@@ -15,14 +15,14 @@ import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"
 
-it.each(["manual", "native-project"] as const)(
+it.each(["manual", "native-project", "desktop-external"] as const)(
   "advertises %s pairing instructions without granting document authority",
   async (policy) => {
     const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
     const adapter = createLocalMcpAdapter(
       broker,
       createExportResources(),
-      policy === "native-project" ? { accessPolicy: policy } : {},
+      policy === "manual" ? {} : { accessPolicy: policy },
     )
     const client = new Client({ name: "instructions-test", version: "1" })
     try {
@@ -36,6 +36,14 @@ it.each(["manual", "native-project"] as const)(
         expect(instructions).toContain(manual)
         expect(instructions).toContain("Project tools require separate browser-owned")
         expect(instructions).not.toContain("automatically connects this embedded assistant")
+      } else if (policy === "desktop-external") {
+        expect(instructions).not.toContain(manual)
+        expect(instructions).toContain("automatically connects this authenticated local client")
+        expect(instructions).toContain("Model changes require manual Apply")
+        expect(instructions).toContain(
+          "only the person can restart access in Settings > Connections",
+        )
+        expect(instructions).not.toContain("authorizes validated model commits")
       } else {
         expect(instructions).not.toContain(manual)
         expect(instructions).toContain("automatically connects this embedded assistant")

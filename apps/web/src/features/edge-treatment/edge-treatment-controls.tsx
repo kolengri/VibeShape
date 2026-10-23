@@ -119,7 +119,7 @@ function CandidateFallback({ props }: { props: TreatmentControlsProps }) {
   const currentPage = Math.min(page, lastPage)
   return (
     <details
-      className="sr-only rounded-md border p-2 focus-within:not-sr-only"
+      className="sr-only rounded-md border p-2 open:not-sr-only focus-within:not-sr-only"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="font-medium cursor-pointer text-xs">{t("keyboardChoices")}</summary>

@@ -2,7 +2,11 @@ export const authoringGuide = `# VibeShape MCP authoring guide
 
 Read \`vibeshape://session\` for the actual \`editorUrl\` and current \`paired\` status.
 This resource works before pairing and contains no credentials or document data.
-Open that URL, open/create the intended project, and have the person click **Enable AI session**.
+Open that URL and open/create the intended project. Standalone browser/development connections
+require the person to click **Enable AI session**. The native desktop host automatically grants its
+copied-descriptor-authenticated external client current-project access with manual Apply by default.
+Desktop status has no initial Enable option. **Stop AI** persists across reload and navigation; only
+the person can choose **Restart local MCP** in Settings > Connections. Do not bypass Stop.
 For multiple projects, the person separately enables **Allow project management** in AI connection
 settings. Shared local/remote tools list_projects (bounded pages), create_project and open_project
 then preserve pairing without reloading. Create/open require expectedProjectId and expectedRevision
@@ -11,7 +15,7 @@ The editor must be saved and idle. A different project disposes private drafts a
 restores the remembered local CAD approval mode; remote auto-apply resets. Read model_info and start a fresh draft after switching. CAD tools accept optional
 projectId to reject a wrong active target. Never retry uncertain project creation blindly; inspect
 the active project and catalog. Project management permission is not restored after recovery.
-The browser retains the document authority; there is no embedded chat and no headless modeling mode.
+The editor retains document authority; there is no headless modeling mode.
 Use MCP tools/list as the current input/output schema authority. Only listed tools are callable.
 
 ## Visual checks

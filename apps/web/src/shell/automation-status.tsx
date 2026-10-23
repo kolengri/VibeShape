@@ -16,6 +16,7 @@ import {
   startNativeProjectAutomationConnection,
 } from "../automation/native-project-automation"
 import { createRemoteAutomationConnection } from "../automation/remote-automation-connection"
+import { getDesktopHost } from "../desktop/desktop-host"
 import {
   type DocumentControllerState,
   getProjectActionBlock,
@@ -64,14 +65,22 @@ function useNativeAutomationConnection(
   useEffect(() => {
     if (projectId) startNativeProjectAutomationConnection(projectId)
   }, [projectId])
-  const available = native.available || native.connected || native.recovering
+  const available =
+    native.connected || native.recovering || (native.available && external.client === null)
   return nativeConnection && available
     ? { connection: nativeConnection, current: native, nativeConnection }
     : { connection: externalConnection, current: external, nativeConnection }
 }
 
 function useCreateAutomationConnections(controller: DocumentControllerState) {
-  const [externalConnection] = useState(() => createLocalAutomationConnection())
+  const [externalConnection] = useState(() =>
+    createLocalAutomationConnection({
+      accessPolicy:
+        getDesktopHost()?.localAutomationAccess === "current-project"
+          ? "desktop-external"
+          : "manual",
+    }),
+  )
   const [remoteConnection] = useState(() =>
     createRemoteAutomationConnection(import.meta.env.VITE_REMOTE_MCP_URL),
   )
@@ -109,7 +118,10 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     return remoteConnection.dispose
   }, [remoteConnection])
   useEffect(() => {
-    for (const local of localConnections) local.validateDocumentScope()
+    for (const local of localConnections)
+      local.validateDocumentScope(
+        controller.status === "ready" ? (controller.report?.snapshot.id ?? null) : null,
+      )
     remoteConnection.validateDocumentScope()
   }, [localConnections, remoteConnection, controller.status, controller.report?.snapshot.id])
   const stopAll = useCallback(async () => {
@@ -125,7 +137,7 @@ function useCreateAutomationConnections(controller: DocumentControllerState) {
     }),
     [connection, remoteConnection, stopAll],
   )
-  return { ...controls, current, remote, localConnections }
+  return { ...controls, current, remote, localConnections, externalConnection, external }
 }
 
 type AutomationConnections = ReturnType<typeof useCreateAutomationConnections>
@@ -146,8 +158,12 @@ export function AutomationConnectionsProvider({
   )
 }
 
+export function useOptionalAutomationConnections() {
+  return useContext(AutomationConnectionsContext)
+}
+
 export function useAutomationConnections() {
-  const connections = useContext(AutomationConnectionsContext)
+  const connections = useOptionalAutomationConnections()
   if (!connections) throw new Error("Automation controls require AutomationConnectionsProvider.")
   return connections
 }
@@ -181,6 +197,30 @@ function editorDraftBlock(state: EditorSessionState) {
 function hasRetainedLocalApproval(current: AutomationConnections["current"]) {
   return current.connected || current.recovering
 }
+
+function ExternalAutomationStatus({
+  connection,
+  current,
+  externalConnection,
+  external,
+}: Pick<AutomationConnections, "connection" | "current" | "externalConnection" | "external">) {
+  if (
+    !current.projectBound ||
+    !hasRetainedLocalApproval(current) ||
+    !external.available ||
+    !external.client
+  )
+    return null
+  return (
+    <LocalAutomationStatus
+      connection={{ ...externalConnection, disable: connection.disable }}
+      current={external}
+      showStopControl={false}
+      hideEnableControl={external.defaultAccess === true}
+    />
+  )
+}
+
 function AutomationStatusControls({
   controller,
   blockedReason,
@@ -188,28 +228,38 @@ function AutomationStatusControls({
   remoteConnection,
   current,
   remote,
+  externalConnection,
+  external,
 }: AutomationConnections & {
   controller: DocumentControllerState
   blockedReason: ReturnType<typeof getProjectActionBlock>
 }) {
+  if (controller.status !== "ready") return null
   const retainedLocal = hasRetainedLocalApproval(current)
-  const showLocal = retainedLocal
-    ? !remote.connected
-    : current.available && !remote.pairingCode && !remote.connecting
+  const showLocal =
+    retainedLocal || (current.available && !remote.pairingCode && !remote.connecting)
   return (
     <>
-      {showLocal && controller.status === "ready" ? (
+      {showLocal ? (
         <LocalAutomationStatus
           key={`${controller.report?.snapshot.id}:${current.connected}`}
           connection={connection}
           current={current}
+          hideEnableControl={external.defaultAccess === true}
         />
       ) : null}
-      {remote.available && controller.status === "ready" ? (
+      <ExternalAutomationStatus
+        connection={connection}
+        current={current}
+        externalConnection={externalConnection}
+        external={external}
+      />
+      {remote.available ? (
         <RemoteAutomationStatus
           connection={remoteConnection}
           current={remote}
           blocked={retainedLocal || blockedReason !== null}
+          showStopControl={!retainedLocal}
         />
       ) : null}
     </>
