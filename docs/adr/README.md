@@ -138,6 +138,7 @@
 | [0126](0126-explicit-native-assistant-project-access.md) | Accepted | Explicit native assistant connection establishes project access |
 | [0127](0127-exact-planar-press-pull.md) | Accepted | Exact planar-face Press Pull with stable body topology references |
 | [0128](0128-saved-authored-part-appearance.md) | Accepted | V6 authored part appearance and portable material/color metadata |
+| [0129](0129-revision-scoped-assembly-inspection.md) | Accepted | Reuse verified frozen geometry in a revision-scoped assembly inspection worker |
 
 Statuses:
 

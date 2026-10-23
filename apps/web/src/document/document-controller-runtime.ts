@@ -185,6 +185,7 @@ import { createBrowserSurfaceTextureAutomationSession } from "../automation/surf
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
 import { lightweightingSource } from "../features/lightweighting/lightweighting-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
+import { AssemblyInspectionSession } from "./assembly-inspection-session"
 import { AssistantCheckpointBaselines } from "./assistant-checkpoint-baselines"
 import type { AssistantCheckpointPresentation } from "./assistant-checkpoint-presentation"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
@@ -291,6 +292,9 @@ export type DocumentRuntimeOptions = Readonly<{
   reviews?: ReturnType<typeof createAutomationReviewController>
 }>
 export function createDocumentControllerRuntime(options: DocumentRuntimeOptions = {}) {
+  const assemblyInspection = new AssemblyInspectionSession((documentId) =>
+    createDocumentWorkerSession(documentId, { retryRecoverableFailure: false }),
+  )
   const automationReviews = options.reviews ?? createAutomationReviewController()
 
   const DATABASE_NAME = "vibeshape-product-v0"
@@ -464,6 +468,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       authoredSnapshot: session?.authoredSnapshot ?? null,
       history: session?.history ?? { canUndo: false, canRedo: false },
     }
+    assemblyInspection.retain(state.authoredSnapshot)
     for (const listener of listeners) listener()
   }
 
@@ -2172,12 +2177,13 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
 
   async function inspectActiveAssembly(
     pairs: readonly { leftInstanceId: string; rightInstanceId: string }[] = [],
+    signal?: AbortSignal,
   ): Promise<
     | { ok: true; inspection: AssemblyInspection }
     | { ok: false; diagnostic: { code: string; message: string; retryable: boolean } }
   > {
     try {
-      return await inspectCapturedAssembly(captureAssemblyContext(), pairs)
+      return await inspectCapturedAssembly(captureAssemblyContext(), pairs, [], undefined, signal)
     } catch (error) {
       return assemblyFailure(error, "Assembly inspection")
     }
@@ -2229,29 +2235,23 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   ) {
     const { active, repository, authority } = context
     if (signal?.aborted) throw new Error("Assembly inspection was cancelled.")
-    const worker = createDocumentWorkerSession(authority.id, { retryRecoverableFailure: false })
-    const cancel = () => worker.terminate()
-    signal?.addEventListener("abort", cancel, { once: true })
-    try {
-      const sourceAssets = await repository.materializeAssemblySourceAssets(authority, ownedBlobs)
-      if (signal?.aborted) throw new Error("Assembly inspection was cancelled.")
-      assertAuthorityCurrent(active, baseRevision)
-      const result = await worker.inspectAssembly(
-        {
-          authorityJson: canonicalJson(authority),
-          sourceAssets: [...sourceAssets],
-          mesh: PRODUCT_MESH_POLICY,
-          interferencePairs: [...pairs],
-        },
-        authority.revision,
-      )
-      if (signal?.aborted) throw new Error("Assembly inspection was cancelled.")
-      assertAuthorityCurrent(active, baseRevision)
-      return { ok: true as const, inspection: result.inspection }
-    } finally {
-      signal?.removeEventListener("abort", cancel)
-      worker.terminate()
-    }
+    const sourceAssets = await repository.materializeAssemblySourceAssets(authority, ownedBlobs)
+    if (signal?.aborted) throw new Error("Assembly inspection was cancelled.")
+    assertAuthorityCurrent(active, baseRevision)
+    const result = await assemblyInspection.inspect(
+      authority.id,
+      authority.revision,
+      {
+        authorityJson: canonicalJson(authority),
+        sourceAssets: [...sourceAssets],
+        mesh: PRODUCT_MESH_POLICY,
+        interferencePairs: [...pairs],
+      },
+      signal,
+    )
+    if (signal?.aborted) throw new Error("Assembly inspection was cancelled.")
+    assertAuthorityCurrent(active, baseRevision)
+    return { ok: true as const, inspection: result.inspection }
   }
 
   async function exportActiveAssembly(
@@ -3522,6 +3522,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     }))
   }
   async function closeRuntime() {
+    assemblyInspection.dispose()
     const active = session
     if (!active) return { ok: true as const }
     try {

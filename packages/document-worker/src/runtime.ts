@@ -1,3 +1,4 @@
+import { AssemblyMaterializationCache } from "@vibeshape/application/assembly-materialization"
 import {
   type DocumentFeatureRebuildResult,
   type FeatureGeometryEvaluationPort,
@@ -295,6 +296,8 @@ export class DocumentWorkerRuntime {
   >()
   readonly #latestGenerations = new Map<string, number>()
   #operationQueue: Promise<void> = Promise.resolve()
+  readonly #assemblyCache = new AssemblyMaterializationCache()
+  #assemblyCacheKey: string | null = null
 
   constructor(
     private readonly engine: GeometryKernelEngine,
@@ -369,15 +372,7 @@ export class DocumentWorkerRuntime {
         return
       }
       if (request.type === "inspectAssembly") {
-        const inspection = await inspectAssemblyRuntime(
-          this.engine,
-          this.registry,
-          this.solveSketch,
-          request.input,
-          request,
-          this.solveAssembly,
-        )
-        this.#post({ ...requestEnvelope(request), type: "assemblyInspected", inspection })
+        await this.#inspectAssembly(request)
         return
       }
       if (request.type === "inspectMeshImport") {
@@ -402,12 +397,32 @@ export class DocumentWorkerRuntime {
         return
       }
       const ownedShapeCount = this.engine.disposeDocument(request.documentId)
+      this.#assemblyCache.clear()
+      this.#assemblyCacheKey = null
       this.#states.delete(request.documentId)
       this.#documents.delete(request.documentId)
       this.#post({ ...requestEnvelope(request), type: "documentDisposed", ownedShapeCount })
     } catch (error) {
       this.#postOperationError(request, error)
     }
+  }
+
+  async #inspectAssembly(request: Extract<DocumentWorkerRequest, { type: "inspectAssembly" }>) {
+    const key = `${request.documentId}:${request.revision}:${request.generation}`
+    if (this.#assemblyCacheKey !== key) {
+      this.#assemblyCache.clear()
+      this.#assemblyCacheKey = key
+    }
+    const inspection = await inspectAssemblyRuntime(
+      this.engine,
+      this.registry,
+      this.solveSketch,
+      request.input,
+      request,
+      this.solveAssembly,
+      this.#assemblyCache,
+    )
+    this.#post({ ...requestEnvelope(request), type: "assemblyInspected", inspection })
   }
   #postOperationError(request: DocumentWorkerRequest, error: unknown) {
     if (error instanceof AssemblyMaterializationError) {

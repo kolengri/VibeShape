@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-19
 - Extends: [ADR 0080](0080-general-assembly-mates-and-topology-bound-frames.md), [ADR 0089](0089-owned-assembly-and-library-mcp-drafts.md)
+- Worker/source lifecycle superseded by: [ADR 0129](0129-revision-scoped-assembly-inspection.md)
 
 ## Decision
 

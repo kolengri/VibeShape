@@ -1,5 +1,6 @@
 import type { AssemblyMaterializationResult } from "@vibeshape/application/assembly-materialization"
 import {
+  type AssemblyMaterializationCache,
   type AssemblyMaterializedOccurrence,
   materializeAssembly,
 } from "@vibeshape/application/assembly-materialization"
@@ -131,6 +132,7 @@ export async function withMaterializedAssemblyRuntime<T>(
   identity: { documentId: string; revision: number; generation: number },
   action: AssemblyRuntimeAction<T>,
   solveAssemblyConstraints?: AssemblyConstraintSolvePort,
+  cache?: AssemblyMaterializationCache,
 ): Promise<T> {
   const authority = documentSnapshotV4Schema.parse(JSON.parse(input.authorityJson))
   if (authority.id !== identity.documentId || authority.revision !== identity.revision)
@@ -145,6 +147,8 @@ export async function withMaterializedAssemblyRuntime<T>(
   try {
     const materialized = await materializeAssembly({
       document: authority,
+      // Exact interference needs live native scopes; cached display buffers own no kernel handles.
+      ...(cache && input.interferencePairs.length === 0 ? { cache } : {}),
       ...(solveAssemblyConstraints ? { solveAssemblyConstraints } : {}),
       meshPolicy: input.mesh,
       contentEnvironment: metadata.featureContentEnvironment,
@@ -241,6 +245,7 @@ export async function inspectAssemblyRuntime(
   input: InspectAssemblyInput,
   identity: { documentId: string; revision: number; generation: number },
   solveAssemblyConstraints?: AssemblyConstraintSolvePort,
+  cache?: AssemblyMaterializationCache,
 ): Promise<AssemblyInspection> {
   return withMaterializedAssemblyRuntime(
     engine,
@@ -261,5 +266,6 @@ export async function inspectAssemblyRuntime(
       })
     },
     solveAssemblyConstraints,
+    cache,
   )
 }

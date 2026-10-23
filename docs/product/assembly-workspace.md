@@ -70,6 +70,12 @@ and one Undo checkpoint; applying a passive coordinate explicitly locks it as a 
 joint's other coordinate keeps its authored constraint. Project/revision changes and leaving Assembly
 dispose pending previews. This is a kinematic preview, without dynamics or collision response.
 
+Display inspection and motion reuse one worker and a bounded cache of verified frozen geometry for
+the current project revision. Each new pose still solves the exact constraints. Switching back to
+Assembly can reuse completed geometry; leaving during inspection cancels that unfinished request.
+Changing the authored revision, closing the project or a worker failure releases the derived state.
+Exact interference and export build independent native sources.
+
 ## Motion studies
 
 Open **Motion studies** in the Assembly toolbar and choose **New study** or a saved study. A new study
