@@ -2134,7 +2134,7 @@ describe("History pointer preselection", () => {
     })
     const onPreview = vi.fn()
     const onFeaturePreselectionChange = vi.fn()
-    renderTree({
+    const tree = renderTree({
       controller: {
         ...controller,
         report: {
@@ -2167,7 +2167,31 @@ describe("History pointer preselection", () => {
     fireEvent.scroll(link.closest("[data-history-track]") as Element)
     expect(document.activeElement).toBe(link)
     expect(onPreview).not.toHaveBeenCalled()
+
+    const otherRow = timeline().getByRole("treeitem", { name: "Box 1" })
+    for (const cancel of [
+      fireEvent.pointerOut,
+      fireEvent.wheel,
+      fireEvent.scroll,
+      fireEvent.pointerCancel,
+    ]) {
+      await act(async () => vi.advanceTimersByTimeAsync(150))
+      fireEvent.pointerOver(otherRow, { pointerType: "mouse", buttons: 0 })
+      await act(async () => vi.advanceTimersByTimeAsync(200))
+      expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(featureId)
+      expect(onPreview).toHaveBeenLastCalledWith(null)
+      cancel(otherRow)
+      expect(document.activeElement).toBe(link)
+      expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(null)
+      expect(onPreview).toHaveBeenLastCalledWith(profile)
+    }
     link.blur()
+    expect(onPreview).toHaveBeenLastCalledWith(null)
+
+    link.focus()
+    fireEvent.pointerOver(otherRow, { pointerType: "mouse", buttons: 0 })
+    await act(async () => vi.advanceTimersByTimeAsync(200))
+    tree.rerenderTree({ controller: suppressedController })
     expect(onPreview).toHaveBeenLastCalledWith(null)
   })
 

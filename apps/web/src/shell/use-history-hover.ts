@@ -3,22 +3,37 @@ import { type PointerEvent, useCallback, useEffect, useRef } from "react"
 const dwellDelay = 200
 const scrollIdleDelay = 150
 
+function focusedHistoryPreview(candidate: HTMLElement | null) {
+  const root = candidate?.closest("[data-feature-timeline]")
+  const focused = candidate?.ownerDocument.activeElement
+  return focused instanceof HTMLElement &&
+    root?.contains(focused) &&
+    focused.matches("[data-history-profile-index], [role=treeitem]")
+    ? focused
+    : null
+}
+
 export function useHistoryHover(onPreselect: (target: HTMLElement | null) => void) {
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null)
   const candidate = useRef<HTMLElement | null>(null)
   const active = useRef(false)
   const blockedUntil = useRef(0)
 
-  const cancel = useCallback(() => {
-    if (pending.current !== null) clearTimeout(pending.current)
-    pending.current = null
-    candidate.current = null
-    if (active.current) onPreselect(null)
-    active.current = false
-  }, [onPreselect])
+  const reset = useCallback(
+    (fallback: HTMLElement | null) => {
+      if (pending.current !== null) clearTimeout(pending.current)
+      pending.current = null
+      candidate.current = null
+      if (active.current) onPreselect(fallback)
+      active.current = false
+    },
+    [onPreselect],
+  )
+
+  const cancel = () => reset(focusedHistoryPreview(candidate.current))
 
   // The owner replaces this callback when the available History rows change.
-  useEffect(() => cancel, [cancel])
+  useEffect(() => () => reset(null), [reset])
 
   const rowAt = (target: EventTarget | null) =>
     target instanceof Element
