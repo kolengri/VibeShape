@@ -235,11 +235,26 @@ test("selects and reloads a cold project with progressive viewport loading", asy
     "true",
   )
   await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
-  for (const region of ["toolbar", "tree", "history", "viewport", "status"]) {
+  for (const region of ["tree", "history", "viewport"]) {
     await expect(page.locator(`[data-project-skeleton="${region}"]`)).toBeVisible()
   }
+  await expect(page.locator('[data-project-skeleton="toolbar"]')).toHaveCount(0)
+  await expect(page.locator('[data-project-skeleton="status"]')).toHaveCount(0)
+  const toolbar = page.getByRole("toolbar", { name: "Model commands", exact: true })
+  await expect(toolbar).toBeVisible()
+  const createSketch = toolbar.getByRole("button", { name: "Create sketch", exact: true })
+  await expect(createSketch).toBeDisabled()
+  await expect(createSketch).toHaveAccessibleDescription("Wait for the project to finish loading.")
+  await createSketch.dispatchEvent("click")
+  await expect(page.getByRole("form")).toHaveCount(0)
+  await toolbar.getByRole("button", { name: "Primitives", exact: true }).click()
+  await expect(page.getByRole("menuitem", { name: "Sphere", exact: true })).toBeDisabled()
+  await page.keyboard.press("Escape")
+  await expect(page.getByText("Opening local document…", { exact: true })).toBeVisible()
   await expect(page.locator('[data-slot="resizable-panel-group"]')).toHaveAttribute("inert", "")
-  await expect(page.getByRole("separator")).toHaveCount(0)
+  await expect(
+    page.getByRole("separator").and(page.locator('[data-slot="resizable-handle"]')),
+  ).toHaveCount(0)
   await page.setViewportSize({ width: 512, height: 384 })
   await expect(page.getByRole("button", { name: "Show model tree", exact: true })).toHaveCount(0)
   await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
@@ -344,6 +359,8 @@ test("selects and reloads a cold project with progressive viewport loading", asy
   await page.reload()
   await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
   await expect(page.locator('[data-project-skeleton="history"]')).toBeVisible()
+  await expect(toolbar).toBeVisible()
+  await expect(createSketch).toBeDisabled()
   await expect(tabs.getByRole("tab", { name: "Detailed project", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
