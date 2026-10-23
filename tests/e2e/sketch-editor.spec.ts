@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures"
-import { invokeModelCommand } from "./model-command-support"
+import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 import {
   addDimension,
   clickSketchEntity,
@@ -483,14 +483,10 @@ test.describe("full sketch editor", () => {
     await expect(taskPanel.getByText(replacementLabel, { exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
-    await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Delete feature" })).toBeDisabled()
-    await expect(
-      page.getByText("Deletion is blocked by: Sketch 1 (model geometry reference).", {
-        exact: true,
-      }),
-    ).toBeVisible()
-    const preserveDelete = page.getByRole("button", { name: "Delete and keep references" })
+    await expandHistoryDetails(page)
+    await page.getByRole("button", { name: "Actions for Box 1", exact: true }).click()
+    await expect(page.getByRole("menuitem", { name: "Delete Box 1…", exact: true })).toBeEnabled()
+    const preserveDelete = page.getByRole("menuitem", { name: "Delete and keep references" })
     await expect(preserveDelete).toBeEnabled()
     await preserveDelete.click()
     const preserveDialog = page.getByRole("alertdialog")

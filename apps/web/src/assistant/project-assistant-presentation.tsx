@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { useWindowCollapse, WindowCollapseProvider } from "../components/window-collapse"
 import type { DocumentControllerState } from "../document/document-controller"
 import { ViewportGridItem } from "../shell/viewport-grid"
 import { BrowserProjectAssistant } from "./browser-project-assistant"
@@ -65,7 +66,15 @@ export function ProjectAssistantToggle() {
   )
 }
 
-export function ProjectAssistantPanel({
+export function ProjectAssistantPanel(props: Parameters<typeof ProjectAssistantPanelContent>[0]) {
+  return (
+    <WindowCollapseProvider>
+      <ProjectAssistantPanelContent {...props} />
+    </WindowCollapseProvider>
+  )
+}
+
+function ProjectAssistantPanelContent({
   bridge,
   controller,
   onCaptureView,
@@ -75,6 +84,7 @@ export function ProjectAssistantPanel({
   onCaptureView: () => Promise<File | null>
 }) {
   const { open, id, close } = useAssistantPresentation()
+  const collapse = useWindowCollapse()
   return (
     <ViewportGridItem
       id="workspace-assistant"
@@ -85,7 +95,7 @@ export function ProjectAssistantPanel({
       width={420}
       minWidth={280}
       maxWidth={420}
-      mobile={{ below: 640, area: "bottom", height: "45svh" }}
+      mobile={{ below: 640, area: "bottom", height: collapse?.collapsed ? "" : "45svh" }}
     >
       <div id={id} className="contents">
         {bridge ? (

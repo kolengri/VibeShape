@@ -11,7 +11,7 @@ export function TaskPanelFooter({
   return (
     <footer
       data-slot="task-panel-footer"
-      className={cn("grid min-w-0 shrink-0 gap-2 border-t p-3", className)}
+      className={cn("grid min-w-0 shrink-0 gap-1.5 border-t px-2 py-1", className)}
     >
       {children}
     </footer>

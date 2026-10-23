@@ -119,22 +119,6 @@ function measureOccupiedRegions(
   for (const [edge, pixels] of Object.entries(occupiedInsets(regions, measurement, scene))) {
     element.style.setProperty(`--workspace-chrome-${edge}`, `${pixels}px`)
   }
-  const fullHeight = regions.filter(({ item }) => item.fullHeight && !item.overlay)
-  for (const area of ["left", "right"] as const) {
-    const inset = fullHeight
-      .filter(({ item }) => item.host.dataset.viewportArea === area)
-      .reduce(
-        (inset, { rect }) =>
-          Math.max(
-            inset,
-            (area === "left"
-              ? rect.right - measurement.rect.left
-              : measurement.rect.right - rect.left) + measurement.bounds.gap,
-          ),
-        0,
-      )
-    element.style.setProperty(`--viewport-${area}-inset`, `${inset}px`)
-  }
   return new Map(
     regions.filter(({ rect }) => rect.height > 0).map(({ item, rect }) => [item.id, rect.height]),
   )
@@ -349,8 +333,8 @@ function LaneHost({
       data-full-height={lane.fullHeight}
       style={{
         width: lane.width,
-        top: lane.fullHeight ? 0 : bounds.bodyTop,
-        height: lane.fullHeight ? "100%" : bounds.bodyHeight,
+        top: bounds.bodyTop,
+        height: bounds.bodyHeight,
       }}
     >
       {lane.items.map((item) => (
@@ -411,10 +395,7 @@ function LaneSeparator({ lane, bounds }: { lane: ViewportGridLane; bounds: Bound
       disableDoubleClick
       onDoubleClick={owner?.onResetWidth}
       className="viewport-grid__resize"
-      style={{
-        marginTop: lane.fullHeight ? 0 : bounds.bodyTop,
-        height: lane.fullHeight ? "100%" : bounds.bodyHeight,
-      }}
+      style={{ marginTop: bounds.bodyTop, height: bounds.bodyHeight }}
     />
   )
 }
@@ -518,12 +499,12 @@ function GridSlots({
             className="viewport-grid__drawer"
             style={{
               top: bounds.bodyTop,
-              height: bounds.bodyHeight,
+              height: bounds.bottomBudget,
               width: Math.max(0, Math.min(288, bounds.workbenchWidth, bounds.width - 48)),
               [item.area === "right" ? "right" : "left"]: 0,
             }}
           >
-            <ItemHost item={item} registration={items.get(item.id)} cap={bounds.bodyHeight} />
+            <ItemHost item={item} registration={items.get(item.id)} cap={bounds.bottomBudget} />
           </div>
         ))}
       </div>
