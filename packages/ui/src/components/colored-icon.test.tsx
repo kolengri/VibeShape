@@ -2,6 +2,7 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, expect, it } from "bun:test"
 import { cleanup, render, screen } from "@testing-library/react"
 import { createRef } from "react"
+import { coloredIcon } from "./colored-icon"
 import * as icons from "./icons"
 import { CancelIcon, CloseIcon, FolderOpen, LoadingIcon, X } from "./icons"
 
@@ -102,4 +103,28 @@ it("uses the neutral close glyph for generic dismissal while preserving explicit
   expect(container.querySelector('[data-icon="close"] circle')).toBeNull()
   expect(container.querySelector('[data-icon="close"] defs')).toBeNull()
   expect(container.querySelector('[data-icon="cancel"] circle')).not.toBeNull()
+})
+
+it("retains instance artwork across host updates while forwarding changed props and children", () => {
+  let drawings = 0
+  const Icon = coloredIcon("retained-artwork", (id) => {
+    drawings += 1
+    return <path id={`${id}-path`} d="M0 0h20v20H0z" />
+  })
+  const ref = createRef<SVGSVGElement>()
+  const { container, rerender } = render(<Icon ref={ref} size={20} className="first" />)
+  const path = container.querySelector("path")
+  const pathId = path?.id
+  rerender(
+    <Icon ref={ref} size={48} className="updated" aria-label="Updated">
+      <title>Changed child</title>
+    </Icon>,
+  )
+  expect(drawings).toBe(1)
+  expect(container.querySelector("path")).toBe(path)
+  expect(container.querySelector("path")?.id).toBe(pathId)
+  expect(ref.current?.getAttribute("width")).toBe("48")
+  expect(ref.current?.getAttribute("class")).toBe("updated")
+  expect(ref.current?.getAttribute("aria-label")).toBe("Updated")
+  expect(container.querySelector("title")?.textContent).toBe("Changed child")
 })

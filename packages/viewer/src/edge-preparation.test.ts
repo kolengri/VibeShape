@@ -11,6 +11,7 @@ function request(geometry: BufferGeometry): EdgePreparationRequest {
     version: 1,
     type: "prepareEdges",
     jobId: 1,
+    preparePicking: false,
     positions: new Float32Array(position.array),
     indices: geometry.index
       ? new Uint32Array(geometry.index.array)
@@ -79,6 +80,7 @@ describe("worker crease-edge equivalence and validation", () => {
         version: 1,
         type: "prepareEdges",
         jobId: 1,
+        preparePicking: false,
         ...source,
       })
       expect(result.type === "edgesPrepared" && result.positions.length).toBe(0)
@@ -87,14 +89,29 @@ describe("worker crease-edge equivalence and validation", () => {
 
   it.each([
     null,
-    { version: 2, type: "prepareEdges", jobId: 1, ...triangle },
-    { version: 1, type: "prepareEdges", jobId: 1, ...triangle, extra: true },
-    { version: 1, type: "prepareEdges", jobId: 1, ...triangle, positions: [0, 0, 0] },
-    { version: 1, type: "prepareEdges", jobId: 1, ...triangle, positions: new Float32Array(2) },
+    { version: 2, type: "prepareEdges", jobId: 1, preparePicking: false, ...triangle },
+    { version: 1, type: "prepareEdges", jobId: 1, preparePicking: false, ...triangle, extra: true },
     {
       version: 1,
       type: "prepareEdges",
       jobId: 1,
+      preparePicking: false,
+      ...triangle,
+      positions: [0, 0, 0],
+    },
+    {
+      version: 1,
+      type: "prepareEdges",
+      jobId: 1,
+      preparePicking: false,
+      ...triangle,
+      positions: new Float32Array(2),
+    },
+    {
+      version: 1,
+      type: "prepareEdges",
+      jobId: 1,
+      preparePicking: false,
       ...triangle,
       indices: new Uint32Array([9, 0, 1]),
     },
@@ -102,6 +119,7 @@ describe("worker crease-edge equivalence and validation", () => {
       version: 1,
       type: "prepareEdges",
       jobId: 1,
+      preparePicking: false,
       ...triangle,
       positions: new Float32Array([NaN, 0, Infinity]),
     },
@@ -119,13 +137,55 @@ describe("edge worker client lifecycle", () => {
       (error) => errors.push(error),
     )
     try {
-      expect((await client.prepare({}, triangle).result).length).toBe(18)
+      expect((await client.prepare({}, triangle).result).positions.length).toBe(18)
       expect(triangle.positions.byteLength).toBe(36)
       expect(triangle.indices.byteLength).toBe(12)
       expect(errors).toEqual([])
     } finally {
       client.dispose()
     }
+  })
+
+  it("transfers a dense picking index from the real worker without detaching model data", async () => {
+    const state = new EdgePreparationClient(
+      () =>
+        new Worker(new URL("./edge-preparation.worker.ts", import.meta.url), { type: "module" }),
+      () => undefined,
+    )
+    const geometry = new SphereGeometry(1, 128, 64)
+    const source = request(geometry)
+    const original = source.indices.slice()
+    try {
+      const data = await state.prepare({}, { ...source, preparePicking: true }).result
+      expect(data.picking?.roots).toHaveLength(1)
+      expect(data.picking?.indirectBuffer.length).toBe(source.indices.length / 3)
+      expect(source.indices).toEqual(original)
+      expect(source.positions.byteLength).toBeGreaterThan(0)
+    } finally {
+      state.dispose()
+      geometry.dispose()
+    }
+  })
+
+  it.each([
+    { roots: [new ArrayBuffer(32)], indirectBuffer: new Uint32Array(2) },
+    { roots: [new ArrayBuffer(96)], indirectBuffer: new Uint32Array(1) },
+    { roots: [new ArrayBuffer(0)], indirectBuffer: new Uint32Array(1) },
+    { roots: [new ArrayBuffer(4)], indirectBuffer: new Uint32Array(1) },
+  ])("rejects malformed or oversized picking output %#", async (picking) => {
+    const state = edgePreparationFixture()
+    const job = state.client.prepare({}, triangle)
+    state.worker.respond({
+      version: 1,
+      type: "edgesPrepared",
+      jobId: 1,
+      positions: new Float32Array(18),
+      picking,
+    })
+    await expect(job.result).rejects.toThrow("Invalid edge preparation response")
+    expect(state.errors).toHaveLength(1)
+    expect(state.worker.terminated).toBe(true)
+    state.client.dispose()
   })
 
   it("starts lazily, transfers safe copies, serializes jobs, and reuses its worker", async () => {
@@ -141,7 +201,7 @@ describe("edge worker client lifecycle", () => {
     expect(triangle.positions.byteLength).toBe(36)
     expect(triangle.indices.byteLength).toBe(12)
     state.worker.complete()
-    expect((await first.result).length).toBe(18)
+    expect((await first.result).positions.length).toBe(18)
     expect(state.worker.requests.length).toBe(2)
     state.worker.complete(1)
     await second.result
@@ -167,7 +227,7 @@ describe("edge worker client lifecycle", () => {
     expect(state.worker.requests.length).toBe(2)
     expect(state.worker.requests[1]?.positions[3]).toBe(2)
     state.worker.complete(1)
-    expect((await latest.result)[3]).toBe(2)
+    expect((await latest.result).positions[3]).toBe(2)
     state.client.dispose()
   })
 
@@ -206,6 +266,7 @@ describe("edge worker client lifecycle", () => {
           type: "edgesPrepared",
           jobId: kind === "stale" ? jobId + 1 : jobId,
           positions: new Float32Array(24),
+          picking: null,
         })
       expect((await settled).map((result) => result.status)).toEqual(["rejected", "rejected"])
       expect(state.worker.terminated).toBe(true)

@@ -55,6 +55,17 @@ import type { EditorWorkspaceName } from "../shell/workspace"
 import type { PartVisibilityOverrides } from "./part-visibility"
 import type { SketchVisibilityOverrides } from "./sketch-visibility"
 
+function sameFaceSelection(left: ViewerSelection | null, right: ViewerSelection | null) {
+  if (left === right) return true
+  if (!left || !right) return false
+  return (
+    left.featureId === right.featureId &&
+    left.outputRole === right.outputRole &&
+    left.faceId === right.faceId &&
+    left.faceOrdinal === right.faceOrdinal
+  )
+}
+
 function clearFeatureSelection(state: Draft<EditorSessionState>, featureId: FeatureId) {
   state.modelTreeSelection = state.modelTreeSelection.filter((item) =>
     item.kind === "body"
@@ -802,8 +813,8 @@ export function createEditorSessionStore(overrides: SketchVisibilityOverrides = 
         setSelection: (selection) =>
           set((state) => {
             state.selectedModelEdges = null
-            state.modelTreeSelection = []
-            state.selection = selection
+            if (state.modelTreeSelection.length > 0) state.modelTreeSelection = []
+            if (!sameFaceSelection(state.selection, selection)) state.selection = selection
             state.selectedBody = null
             state.selectedPartId = null
             if (selection) state.selectedOriginPlane = null

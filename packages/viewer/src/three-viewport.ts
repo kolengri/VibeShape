@@ -673,7 +673,7 @@ export function orderedEligibleViewerSelections(
 }
 
 export type GeometryViewportOptions = Readonly<{
-  /** Reports asynchronous display-edge failures; surfaces and picking remain usable. */
+  /** Reports asynchronous mesh-preparation failures; surfaces and fallback picking remain usable. */
   onEdgePreparationError?: (error: Error) => void
   /** The element's width reserves a left safe area for the orientation scene. */
   orientationInsetOffsetElement?: HTMLElement | null
@@ -1776,8 +1776,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   selectFace(selection: ViewerSelection | null) {
     if (this.#disposed) return
     const unchanged = sameSelection(selection, this.#selection)
-    this.#edgeSelection = null
-    this.#onEdgeSelectionChange(null)
+    this.#clearEdgeSelection()
     this.#setSketchProfileSelections([])
     this.#setSelection(selection)
     if (unchanged) this.#onSelectionChange(selection)

@@ -264,7 +264,15 @@ Mesh payload:
 Tessellation runs in the worker. The UI never builds an OCCT mesh. Changing display quality invalidates display mesh cache independently of B-Rep.
 
 The viewer keeps rendering and picking on the main thread, but prepares display crease edges in one
-reusable viewer-owned worker at the existing 28-degree threshold. Surface geometry is available
+reusable viewer-owned worker at the existing 28-degree threshold. For pickable bodies with at least 10,000
+triangles, the same job also builds an indirect `three-mesh-bvh` picking index. Its serialized roots
+and triangle indirection are transferred back with the edges and installed on that exact surface;
+original indices and triangle-to-face mapping remain unchanged. Each surface uses an instance-local
+accelerated raycast, retaining all hits for section filtering and Select Other, including stock
+triangle ordering for equal-distance seam hits. Preview surfaces and edge-only historical highlights
+do not request an index. Picking uses the
+ordinary Three.js implementation until preparation completes or if preparation fails. Index construction
+never runs in the click handler; disposal and superseded-owner checks release or discard obsolete indexes. Surface geometry is available
 immediately. The worker receives owned copies, never transferred live display arrays; its bounded queue,
 owner cancellation and generation checks reject obsolete results. Displayed-body highlights borrow the
 current surface and edge geometry. Historical highlights own their fallback geometry and release it
@@ -273,7 +281,11 @@ it does not retry the expensive constructor synchronously on the UI thread.
 
 Face ordinals are indexed per immutable metadata snapshot. Ordinary hover picks are coalesced to one
 animation frame and stop at the first eligible, section-visible hit; activation remains synchronous and
-candidate cycling retains the complete eligible stack. The tree resolves authored parts once per exact
+candidate cycling retains the complete eligible stack. Re-selecting an equivalent face preserves
+editor-session state identity after clearing any competing selection, avoiding redundant application
+renders without suppressing tool-specific selection callbacks. Explicit face picks clear the edge
+callback only when a viewport edge was actually selected, so an empty edge reset cannot clear and
+republish an otherwise unchanged face. The tree resolves authored parts once per exact
 immutable authority/report pair, so History rows share the same projection. Replacement authority or
 geometry, including a Before presentation, invalidates that reuse rather than matching by revision alone.
 

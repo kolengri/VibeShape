@@ -19,6 +19,7 @@
   "dependencies": {
     "@vibeshape/domain": "workspace:*",
     "three": "catalog:",
+    "three-mesh-bvh": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

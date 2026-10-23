@@ -205,6 +205,25 @@ it("cancels and restores an active section drag before accepting another gesture
   f.pointer("pointerup", x + 15, y - 15)
 })
 
+it("does not clear absent edges before repeated explicit face picks, but still delivers face callbacks", () => {
+  const onFace = vi.fn()
+  const onEdge = vi.fn()
+  const f = fixture({ onSelectionChange: onFace, onEdgeSelectionChange: onEdge })
+  const face = { featureId: "box", outputRole: "result", faceId: 17, faceOrdinal: 1 }
+  f.viewport.selectFace?.(face)
+  f.viewport.selectFace?.({ ...face })
+  expect(onFace).toHaveBeenCalledTimes(2)
+  expect(onFace).toHaveBeenLastCalledWith(face)
+  expect(onEdge).not.toHaveBeenCalled()
+  f.click()
+  expect(onEdge).toHaveBeenLastCalledWith(edge)
+  onEdge.mockClear()
+  f.viewport.selectFace?.(face)
+  expect(onEdge).toHaveBeenCalledTimes(1)
+  expect(onEdge).toHaveBeenLastCalledWith(null)
+  expect(onFace).toHaveBeenLastCalledWith(face)
+})
+
 describe("ordinary viewport edge selection integration", () => {
   it("prioritizes a visible edge, clears a face before emitting it, and clears edges before face/background callbacks", () => {
     const calls: string[] = []
