@@ -423,6 +423,31 @@ describe("History rollback divider", () => {
     expect(capture.size).toBe(0)
     expect(ports.insert).not.toHaveBeenCalled()
   })
+  it("ignores descendant hover transitions while retaining cursor navigation", async () => {
+    render(<Harness />)
+    const row = document.querySelector<HTMLElement>('[data-history-index="0"]')
+    if (!row) throw new Error("The hover fixture requires a History row.")
+    const button = document.createElement("button")
+    row.append(button)
+    await act(async () => {
+      await Promise.resolve()
+      flushFrames()
+    })
+    const measure = vi.spyOn(row, "getBoundingClientRect")
+    await act(async () => {
+      for (const type of ["transitionrun", "transitionend", "transitioncancel"]) {
+        fireEvent(button, new Event(type, { bubbles: true }))
+        flushFrames()
+      }
+    })
+    expect(measure).not.toHaveBeenCalled()
+    expect(frames.size).toBe(0)
+    pointer("pointerdown", 508)
+    pointer("pointermove", 308)
+    pointer("pointerup", 308)
+    await waitFor(() => expect(ports.insert).toHaveBeenCalledTimes(1))
+    expect(ports.insert.mock.calls[0]).toEqual([items[1], "below"])
+  })
   it("accepts and retains a drag while row hover styling is remeasured", async () => {
     render(<Harness />)
     const row = document.querySelector<HTMLElement>('[data-history-index="0"]')

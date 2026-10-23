@@ -211,12 +211,20 @@ function useCursorLayout(items: readonly HistoryItemRef[]) {
       "animationend",
       "animationcancel",
     ]
-    for (const event of events) track.addEventListener(event, schedule, true)
+    const rowAnimation = (event: Event) => {
+      // Descendant hover transitions do not move boundaries; row resizing is observed separately.
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.matches("[data-history-index], [data-history-range-start]")
+      )
+        schedule()
+    }
+    for (const event of events) track.addEventListener(event, rowAnimation, true)
     return () => {
       disposed = true
       resize.disconnect()
       mutations.disconnect()
-      for (const event of events) track.removeEventListener(event, schedule, true)
+      for (const event of events) track.removeEventListener(event, rowAnimation, true)
       if (scheduled !== null) cancelAnimationFrame(scheduled)
     }
   }, [items])
