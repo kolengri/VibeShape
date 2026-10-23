@@ -89,6 +89,7 @@ type ChatState = Readonly<
     steerStartedNewTurn: boolean
     error: AssistantErrorCode | null
     busy: boolean
+    controlBusy: boolean
     connecting: boolean
     storageFailed: boolean
     previousChats: readonly TranscriptArchiveSummary[]
@@ -144,6 +145,7 @@ export function createNativeChatController({
     steerStartedNewTurn: false,
     error: null,
     busy: false,
+    controlBusy: false,
     connecting: false,
     storageFailed: false,
     previousChats: [],
@@ -194,7 +196,11 @@ export function createNativeChatController({
   const publish = (patch: Partial<ChatState>) => {
     if (disposed) return
     const next = { ...state, ...patch }
-    state = { ...next, projectAccessReady: chatAccessReady(next) }
+    state = {
+      ...next,
+      controlBusy: activeControl !== null,
+      projectAccessReady: chatAccessReady(next),
+    }
     for (const listener of listeners) listener()
   }
   const checkpoints = checkpointHost ? createAssistantCheckpoints(checkpointHost, publish) : null
@@ -1263,25 +1269,30 @@ export function createNativeChatController({
       releaseQueuedSteer(claim)
     }
   }
+  function releaseControl(token: symbol, resumeQueueAt?: number) {
+    if (activeControl !== token) return
+    activeControl = null
+    publish({})
+    if (resumeQueueAt !== undefined && isCurrent(resumeQueueAt)) drainQueue()
+  }
   async function configure(action: () => Promise<AssistantResult>) {
-    if (activeControl || state.busy || promptInFlight || disposed) return
+    if (activeControl || state.busy || state.switchingChat || promptInFlight || disposed) return
     const token = Symbol("assistant-configuration")
     const at = generation
     activeControl = token
+    publish({})
     try {
       const result = await run(action)
       if (isCurrent(at) && !result.ok) publish({ queuePaused: true })
     } finally {
-      if (activeControl === token) {
-        activeControl = null
-        if (isCurrent(at)) drainQueue()
-      }
+      releaseControl(token, at)
     }
   }
   function canSwitchChat() {
     return (
       !disposed &&
       !state.switchingChat &&
+      !activeControl &&
       !queued.length &&
       !state.busy &&
       !promptInFlight &&
@@ -1496,11 +1507,12 @@ export function createNativeChatController({
     },
     async authenticate(methodId: string) {
       const current = scope()
-      if (!current || activeControl) return
+      if (!current || activeControl || state.switchingChat) return
       const owner = recovery
       const token = Symbol("assistant-authentication")
       const at = generation
       activeControl = token
+      publish({})
       try {
         const result = await run(() => bridge.authenticate({ ...current, methodId }))
         if (
@@ -1510,12 +1522,12 @@ export function createNativeChatController({
           result.ok &&
           result.value.status === "ready"
         ) {
-          publish({ recovery: { attempt: recoveryAttempt, status: "retrying" }, connecting: true })
           activeControl = null
+          publish({ recovery: { attempt: recoveryAttempt, status: "retrying" }, connecting: true })
           await restoreConnection(owner, result.value)
         }
       } finally {
-        if (activeControl === token) activeControl = null
+        releaseControl(token)
       }
     },
     async retryHistory() {

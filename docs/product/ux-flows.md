@@ -139,7 +139,9 @@ The chat header's **Chat history** button toggles a scrollable list of previous 
 current project, titled from their first user message. **New chat** saves the current conversation
 before opening an empty one. Selecting a previous conversation preserves the current chat and opens
 the selected transcript for continued conversation. The list and messages survive reloading the
-project. Switching is disabled while a response, queued work, or checkpoint action is active.
+project. Switching is disabled while a response, queued work, checkpoint action, or native session
+control request (mode, model, configuration, or authentication) is active. Pending native controls
+also retain the project resource, while Send can still queue a prompt behind configuration.
 Undo agent changes, View before, and Apply remain disabled until a conversation switch finishes.
 Project-close guards and activity reporting retain the switch as pending work until it settles.
 New chat clears unsent text and attachments only after a successful switch; storage failures retain
