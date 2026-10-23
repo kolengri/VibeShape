@@ -3,11 +3,34 @@ import type {
   AssistantEvent,
   AssistantSnapshot,
 } from "../../packages/automation-api/src/assistant"
+import { LOCAL_AUTOMATION_PATH } from "../../packages/automation-api/src/local-session"
 import { createEditorProject, expect, test } from "./fixtures"
 
 test.use({ autoCreateProject: false })
 
 async function installAgent(page: Page) {
+  const client = { name: "Composer layout fixture", version: "1" }
+  await page.route(`**${LOCAL_AUTOMATION_PATH}/*`, async (route) => {
+    const path = new URL(route.request().url()).pathname
+    const body = path.endsWith("/status")
+      ? { protocolVersion: 1, client, paired: false }
+      : ["/connect", "/resume", "/renew"].some((endpoint) => path.endsWith(endpoint))
+        ? {
+            protocolVersion: 1,
+            token: "l".repeat(43),
+            actor: {
+              type: "mcp",
+              clientId: "org.vibeshape.composer-layout",
+              sessionId: "01900000-0000-7000-8000-000000000001",
+            },
+            expiresAt: Date.now() + 60 * 60_000,
+            client,
+          }
+        : path.endsWith("/poll")
+          ? { protocolVersion: 1, work: null, cancelledRequestIds: [] }
+          : { ok: true }
+    await route.fulfill({ json: body })
+  })
   await page.addInitScript(() => {
     let snapshot: AssistantSnapshot
     let turns = 0
@@ -138,6 +161,20 @@ async function checkControls(panel: Locator) {
   const sendBox = await send.boundingBox()
   const attachBox = await attach.boundingBox()
   expect(sendBox?.y).toBe(attachBox?.y)
+  const inputSurface = await composer
+    .getByRole("textbox", { name: "Message", exact: true })
+    .locator("..")
+    .boundingBox()
+  const settingsTray = await composer.locator(":scope > div").last().boundingBox()
+  const mode = await composer.getByRole("button", { name: "Agent mode", exact: true }).boundingBox()
+  if (!inputSurface || !settingsTray || !mode)
+    throw new Error("The input surface and session settings must have bounds.")
+  const inputBottom = inputSurface.y + inputSurface.height
+  expect(settingsTray.x).toBeGreaterThan(inputSurface.x)
+  expect(settingsTray.x + settingsTray.width).toBeLessThan(inputSurface.x + inputSurface.width)
+  expect(settingsTray.y).toBeLessThan(inputBottom)
+  expect(settingsTray.y + settingsTray.height).toBeGreaterThan(inputBottom)
+  expect(mode.y).toBeGreaterThanOrEqual(inputBottom)
   expect(await composer.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
 }
 
@@ -150,6 +187,9 @@ async function checkLayout(page: Page, panel: Locator) {
           (root, { theme, zoom }) => {
             root.classList.toggle("dark", theme === "dark")
             root.style.zoom = String(zoom)
+            // CSS zoom scales svh; keep the shell within the simulated browser viewport.
+            const shell = root.querySelector<typeof root>(".cad-shell")
+            if (shell) shell.style.height = `${900 / zoom}px`
           },
           { theme, zoom },
         )
@@ -168,12 +208,17 @@ test("fits compact session controls and returns to the latest turn when sending 
 }) => {
   await installAgent(page)
   const panel = await connect(page)
+  await panel.getByRole("button", { name: "Model", exact: true }).click()
+  await expect(page.getByRole("menuitemradio", { name: "6.1 Sol", exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(panel.getByRole("button", { name: "Model", exact: true })).toBeFocused()
   await checkLayout(page, panel)
   const composer = panel.getByRole("region", { name: "Message", exact: true })
   const input = composer.getByRole("textbox", { name: "Message", exact: true })
   const send = composer.getByRole("button", { name: "Send", exact: true })
   await page.locator("html").evaluate((root) => {
     root.style.zoom = "1"
+    root.querySelector<typeof root>(".cad-shell")?.style.removeProperty("height")
   })
   const emptyHeight = await input.evaluate((node) => node.clientHeight)
   await input.fill(Array.from({ length: 30 }, () => "A longer message line.").join("\n"))

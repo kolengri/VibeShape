@@ -99,7 +99,8 @@ failures keep it open for correction. Chat prompts become usable after both the 
 project connection are ready. Explicit Connect
 restores project access after Stop AI; automatic startup, recovery and New chat preserve Stop.
 Agent-advertised mode, model, reasoning, collaboration and speed
-choices live in compact composer menus. Their chips show the confirmed selected
+choices live in compact dropdown menus on an inset tray beneath the composer. The message surface
+slightly overlaps the tray's upper edge; settings remain fully visible below it. Their chips show the confirmed selected
 value and wrap at their natural width; hover or keyboard focus reveals the setting name and full value.
 The message field grows with its content up to a bounded height, then scrolls internally. Attachment
 actions share a bottom row with the trailing send/stop actions. Sending a new user turn scrolls the

@@ -357,7 +357,10 @@ test("keeps every toolbar action inside its measured budget near category fit th
   }
 })
 
-test("reserves a separate History scrollbar lane below operation controls", async ({ page }) => {
+test("keeps symmetric History spacing and a separate scrollbar lane below operation controls", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
   await invokeModelCommand(page, "Primitives", "Box")
   await page
@@ -374,10 +377,14 @@ test("reserves a separate History scrollbar lane below operation controls", asyn
   for (const detailed of [false, true]) {
     if (detailed) await history.getByRole("button", { name: "Details", exact: true }).click()
     expect(await track.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
-    const rail = await track.boundingBox()
-    const row = await history.locator("[data-history-id]").first().boundingBox()
-    if (!rail || !row) throw new Error("History track and operation must be measurable")
-    expect(rail.y + rail.height - (row.y + row.height)).toBeGreaterThanOrEqual(16)
+    await expect
+      .poll(async () => {
+        const rail = await track.boundingBox()
+        const row = await history.locator("[data-history-id]").first().boundingBox()
+        if (!rail || !row) throw new Error("History track and operation must be measurable")
+        return { top: row.y - rail.y, bottom: rail.y + rail.height - (row.y + row.height) }
+      })
+      .toEqual({ top: 8, bottom: 8 })
     const control = history.getByRole("treeitem", { name: "Box 1", exact: true })
     if (!detailed) {
       const bounds = await control.boundingBox()
@@ -401,4 +408,30 @@ test("reserves a separate History scrollbar lane below operation controls", asyn
       element.scrollLeft = 0
     })
   }
+})
+
+test("keeps browser icons uniform without an Operations heading or a History hover outline", async ({
+  page,
+}) => {
+  await page.goto("/")
+  const browser = page.getByRole("complementary", { name: "Model tree", exact: true })
+  await expect(browser.getByRole("heading")).toHaveCount(0)
+  for (const name of ["Variables", "Planes", "Parts"]) {
+    const row = browser.getByRole("treeitem", { name: new RegExp(`^${name}(?: \\d+)?$`) })
+    const icon = await row.locator("svg").last().boundingBox()
+    expect(icon?.width).toBe(16)
+    expect(icon?.height).toBe(16)
+  }
+  await invokeModelCommand(page, "Primitives", "Box")
+  await page
+    .getByRole("form", { name: "Create box", exact: true })
+    .getByRole("button", { name: "Create box", exact: true })
+    .click()
+  const row = page.locator("[data-history-id]").first()
+  await row.getByRole("treeitem", { name: "Box 1", exact: true }).hover()
+  await expect(row).toHaveAttribute("data-history-source-highlighted", "true")
+  await expect(row).toHaveCSS("box-shadow", "none")
+  const operation = row.getByRole("treeitem", { name: "Box 1", exact: true })
+  await operation.focus()
+  await expect(operation).toBeFocused()
 })
