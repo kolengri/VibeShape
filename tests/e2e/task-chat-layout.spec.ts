@@ -93,37 +93,64 @@ for (const width of [512, 800, 1024, 1440]) {
 }
 
 for (const theme of ["light", "dark"]) {
-  test(`fills the editor behind floating tools in ${theme} theme`, async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto("/")
-    await page.locator("html").evaluate((element, theme) => {
-      element.classList.toggle("dark", theme === "dark")
-    }, theme)
-    const canvas = page.locator(".workspace-viewport canvas").first()
-    const header = page.locator(".application-bar")
-    const footer = page.locator(".editor-workbench > footer")
-    const bounds = await canvas.boundingBox()
-    const headerBounds = await header.boundingBox()
-    const footerBounds = await footer.boundingBox()
-    if (!bounds || !headerBounds || !footerBounds) throw new Error("Editor must be measurable.")
-    expect(bounds.x).toBe(0)
-    expect(bounds.width).toBe(1440)
-    expect(bounds.y).toBe(headerBounds.y + headerBounds.height)
-    expect(bounds.y + bounds.height).toBe(footerBounds.y)
-    const toolbar = page.locator("nav[data-sketch-mode]")
-    const toolbarBounds = await toolbar.boundingBox()
-    if (!toolbarBounds) throw new Error("Toolbar must be measurable.")
-    // The gap above the toolbar is rendered by the same interactive canvas.
-    expect(
-      await page
-        .locator("html")
-        .evaluate((element, { x, y }) => element.ownerDocument.elementFromPoint(x, y)?.tagName, {
-          x: 720,
-          y: toolbarBounds.y - 4,
+  for (const width of [1024, 1440]) {
+    test(`fills the editor behind floating tools in ${theme} theme at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto("/")
+      await page.locator("html").evaluate((element, theme) => {
+        element.classList.toggle("dark", theme === "dark")
+      }, theme)
+      const canvas = page.locator(".workspace-viewport canvas").first()
+      const header = page.locator(".application-bar")
+      const footer = page.locator(".editor-workbench > footer")
+      const bounds = await canvas.boundingBox()
+      const headerBounds = await header.boundingBox()
+      const footerBounds = await footer.boundingBox()
+      if (!bounds || !headerBounds || !footerBounds) throw new Error("Editor must be measurable.")
+      expect(bounds.x).toBe(0)
+      expect(bounds.width).toBe(width)
+      expect(bounds.y).toBe(headerBounds.y + headerBounds.height)
+      expect(bounds.y + bounds.height).toBe(footerBounds.y)
+      expect(footerBounds.height).toBeGreaterThanOrEqual(24)
+      expect(footerBounds.height).toBeLessThanOrEqual(28)
+      const controlInsets = await footer.locator("button, select").evaluateAll((controls) =>
+        controls.map((control) => {
+          const footer = control.closest("footer")
+          if (!footer) throw new Error("Status controls must belong to the footer.")
+          const bounds = footer.getBoundingClientRect()
+          const controlBounds = control.getBoundingClientRect()
+          return {
+            top: controlBounds.top - bounds.top - footer.clientTop,
+            bottom: bounds.bottom - controlBounds.bottom,
+            height: controlBounds.height,
+          }
         }),
-    ).toBe("CANVAS")
-    await page.screenshot({ path: test.info().outputPath(`floating-workspace-${theme}.png`) })
-  })
+      )
+      expect(controlInsets.length).toBeGreaterThan(0)
+      for (const control of controlInsets) {
+        expect(control.height).toBe(24)
+        expect(control.top).toBeGreaterThan(0)
+        expect(control.bottom).toBe(control.top)
+      }
+      const toolbar = page.locator("nav[data-sketch-mode]")
+      const toolbarBounds = await toolbar.boundingBox()
+      if (!toolbarBounds) throw new Error("Toolbar must be measurable.")
+      // The gap above the toolbar is rendered by the same interactive canvas.
+      expect(
+        await page
+          .locator("html")
+          .evaluate((element, { x, y }) => element.ownerDocument.elementFromPoint(x, y)?.tagName, {
+            x: width / 2,
+            y: toolbarBounds.y - 4,
+          }),
+      ).toBe("CANVAS")
+      await page.screenshot({
+        path: test.info().outputPath(`floating-workspace-${theme}-${width}.png`),
+      })
+    })
+  }
 }
 
 test("shows Thinking by the composer with the wordmark shimmer and respects reduced motion", async ({

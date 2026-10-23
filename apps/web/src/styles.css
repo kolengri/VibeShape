@@ -44,6 +44,7 @@
   --workspace-radius: 0.625rem;
   --application-bar-height: 5rem;
   --command-bar-height: 2.25rem;
+  --status-bar-height: 1.75rem;
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -63,7 +64,7 @@
 
 .editor-workbench {
   display: grid;
-  grid-template-rows: var(--command-bar-height) minmax(0, 1fr) auto auto;
+  grid-template-rows: var(--command-bar-height) minmax(0, 1fr) auto var(--status-bar-height);
   grid-template-areas: "top" "workspace" "bottom" "status";
   row-gap: var(--workspace-gap);
   width: calc(100% - var(--viewport-left-inset, 0px) - var(--viewport-right-inset, 0px));
@@ -169,7 +170,7 @@
   z-index: 0;
   position: absolute;
   /* All placement belongs to the overlay slots above this fixed coordinate system. */
-  inset: calc(-1 * var(--workspace-gap)) calc(-1 * var(--workspace-gap)) 1.5rem;
+  inset: calc(-1 * var(--workspace-gap)) calc(-1 * var(--workspace-gap)) var(--status-bar-height);
   display: grid;
   min-height: 0;
   min-width: 0;

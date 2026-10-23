@@ -126,7 +126,7 @@ export function StatusBar({
     : ordinarySelection
 
   return (
-    <footer className="flex items-center min-w-0 gap-2 border-t bg-toolbar px-2 py-1 text-xs text-muted-foreground">
+    <footer className="flex items-center min-w-0 gap-2 border-t bg-toolbar px-2 text-xs text-muted-foreground">
       <span>{t("units", displayUnits)}</span>
       {onModelEdgeSelectionEnabledChange ? (
         <NativeSelect
