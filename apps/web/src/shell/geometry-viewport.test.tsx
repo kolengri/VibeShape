@@ -2227,8 +2227,8 @@ describe("GeometryViewport", () => {
     expect(onSelectionChange).toHaveBeenCalledWith(null)
   })
 
-  it("keeps structured Extrude preview diagnostics as a compact status instead of a duplicate alert", () => {
-    renderViewport(readyController([], []), null, undefined, {
+  it("keeps structured Extrude preview diagnostics as a compact status instead of a duplicate alert", async () => {
+    const rendered = renderViewport(readyController([], []), null, undefined, {
       status: "error",
       kind: "extrusion",
       meshes: [],
@@ -2241,6 +2241,7 @@ describe("GeometryViewport", () => {
         },
       ],
     })
+    await waitFor(() => expect(rendered.port.setMeshes).toHaveBeenCalled())
     expect(screen.getByRole("status").textContent).toBe(
       "Preview unavailable. Open the task panel for details.",
     )
@@ -2903,6 +2904,36 @@ describe("GeometryViewport", () => {
     expect(document.querySelector('[data-plane-symbol="YZ"]')).toBeTruthy()
   })
 
+  it("replaces the viewport skeleton only after the renderer has initialized its scene", async () => {
+    let resolveViewport: (viewport: GeometryViewportPort) => void = () => undefined
+    const pendingViewport = new Promise<GeometryViewportPort>((resolve) => {
+      resolveViewport = resolve
+    })
+    const rendered = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      {
+        pendingViewport,
+      },
+    )
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    expect(viewport.getAttribute("aria-busy")).toBe("true")
+    expect(viewport.querySelector('[data-project-skeleton="viewport"]')).not.toBeNull()
+    expect(screen.getByText("Preparing 3D view…")).toBeTruthy()
+    expect(rendered.port.setMeshes).not.toHaveBeenCalled()
+
+    await act(async () => resolveViewport(rendered.port))
+
+    expect(rendered.port.setMeshes).toHaveBeenCalled()
+    expect(viewport.getAttribute("aria-busy")).toBe("false")
+    expect(viewport.querySelector("[data-project-skeleton]")).toBeNull()
+    expect(viewport.querySelector("[data-project-loading]")).toBeNull()
+    expect(rendered.createViewport).toHaveBeenCalledTimes(1)
+  })
+
   it("contains renderer initialization failures as a localized viewport state", async () => {
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],
@@ -2933,6 +2964,10 @@ describe("GeometryViewport", () => {
         )
       ).textContent,
     ).toBe("WebGL2 is unavailable in this browser or device. Modeling data remains saved.")
+    expect(document.querySelector("[data-project-skeleton]")).toBeNull()
+    expect(screen.getByRole("region", { name: "3D viewport" }).getAttribute("aria-busy")).toBe(
+      "false",
+    )
   })
 
   it("discards a thumbnail render that finishes after its viewport was unmounted", async () => {

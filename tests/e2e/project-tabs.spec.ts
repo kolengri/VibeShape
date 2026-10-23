@@ -221,6 +221,22 @@ test("selects and reloads a cold project with progressive viewport loading", asy
     "true",
   )
   await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
+  for (const region of ["toolbar", "tree", "history", "viewport", "status"]) {
+    await expect(page.locator(`[data-project-skeleton="${region}"]`)).toBeVisible()
+  }
+  await page.screenshot({ animations: "disabled", path: info.outputPath("project-reading.png") })
+  await page.setViewportSize({ width: 700, height: 768 })
+  const readingCard = page
+    .getByRole("progressbar", { name: "Project loading progress" })
+    .locator("..")
+  const readingBounds = await readingCard.boundingBox()
+  const treeBounds = await page.locator(".workspace-panel--tree").boundingBox()
+  expect(readingBounds).not.toBeNull()
+  expect(treeBounds).not.toBeNull()
+  if (readingBounds && treeBounds) {
+    expect(readingBounds.x).toBeGreaterThanOrEqual(treeBounds.x + treeBounds.width)
+    expect(readingBounds.x + readingBounds.width).toBeLessThanOrEqual(700)
+  }
   await expect(page.locator('[data-slot="blocking-loader-overlay"]')).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeEnabled()
   await expect
@@ -231,6 +247,7 @@ test("selects and reloads a cold project with progressive viewport loading", asy
     await expect(page.getByText("Refining model detail…", { exact: true })).toBeVisible()
   }).toPass({ timeout: 30_000 })
   await expect(page.getByRole("treeitem", { name: "Cylinder 1", exact: true })).toBeVisible()
+  await expect(page.locator("[data-project-skeleton]")).toHaveCount(0)
   await expect(page.locator('[data-rendered-feature-count="1"]')).toBeVisible()
   expect(
     await page.evaluate<boolean>(`(() => {
@@ -287,6 +304,7 @@ test("selects and reloads a cold project with progressive viewport loading", asy
   await page.addInitScript(projectRebuildGate)
   await page.reload()
   await expect(page.getByText("Loading project and history…", { exact: true })).toBeVisible()
+  await expect(page.locator('[data-project-skeleton="history"]')).toBeVisible()
   await expect(tabs.getByRole("tab", { name: "Detailed project", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",

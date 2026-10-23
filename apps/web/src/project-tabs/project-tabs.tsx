@@ -1,6 +1,7 @@
 import { useReportActivity } from "@vibeshape/ui/components/activity"
 import { Button } from "@vibeshape/ui/components/button"
 import { X } from "@vibeshape/ui/components/icons"
+import { Skeleton } from "@vibeshape/ui/components/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@vibeshape/ui/components/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
@@ -83,6 +84,10 @@ export function ProjectTabs({
               onRename={canRename ? () => setRenameOpen(true) : undefined}
             />
           ))}
+          {controller.openingProjectId &&
+            !tabs.tabs.some((tab) => tab.documentId === controller.openingProjectId) && (
+              <Skeleton className="h-7 w-36 shrink-0" />
+            )}
         </TabsList>
       </Tabs>
       <DocumentRenameDialog
