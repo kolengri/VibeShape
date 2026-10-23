@@ -47,8 +47,9 @@ async function fulfill(route: Route, body: unknown) {
   })
 }
 async function connect(page: Page) {
-  await page.getByRole("button", { name: "AI chat", exact: true }).click()
   const panel = page.getByRole("complementary", { name: "AI chat", exact: true })
+  if (!(await panel.isVisible()))
+    await page.getByRole("button", { name: "AI chat", exact: true }).click()
   await panel.getByRole("button", { name: "AI settings", exact: true }).click()
   const settings = page.getByRole("dialog", { name: "AI settings", exact: true })
   await settings.getByRole("combobox", { name: "Provider", exact: true }).click()
@@ -90,6 +91,83 @@ async function contained(page: Page, locator: Locator) {
       ),
   ).toBe(true)
 }
+
+test("keeps previous project chats after reload and continues the selected conversation", async ({
+  page,
+}) => {
+  const requests: z.infer<typeof requestSchema>[] = []
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers })
+      return
+    }
+    requests.push(requestSchema.parse(route.request().postDataJSON()))
+    await fulfill(route, answer("Saved conversation reply."))
+  })
+  await page.setViewportSize({ width: 1024, height: 800 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/")
+  let panel = await connect(page)
+  await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Design a removable lid")
+  await panel.getByRole("button", { name: "Send", exact: true }).click()
+  await expect(panel.getByText("Saved conversation reply.", { exact: true })).toBeVisible()
+  await panel.getByRole("button", { name: "New chat", exact: true }).click()
+  await expect(panel.getByText("Design a removable lid", { exact: true })).toHaveCount(0)
+  await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Design a separate hinge")
+  await panel.getByRole("button", { name: "Send", exact: true }).click()
+  await expect(panel.getByText("Saved conversation reply.", { exact: true })).toBeVisible()
+  await page.reload()
+  panel = page.getByRole("complementary", { name: "AI chat", exact: true })
+  if (!(await panel.isVisible()))
+    await page.getByRole("button", { name: "AI chat", exact: true }).click()
+  await panel.getByRole("button", { name: "Chat history", exact: true }).click()
+  const list = panel.getByRole("region", { name: "Chat history", exact: true })
+  await expect(
+    list.getByRole("button", { name: "Design a removable lid", exact: true }),
+  ).toBeVisible()
+  for (const theme of ["light", "dark"] as const) {
+    for (const zoom of [1, 2]) {
+      await page.locator("html").evaluate(
+        (root, { theme, zoom }) => {
+          root.classList.toggle("dark", theme === "dark")
+          root.style.zoom = String(zoom)
+          const shell = root.querySelector<typeof root>(".cad-shell")
+          if (shell) shell.style.height = `${800 / zoom}px`
+        },
+        { theme, zoom },
+      )
+      await contained(page, list)
+      await panel.screenshot({
+        path: `artifacts/project-chat-history/history-${theme}-${zoom}x.png`,
+      })
+    }
+  }
+  await page.locator("html").evaluate((root) => {
+    root.style.zoom = "1"
+    const shell = root.querySelector<typeof root>(".cad-shell")
+    if (shell) shell.style.height = "800px"
+  })
+  await list.getByRole("button", { name: "Design a removable lid", exact: true }).focus()
+  await page.keyboard.press("Enter")
+  await expect(list).toBeHidden()
+  await expect(panel.getByRole("button", { name: "Chat history", exact: true })).toBeFocused()
+  await expect(panel.getByText("Design a removable lid", { exact: true })).toBeVisible()
+  await expect(panel.getByText("Design a separate hinge", { exact: true })).toHaveCount(0)
+  panel = await connect(page)
+  await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Continue the lid")
+  await panel.getByRole("button", { name: "Send", exact: true }).click()
+  await expect.poll(() => requests.length).toBe(3)
+  expect(requests[2]?.messages.some(({ content }) => content === "Design a removable lid")).toBe(
+    true,
+  )
+  expect(requests[2]?.messages.some(({ content }) => content === "Design a separate hinge")).toBe(
+    false,
+  )
+  await panel.getByRole("button", { name: "Chat history", exact: true }).click()
+  await expect(
+    list.getByRole("button", { name: "Design a separate hinge", exact: true }),
+  ).toBeVisible()
+})
 
 for (const theme of ["light", "dark"] as const) {
   test(`distinguishes human message bubbles from assistant prose in ${theme} theme`, async ({

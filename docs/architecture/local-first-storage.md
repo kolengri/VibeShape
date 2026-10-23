@@ -103,19 +103,51 @@ See [ADR-0125](../adr/0125-durable-saved-change-navigation.md) for durable navig
 
 ## Assistant transcripts
 
-`vibeshape-assistant-transcripts` is a separate version-1 IndexedDB/Dexie database; it does not change
+`vibeshape-assistant-transcripts` is a separate version-3 IndexedDB/Dexie database; it does not change
 CAD authority or the document database schema. Project heads carry a compare-and-swap revision and
-optional validated provider-session metadata. Message rows are keyed by project and message ID,
+an optional UUID conversation identity alongside validated provider-session metadata. Legacy heads
+without that identity use the project ID deterministically, without writing during load. Normal
+commits preserve the identity; reset and new chat create fresh identities, including empty chats.
+Reset returns its committed snapshot so its owner adopts the new identity atomically. Archived row
+IDs are stable conversation identities: archiving retains the active identity, and activation adopts
+the selected archive's ID, including for preexisting archives. No table migration or archive rewrite
+is required. Message rows are keyed by project and message ID,
 ordered by a project/position index and read in pages of 64. Incremental message upserts/deletions
 and the head advance share one transaction. Storage contains validated display text, tool targets,
 status and attachment names, not attachment bytes, credentials or raw provider payloads.
 
 The asynchronous chat coordinator merges restored records with messages already received in memory,
 serializes writes and reset, and fences superseded/disposed owners. A failed write leaves the prior
-committed transcript intact and exposes retry without truncating live conversation. Legacy local
+committed transcript intact and exposes retry without truncating live conversation. Transcript
+restoration and retry merge only within the loaded conversation identity. If another client has
+changed the active identity, retry keeps the failure indication and local messages/session intact,
+without advancing its revision or changing either persisted conversation. Same-conversation revision
+conflicts can still reload and merge. Legacy local
 storage version-1 history is deleted only after successful import. Reset retains a revisioned empty
 head and affects only the selected project. Transcript history is independent of the API request's
 bounded context; older stored messages are not silently deleted to satisfy provider request limits.
+The additive version-2 `archives` table holds inactive conversations per project. New chat archives
+the nonempty active transcript and its provider-session metadata before starting an empty transcript.
+Opening an archived chat archives the current nonempty conversation, restores the selected messages
+and session, and removes that selected snapshot from the inactive list. These changes share one
+revision-checked transaction, so a failed or superseded switch preserves the saved conversations.
+The coordinator's synchronous display/session validator runs inside that transaction before either
+conversation changes. Version 3 adds the `[projectId+updatedAt+id+title]` archive index; IndexedDB
+builds it for existing records without a JavaScript payload backfill or duplicate metadata table.
+Listing reads only index keys through Dexie's `keys()` key cursor, validates the metadata tuple,
+and sorts summaries by descending update time with an ascending ID tie breaker. A project-index
+count in the same read transaction detects records omitted from the compound index because of
+missing or invalid metadata. Startup listing therefore reads no transcript bodies and scales with
+summary metadata rather than accumulated message/session bytes, without imposing a retention cap.
+Full archive payload and consumer display/session validation happen only when selecting that archive,
+inside the revision-checked exchange before either conversation changes. A corrupt body can still
+appear in the summary list; selecting it fails without changing the active transcript or archives.
+Unreadable summary metadata keeps its error and retry indication without blocking persistence of a
+valid active conversation.
+Archive titles come from the first user message, with an untitled fallback for attachment-only chats.
+The history list survives project reopening; native session restoration still depends on provider
+support, while browser API context is rebuilt only from the selected transcript. Chat switching
+does not restore CAD state or carry another conversation's temporary Undo checkpoint.
 API context rebuilt from disk includes explicit unavailable-file markers for stored attachment
 names. Live failure recovery preserves the existing bounded wire context and the failed prompt's
 attachment content; neither path adds file bytes to transcript storage.

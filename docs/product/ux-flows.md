@@ -135,6 +135,17 @@ migration. Persistence failures keep live messages, expose Retry chat storage an
 previous saved transcript. Only display transcript text, validated tool metadata and attachment names are retained. File
 bytes, credentials and raw provider payloads are excluded.
 
+The chat header's **Chat history** button toggles a scrollable list of previous conversations in the
+current project, titled from their first user message. **New chat** saves the current conversation
+before opening an empty one. Selecting a previous conversation preserves the current chat and opens
+the selected transcript for continued conversation. The list and messages survive reloading the
+project. Switching is disabled while a response, queued work, or checkpoint action is active.
+Undo agent changes, View before, and Apply remain disabled until a conversation switch finishes.
+Project-close guards and activity reporting retain the switch as pending work until it settles.
+New chat clears unsent text and attachments only after a successful switch; storage failures retain
+the draft for retry.
+Conversation navigation leaves the CAD document unchanged; it does not undo modeling operations.
+
 The API request context is separate from transcript storage. It retains complete conversational
 turns within a 128 KiB UTF-8 budget, includes whitelisted tool display summaries, and excludes private
 thoughts. An omitted-message count is visible when older messages are excluded from the request;

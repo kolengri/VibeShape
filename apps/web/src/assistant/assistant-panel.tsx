@@ -1,5 +1,6 @@
 import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
+import type { TranscriptArchiveSummary } from "@vibeshape/persistence/transcript-store"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
@@ -7,6 +8,7 @@ import {
   Box,
   Eye,
   EyeOff,
+  FilesIcon,
   Layers3,
   MessageSquarePlus,
   PanelLeftClose,
@@ -16,7 +18,15 @@ import {
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { WindowHeader, WindowTitle } from "@vibeshape/ui/components/window-header"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type ComponentProps, type ReactNode, useEffect, useId, useState } from "react"
+import {
+  type ComponentProps,
+  type ReactNode,
+  type Ref,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react"
 import { ReviewActions } from "../automation/automation-review-actions"
 import { TaskPanelLifecycleButton } from "../components/task-panel-lifecycle-button"
 import { useReportApplicationError } from "../shell/application-notices"
@@ -49,7 +59,10 @@ type AssistantPanelProps = AssistantComposerProps & {
   contextOmittedMessages?: number | undefined
   onRetryHistory?: (() => Promise<void>) | undefined
   onClose: () => void
-  onReset: () => Promise<void>
+  onReset: () => Promise<boolean> | Promise<void>
+  previousChats?: readonly TranscriptArchiveSummary[]
+  onOpenChat?: (id: string) => Promise<boolean>
+  historyBusy?: boolean
   canUndoAgentChanges?: boolean
   undoingAgentChanges?: boolean
   viewingBefore?: boolean
@@ -151,6 +164,7 @@ function AssistantDraftActions({
         commands={"kind" in review.input ? [] : review.input.commands}
         t={reviewTranslations}
         applyLabel={t("applyChanges")}
+        ready={!busy}
       />
     )
   if (!application || application.status === "error" || !onApplyDraft) return null
@@ -186,6 +200,7 @@ function AssistantDraftCaption({ display }: { display: AssistantPanelProps["draf
 function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
   const t = useTranslations("app.assistant")
   const display = props.draftDisplay
+  const busy = Boolean(props.busy || props.historyBusy)
   const applying =
     display?.application?.status === "applying" || display?.review?.status === "applying"
   return (
@@ -196,17 +211,13 @@ function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
       <AssistantDraftCaption display={display} />
       <div className="flex flex-wrap items-center gap-1">
         <AssistantDraftModes display={display} />
-        <AssistantDraftActions
-          display={display}
-          busy={props.busy}
-          onApplyDraft={props.onApplyDraft}
-        />
+        <AssistantDraftActions display={display} busy={busy} onApplyDraft={props.onApplyDraft} />
         {applying && (
           <p role="status" className="text-xs text-muted-foreground">
             {t("applyingChanges")}
           </p>
         )}
-        <AssistantCheckpointActions checkpoint={{ ...props, busy: props.busy || applying }} />
+        <AssistantCheckpointActions checkpoint={{ ...props, busy: busy || applying }} />
       </div>
     </section>
   )
@@ -219,13 +230,19 @@ function AssistantHeader({
   onClose,
   onReset,
   canReset,
+  historyOpen,
+  onHistory,
+  historyButtonRef,
 }: {
   titleId: string
   settingsOpen: boolean
   onSettings: () => void
   onClose: () => void
-  onReset: () => Promise<void>
+  onReset: AssistantPanelProps["onReset"]
   canReset: boolean
+  historyOpen: boolean
+  onHistory?: (() => void) | undefined
+  historyButtonRef: Ref<HTMLButtonElement>
 }) {
   const t = useTranslations("app.assistant")
   return (
@@ -235,6 +252,17 @@ function AssistantHeader({
           {t("title")}
         </WindowTitle>
         <div className="flex shrink-0 items-center gap-2">
+          {onHistory && (
+            <AssistantIconAction
+              size="icon-xs"
+              label={t("chatHistory")}
+              ref={historyButtonRef}
+              expanded={historyOpen}
+              onAction={onHistory}
+            >
+              <FilesIcon aria-hidden="true" />
+            </AssistantIconAction>
+          )}
           <AssistantIconAction
             size="icon-xs"
             label={t("newChat")}
@@ -334,6 +362,101 @@ function AssistantPanelMessages({
   return open || mounted ? <AssistantMessages {...props} /> : null
 }
 
+function AssistantChatHistory({
+  chats,
+  disabled,
+  onOpen,
+}: {
+  chats: readonly TranscriptArchiveSummary[]
+  disabled: boolean
+  onOpen: (id: string) => Promise<void>
+}) {
+  const t = useTranslations("app.assistant")
+  return (
+    <section
+      aria-label={t("chatHistory")}
+      className="max-h-52 shrink-0 space-y-1 overflow-y-auto border-b p-2"
+    >
+      <p className="px-2 text-xs font-medium text-muted-foreground">{t("chatHistory")}</p>
+      {chats.length ? (
+        chats.map((chat) => (
+          <Button
+            key={chat.id}
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start"
+            disabled={disabled}
+            onClick={() => onOpen(chat.id)}
+          >
+            <span className="truncate">{chat.title || t("untitledChat")}</span>
+          </Button>
+        ))
+      ) : (
+        <p className="px-2 py-1 text-xs text-muted-foreground">{t("noPreviousChats")}</p>
+      )}
+    </section>
+  )
+}
+
+function conversationBusy(props: AssistantPanelProps) {
+  return (
+    props.busy ||
+    props.historyBusy ||
+    Boolean(props.queuedMessages?.length) ||
+    props.preparingBefore ||
+    props.undoingAgentChanges
+  )
+}
+
+function AssistantConversationHeader({
+  props,
+  titleId,
+  settings,
+  onOpened,
+}: {
+  props: AssistantPanelProps
+  titleId: string
+  settings: Pick<ReturnType<typeof useAssistantSettings>, "open" | "show">
+  onOpened: () => void
+}) {
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const historyButton = useRef<HTMLButtonElement>(null)
+  const canSwitch = !conversationBusy(props)
+  return (
+    <>
+      <AssistantHeader
+        titleId={titleId}
+        settingsOpen={settings.open}
+        onSettings={settings.show}
+        onClose={props.onClose}
+        onReset={async () => {
+          if ((await props.onReset()) === true) {
+            setHistoryOpen(false)
+            onOpened()
+          }
+        }}
+        canReset={canSwitch && props.messages.length > 0}
+        historyOpen={historyOpen}
+        historyButtonRef={historyButton}
+        onHistory={props.onOpenChat ? () => setHistoryOpen((open) => !open) : undefined}
+      />
+      {historyOpen && props.onOpenChat && (
+        <AssistantChatHistory
+          chats={props.previousChats ?? []}
+          disabled={!canSwitch}
+          onOpen={async (id) => {
+            if (await props.onOpenChat?.(id)) {
+              setHistoryOpen(false)
+              onOpened()
+              historyButton.current?.focus()
+            }
+          }}
+        />
+      )}
+    </>
+  )
+}
+
 export function AssistantPanel(props: AssistantPanelProps) {
   const t = useTranslations("app.assistant")
   const titleId = useId()
@@ -349,13 +472,11 @@ export function AssistantPanel(props: AssistantPanelProps) {
         )}
         aria-labelledby={titleId}
       >
-        <AssistantHeader
+        <AssistantConversationHeader
+          props={props}
           titleId={titleId}
-          settingsOpen={settings.open}
-          onSettings={settings.show}
-          onClose={props.onClose}
-          onReset={props.onReset}
-          canReset={!props.busy && !props.queuedMessages?.length && props.messages.length > 0}
+          settings={settings}
+          onOpened={() => setDraft({ text: "", attachments: [] })}
         />
         {(props.configurationRequired ?? !props.canSend) && (
           <Button size="sm" variant="outline" className="m-3" onClick={settings.show}>

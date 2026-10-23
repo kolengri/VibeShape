@@ -671,6 +671,88 @@ describe("queued native steering", () => {
 })
 
 describe("project-scoped agent chat", () => {
+  it("blocks checkpoint operations during native conversation switching and releases the lock", async () => {
+    const f = fixture(),
+      disk = storage(),
+      model = checkpointFixture()
+    const chat = createNativeChatController({
+      projectId,
+      bridge: f.bridge,
+      storage: disk,
+      checkpointHost: model.host,
+    })
+    chat.start()
+    await chat.connect(agent)
+    expect(await chat.send("Archived conversation")).toBe(true)
+    f.finish()
+    await until(() => !chat.getSnapshot().busy && !chat.getSnapshot().settlingCheckpoint)
+    await chat.reset()
+    const target = chat.getSnapshot().previousChats[0]
+    if (!target) throw new Error("Expected an archived conversation")
+    expect(
+      await chat.applyDraft(async () => {
+        model.save()
+        return true
+      }),
+    ).toBe(true)
+    expect(chat.getSnapshot().canUndoAgentChanges).toBe(true)
+    let release = () => {}
+    historyStoreFor(disk).resetGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const switching = chat.openChat(target.id)
+    expect(chat.getSnapshot().switchingChat).toBe(true)
+    expect(await chat.undoAgentChanges()).toBe(false)
+    expect(await chat.viewBefore()).toBe(false)
+    let applied = false
+    expect(
+      await chat.applyDraft(async () => {
+        applied = true
+        return true
+      }),
+    ).toBe(false)
+    expect(applied).toBe(false)
+    expect(model.restores).toEqual([])
+    expect(model.previews).toEqual([])
+    release()
+    expect(await switching).toBe(true)
+    expect(chat.getSnapshot().switchingChat).toBe(false)
+    expect(chat.getSnapshot().messages[0]?.text).toBe("Archived conversation")
+    expect(
+      await chat.applyDraft(async () => {
+        model.save()
+        return true
+      }),
+    ).toBe(true)
+    chat.dispose()
+  })
+  it("archives conversations and resumes the selected native session without replaying another chat", async () => {
+    const f = fixture(),
+      disk = storage()
+    const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: disk })
+    chat.start()
+    await chat.connect(agent)
+    const sessionId = f.snapshot().sessionId
+    expect(sessionId).toBeString()
+    expect(await chat.send("Design the lid")).toBe(true)
+    f.finish()
+    await until(() => !chat.getSnapshot().busy)
+    await chat.flushHistory()
+    const original = chat.getSnapshot().messages
+    await chat.reset()
+    expect(f.connects.at(-1)?.resumeSessionId).toBeUndefined()
+    expect(chat.getSnapshot().messages).toEqual([])
+    expect(await chat.send("Design the hinge")).toBe(true)
+    f.finish()
+    await until(() => !chat.getSnapshot().busy)
+    const archived = chat.getSnapshot().previousChats[0]
+    expect(await chat.openChat(archived?.id ?? "")).toBe(true)
+    expect(f.connects.at(-1)?.resumeSessionId).toBe(sessionId ?? undefined)
+    expect(chat.getSnapshot().messages).toEqual(original)
+    expect(chat.getSnapshot().previousChats.map(({ title }) => title)).toEqual(["Design the hinge"])
+    expect(f.prompts).toHaveLength(2)
+    chat.dispose()
+  })
   it("reports a successful explicit connection and rejects attempts after disposal", async () => {
     const f = fixture()
     const chat = createNativeChatController({ projectId, bridge: f.bridge, storage: storage() })

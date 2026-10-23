@@ -19,9 +19,11 @@ import {
   assistantQuestionResponseSchema,
 } from "@vibeshape/automation-api/assistant"
 import type { AssistantJevCredentials } from "@vibeshape/automation-api/assistant-jev"
+import type { TranscriptArchiveSummary } from "@vibeshape/persistence/transcript-store"
 import {
   type AssistantCheckpointHost,
   type AssistantCheckpointState,
+  assistantCheckpointBusy,
   createAssistantCheckpoints,
 } from "./assistant-checkpoints"
 import { type AgentChatSession, type ChatMessage, retainChatMessages } from "./chat-history"
@@ -89,6 +91,8 @@ type ChatState = Readonly<
     busy: boolean
     connecting: boolean
     storageFailed: boolean
+    previousChats: readonly TranscriptArchiveSummary[]
+    switchingChat: boolean
     configured: boolean
     projectAccessReady: boolean
     recovery: {
@@ -142,6 +146,8 @@ export function createNativeChatController({
     busy: false,
     connecting: false,
     storageFailed: false,
+    previousChats: [],
+    switchingChat: false,
     configured: false,
     projectAccessReady: automationReady(),
     recovery: null,
@@ -202,7 +208,8 @@ export function createNativeChatController({
     current: () => ({ messages: state.messages, agentSession }),
     restored: (saved) => {
       // History retries cannot replace an adopted session or undo a deliberate clear.
-      if (!agentSessionOwned) agentSession = saved.agentSession
+      if (saved.replace || !agentSessionOwned) agentSession = saved.agentSession
+      if (saved.replace) agentSessionOwned = true
       if (agent && agentSession && !matchingResume(agent)) {
         agentSession = undefined
         agentSessionOwned = true
@@ -212,6 +219,7 @@ export function createNativeChatController({
     failed: (storageFailed) => {
       if (state.storageFailed !== storageFailed) publish({ storageFailed })
     },
+    archived: (previousChats) => publish({ previousChats }),
   })
   const save = () => history.save()
   const queueSave = () => {
@@ -966,7 +974,7 @@ export function createNativeChatController({
     )
   }
   function validPrompt(text: string, attachments: readonly AssistantAttachment[]) {
-    if (resettingHistory) return null
+    if (state.switchingChat) return null
     const current = scope()
     if (!current || disposed) return null
     const parsed = assistantPromptSchema.safeParse({ ...current, text, attachments })
@@ -1270,12 +1278,37 @@ export function createNativeChatController({
       }
     }
   }
-  async function resetTranscript(at: number) {
-    if (!isCurrent(at) || resettingHistory) return false
-    resettingHistory = true
-    const cleared = await history.reset(() => isCurrent(at))
-    resettingHistory = false
-    return cleared && isCurrent(at)
+  function canSwitchChat() {
+    return (
+      !disposed &&
+      !state.switchingChat &&
+      !queued.length &&
+      !state.busy &&
+      !promptInFlight &&
+      !assistantCheckpointBusy(state)
+    )
+  }
+  async function switchChat(targetId: string | null) {
+    if (!canSwitchChat()) return false
+    publish({ switchingChat: true })
+    try {
+      const { at, done } = beginDisconnect()
+      await done
+      if (!isCurrent(at)) return false
+      resettingHistory = true
+      const changed = await history.switchConversation(targetId, () => isCurrent(at))
+      if (!isCurrent(at)) return false
+      if (changed) {
+        checkpoints?.clear()
+        publish({ error: null })
+      }
+      resettingHistory = false
+      if (agent) await connect(agent, undefined, { automatic: true })
+      return changed
+    } finally {
+      resettingHistory = false
+      publish({ switchingChat: false })
+    }
   }
   return {
     getSnapshot: () => state,
@@ -1350,13 +1383,15 @@ export function createNativeChatController({
     },
     steerQueued,
     async undoAgentChanges() {
-      if (state.busy || promptInFlight || steering || activeControl) return false
+      if (state.busy || state.switchingChat || promptInFlight || steering || activeControl)
+        return false
       return checkpoints?.undo() ?? false
     },
     async applyDraft(operation: () => Promise<boolean>) {
       if (
         disposed ||
         state.busy ||
+        state.switchingChat ||
         promptInFlight ||
         steering ||
         activeControl ||
@@ -1369,7 +1404,8 @@ export function createNativeChatController({
       return applied
     },
     async viewBefore() {
-      if (state.busy || promptInFlight || steering || activeControl) return false
+      if (state.busy || state.switchingChat || promptInFlight || steering || activeControl)
+        return false
       return checkpoints?.viewBefore() ?? false
     },
     removeQueued(id: string) {
@@ -1406,16 +1442,9 @@ export function createNativeChatController({
       if (current) await run(() => bridge.cancel(current))
     },
     async reset() {
-      if (queued.length || state.busy || promptInFlight || state.settlingCheckpoint) return
-      const { at, done } = beginDisconnect()
-      await done
-      if (!(await resetTranscript(at))) return
-      agentSession = undefined
-      agentSessionOwned = true
-      checkpoints?.clear()
-      publish({ messages: [], error: null, storageFailed: false })
-      if (agent) await connect(agent, undefined, { automatic: true })
+      return switchChat(null)
     },
+    openChat: (id: string) => switchChat(id),
     async respondPermission(allow: boolean) {
       const current = scope(),
         permission = state.permission
