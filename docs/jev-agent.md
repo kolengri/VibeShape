@@ -76,6 +76,8 @@ kill-on-close Job Object before launching the agent. Its descendants inherit job
 leader exit, cancellation and host termination close the owning process and terminate the job.
 Jev waits for a private per-launch readiness receipt on stderr before sending ACP initialization;
 supervisor setup remains within the request's existing deadline.
+The supervisor imports the inbox `Microsoft.PowerShell.Utility` manifest directly from `$PSHOME`
+before calling `Add-Type`, avoiding automatic discovery across installed modules.
 The Windows local-agent connection probe allows up to 50 seconds within the configured request
 timeout, with a 60-second desktop deadline to include startup and cleanup. This accommodates
 cold PowerShell/.NET setup; API and other-platform probe budgets remain 20 seconds in Jev.
@@ -94,7 +96,7 @@ executable and arguments. Direct native executable commands retain their argumen
 For a bounded Windows startup investigation, `VIBESHAPE_ARGUMENT_TRACE` can point to a diagnostic
 JSON-lines file. It records supervisor stages, UTC times and numeric standard-handle metadata;
 it does not record agent text, arguments or credentials and is removed from the agent environment.
-Tracing explicitly resolves `Add-Type` before compilation and records both intervals separately.
+Tracing records the explicit inbox module load, command resolution and compilation separately.
 Tracing is off by default. Windows request and connection-probe fixtures enable it to distinguish
 command resolution, compilation, process startup and ACP transport delays. The Windows connection-probe
 fixture prints its result, supervisor trace and synthetic ACP receipt before temporary-directory cleanup.
