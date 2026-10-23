@@ -325,6 +325,7 @@ export type EditorCommandDisabledReason =
   | "selectPlanarFace"
   | "activeFeature"
   | "activeSketch"
+  | "documentLoading"
   | "documentUnavailable"
   | "hideFinalContext"
   | "noActiveCommand"
