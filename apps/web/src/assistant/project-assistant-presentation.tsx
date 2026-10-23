@@ -12,6 +12,7 @@ import {
   useState,
 } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
+import { ViewportGridItem } from "../shell/viewport-grid"
 import { BrowserProjectAssistant } from "./browser-project-assistant"
 import type { getNativeAssistant } from "./native-assistant-bridge"
 import { NativeProjectAssistant } from "./native-project-assistant"
@@ -75,23 +76,35 @@ export function ProjectAssistantPanel({
 }) {
   const { open, id, close } = useAssistantPresentation()
   return (
-    <div id={id} className="contents">
-      {bridge ? (
-        <NativeProjectAssistant
-          bridge={bridge}
-          controller={controller}
-          open={open}
-          onClose={close}
-          onCaptureView={onCaptureView}
-        />
-      ) : (
-        <BrowserProjectAssistant
-          controller={controller}
-          open={open}
-          onClose={close}
-          onCaptureView={onCaptureView}
-        />
-      )}
-    </div>
+    <ViewportGridItem
+      id="workspace-assistant"
+      area="right"
+      order={100}
+      visible={open}
+      fullHeight
+      width={420}
+      minWidth={280}
+      maxWidth={420}
+      mobile={{ below: 640, area: "bottom", height: "45svh" }}
+    >
+      <div id={id} className="contents">
+        {bridge ? (
+          <NativeProjectAssistant
+            bridge={bridge}
+            controller={controller}
+            open={open}
+            onClose={close}
+            onCaptureView={onCaptureView}
+          />
+        ) : (
+          <BrowserProjectAssistant
+            controller={controller}
+            open={open}
+            onClose={close}
+            onCaptureView={onCaptureView}
+          />
+        )}
+      </div>
+    </ViewportGridItem>
   )
 }
