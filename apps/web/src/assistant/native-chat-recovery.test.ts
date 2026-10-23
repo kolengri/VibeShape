@@ -22,6 +22,7 @@ function fixture(resumable = true) {
   let listener: ((event: AssistantEvent) => void) | undefined
   let snapshot: AssistantSnapshot
   let failure: AssistantErrorCode | undefined
+  let resumeFailure: AssistantErrorCode | undefined
   let gate: Promise<void> | undefined
   let authenticationRequired = false
   let sequence = 0
@@ -42,6 +43,18 @@ function fixture(resumable = true) {
     async connect(input) {
       connections.push(input)
       await gate
+      if (input.resumeSessionId && resumeFailure) {
+        snapshot = {
+          ...snapshot,
+          sessionToken: `connection-${++sequence}`,
+          sessionId: null,
+          status: "connecting",
+        }
+        publish("connecting")
+        emit({ projectId, sessionToken: snapshot.sessionToken, type: "error", code: resumeFailure })
+        publish("error")
+        return { ok: false, code: resumeFailure }
+      }
       if (failure) return { ok: false, code: failure }
       snapshot = {
         projectId,
@@ -171,6 +184,9 @@ function fixture(resumable = true) {
     fail(code?: AssistantErrorCode) {
       failure = code
     },
+    failResume(code: AssistantErrorCode) {
+      resumeFailure = code
+    },
     requireAuthentication() {
       authenticationRequired = true
     },
@@ -197,6 +213,58 @@ function fixture(resumable = true) {
 }
 
 describe("internal native connection recovery", () => {
+  it("replaces a definitively missing session only on explicit Connect and preserves the transcript", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    f.staleText("connection-1")
+    const messages = f.chat.getSnapshot().messages
+    await f.chat.disconnect()
+    f.failResume("session-unavailable")
+    expect(await f.chat.connect(agent)).toBe(true)
+    expect(f.connections.slice(1)).toEqual([
+      { projectId, agent, resumeSessionId: "provider-session" },
+      { projectId, agent },
+    ])
+    expect(f.chat.getSnapshot()).toMatchObject({
+      projectAccessReady: true,
+      recovery: null,
+      error: null,
+      messages,
+    })
+    expect(f.prompts).toHaveLength(0)
+    expect(f.ensureModel).toHaveBeenCalledTimes(3)
+  })
+
+  it.each(["initialization-failed", "authentication-required"] as const)(
+    "does not replace saved context after %s",
+    async (code) => {
+      const f = fixture()
+      await f.chat.connect(agent)
+      await f.chat.disconnect()
+      f.failResume(code)
+      expect(await f.chat.connect(agent)).toBe(false)
+      expect(f.connections).toHaveLength(2)
+      expect(f.connections[1]?.resumeSessionId).toBe("provider-session")
+      expect(f.prompts).toHaveLength(0)
+    },
+  )
+
+  it("stops automatic startup on missing context without replacing it or replaying a prompt", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.disconnect()
+    f.failResume("session-unavailable")
+    expect(await f.chat.connect(agent, undefined, { automatic: true })).toBe(false)
+    await vi.advanceTimersByTimeAsync(300_000)
+    expect(f.connections).toHaveLength(2)
+    expect(f.connections[1]?.resumeSessionId).toBe("provider-session")
+    expect(f.chat.getSnapshot()).toMatchObject({
+      error: "session-unavailable",
+      recovery: { status: "failed" },
+    })
+    expect(f.prompts).toHaveLength(0)
+  })
+
   it("keeps ACP readiness pending through slow initial project pairing and publishes access changes", async () => {
     const f = fixture()
     f.automate({ connected: false })
@@ -219,6 +287,30 @@ describe("internal native connection recovery", () => {
     expect(await f.chat.send("Inspect after pairing")).toBe(true)
     expect(f.prompts).toHaveLength(1)
   })
+
+  it.each(["crash", "disconnectEvent"] as const)(
+    "recovers from %s after ACP readiness while initial model pairing is pending",
+    async (event) => {
+      const f = fixture()
+      f.automate({ connected: false })
+      const connecting = f.chat.connect(agent)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(f.chat.getSnapshot()).toMatchObject({
+        connecting: true,
+        snapshot: { status: "ready" },
+        projectAccessReady: false,
+      })
+      f[event]()
+      f.automate({ connected: true })
+      expect(await connecting).toBe(false)
+      expect(f.chat.getSnapshot()).toMatchObject({
+        recovery: { status: "retrying" },
+        projectAccessReady: false,
+      })
+      expect(f.connections).toHaveLength(1)
+      expect(f.prompts).toHaveLength(0)
+    },
+  )
 
   it.each(["cancel", "disconnect", "dispose"] as const)(
     "does not complete or dispatch a pending initial pairing after %s",

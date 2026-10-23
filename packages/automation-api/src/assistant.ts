@@ -245,6 +245,7 @@ export const assistantErrorCodeSchema = z.enum([
   "forbidden",
   "launch-failed",
   "initialization-failed",
+  "session-unavailable",
   "protocol-error",
   "agent-exited",
   "authentication-required",
