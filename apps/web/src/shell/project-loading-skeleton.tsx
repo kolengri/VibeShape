@@ -61,9 +61,9 @@ export function ProjectWorkbenchSkeleton() {
             allowTransparency={false}
             interactive={false}
             taskPanelActive={false}
-            taskPanel={null}
-            modelTree={<ModelTreeSkeleton />}
-            history={
+            right={null}
+            left={<ModelTreeSkeleton />}
+            bottom={
               <section
                 aria-hidden="true"
                 data-project-skeleton="history"

@@ -28,9 +28,9 @@ export const CompactModelTreeContext = createContext<{
   toggle: () => void
 } | null>(null)
 
-export function CompactModelTreeToggle() {
+export function CompactModelTreeToggle({ insideDrawer = false }: { insideDrawer?: boolean } = {}) {
   const tree = useContext(CompactModelTreeContext)
-  if (!tree?.narrow) return null
+  if (!tree?.narrow || tree.open !== insideDrawer) return null
   return <TreeToggle tree={tree} />
 }
 
@@ -41,6 +41,7 @@ function TreeToggle({ tree }: { tree: NonNullable<ContextType<typeof CompactMode
   return (
     <Button
       aria-controls={tree.panelId}
+      data-model-tree-toggle={tree.open ? "drawer" : "outside"}
       aria-expanded={tree.open}
       className="mr-auto"
       size="sm"

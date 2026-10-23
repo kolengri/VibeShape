@@ -21,7 +21,7 @@ test("opens model toolbar categories through named icon buttons", async ({ page 
 })
 
 for (const width of [512, 800, 1024, 1440]) {
-  test(`allocates space for AI chat while retaining the editor at ${width}px`, async ({ page }) => {
+  test(`overlays AI chat without resizing the viewport at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto("/")
     await invokeModelCommand(page, "Primitives", "Box")
@@ -43,17 +43,8 @@ for (const width of [512, 800, 1024, 1440]) {
     expect(await canvas.evaluate((element, original) => element === original, originalCanvas)).toBe(
       true,
     )
-    await expect
-      .poll(async () => {
-        const current = await canvas.boundingBox()
-        return Boolean(
-          current &&
-            before[0] &&
-            (current.width < before[0].width || current.height < before[0].height),
-        )
-      })
-      .toBe(true)
-    for (const region of regions) {
+    await expect.poll(() => canvas.boundingBox()).toEqual(before[0])
+    for (const region of regions.slice(1)) {
       await expect
         .poll(async () => {
           const a = await region.boundingBox()
@@ -75,9 +66,9 @@ for (const width of [512, 800, 1024, 1440]) {
     expect(bounds.x + bounds.width).toBe(width - 8)
     if (width >= 640) expect(bounds.y).toBe(before[1]?.y)
     else {
-      const workbench = await page.locator(".editor-workbench").boundingBox()
-      if (!workbench) throw new Error("The editor must remain measurable above chat")
-      expect(bounds.y).toBeGreaterThanOrEqual(workbench.y + workbench.height)
+      const task = await page.locator(".workspace-panel--task").boundingBox()
+      if (!task) throw new Error("The task must remain measurable above chat")
+      expect(bounds.y).toBeGreaterThanOrEqual(task.y + task.height)
     }
     expect(
       await chat.evaluate((element) => {
@@ -91,7 +82,7 @@ for (const width of [512, 800, 1024, 1440]) {
       }),
     ).toBe(true)
     if (width === 1440)
-      await page.screenshot({ path: test.info().outputPath("chat-beside-editor.png") })
+      await page.screenshot({ path: test.info().outputPath("chat-over-viewport.png") })
     await chat.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
     await expect(chat).toHaveCount(0)
     await expect(draft).toHaveValue("77")
@@ -249,6 +240,7 @@ for (const theme of ["light", "dark"]) {
     const header = form.locator("header")
     await expect(header).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
     await page.setViewportSize({ width: 800, height: 900 })
+    await expect(page.locator("#workspace-task")).toHaveAttribute("data-viewport-area", "bottom")
     await expect(header).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
     await expect(page.locator(".workspace-panel--task")).not.toHaveCSS(
       "background-color",

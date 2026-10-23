@@ -122,6 +122,43 @@ VibeShape is a dense tool, not a marketing dashboard:
 - source-owned colored icons with shared optical sizing and palette; see [the icon contract](../product/icon-design.md);
 - the viewport remains visually dominant.
 
+## Viewport overlay grid
+
+`WorkspaceWorkbench` owns one full-size `ViewportGrid` below the application bar. Features declare
+`ViewportGridItem` elements in the `left`, `right`, or `bottom` slot. Each slot accepts multiple
+items. Placement belongs to the grid; item settings specify visibility, preferred and allowed width,
+content-height limits, full-height occupation, ordering, resizing, and compact placement.
+
+Content-sized side items stack vertically while they fit in the available body height, then use
+another column. A `fullHeight` item occupies its own column. The assistant declares an ordinary
+full-height right item; the task panel declares an ordinary content-sized item. Tree, task, and
+History compositions use the same registration and placement path. The existing resizable panel
+primitive supplies keyboard and pointer resizing; feature preferences remain the width authority.
+Its sizing proxy is reinitialized when lane membership or measured viewport width changes, keeping
+size-constraint updates outside its resize observer. Content hosts remain mounted separately.
+
+```tsx
+<ViewportGridItem id="parameters" area="right" width={320}>
+  <ParameterPanel />
+</ViewportGridItem>
+<ViewportGridItem id="assistant" area="right" width={420} fullHeight>
+  <AssistantPanel />
+</ViewportGridItem>
+```
+
+Additional declarations use the same slot without changing its renderer. Unconfigured height follows
+content; `fullHeight` reserves a whole column rather than stretching unrelated elements.
+
+Declarations retain their original React context through stable portal hosts. Changing a slot,
+visibility, size, or packing position moves the host without remounting its content. This preserves
+form drafts, chat connections, transcript state, and pending work. Registration is editor-local
+presentation state and grants no feature, worker, or extension authority.
+
+The viewport is an absolute layer anchored to the outer grid, behind all slots. Its rectangle and
+camera do not change when items move. The grid measures occupied regions for safe viewport-control
+insets. Only occupied items and resize handles receive pointer input; empty slot space passes
+viewport gestures through. Compact placement uses the same measured available width as panel controls.
+
 ## Browser and feature timeline
 
 The Model workspace composes two presentations of the same document command callbacks: an object browser on the left and a chronological timeline below the resizable workspace. The timeline owns compact/Details disclosure and horizontal keyboard navigation; existing History rows retain graph validation, drag revisions, folder selection, deletion, suppression, source previews, and insertion guards. Object selection and timeline editing remain distinct actions.

@@ -1,0 +1,133 @@
+.viewport-grid {
+  --viewport-right-inset: 0px;
+  --viewport-status-height: 1.5rem;
+  --workspace-solid-panel: var(--panel);
+  --workspace-chrome-left: 0px;
+  --workspace-chrome-right: 0px;
+  --workspace-chrome-top: 0px;
+  --workspace-chrome-bottom: 0px;
+  position: relative;
+  display: grid;
+  grid-column: 1;
+  grid-row: 2;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.viewport-grid__side,
+.viewport-grid__overlays,
+.viewport-grid .viewport-grid__resizers {
+  position: absolute;
+  inset-block: 0;
+  z-index: 20;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  gap: var(--workspace-gap, 0.5rem);
+  pointer-events: none;
+}
+
+.viewport-grid__side--left {
+  left: 0;
+  padding-right: var(--workspace-gap, 0.5rem);
+}
+
+.viewport-grid__side--right {
+  right: 0;
+  padding-left: var(--workspace-gap, 0.5rem);
+}
+
+.viewport-grid .viewport-grid__resizers {
+  inset: 0;
+  z-index: 21;
+  gap: 0;
+}
+
+.viewport-grid__lane {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--workspace-gap, 0.5rem);
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.viewport-grid__mount,
+.viewport-grid__item {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.viewport-grid__mount[data-full-height="true"] {
+  height: 100%;
+}
+
+.viewport-grid__item {
+  width: 100%;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.viewport-grid__item > * {
+  min-height: 0;
+  max-height: 100%;
+}
+
+.viewport-grid__item[hidden],
+.viewport-grid__bottom[hidden] {
+  display: none;
+}
+
+.viewport-grid__bottom {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  grid-row: 3;
+  flex-direction: column;
+  gap: var(--workspace-gap, 0.5rem);
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.viewport-grid__gap,
+.viewport-grid .viewport-grid__resize {
+  flex: 0 0 var(--workspace-gap, 0.5rem);
+  width: var(--workspace-gap, 0.5rem);
+}
+
+.viewport-grid .viewport-grid__resize {
+  pointer-events: auto;
+}
+
+.viewport-grid__gap-measure {
+  position: absolute;
+  width: var(--workspace-gap, 0.5rem);
+  height: 0;
+  visibility: hidden;
+}
+
+.viewport-grid__overlays {
+  inset: 0;
+  z-index: 30;
+}
+
+.viewport-grid__drawer {
+  position: absolute;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.viewport-grid__drawer > .viewport-grid__mount {
+  max-height: 100%;
+}
