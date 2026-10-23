@@ -3890,6 +3890,7 @@
         "forbidden": "This window cannot access the local agent. Reopen VibeShape and try again.",
         "launch-failed": "The ACP adapter could not start. For Codex, install codex-acp separately from the Codex CLI. Check the executable or set its absolute path in Advanced connection.",
         "initialization-failed": "The agent did not complete ACP initialization. Check its arguments and ACP support.",
+        "session-unavailable": "The saved agent session is unavailable. Connect again to start a new agent session. Your project and chat history are preserved.",
         "protocol-error": "The agent sent an invalid ACP response. Reconnect or update the agent.",
         "agent-exited": "The agent exited. Reconnect to continue.",
         "authentication-required": "Sign in to the agent using its authentication option, then try again.",
