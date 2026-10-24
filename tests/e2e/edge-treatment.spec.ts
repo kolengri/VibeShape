@@ -35,7 +35,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
     for (const name of ["Width", "Depth", "Height"]) {
       await box.getByRole("combobox", { name }).fill("20 mm")
     }
-    await box.getByRole("button", { name: "Create box" }).click()
+    await box.getByRole("button", { name: "Create box", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await invokeModelCommand(page, "Modify", title)
     const form = page.getByRole("form", { name: `Create ${operation}` })
@@ -48,7 +48,21 @@ for (const operation of ["fillet", "chamfer"] as const) {
         "The edge treatment could not be previewed. Reduce its size or choose another body.",
       ),
     ).toBeVisible({ timeout: 60_000 })
-    await expect(form.getByRole("button", { name: `Create ${operation}` })).toBeDisabled()
+    await expect(
+      form.getByRole("button", { name: `Create ${operation}`, exact: true }),
+    ).toBeDisabled()
+    await expect(form.getByRole("alert")).toContainText(
+      `Its ${dimension.toLowerCase()} may exceed the available material`,
+    )
+    for (const theme of ["light", "dark"]) {
+      await page
+        .locator("html")
+        .evaluate((element, dark) => element.classList.toggle("dark", dark), theme === "dark")
+      await expect(form.getByRole("combobox", { name: dimension, exact: true })).toHaveValue(
+        "100 mm",
+      )
+      await page.screenshot({ path: test.info().outputPath(`${operation}-failed-${theme}.png`) })
+    }
     await expect(page.getByRole("treeitem", { name: `${title} 1`, exact: true })).toHaveCount(0)
     await size.fill("#edgeSize")
     await expect(viewport.getByText("Unsaved edge treatment preview", { exact: true })).toBeVisible(
@@ -59,7 +73,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await invokeModelCommand(page, "Modify", title)
     await form.getByRole("radio", { name: "All edges", exact: true }).check()
     await size.fill("#edgeSize")
-    await form.getByRole("button", { name: `Create ${operation}` }).dblclick()
+    await form.getByRole("button", { name: `Create ${operation}`, exact: true }).dblclick()
     const item = page.getByRole("treeitem", { name: `${title} 1`, exact: true })
     await expect(item).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
@@ -69,7 +83,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
       "#edgeSize",
     )
     await edit.getByRole("combobox", { name: dimension, exact: true }).fill("#edgeSize * 2")
-    await edit.getByRole("button", { name: `Update ${operation}` }).click()
+    await edit.getByRole("button", { name: `Update ${operation}`, exact: true }).click()
     await expect(edit).not.toBeVisible()
     await page.reload()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
@@ -86,7 +100,9 @@ for (const operation of ["fillet", "chamfer"] as const) {
       }
       root.classList.toggle("dark", dark)
     }, operation === "fillet")
-    await expect(edit.getByRole("button", { name: `Update ${operation}` })).toBeEnabled()
+    await expect(
+      edit.getByRole("button", { name: `Update ${operation}`, exact: true }),
+    ).toBeEnabled()
     await expect(edit.getByRole("button", { name: /Delete/ })).toHaveCount(0)
     await page.screenshot({ path: test.info().outputPath(`${operation}-editor.png`) })
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()

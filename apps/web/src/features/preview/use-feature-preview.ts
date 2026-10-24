@@ -32,6 +32,10 @@ import {
   isSphereFeature,
   isTorusFeature,
 } from "../part-design/part-design-tool"
+import {
+  completeFeaturePreviewResponse,
+  scopeFeaturePreviewDocument,
+} from "./feature-preview-scope"
 
 type PreviewSession = Pick<ReturnType<typeof createDocumentWorkerSession>, "rebuild" | "terminate">
 
@@ -190,38 +194,53 @@ class FeaturePreviewFailure extends Error {
   }
 }
 
+function assertCandidatePreviewSucceeded(
+  document: DocumentSnapshot,
+  candidate: FeatureRecord,
+  response: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }>,
+) {
+  const evaluation = response.evaluation.records.find(({ featureId }) => featureId === candidate.id)
+  if (evaluation?.status === "succeeded") return
+  const diagnostic =
+    evaluation?.status === "failed" && readLoftFeatureParametersV3(candidate)
+      ? evaluation.diagnostics.find(({ values }) => typeof values.message === "string")?.values
+          .message
+      : null
+  const evidence = createModelDiagnosticsEvidence(document, { ok: true, response })
+  const diagnostics = evidence.ok
+    ? evidence.evidence.entries.filter(
+        (entry) => entry.entity.kind === "feature" && entry.entity.id === candidate.id,
+      )
+    : []
+  throw new FeaturePreviewFailure(
+    typeof diagnostic === "string" ? diagnostic : "The feature preview could not be evaluated.",
+    diagnostics,
+  )
+}
+
 async function rebuildPreview(
   session: PreviewSession,
   snapshot: DocumentSnapshot,
   candidate: FeatureRecord,
   previewDocumentId: DocumentSnapshot["id"],
   committedGeometry: readonly PreviewGeometryIdentity[],
+  committedResponse: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }> | null,
 ) {
   const document = createFeaturePreviewDocument(snapshot, candidate, previewDocumentId)
-  const response = await session.rebuild({ document, mesh: PRODUCT_MESH_POLICY })
-  const candidateEvaluation = response.evaluation.records.find(
-    ({ featureId }) => featureId === candidate.id,
-  )
-  if (candidateEvaluation?.status !== "succeeded") {
-    const diagnostic =
-      candidateEvaluation?.status === "failed" && readLoftFeatureParametersV3(candidate)
-        ? candidateEvaluation.diagnostics.find(({ values }) => typeof values.message === "string")
-            ?.values.message
-        : null
-    const evidence = createModelDiagnosticsEvidence(document, { ok: true, response })
-    const diagnostics = evidence.ok
-      ? evidence.evidence.entries.filter(
-          (entry) => entry.entity.kind === "feature" && entry.entity.id === candidate.id,
-        )
-      : []
-    throw new FeaturePreviewFailure(
-      typeof diagnostic === "string" ? diagnostic : "The feature preview could not be evaluated.",
-      diagnostics,
-    )
-  }
+  const committed =
+    committedResponse && matchesCommittedRevision(snapshot, committedResponse)
+      ? committedResponse
+      : null
+  const scoped = committed ? scopeFeaturePreviewDocument(document, candidate.id) : document
+  const response = await session.rebuild({ document: scoped, mesh: PRODUCT_MESH_POLICY })
+  assertCandidatePreviewSucceeded(scoped, candidate, response)
   return {
     candidateMesh: createFeaturePreviewCandidateMesh(response.geometry, candidate.id),
-    meshes: createFeaturePreviewMeshes(document, response, committedGeometry),
+    meshes: createFeaturePreviewMeshes(
+      document,
+      committed ? completeFeaturePreviewResponse(scoped, response, committed) : response,
+      committedGeometry,
+    ),
   }
 }
 
@@ -359,6 +378,7 @@ export function useFeaturePreview(
         candidate,
         previewDocumentId,
         committedGeometry,
+        committedResponse,
       ).then(
         ({ candidateMesh, meshes }) => {
           if (sequenceRef.current === sequence) {
@@ -388,6 +408,7 @@ export function useFeaturePreview(
     candidateKey,
     cached,
     committedGeometry,
+    committedResponse,
     previewDocumentId,
     snapshot,
     sessionActive,

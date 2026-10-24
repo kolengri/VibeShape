@@ -223,6 +223,20 @@ SPK-003 implements policy version `1` with a `0.22` maximum score and `0.035` am
 
 ## Dirty propagation and partial rebuild
 
+Interactive feature previews use the complete document dependency graph to select the changed
+feature, its downstream features and sketches, and every required upstream input. Unrelated branches
+reuse geometry only from the exact committed document ID and revision. The combined viewport still
+uses the full candidate document's terminal-body projection; a failed or suppressed scoped output
+never falls back to its saved geometry. Missing current committed evidence, invalid graphs, and opaque
+dependency models retain full-document evaluation. Preview workers remain disposable and isolated
+from committed native shapes. This reduces independent-branch work without changing kernel tolerances
+or promising constant-time evaluation of a large affected branch.
+
+Edge-treatment forms retain target options for the same immutable snapshot, rebuild, part names and
+editing scope. Form validation and graphical fields share one projected topology catalogue; changing
+only a radius or distance does not validate and allocate every body's catalogue again. Replacing the
+geometry or target options invalidates the catalogue before another selection can be authored.
+
 - Editing a feature marks all downstream nodes dirty.
 - Independent upstream branches retain their caches.
 - The evaluator processes nodes in topological order.

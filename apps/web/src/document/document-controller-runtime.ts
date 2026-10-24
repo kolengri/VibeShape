@@ -196,6 +196,7 @@ import { reconcileHistoryInsertion } from "./history-insertion"
 import { captureLibrarySource } from "./library-source"
 import { createProjectActionGuard } from "./project-action-guard"
 import { exportProjectBackup } from "./project-backup-client"
+import type { ProjectBackupStage } from "./project-backup-contract"
 import { prepareProjectDuplicate, prepareProjectImport } from "./project-import-client"
 import type { PreparedProjectImport } from "./project-import-contract"
 import { type ProjectNavigationError, readProjectUrl } from "./project-navigation"
@@ -3276,22 +3277,29 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     }
   }
 
-  async function exportActiveProjectBackup(): Promise<ActiveProjectBackupResult> {
+  async function exportActiveProjectBackup(
+    onProgress?: (stage: ProjectBackupStage) => void,
+  ): Promise<ActiveProjectBackupResult> {
     const action = captureProjectAction()
     if (!action) return projectActionUnavailable()
-    return exportCapturedProjectBackup(action)
+    return exportCapturedProjectBackup(action, onProgress)
   }
 
   async function exportCapturedProjectBackup(
     action: NonNullable<ReturnType<typeof captureProjectAction>>,
+    onProgress?: (stage: ProjectBackupStage) => void,
   ): Promise<ActiveProjectBackupResult> {
     const database = activeDatabase
     if (!database || !action.current()) return projectActionUnavailable()
-    const archived = await exportProjectBackup({
-      databaseName: database.name,
-      documentId: action.id,
-      revision: action.revision,
-    })
+    const archived = await exportProjectBackup(
+      {
+        databaseName: database.name,
+        documentId: action.id,
+        revision: action.revision,
+      },
+      undefined,
+      onProgress,
+    )
     if (!action.current()) return projectActionUnavailable()
     return archived
   }

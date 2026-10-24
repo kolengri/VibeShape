@@ -1,6 +1,8 @@
 import {
   type ProjectBackupRequest,
   type ProjectBackupResult,
+  type ProjectBackupStage,
+  projectBackupProgressSchema,
   projectBackupRequestSchema,
   projectBackupResponseSchema,
 } from "./project-backup-contract"
@@ -12,6 +14,7 @@ function createBackupWorker() {
 export function exportProjectBackup(
   input: Omit<ProjectBackupRequest, "schemaVersion">,
   createWorker = createBackupWorker,
+  onProgress?: (stage: ProjectBackupStage) => void,
 ): Promise<ProjectBackupResult> {
   const request = projectBackupRequestSchema.parse({ ...input, schemaVersion: 0 })
   return new Promise((resolve, reject) => {
@@ -29,6 +32,18 @@ export function exportProjectBackup(
     }
     const timeout = setTimeout(() => fail("The native project backup timed out."), 300_000)
     worker.onmessage = (event: MessageEvent<unknown>) => {
+      const progress = projectBackupProgressSchema.safeParse(event.data)
+      if (progress.success) {
+        if (
+          progress.data.documentId !== request.documentId ||
+          progress.data.revision !== request.revision
+        ) {
+          fail("The backup worker returned progress for a different project revision.")
+          return
+        }
+        onProgress?.(progress.data.stage)
+        return
+      }
       cleanup()
       const result = projectBackupResponseSchema.safeParse(event.data)
       if (!result.success) reject(new Error("The backup worker returned an invalid response."))

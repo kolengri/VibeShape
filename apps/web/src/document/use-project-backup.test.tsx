@@ -2,6 +2,7 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, expect, it, mock } from "bun:test"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { ActiveProjectBackupResult, DocumentControllerState } from "./document-controller"
+import type { ProjectBackupStage } from "./project-backup-contract"
 
 const initial = {
   status: "ready",
@@ -13,7 +14,8 @@ const initial = {
 } as unknown as DocumentControllerState
 let current = initial
 let blocked: string | null = null
-const write = vi.fn<() => Promise<ActiveProjectBackupResult>>()
+const write =
+  vi.fn<(onProgress?: (stage: ProjectBackupStage) => void) => Promise<ActiveProjectBackupResult>>()
 const download = vi.fn()
 const original = { ...(await import("./document-controller")) }
 mock.module("./document-controller", () => ({
@@ -23,12 +25,13 @@ mock.module("./document-controller", () => ({
   getProjectActionBlock: () => blocked,
 }))
 mock.module("./document-project-file", () => ({ downloadProjectBackup: download }))
-const { cleanup, render, screen, waitFor } = await import("@testing-library/react")
+const { act, cleanup, render, screen, waitFor } = await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { Button } = await import("@vibeshape/ui/components/button")
 const { i18n } = await import("../i18n")
 const { useProjectBackup } = await import("./use-project-backup")
+const { ProjectBackupFeedback } = await import("../shell/project-backup-progress")
 function Harness() {
   const backup = useProjectBackup(initial)
   return (
@@ -36,7 +39,7 @@ function Harness() {
       <Button disabled={backup.pending} onClick={backup.save}>
         Save project
       </Button>
-      {backup.error && <p role="alert">{backup.error}</p>}
+      <ProjectBackupFeedback pending={backup.pending} stage={backup.stage} error={backup.error} />
     </>
   )
 }
@@ -76,9 +79,16 @@ it("guards asynchronous backup activation and downloads exactly once", async () 
   await user.dblClick(button)
   expect(write).toHaveBeenCalledTimes(1)
   expect(button.disabled).toBe(true)
+  const bar = screen.getByRole("progressbar", { name: "Saving project (.vshape)" })
+  expect(bar.hasAttribute("aria-valuenow")).toBe(false)
+  expect(screen.getByRole("status").textContent).toBe("Reading project history and assets…")
+  act(() => write.mock.calls[0]?.[0]?.("building-archive"))
+  expect(bar.getAttribute("aria-valuetext")).toBe("Building project archive…")
+  expect(screen.getByRole("status").textContent).toBe("Building project archive…")
   settle(success)
   await waitFor(() => expect(button.disabled).toBe(false))
   expect(download).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole("progressbar")).toBeNull()
 })
 
 it("refuses a late backup after the active revision changes", async () => {
@@ -113,6 +123,7 @@ it("blocks active work and releases a rejected attempt for retry", async () => {
       (screen.getByRole("button", { name: "Save project" }) as HTMLButtonElement).disabled,
     ).toBe(false),
   )
+  expect(screen.queryByRole("progressbar")).toBeNull()
   write.mockResolvedValueOnce(success)
   await userEvent.click(screen.getByRole("button", { name: "Save project" }))
   await waitFor(() => expect(download).toHaveBeenCalledTimes(1))

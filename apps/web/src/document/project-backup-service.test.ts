@@ -40,8 +40,12 @@ it("keeps full replayable History and rejects a snapshot that the journal cannot
   }
   const close = spyOn(VibeShapeDatabase.prototype, "close").mockImplementation(() => {})
   const repositoryExport = spyOn(BrowserProjectRepository.prototype, "exportPortableProject")
+  const progress = mock()
   repositoryExport.mockResolvedValueOnce({ ok: true, value: input })
-  const saved = await exportSavedProjectBackup(expected)
+  const saving = exportSavedProjectBackup(expected, progress)
+  expect(progress.mock.calls).toEqual([["reading-project"]])
+  const saved = await saving
+  expect(progress.mock.calls).toEqual([["reading-project"], ["building-archive"]])
   expect(saved.ok).toBe(true)
   if (!saved.ok) throw new Error(saved.diagnostic.message)
   const read = await readVShapeV6(saved.file)

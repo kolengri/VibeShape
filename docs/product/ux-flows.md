@@ -585,6 +585,13 @@ clicking it selects stable edge intent independently of face selection. Edges be
 outside the section, or on hidden/preview geometry do not intercept ordinary face or profile picking.
 Keyboard edge selectors appear on keyboard focus; the overlapping-edge chooser provides explicit disambiguation.
 
+Fillet and Chamfer show an indeterminate progress bar in the task panel while exact preview is
+building. A failed preview keeps the entered parameters and selections and explains that the
+radius or distance may exceed the available material, with a smaller value or another edge as
+recovery options. Apply stays disabled until a successful preview. Current committed geometry lets
+the shared feature-preview path rebuild only the affected dependency branch while retaining other
+parts; edited descendants still rebuild and stale geometry is never substituted for a failed result.
+
 New Fillet and Chamfer tasks start in Selected edges scope with viewport picking active and a visible
 zero-selection count. A selected eligible body or face seeds its source body; an ineligible selected
 source never falls back to an unrelated body. A face does not imply a particular boundary edge.
@@ -779,7 +786,7 @@ See [the canonical workflows](lightweighting.md) for preview, Apply, cancellatio
 
 ## Shared interaction feedback
 
-The complete VibeShape wordmark shows a printing shimmer without changing its text or dimensions while owned work is pending. Concurrent actions share this indicator; buttons, project tabs, panels, and dialogs keep their accessible pending states and action locks without local loaders. The upper bar stays fully visible. Reduced motion keeps a static highlighted wordmark. Projects and the editor use the same application-header component for activity and native chrome. It reserves traffic-light space only while the macOS window is windowed; native fullscreen releases the left inset and exiting fullscreen restores it, including when navigating between Projects and the editor.
+The complete VibeShape wordmark shows a printing shimmer without changing its text or dimensions while owned work is pending. Concurrent actions share this indicator; buttons, project tabs, panels, and dialogs keep their accessible pending states and action locks without local loaders. Native `.vshape` export additionally shows a persistent accessible progress bar as soon as export starts, including after its menu closes. It announces the current worker stage: reading project history and assets, then building the project archive. These stages are indeterminate because the archive writer exposes no measurable completion fraction. Repeat export activation stays locked until success or failure. The upper bar stays fully visible. Reduced motion keeps a static highlighted wordmark and progress bar. Projects and the editor use the same application-header component for activity and native chrome. It reserves traffic-light space only while the macOS window is windowed; native fullscreen releases the left inset and exiting fullscreen restores it, including when navigating between Projects and the editor.
 
 Blocking document opening, project switching (including browser Back/Forward), and library mutations dim the interface and show a centered named loader until the operation settles. Background work keeps the interface available and animates the wordmark plus its reserved activity icon. Reduced motion uses a static highlighted state.
 

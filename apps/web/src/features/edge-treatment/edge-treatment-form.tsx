@@ -9,6 +9,7 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { type KeyboardEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
+import { TaskProgress } from "../../components/task-progress"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { useReferencePicking } from "../../shell/reference-pick-context"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
@@ -19,7 +20,11 @@ import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import type { EdgeTreatmentPreselection } from "./edge-treatment-activation"
-import { type EdgeTreatmentGeometry, edgeTreatmentCandidates } from "./edge-treatment-candidates"
+import {
+  type EdgeTreatmentCandidate,
+  type EdgeTreatmentGeometry,
+  edgeTreatmentCandidates,
+} from "./edge-treatment-candidates"
 import { EdgeTreatmentControls } from "./edge-treatment-controls"
 import {
   initialTreatmentValues,
@@ -136,6 +141,7 @@ function useTreatmentFields(
   state: FormState,
   formElement: RefObject<HTMLFormElement | null>,
   onChange: (value: TreatmentValues) => void,
+  candidates: readonly EdgeTreatmentCandidate[],
 ) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   const sharedPicker = useReferencePicking()
@@ -151,13 +157,6 @@ function useTreatmentFields(
     button?.focus()
     returnFocus.current = button ?? null
   }, [featureId, props.disabled, values.scope, formElement])
-  const candidates = useMemo(
-    () =>
-      edgeTreatmentCandidates(props.options, props.topologyCandidates ?? [], (kind, ordinal) =>
-        kind === "edge" ? props.copy.edgeLabel(ordinal) : t("faceLabel", { ordinal }),
-      ),
-    [props.options, props.topologyCandidates, props.copy.edgeLabel, t],
-  )
   const context = {
     featureId,
     mode: props.mode,
@@ -280,6 +279,7 @@ function TreatmentFields({
   formElement,
   onChange,
   setEscape,
+  candidates,
 }: {
   props: EdgeTreatmentFormProps
   values: TreatmentValues
@@ -289,8 +289,17 @@ function TreatmentFields({
   formElement: RefObject<HTMLFormElement | null>
   onChange: (values: TreatmentValues) => void
   setEscape: (handler: ((event: KeyboardEvent<HTMLFormElement>) => void) | null) => void
+  candidates: readonly EdgeTreatmentCandidate[]
 }) {
-  const fields = useTreatmentFields(props, values, featureId, state, formElement, onChange)
+  const fields = useTreatmentFields(
+    props,
+    values,
+    featureId,
+    state,
+    formElement,
+    onChange,
+    candidates,
+  )
   useEffect(() => {
     setEscape(fields.onEscape)
     return () => setEscape(null)
@@ -344,13 +353,14 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
   }))
   const formElement = useRef<HTMLFormElement>(null)
   const escapeHandler = useRef<((event: KeyboardEvent<HTMLFormElement>) => void) | null>(null)
-  const parseDraft = (draft: TreatmentValues) => {
-    const candidates = edgeTreatmentCandidates(
-      props.options,
-      props.topologyCandidates ?? [],
-      (kind, ordinal) =>
+  const candidates = useMemo(
+    () =>
+      edgeTreatmentCandidates(props.options, props.topologyCandidates ?? [], (kind, ordinal) =>
         kind === "edge" ? props.copy.edgeLabel(ordinal) : t("faceLabel", { ordinal }),
-    )
+      ),
+    [props.options, props.topologyCandidates, props.copy.edgeLabel, t],
+  )
+  const parseDraft = (draft: TreatmentValues) => {
     return treatmentFeature(draft, {
       featureId: initial.featureId,
       mode: props.mode,
@@ -406,7 +416,10 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
           copy={props.copy}
           disabled={Boolean(props.disabled)}
           legend={props.copy.scopeLabel}
-          message={state.message}
+          message={
+            state.message ??
+            (props.previewStatus === "error" ? t(`${props.operation}.previewFailed`) : null)
+          }
           actions={
             <TaskPanelFormActions
               acceptLabel={props.copy.submit}
@@ -418,6 +431,9 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
             />
           }
         >
+          {props.previewStatus === "loading" && (
+            <TaskProgress status={t("previewLoading")} label={t("previewProgress")} />
+          )}
           <form.Field name="draft">
             {(field) => (
               <TreatmentFields
@@ -427,6 +443,7 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
                 state={state}
                 submitIssues={field.state.meta.errors[0] ?? {}}
                 formElement={formElement}
+                candidates={candidates}
                 onChange={field.handleChange}
                 setEscape={(handler) => {
                   escapeHandler.current = handler

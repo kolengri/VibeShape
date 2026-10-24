@@ -538,3 +538,71 @@ describe("EdgeTreatmentForm", () => {
     )
   })
 })
+
+it.each(["fillet", "chamfer"] as const)(
+  "shows pending progress and a recoverable %s preview error beside the parameters",
+  async (operation) => {
+    const rendered = renderForm({ operation, previewStatus: "loading" })
+    const progress = screen.getByRole("progressbar", { name: "Edge treatment preview progress" })
+    expect(progress.getAttribute("aria-valuenow")).toBeNull()
+    expect(progress.getAttribute("aria-valuetext")).toBe("Building edge treatment preview…")
+    const input = screen.getByRole("combobox", { name: copy.distance })
+    const user = userEvent.setup()
+    await user.clear(input)
+    await user.type(input, "3 mm")
+    const rerender = (previewStatus: "error" | "ready") =>
+      rendered.rerender(
+        <I18nProvider i18n={i18n} initialLocale="en">
+          <EdgeTreatmentForm {...rendered.props} previewStatus={previewStatus} />
+        </I18nProvider>,
+      )
+    rerender("error")
+    expect(screen.queryByRole("progressbar")).toBeNull()
+    const dimension = operation === "fillet" ? "radius" : "distance"
+    expect(screen.getByRole("alert").textContent).toContain(
+      `Its ${dimension} may exceed the available material`,
+    )
+    expect((input as HTMLInputElement).value).toBe("3 mm")
+    expect(screen.getByRole("button", { name: copy.submit }).hasAttribute("disabled")).toBe(true)
+    rerender("ready")
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect((input as HTMLInputElement).value).toBe("3 mm")
+  },
+)
+
+it("reuses source topology while dimensions change and refreshes it for replacement geometry", async () => {
+  let reads = 0
+  const geometry = {
+    featureId: targetId,
+    geometry: {
+      get topologyCandidates() {
+        reads += 1
+        return [edgeCandidate]
+      },
+    },
+  }
+  const rendered = renderForm({ topologyCandidates: [geometry] })
+  const initialReads = reads
+  expect(initialReads).toBeGreaterThan(0)
+  const user = userEvent.setup()
+  const size = screen.getByRole("combobox", { name: copy.distance })
+  await user.clear(size)
+  await user.type(size, "0.5 mm")
+  expect(reads).toBe(initialReads)
+  const replacement = {
+    ...geometry,
+    geometry: {
+      get topologyCandidates() {
+        reads += 1
+        return [edgeCandidate]
+      },
+    },
+  }
+  rendered.rerender(
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <EdgeTreatmentForm {...rendered.props} topologyCandidates={[replacement]} />
+    </I18nProvider>,
+  )
+  expect(reads).toBeGreaterThan(initialReads)
+  expect((size as HTMLInputElement).value).toBe("0.5 mm")
+})
