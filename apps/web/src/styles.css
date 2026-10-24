@@ -50,7 +50,7 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--application-bar-height) minmax(0, 1fr);
   row-gap: var(--workspace-gap);
-  padding: 0 var(--workspace-gap) var(--workspace-gap);
+  padding-inline: var(--workspace-gap);
   height: 100svh;
   min-height: 0;
   overflow: hidden;
@@ -95,6 +95,7 @@
   overflow-x: auto;
   white-space: nowrap;
   grid-area: status;
+  margin-inline: calc(-1 * var(--workspace-gap));
 }
 
 .workspace-history {
