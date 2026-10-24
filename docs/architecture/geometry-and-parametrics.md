@@ -292,6 +292,12 @@ plane. Source replacement, hiding the section, and disposal invalidate old resul
 worker. Plane clipping and handle motion remain immediate on the main thread; only current cap
 triangles are installed asynchronously. Live render buffers are never detached.
 
+Sampled model-edge candidates retain conservative world-space bounds for their installed geometry.
+Picking projects each bound to a screen rectangle before testing individual segments at the unchanged
+six-CSS-pixel tolerance. Section clipping, occlusion, exact hit distances and overlap ordering remain
+in the existing narrow phase. Unsupported or numerically unsafe bounds and projections keep the
+unpruned path; replacing candidates replaces their bounds.
+
 Face ordinals are indexed per immutable metadata snapshot. Ordinary hover picks are coalesced to one
 animation frame and stop at the first eligible, section-visible hit; activation remains synchronous and
 candidate cycling retains the complete eligible stack. Re-selecting an equivalent face preserves

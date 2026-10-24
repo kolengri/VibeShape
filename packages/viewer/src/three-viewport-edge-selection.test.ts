@@ -65,6 +65,7 @@ afterEach(() => {
   viewport = undefined
   document.body.replaceChildren()
   vi.restoreAllMocks()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -185,6 +186,73 @@ function expectDepthContains(camera: import("three").OrthographicCamera, point: 
   expect(depth).toBeGreaterThanOrEqual(camera.near - 1e-6)
   expect(depth).toBeLessThanOrEqual(camera.far + 1e-6)
 }
+
+describe("viewport navigation activity", () => {
+  it("keeps a stationary orbit held until release and then reports a quiet interval", () => {
+    vi.useFakeTimers()
+    const change = mock((_active: boolean) => {})
+    const f = fixture({ onNavigationActivityChange: change })
+    vi.advanceTimersByTime(200)
+    change.mockClear()
+    f.pointer("pointerdown")
+    vi.advanceTimersByTime(1000)
+    expect(change.mock.calls).toEqual([[true]])
+    f.pointer("pointerup")
+    vi.advanceTimersByTime(199)
+    expect(change.mock.calls).toEqual([[true]])
+    vi.advanceTimersByTime(1)
+    expect(change.mock.calls).toEqual([[true], [false]])
+  })
+
+  for (const end of ["pointercancel", "blur", "cancelInteractions"] as const) {
+    it(`releases navigation activity after ${end}`, () => {
+      vi.useFakeTimers()
+      const change = mock((_active: boolean) => {})
+      const f = fixture({ onNavigationActivityChange: change })
+      vi.advanceTimersByTime(200)
+      change.mockClear()
+      f.pointer("pointerdown")
+      if (end === "blur") window.dispatchEvent(new Event("blur"))
+      else if (end === "cancelInteractions") f.viewport.cancelInteractions()
+      else f.pointer("pointercancel")
+      vi.advanceTimersByTime(200)
+      expect(change.mock.calls).toEqual([[true], [false]])
+    })
+  }
+
+  it("reports wheel and pointer-orbit changes and cancels delayed callbacks on disposal", () => {
+    vi.useFakeTimers()
+    const change = mock((_active: boolean) => {})
+    const f = fixture({ onNavigationActivityChange: change })
+    vi.advanceTimersByTime(200)
+    change.mockClear()
+    f.canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, cancelable: true }))
+    vi.advanceTimersByTime(200)
+    expect(change.mock.calls).toEqual([[true], [false]])
+    f.viewport.setPointerOrbit(true)
+    f.pointer("pointermove", 180, 180)
+    f.pointer("pointermove", 190, 195)
+    expect(change.mock.calls.at(-1)).toEqual([true])
+    const count = change.mock.calls.length
+    f.viewport.dispose()
+    vi.advanceTimersByTime(1000)
+    expect(change).toHaveBeenCalledTimes(count)
+  })
+
+  it("holds inset activity independently of disabled orbit controls", () => {
+    vi.useFakeTimers()
+    const change = mock((_active: boolean) => {})
+    const f = fixture({ onNavigationActivityChange: change })
+    vi.advanceTimersByTime(200)
+    change.mockClear()
+    f.pointer("pointerdown", 40, 350)
+    vi.advanceTimersByTime(1000)
+    expect(change.mock.calls).toEqual([[true]])
+    f.pointer("pointercancel", 40, 350)
+    vi.advanceTimersByTime(200)
+    expect(change.mock.calls).toEqual([[true], [false]])
+  })
+})
 
 describe("camera scene preparation", () => {
   it("reuses scene preparation across standard views, wheel zoom, and pointer orbit", () => {

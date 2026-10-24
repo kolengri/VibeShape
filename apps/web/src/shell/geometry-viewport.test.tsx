@@ -2985,6 +2985,72 @@ describe("GeometryViewport", () => {
     )
   })
 
+  it("defers the latest thumbnail until navigation stops and the debounce settles", async () => {
+    vi.useFakeTimers()
+    const viewport = renderViewport(thumbnailController(1))
+    const activity = viewport.createViewport.mock.calls[0]?.[1].onNavigationActivityChange
+    await act(async () => activity?.(true))
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    viewport.rerenderController(thumbnailController(2))
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(renderProjectThumbnailMock).not.toHaveBeenCalled()
+    await act(async () => activity?.(false))
+    await act(async () => vi.advanceTimersByTimeAsync(249))
+    expect(renderProjectThumbnailMock).not.toHaveBeenCalled()
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    expect(saveActiveProjectThumbnailMock.mock.calls[0]?.slice(0, 2)).toEqual([
+      "project-thumbnail",
+      2,
+    ])
+  })
+
+  it("restarts the debounce after a complete navigation burst in one React commit", async () => {
+    vi.useFakeTimers()
+    const viewport = renderViewport(thumbnailController(1))
+    const activity = viewport.createViewport.mock.calls[0]?.[1].onNavigationActivityChange
+    await act(async () => vi.advanceTimersByTimeAsync(200))
+    await act(async () => {
+      activity?.(true)
+      activity?.(false)
+    })
+    await act(async () => vi.advanceTimersByTimeAsync(249))
+    expect(renderProjectThumbnailMock).not.toHaveBeenCalled()
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("aborts queued thumbnail work on navigation and ignores its late result", async () => {
+    vi.useFakeTimers()
+    let finish: ((value: { mediaType: "image/png"; bytes: Uint8Array }) => void) | undefined
+    renderProjectThumbnailMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    const viewport = renderViewport(thumbnailController(1))
+    const activity = viewport.createViewport.mock.calls[0]?.[1].onNavigationActivityChange
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    const signal = renderProjectThumbnailMock.mock.calls[0]?.[1]?.signal as AbortSignal
+    await act(async () => {
+      activity?.(true)
+      expect(signal.aborted).toBe(true)
+    })
+    await act(async () => finish?.({ mediaType: "image/png", bytes: new Uint8Array([1]) }))
+    expect(saveActiveProjectThumbnailMock).not.toHaveBeenCalled()
+    await act(async () => activity?.(false))
+    await act(async () => vi.advanceTimersByTimeAsync(250))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(2)
+    expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(1)
+    viewport.unmount()
+    await act(async () => {
+      activity?.(true)
+      activity?.(false)
+    })
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(renderProjectThumbnailMock).toHaveBeenCalledTimes(2)
+  })
+
   it("discards a thumbnail render that finishes after its viewport was unmounted", async () => {
     vi.useFakeTimers()
     let finish: ((value: { mediaType: "image/png"; bytes: Uint8Array }) => void) | undefined
