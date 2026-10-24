@@ -127,7 +127,7 @@ import { documentV6MetadataCommandSchema } from "@vibeshape/domain/document-v6-c
 import { applyDocumentV6AuthoredCommand } from "@vibeshape/domain/document-v6-commands"
 import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
 import type { MoveHistoryItemCommand } from "@vibeshape/domain/history-document-commands"
-import type { FeatureId } from "@vibeshape/domain/identifiers"
+import type { DocumentId, FeatureId } from "@vibeshape/domain/identifiers"
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
 import type { SetPartAppearanceChange } from "@vibeshape/domain/part-appearance"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
@@ -188,7 +188,6 @@ import { AssemblyInspectionSession } from "./assembly-inspection-session"
 import { AssistantCheckpointBaselines } from "./assistant-checkpoint-baselines"
 import type { AssistantCheckpointPresentation } from "./assistant-checkpoint-presentation"
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
-import { copyBrowserPortableProject } from "./authored-project-file"
 import { createAutomationLibraryPort } from "./browser-library-repository"
 import { BrowserProjectRepository } from "./browser-project-repository"
 import { prepareDocumentGeometryExport } from "./document-geometry-export"
@@ -197,7 +196,8 @@ import { reconcileHistoryInsertion } from "./history-insertion"
 import { captureLibrarySource } from "./library-source"
 import { createProjectActionGuard } from "./project-action-guard"
 import { exportProjectBackup } from "./project-backup-client"
-import { prepareProjectImport } from "./project-import-client"
+import { prepareProjectDuplicate, prepareProjectImport } from "./project-import-client"
+import type { PreparedProjectImport } from "./project-import-contract"
 import { type ProjectNavigationError, readProjectUrl } from "./project-navigation"
 import { materializeDocumentSourceAssets } from "./source-assets-rebuild"
 import { formatProjectCopyName } from "./versioned-project-file"
@@ -334,7 +334,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   const listeners = new Set<() => void>()
   const projectActionGuard = createProjectActionGuard()
   const registerProjectActionGuard = projectActionGuard.register
-  let projectImport: { abort: AbortController; current: () => boolean } | null = null
+  let projectPreparation: { abort: AbortController; current: () => boolean } | null = null
   let checkpointPreview: DisposableDocumentPreview | null = null
   let checkpointPreviewAbort: AbortController | null = null
   let checkpointPreviewEpoch = 0
@@ -469,7 +469,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       authoredSnapshot: session?.authoredSnapshot ?? null,
       history: session?.history ?? { canUndo: false, canRedo: false },
     }
-    if (projectImport && !projectImport.current()) projectImport.abort.abort()
+    if (projectPreparation && !projectPreparation.current()) projectPreparation.abort.abort()
     assemblyInspection.retain(state.authoredSnapshot)
     for (const listener of listeners) listener()
   }
@@ -3302,10 +3302,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
   ): Promise<ProjectImportResult> {
     const action = captureProjectCatalogAction()
     if (!action) return projectActionUnavailable()
-    projectImport?.abort.abort()
-    const abort = new AbortController()
-    const job = { abort, current: () => !abort.signal.aborted && action.current() }
-    projectImport = job
+    const job = startProjectPreparation(action.current)
     const copiedAt = new Date().toISOString()
     try {
       const copied = await prepareProjectImport({
@@ -3323,7 +3320,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       })
       if (!job.current()) return projectActionUnavailable()
       if (!copied.ok) return copied
-      projectImport = null
+      projectPreparation = null
       const imported = await action.repository.copyPortableProject(copied.value, copiedAt)
       if (!job.current()) return projectActionUnavailable()
       return imported.ok
@@ -3333,8 +3330,16 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       if (!job.current()) return projectActionUnavailable()
       throw error
     } finally {
-      if (projectImport === job) projectImport = null
+      if (projectPreparation === job) projectPreparation = null
     }
+  }
+
+  function startProjectPreparation(current: () => boolean) {
+    projectPreparation?.abort.abort()
+    const abort = new AbortController()
+    const job = { abort, current: () => !abort.signal.aborted && current() }
+    projectPreparation = job
+    return job
   }
 
   async function listLocalProjects(
@@ -3442,7 +3447,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     name: string,
   ): Promise<ProjectDuplicateResult> {
     const action = captureProjectCatalogAction()
-    if (!action) return projectActionUnavailable()
+    const database = activeDatabase
+    if (!action || !database) return projectActionUnavailable()
     const documentId = documentIdSchema.safeParse(documentIdInput)
     if (!documentId.success) {
       return {
@@ -3450,45 +3456,59 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
       }
     }
-    const portable = await action.repository.exportPortableProject(documentId.data)
-    if (!portable.ok) return { ok: false, diagnostic: portable.diagnostic }
-    if (portable.value.project.snapshot.revision !== expectedHeadRevision) {
-      return {
-        ok: false,
-        diagnostic: {
-          code: "stale-revision",
-          message: "The project changed before it was copied.",
-        },
-      }
-    }
-
+    const job = startProjectPreparation(action.current)
     const copiedAt = new Date().toISOString()
-    const copied = copyBrowserPortableProject({
-      source: portable.value,
-      documentId: documentIdSchema.parse(browserUuidV7()),
-      name,
-      issuedAt: copiedAt,
-      nextCommandId: browserUuidV7,
-      nextTransactionId: () => draftIdSchema.parse(browserUuidV7()),
-    })
-    if (!copied.ok) return { ok: false, diagnostic: copied.diagnostic }
+    try {
+      const copied = await prepareProjectDuplicate({
+        databaseName: database.name,
+        sourceDocumentId: documentId.data,
+        expectedHeadRevision,
+        documentId: documentIdSchema.parse(browserUuidV7()),
+        name,
+        issuedAt: copiedAt,
+        signal: job.abort.signal,
+      })
+      if (!job.current()) return projectActionUnavailable()
+      if (!copied.ok) return copied
+      projectPreparation = null
+      return await storeProjectDuplicate(action.repository, copied.value, {
+        sourceDocumentId: documentId.data,
+        sourceRevision: expectedHeadRevision,
+        copiedAt,
+        name,
+        current: job.current,
+      })
+    } catch (error) {
+      if (!job.current()) return projectActionUnavailable()
+      throw error
+    } finally {
+      if (projectPreparation === job) projectPreparation = null
+    }
+  }
 
-    if (!action.current()) return projectActionUnavailable()
-    const stored = await action.repository.copyPortableProject(copied.value, copiedAt)
+  async function storeProjectDuplicate(
+    repository: BrowserProjectRepository,
+    prepared: PreparedProjectImport,
+    source: {
+      sourceDocumentId: DocumentId
+      sourceRevision: number
+      copiedAt: string
+      name: string
+      current: () => boolean
+    },
+  ): Promise<ProjectDuplicateResult> {
+    const stored = await repository.copyPortableProject(prepared, source.copiedAt)
     if (!stored.ok) return { ok: false, diagnostic: stored.diagnostic }
-    await action.repository.copyProjectThumbnail({
-      sourceDocumentId: documentId.data,
-      sourceRevision: expectedHeadRevision,
+    await repository.copyProjectThumbnail({
+      sourceDocumentId: source.sourceDocumentId,
+      sourceRevision: source.sourceRevision,
       targetDocumentId: stored.value.documentId,
       targetRevision: stored.value.revision,
-      generatedAt: copiedAt,
+      generatedAt: source.copiedAt,
     })
-    if (!action.current()) return projectActionUnavailable()
-    return {
-      ok: true,
-      documentId: stored.value.documentId,
-      name: copied.value.project.snapshot.name,
-    }
+    return source.current()
+      ? { ok: true, documentId: stored.value.documentId, name: source.name }
+      : projectActionUnavailable()
   }
 
   function renameVariable(baseRevision: number, variableId: VariableId, name: string) {
@@ -3536,7 +3556,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     }))
   }
   async function closeRuntime() {
-    projectImport?.abort.abort()
+    projectPreparation?.abort.abort()
     assemblyInspection.dispose()
     const active = session
     if (!active) return { ok: true as const }

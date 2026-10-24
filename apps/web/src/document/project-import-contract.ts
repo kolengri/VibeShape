@@ -23,6 +23,18 @@ export const projectImportRequestSchema = z.discriminatedUnion("kind", [
       issuedAt: timestampSchema,
     })
     .strict(),
+  z
+    .object({
+      ...envelope,
+      kind: z.literal("duplicate"),
+      databaseName: z.string().min(1).max(256),
+      sourceDocumentId: documentIdSchema,
+      expectedHeadRevision: z.number().int().positive().safe(),
+      documentId: documentIdSchema,
+      name: z.string(),
+      issuedAt: timestampSchema,
+    })
+    .strict(),
 ])
 
 export const projectImportResponseSchema = z.discriminatedUnion("kind", [
@@ -60,4 +72,8 @@ export const projectImportResponseSchema = z.discriminatedUnion("kind", [
 ])
 
 export type ProjectImportResponse = z.infer<typeof projectImportResponseSchema>
+export type ProjectDuplicateRequest = Extract<
+  z.infer<typeof projectImportRequestSchema>,
+  { kind: "duplicate" }
+>
 export type PreparedProjectImport = Extract<ProjectImportResponse, { kind: "prepared" }>["value"]

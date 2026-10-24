@@ -13,6 +13,8 @@ const mocks = (() => ({
   close: vi.fn(),
   readArchive: vi.fn(),
   prepareImport: vi.fn(),
+  prepareDuplicate: vi.fn(),
+  copyThumbnail: vi.fn(),
   list: vi.fn(),
   review: vi.fn(),
 }))()
@@ -26,6 +28,7 @@ mock.module("./browser-project-repository", () => ({
     exportPortableProject = mocks.exportProject
     copyPortableProject = mocks.copyProject
     listProjects = mocks.list
+    copyProjectThumbnail = mocks.copyThumbnail
   },
 }))
 mock.module("./project-backup-client", () => ({
@@ -34,7 +37,10 @@ mock.module("./project-backup-client", () => ({
     return exportSavedProjectBackup({ ...expected, schemaVersion: 0 })
   },
 }))
-mock.module("./project-import-client", () => ({ prepareProjectImport: mocks.prepareImport }))
+mock.module("./project-import-client", () => ({
+  prepareProjectImport: mocks.prepareImport,
+  prepareProjectDuplicate: mocks.prepareDuplicate,
+}))
 const originalModule1 = { ...(await import("@vibeshape/formats/vshape")) }
 mock.module("@vibeshape/formats/vshape", () => {
   const actual = originalModule1
@@ -131,6 +137,21 @@ beforeEach(async () => {
         ? { ok: false, diagnostic: copied.diagnostic }
         : Promise.reject(new Error("Expected the prepared copy."))
   })
+  mocks.prepareDuplicate.mockImplementation(async ({ signal: _signal, ...input }) => {
+    const { createProjectImportPreparation } = await import("./project-import-service")
+    const result = await createProjectImportPreparation()({
+      ...input,
+      schemaVersion: 0,
+      kind: "duplicate",
+      jobId: crypto.randomUUID(),
+    })
+    return result.kind === "prepared"
+      ? { ok: true, value: result.value }
+      : result.kind === "error"
+        ? { ok: false, diagnostic: result.diagnostic }
+        : Promise.reject(new Error("Expected the prepared copy."))
+  })
+  mocks.copyThumbnail.mockResolvedValue({ ok: true })
   mocks.review.mockReturnValue(null)
   mocks.close.mockResolvedValue({ ok: true })
   mocks.list.mockResolvedValue({ ok: true, value: [{ documentId: id }] })
@@ -340,6 +361,92 @@ describe("project file identity and active-work guards", () => {
     })
     expect(mocks.copyProject).not.toHaveBeenCalled()
     release()
+  })
+
+  it("publishes a prepared local copy and copies the thumbnail for the captured source revision", async () => {
+    const { controller } = await ready()
+    const result = await controller.duplicateLocalProject(id, 1, "Independent copy")
+    expect(result).toMatchObject({ ok: true, name: "Independent copy" })
+    if (!result.ok) throw new Error(result.diagnostic.message)
+    expect(mocks.prepareDuplicate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceDocumentId: id,
+        expectedHeadRevision: 1,
+        documentId: result.documentId,
+        name: "Independent copy",
+        signal: expect.any(AbortSignal),
+      }),
+    )
+    expect(mocks.copyProject).toHaveBeenCalledTimes(1)
+    expect(mocks.copyThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceDocumentId: id,
+        sourceRevision: 1,
+        targetDocumentId: result.documentId,
+      }),
+    )
+  })
+
+  it("preserves the stale-revision diagnostic without publishing or copying a thumbnail", async () => {
+    const { controller } = await ready()
+    expect(await controller.duplicateLocalProject(id, 2, "Independent copy")).toMatchObject({
+      ok: false,
+      diagnostic: { code: "stale-revision" },
+    })
+    expect(mocks.copyProject).not.toHaveBeenCalled()
+    expect(mocks.copyThumbnail).not.toHaveBeenCalled()
+  })
+
+  it("aborts local-copy preparation when its runtime closes and ignores late completion", async () => {
+    const { controller } = await ready()
+    const pending = deferred<{ ok: false; diagnostic: { code: string; message: string } }>()
+    mocks.prepareDuplicate.mockReturnValueOnce(pending.promise)
+    const copying = controller.duplicateLocalProject(id, 1, "Independent copy")
+    const signal = mocks.prepareDuplicate.mock.calls[0]?.[0].signal as AbortSignal
+    expect(signal.aborted).toBe(false)
+    await act(async () => {
+      await controller.getProjectRuntime(id)?.closeRuntime()
+    })
+    expect(signal.aborted).toBe(true)
+    pending.resolve({ ok: false, diagnostic: { code: "copy-failed", message: "Late result." } })
+    expect(await copying).toMatchObject({
+      ok: false,
+      diagnostic: { code: "project-action-blocked" },
+    })
+    expect(mocks.copyProject).not.toHaveBeenCalled()
+    expect(mocks.copyThumbnail).not.toHaveBeenCalled()
+  })
+
+  it("lets a new file import supersede a pending local copy without publishing its late payload", async () => {
+    const { controller, source } = await ready()
+    const prepare = mocks.prepareDuplicate.getMockImplementation()
+    if (!prepare) throw new Error("Expected the saved-copy preparation seam.")
+    const completed = await prepare({
+      databaseName: "test",
+      sourceDocumentId: id,
+      expectedHeadRevision: 1,
+      documentId: "0195b5ac-b250-7a2c-8c33-000000000304",
+      name: "Independent copy",
+      issuedAt,
+    })
+    if (!completed.ok) throw new Error(completed.diagnostic.message)
+    const pending = deferred<typeof completed>()
+    mocks.prepareDuplicate.mockReturnValueOnce(pending.promise)
+    mocks.prepareDuplicate.mockClear()
+    const copying = controller.duplicateLocalProject(id, 1, "Independent copy")
+    const signal = mocks.prepareDuplicate.mock.calls[0]?.[0].signal as AbortSignal
+    expect(
+      (await controller.importProjectBackup(await archive(source), (name) => `${name} imported`))
+        .ok,
+    ).toBe(true)
+    expect(signal.aborted).toBe(true)
+    pending.resolve(completed)
+    expect(await copying).toMatchObject({
+      ok: false,
+      diagnostic: { code: "project-action-blocked" },
+    })
+    expect(mocks.copyProject).toHaveBeenCalledTimes(1)
+    expect(mocks.copyThumbnail).not.toHaveBeenCalled()
   })
   it("selects the destination before recovery finishes and reuses retained project sessions", async () => {
     const { controller, session } = await ready()

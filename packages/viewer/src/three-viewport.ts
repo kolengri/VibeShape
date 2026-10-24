@@ -1481,6 +1481,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #angularAnglePublisher: ReturnType<typeof createLatestFramePublisher<number>>
   readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
+  readonly #sceneBounds = new Box3()
+  #scenePreparationDirty = true
   #controlsNavigationOrientation: Quaternion | null = null
   #controlsNavigationPivot: Vector3 | null = null
   #pointerOrbitPivot: Vector3 | null = null
@@ -2197,7 +2199,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setCameraUp(pose.up)
     this.#controls.target.set(...pose.target)
     this.#controls.update()
-    this.#render()
+    this.#renderCamera()
   }
 
   orientToFrame(frame: ViewerFrame) {
@@ -2214,7 +2216,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#expandViewToScene(frame.origin)
     this.#updateProjection()
     this.#controls.update()
-    this.#render()
+    this.#renderCamera()
     return true
   }
 
@@ -2274,7 +2276,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#camera.zoom = 1
     this.#updateProjection()
     this.#controls.update()
-    this.#render()
+    this.#renderCamera()
     return true
   }
 
@@ -2535,23 +2537,28 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #updateClippingToScene() {
-    const bounds = new Box3()
-      .setFromObject(this.#modelGroup)
-      .expandByObject(this.#sketchGroup)
-      .expandByObject(this.#sketchProfileGroup)
-      .expandByObject(this.#sketchPointCandidateGroup)
-      .expandByObject(this.#sketchPointPreselectionGroup)
-      .expandByObject(this.#featurePreselectionGroup)
-      .expandByObject(this.#featureSelectionGroup)
-      .expandByObject(this.#analysisDecoration.group)
-      .expandByObject(this.#angularGizmoGroup)
-      .expandByObject(this.#printDecoration.bed)
-    if (this.#sectionDecoration.group.visible) bounds.expandByObject(this.#sectionDecoration.group)
-    if (this.#toolPlaneDecoration.group.visible)
-      bounds.expandByObject(this.#toolPlaneDecoration.group)
-    for (const plane of this.#originPlaneGroup.children) {
-      if (plane.visible) bounds.expandByObject(plane)
+    if (this.#scenePreparationDirty) {
+      this.#sceneBounds
+        .setFromObject(this.#modelGroup)
+        .expandByObject(this.#sketchGroup)
+        .expandByObject(this.#sketchProfileGroup)
+        .expandByObject(this.#sketchPointCandidateGroup)
+        .expandByObject(this.#sketchPointPreselectionGroup)
+        .expandByObject(this.#featurePreselectionGroup)
+        .expandByObject(this.#featureSelectionGroup)
+        .expandByObject(this.#analysisDecoration.group)
+        .expandByObject(this.#angularGizmoGroup)
+        .expandByObject(this.#printDecoration.bed)
+      if (this.#toolPlaneDecoration.group.visible)
+        this.#sceneBounds.expandByObject(this.#toolPlaneDecoration.group)
+      for (const plane of this.#originPlaneGroup.children) {
+        if (plane.visible) this.#sceneBounds.expandByObject(plane)
+      }
+      this.#scenePreparationDirty = false
     }
+    const bounds = this.#sceneBounds.clone()
+    // Section decoration and finite translation handles change size with camera zoom.
+    if (this.#sectionDecoration.group.visible) bounds.expandByObject(this.#sectionDecoration.group)
     if (this.#translationHelper.visible) {
       // Bound finite handles only; TransformControls also owns million-unit helper axes.
       const size =
@@ -2898,7 +2905,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#clearSketchReferencePicking()
     this.#clearSketchProfileCandidateStack()
     this.#setSketchProfilePreselection(null)
-    this.#render()
+    this.#renderCamera()
   }
 
   #onTranslationControlsChange = () => {
@@ -3718,13 +3725,19 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #renderFrames = createLatestFramePublisher<null>(() => this.#renderNow())
 
   #render = () => {
+    // Every scene mutation (including asynchronous preparation) uses this invalidating path.
+    this.#scenePreparationDirty = true
+    this.#renderCamera()
+  }
+
+  #renderCamera = () => {
     if (!this.#disposed) this.#renderFrames.push(null)
   }
 
   #renderNow = () => {
     if (this.#disposed) return
     this.#sectionDecoration.update()
-    this.#applySectionClipping()
+    if (this.#scenePreparationDirty) this.#applySectionClipping()
     this.#updateClippingToScene()
     const width = this.#canvas.clientWidth
     this.#edgePresentation.resize(width, this.#canvas.clientHeight)

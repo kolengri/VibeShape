@@ -13,6 +13,7 @@ const ports = (() => ({
   copy: vi.fn(),
   export: vi.fn(),
   thumbnail: vi.fn(),
+  prepareDuplicate: vi.fn(),
   review: vi.fn(),
   createAutomation: vi.fn(),
   disposeAutomation: vi.fn(),
@@ -43,6 +44,11 @@ mock.module("./browser-project-repository", () => ({
     exportPortableProject = ports.export
     copyProjectThumbnail = ports.thumbnail
   },
+}))
+const originalPreparationClient = { ...(await import("./project-import-client")) }
+mock.module("./project-import-client", () => ({
+  ...originalPreparationClient,
+  prepareProjectDuplicate: ports.prepareDuplicate,
 }))
 const originalModule3 = { ...(await import("../automation/automation-review-controller")) }
 mock.module("../automation/automation-review-controller", () => {
@@ -152,6 +158,18 @@ let moduleRevision = 0
 beforeEach(() => {
   moduleRevision += 1
   for (const port of Object.values(ports)) port.mockReset()
+  ports.prepareDuplicate.mockImplementation(async ({ signal: _signal, ...input }) => {
+    const { createProjectImportPreparation } = await import("./project-import-service")
+    const result = await createProjectImportPreparation()({
+      ...input,
+      schemaVersion: 0,
+      kind: "duplicate",
+      jobId: crypto.randomUUID(),
+    })
+    if (result.kind === "prepared") return { ok: true, value: result.value }
+    if (result.kind === "error") return { ok: false, diagnostic: result.diagnostic }
+    throw new Error("Expected the prepared copy.")
+  })
   ports.initializeRepository.mockImplementation(() => {})
   vi.stubGlobal("localStorage", createTestBrowserStorage())
   vi.stubGlobal("sessionStorage", createTestBrowserStorage())

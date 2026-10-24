@@ -3,6 +3,7 @@ import { VSHAPE_MAX_ARCHIVE_BYTES } from "@vibeshape/formats/vshape"
 import { z } from "zod"
 import {
   type PreparedProjectImport,
+  type ProjectDuplicateRequest,
   projectImportRequestSchema,
   projectImportResponseSchema,
 } from "./project-import-contract"
@@ -20,14 +21,42 @@ const preparedIdentitySchema = z.object({
   historyMode: z.literal("complete"),
 })
 
-export function prepareProjectImport(
-  input: {
-    bytes: Uint8Array
-    documentId: z.infer<typeof documentIdSchema>
-    issuedAt: string
-    resolveName: (sourceName: string) => string
-    signal: AbortSignal
-  },
+type ImportInput = {
+  bytes: Uint8Array
+  documentId: z.infer<typeof documentIdSchema>
+  issuedAt: string
+  resolveName: (sourceName: string) => string
+  signal: AbortSignal
+}
+type DuplicateInput = Omit<ProjectDuplicateRequest, "schemaVersion" | "kind" | "jobId"> & {
+  signal: AbortSignal
+}
+type PreparationInput =
+  | ({ kind: "import" } & ImportInput)
+  | ({ kind: "duplicate" } & DuplicateInput)
+
+export function prepareProjectImport(input: ImportInput, createWorker = createImportWorker) {
+  return prepareProjectCopy({ ...input, kind: "import" }, createWorker)
+}
+
+export function prepareProjectDuplicate(input: DuplicateInput, createWorker = createImportWorker) {
+  return prepareProjectCopy({ ...input, kind: "duplicate" }, createWorker)
+}
+
+function initialRequest(input: PreparationInput, jobId: string) {
+  if (input.kind === "import")
+    return projectImportRequestSchema.parse({
+      schemaVersion: 0,
+      jobId,
+      kind: "decode",
+      bytes: input.bytes,
+    })
+  const { signal: _signal, ...request } = input
+  return projectImportRequestSchema.parse({ ...request, schemaVersion: 0, jobId })
+}
+
+function prepareProjectCopy(
+  input: PreparationInput,
   createWorker = createImportWorker,
 ): Promise<
   | { ok: true; value: PreparedProjectImport }
@@ -37,7 +66,7 @@ export function prepareProjectImport(
     let worker: Worker | null = null
     let timeout: ReturnType<typeof setTimeout> | undefined
     let settled = false
-    let name: string | null = null
+    let name: string | null = input.kind === "duplicate" ? input.name : null
     const jobId = crypto.randomUUID()
     const cleanup = () => {
       settled = true
@@ -59,7 +88,8 @@ export function prepareProjectImport(
     const abort = () =>
       fail(new DOMException("The native project import was cancelled.", "AbortError"))
     const resolveCopyName = (sourceName: string) => {
-      if (name !== null) throw new Error("The import worker repeated its naming phase.")
+      if (input.kind !== "import" || name !== null)
+        throw new Error("The import worker repeated its naming phase.")
       name = input.resolveName(sourceName)
       if (settled) return
       worker?.postMessage(
@@ -91,7 +121,7 @@ export function prepareProjectImport(
     }
     input.signal.addEventListener("abort", abort, { once: true })
     try {
-      if (input.bytes.byteLength > VSHAPE_MAX_ARCHIVE_BYTES) {
+      if (input.kind === "import" && input.bytes.byteLength > VSHAPE_MAX_ARCHIVE_BYTES) {
         cleanup()
         resolve({
           ok: false,
@@ -102,15 +132,14 @@ export function prepareProjectImport(
         })
         return
       }
-      const request = projectImportRequestSchema.parse({
-        schemaVersion: 0,
-        jobId,
-        kind: "decode",
-        bytes: input.bytes,
-      })
+      const request = initialRequest(input, jobId)
       documentIdSchema.parse(input.documentId)
       timestampSchema.parse(input.issuedAt)
       worker = createWorker()
+      if (settled) {
+        worker.terminate()
+        return
+      }
       timeout = setTimeout(() => fail(new Error("The native project import timed out.")), 300_000)
       worker.onerror = () => fail(new Error("The native project import worker could not run."))
       worker.onmessageerror = () =>
@@ -137,8 +166,10 @@ export function prepareProjectImport(
         }
       }
       // Own the transferred copy; callers may reuse their input after success, failure, or cancellation.
-      const bytes = Uint8Array.from(input.bytes)
-      worker.postMessage({ ...request, bytes }, [bytes.buffer])
+      if (request.kind === "decode") {
+        const bytes = Uint8Array.from(request.bytes)
+        worker.postMessage({ ...request, bytes }, [bytes.buffer])
+      } else worker.postMessage(request)
     } catch (error) {
       fail(error)
     }

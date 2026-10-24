@@ -1,5 +1,28 @@
 # Viewport mesh update performance
 
+## October 24 camera and saved-copy follow-up
+
+Camera-only updates reuse the viewport's world-space scene bounds and installed material clipping.
+Ordinary scene render requests conservatively invalidate both preparations, including geometry,
+visibility, selection, sketch, decoration, theme, and asynchronous mesh updates. Section decoration
+and finite translation handles retain per-frame bounds because their extent depends on camera zoom.
+Camera-space depth, near/far planes, and camera retreat still update every frame.
+
+On a synthetic mock-renderer fixture with 500 bodies, 200 sketches, and 120 camera changes, bounds
+expansions fell from 145,920 to zero and clipping traversal visits from 145,560 to zero after initial
+preparation. All recorded camera positions, clipping depths, and projection matrices were exactly
+equal. Single-run fixture time was 54.714 ms before and 13.499 ms after. This verifies avoided CPU
+work, not full-app Radial frame rate or GPU performance. Scene-mutation frames still scan the scene.
+
+Saved-project duplication now recovers the source and prepares its independent history in the same
+disposable worker as native import. Only database/revision and target-copy metadata cross into that
+worker; final repository validation and publication remain on the main thread. A one-off Bun 1.4.3
+fixture with 2,001 history events measured timer delay of 110.68 ms for synchronous history-copy
+preparation and 1.14 ms for the shared worker preparation phase. Completion was 110.66 ms versus
+120.00 ms, with equal resulting snapshots. Worker startup, archive decoding, IndexedDB recovery,
+and final publication were outside that timed phase. This is responsiveness evidence, not a total
+duplication-time budget.
+
 ## October 24 asynchronous preparation
 
 An additional main-thread audit identified section-fill construction, native-file import preparation,
