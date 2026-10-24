@@ -20,6 +20,31 @@ function snapshot(length: number, revision = 1, character = "a") {
 }
 type Snapshot = ReturnType<typeof snapshot>
 
+it.each(["absent", "foreign", "sealed", "stale", "invalid"] as const)(
+  "does not traverse proposed snapshots when the checkpoint is %s",
+  (mode) => {
+    const history = new DocumentUndoHistory<Snapshot>()
+    const before = snapshot(100)
+    if (mode !== "absent") {
+      const handle = history.captureCheckpoint(before, (candidate) => candidate.type === "mcp")
+      if (!handle) throw new Error("Missing checkpoint")
+      if (mode === "sealed") history.sealCheckpoint(handle, before, before.revision)
+      if (mode === "invalid") history.observe(before, before, [])
+    }
+    const publicationBase = mode === "stale" ? { ...before, revision: 2 } : before
+    const after = {
+      revision: publicationBase.revision + 1,
+      updatedAt: before.updatedAt,
+      get payload(): string {
+        throw new Error("An unconstrained publication must not serialize its proposed snapshot.")
+      },
+    }
+    expect(
+      history.permitsPublication(publicationBase, after, [mode === "foreign" ? human : actor]),
+    ).toBe(true)
+  },
+)
+
 it("admits a readable baseline pair at the exact budget and rejects the next UTF-16 code unit", () => {
   const history = new DocumentUndoHistory<Snapshot>(),
     baseline = snapshot(limit / 4)

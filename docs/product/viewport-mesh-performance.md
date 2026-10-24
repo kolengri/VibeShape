@@ -1,5 +1,39 @@
 # Viewport mesh update performance
 
+## October 24 asynchronous preparation
+
+An additional main-thread audit identified section-fill construction, native-file import preparation,
+motion PNG archive compression, and an unnecessary Undo publication-budget serialization.
+
+- Section contour extraction and triangulation now run in a lazy viewer worker. Mesh data is copied
+  once per source generation; plane changes replace one queued request rather than growing a queue.
+  Replaced, disabled, and disposed sections cannot install stale fills. Plane/gizmo interaction and
+  WebGL rendering stay on the UI thread.
+- Native `.vshape` decoding, complete-history verification, and writable-copy preparation run in a
+  disposable worker. Repository validation and atomic publication retain the existing current-action
+  checks; no file-format or project authority changes.
+- Motion PNG sequences retain the existing renderer, frame order, fixed camera, and 64-frame limit.
+  Final ZIP compression runs in a disposable worker with cancellation and transferred frame buffers.
+- Undo publication serializes a proposed document for its byte budget only when an active,
+  unsealed, actor-owned checkpoint can constrain that publication. Exact UTF-16 limits remain intact.
+
+A one-off synthetic Bun 1.4.3 run packaged 64 deterministic incompressible frame buffers of 88 KiB
+each. The synchronous path delayed a scheduled timer by 94.09 ms and finished in 94.06 ms; the worker
+path delayed it by 1.16 ms and finished in 99.55 ms. Both archives contained 5,775,240 bytes. This is
+event-loop responsiveness evidence for packaging, not a browser frame-rate or Radial engine latency
+measurement. Worker startup adds latency and memory; the purpose is to keep the UI available.
+
+A separate Chromium smoke used a closed sphere with 65,024 triangles. Cold synchronous extraction
+took 48.2 ms; worker dispatch took 0.7 ms, with initial completion after 197.4 ms while 14 frames
+advanced. A 101-update burst returned in 1.1 ms and submitted only the active and final plane, without
+retransferring geometry. These are illustrative fixture observations, not an application-wide FPS
+claim. Native-worker checks also returned exactly equal cap buffers for that fixture.
+
+CAD evaluation, solver work, tessellation, exact exchange exports, planar parsing, crease edges,
+and large-body BVH construction already have worker owners. Cheap scalar checks, immediate camera
+updates, revision/lease checks, and atomic publication ordering remain synchronous. This change does
+not introduce blanket Promise wrappers, adaptive DPR, OffscreenCanvas, or an overall FPS claim.
+
 ## Scope and decision
 
 The October 8, 2026 investigation starts from `bb4964fd5ab4`. OCCT rebuilds, tessellation,

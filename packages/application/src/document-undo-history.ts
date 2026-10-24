@@ -105,15 +105,13 @@ export class DocumentUndoHistory<
 
   permitsPublication(before: Snapshot, after: Snapshot, actors: readonly CommandActor[]) {
     if (!actors.length) return true
-    const size = canonicalJson(after).length * 2
+    let size: number | undefined
     for (const checkpoint of this.#checkpoints.values()) {
       if (!checkpoint.valid || checkpoint.sealed || checkpoint.revision !== before.revision)
         continue
-      if (
-        actors.every((actor) => accepts(checkpoint, actor)) &&
-        checkpoint.size + size > MAX_CHECKPOINT_BYTES
-      )
-        return false
+      if (!actors.every((actor) => accepts(checkpoint, actor))) continue
+      size ??= canonicalJson(after).length * 2
+      if (checkpoint.size + size > MAX_CHECKPOINT_BYTES) return false
     }
     return true
   }

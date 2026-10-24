@@ -12,6 +12,7 @@ const mocks = (() => ({
   copyProject: vi.fn(),
   close: vi.fn(),
   readArchive: vi.fn(),
+  prepareImport: vi.fn(),
   list: vi.fn(),
   review: vi.fn(),
 }))()
@@ -33,6 +34,7 @@ mock.module("./project-backup-client", () => ({
     return exportSavedProjectBackup({ ...expected, schemaVersion: 0 })
   },
 }))
+mock.module("./project-import-client", () => ({ prepareProjectImport: mocks.prepareImport }))
 const originalModule1 = { ...(await import("@vibeshape/formats/vshape")) }
 mock.module("@vibeshape/formats/vshape", () => {
   const actual = originalModule1
@@ -108,6 +110,27 @@ beforeEach(async () => {
   localStorage.setItem("vibeshape-active-document-id", id)
   const actual = originalModule1
   mocks.readArchive.mockImplementation(actual.readAuthoredVShape)
+  mocks.prepareImport.mockImplementation(async (input) => {
+    const { createProjectImportPreparation } = await import("./project-import-service")
+    const prepare = createProjectImportPreparation()
+    const jobId = crypto.randomUUID()
+    const decoded = await prepare({ schemaVersion: 0, jobId, kind: "decode", bytes: input.bytes })
+    if (decoded.kind === "error") return { ok: false, diagnostic: decoded.diagnostic }
+    if (decoded.kind !== "name") throw new Error("Expected the naming phase.")
+    const copied = await prepare({
+      schemaVersion: 0,
+      jobId,
+      kind: "copy",
+      documentId: input.documentId,
+      name: input.resolveName(decoded.sourceName),
+      issuedAt: input.issuedAt,
+    })
+    return copied.kind === "prepared"
+      ? { ok: true, value: copied.value }
+      : copied.kind === "error"
+        ? { ok: false, diagnostic: copied.diagnostic }
+        : Promise.reject(new Error("Expected the prepared copy."))
+  })
   mocks.review.mockReturnValue(null)
   mocks.close.mockResolvedValue({ ok: true })
   mocks.list.mockResolvedValue({ ok: true, value: [{ documentId: id }] })
@@ -242,6 +265,81 @@ describe("project file identity and active-work guards", () => {
     ).toMatchObject({ ok: false })
     expect(mocks.copyProject).not.toHaveBeenCalled()
     expect(mocks.close).not.toHaveBeenCalled()
+  })
+
+  it("cancels a superseded import before publishing its prepared payload", async () => {
+    const { controller, source } = await ready()
+    const bytes = await archive(source)
+    const previous = deferred<{ ok: false; diagnostic: { code: string; message: string } }>()
+    mocks.prepareImport.mockReturnValueOnce(previous.promise)
+    const stale = controller.importProjectBackup(bytes, (name) => `${name} imported`)
+    const signal = mocks.prepareImport.mock.calls[0]?.[0].signal as AbortSignal
+    expect(signal.aborted).toBe(false)
+    expect((await controller.importProjectBackup(bytes, (name) => `${name} imported`)).ok).toBe(
+      true,
+    )
+    expect(signal.aborted).toBe(true)
+    previous.resolve({
+      ok: false,
+      diagnostic: { code: "import-failed", message: "Late completion." },
+    })
+    expect(await stale).toMatchObject({ ok: false, diagnostic: { code: "project-action-blocked" } })
+    expect(mocks.copyProject).toHaveBeenCalledTimes(1)
+  })
+
+  it("aborts preparation when its owning source runtime is disposed", async () => {
+    const { controller, source } = await ready()
+    mocks.prepareImport.mockImplementationOnce(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise((_, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Cancelled.", "AbortError")),
+            { once: true },
+          )
+        }),
+    )
+    const importing = controller.importProjectBackup(
+      await archive(source),
+      (name) => `${name} imported`,
+    )
+    const signal = mocks.prepareImport.mock.calls[0]?.[0].signal as AbortSignal
+    await act(async () => {
+      await controller.getProjectRuntime(id)?.closeRuntime()
+    })
+    expect(signal.aborted).toBe(true)
+    expect(await importing).toMatchObject({
+      ok: false,
+      diagnostic: { code: "project-action-blocked" },
+    })
+    expect(mocks.copyProject).not.toHaveBeenCalled()
+  })
+
+  it("drops a completed copy when an edit takes ownership during preparation", async () => {
+    const { controller, source } = await ready()
+    const prepare = mocks.prepareImport.getMockImplementation()
+    if (!prepare) throw new Error("Expected the import preparation seam.")
+    const completed = await prepare({
+      bytes: await archive(source),
+      documentId: id,
+      issuedAt,
+      resolveName: (name: string) => `${name} imported`,
+    })
+    mocks.prepareImport.mockClear()
+    const pending = deferred<typeof completed>()
+    mocks.prepareImport.mockReturnValueOnce(pending.promise)
+    const importing = controller.importProjectBackup(
+      await archive(source),
+      (name) => `${name} imported`,
+    )
+    const release = controller.registerProjectActionGuard(() => "editor-draft")
+    pending.resolve(completed)
+    expect(await importing).toMatchObject({
+      ok: false,
+      diagnostic: { code: "project-action-blocked" },
+    })
+    expect(mocks.copyProject).not.toHaveBeenCalled()
+    release()
   })
   it("selects the destination before recovery finishes and reuses retained project sessions", async () => {
     const { controller, session } = await ready()

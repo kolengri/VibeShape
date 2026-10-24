@@ -2,5 +2,5 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "@vibeshape/typescript-config/worker.json",
   "compilerOptions": { "types": [] },
-  "include": ["src/edge-preparation.worker.ts"]
+  "include": ["src/edge-preparation.worker.ts", "src/section-cap.worker.ts"]
 }

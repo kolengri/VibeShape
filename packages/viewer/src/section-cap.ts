@@ -1,6 +1,7 @@
 import { Box3, ShapeUtils, Vector2, Vector3 } from "three"
 import type { ViewerSection } from "./section-view"
-import type { ViewerMesh } from "./three-viewport"
+
+export type SectionCapSource = Readonly<{ positions: Float32Array; indices: Uint32Array }>
 
 type Topology = Readonly<{
   vertices: readonly Vector3[]
@@ -8,7 +9,7 @@ type Topology = Readonly<{
   tolerance: number
   bounds: Box3
 }>
-const topologyCache = new WeakMap<ViewerMesh, Topology | null>()
+const topologyCache = new WeakMap<SectionCapSource, Topology | null>()
 
 function pointKey(point: Vector3, tolerance: number) {
   return point
@@ -22,7 +23,7 @@ function edgeKey(a: number, b: number) {
 }
 
 // Only closed two-manifold meshes can establish a solid interior from their display triangles.
-function closedTopology(source: ViewerMesh): Topology | null {
+function closedTopology(source: SectionCapSource): Topology | null {
   if (topologyCache.has(source)) return topologyCache.get(source) ?? null
   const result = prepareTopology(source)
   topologyCache.set(source, result)
@@ -80,7 +81,7 @@ function closedTriangles(indices: Uint32Array, vertexIds: readonly number[]) {
   return [...edges.values()].every((count) => count === 2) ? triangles : null
 }
 
-function prepareTopology(source: ViewerMesh): Topology | null {
+function prepareTopology(source: SectionCapSource): Topology | null {
   const welded = weldVertices(source.positions)
   if (!welded) return null
   const triangles = closedTriangles(source.indices, welded.vertexIds)
@@ -399,9 +400,9 @@ function triangulateContours(
 
 /** Returns disposable cap triangles, or no fill when a closed, unambiguous interior cannot be proven. */
 export function sectionCapPositions(
-  source: ViewerMesh,
+  source: SectionCapSource,
   section: ViewerSection,
-): Float32Array | null {
+): Float32Array<ArrayBuffer> | null {
   const topology = closedTopology(source)
   if (!topology || !Number.isFinite(section.offset)) return null
   const coordinate = { x: 0, y: 1, z: 2 }[section.axis]

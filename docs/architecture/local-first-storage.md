@@ -57,6 +57,13 @@ copies. Older builds reject unsupported authority before recovery fallback; roll
 application must not overwrite or downgrade the current browser database. See
 [ADR-0059](../adr/0059-editable-surface-texture-layers.md).
 
+Native file import prepares its writable copy in a disposable module worker. The worker owns ZIP
+decoding, schema and history verification, and fresh identity mapping. A naming round trip preserves
+the editor's localized copy-name policy without sending a callback across the boundary. The caller
+retains its input bytes; only an owned copy is transferred. Session invalidation cancels preparation,
+and repository publication still validates the portable payload and checks the captured catalog
+action. Moving preparation does not change the atomic storage transaction or permit a stale import.
+
 The production repository now also exposes a bounded authoritative local-project summary read, exact-revision project deletion, verified v2 portable-project reads, atomic semantic-copy publication, and atomic imports over both storage generations. Project listing parses every returned head through the strict generation-specific schema, exposes only document ID, name, revision, creation/modification timestamps, latest external-backup time, and an optional exact-revision preview, then sorts deterministically by modification time and fails closed on corrupt semantic records or an unsupported project count. Preview parsing, count, and aggregate bytes are independently bounded; invalid, stale, or unavailable derived records fail open to no preview. Local duplication verifies and replays the complete native or promoted history, remaps document plus globally unique command and transaction identities in the domain, preserves History and entity identities, appends a copy-name event, then publishes the copied legacy prefix, v1 seed/suffix, head snapshot, clean-close metadata, and project record in one transaction with no recovery marker, lease, or external-backup timestamp. An available source preview is copied afterward as best-effort derived work and never changes semantic success. Project deletion rejects stale summaries and any live writer lease, then removes both generations of project heads, events, snapshots, previews, recovery markers, and expired lease in one transaction. Export rereads the authoritative head and complete replay boundary, verifies stored checksums, and refuses corrupt or incomplete history unless it can produce an explicitly evidenced read-only checkpoint archive. Writable import occurs only after `.vshape` validation and complete replay proof. Existing document IDs in either generation fail closed instead of being replaced.
 
 ## Commit protocol

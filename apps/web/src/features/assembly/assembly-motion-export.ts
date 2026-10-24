@@ -3,8 +3,9 @@ import type { AssemblyMotionStudy } from "@vibeshape/domain/assembly-authority"
 import { rotateAssemblyVector } from "@vibeshape/domain/assembly-poses"
 import type { AssemblyInspection } from "@vibeshape/protocol"
 import type { ModelPreviewOptions } from "@vibeshape/viewer/model-preview"
-import { strToU8, zipSync } from "fflate"
+import { strToU8 } from "fflate"
 import { z } from "zod"
+import { archiveAssemblyMotionFrames } from "./assembly-motion-archive"
 
 export type AssemblyMotionSolvedSample = { value: number; inspection: AssemblyInspection }
 export type AssemblyMotionTrace = {
@@ -178,7 +179,7 @@ export async function assemblyMotionPngSequence(
     )
   }
   signal.throwIfAborted()
-  return zipSync(files)
+  return archiveAssemblyMotionFrames(files, signal)
 }
 export function prepareAssemblyMotionExport(
   format: "json" | "csv" | "zip",

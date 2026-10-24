@@ -8,8 +8,31 @@ import {
   Shape,
   TorusGeometry,
 } from "three"
-import { sectionCapPositions } from "./section-cap"
+import { sectionCapPositions as synchronousSectionCapPositions } from "./section-cap"
+import { SectionCapRuntime } from "./section-cap-runtime"
+import type { ViewerSection } from "./section-view"
 import type { ViewerMesh } from "./three-viewport"
+
+// Every existing geometric invariant also checks the production worker's exact extractor result.
+function sectionCapPositions(source: ViewerMesh, section: ViewerSection) {
+  const expected = synchronousSectionCapPositions(source, section)
+  const runtime = new SectionCapRuntime()
+  const response = runtime.process({
+    version: 1,
+    type: "computeSectionCaps",
+    jobId: 1,
+    section,
+    sources: [{ positions: source.positions.slice(), indices: source.indices.slice() }],
+  })
+  if (!Number.isFinite(section.offset)) {
+    expect(response.type).toBe("sectionCapsFailed")
+    expect(expected).toBeNull()
+    return null
+  }
+  if (response.type !== "sectionCapsComputed") throw new Error("Expected computed section caps.")
+  expect(response.caps).toEqual([expected])
+  return response.caps[0] ?? null
+}
 
 function source(geometry: BufferGeometry): ViewerMesh {
   const positions = new Float32Array(geometry.getAttribute("position").array)
