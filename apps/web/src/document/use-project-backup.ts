@@ -9,6 +9,7 @@ import {
   getProjectActionBlock,
 } from "./document-controller"
 import { downloadProjectBackup } from "./document-project-file"
+import type { ProjectBackupStage } from "./project-backup-contract"
 
 function availableBackupSnapshot(controller: DocumentControllerState) {
   const snapshot = controller.report?.snapshot
@@ -27,6 +28,7 @@ export function useProjectBackup(controller: DocumentControllerState) {
   const t = useTranslations("app.projectFile")
   const lock = useRef(false)
   const [pending, setPending] = useState(false)
+  const [stage, setStage] = useState<ProjectBackupStage>("reading-project")
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const centralized = useReportApplicationError(error, attempt)
@@ -41,9 +43,10 @@ export function useProjectBackup(controller: DocumentControllerState) {
       return
     }
     lock.current = true
+    setStage("reading-project")
     setPending(true)
     try {
-      const result = await exportActiveProjectBackup()
+      const result = await exportActiveProjectBackup(setStage)
       if (!result.ok) {
         setError(
           t(
@@ -66,5 +69,5 @@ export function useProjectBackup(controller: DocumentControllerState) {
       setPending(false)
     }
   }
-  return { save, pending, error: centralized ? null : error }
+  return { save, pending, stage, error: centralized ? null : error }
 }

@@ -42,6 +42,7 @@ import { readEdgeTreatmentPreselection } from "../features/edge-treatment/edge-t
 import {
   EdgeTreatmentForm,
   type EdgeTreatmentFormMode,
+  type EdgeTreatmentOperation,
   type EdgeTreatmentPickingContext,
   type EdgeTreatmentPickRequest,
 } from "../features/edge-treatment/edge-treatment-form"
@@ -1742,8 +1743,6 @@ function edgeTreatmentCopy(
 function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
   const { activeTool, report } = props
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
-  const taskT = useTranslations("app.shell.taskPanel")
-  const treeT = useTranslations("app.shell.modelTree")
   const operation =
     activeTool.kind === "create-fillet" || activeTool.kind === "edit-fillet" ? "fillet" : "chamfer"
   const matches = operation === "fillet" ? isFilletFeature : isChamferFeature
@@ -1755,18 +1754,41 @@ function EdgeTreatmentToolTaskPanel(props: ActiveTaskPanelProps) {
       number: report.snapshot.features.filter(matches).length + 1,
     }),
   )
-  if (!mode) return null
+  return mode ? (
+    <ResolvedEdgeTreatmentTaskPanel props={props} mode={mode} operation={operation} />
+  ) : null
+}
+
+function ResolvedEdgeTreatmentTaskPanel({
+  props,
+  mode,
+  operation,
+}: {
+  props: ActiveTaskPanelProps
+  mode: EdgeTreatmentFormMode
+  operation: EdgeTreatmentOperation
+}) {
+  const { report } = props
+  const t = useTranslations("app.shell.taskPanel.edgeTreatment")
+  const taskT = useTranslations("app.shell.taskPanel")
+  const treeT = useTranslations("app.shell.modelTree")
   const editingId = mode.kind === "edit" ? mode.feature.id : undefined
-  const task = featureTaskContext(mode, report.snapshot.revision)
-  const options = edgeTreatmentTargetOptions(
-    report.snapshot,
-    report.rebuild,
-    editingId,
-    props.parts,
-    treeT("unnamedFeature"),
-    operation,
+  const unnamed = treeT("unnamedFeature")
+  const options = useMemo(
+    () =>
+      edgeTreatmentTargetOptions(
+        report.snapshot,
+        report.rebuild,
+        editingId,
+        props.parts,
+        unnamed,
+        operation,
+      ),
+    [report.snapshot, report.rebuild, editingId, props.parts, unnamed, operation],
   )
-  const copy = edgeTreatmentCopy(t, operation, mode.kind)
+  const modeKind = mode.kind
+  const copy = useMemo(() => edgeTreatmentCopy(t, operation, modeKind), [t, operation, modeKind])
+  const task = featureTaskContext(mode, report.snapshot.revision)
 
   return (
     <TaskPanelSurface aria-label={taskT("ariaLabel")}>

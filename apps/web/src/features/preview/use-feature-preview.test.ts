@@ -666,3 +666,104 @@ describe("feature preview composition", () => {
     ])
   })
 })
+
+describe("scoped preview integration", () => {
+  it("rebuilds only the candidate branch and preserves unchanged committed meshes", async () => {
+    const committed = rebuiltResponse([
+      { featureId: baseId, contentHash: hash("base"), geometry: { mesh } },
+      { featureId: independentId, contentHash: hash("independent"), geometry: { mesh } },
+    ])
+    const session = {
+      rebuild: vi.fn(async ({ document }: { document: typeof snapshot }) =>
+        rebuiltResponse(
+          document.features.map(({ id }) => ({
+            featureId: id,
+            contentHash: hash(id === baseId ? "base" : "candidate"),
+            geometry: { mesh },
+          })),
+        ),
+      ),
+      terminate: vi.fn(),
+    }
+    createSession.mockReturnValue(session)
+    const candidate = feature(candidateId, [baseId])
+    const { result } = renderHook(() =>
+      useFeaturePreview(snapshot, candidate, committed.geometry, true, committed),
+    )
+    await act(async () => {})
+    expect(session.rebuild.mock.calls[0]?.[0].document.features.map(({ id }) => id)).toEqual([
+      baseId,
+      candidateId,
+    ])
+    expect(result.current.status).toBe("ready")
+    expect(
+      result.current.meshes.map(({ featureId, appearance }) => ({ featureId, appearance })),
+    ).toEqual([
+      { featureId: independentId, appearance: "model" },
+      { featureId: candidateId, appearance: "preview" },
+    ])
+    expect(result.current.meshes[0]?.positions).toBe(committed.geometry[1]?.geometry.mesh.positions)
+  })
+
+  it("does not restore saved geometry for a descendant that fails during an upstream edit", async () => {
+    const source = { ...snapshot, features: [...snapshot.features, feature(candidateId, [baseId])] }
+    const committed = rebuiltResponse([
+      { featureId: baseId, contentHash: hash("base"), geometry: { mesh } },
+      { featureId: independentId, contentHash: hash("independent"), geometry: { mesh } },
+      { featureId: candidateId, contentHash: hash("old-child"), geometry: { mesh } },
+    ])
+    const response = rebuiltResponse([
+      { featureId: baseId, contentHash: hash("changed"), geometry: { mesh } },
+    ])
+    response.evaluation.records.push({
+      featureId: candidateId,
+      status: "failed",
+      diagnostics: [{ code: "org.vibeshape.test.child-failed", values: {} }],
+    })
+    const session = {
+      rebuild: vi.fn(async (_input: { document: typeof snapshot }) => response),
+      terminate: vi.fn(),
+    }
+    createSession.mockReturnValue(session)
+    const candidate = { ...feature(baseId), parameters: { width: 30 } }
+    const { result } = renderHook(() =>
+      useFeaturePreview(source, candidate, committed.geometry, true, committed),
+    )
+    await act(async () => {})
+    expect(session.rebuild.mock.calls[0]?.[0].document.features.map(({ id }) => id)).toEqual([
+      baseId,
+      candidateId,
+    ])
+    expect(result.current.meshes.map(({ featureId }) => featureId)).toEqual([baseId, independentId])
+  })
+
+  it("rebuilds the whole model when committed geometry belongs to an older revision", async () => {
+    const committed = {
+      ...rebuiltResponse([
+        { featureId: independentId, contentHash: hash("old"), geometry: { mesh } },
+      ]),
+      revision: snapshot.revision - 1,
+    }
+    const session = {
+      rebuild: vi.fn(
+        (_input: { document: typeof snapshot }) => new Promise<DocumentWorkerResponse>(() => {}),
+      ),
+      terminate: vi.fn(),
+    }
+    createSession.mockReturnValue(session)
+    renderHook(() =>
+      useFeaturePreview(
+        snapshot,
+        feature(candidateId, [baseId]),
+        committed.geometry,
+        true,
+        committed,
+      ),
+    )
+    expect(session.rebuild.mock.calls[0]?.[0].document.features.map(({ id }) => id)).toEqual([
+      baseId,
+      independentId,
+      candidateId,
+    ])
+  })
+})

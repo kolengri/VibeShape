@@ -40,6 +40,7 @@ import { useProjectBackup } from "../document/use-project-backup"
 import { useReportApplicationError } from "./application-notices"
 import { ApplicationWordmark } from "./application-wordmark"
 import { FaqDialog } from "./faq-dialog"
+import { ProjectBackupFeedback } from "./project-backup-progress"
 import { SettingsDialog } from "./settings-dialog"
 
 type MenuDialog =
@@ -160,6 +161,7 @@ function ApplicationProjectMenu({
         disabled={
           backup.pending || controller.status !== "ready" || Boolean(getProjectActionBlock())
         }
+        aria-busy={backup.pending || undefined}
         onSelect={() => void backup.save()}
       >
         <BackupIcon aria-hidden="true" />
@@ -397,11 +399,7 @@ export function ApplicationMenu(props: ApplicationMenuProps) {
           {navigation.error}
         </p>
       )}
-      {backup.error && (
-        <p role="alert" className="sr-only">
-          {backup.error}
-        </p>
-      )}
+      <ProjectBackupFeedback pending={backup.pending} stage={backup.stage} error={backup.error} />
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button

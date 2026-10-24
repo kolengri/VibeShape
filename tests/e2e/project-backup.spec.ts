@@ -48,14 +48,19 @@ test("native backup worker reads a persisted revision without blocking the page 
       if (!stored.ok) throw new Error(stored.diagnostic.message)
       const headBefore = await database.projectsV1.get(renamed.snapshot.id)
       let ticks = 0
+      const stages: string[] = []
       const timer = setInterval(() => ticks++, 0)
       let backup: Awaited<ReturnType<typeof client.exportProjectBackup>>
       try {
-        backup = await client.exportProjectBackup({
-          databaseName: database.name,
-          documentId: renamed.snapshot.id,
-          revision: renamed.snapshot.revision,
-        })
+        backup = await client.exportProjectBackup(
+          {
+            databaseName: database.name,
+            documentId: renamed.snapshot.id,
+            revision: renamed.snapshot.revision,
+          },
+          undefined,
+          (stage) => stages.push(stage),
+        )
       } finally {
         clearInterval(timer)
       }
@@ -69,6 +74,7 @@ test("native backup worker reads a persisted revision without blocking the page 
       })
       return {
         ticks,
+        stages,
         snapshot: decoded.value.snapshot,
         expectedSnapshot: renamed.snapshot,
         events: decoded.value.versionedEvents,
@@ -84,6 +90,7 @@ test("native backup worker reads a persisted revision without blocking the page 
     }
   }, root)
   expect(report.ticks).toBeGreaterThan(0)
+  expect(report.stages).toEqual(["reading-project", "building-archive"])
   expect(report.snapshot).toEqual(report.expectedSnapshot)
   expect(report.events).toEqual(report.expectedEvents)
   expect(report.historyMode).toBe("complete")

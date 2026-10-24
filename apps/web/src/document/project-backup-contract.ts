@@ -33,3 +33,15 @@ export const projectBackupResponseSchema = z.discriminatedUnion("ok", [
 
 export type ProjectBackupRequest = z.infer<typeof projectBackupRequestSchema>
 export type ProjectBackupResult = z.infer<typeof projectBackupResponseSchema>
+
+export const projectBackupProgressSchema = z
+  .object({
+    type: z.literal("progress"),
+    documentId: documentIdSchema,
+    revision: z.number().int().positive().safe(),
+    stage: z.enum(["reading-project", "building-archive"]),
+  })
+  .strict()
+
+export type ProjectBackupProgress = z.infer<typeof projectBackupProgressSchema>
+export type ProjectBackupStage = ProjectBackupProgress["stage"]

@@ -61,7 +61,9 @@ for (const operation of ["fillet", "chamfer"] as const) {
       true,
     )
     await pickSourceEdge(page)
-    await expect(form.getByRole("status")).toHaveText("1 edge selected")
+    await expect(form.getByRole("status").filter({ hasText: /^1 edge selected$/ })).toHaveText(
+      "1 edge selected",
+    )
     await expect(form.getByText("Ambiguous edge", { exact: false })).toHaveCount(0)
     await form.getByRole("button", { name: `Create ${operation}`, exact: true }).click()
     await expect(

@@ -1,9 +1,12 @@
 import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, expect, it, mock } from "bun:test"
 import { vi } from "../../../../tests/unit/support/bun-test"
-import type { DocumentControllerState } from "../document/document-controller"
+import type {
+  ActiveProjectBackupResult,
+  DocumentControllerState,
+} from "../document/document-controller"
 
-const actions = { create: vi.fn(), rename: vi.fn() }
+const actions = { create: vi.fn(), rename: vi.fn(), backup: vi.fn() }
 let blocked: string | null = null
 const original = { ...(await import("../document/document-controller")) }
 mock.module("../document/document-controller", () => ({
@@ -12,6 +15,8 @@ mock.module("../document/document-controller", () => ({
   getProjectNavigationBlock: () => blocked,
   createNewLocalProject: actions.create,
   renameActiveProject: actions.rename,
+  exportActiveProjectBackup: actions.backup,
+  getDocumentControllerState: () => controller,
 }))
 const { cleanup, render, screen, waitFor } = await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
@@ -51,6 +56,7 @@ beforeEach(() => {
   blocked = null
   actions.create.mockReset().mockResolvedValue({ ok: true })
   actions.rename.mockReset().mockResolvedValue({ ok: true })
+  actions.backup.mockReset()
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -59,6 +65,32 @@ beforeEach(() => {
       disconnect() {}
     },
   )
+})
+
+it("keeps native export progress visible after closing the menu and clears it after failure", async () => {
+  let finish: ((value: ActiveProjectBackupResult) => void) | undefined
+  actions.backup.mockImplementation(
+    () =>
+      new Promise<ActiveProjectBackupResult>((resolve) => {
+        finish = resolve
+      }),
+  )
+  setup()
+  const user = userEvent.setup()
+  const trigger = screen.getByRole("button", { name: "Application menu" })
+  await user.click(trigger)
+  await user.click(screen.getByRole("menuitem", { name: "Save project (.vshape)" }))
+  expect(screen.queryByRole("menu")).toBeNull()
+  expect(screen.getByRole("progressbar", { name: "Saving project (.vshape)" })).toBeDefined()
+  await user.click(trigger)
+  expect(
+    screen.getByRole("menuitem", { name: "Save project (.vshape)" }).getAttribute("aria-disabled"),
+  ).toBe("true")
+  finish?.({ ok: false, diagnostic: { code: "backup-failed", message: "Storage unavailable." } })
+  await waitFor(() => expect(screen.queryByRole("progressbar")).toBeNull())
+  expect(
+    screen.getByRole("menuitem", { name: "Save project (.vshape)" }).getAttribute("aria-disabled"),
+  ).toBeNull()
 })
 afterEach(() => {
   cleanup()

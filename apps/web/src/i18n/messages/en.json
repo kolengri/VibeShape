@@ -58,7 +58,12 @@
       "backup": {
         "title": "Save project (.vshape)",
         "description": "Save editable history, variables, formulas, sketches, and features to a project file. This is separate from STEP, STL, or 3MF export.",
-        "action": "Save project (.vshape)"
+        "action": "Save project (.vshape)",
+        "progress": "Saving project (.vshape)",
+        "stages": {
+          "reading-project": "Reading project history and assets…",
+          "building-archive": "Building project archive…"
+        }
       },
       "open": {
         "dropTitle": "Drop a .vshape project",
@@ -1020,7 +1025,8 @@
             "distance": "Radius",
             "create": "Create fillet",
             "update": "Update fillet",
-            "featureLabel": "Fillet {number}"
+            "featureLabel": "Fillet {number}",
+            "previewFailed": "The fillet could not be built. Its radius may exceed the available material. Try a smaller radius or select another edge. Creation requires a successful preview."
           },
           "chamfer": {
             "title": "Create chamfer",
@@ -1029,8 +1035,11 @@
             "distance": "Distance",
             "create": "Create chamfer",
             "update": "Update chamfer",
-            "featureLabel": "Chamfer {number}"
+            "featureLabel": "Chamfer {number}",
+            "previewFailed": "The chamfer could not be built. Its distance may exceed the available material. Try a smaller distance or select another edge. Creation requires a successful preview."
           },
+          "previewLoading": "Building edge treatment preview…",
+          "previewProgress": "Edge treatment preview progress",
           "selectedEdges": "Selected edges",
           "selectedEdgesDescription": "Click edges in the viewport to add or remove them. Selected edges stay highlighted while you pick more.",
           "selectedEdgeCount": "{count, plural, =0 {No edges selected} one {# edge selected} other {# edges selected}}",

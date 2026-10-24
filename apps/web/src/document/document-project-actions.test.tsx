@@ -3,7 +3,7 @@ import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { vi } from "../../../../tests/unit/support/bun-test"
-import type { ProjectBackupRequest } from "./project-backup-contract"
+import type { ProjectBackupRequest, ProjectBackupStage } from "./project-backup-contract"
 import { registerProjectRuntimeResource } from "./project-runtime-resources"
 
 const mocks = (() => ({
@@ -32,9 +32,13 @@ mock.module("./browser-project-repository", () => ({
   },
 }))
 mock.module("./project-backup-client", () => ({
-  exportProjectBackup: async (expected: Omit<ProjectBackupRequest, "schemaVersion">) => {
+  exportProjectBackup: async (
+    expected: Omit<ProjectBackupRequest, "schemaVersion">,
+    _createWorker?: () => Worker,
+    onProgress?: (stage: ProjectBackupStage) => void,
+  ) => {
     const { exportSavedProjectBackup } = await import("./project-backup-service")
-    return exportSavedProjectBackup({ ...expected, schemaVersion: 0 })
+    return exportSavedProjectBackup({ ...expected, schemaVersion: 0 }, onProgress)
   },
 }))
 mock.module("./project-import-client", () => ({
@@ -244,11 +248,13 @@ describe("project file identity and active-work guards", () => {
     expect(mocks.close).not.toHaveBeenCalled()
     expect(mocks.exportProject).not.toHaveBeenCalled()
     release()
-    expect(await controller.exportActiveProjectBackup()).toMatchObject({
+    const progress = vi.fn()
+    expect(await controller.exportActiveProjectBackup(progress)).toMatchObject({
       ok: true,
       documentId: id,
       revision: source.snapshot.revision,
     })
+    expect(progress.mock.calls).toEqual([["reading-project"], ["building-archive"]])
   })
 
   it("rejects a changed revision during archive decode and export before publishing or downloading", async () => {
