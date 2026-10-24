@@ -64,6 +64,13 @@ retains its input bytes; only an owned copy is transferred. Session invalidation
 and repository publication still validates the portable payload and checks the captured catalog
 action. Moving preparation does not change the atomic storage transaction or permit a stale import.
 
+Local project duplication uses the same preparation worker. The UI sends the database name, source
+document ID and expected head revision, plus the new identity and name. The worker recovers and
+verifies the saved history through the existing repository, checks the source identity/revision, and
+prepares the writable copy. Import and duplication share one cancellable preparation lifecycle;
+superseding work, runtime disposal, or an invalid captured action cannot publish its late result.
+The repository still validates the returned payload before atomic publication on the main thread.
+
 The production repository now also exposes a bounded authoritative local-project summary read, exact-revision project deletion, verified v2 portable-project reads, atomic semantic-copy publication, and atomic imports over both storage generations. Project listing parses every returned head through the strict generation-specific schema, exposes only document ID, name, revision, creation/modification timestamps, latest external-backup time, and an optional exact-revision preview, then sorts deterministically by modification time and fails closed on corrupt semantic records or an unsupported project count. Preview parsing, count, and aggregate bytes are independently bounded; invalid, stale, or unavailable derived records fail open to no preview. Local duplication verifies and replays the complete native or promoted history, remaps document plus globally unique command and transaction identities in the domain, preserves History and entity identities, appends a copy-name event, then publishes the copied legacy prefix, v1 seed/suffix, head snapshot, clean-close metadata, and project record in one transaction with no recovery marker, lease, or external-backup timestamp. An available source preview is copied afterward as best-effort derived work and never changes semantic success. Project deletion rejects stale summaries and any live writer lease, then removes both generations of project heads, events, snapshots, previews, recovery markers, and expired lease in one transaction. Export rereads the authoritative head and complete replay boundary, verifies stored checksums, and refuses corrupt or incomplete history unless it can produce an explicitly evidenced read-only checkpoint archive. Writable import occurs only after `.vshape` validation and complete replay proof. Existing document IDs in either generation fail closed instead of being replaced.
 
 ## Commit protocol
@@ -292,8 +299,9 @@ repository and format-version writer, then transfers the archive buffer back. A 
 or changed active session rejects the result. Worker errors and timeouts terminate the worker and
 release the existing save-action lock for retry. Export does not change the persisted project head.
 
-Import validation, identity-remapping copies, and their persistence replay still run on the main
-thread. Long journals can therefore stall import or duplication even though native save is isolated.
+Import decoding and local-copy recovery, replay proof, and identity remapping run in the preparation
+worker. Final repository payload validation, persistence replay, and atomic publication still run on
+the main thread; long journals can therefore retain a publication-time cost.
 
 v1 includes:
 

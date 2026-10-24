@@ -3,7 +3,7 @@ import { documentIdSchema } from "@vibeshape/domain/identifiers"
 import { VibeShapeDatabase } from "@vibeshape/persistence"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { BrowserProjectRepository } from "./browser-project-repository"
-import { prepareProjectImport } from "./project-import-client"
+import { prepareProjectDuplicate, prepareProjectImport } from "./project-import-client"
 
 afterEach(() => vi.useRealTimers())
 
@@ -45,6 +45,69 @@ const prepared = () => ({
     },
   },
 })
+
+function duplicateInput() {
+  return {
+    databaseName: "project-copy-test",
+    sourceDocumentId: documentIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000201"),
+    expectedHeadRevision: 12,
+    documentId,
+    name: "Housing copy",
+    issuedAt: "2026-10-24T12:00:00.000Z",
+    signal: new AbortController().signal,
+  }
+}
+
+it("prepares a saved copy using only database and revision metadata in one worker round trip", async () => {
+  const worker = port()
+  const input = duplicateInput()
+  const pending = prepareProjectDuplicate(input, () => worker as unknown as Worker)
+  expect(worker.postMessage).toHaveBeenCalledTimes(1)
+  const request = worker.postMessage.mock.calls[0]?.[0]
+  expect(request).toEqual({
+    schemaVersion: 0,
+    jobId: expect.any(String),
+    kind: "duplicate",
+    databaseName: input.databaseName,
+    sourceDocumentId: input.sourceDocumentId,
+    expectedHeadRevision: 12,
+    documentId,
+    name: "Housing copy",
+    issuedAt: input.issuedAt,
+  })
+  deliver(worker, prepared())
+  expect(await pending).toEqual({ ok: true, value: prepared().value })
+  expect(worker.terminate).toHaveBeenCalledTimes(1)
+})
+
+it("rejects an unexpected naming phase for a saved copy", async () => {
+  const worker = port()
+  const pending = prepareProjectDuplicate(duplicateInput(), () => worker as unknown as Worker)
+  deliver(worker, { kind: "name", sourceName: "Housing" })
+  await expect(pending).rejects.toThrow("naming phase")
+  expect(worker.postMessage).toHaveBeenCalledTimes(1)
+  expect(worker.terminate).toHaveBeenCalledTimes(1)
+})
+
+it.each(["before", "during", "construction"] as const)(
+  "releases saved-copy preparation on cancellation %s worker setup",
+  async (phase) => {
+    const worker = port()
+    const abort = new AbortController()
+    const create = vi.fn(() => {
+      if (phase === "construction") abort.abort()
+      return worker as unknown as Worker
+    })
+    if (phase === "before") abort.abort()
+    const pending = prepareProjectDuplicate({ ...duplicateInput(), signal: abort.signal }, create)
+    const late = worker.onmessage
+    if (phase === "during") abort.abort()
+    late?.call(worker as unknown as Worker, new MessageEvent("message", { data: prepared() }))
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
+    expect(worker.terminate).toHaveBeenCalledTimes(phase === "before" ? 0 : 1)
+    expect(worker.postMessage).toHaveBeenCalledTimes(phase === "during" ? 1 : 0)
+  },
+)
 
 it("transfers an owned input copy and resolves the name once without exposing the journal", async () => {
   const worker = port()

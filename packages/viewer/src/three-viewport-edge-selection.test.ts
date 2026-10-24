@@ -1,15 +1,19 @@
 import "../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it, mock } from "bun:test"
 import { vi } from "../../../tests/unit/support/bun-test"
+import type { EdgePreparationRequest } from "./edge-preparation-schema"
 import type {
   GeometryViewport,
   GeometryViewportOptions,
   ViewerEdgeCandidate,
   ViewerMesh,
+  ViewerSketch,
+  ViewerVector3,
 } from "./three-viewport"
 
 const originalThree = { ...(await import("three")) }
 const renderedCameras: import("three").Camera[] = []
+const renderedScenes = new Map<import("three").Camera, import("three").Scene>()
 mock.module("three", () => ({
   ...originalThree,
   WebGLRenderer: class {
@@ -26,6 +30,7 @@ mock.module("three", () => ({
     clearDepth() {}
     render(scene: import("three").Scene, camera: import("three").Camera) {
       if (!renderedCameras.includes(camera)) renderedCameras.push(camera)
+      renderedScenes.set(camera, scene)
       scene.updateMatrixWorld(true)
       camera.updateMatrixWorld()
     }
@@ -59,11 +64,15 @@ afterEach(() => {
   viewport?.dispose()
   viewport = undefined
   document.body.replaceChildren()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
 function fixture(options: GeometryViewportOptions = {}) {
   renderedCameras.length = 0
+  renderedScenes.clear()
+  vi.stubGlobal("MessageEvent", window.MessageEvent)
+  const edgeJobs: { worker: EventTarget; request: EdgePreparationRequest }[] = []
   const frames = new Map<number, FrameRequestCallback>()
   let next = 0
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
@@ -90,7 +99,9 @@ function fixture(options: GeometryViewportOptions = {}) {
   vi.stubGlobal(
     "Worker",
     class extends EventTarget {
-      postMessage() {}
+      postMessage(request: EdgePreparationRequest) {
+        if (request.type === "prepareEdges") edgeJobs.push({ worker: this, request })
+      }
       terminate() {}
     },
   )
@@ -145,9 +156,266 @@ function fixture(options: GeometryViewportOptions = {}) {
     flush()
   }
   const camera = renderedCameras[0]
-  if (!camera) throw new Error("The viewport must render its model camera.")
-  return { viewport: current, canvas, camera, flush, pointer, click }
+  if (!(camera instanceof originalThree.OrthographicCamera))
+    throw new Error("The viewport must render its orthographic model camera.")
+  const scene = renderedScenes.get(camera)
+  if (!scene) throw new Error("The viewport must render its model scene.")
+  return { viewport: current, canvas, camera, scene, edgeJobs, flush, pointer, click }
 }
+
+function raisedMesh(height: number): ViewerMesh {
+  return {
+    ...model,
+    positions: model.positions.map((value, index) => (index % 3 === 2 ? height : value)),
+  }
+}
+
+function raisedSketch(height: number): ViewerSketch {
+  return {
+    sketchId: "raised-sketch",
+    curvePositions: new Float32Array([0, 0, height, 10, 10, height]),
+    constructionCurvePositions: new Float32Array(),
+    pointPositions: new Float32Array(),
+    constructionPointPositions: new Float32Array(),
+  }
+}
+
+function expectDepthContains(camera: import("three").OrthographicCamera, point: ViewerVector3) {
+  const depth = -new originalThree.Vector3(...point).applyMatrix4(camera.matrixWorldInverse).z
+  expect(depth).toBeGreaterThanOrEqual(camera.near - 1e-6)
+  expect(depth).toBeLessThanOrEqual(camera.far + 1e-6)
+}
+
+describe("camera scene preparation", () => {
+  it("reuses scene preparation across standard views, wheel zoom, and pointer orbit", () => {
+    const f = fixture()
+    f.viewport.setPointerOrbit(true)
+    f.flush()
+    const bounds = vi.spyOn(originalThree.Box3.prototype, "expandByObject")
+    const clipping = vi.spyOn(originalThree.Object3D.prototype, "traverse")
+    for (const view of ["front", "isometric", "left", "top"] as const) {
+      f.viewport.setStandardView(view)
+      f.flush()
+      expectDepthContains(f.camera, [10, 10, 0])
+    }
+    const zoom = f.camera.zoom
+    f.canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, cancelable: true }))
+    f.flush()
+    expect(f.camera.zoom).not.toBe(zoom)
+    const orientation = f.camera.quaternion.toArray()
+    f.pointer("pointermove", 180, 180)
+    f.pointer("pointermove", 190, 195)
+    f.flush()
+    expect(f.camera.quaternion.toArray()).not.toEqual(orientation)
+    expect(bounds).not.toHaveBeenCalled()
+    expect(clipping).not.toHaveBeenCalled()
+  })
+
+  it("refreshes replaced source bounds, releases old buffers, and restores empty-scene depth", () => {
+    const f = fixture()
+    f.viewport.setOriginPlaneVisibility({ xy: false, xz: false, yz: false })
+    f.flush()
+    const surface = f.scene.getObjectByName("box\u0000result")
+    if (!(surface instanceof originalThree.Mesh)) throw new Error("The body is missing.")
+    const disposed = vi.fn()
+    surface.geometry.addEventListener("dispose", disposed)
+    f.viewport.setMeshes([raisedMesh(1_000)])
+    f.flush()
+    expect(disposed).toHaveBeenCalledTimes(1)
+    expectDepthContains(f.camera, [10, 10, 1_000])
+    f.viewport.setMeshes([])
+    f.flush()
+    expect(f.camera.near).toBe(0.01)
+    expect(f.camera.far).toBe(10_000)
+  })
+
+  it("refreshes bounds when overlays, references, sketches, planes, and the print bed change", () => {
+    const f = fixture()
+    f.viewport.setOriginPlaneVisibility({ xy: false, xz: false, yz: false })
+    f.flush()
+    const baselineSpan = f.camera.far - f.camera.near
+    const mutations: { show: () => void; clear: () => void; point: ViewerVector3 }[] = [
+      {
+        show: () => f.viewport.setSketches([raisedSketch(1_000)]),
+        clear: () => f.viewport.setSketches([]),
+        point: [0, 0, 1_000],
+      },
+      {
+        show: () => f.viewport.setFeaturePreselection(raisedMesh(1_100)),
+        clear: () => f.viewport.setFeaturePreselection(null),
+        point: [0, 0, 1_100],
+      },
+      {
+        show: () => f.viewport.setFeatureSelection(raisedMesh(1_200)),
+        clear: () => f.viewport.setFeatureSelection(null),
+        point: [0, 0, 1_200],
+      },
+      {
+        show: () =>
+          f.viewport.setAnalysisOverlays([
+            { kind: "face", mesh: raisedMesh(1_300), faceIds: [17], role: "support" },
+          ]),
+        clear: () => f.viewport.setAnalysisOverlays(null),
+        point: [0, 0, 1_300],
+      },
+      {
+        show: () =>
+          f.viewport.setSketchReferenceCandidates([
+            {
+              kind: "point",
+              label: "Reference",
+              position: [0, 0, 1_400],
+              sourcePointId: "p",
+              sourceSketchId: "s",
+            },
+          ]),
+        clear: () => f.viewport.setSketchReferenceCandidates([]),
+        point: [0, 0, 1_400],
+      },
+      {
+        show: () =>
+          f.viewport.setSketchReferencePreselection({
+            kind: "point",
+            label: "Reference",
+            position: [0, 0, 1_450],
+            sourcePointId: "p",
+            sourceSketchId: "s",
+          }),
+        clear: () => f.viewport.setStandardView("top"),
+        point: [0, 0, 1_450],
+      },
+      {
+        show: () => f.viewport.setToolPlane({ origin: [0, 0, 1_500], normal: [0, 0, 1], size: 20 }),
+        clear: () => f.viewport.setToolPlane(null),
+        point: [0, 0, 1_500],
+      },
+      {
+        show: () => f.viewport.setPrintBed({ width: 200, depth: 100, height: 1_600, margin: 0 }),
+        clear: () => f.viewport.setPrintBed(null),
+        point: [0, 0, 1_600],
+      },
+      {
+        show: () => f.viewport.setOriginPlaneVisibility({ xy: true, xz: true, yz: true }),
+        clear: () => f.viewport.setOriginPlaneVisibility({ xy: false, xz: false, yz: false }),
+        point: [0, 0, 32],
+      },
+    ]
+    for (const mutation of mutations) {
+      mutation.show()
+      f.flush()
+      expectDepthContains(f.camera, mutation.point)
+      mutation.clear()
+      f.flush()
+      expect(f.camera.far - f.camera.near).toBeCloseTo(baselineSpan, 6)
+    }
+  })
+
+  it("applies clipping to replacement materials and newly created selection and sketch overlays", () => {
+    const f = fixture()
+    const checkPlane = (name: string, constant: number | null) => {
+      const object = f.scene.getObjectByName(name)
+      if (!(object instanceof originalThree.Mesh || object instanceof originalThree.LineSegments))
+        throw new Error(`Missing clipped object: ${name}`)
+      const materials = Array.isArray(object.material) ? object.material : [object.material]
+      for (const material of materials) {
+        if (constant === null) expect(material.clippingPlanes).toBeNull()
+        else {
+          expect(material.clippingPlanes?.[0]?.normal.toArray()).toEqual([-1, 0, 0])
+          expect(material.clippingPlanes?.[0]?.constant).toBe(constant)
+        }
+      }
+    }
+    f.viewport.setSection({ axis: "x", offset: 4, flipped: false })
+    f.flush()
+    f.viewport.setMeshes([raisedMesh(20)])
+    f.viewport.setSketches([raisedSketch(30)])
+    f.viewport.setFeatureSelection(raisedMesh(40))
+    f.viewport.setFaceSelections([
+      { featureId: "box", outputRole: "result", faceId: 17, faceOrdinal: 1 },
+    ])
+    f.flush()
+    checkPlane("box\u0000result", 4)
+    checkPlane("box\u0000result:feature-highlight", 4)
+    checkPlane("sketch:raised-sketch:curves", 4)
+    const faces: import("three").Mesh[] = []
+    f.scene.traverse((object) => {
+      if (object instanceof originalThree.Mesh && !object.name && object.renderOrder === 4)
+        faces.push(object)
+    })
+    expect(faces).toHaveLength(1)
+    for (const face of faces) {
+      const materials = Array.isArray(face.material) ? face.material : [face.material]
+      expect(materials.every((material) => material.clippingPlanes?.[0]?.constant === 4)).toBe(true)
+    }
+    f.viewport.setSection({ axis: "x", offset: 6, flipped: false })
+    f.flush()
+    checkPlane("box\u0000result", 6)
+    f.viewport.setSection(null)
+    f.flush()
+    checkPlane("box\u0000result", null)
+    checkPlane("box\u0000result:feature-highlight", null)
+    checkPlane("sketch:raised-sketch:curves", null)
+  })
+
+  it("invalidates preparation when asynchronous edges arrive, then reuses it for the camera", async () => {
+    const f = fixture()
+    const job = f.edgeJobs[0]
+    if (!job) throw new Error("The body must request edge preparation.")
+    const bounds = vi.spyOn(originalThree.Box3.prototype, "expandByObject")
+    job.worker.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          version: 1,
+          type: "edgesPrepared",
+          jobId: job.request.jobId,
+          positions: new Float32Array([-10, -10, 0, 10, -10, 0]),
+          picking: null,
+        },
+      }),
+    )
+    await Promise.resolve()
+    f.flush()
+    expect(bounds).toHaveBeenCalled()
+    const edges = f.scene.getObjectByName("box\u0000result:edges")
+    expect(
+      edges instanceof originalThree.LineSegments && edges.geometry.getAttribute("position").count,
+    ).toBe(2)
+    bounds.mockClear()
+    f.viewport.setStandardView("front")
+    f.flush()
+    expect(bounds).not.toHaveBeenCalled()
+  })
+
+  it("updates finite translation and section handles on zoom and angular bounds on mutation", () => {
+    const f = fixture()
+    f.viewport.showTranslationGizmo([0, 0, 1_000])
+    f.flush()
+    f.camera.zoom = 0.05
+    f.viewport.setStandardView("top")
+    f.flush()
+    const handleRadius = (f.camera.top - f.camera.bottom) / f.camera.zoom / 8
+    expectDepthContains(f.camera, [0, 0, 1_000 + handleRadius])
+    expectDepthContains(f.camera, [0, 0, 1_000 - handleRadius])
+    f.viewport.hideTranslationGizmo()
+    f.viewport.showAngularGizmo({
+      angle: Math.PI,
+      axisOrigin: [0, 0, 2_000],
+      axisDirection: [0, 1, 0],
+      rotationOrigin: [100, 0, 2_000],
+    })
+    f.flush()
+    expectDepthContains(f.camera, [0, 0, 1_900])
+    f.viewport.hideAngularGizmo()
+    f.viewport.setSection({ axis: "z", offset: 0, flipped: false })
+    f.flush()
+    f.camera.zoom = 0.01
+    f.viewport.setStandardView("front")
+    f.flush()
+    const handle = f.canvas.dataset.sectionGizmoHandle?.split(",").map(Number)
+    expect(handle?.every(Number.isFinite)).toBe(true)
+    expect(f.camera.far - f.camera.near).toBeGreaterThan(100)
+  })
+})
 
 it("cancels an inset drag that began before a blocking operation and permits a new gesture", () => {
   const f = fixture()
