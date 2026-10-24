@@ -31,6 +31,7 @@ import {
 } from "../../document/document-display-units"
 import { bodyReferencePickCandidate } from "../part-design/body-reference-picking"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   parsePrimitiveLengthExpression,
@@ -566,8 +567,7 @@ async function submitHole(
   context: ParseContext,
   state: ReturnType<typeof useParameterFormState>,
 ) {
-  if (props.disabled || (props.previewStatus !== undefined && props.previewStatus !== "ready"))
-    return
+  if (props.disabled || !isFeaturePreviewReady(props.previewStatus)) return
   const parsed = parseValues(values, context)
   if (!parsed.ok) return
   state.clearSubmissionErrors()
@@ -659,6 +659,7 @@ export function HoleForm(props: HoleFormProps) {
         <form.Subscribe selector={(formState) => formState.isSubmitting}>
           {(isSubmitting) => (
             <ParameterPanel
+              previewStatus={previewStatus}
               actions={
                 <TaskPanelFormActions
                   acceptLabel={copy.submit}

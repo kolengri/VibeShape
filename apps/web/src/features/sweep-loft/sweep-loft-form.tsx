@@ -4,6 +4,7 @@ import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -92,6 +93,7 @@ export function SweepLoftForm({
       },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       const feature = sweepLoftFeatureRecord(
         mode,
         featureId,
@@ -134,6 +136,7 @@ export function SweepLoftForm({
                   <SweepLoftPreview feature={feature} onPreviewChange={onPreviewChange} />
                 )}
                 <ParameterPanel
+                  previewStatus={previewStatus}
                   copy={copy}
                   legend={copy.parameters}
                   disabled={disabled || pending}

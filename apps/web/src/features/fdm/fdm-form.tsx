@@ -8,6 +8,7 @@ import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import type { ExactBodyOption } from "../part-design/exact-body-options"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -124,6 +125,7 @@ export function FdmForm(props: FdmFormProps) {
       },
     },
     onSubmit: async ({ value }) => {
+      if (props.disabled || !isFeaturePreviewReady(props.previewStatus)) return
       const parsed = parseFdmForm(
         kind,
         value,
@@ -378,6 +380,7 @@ export function FdmForm(props: FdmFormProps) {
                   onChange={props.onPreviewChange}
                 />
                 <ParameterPanel
+                  previewStatus={props.previewStatus}
                   copy={{
                     title: title,
                     description: t("description"),

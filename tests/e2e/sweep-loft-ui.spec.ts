@@ -6,6 +6,7 @@ import { openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 import { confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
+import { visibleCadPickPositions } from "./visible-cad-picking-support"
 
 type ScreenMatrix = { a: number; b: number; c: number; d: number; e: number; f: number }
 async function clickSketchPoint(
@@ -69,29 +70,21 @@ function required<T>(value: T | undefined, message: string): T {
   return value
 }
 async function selectDatumPlaneFace(page: Page) {
-  const canvas = page.getByRole("region", { name: "3D viewport" }).locator("canvas")
-  const bounds = await canvas.boundingBox()
-  if (!bounds) throw new Error("The datum plane must have a rendered geometry canvas.")
-  const samples = [
-    { x: bounds.width * 0.5, y: bounds.height * 0.5 },
-    { x: bounds.width * 0.4, y: bounds.height * 0.55 },
-    { x: bounds.width * 0.6, y: bounds.height * 0.55 },
-    { x: bounds.width * 0.5, y: bounds.height * 0.3 },
-  ]
-  let sampleIndex = 0
-  await expect
-    .poll(
-      async () => {
-        const position = required(
-          samples[sampleIndex++ % samples.length],
-          "A canvas sample must exist.",
-        )
-        await canvas.click({ position })
-        return page.locator("main > footer").textContent()
-      },
-      { timeout: 30_000 },
-    )
-    .toMatch(/Selection: Datum plane 1 · Face \d+/)
+  const selection = page
+    .getByRole("status")
+    .filter({ hasText: /^Selection: Datum plane 1 · Face \d+$/ })
+  const positions = await visibleCadPickPositions(page, "datum-face")
+  expect(
+    positions.length,
+    "The datum face must expose a rendered graphical target.",
+  ).toBeGreaterThan(0)
+  for (const { x, y } of positions) {
+    await page.mouse.move(x, y)
+    await page.mouse.click(x, y)
+    await page.evaluate("new Promise((resolve) => requestAnimationFrame(resolve))")
+    if (await selection.isVisible()) return
+  }
+  await expect(selection).toBeVisible()
 }
 
 test("authors Loft sections on an explicit datum plane, cancels, reorders, edits, undoes, reopens and exports", async ({

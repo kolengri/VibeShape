@@ -7,7 +7,7 @@ import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { useTranslations } from "@vibeshape/i18n"
 import { useCallback, useMemo } from "react"
 import { TaskPanelSurface } from "../components/task-panel-layout"
-import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
+import { useReferenceFrameOptions } from "../features/reference-geometry/use-reference-frame-options"
 import { SplitForm, type SplitFormCopy } from "../features/split/split-form"
 import { splitTargetBody } from "../features/split/split-form-model"
 import type { SplitManipulator } from "../features/split/split-manipulator"
@@ -86,6 +86,11 @@ export function SplitTaskPanel(
         : null,
     [report],
   )
+  const referenceOptions = useReferenceFrameOptions(
+    report.snapshot,
+    report.rebuild,
+    mode?.kind === "edit" ? mode.feature.id : undefined,
+  )
   if (!mode) return null
   const key =
     mode.kind === "edit"
@@ -100,11 +105,7 @@ export function SplitTaskPanel(
         key={key}
         copy={copy}
         mode={mode}
-        referenceOptions={referenceFrameOptions(
-          report.snapshot,
-          report.rebuild,
-          mode.kind === "edit" ? mode.feature.id : undefined,
-        )}
+        referenceOptions={referenceOptions}
         selectedFace={props.selectedFace}
         sourceBounds={bounds}
         resolvePlane={resolvePlane}

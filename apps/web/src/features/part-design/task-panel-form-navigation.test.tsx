@@ -2,6 +2,7 @@ import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { vi } from "../../../../../tests/unit/support/bun-test"
@@ -11,6 +12,7 @@ import {
   useEditorSessionStoreApi,
   useHistoryNavigation,
 } from "../../editor-session/editor-session-provider"
+import { i18n } from "../../i18n"
 import { TaskPanelFormActions } from "./task-panel-form-actions"
 
 function FeatureForm({ save }: { save: () => Promise<boolean> }) {
@@ -99,9 +101,11 @@ describe("History navigation during a manual feature save", () => {
       const settled = vi.fn()
       const user = userEvent.setup()
       render(
-        <EditorSessionProvider>
-          <NavigationHarness save={save} onFirst={first} onLast={last} onNavigation={settled} />
-        </EditorSessionProvider>,
+        <I18nProvider i18n={i18n}>
+          <EditorSessionProvider>
+            <NavigationHarness save={save} onFirst={first} onLast={last} onNavigation={settled} />
+          </EditorSessionProvider>
+        </I18nProvider>,
       )
       await user.click(screen.getByRole("button", { name: "Begin task" }))
       await user.click(screen.getByRole("button", { name: "Save feature" }))

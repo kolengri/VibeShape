@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import { ProfileSelectionField } from "../part-design/profile-selection-field"
+import type { FeaturePreviewState } from "../preview/use-feature-preview"
 
 export type ExtrusionParameterPanelCopy = ParameterPanelCopy &
   Readonly<{
@@ -18,6 +19,8 @@ export function ExtrusionParameterPanel({
   disabled = false,
   distanceField,
   message,
+  previewStatus,
+  previewErrorHandled,
   profileLabels,
   onProfileRemove,
   onProfilesClear,
@@ -32,6 +35,8 @@ export function ExtrusionParameterPanel({
   disabled?: boolean
   distanceField: ReactNode
   message?: ReactNode
+  previewStatus?: FeaturePreviewState["status"] | undefined
+  previewErrorHandled?: boolean | undefined
   profileLabels: readonly string[]
   onProfileRemove?: ((index: number) => void) | undefined
   onProfilesClear?: (() => void) | undefined
@@ -48,6 +53,8 @@ export function ExtrusionParameterPanel({
       disabled={disabled}
       legend={copy.parameters}
       message={message}
+      previewStatus={previewStatus}
+      previewErrorHandled={previewErrorHandled}
     >
       <ProfileSelectionField
         copy={{

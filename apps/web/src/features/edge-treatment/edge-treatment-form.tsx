@@ -9,10 +9,10 @@ import { Alert } from "@vibeshape/ui/components/alert"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { type KeyboardEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
-import { TaskProgress } from "../../components/task-progress"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { useReferencePicking } from "../../shell/reference-pick-context"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import { submitFeatureMutation } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
@@ -384,8 +384,7 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
       },
     },
     onSubmit: async ({ value }) => {
-      if (props.disabled || (props.previewStatus !== undefined && props.previewStatus !== "ready"))
-        return
+      if (props.disabled || !isFeaturePreviewReady(props.previewStatus)) return
       const result = parseDraft(value.draft)
       if (!result.ok) return
       state.setMessage(null)
@@ -413,7 +412,12 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
     >
       <TaskPanelContentProvider content={<form.FormError />}>
         <ParameterPanel
-          copy={props.copy}
+          previewStatus={props.previewStatus}
+          copy={{
+            ...props.copy,
+            previewLoading: t("previewLoading"),
+            previewProgress: t("previewProgress"),
+          }}
           disabled={Boolean(props.disabled)}
           legend={props.copy.scopeLabel}
           message={
@@ -431,9 +435,6 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
             />
           }
         >
-          {props.previewStatus === "loading" && (
-            <TaskProgress status={t("previewLoading")} label={t("previewProgress")} />
-          )}
           <form.Field name="draft">
             {(field) => (
               <TreatmentFields

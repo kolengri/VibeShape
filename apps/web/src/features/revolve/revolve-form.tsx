@@ -42,6 +42,7 @@ import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
 import { featureEditPreview } from "../part-design/feature-edit-preview"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { submitFeatureMutation } from "../part-design/primitive-form"
 import {
   profileSelectorsEqual,
@@ -152,6 +153,8 @@ function previewHandler(onPreviewChange?: (feature: FeatureRecord | null) => voi
 }
 
 type RevolveSubmitHandlerInput = Readonly<{
+  disabled?: boolean | undefined
+  previewStatus?: FeaturePreviewState["status"] | undefined
   baseRevision: number
   copy: RevolveFormCopy
   displayUnit: "rad" | "deg"
@@ -166,6 +169,7 @@ type RevolveSubmitHandlerInput = Readonly<{
 
 function revolveSubmitHandler(input: RevolveSubmitHandlerInput) {
   return async ({ value }: { value: Values }) => {
+    if (input.disabled || !isFeaturePreviewReady(input.previewStatus)) return
     const parsed = parseValues(value, input.variables, input.displayUnit, input.copy, input.options)
     if (!parsed.ok) return
     input.setMessage(null)
@@ -513,6 +517,8 @@ function useRevolveFormController(props: RevolveFormProps) {
       },
     },
     onSubmit: revolveSubmitHandler({
+      disabled: props.disabled,
+      previewStatus: props.previewStatus,
       baseRevision: props.baseRevision,
       copy: props.copy,
       displayUnit: displayUnits.angle,
@@ -728,6 +734,7 @@ function RevolveFormView({ controller }: { controller: RevolveFormController }) 
         />
         <RevolvePreviewField controller={controller} />
         <RevolveParameterPanel
+          previewStatus={controller.previewStatus}
           actions={
             <TaskPanelFormActions
               acceptLabel={controller.copy.submit}

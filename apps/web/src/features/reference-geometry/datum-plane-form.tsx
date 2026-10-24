@@ -19,6 +19,7 @@ import {
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -255,6 +256,7 @@ export function DatumPlaneForm({
       },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       const parsed = parsedDatumPlaneRecord(value, mode, featureId, variables, copy, displayUnits)
       if (!parsed.ok) return
 
@@ -293,6 +295,7 @@ export function DatumPlaneForm({
           </form.Subscribe>
         ) : null}
         <ParameterPanel
+          previewStatus={previewStatus}
           actions={
             <TaskPanelFormActions
               acceptLabel={copy.submit}

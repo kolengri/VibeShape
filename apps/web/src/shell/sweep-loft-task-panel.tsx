@@ -3,7 +3,7 @@ import { readLoftFeatureParameters } from "@vibeshape/domain/part-design-loft"
 import { readLoftFeatureParametersV3 } from "@vibeshape/domain/part-design-loft-v3"
 import { readSweepFeatureParameters } from "@vibeshape/domain/part-design-sweep"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
-import type { ReactNode } from "react"
+import { type ReactNode, useMemo } from "react"
 import { TaskPanelSurface } from "../components/task-panel-layout"
 import {
   createBrowserFeatureId,
@@ -147,49 +147,57 @@ export function SweepLoftTaskPanel(props: Props) {
     t(operation === "loft" ? "loftFeatureLabel" : "sweepFeatureLabel", { number }),
   )
   const copy = useFormCopy(mode)
-  if (!mode) return null
   const rebuild = report.rebuild
-  const displays =
-    rebuild.ok &&
-    rebuild.response.documentId === report.snapshot.id &&
-    rebuild.response.revision === report.snapshot.revision
-      ? rebuild.response.sketches
-      : []
-  const catalogue = sweepLoftCatalogue(
-    report.snapshot,
-    displays,
-    ineligibleProfileSketchIds(report.snapshot, props.activeTool),
-    mode.operation,
-    {
-      profile: (sketch, number) => t("profileOption", { sketch, number }),
-      curve: (kind, number) => t("curveOption", { kind: kind.replaceAll("-", "_"), number }),
-      point: (number, [x, y, z]) =>
-        t("pointOption", {
+  const operation = mode?.operation
+  const editingId = mode?.kind === "edit" ? mode.feature.id : null
+  const catalogue = useMemo(() => {
+    if (!operation) return null
+    const displays =
+      rebuild.ok &&
+      rebuild.response.documentId === report.snapshot.id &&
+      rebuild.response.revision === report.snapshot.revision
+        ? rebuild.response.sketches
+        : []
+    return sweepLoftCatalogue(
+      report.snapshot,
+      displays,
+      ineligibleProfileSketchIds(report.snapshot, props.activeTool),
+      operation,
+      {
+        profile: (sketch, number) => t("profileOption", { sketch, number }),
+        curve: (kind, number) => t("curveOption", { kind: kind.replaceAll("-", "_"), number }),
+        point: (number, [x, y, z]) =>
+          t("pointOption", {
+            number,
+            x: format.number(Math.abs(x) < 0.0005 ? 0 : x, { maximumFractionDigits: 3 }),
+            y: format.number(Math.abs(y) < 0.0005 ? 0 : y, { maximumFractionDigits: 3 }),
+            z: format.number(Math.abs(z) < 0.0005 ? 0 : z, { maximumFractionDigits: 3 }),
+          }),
+      },
+    )
+  }, [report.snapshot, rebuild, props.activeTool, operation, t, format])
+  const supports = useMemo(() => {
+    if (operation !== "loft") return []
+    return loftSupportCatalogue(
+      report.snapshot,
+      report.rebuild,
+      editingId,
+      (body, role, number, [x, y, z]) =>
+        t("supportFaceOption", {
+          body,
+          role,
           number,
           x: format.number(Math.abs(x) < 0.0005 ? 0 : x, { maximumFractionDigits: 3 }),
           y: format.number(Math.abs(y) < 0.0005 ? 0 : y, { maximumFractionDigits: 3 }),
           z: format.number(Math.abs(z) < 0.0005 ? 0 : z, { maximumFractionDigits: 3 }),
         }),
-    },
-  )
+    )
+  }, [report.snapshot, rebuild, editingId, operation, t, format])
+  if (!mode || !catalogue) return null
   const key =
     mode.kind === "edit"
       ? `edit:${mode.feature.id}:${report.snapshot.revision}`
       : `${mode.operation}:${report.snapshot.revision}`
-  const supports = loftSupportCatalogue(
-    report.snapshot,
-    report.rebuild,
-    mode.kind === "edit" ? mode.feature.id : null,
-    (body, role, number, [x, y, z]) =>
-      t("supportFaceOption", {
-        body,
-        role,
-        number,
-        x: format.number(Math.abs(x) < 0.0005 ? 0 : x, { maximumFractionDigits: 3 }),
-        y: format.number(Math.abs(y) < 0.0005 ? 0 : y, { maximumFractionDigits: 3 }),
-        z: format.number(Math.abs(z) < 0.0005 ? 0 : z, { maximumFractionDigits: 3 }),
-      }),
-  )
   return (
     <TaskPanelSurface
       aria-label={task("ariaLabel")}

@@ -5,6 +5,7 @@ import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { featureSubmissionMessage } from "../part-design/primitive-form"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
@@ -87,6 +88,7 @@ export function BooleanForm({
       },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       const parsed = parseBooleanValues(value, options, copy)
       if (!parsed.ok) return
       setMessage(null)
@@ -154,6 +156,7 @@ export function BooleanForm({
           }}
         </form.Subscribe>
         <BooleanParameterPanel
+          previewStatus={previewStatus}
           actions={
             <TaskPanelFormActions
               acceptLabel={copy.submit}

@@ -48,11 +48,13 @@ test("patterns variable-count linear copies, guards invalid count, cancels, edit
   await page.getByRole("textbox", { name: "Variable name", exact: true }).fill("copies")
   await page.getByRole("combobox", { name: "Variable expression", exact: true }).fill("3")
   await page.getByRole("button", { name: "Apply variables", exact: true }).click()
-  await saved(page)
-  await page
-    .getByRole("toolbar", { name: "Model commands" })
-    .getByRole("button", { name: "Model", exact: true })
+  const variables = page.getByRole("dialog", { name: "Variables", exact: true })
+  await variables
+    .getByRole("form", { name: "Document variables", exact: true })
+    .getByRole("button", { name: "Done", exact: true })
     .click()
+  await expect(variables).not.toBeVisible()
+  await saved(page)
   await createSolids(page)
   const before = await saveProject(page)
   const source = required(

@@ -42,3 +42,11 @@ export function featureTaskFormProps(
     previewStatus: props.featurePreviewStatus,
   }
 }
+
+/** A new saved revision or edited feature owns a fresh form draft. */
+export function featureTaskKey(
+  mode: { kind: "create" } | { kind: "edit"; feature: Pick<FeatureRecord, "id"> },
+  revision: number,
+) {
+  return mode.kind === "edit" ? `edit:${mode.feature.id}:${revision}` : `create:${revision}`
+}

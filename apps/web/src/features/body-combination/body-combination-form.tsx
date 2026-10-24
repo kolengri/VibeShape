@@ -12,6 +12,7 @@ import { useId, useState } from "react"
 import { browserAuthoredUuid } from "../../document/authored-document-session"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import { submitFeatureMutation } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
@@ -211,6 +212,7 @@ export function BodyCombinationForm({
           : { fields: { selected: copy.invalidSelection } },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       const inputs = selectedCombinationInputs(value.selected, options)
       if (!inputs) return
       setMessage(null)
@@ -249,6 +251,7 @@ export function BodyCombinationForm({
       <form.Subscribe selector={(state) => state.isSubmitting}>
         {(pending) => (
           <ParameterPanel
+            previewStatus={previewStatus}
             copy={copy}
             legend={copy.parameters}
             disabled={disabled || pending}

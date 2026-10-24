@@ -147,6 +147,7 @@ export function SplitForm(props: SplitFormProps) {
         <form.Subscribe selector={(formState) => formState.isSubmitting}>
           {(pending) => (
             <ParameterPanel
+              previewStatus={previewStatus}
               copy={copy}
               legend={copy.parameters}
               disabled={disabled || pending || !sourceBounds}

@@ -1,6 +1,6 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   createLengthQuantity,
@@ -140,7 +140,16 @@ function renderForm(overrides: Partial<React.ComponentProps<typeof HoleForm>> = 
       <HoleForm {...props} />
     </I18nProvider>,
   )
-  return { onSave, ...view }
+  return {
+    onSave,
+    ...view,
+    setPreviewStatus: (previewStatus: "idle" | "loading" | "error" | "ready") =>
+      view.rerender(
+        <I18nProvider i18n={i18n} initialLocale="en">
+          <HoleForm {...props} previewStatus={previewStatus} />
+        </I18nProvider>,
+      ),
+  }
 }
 
 async function fillValidForm() {
@@ -156,6 +165,40 @@ async function fillValidForm() {
 }
 
 describe("HoleForm", () => {
+  it("replaces preview feedback while preserving hole selections and expressions until recovery", async () => {
+    const view = renderForm({ previewStatus: "loading" })
+    await fillValidForm()
+    const diameter = screen.getByRole<HTMLInputElement>("combobox", { name: copy.diameter })
+    const point = screen.getByRole<HTMLInputElement>("checkbox", { name: /Point 1/ })
+    const form = screen.getByRole("form", { name: copy.title })
+    expect(screen.getByRole("progressbar")).toBeTruthy()
+    await act(async () => {
+      fireEvent.submit(form)
+    })
+    expect(view.onSave).not.toHaveBeenCalled()
+
+    view.setPreviewStatus("error")
+    expect(screen.queryByRole("progressbar")).toBeNull()
+    expect(screen.getAllByRole("alert")).toHaveLength(1)
+    expect(diameter.value).toBe("5 mm")
+    expect(point.checked).toBe(true)
+    expect(diameter.disabled).toBe(false)
+    await act(async () => {
+      fireEvent.submit(form)
+    })
+    expect(view.onSave).not.toHaveBeenCalled()
+
+    view.setPreviewStatus("loading")
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.getByRole("progressbar")).toBeTruthy()
+    view.setPreviewStatus("ready")
+    expect(screen.queryByRole("progressbar")).toBeNull()
+    expect(screen.getByRole("combobox", { name: copy.diameter })).toBe(diameter)
+    expect(point.checked).toBe(true)
+    await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+    await waitFor(() => expect(view.onSave).toHaveBeenCalledTimes(1))
+  })
+
   function editFeature(
     parameters: Record<string, unknown>,
     overrides: Record<string, unknown> = {},

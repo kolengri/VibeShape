@@ -345,15 +345,18 @@ function resolveExactGeometrySignature(
   reference: TopoRef,
   candidates: readonly TopologyCandidate[],
   method: "history" | "signature",
+  indexedMatches?: readonly TopologyCandidate[],
 ): TopologyResolution | null {
   // A freshly picked edge or face must survive nearby, geometrically similar candidates. Identical
   // signatures still fail closed; semantic/history ownership and explicit intent win.
   if (reference.kind === "vertex" || reference.intent) return null
   const signature = exactSignatureKey(reference.signature)
-  const exact = candidates.filter(
-    (candidate) =>
-      candidate.kind === reference.kind && exactSignatureKey(candidate.signature) === signature,
-  )
+  const exact =
+    indexedMatches ??
+    candidates.filter(
+      (candidate) =>
+        candidate.kind === reference.kind && exactSignatureKey(candidate.signature) === signature,
+    )
   if (exact.length === 1)
     return {
       status: "resolved",
@@ -378,8 +381,9 @@ function rankCandidates(
   candidates: readonly TopologyCandidate[],
   policy: TopologyResolutionPolicy,
   method: "history" | "signature",
+  exactMatches?: readonly TopologyCandidate[],
 ): TopologyResolution {
-  const exact = resolveExactGeometrySignature(reference, candidates, method)
+  const exact = resolveExactGeometrySignature(reference, candidates, method, exactMatches)
   if (exact) return exact
   const ranked = candidates
     .map((candidate) => ({ candidate, score: scoreSignature(reference, candidate, policy) }))
@@ -425,6 +429,9 @@ type TopologyCandidateIndex = Readonly<{
   byKind: Readonly<Record<TopologyKind, readonly TopologyCandidate[]>>
   byLineage: Readonly<Record<TopologyKind, ReadonlyMap<string, readonly TopologyCandidate[]>>>
   bySemanticRole: Readonly<Record<TopologyKind, ReadonlyMap<string, readonly TopologyCandidate[]>>>
+  byExactSignature: Readonly<
+    Record<TopologyKind, ReadonlyMap<string, readonly TopologyCandidate[]>>
+  >
 }>
 
 function emptyCandidateGroups(): Record<TopologyKind, TopologyCandidate[]> {
@@ -454,8 +461,15 @@ function createTopologyCandidateIndex(candidateInputs: readonly TopologyCandidat
   const byKind = emptyCandidateGroups()
   const byLineage = emptyCandidateMaps()
   const bySemanticRole = emptyCandidateMaps()
+  const byExactSignature = emptyCandidateMaps()
   for (const candidate of candidates) {
     byKind[candidate.kind].push(candidate)
+    if (candidate.kind !== "vertex")
+      appendCandidate(
+        byExactSignature[candidate.kind],
+        exactSignatureKey(candidate.signature),
+        candidate,
+      )
     if (candidate.semanticRole) {
       appendCandidate(bySemanticRole[candidate.kind], candidate.semanticRole, candidate)
     }
@@ -463,7 +477,7 @@ function createTopologyCandidateIndex(candidateInputs: readonly TopologyCandidat
       appendCandidate(byLineage[candidate.kind], token, candidate)
     }
   }
-  return { byKind, byLineage, bySemanticRole } satisfies TopologyCandidateIndex
+  return { byKind, byLineage, bySemanticRole, byExactSignature } satisfies TopologyCandidateIndex
 }
 
 function resolveIndexedTopologyReference(
@@ -483,7 +497,9 @@ function resolveIndexedTopologyReference(
   const historyResult = resolveHistoryReference(reference, index.byLineage[reference.kind], policy)
   if (historyResult) return historyResult
 
-  return rankCandidates(reference, kindCandidates, policy, "signature")
+  const exactMatches =
+    index.byExactSignature[reference.kind].get(exactSignatureKey(reference.signature)) ?? []
+  return rankCandidates(reference, kindCandidates, policy, "signature", exactMatches)
 }
 
 export function createTopologyReferenceResolver(

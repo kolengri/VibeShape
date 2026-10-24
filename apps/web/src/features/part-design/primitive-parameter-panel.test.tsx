@@ -24,6 +24,51 @@ const copy: PrimitiveParameterPanelCopy = {
 afterEach(cleanup)
 
 describe("PrimitiveParameterPanel", () => {
+  it("shows only real preview work and retains editable draft controls through failure and recovery", async () => {
+    const panel = (previewStatus: "idle" | "loading" | "error" | "ready", message?: string) => (
+      <PrimitiveParameterPanel
+        actions={<button type="button">Cancel</button>}
+        copy={copy}
+        previewStatus={previewStatus}
+        message={message}
+        fields={<TextField label="Radius" defaultValue="10 mm" />}
+        placementFields={<TextField label="Origin X" defaultValue="0 mm" />}
+      />
+    )
+    const view = render(panel("loading"), {
+      wrapper: ({ children }) => <I18nProvider i18n={i18n}>{children}</I18nProvider>,
+    })
+    const progress = screen.getByRole("progressbar", { name: "Feature preview progress" })
+    expect(progress.hasAttribute("aria-valuenow")).toBe(false)
+    expect(screen.getByRole("status").textContent).toBe("Building preview…")
+    const radius = screen.getByRole<HTMLInputElement>("textbox", { name: "Radius" })
+    const user = userEvent.setup()
+    await user.clear(radius)
+    await user.type(radius, "#radius")
+
+    view.rerender(panel("error"))
+    expect(screen.queryByRole("progressbar")).toBeNull()
+    expect(screen.getByRole("alert").textContent).toBe(
+      "The preview could not be built. Review the inputs and selections. Apply requires a successful preview.",
+    )
+    expect(radius.value).toBe("#radius")
+    expect(radius.disabled).toBe(false)
+    view.rerender(panel("error", "The selected source is unavailable."))
+    expect(screen.getAllByRole("alert")).toHaveLength(1)
+    expect(screen.getByRole("alert").textContent).toBe("The selected source is unavailable.")
+
+    view.rerender(panel("loading"))
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.getByRole("progressbar")).toBeTruthy()
+    for (const status of ["idle", "ready"] as const) {
+      view.rerender(panel(status))
+      expect(screen.queryByRole("progressbar")).toBeNull()
+      expect(screen.queryByRole("alert")).toBeNull()
+      expect(screen.getByRole("textbox", { name: "Radius" })).toBe(radius)
+      expect(radius.value).toBe("#radius")
+    }
+  })
+
   it("keeps parameter fields uncontrolled and exposes ordinary form controls", async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()

@@ -127,12 +127,15 @@ afterEach(cleanup)
 describe("Shell form and explicit opening repair", () => {
   it("explains a failed exact preview, preserves the draft, and enables Apply only after recovery", async () => {
     const f = setup(mode, evidence, "loading")
+    expect(screen.getByRole("progressbar")).toBeTruthy()
     await userEvent.click(screen.getByRole("checkbox", { name: /Top face/ }))
     const thickness = screen.getByRole("combobox", { name: "Wall thickness" }) as HTMLInputElement
     await userEvent.clear(thickness)
     await userEvent.type(thickness, "2 mm")
     f.setPreviewStatus("error")
     expect(screen.getByRole("alert").textContent).toBe(copy.previewFailed)
+    expect(screen.getAllByRole("alert")).toHaveLength(1)
+    expect(screen.queryByRole("progressbar")).toBeNull()
     const apply = screen.getByRole("button", { name: "Apply shell" }) as HTMLButtonElement
     expect(apply.disabled).toBe(true)
     await userEvent.click(apply)
@@ -141,6 +144,7 @@ describe("Shell form and explicit opening repair", () => {
     expect(thickness.value).toBe("2 mm")
 
     f.setPreviewStatus("loading")
+    expect(screen.getByRole("progressbar")).toBeTruthy()
     expect(screen.queryByRole("alert")).toBeNull()
     expect(apply.disabled).toBe(true)
     f.setPreviewStatus("ready")

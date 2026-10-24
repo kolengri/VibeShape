@@ -9,10 +9,10 @@ import {
 } from "../document/document-controller"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
-import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
+import { useReferenceFrameOptions } from "../features/reference-geometry/use-reference-frame-options"
 import { ThreadForm, type ThreadFormCopy } from "../features/thread/thread-form"
 import { type ThreadFormMode, threadTargetBody } from "../features/thread/thread-form-model"
-import { exactTaskSource, featureTaskFormProps } from "./feature-task-form-props"
+import { exactTaskSource, featureTaskFormProps, featureTaskKey } from "./feature-task-form-props"
 
 type Props = {
   activeTool: ActivePartDesignTool
@@ -112,13 +112,15 @@ export function ThreadTaskPanel(props: Props) {
     t("featureLabel", { number: count + 1 }),
   )
   const copy = useThreadCopy(mode?.kind === "edit")
+  const referenceOptions = useReferenceFrameOptions(
+    report.snapshot,
+    report.rebuild,
+    mode?.kind === "edit" ? mode.feature.id : undefined,
+  )
   if (!mode) return null
   const source = exactTaskSource(report, threadTargetBody(mode))
   const available = source !== null
-  const key =
-    mode.kind === "edit"
-      ? `edit:${mode.feature.id}:${report.snapshot.revision}`
-      : `create:${report.snapshot.revision}`
+  const key = featureTaskKey(mode, report.snapshot.revision)
   return (
     <TaskPanelSurface
       aria-label={task("ariaLabel")}
@@ -129,11 +131,7 @@ export function ThreadTaskPanel(props: Props) {
         copy={copy}
         mode={mode}
         sourceAvailable={available}
-        axisOptions={referenceFrameOptions(
-          report.snapshot,
-          report.rebuild,
-          mode.kind === "edit" ? mode.feature.id : undefined,
-        )}
+        axisOptions={referenceOptions}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}
       />

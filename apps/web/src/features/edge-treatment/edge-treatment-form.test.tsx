@@ -560,7 +560,7 @@ it.each(["fillet", "chamfer"] as const)(
     expect(screen.queryByRole("progressbar")).toBeNull()
     const dimension = operation === "fillet" ? "radius" : "distance"
     expect(screen.getByRole("alert").textContent).toContain(
-      `Its ${dimension} may exceed the available material`,
+      `with the current ${dimension} and selected edges`,
     )
     expect((input as HTMLInputElement).value).toBe("3 mm")
     expect(screen.getByRole("button", { name: copy.submit }).hasAttribute("disabled")).toBe(true)

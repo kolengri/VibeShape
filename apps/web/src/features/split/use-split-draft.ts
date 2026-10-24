@@ -3,6 +3,7 @@ import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { useCallback, useState } from "react"
 import { defaultLengthExpression } from "../../document/document-display-units"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import {
   type FeatureParameterFormProps,
   submitFeatureMutation,
@@ -46,6 +47,7 @@ export function useSplitDraft(input: SplitDraftInput) {
       },
     },
     onSubmit: async ({ value }) => {
+      if (input.disabled || !isFeaturePreviewReady(input.previewStatus)) return
       if (
         !input.sourceBounds ||
         referencePlane === null ||

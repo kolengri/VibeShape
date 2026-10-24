@@ -5,9 +5,9 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { TaskPanelSurface } from "../components/task-panel-layout"
 import { MirrorForm, type MirrorFormCopy } from "../features/mirror/mirror-form"
-import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
+import { useReferenceFrameOptions } from "../features/reference-geometry/use-reference-frame-options"
 import { type BodyFeatureTaskPanelProps, bodyFeatureTaskMode } from "./body-feature-task-mode"
-import { featureTaskFormProps } from "./feature-task-form-props"
+import { featureTaskFormProps, featureTaskKey } from "./feature-task-form-props"
 
 function useMirrorCopy(editing: boolean): MirrorFormCopy {
   const t = useTranslations("app.mirror")
@@ -48,11 +48,13 @@ export function MirrorTaskPanel(props: BodyFeatureTaskPanelProps) {
       Boolean(readMirrorFeatureParameters(feature) || readMirrorFeatureParametersV3(feature)),
   })
   const copy = useMirrorCopy(mode?.kind === "edit")
+  const referenceOptions = useReferenceFrameOptions(
+    report.snapshot,
+    report.rebuild,
+    mode?.kind === "edit" ? mode.feature.id : undefined,
+  )
   if (!mode) return null
-  const key =
-    mode.kind === "edit"
-      ? `edit:${mode.feature.id}:${report.snapshot.revision}`
-      : `create:${report.snapshot.revision}`
+  const key = featureTaskKey(mode, report.snapshot.revision)
   return (
     <TaskPanelSurface
       aria-label={task("ariaLabel")}
@@ -62,11 +64,7 @@ export function MirrorTaskPanel(props: BodyFeatureTaskPanelProps) {
         key={key}
         copy={copy}
         mode={mode}
-        referenceOptions={referenceFrameOptions(
-          report.snapshot,
-          report.rebuild,
-          mode.kind === "edit" ? mode.feature.id : undefined,
-        )}
+        referenceOptions={referenceOptions}
         selectedFace={props.selectedFace}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}

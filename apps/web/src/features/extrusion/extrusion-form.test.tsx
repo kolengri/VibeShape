@@ -22,9 +22,11 @@ import { I18nProvider } from "@vibeshape/i18n/provider"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useLayoutEffect } from "react"
 import { vi } from "../../../../../tests/unit/support/bun-test"
+import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
+import { CadErrorPresentation } from "../../shell/cad-error-presentation"
 import { ReferencePickProvider, useReferencePicking } from "../../shell/reference-pick-context"
 import { collectedExtrusionOptions, extrusionBodyFixture } from "./extrusion-body-test-fixtures"
 import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
@@ -890,4 +892,82 @@ describe("ExtrusionForm", () => {
       }),
     )
   })
+})
+
+it("keeps structured extrusion diagnostics as the sole preview error and restores the fallback when unhandled", async () => {
+  const { snapshot } = extrusionBodyFixture(undefined)
+  const onSave = vi.fn(async () => ({ ok: true as const }))
+  const diagnostics = [
+    {
+      entity: { kind: "feature" as const, id: featureId },
+      code: "org.vibeshape.feature.sketch-profile-missing",
+      values: { reason: "no-matching-region" },
+      action: "inspect-feature" as const,
+    },
+  ]
+  const content = (previewErrorHandled: boolean, previewStatus: "loading" | "error" | "ready") => (
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <TaskPanelContentProvider
+        content={
+          previewErrorHandled && previewStatus === "error" ? (
+            <CadErrorPresentation
+              diagnostics={diagnostics}
+              snapshot={snapshot}
+              contextLabels={["Sketch 1"]}
+            />
+          ) : null
+        }
+      >
+        <ExtrusionForm
+          baseRevision={4}
+          copy={copy}
+          mode={{
+            kind: "create",
+            createFeatureId: () => featureId,
+            featureLabel: "Extrusion 1",
+            profiles: [profile],
+          }}
+          options={[]}
+          profileLabel="Sketch 1"
+          variables={variables}
+          onCancel={vi.fn()}
+          onSave={onSave}
+          onSaved={vi.fn()}
+          previewStatus={previewStatus}
+          previewErrorHandled={previewErrorHandled}
+        />
+      </TaskPanelContentProvider>
+    </I18nProvider>
+  )
+  const view = render(content(false, "loading"))
+  expect(screen.getByRole("progressbar")).toBeTruthy()
+  const distance = screen.getByRole<HTMLInputElement>("combobox", { name: copy.distance })
+  await userEvent.clear(distance)
+  await userEvent.type(distance, "#depth")
+  view.rerender(content(true, "error"))
+  expect(screen.getAllByRole("alert")).toHaveLength(1)
+  expect(screen.getByRole("alert").querySelector("details")).not.toBeNull()
+  expect(
+    screen.queryByText(
+      "The preview could not be built. Review the inputs and selections. Apply requires a successful preview.",
+    ),
+  ).toBeNull()
+  expect(screen.queryByRole("progressbar")).toBeNull()
+  expect(distance.value).toBe("#depth")
+  await act(async () => {
+    fireEvent.submit(screen.getByRole("form", { name: copy.title }))
+  })
+  expect(onSave).not.toHaveBeenCalled()
+
+  view.rerender(content(false, "error"))
+  expect(screen.getAllByRole("alert")).toHaveLength(1)
+  expect(screen.getByRole("alert").textContent).toBe(
+    "The preview could not be built. Review the inputs and selections. Apply requires a successful preview.",
+  )
+  view.rerender(content(false, "ready"))
+  expect(screen.queryByRole("alert")).toBeNull()
+  expect(screen.getByRole("combobox", { name: copy.distance })).toBe(distance)
+  expect(distance.value).toBe("#depth")
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
 })

@@ -6,6 +6,7 @@ import { useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -138,6 +139,7 @@ export function ThreadForm({
       },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       const parsed = parseThreadForm(value, mode, variables, state.displayUnits, copy)
       if (!parsed.ok) return
       state.clearSubmissionErrors()
@@ -193,6 +195,7 @@ export function ThreadForm({
                   />
                 )}
                 <ParameterPanel
+                  previewStatus={previewStatus}
                   copy={copy}
                   legend={copy.parameters}
                   disabled={controlsDisabled(disabled, sourceAvailable, !pending)}

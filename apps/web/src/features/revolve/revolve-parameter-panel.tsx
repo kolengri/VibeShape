@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import { ProfileSelectionField } from "../part-design/profile-selection-field"
+import type { FeaturePreviewState } from "../preview/use-feature-preview"
 
 export type RevolveParameterPanelCopy = ParameterPanelCopy &
   Readonly<{
@@ -20,6 +21,7 @@ export function RevolveParameterPanel({
   operationField,
   targetField,
   message,
+  previewStatus,
   onProfileSelectionRequest,
   profileLabels,
   onProfileRemove,
@@ -34,6 +36,7 @@ export function RevolveParameterPanel({
   operationField: ReactNode
   targetField?: ReactNode
   message?: ReactNode
+  previewStatus?: FeaturePreviewState["status"] | undefined
   onProfileSelectionRequest?: (() => void) | undefined
   profileLabels: readonly string[]
   onProfileRemove?: ((index: number) => void) | undefined
@@ -47,6 +50,7 @@ export function RevolveParameterPanel({
       disabled={disabled}
       legend={copy.parameters}
       message={message}
+      previewStatus={previewStatus}
     >
       <ProfileSelectionField
         copy={{

@@ -46,6 +46,7 @@ import {
 } from "../../document/document-display-units"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { featureEditPreview } from "../part-design/feature-edit-preview"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import {
   parsePrimitiveLengthExpression,
   quantityExpression,
@@ -679,6 +680,7 @@ export type ExtrusionFormProps = Readonly<{
   onProfilesClear?: (() => void) | undefined
   onProfileSelectionRequest?: (() => void) | undefined
   previewStatus?: FeaturePreviewState["status"] | undefined
+  previewErrorHandled?: boolean | undefined
   variables: readonly VariableDefinition[]
 }>
 
@@ -717,6 +719,7 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
       },
     },
     onSubmit: async ({ value }) => {
+      if (props.disabled || !isFeaturePreviewReady(props.previewStatus)) return
       const parsed = parseValues(
         value,
         props.variables,
@@ -1111,6 +1114,8 @@ function ExtrusionFormView({ controller }: { controller: ExtrusionFormController
         />
         <ExtrusionPreviewField controller={controller} />
         <ExtrusionParameterPanel
+          previewStatus={controller.previewStatus}
+          previewErrorHandled={controller.previewErrorHandled}
           actions={
             <TaskPanelFormActions
               acceptLabel={controller.copy.submit}

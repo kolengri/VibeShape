@@ -5,25 +5,20 @@ import { openApplicationMenuItem } from "./application-menu-support"
 import { createEditorProject, expect, test } from "./fixtures"
 import { invokeModelCommand, openModelCommand } from "./model-command-support"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
+import { visibleCadPickPositions } from "./visible-cad-picking-support"
 
 async function clickFirstHoleCenter(page: Page) {
   const viewport = page.getByRole("region", { name: "3D viewport" })
   await viewport.getByRole("button", { name: "Standard views", exact: true }).click()
   await page.getByRole("menuitem", { name: "Isometric", exact: true }).click()
-  const bounds = await viewport.locator("canvas").boundingBox()
-  if (!bounds) throw new Error("Expected the Hole viewport canvas.")
   const hover = viewport.getByText("Select Point 1 as a hole center.", { exact: true })
-  // The fixed drawing fixture puts this corner left of the model center in the isometric view.
-  for (const row of [0.535, 0.52, 0.55, 0.505, 0.565]) {
-    for (const column of [0.23, 0.215, 0.245, 0.2, 0.26]) {
-      const x = bounds.x + bounds.width * column
-      const y = bounds.y + bounds.height * row
-      await page.mouse.move(x, y)
-      await page.evaluate("new Promise((resolve) => requestAnimationFrame(resolve))")
-      if (!(await hover.isVisible())) continue
-      await page.mouse.click(x, y)
-      return
-    }
+  // The checked point has a visible selection marker; its projection changes with layout/camera.
+  for (const { x, y } of await visibleCadPickPositions(page, "selected-point")) {
+    await page.mouse.move(x, y)
+    await page.evaluate("new Promise((resolve) => requestAnimationFrame(resolve))")
+    if (!(await hover.isVisible())) continue
+    await page.mouse.click(x, y)
+    return
   }
   throw new Error("The selected sketch point was not graphically pickable.")
 }
