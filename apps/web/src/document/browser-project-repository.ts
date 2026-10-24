@@ -11,6 +11,7 @@ import {
   type VibeShapeDatabase,
 } from "@vibeshape/persistence"
 import type { BrowserPortableProject } from "./authored-project-file"
+import type { PreparedProjectImport } from "./project-import-contract"
 import {
   materializeAssemblySourceAssets,
   materializeDocumentSourceAssets,
@@ -101,7 +102,7 @@ export class BrowserProjectRepository {
             : { ok: true as const, value: { version: 3 as const, project: exported.value } }
   }
 
-  copyPortableProject(source: BrowserPortableProject, copiedAt: string) {
+  copyPortableProject(source: BrowserPortableProject | PreparedProjectImport, copiedAt: string) {
     if (source.version === 7)
       return this.versioned.copyPortableProjectV7({ ...source.project, copiedAt })
     if (source.version === 6)
@@ -135,12 +136,14 @@ export class BrowserProjectRepository {
     return this.versioned.writeProjectThumbnail(input)
   }
 
+  // fallow-ignore-next-line unused-class-member -- Called through the captured project-action repository in document-controller-runtime.
   copyProjectThumbnail(
     input: Parameters<VersionedLocalDocumentRepository["copyProjectThumbnail"]>[0],
   ) {
     return this.versioned.copyProjectThumbnail(input)
   }
 
+  // fallow-ignore-next-line unused-class-member -- Called through the captured project-action repository in document-controller-runtime.
   deleteProject(input: Parameters<VersionedLocalDocumentRepository["deleteProject"]>[0]) {
     return this.versioned.deleteProject(input)
   }

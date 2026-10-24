@@ -285,6 +285,13 @@ current surface and edge geometry. Historical highlights own their fallback geom
 independently. A preparation failure reports a notification and leaves surfaces and picking available;
 it does not retry the expensive constructor synchronously on the UI thread.
 
+Section fill extraction runs in a separate lazy viewer worker, using the same closed-manifold,
+welding, contour, and triangulation predicates as the synchronous geometry routine. It retains only
+the current displayed source buffers, with at most one active computation and the latest pending
+plane. Source replacement, hiding the section, and disposal invalidate old results and release the
+worker. Plane clipping and handle motion remain immediate on the main thread; only current cap
+triangles are installed asynchronously. Live render buffers are never detached.
+
 Face ordinals are indexed per immutable metadata snapshot. Ordinary hover picks are coalesced to one
 animation frame and stop at the first eligible, section-visible hit; activation remains synchronous and
 candidate cycling retains the complete eligible stack. Re-selecting an equivalent face preserves

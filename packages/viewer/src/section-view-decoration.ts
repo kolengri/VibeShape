@@ -14,7 +14,8 @@ import {
   Vector2,
   Vector3,
 } from "three"
-import { sectionCapPositions } from "./section-cap"
+import { createSectionCapWorker } from "./section-cap-browser"
+import { SectionCapClient, type SectionCapWorker } from "./section-cap-client"
 import { sectionCapMaterial } from "./section-cap-material"
 import { sameViewerSection, type ViewerSection } from "./section-view"
 import type { ViewerMesh } from "./three-viewport"
@@ -54,6 +55,8 @@ type SectionDecorationOptions = Readonly<{
   setNavigationEnabled: (enabled: boolean) => void
   onChange: (section: ViewerSection) => void
   render: () => void
+  createCapWorker?: () => SectionCapWorker
+  onCapError?: (error: Error) => void
 }>
 
 type SectionWorldGeometry = Readonly<{
@@ -111,6 +114,7 @@ export class SectionViewDecoration {
   )
   readonly #handle = new Mesh(new SphereGeometry(1, 16, 10), this.#handleMaterial)
   readonly #options: SectionDecorationOptions
+  readonly #capClient: SectionCapClient
   readonly #bounds = new Box3()
   #worldGeometry: SectionWorldGeometry | null = null
   #section: ViewerSection | null = null
@@ -121,6 +125,10 @@ export class SectionViewDecoration {
 
   constructor(options: SectionDecorationOptions) {
     this.#options = options
+    this.#capClient = new SectionCapClient(
+      options.createCapWorker ?? createSectionCapWorker,
+      options.onCapError ?? console.error,
+    )
     this.#handle.renderOrder = this.#stem.renderOrder = 1000
     this.group.add(this.#caps, this.#plane, this.#outline, this.#stem, this.#handle)
     this.group.visible = false
@@ -138,6 +146,7 @@ export class SectionViewDecoration {
     this.#meshes = meshes.filter(
       (mesh) => mesh.appearance !== "datum" && mesh.appearance !== "selection-source",
     )
+    this.#capClient.setSources(this.#meshes)
     if (bounds) this.#bounds.copy(bounds)
     else {
       this.#bounds.makeEmpty()
@@ -176,10 +185,23 @@ export class SectionViewDecoration {
   #rebuild() {
     this.#clearCaps()
     this.group.visible = this.#section !== null && !this.#bounds.isEmpty()
-    if (!this.#section || !this.group.visible) return
-    for (const source of this.#meshes) {
-      const positions = sectionCapPositions(source, this.#section)
-      if (!positions) continue
+    this.update()
+    const section = this.#section
+    if (!section || !this.group.visible) {
+      this.#capClient.clear()
+      return
+    }
+    this.#capClient.compute(section, (caps) => {
+      this.#installCaps(caps, section)
+      this.update()
+      this.#options.render()
+    })
+  }
+
+  #installCaps(caps: readonly (Float32Array | null)[], section: ViewerSection) {
+    for (const [index, positions] of caps.entries()) {
+      const source = this.#meshes[index]
+      if (!positions || !source) continue
       const geometry = new BufferGeometry().setAttribute(
         "position",
         new BufferAttribute(positions, 3),
@@ -188,13 +210,12 @@ export class SectionViewDecoration {
         source.appearance === "preview"
           ? "#e4b064"
           : (viewerBodyColor(source.featureId) ?? "#9aaec1"),
-        this.#section.axis,
+        section.axis,
       )
       const cap = new Mesh(geometry, material)
       cap.name = `section-cap:${source.featureId}:${source.outputRole ?? "result"}`
       this.#caps.add(cap)
     }
-    this.update()
   }
 
   update() {
@@ -389,6 +410,7 @@ export class SectionViewDecoration {
   }
 
   dispose() {
+    this.#capClient.dispose()
     this.#finish(false)
     const canvas = this.#options.canvas
     canvas.removeEventListener("pointerdown", this.#pointerDown, true)

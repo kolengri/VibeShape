@@ -10,6 +10,7 @@ import {
   Vector3,
 } from "three"
 import { vi } from "../../../tests/unit/support/bun-test"
+import { ManualSectionCapWorker } from "../tests/section-cap-worker-fixture"
 import { SectionViewDecoration, sectionDragDirection } from "./section-view-decoration"
 import type { ViewerMesh } from "./three-viewport"
 
@@ -58,6 +59,9 @@ function sectionMesh(width = 10, height = 10, depth = 10, origin = new Vector3()
 }
 
 function decorationFixture() {
+  const workers: ManualSectionCapWorker[] = []
+  const errors: Error[] = []
+  const render = vi.fn()
   const canvas = Object.assign(new EventTarget(), {
     clientWidth: 1000,
     clientHeight: 1000,
@@ -77,10 +81,18 @@ function decorationFixture() {
     navigationEnabled: () => true,
     setNavigationEnabled: () => undefined,
     onChange: () => undefined,
-    render: () => undefined,
+    render,
+    createCapWorker: () => {
+      const worker = new ManualSectionCapWorker()
+      workers.push(worker)
+      return worker
+    },
+    onCapError: (error) => errors.push(error),
   })
   decoration.setMeshes([sectionMesh()])
   decoration.setSection({ axis: "z", offset: 0, flipped: false })
+  const completeCaps = () => workers.at(-1)?.completeAll()
+  completeCaps()
   const [, plane, outline, stem, handle] = decoration.group.children
   if (
     !(plane instanceof Mesh) ||
@@ -89,7 +101,19 @@ function decorationFixture() {
     !(handle instanceof Mesh)
   )
     throw new Error("The section decoration must expose its plane, outline, stem, and handle.")
-  return { decoration, canvas, camera, plane, outline, stem, handle }
+  return {
+    decoration,
+    canvas,
+    camera,
+    plane,
+    outline,
+    stem,
+    handle,
+    workers,
+    completeCaps,
+    errors,
+    render,
+  }
 }
 
 function positionState(object: Mesh | LineSegments) {
@@ -126,7 +150,7 @@ describe("retained section decoration geometry", () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it("keeps the cut grid in the section plane and adapts its spacing without rebuilding caps", () => {
-    const { decoration, camera } = decorationFixture()
+    const { decoration, camera, completeCaps } = decorationFixture()
     try {
       for (const [axis, u, v] of [
         ["x", [0, 1, 0], [0, 0, 1]],
@@ -135,6 +159,7 @@ describe("retained section decoration geometry", () => {
       ] as const) {
         camera.zoom = 1
         decoration.setSection({ axis, offset: 0, flipped: false })
+        completeCaps()
         const cap = decoration.group.children[0]?.children[0]
         if (!(cap instanceof Mesh) || !(cap.material instanceof ShaderMaterial))
           throw new Error("A closed section must have a grid material.")
@@ -154,7 +179,7 @@ describe("retained section decoration geometry", () => {
   })
 
   it("accepts retained model bounds without reading vertices when the section is inactive", () => {
-    const { decoration } = decorationFixture()
+    const { decoration, completeCaps } = decorationFixture()
     try {
       decoration.setSection(null)
       const source = sectionMesh()
@@ -170,6 +195,7 @@ describe("retained section decoration geometry", () => {
       decoration.setMeshes([source], bounds)
       bounds.makeEmpty()
       decoration.setSection({ axis: "z", offset: 0, flipped: false })
+      completeCaps()
       expect(decoration.group.visible).toBe(true)
       expect(decoration.group.children[0]?.children).toHaveLength(1)
     } finally {
@@ -197,7 +223,7 @@ describe("retained section decoration geometry", () => {
   })
 
   it("updates retained positions for section offsets and axes while a halfspace flip leaves the plane unchanged", () => {
-    const { decoration, canvas, plane, outline, stem } = decorationFixture()
+    const { decoration, canvas, plane, outline, stem, completeCaps } = decorationFixture()
     const states = [plane, outline, stem].map(positionState)
     decoration.setSection({ axis: "z", offset: 2, flipped: false })
     for (const state of states) {
@@ -212,6 +238,8 @@ describe("retained section decoration geometry", () => {
     const beforeFlip = [plane, outline, stem].map(positionState)
     decoration.setSection({ axis: "x", offset: 2, flipped: true })
     for (const state of beforeFlip) expectUnchangedPosition(state)
+    expect(canvas.dataset.sectionCapCount).toBe("0")
+    completeCaps()
     expect(canvas.dataset.sectionCapCount).toBe("1")
     decoration.dispose()
   })
@@ -252,6 +280,99 @@ describe("retained section decoration geometry", () => {
     const beforeEquivalent = [plane, outline, stem].map(positionState)
     decoration.setMeshes([sectionMesh(20, 30, 40, new Vector3(8, 9, 10))])
     for (const state of beforeEquivalent) expectUnchangedPosition(state)
+    decoration.dispose()
+  })
+
+  it("updates planes immediately, clears old caps, and renders only the latest asynchronous section", () => {
+    const { decoration, canvas, plane, workers, render } = decorationFixture()
+    const original = decoration.group.children[0]?.children[0]
+    if (!(original instanceof Mesh)) throw new Error("Expected an initial cap.")
+    const disposed = vi.fn()
+    original.geometry.addEventListener("dispose", disposed)
+    render.mockClear()
+    decoration.setSection({ axis: "z", offset: 1, flipped: false })
+    decoration.setSection({ axis: "x", offset: 2, flipped: true })
+    expect(disposed).toHaveBeenCalledTimes(1)
+    expectPlaneCoordinate(positionState(plane).attribute, 0, 2)
+    expect(canvas.dataset.sectionOffset).toBe("2")
+    expect(canvas.dataset.sectionCapCount).toBe("0")
+    workers[0]?.complete(1)
+    expect(canvas.dataset.sectionCapCount).toBe("0")
+    expect(render).not.toHaveBeenCalled()
+    workers[0]?.complete(2)
+    expect(canvas.dataset.sectionCapCount).toBe("1")
+    const cap = decoration.group.children[0]?.children[0]
+    if (!(cap instanceof Mesh) || !(cap.material instanceof ShaderMaterial))
+      throw new Error("Expected the latest cap with its grid material.")
+    expectPlaneCoordinate(positionState(cap).attribute, 0, 2)
+    expect(cap.material.uniforms.sectionU?.value.toArray()).toEqual([0, 1, 0])
+    expect(render).toHaveBeenCalledTimes(1)
+    decoration.dispose()
+  })
+
+  it("drops late caps after disable, source replacement, and disposal", () => {
+    const { decoration, canvas, workers, completeCaps, render } = decorationFixture()
+    decoration.setSection({ axis: "z", offset: 1, flipped: false })
+    decoration.setSection(null)
+    expect(workers[0]?.terminated).toBe(true)
+    workers[0]?.complete(1)
+    expect(decoration.group.visible).toBe(false)
+    expect(canvas.dataset.sectionCapCount).toBeUndefined()
+    decoration.setSection({ axis: "z", offset: 0, flipped: false })
+    decoration.setMeshes([{ ...sectionMesh(20, 20, 20), featureId: "replacement" }])
+    expect(workers[1]?.terminated).toBe(true)
+    workers[1]?.complete()
+    expect(canvas.dataset.sectionCapCount).toBe("0")
+    completeCaps()
+    expect(decoration.group.children[0]?.children[0]?.name).toBe("section-cap:replacement:result")
+    decoration.setSection({ axis: "z", offset: 2, flipped: false })
+    render.mockClear()
+    decoration.dispose()
+    workers[2]?.complete(1)
+    expect(workers[2]?.terminated).toBe(true)
+    expect(decoration.group.children).toHaveLength(0)
+    expect(canvas.dataset.sectionCapCount).toBeUndefined()
+    expect(render).not.toHaveBeenCalled()
+  })
+
+  it("reports worker failure without stale fill and keeps the plane usable until a source reset recovers", () => {
+    const { decoration, canvas, plane, workers, errors, completeCaps } = decorationFixture()
+    decoration.setSection({ axis: "z", offset: 1, flipped: false })
+    workers[0]?.dispatchEvent(new Event("error"))
+    expect(errors[0]?.message).toBe("Section cap worker failed.")
+    expect(canvas.dataset.sectionCapCount).toBe("0")
+    decoration.setSection({ axis: "x", offset: 2, flipped: true })
+    expectPlaneCoordinate(positionState(plane).attribute, 0, 2)
+    expect(workers).toHaveLength(1)
+    expect(canvas.dataset.sectionCapCount).toBe("0")
+    decoration.setMeshes([sectionMesh()])
+    completeCaps()
+    expect(canvas.dataset.sectionCapCount).toBe("1")
+    expect(errors).toHaveLength(1)
+    decoration.dispose()
+  })
+
+  it("retains source identity across empty caps while excluding datum and selection-source meshes", () => {
+    const { decoration, completeCaps, workers } = decorationFixture()
+    decoration.setMeshes([
+      { ...sectionMesh(10, 10, 10, new Vector3(0, 0, 30)), featureId: "outside" },
+      { ...sectionMesh(), featureId: "first", appearance: "preview" },
+      { ...sectionMesh(), featureId: "datum", appearance: "datum" },
+      { ...sectionMesh(), featureId: "selection", appearance: "selection-source" },
+      { ...sectionMesh(20, 20, 20), featureId: "second", outputRole: "alternate" },
+    ])
+    completeCaps()
+    expect(workers.at(-1)?.requests[0]?.sources).toHaveLength(3)
+    const caps = decoration.group.children[0]?.children ?? []
+    expect(caps.map((cap) => cap.name)).toEqual([
+      "section-cap:first:result",
+      "section-cap:second:alternate",
+    ])
+    for (const [index, cap] of caps.entries()) {
+      if (!(cap instanceof Mesh)) throw new Error("Expected the source's cap mesh.")
+      cap.geometry.computeBoundingBox()
+      expect(cap.geometry.boundingBox?.max.x).toBe(index === 0 ? 5 : 10)
+    }
     decoration.dispose()
   })
 
