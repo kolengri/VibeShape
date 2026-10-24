@@ -11,6 +11,7 @@ import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -110,6 +111,7 @@ export function MirrorForm({
       },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       if (referencePlane === null) return
       const parsed = parseMirrorForm(value, variables, state.displayUnits, copy)
       if (!parsed.ok) return
@@ -154,6 +156,7 @@ export function MirrorForm({
         <form.Subscribe selector={(formState) => formState.isSubmitting}>
           {(pending) => (
             <ParameterPanel
+              previewStatus={previewStatus}
               copy={copy}
               legend={copy.parameters}
               disabled={disabled || pending}

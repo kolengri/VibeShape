@@ -1,6 +1,6 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   boxFeatureType,
@@ -130,6 +130,34 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("BoxForm", () => {
+  it.each(["idle", "loading", "error"] as const)(
+    "rejects direct form submission while the exact preview is %s",
+    async (previewStatus) => {
+      const onSave = vi.fn(async () => ({ ok: true as const }))
+      render(
+        <I18nProvider i18n={i18n} initialLocale="en">
+          <BoxForm
+            baseRevision={2}
+            variables={variables}
+            copy={copy}
+            mode={{ kind: "create", createFeatureId: () => featureId, featureLabel: "Box 1" }}
+            onCancel={vi.fn()}
+            onSave={onSave}
+            onSaved={vi.fn()}
+            previewStatus={previewStatus}
+          />
+        </I18nProvider>,
+      )
+      await act(async () => {
+        fireEvent.submit(screen.getByRole("form", { name: copy.title }))
+      })
+      expect(onSave).not.toHaveBeenCalled()
+      expect(
+        (screen.getByRole("button", { name: copy.submit }) as HTMLButtonElement).disabled,
+      ).toBe(true)
+    },
+  )
+
   it("keeps a stable preview identity and applies graphical placement to exact fields", async () => {
     const onPreviewChange = vi.fn()
     const { onSave } = renderForm(undefined, undefined, undefined, undefined, {

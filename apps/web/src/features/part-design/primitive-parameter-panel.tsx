@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import { ParameterPanel, type ParameterPanelCopy } from "./parameter-panel"
 
 export type PrimitiveParameterPanelCopy = ParameterPanelCopy &
@@ -16,6 +17,7 @@ export function PrimitiveParameterPanel({
   disabled = false,
   fields,
   message,
+  previewStatus,
   placementFields,
 }: {
   actions: ReactNode
@@ -24,6 +26,7 @@ export function PrimitiveParameterPanel({
   disabled?: boolean
   fields: ReactNode
   message?: ReactNode
+  previewStatus?: FeaturePreviewState["status"] | undefined
   placementFields: ReactNode
 }) {
   return (
@@ -33,6 +36,7 @@ export function PrimitiveParameterPanel({
       disabled={disabled}
       legend={copy.parameters}
       message={message}
+      previewStatus={previewStatus}
     >
       <fieldset className="grid min-w-0 gap-2">
         <legend className="sr-only">{copy.dimensions}</legend>

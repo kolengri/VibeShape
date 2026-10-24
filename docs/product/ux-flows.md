@@ -786,7 +786,17 @@ See [the canonical workflows](lightweighting.md) for preview, Apply, cancellatio
 
 ## Shared interaction feedback
 
-The complete VibeShape wordmark shows a printing shimmer without changing its text or dimensions while owned work is pending. Concurrent actions share this indicator; buttons, project tabs, panels, and dialogs keep their accessible pending states and action locks without local loaders. Native `.vshape` export additionally shows a persistent accessible progress bar as soon as export starts, including after its menu closes. It announces the current worker stage: reading project history and assets, then building the project archive. These stages are indeterminate because the archive writer exposes no measurable completion fraction. Repeat export activation stays locked until success or failure. The upper bar stays fully visible. Reduced motion keeps a static highlighted wordmark and progress bar. Projects and the editor use the same application-header component for activity and native chrome. It reserves traffic-light space only while the macOS window is windowed; native fullscreen releases the left inset and exiting fullscreen restores it, including when navigating between Projects and the editor.
+Exact CAD feature previews show indeterminate progress in the parameter panel only while a worker
+preview is loading. Debounce gaps and incomplete or invalid drafts do not imply active computation.
+Preview errors replace pending feedback, preserve expressions and reference selections, and leave
+inputs editable for repair. Specific feature messages and structured CAD diagnostics take precedence
+over the neutral fallback; an unknown topology failure does not establish that a dimension is too
+large. Apply explains why preview readiness blocks it. Button, History, and direct form submission
+require the same successful preview; detached forms without a preview-status contract retain their
+existing submission behavior. Cancel remains available during preview computation. A preview never
+creates a document mutation or an Undo entry.
+
+The complete VibeShape wordmark shows a printing shimmer without changing its text or dimensions while owned work is pending. Concurrent actions share this indicator; buttons, project tabs, panels, and dialogs keep their accessible pending states and action locks without local loaders. Exact CAD previews use the indeterminate task progress described above. Native `.vshape` export additionally shows a persistent accessible progress bar as soon as export starts, including after its menu closes. It announces the current worker stage: reading project history and assets, then building the project archive. These stages are indeterminate because the archive writer exposes no measurable completion fraction. Repeat export activation stays locked until success or failure. The upper bar stays fully visible. Reduced motion keeps a static highlighted wordmark and progress bar. Projects and the editor use the same application-header component for activity and native chrome. It reserves traffic-light space only while the macOS window is windowed; native fullscreen releases the left inset and exiting fullscreen restores it, including when navigating between Projects and the editor.
 
 Blocking document opening, project switching (including browser Back/Forward), and library mutations dim the interface and show a centered named loader until the operation settles. Background work keeps the interface available and animates the wordmark plus its reserved activity icon. Reduced motion uses a static highlighted state.
 

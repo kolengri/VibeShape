@@ -223,6 +223,16 @@ SPK-003 implements policy version `1` with a `0.22` maximum score and `0.035` am
 
 ## Dirty propagation and partial rebuild
 
+Exact topology-reference resolvers index complete geometric signatures within their own validated
+candidate set. Repeated reference projections reuse that index instead of serializing every candidate
+again for each query. Semantic and lineage precedence, duplicate ambiguity, explicit intent and
+approximate vertex matching keep their existing rules; the index is disposable and never persisted.
+
+Reference-frame, extrusion-target and Sweep/Loft catalogues are retained while their immutable
+snapshot, rebuild and editing scope remain current. Localized catalogues also follow the current
+locale. Replacing any source invalidates the corresponding options. Sweep does not prepare Loft-only
+support faces. These caches do not change geometry tolerances or permit stale references.
+
 Interactive feature previews use the complete document dependency graph to select the changed
 feature, its downstream features and sketches, and every required upstream input. Unrelated branches
 reuse geometry only from the exact committed document ID and revision. The combined viewport still

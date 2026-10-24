@@ -11,6 +11,7 @@ import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -150,6 +151,7 @@ export function PatternForm({
       },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       if (referenceAxis === null) return
       const parsed = parsePatternForm(
         value,
@@ -217,6 +219,7 @@ export function PatternForm({
                   />
                 )}
                 <ParameterPanel
+                  previewStatus={previewStatus}
                   copy={copy}
                   legend={copy.parameters}
                   disabled={disabled || pending || !sourceAvailable}

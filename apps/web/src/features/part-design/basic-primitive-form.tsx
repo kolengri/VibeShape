@@ -20,6 +20,7 @@ import { useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { defaultLengthExpression } from "../../document/document-display-units"
 import { cadFormValidationLogic, useCadForm } from "./cad-form"
+import { isFeaturePreviewReady } from "./feature-preview-readiness"
 import {
   defaultPrimitiveOriginValues,
   type FeatureParameterFormProps,
@@ -313,6 +314,7 @@ function useBasicPrimitiveDraft(props: BasicPrimitiveFormProps) {
       },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(props.previewStatus)) return
       const parsed = parsePrimitiveValues(
         primitiveKind,
         value,
@@ -382,6 +384,7 @@ export function BasicPrimitiveForm(props: BasicPrimitiveFormProps) {
     >
       <TaskPanelContentProvider content={<form.FormError />}>
         <PrimitiveParameterPanel
+          previewStatus={previewStatus}
           actions={
             <TaskPanelFormActions
               acceptLabel={copy.submit}

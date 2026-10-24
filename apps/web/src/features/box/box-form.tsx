@@ -14,6 +14,7 @@ import {
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import {
   defaultPrimitiveOriginValues,
   type FeatureParameterFormProps,
@@ -238,6 +239,7 @@ export function BoxForm({
       },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       const parsed = parseBoxValues(value, variables, copy, displayUnits.length)
       if (!parsed.ok) return
 
@@ -313,6 +315,7 @@ export function BoxForm({
           </form.Subscribe>
         ) : null}
         <PrimitiveParameterPanel
+          previewStatus={previewStatus}
           actions={
             <TaskPanelFormActions
               acceptLabel={copy.submit}

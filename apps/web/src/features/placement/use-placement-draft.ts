@@ -4,6 +4,7 @@ import {
   defaultLengthExpression,
 } from "../../document/document-display-units"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import {
   type FeatureParameterFormProps,
   submitFeatureMutation,
@@ -44,6 +45,7 @@ export function usePlacementDraft(input: PlacementDraftInput) {
       },
     },
     onSubmit: async ({ value }) => {
+      if (input.disabled || !isFeaturePreviewReady(input.previewStatus)) return
       if (input.sourceBounds === null) return
       const parsed = parsePlacementForm(value, input.variables, state.displayUnits, input.copy)
       if (!parsed.ok) return

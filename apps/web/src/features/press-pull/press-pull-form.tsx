@@ -2,6 +2,7 @@ import type { FeatureId, FeatureRecord } from "@vibeshape/domain"
 import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
@@ -66,6 +67,7 @@ export function PressPullForm(props: PressPullFormProps) {
   const form = useAppForm({
     defaultValues: { distance: pressPullInitialDistance(mode, state.displayUnits) },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       const candidate = feature(value.distance)
       if (!candidate) {
         state.setMessage(copy.validationSummary)
@@ -102,6 +104,7 @@ export function PressPullForm(props: PressPullFormProps) {
       <form.Subscribe selector={(state) => state.isSubmitting}>
         {(pending) => (
           <ParameterPanel
+            previewStatus={previewStatus}
             copy={copy}
             legend={copy.parameters}
             disabled={disabled || pending}

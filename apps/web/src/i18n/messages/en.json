@@ -1003,6 +1003,14 @@
         "selectionBodyEdge": "{feature} · Body {body} · Edge {edge}"
       },
       "taskPanel": {
+        "previewFeedback": {
+          "loading": "Building preview…",
+          "progress": "Feature preview progress",
+          "failed": "The preview could not be built. Review the inputs and selections. Apply requires a successful preview.",
+          "loadingReason": "Apply is waiting for the preview to finish.",
+          "errorReason": "Apply requires a successful preview. Review the preview error and adjust the inputs or selections.",
+          "idleReason": "Apply is waiting for a valid preview. Complete any missing inputs or selections."
+        },
         "legacyBodyLabel": "{label} · all bodies (legacy scope)",
         "edgeTreatment": {
           "scopeLabel": "Edges",
@@ -1026,7 +1034,7 @@
             "create": "Create fillet",
             "update": "Update fillet",
             "featureLabel": "Fillet {number}",
-            "previewFailed": "The fillet could not be built. Its radius may exceed the available material. Try a smaller radius or select another edge. Creation requires a successful preview."
+            "previewFailed": "The fillet could not be built with the current radius and selected edges. Review the radius or choose different edges. Creation requires a successful preview."
           },
           "chamfer": {
             "title": "Create chamfer",
@@ -1036,7 +1044,7 @@
             "create": "Create chamfer",
             "update": "Update chamfer",
             "featureLabel": "Chamfer {number}",
-            "previewFailed": "The chamfer could not be built. Its distance may exceed the available material. Try a smaller distance or select another edge. Creation requires a successful preview."
+            "previewFailed": "The chamfer could not be built with the current distance and selected edges. Review the distance or choose different edges. Creation requires a successful preview."
           },
           "previewLoading": "Building edge treatment preview…",
           "previewProgress": "Edge treatment preview progress",
@@ -1891,7 +1899,7 @@
         "previewFailed": "The unsaved feature could not be previewed. Adjust its parameters or target.",
         "previewLoading": "Rebuilding unsaved feature preview…",
         "previewReady": "Unsaved feature preview",
-        "edgeTreatmentPreviewFailed": "The edge treatment could not be previewed. Reduce its size or choose another body.",
+        "edgeTreatmentPreviewFailed": "The edge treatment could not be previewed. Review its size, selected edges, and target body.",
         "edgeTreatmentPreviewLoading": "Rebuilding unsaved edge treatment…",
         "edgeTreatmentPreviewReady": "Unsaved edge treatment preview",
         "datumPreviewFailed": "The unsaved datum plane could not be previewed. Adjust its support or offset.",

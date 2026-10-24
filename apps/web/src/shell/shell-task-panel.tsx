@@ -14,7 +14,7 @@ import { ShellForm, type ShellFormCopy } from "../features/shell/shell-form"
 import type { ShellFormMode } from "../features/shell/shell-form-model"
 import { shellTargetBody } from "../features/shell/shell-form-model"
 import type { ShellPickingContext, ShellPickRequest } from "../features/shell/shell-picking"
-import { featureTaskFormProps } from "./feature-task-form-props"
+import { featureTaskFormProps, featureTaskKey } from "./feature-task-form-props"
 import { useHistoryFeatureBodyReplacement } from "./history-feature-repair"
 
 type ShellPanelProps = {
@@ -109,10 +109,7 @@ export function ShellTaskPanel(props: ShellPanelProps) {
   const sourceFeature = features.find(({ id }) => id === shellTargetBody(mode).featureId)
   const extrusion = sourceFeature ? readExtrusionFeatureParameters(sourceFeature) : null
   const allowSemanticRebinding = !extrusion || extrusion.operation === "new"
-  const key =
-    mode.kind === "edit"
-      ? `edit:${mode.feature.id}:${report.snapshot.revision}`
-      : `create:${report.snapshot.revision}`
+  const key = featureTaskKey(mode, report.snapshot.revision)
   return (
     <TaskPanelSurface
       aria-label={task("ariaLabel")}

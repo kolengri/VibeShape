@@ -149,6 +149,7 @@ export function PlacementForm(props: PlacementFormProps) {
           {(pending) => (
             <>
               <ParameterPanel
+                previewStatus={previewStatus}
                 copy={copy}
                 legend={copy.parameters}
                 disabled={disabled || pending || sourceBounds === null}

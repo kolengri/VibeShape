@@ -97,6 +97,22 @@ describe("TaskPanelFormActions", () => {
 
       const accept = screen.getByRole("button", { name: "Create feature" }) as HTMLButtonElement
       expect(accept.disabled).toBe(true)
+      const reason =
+        previewStatus === "loading"
+          ? "Apply is waiting for the preview to finish."
+          : previewStatus === "error"
+            ? "Apply requires a successful preview. Review the preview error and adjust the inputs or selections."
+            : "Apply is waiting for a valid preview. Complete any missing inputs or selections."
+      const description = accept.getAttribute("aria-describedby")
+      expect(description).not.toBeNull()
+      expect(
+        description
+          ?.split(" ")
+          .map((id) => document.getElementById(id)?.textContent)
+          .join(" "),
+      ).toBe(reason)
+      expect(screen.getByText(reason)).toBeTruthy()
+      expect(accept.getAttribute("aria-busy")).not.toBe("true")
       await user.click(accept)
       const submitFromHistory = vi.mocked(useRegisterTaskSubmission).mock.calls.at(-1)?.[0]
       if (!submitFromHistory) throw new Error("History submission must be registered.")

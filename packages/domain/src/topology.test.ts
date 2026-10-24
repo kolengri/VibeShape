@@ -360,3 +360,42 @@ describe("resolveTopologyReference", () => {
     expect(() => faceSignature({ direction: [0, 0, 2] })).toThrow(/normalized/)
   })
 })
+
+it.each(["face", "edge"] as const)(
+  "resolves an exact %s catalogue repeatedly without changing duplicate or ownership semantics",
+  (kind) => {
+    const signature = (n: number): TopoRef["signature"] => ({
+      ...faceSignature(),
+      kind,
+      geometryClass: kind === "face" ? "PLANE" : "LINE",
+      centroid: [0, 0, n],
+      bounds: { min: [-5, -5, n], max: [5, 5, n] },
+    })
+    const candidates = Array.from({ length: 128 }, (_, n) =>
+      candidate(`item-${n}`, {
+        kind,
+        signature: signature(n),
+      }),
+    )
+    const resolve = createTopologyReferenceResolver(candidates)
+    for (let n = 127; n >= 0; n--) {
+      expect(resolve(reference({ kind, signature: signature(n) }))).toMatchObject({
+        status: "resolved",
+        candidateId: `item-${n}`,
+        score: 0,
+      })
+    }
+    const duplicate = createTopologyReferenceResolver([
+      ...candidates,
+      candidate("coincident", { kind, signature: signature(20) }),
+    ])
+    expect(duplicate(reference({ kind, signature: signature(20) }))).toMatchObject({
+      status: "ambiguous",
+      candidateIds: ["coincident", "item-20"],
+    })
+    expect(resolve(reference({ kind, signature: signature(20) }))).toMatchObject({
+      status: "resolved",
+      candidateId: "item-20",
+    })
+  },
+)

@@ -11,6 +11,7 @@ import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 import {
   type FeatureParameterFormProps,
@@ -201,6 +202,7 @@ export function ShellForm({
       },
     },
     onSubmit: async ({ value }) => {
+      if (disabled || !isFeaturePreviewReady(previewStatus)) return
       const feature = shellFormFeature(
         mode,
         featureId,
@@ -270,6 +272,7 @@ export function ShellForm({
         <form.Subscribe selector={(formState) => formState.isSubmitting}>
           {(pending) => (
             <ParameterPanel
+              previewStatus={previewStatus}
               copy={copy}
               legend={copy.parameters}
               disabled={disabled || pending}

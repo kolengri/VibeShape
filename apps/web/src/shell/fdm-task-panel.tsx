@@ -8,7 +8,7 @@ import { FdmForm } from "../features/fdm/fdm-form"
 import type { FdmToolKind } from "../features/fdm/fdm-form-fields"
 import type { FdmFormMode } from "../features/fdm/fdm-form-model"
 import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
-import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
+import { useReferenceFrameOptions } from "../features/reference-geometry/use-reference-frame-options"
 import type { BodyFeatureTaskPanelProps } from "./body-feature-task-mode"
 import { featureTaskFormProps } from "./feature-task-form-props"
 
@@ -61,6 +61,7 @@ export function FdmTaskPanel(
       : editing && saved
         ? { kind: "edit", feature: editing }
         : null
+  const frameOptions = useReferenceFrameOptions(report.snapshot, report.rebuild, editing?.id)
   if (!mode) return null
   const options = exactSolidBodyOptions(
     report.snapshot,
@@ -83,7 +84,7 @@ export function FdmTaskPanel(
         options={options}
         sketches={report.snapshot.sketches}
         variables={report.snapshot.variables}
-        frameOptions={referenceFrameOptions(report.snapshot, report.rebuild, editing?.id)}
+        frameOptions={frameOptions}
         {...featureTaskFormProps(props, mode)}
       />
     </TaskPanelSurface>

@@ -45,14 +45,14 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await size.fill("100 mm")
     await expect(
       viewport.getByText(
-        "The edge treatment could not be previewed. Reduce its size or choose another body.",
+        "The edge treatment could not be previewed. Review its size, selected edges, and target body.",
       ),
     ).toBeVisible({ timeout: 60_000 })
     await expect(
       form.getByRole("button", { name: `Create ${operation}`, exact: true }),
     ).toBeDisabled()
     await expect(form.getByRole("alert")).toContainText(
-      `Its ${dimension.toLowerCase()} may exceed the available material`,
+      `with the current ${dimension.toLowerCase()} and selected edges`,
     )
     for (const theme of ["light", "dark"]) {
       await page

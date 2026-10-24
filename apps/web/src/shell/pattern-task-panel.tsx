@@ -6,9 +6,9 @@ import { useTranslations } from "@vibeshape/i18n"
 import { TaskPanelSurface } from "../components/task-panel-layout"
 import { PatternForm, type PatternFormCopy } from "../features/pattern/pattern-form"
 import { patternTargetBody } from "../features/pattern/pattern-form-model"
-import { referenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
+import { useReferenceFrameOptions } from "../features/reference-geometry/use-reference-frame-options"
 import { type BodyFeatureTaskPanelProps, bodyFeatureTaskMode } from "./body-feature-task-mode"
-import { exactTaskSource, featureTaskFormProps } from "./feature-task-form-props"
+import { exactTaskSource, featureTaskFormProps, featureTaskKey } from "./feature-task-form-props"
 
 function usePatternCopy(editing: boolean): PatternFormCopy {
   const t = useTranslations("app.bodyPattern")
@@ -65,13 +65,15 @@ export function PatternTaskPanel(props: BodyFeatureTaskPanelProps) {
       Boolean(readPatternFeatureParameters(feature) || readPatternFeatureParametersV2(feature)),
   })
   const copy = usePatternCopy(mode?.kind === "edit")
+  const referenceOptions = useReferenceFrameOptions(
+    report.snapshot,
+    report.rebuild,
+    mode?.kind === "edit" ? mode.feature.id : undefined,
+  )
   if (!mode) return null
   const source = exactTaskSource(report, patternTargetBody(mode))
   const available = source !== null
-  const key =
-    mode.kind === "edit"
-      ? `edit:${mode.feature.id}:${report.snapshot.revision}`
-      : `create:${report.snapshot.revision}`
+  const key = featureTaskKey(mode, report.snapshot.revision)
   return (
     <TaskPanelSurface
       aria-label={task("ariaLabel")}
@@ -81,11 +83,7 @@ export function PatternTaskPanel(props: BodyFeatureTaskPanelProps) {
         key={key}
         copy={copy}
         mode={mode}
-        referenceOptions={referenceFrameOptions(
-          report.snapshot,
-          report.rebuild,
-          mode.kind === "edit" ? mode.feature.id : undefined,
-        )}
+        referenceOptions={referenceOptions}
         selectedFace={props.selectedFace}
         sourceAvailable={available}
         {...featureTaskFormProps(props, mode)}

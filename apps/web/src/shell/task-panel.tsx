@@ -47,13 +47,13 @@ import {
   type EdgeTreatmentPickRequest,
 } from "../features/edge-treatment/edge-treatment-form"
 import { edgeTreatmentTargetOptions } from "../features/edge-treatment/edge-treatment-options"
-import { extrusionBodyOptions } from "../features/extrusion/extrusion-body-options"
 import type { ExtrusionDistanceRequest } from "../features/extrusion/extrusion-distance-manipulator"
 import {
   ExtrusionForm,
   type ExtrusionFormMode,
   type ExtrusionTargetOption,
 } from "../features/extrusion/extrusion-form"
+import { useExtrusionBodyOptions } from "../features/extrusion/use-extrusion-body-options"
 import {
   HoleForm,
   type HoleFormCopy,
@@ -667,6 +667,7 @@ function ExtrusionTaskPanel({
           onSave={task.onSave}
           onSaved={onCompleteTool}
           previewStatus={previewStatus}
+          previewErrorHandled={previewStatus === "error" && Boolean(diagnostics?.length)}
         />
       </TaskPanelContentProvider>
     </TaskPanelSurface>
@@ -1301,8 +1302,6 @@ function ActiveExtrusionTaskPanel({
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel.extrusion")
-  const extentCopy = useTranslations("app.extrusionExtent")
-  const modelTreeT = useTranslations("app.shell.modelTree")
   const extrusionCount = report.snapshot.features.filter(isExtrusionFeature).length
   const mode = extrusionFormMode(
     activeTool,
@@ -1310,6 +1309,9 @@ function ActiveExtrusionTaskPanel({
     t("featureLabel", { number: extrusionCount + 1 }),
     featureProfileSelections ?? [],
   )
+  const editingId = mode?.kind === "edit" ? mode.feature.id : undefined
+  const available = mode !== null
+  const options = useExtrusionBodyOptions(report.snapshot, report.rebuild, editingId, available)
   if (!mode)
     return (
       <ExtrusionProfileSelectionTaskPanel
@@ -1319,13 +1321,6 @@ function ActiveExtrusionTaskPanel({
         onCreateSketch={onCreateSketch}
       />
     )
-  const options = extrusionBodyOptions(
-    report.snapshot,
-    report.rebuild,
-    mode.kind === "edit" ? mode.feature.id : undefined,
-    (name, role) => extentCopy("bodyLabel", { label: name ?? modelTreeT("unnamedFeature"), role }),
-    (name) => extentCopy("legacyBodyLabel", { label: name ?? modelTreeT("unnamedFeature") }),
-  )
   return (
     <ExtrusionTaskPanel
       distanceRequest={distanceRequest}
