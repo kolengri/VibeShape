@@ -53,6 +53,7 @@ import {
   viewerSelectionFromSource,
 } from "./mesh-selection"
 import { ModelMeshPresentation } from "./model-meshes"
+import { NavigationActivity } from "./navigation-activity"
 import { preserveOrbitPivot } from "./orbit-pivot"
 import { orientationInsetPlacement } from "./orientation-inset"
 import { OrientationInsetInteraction } from "./orientation-inset-interaction"
@@ -673,6 +674,8 @@ export function orderedEligibleViewerSelections(
 }
 
 export type GeometryViewportOptions = Readonly<{
+  /** Pauses background work through navigation gestures and 200 ms of camera inactivity. */
+  onNavigationActivityChange?: (active: boolean) => void
   /** Reports asynchronous mesh-preparation failures; surfaces and fallback picking remain usable. */
   onEdgePreparationError?: (error: Error) => void
   /** The element's width reserves a left safe area for the orientation scene. */
@@ -1525,6 +1528,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #sketchContextMenuControlsEnabled: boolean | null = null
   #sketchNavigationControlsEnabledBeforePointer: boolean | null = null
   #sketchNavigationPointerId: number | null = null
+  readonly #navigationActivity: NavigationActivity
   #pointerOrbit = false
   #pointerOrbitPosition: Vector2 | null = null
   #translationGizmoInteracting = false
@@ -1541,6 +1545,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
     this.#canvas = canvas
+    this.#navigationActivity = new NavigationActivity(options.onNavigationActivityChange)
     this.#onEdgePreparationError = options.onEdgePreparationError
     this.#orientationInsetOffsetElement = options.orientationInsetOffsetElement
     const sketchProfileCallbacks = viewerSketchProfileCallbacks(options)
@@ -1646,11 +1651,13 @@ class ThreeGeometryViewport implements GeometryViewport {
         this.#controls.enabled = enabled
       },
       onStart: () => {
+        this.#navigationActivity.begin("orientation")
         this.#edgePresentation.clearPicking()
         this.#pointerOrbitPivot = this.#modelOrbitPivot()
         this.#pointerDown = null
         this.#onNavigationStart()
       },
+      onEnd: () => this.#navigationActivity.end("orientation"),
       onNavigationStart: () => {
         this.#sketchProjection = null
         options.onOrientationNavigationStart?.()
@@ -2415,6 +2422,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#analysisDecoration.dispose()
     if (this.#disposed) return
     this.#disposed = true
+    this.#navigationActivity.dispose()
     this.#edgePresentation.dispose()
     this.#orientationInteraction.dispose()
     this.#renderFrames.cancel()
@@ -2867,12 +2875,14 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onControlsStart = () => {
+    this.#navigationActivity.begin("controls")
     this.#controlsNavigationOrientation = this.#camera.quaternion.clone()
     this.#controlsNavigationPivot = null
     this.#onNavigationStart()
   }
 
   #onControlsEnd = () => {
+    this.#navigationActivity.end("controls")
     this.#controlsNavigationOrientation = null
     this.#controlsNavigationPivot = null
   }
@@ -2884,6 +2894,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onControlsChange = () => {
+    this.#navigationActivity.pulse()
     this.#hoverPicking.cancel()
     this.#edgePresentation.clearPicking()
     const orientation = this.#controlsNavigationOrientation

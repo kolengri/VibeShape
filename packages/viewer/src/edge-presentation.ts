@@ -13,6 +13,12 @@ import {
 import { LineMaterial } from "three/addons/lines/LineMaterial.js"
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js"
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js"
+import {
+  type EdgePickBounds,
+  edgeMayHit,
+  edgePickBounds,
+  edgePickProjection,
+} from "./edge-picking-bounds"
 import { viewerBodyKey } from "./mesh-geometry"
 import { sameViewerGeometry } from "./model-meshes"
 import { sectionPointVisible } from "./section-view"
@@ -25,6 +31,11 @@ type Callbacks = Readonly<{
   changed: () => void
 }>
 type EdgeHit = Readonly<{ pixels: number; depth: number }>
+type PickingCandidate = Readonly<{
+  candidate: ViewerEdgeCandidate
+  bodyKey: string
+  bounds: EdgePickBounds | null
+}>
 type HitContext = Readonly<{
   camera: OrthographicCamera
   pointer: Vector2
@@ -130,6 +141,28 @@ function candidateHit(candidate: ViewerEdgeCandidate, context: HitContext) {
   return hits.sort(compareHits)[0]
 }
 
+function candidateStack(
+  candidates: readonly PickingCandidate[],
+  visibleBodyKeys: ReadonlySet<string>,
+  context: HitContext,
+  viewProjection: Matrix4,
+) {
+  const { camera, pointer, width, height, planes } = context
+  const projection = edgePickProjection(camera, viewProjection, planes, pointer, width, height)
+  const hits: (EdgeHit & { candidate: ViewerEdgeCandidate })[] = []
+  for (const { candidate, bodyKey, bounds } of candidates) {
+    if (!visibleBodyKeys.has(bodyKey) || !edgeMayHit(bounds, projection, pointer, width, height))
+      continue
+    const hit = candidateHit(candidate, context)
+    if (hit) hits.push({ candidate, ...hit })
+  }
+  hits.sort(
+    (a, b) =>
+      compareHits(a, b) || candidateKey(a.candidate).localeCompare(candidateKey(b.candidate)),
+  )
+  return hits.slice(0, 8).map(({ candidate }) => candidate)
+}
+
 /** Disposable CAD-edge registry, screen-space picking, and depth-tested highlight ownership. */
 export class EdgePresentation {
   readonly group = new Group()
@@ -152,6 +185,7 @@ export class EdgePresentation {
   readonly #callbacks: Callbacks
   #bodies = new Map<string, Body>()
   #candidates: readonly ViewerEdgeCandidate[] = []
+  #pickingCandidates: readonly PickingCandidate[] = []
   #stack: readonly ViewerEdgeCandidate[] = []
   #preselection: ViewerEdgeCandidate | null = null
   #planes: readonly Plane[] | null = null
@@ -198,6 +232,11 @@ export class EdgePresentation {
       seen.add(key)
       return true
     })
+    this.#pickingCandidates = this.#candidates.map((candidate) => ({
+      candidate,
+      bodyKey: viewerBodyKey(candidate),
+      bounds: edgePickBounds(candidate.points),
+    }))
     this.#setStack(
       this.#stack.flatMap((previous) => {
         const current = this.#candidates.find((candidate) =>
@@ -280,6 +319,7 @@ export class EdgePresentation {
     this.#selectedMaterial.dispose()
     this.#hoveredMaterial.dispose()
     this.#candidates = []
+    this.#pickingCandidates = []
     this.#bodies.clear()
     this.group.removeFromParent()
   }
@@ -313,9 +353,11 @@ export class EdgePresentation {
   #hitStack(camera: OrthographicCamera, pointer: Vector2, width: number, height: number) {
     if (this.#disposed || !this.#enabled || Math.min(width, height) <= 0) return []
     camera.updateMatrixWorld()
-    const frustum = new Frustum().setFromProjectionMatrix(
-      new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+    const viewProjection = new Matrix4().multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse,
     )
+    const frustum = new Frustum().setFromProjectionMatrix(viewProjection)
     const bodies = [...this.#bodies.values()].filter(({ surface }) => visible(surface))
     const visibleBodyKeys = new Set(bodies.map(({ source }) => viewerBodyKey(source)))
     const surfaces = bodies.map(({ surface }) => surface)
@@ -337,16 +379,6 @@ export class EdgePresentation {
         1e-7,
       ),
     }
-    const hits: (EdgeHit & { candidate: ViewerEdgeCandidate })[] = []
-    for (const candidate of this.#candidates) {
-      if (!visibleBodyKeys.has(viewerBodyKey(candidate))) continue
-      const hit = candidateHit(candidate, context)
-      if (hit) hits.push({ candidate, ...hit })
-    }
-    hits.sort(
-      (a, b) =>
-        compareHits(a, b) || candidateKey(a.candidate).localeCompare(candidateKey(b.candidate)),
-    )
-    return hits.slice(0, 8).map(({ candidate }) => candidate)
+    return candidateStack(this.#pickingCandidates, visibleBodyKeys, context, viewProjection)
   }
 }
