@@ -128,6 +128,7 @@ type ViewportMount = {
   cancelled: boolean
   viewport: GeometryViewportPort | null
   onEdgePreparationError: () => void
+  onNavigationActivityChange: (active: boolean) => void
 }
 
 export type GeometryViewportSketchContext = Readonly<{
@@ -440,6 +441,9 @@ async function initializeViewport(
 ) {
   try {
     const viewport = await createViewport(canvas, {
+      onNavigationActivityChange: (active) => {
+        if (!mount.cancelled) mount.onNavigationActivityChange(active)
+      },
       onEdgePreparationError: () => {
         if (!mount.cancelled) mount.onEdgePreparationError()
       },
@@ -906,6 +910,7 @@ function useViewportRenderer(
   translationGizmo: GeometryViewportProps["translationGizmo"],
   axialGizmoPending: boolean,
   edgeSelection: ModelEdgeViewportSelection | undefined,
+  onNavigationActivityChange: (active: boolean) => void,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<GeometryViewportPort | null>(null)
@@ -945,11 +950,13 @@ function useViewportRenderer(
     const canvas = canvasRef.current
     if (!shouldInitialize || !canvas) return
     setRendererStatus("loading")
+    onNavigationActivityChange(false)
     setEdgePreparationFailed(false)
     const mount: ViewportMount = {
       cancelled: false,
       viewport: null,
       onEdgePreparationError: () => setEdgePreparationFailed(true),
+      onNavigationActivityChange,
     }
     void initializeViewport(
       canvas,
@@ -1022,6 +1029,7 @@ function useViewportRenderer(
     modelEdges.onSelectionChange,
     modelEdges.synchronize,
     shouldInitialize,
+    onNavigationActivityChange,
   ])
 
   useViewportModelSynchronization(
@@ -1117,6 +1125,13 @@ function useProjectThumbnail(
   enabled = true,
 ) {
   const retryCountRef = useRef(new Map<string, number>())
+  const cancelRef = useRef<(() => void) | null>(null)
+  const [navigation, setNavigation] = useState({ active: false })
+  const onNavigationActivityChange = useCallback((active: boolean) => {
+    if (active) cancelRef.current?.()
+    // Retain a completed burst even when start/end updates share one React commit.
+    setNavigation({ active })
+  }, [])
   const [retryAttempt, requestRetry] = useState(0)
 
   useEffect(() => {
@@ -1124,7 +1139,14 @@ function useProjectThumbnail(
     let retryTimer: number | undefined
     const abort = new AbortController()
     const snapshot = controller.report?.snapshot
-    if (!enabled || controller.status !== "ready" || !snapshot || meshes.length === 0) return
+    if (
+      !enabled ||
+      navigation.active ||
+      controller.status !== "ready" ||
+      !snapshot ||
+      meshes.length === 0
+    )
+      return
     const revisionKey = `${snapshot.id}:${snapshot.revision}`
     if (completedProjectThumbnails.has(snapshot)) return
 
@@ -1156,13 +1178,19 @@ function useProjectThumbnail(
         .catch(retry)
     }, 250)
 
-    return () => {
+    const cancel = () => {
       cancelled = true
       abort.abort()
       window.clearTimeout(thumbnailTimer)
       window.clearTimeout(retryTimer)
     }
-  }, [controller.report?.snapshot, controller.status, enabled, meshes, retryAttempt])
+    cancelRef.current = cancel
+    return () => {
+      cancel()
+      if (cancelRef.current === cancel) cancelRef.current = null
+    }
+  }, [controller.report?.snapshot, controller.status, enabled, meshes, navigation, retryAttempt])
+  return onNavigationActivityChange
 }
 
 function ViewportMessage({
@@ -2058,6 +2086,7 @@ function ordinaryModelEdgeViewportSelection(props: GeometryViewportProps, taskPi
 function useGeometryViewportInteraction(
   props: GeometryViewportProps,
   scene: ReturnType<typeof useGeometryViewportScene>,
+  onNavigationActivityChange: (active: boolean) => void,
 ) {
   const {
     controller,
@@ -2118,6 +2147,7 @@ function useGeometryViewportInteraction(
     props.translationGizmo,
     props.axialGizmoPending ?? false,
     edgeSelection,
+    onNavigationActivityChange,
   )
   useGeometryViewportDecorations(viewportRef, props, printPresentation)
   const supportFaceSelection = useSupportFaceSelection(
@@ -2157,8 +2187,12 @@ function viewportHighlightIdentity(scene: ReturnType<typeof useGeometryViewportS
 function useGeometryViewportModel(props: GeometryViewportProps) {
   const t = useTranslations("app.shell.viewport")
   const scene = useGeometryViewportScene(props)
-  const interaction = useGeometryViewportInteraction(props, scene)
-  useProjectThumbnail(props.controller, scene.allCommittedMeshes, !props.readOnlyPresentation)
+  const onNavigationActivityChange = useProjectThumbnail(
+    props.controller,
+    scene.allCommittedMeshes,
+    !props.readOnlyPresentation,
+  )
+  const interaction = useGeometryViewportInteraction(props, scene, onNavigationActivityChange)
   useClearInvalidSelection(scene.meshes, props.selection, props.onSelectionChange)
   useSketchProjectionSynchronization(interaction.viewportRef, props.sketchContext)
   useSketchNavigationSynchronization(interaction.viewportRef, props.sketchContext)

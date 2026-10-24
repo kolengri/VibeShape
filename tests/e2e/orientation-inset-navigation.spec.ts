@@ -12,11 +12,6 @@ type Frame = Readonly<{
 type FixtureCanvas = {
   style: { cssText: string }
   setAttribute(name: string, value: string): void
-  addEventListener(
-    type: string,
-    listener: (event: { pointerId: number }) => void,
-    capture: boolean,
-  ): void
   dispatchEvent(event: unknown): void
   remove(): void
 }
@@ -36,7 +31,10 @@ type FixtureViewport = {
   ): boolean
   dispose(): void
 }
+type FixturePointerObserver = (event: { pointerId: number }) => void
 type FixtureBrowser = {
+  addEventListener(type: "pointerdown", listener: FixturePointerObserver, capture: boolean): void
+  removeEventListener(type: "pointerdown", listener: FixturePointerObserver, capture: boolean): void
   requestAnimationFrame(callback: () => void): number
   document: {
     createElement(tag: "canvas"): FixtureCanvas
@@ -49,7 +47,9 @@ type FixtureBrowser = {
     frame: Frame
     projection: Projection | null
     selections: number
+    navigation: boolean[]
     pointerId: number
+    stopObservingPointer: () => void
   }
 }
 
@@ -122,14 +122,14 @@ async function createNavigationFixture(page: Page, cube = false) {
       canvas.setAttribute("data-testid", "orientation-navigation-fixture")
       canvas.style.cssText = "position:fixed;left:0;top:0;width:640px;height:480px;z-index:99999"
       browser.document.body.append(canvas)
-      canvas.addEventListener(
-        "pointerdown",
-        (event) => {
-          browser.orientationFixture.pointerId = event.pointerId
-        },
-        true,
-      )
+      const observePointer: FixturePointerObserver = (event) => {
+        browser.orientationFixture.pointerId = event.pointerId
+      }
+      // Observe before the inset claims the gesture at window capture.
+      browser.addEventListener("pointerdown", observePointer, true)
+      const navigation: boolean[] = []
       const viewport = viewer.createGeometryViewport(canvas, {
+        onNavigationActivityChange: (active: boolean) => navigation.push(active),
         onSelectionChange: () => {
           browser.orientationFixture.selections += 1
         },
@@ -146,7 +146,10 @@ async function createNavigationFixture(page: Page, cube = false) {
         frame,
         projection: null,
         selections: 0,
+        navigation,
         pointerId: 0,
+        stopObservingPointer: () =>
+          browser.removeEventListener("pointerdown", observePointer, true),
       }
       viewport.setGroundGrid(false)
       viewport.setOriginPlaneVisibility({ xy: false, xz: false, yz: false })
@@ -208,6 +211,7 @@ async function modelPointProjections(page: Page) {
 async function disposeNavigationFixture(page: Page) {
   await page.evaluate(() => {
     const state = (globalThis as unknown as FixtureBrowser).orientationFixture
+    state.stopObservingPointer()
     state.viewport.dispose()
     state.canvas.remove()
   })
@@ -332,6 +336,33 @@ async function assertMovedCursorZoomResponse(page: Page, before: NavigationRespo
     expect(delta(after)).toBeCloseTo(delta(before), 9)
   }
 }
+
+test("reports held camera and inset gestures until navigation becomes quiet", async ({ page }) => {
+  await createNavigationFixture(page)
+  const activity = () =>
+    page.evaluate(
+      () => (globalThis as unknown as FixtureBrowser).orientationFixture.navigation.at(-1) ?? false,
+    )
+  try {
+    await expect.poll(activity).toBe(false)
+    for (const point of [
+      { x: 320, y: 240 },
+      { x: 48, y: 432 },
+    ]) {
+      await page.mouse.move(point.x, point.y)
+      await page.mouse.down()
+      await expect.poll(activity).toBe(true)
+      // Exceed the quiet interval while holding a motionless gesture.
+      await page.waitForTimeout(350)
+      expect(await activity()).toBe(true)
+      await page.mouse.move(point.x + 30, point.y - 15, { steps: 3 })
+      await page.mouse.up()
+      await expect.poll(activity).toBe(false)
+    }
+  } finally {
+    await disposeNavigationFixture(page)
+  }
+})
 
 test("orbits from the orientation inset, preserves framing, and restores navigation after cancellation", async ({
   page,

@@ -10,6 +10,7 @@ type OrientationInsetInteractionOptions = Readonly<{
   navigationEnabled: () => boolean
   setNavigationEnabled: (enabled: boolean) => void
   onStart: () => void
+  onEnd?: () => void
   onNavigationStart: () => void
   rotate: (dx: number, dy: number) => void
   axisAt: (point: InsetPoint) => OrientationMarkerAxis | null
@@ -157,6 +158,7 @@ export class OrientationInsetInteraction {
     const { canvas } = this.#options
     this.#options.setNavigationEnabled(gesture.navigationEnabled)
     canvas.style.cursor = gesture.cursor
+    this.#options.onEnd?.()
     if (canvas.hasPointerCapture(gesture.pointerId)) canvas.releasePointerCapture(gesture.pointerId)
   }
 

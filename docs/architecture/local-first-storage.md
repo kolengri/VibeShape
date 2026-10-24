@@ -256,7 +256,10 @@ type, PNG signature, dimensions, and chunk boundaries; the renderer-owned restri
 remains readable for older records. Opening a project generates its preview at the current revision,
 without a semantic event or storage migration. Successful generation is deduplicated by retained
 snapshot identity across editor remounts; a new revision or reopened runtime can generate a fresh
-preview. Stale asynchronous renders are discarded; rendering or
+preview. Generation waits through held camera or orientation-inset gestures, then 200 ms of
+camera inactivity and the existing 250 ms thumbnail debounce. Navigation immediately aborts
+pending preparation; only the latest settled revision can publish. Work already executing
+synchronously cannot be interrupted. Stale asynchronous renders are discarded; rendering or
 preview persistence failures remain best effort and cannot block the authoritative viewport. Catalog
 count and aggregate-byte limits still apply. Model-preview MCP images retain their existing contract.
 

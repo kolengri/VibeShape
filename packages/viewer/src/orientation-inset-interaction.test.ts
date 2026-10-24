@@ -48,6 +48,7 @@ function setup({
   const activate = mock((_axis: OrientationMarkerAxis) => {})
   const axisAt = mock(pickAxis)
   const start = mock(() => {})
+  const end = mock(() => {})
   const navigationStart = mock(() => {})
   const interaction = new OrientationInsetInteraction({
     canvas: canvas as unknown as HTMLCanvasElement,
@@ -58,6 +59,7 @@ function setup({
       navigation.enabled = value
     },
     onStart: start,
+    onEnd: end,
     onNavigationStart: navigationStart,
     rotate,
     axisAt,
@@ -80,6 +82,7 @@ function setup({
     activate,
     start,
     navigationStart,
+    end,
     interaction,
     input,
     setInputElement: (element: EventTarget | null) => {
@@ -283,8 +286,10 @@ describe("orientation inset navigation", () => {
           else state.window.dispatchEvent(pointer(end, 248, 326))
           expect(state.navigation.enabled).toBe(enabled)
           expect(state.captures.size).toBe(0)
+          expect(state.end).toHaveBeenCalledTimes(1)
           state.window.dispatchEvent(pointer("pointerup", 248, 326))
           expect(state.activate).not.toHaveBeenCalled()
+          expect(state.end).toHaveBeenCalledTimes(1)
           state.input(pointer("pointerdown", 248, 326))
           state.window.dispatchEvent(pointer("pointerup", 248, 326))
           expect(state.activate).toHaveBeenCalledTimes(1)
@@ -368,6 +373,7 @@ describe("orientation inset navigation", () => {
     const state = setup()
     state.input(pointer("pointerdown", 248, 326))
     state.interaction.dispose()
+    expect(state.end).toHaveBeenCalledTimes(1)
     expect(state.navigation.enabled).toBe(true)
     expect(state.captures.size).toBe(0)
     const down = pointer("pointerdown", 248, 326)

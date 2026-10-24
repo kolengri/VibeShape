@@ -1,0 +1,61 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { vi } from "../../../tests/unit/support/bun-test"
+import { NavigationActivity } from "./navigation-activity"
+
+describe("navigation activity", () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it("stays active through a stationary held gesture and coalesces camera changes", () => {
+    const change = mock((_active: boolean) => {})
+    const activity = new NavigationActivity(change)
+    activity.begin("controls")
+    activity.pulse()
+    activity.pulse()
+    vi.advanceTimersByTime(1000)
+    expect(change.mock.calls).toEqual([[true]])
+    activity.end("controls")
+    vi.advanceTimersByTime(199)
+    expect(change.mock.calls).toEqual([[true]])
+    activity.pulse()
+    vi.advanceTimersByTime(199)
+    expect(change.mock.calls).toEqual([[true]])
+    vi.advanceTimersByTime(1)
+    expect(change.mock.calls).toEqual([[true], [false]])
+    activity.dispose()
+  })
+
+  it("retains activity until every navigation owner releases it", () => {
+    const change = mock((_active: boolean) => {})
+    const activity = new NavigationActivity(change)
+    activity.begin("controls")
+    activity.begin("orientation")
+    activity.end("controls")
+    vi.advanceTimersByTime(1000)
+    expect(change.mock.calls).toEqual([[true]])
+    activity.end("orientation")
+    vi.advanceTimersByTime(200)
+    expect(change.mock.calls).toEqual([[true], [false]])
+    activity.dispose()
+  })
+
+  it("extends the quiet interval for wheel bursts without duplicate transitions", () => {
+    const change = mock((_active: boolean) => {})
+    const activity = new NavigationActivity(change)
+    activity.pulse()
+    vi.advanceTimersByTime(150)
+    activity.pulse()
+    vi.advanceTimersByTime(150)
+    activity.pulse()
+    vi.advanceTimersByTime(200)
+    expect(change.mock.calls).toEqual([[true], [false]])
+    activity.pulse()
+    expect(change.mock.calls).toEqual([[true], [false], [true]])
+    activity.dispose()
+    activity.end("controls")
+    activity.begin("orientation")
+    activity.pulse()
+    vi.advanceTimersByTime(1000)
+    expect(change.mock.calls).toEqual([[true], [false], [true]])
+  })
+})
