@@ -133,7 +133,9 @@ function TaskSlot({
       resizeLabel={t("taskResize")}
       onWidthChange={interactive && !compact ? resize : undefined}
       onResetWidth={reset}
-      maxHeight={compact ? "min(50svh, 32rem)" : undefined}
+      maxHeight={
+        compact ? "clamp(12rem, calc(var(--viewport-grid-available-height) / 2), 32rem)" : undefined
+      }
     >
       <div
         className="workspace-panel workspace-panel--task"

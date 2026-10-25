@@ -12,7 +12,7 @@ import type { ActivePartDesignTool } from "../part-design/part-design-tool"
 import {
   type EdgeTreatmentCandidate,
   edgeTreatmentCandidates,
-  resolveTreatmentReference,
+  prepareTreatmentReferenceResolution,
 } from "./edge-treatment-candidates"
 import type {
   EdgeTreatmentPick,
@@ -51,9 +51,10 @@ function selectedCandidateIds(
     ...(context.directionOverrides ?? []),
     ...context.references,
   ]
+  const resolution = prepareTreatmentReferenceResolution(candidates)
   return new Set(
     references.flatMap((reference) => {
-      const resolved = resolveTreatmentReference(reference, candidates)
+      const resolved = resolution.resolve(reference)
       return resolved.status === "resolved" ? [resolved.candidate.id] : []
     }),
   )
@@ -245,15 +246,15 @@ export function useEdgeTreatmentPicking(
   )
   const context = active && state?.key === key ? state.context : null
   const rebuild = controller.report?.rebuild
+  const contextOptions = context?.options
+  const targetFeatureId = context?.targetFeatureId
   const candidates = useMemo(() => {
-    if (!context || !rebuild?.ok) return []
-    const options =
-      context.options ??
-      (context.targetFeatureId ? [{ id: context.targetFeatureId, label: "" }] : [])
+    if (!rebuild?.ok) return []
+    const options = contextOptions ?? (targetFeatureId ? [{ id: targetFeatureId, label: "" }] : [])
     return edgeTreatmentCandidates(options, rebuild.response.geometry, (kind, ordinal) =>
       t(kind === "edge" ? "edgeLabel" : "faceLabel", { ordinal }),
     )
-  }, [context, rebuild, t])
+  }, [contextOptions, targetFeatureId, rebuild, t])
   const viewportContext = useMemo<GeometryViewportSketchContext | undefined>(() => {
     if (
       context?.scope !== "selected" ||

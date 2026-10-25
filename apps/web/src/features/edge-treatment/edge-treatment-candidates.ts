@@ -171,35 +171,79 @@ export function sameTreatmentReference(
   return canonicalJson(left.signature) === canonicalJson(right.signature)
 }
 
+type TreatmentReference = EdgeTopoRef | BodyTopoRef
+type TreatmentReferenceResolution =
+  | { status: "resolved"; candidate: EdgeTreatmentCandidate }
+  | { status: "missing" | "ambiguous" }
+
+/** Own one immutable catalogue per invocation or mounted owner; validate only queried scopes. */
+export function prepareTreatmentReferenceResolution(candidates: readonly EdgeTreatmentCandidate[]) {
+  const scopes = new Map<
+    string,
+    {
+      resolve: ReturnType<typeof createTopologyReferenceResolver>
+      byId: ReadonlyMap<string, EdgeTreatmentCandidate>
+    }
+  >()
+  const resolve = (
+    reference: TreatmentReference,
+    optionId?: string,
+  ): TreatmentReferenceResolution => {
+    const role = reference.schemaVersion === 1 ? reference.outputRole : "result"
+    const key = JSON.stringify([optionId ?? null, reference.featureId, reference.kind, role])
+    let scope = scopes.get(key)
+    if (!scope) {
+      // Keep every same-body peer, including unresolved ones, in the confidence comparison.
+      const scoped = candidates.filter(
+        (entry) =>
+          (optionId === undefined || entry.optionId === optionId) &&
+          entry.reference.featureId === reference.featureId &&
+          entry.reference.kind === reference.kind &&
+          (entry.reference.schemaVersion === 1 ? entry.reference.outputRole : "result") === role,
+      )
+      const resolve = createTopologyReferenceResolver(scoped.map(({ candidate }) => candidate))
+      const byId = new Map<string, EdgeTreatmentCandidate>()
+      for (const entry of scoped) {
+        if (!byId.has(entry.candidateId)) byId.set(entry.candidateId, entry)
+      }
+      scope = { resolve, byId }
+      scopes.set(key, scope)
+    }
+    const { outputRole: _role, ...legacy } = { outputRole: "result", ...reference }
+    const result = scope.resolve(topoRefSchema.parse({ ...legacy, schemaVersion: 0 }))
+    if (result.status !== "resolved") return { status: result.status }
+    const candidate = scope.byId.get(result.candidateId)
+    return candidate ? { status: "resolved", candidate } : { status: "missing" }
+  }
+  return {
+    resolve,
+    matchesCandidate(reference: TreatmentReference, candidate: EdgeTreatmentCandidate) {
+      if (reference.kind !== candidate.reference.kind) return false
+      const resolved = resolve(reference)
+      return resolved.status === "resolved" && resolved.candidate.id === candidate.id
+    },
+  }
+}
+
+export type PreparedTreatmentReferenceResolution = ReturnType<
+  typeof prepareTreatmentReferenceResolution
+>
+
 /** Resolve against the whole exact body, so neighboring anonymous edges retain their margin. */
 export function resolveTreatmentReference(
-  reference: EdgeTopoRef | BodyTopoRef,
+  reference: TreatmentReference,
   candidates: readonly EdgeTreatmentCandidate[],
-): { status: "resolved"; candidate: EdgeTreatmentCandidate } | { status: "missing" | "ambiguous" } {
-  const role = reference.schemaVersion === 1 ? reference.outputRole : "result"
-  const scoped = candidates.filter(
-    ({ reference: candidate }) =>
-      candidate.featureId === reference.featureId &&
-      candidate.kind === reference.kind &&
-      (candidate.schemaVersion === 1 ? candidate.outputRole : "result") === role,
-  )
-  const resolve = createTopologyReferenceResolver(scoped.map(({ candidate }) => candidate))
-  const { outputRole: _role, ...legacy } = { outputRole: "result", ...reference }
-  const result = resolve(topoRefSchema.parse({ ...legacy, schemaVersion: 0 }))
-  if (result.status !== "resolved") return { status: result.status }
-  const candidate = scoped.find(({ candidateId }) => candidateId === result.candidateId)
-  return candidate ? { status: "resolved", candidate } : { status: "missing" }
+) {
+  return prepareTreatmentReferenceResolution(candidates).resolve(reference)
 }
 
 /** Compare stored intent with a current candidate only after resolving its complete catalogue. */
 export function treatmentReferenceMatchesCandidate(
-  reference: EdgeTopoRef | BodyTopoRef,
+  reference: TreatmentReference,
   candidate: EdgeTreatmentCandidate,
   candidates: readonly EdgeTreatmentCandidate[],
 ) {
-  if (reference.kind !== candidate.reference.kind) return false
-  const resolved = resolveTreatmentReference(reference, candidates)
-  return resolved.status === "resolved" && resolved.candidate.id === candidate.id
+  return prepareTreatmentReferenceResolution(candidates).matchesCandidate(reference, candidate)
 }
 
 /** Toggle the resolved current edge, preserving other unresolved authored references for repair. */

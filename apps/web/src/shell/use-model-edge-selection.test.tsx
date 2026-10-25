@@ -10,7 +10,10 @@ import {
   option,
   sourceId,
 } from "../features/edge-treatment/edge-treatment.test-fixtures"
+import type { EdgeTreatmentGeometry } from "../features/edge-treatment/edge-treatment-candidates"
+import { edgeTreatmentCandidates } from "../features/edge-treatment/edge-treatment-candidates"
 import type { EdgeTreatmentTargetOption } from "../features/edge-treatment/edge-treatment-options"
+import type { ModelEdgeSelection } from "../features/part-design/model-edge-selection"
 import { i18n } from "../i18n"
 import { ApplicationNoticesProvider } from "./application-notices"
 
@@ -151,4 +154,75 @@ it("refuses ambiguous ordinary pointer picks through the same repair feedback", 
   act(() => pointer?.onSelect(edge))
   expect(onToggle).not.toHaveBeenCalled()
   expect((await screen.findByRole("alert")).textContent).toContain("This edge is ambiguous.")
+})
+
+it("retains invisible same-body peers for selected-edge confidence and refreshes on a new rebuild", () => {
+  const first = candidate("edge")
+  const peer = { ...first, candidateId: "peer" }
+  options = [option(sourceId, "result", "Body", [first])]
+  const initial = geometry(options)
+  const reference = edgeTreatmentCandidates(options, initial, () => "edge", "edge")[0]?.reference
+  if (reference?.schemaVersion !== 1 || reference.kind !== "edge")
+    throw new Error("The selection fixture requires a body edge.")
+  const selected: ModelEdgeSelection = {
+    targetBody: { schemaVersion: 0, featureId: sourceId, outputRole: "result" },
+    edges: [{ ...reference, kind: "edge" }],
+  }
+  const hidden: readonly string[] = []
+  const onChange = mock()
+  const onToggle = mock()
+  const controller = (models: readonly EdgeTreatmentGeometry[], generation: number) =>
+    ({
+      report: {
+        mode: "read-write",
+        snapshot: { id: documentId, revision: 3 },
+        rebuild: { ok: true, response: { geometry: models, generation } },
+      },
+    }) as unknown as DocumentControllerState
+  const view = renderHook(
+    ({ source }) =>
+      useModelEdgeSelection({
+        controller: source,
+        enabled: true,
+        selected,
+        hiddenFeatureIds: hidden,
+        visibility: undefined,
+        onChange,
+        onToggle,
+      }),
+    {
+      initialProps: { source: controller(initial, 1) },
+      wrapper: ({ children }) => (
+        <I18nProvider i18n={i18n} initialLocale="en">
+          <ApplicationNoticesProvider>{children}</ApplicationNoticesProvider>
+        </I18nProvider>
+      ),
+    },
+  )
+  expect(view.result.current?.edgeSelection.candidates).toHaveLength(1)
+  expect(view.result.current?.edgeSelection.candidates[0]?.selected).toBe(true)
+  expect(onChange).not.toHaveBeenCalled()
+  options = [option(sourceId, "result", "Body", [first, peer])]
+  const replacement = geometry(options).map((model) => ({
+    ...model,
+    geometry: {
+      ...model.geometry,
+      bodies: model.geometry.bodies?.map((body) => ({
+        ...body,
+        topologyCandidates: body.topologyCandidates.map((entry) => {
+          if (entry.candidateId !== "peer") return entry
+          const { edgePolyline: _polyline, ...withoutDisplay } = entry
+          return withoutDisplay
+        }),
+      })),
+    },
+  }))
+  view.rerender({ source: controller(replacement, 2) })
+  expect(view.result.current?.edgeSelection.candidates).toHaveLength(1)
+  expect(view.result.current?.edgeSelection.candidates[0]?.selected).toBe(false)
+  expect(onChange).toHaveBeenCalledWith(null)
+  const picked = view.result.current?.edgeSelection.candidates[0]
+  if (!picked) throw new Error("The first edge remains displayed for explicit repair.")
+  act(() => view.result.current?.edgeSelection.onSelect(picked))
+  expect(onToggle).not.toHaveBeenCalled()
 })

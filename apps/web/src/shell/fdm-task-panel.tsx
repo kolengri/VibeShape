@@ -7,7 +7,7 @@ import { createBrowserFeatureId } from "../document/document-controller"
 import { FdmForm } from "../features/fdm/fdm-form"
 import type { FdmToolKind } from "../features/fdm/fdm-form-fields"
 import type { FdmFormMode } from "../features/fdm/fdm-form-model"
-import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
+import { useExactSolidBodyOptions } from "../features/part-design/exact-body-options"
 import { useReferenceFrameOptions } from "../features/reference-geometry/use-reference-frame-options"
 import type { BodyFeatureTaskPanelProps } from "./body-feature-task-mode"
 import { featureTaskFormProps } from "./feature-task-form-props"
@@ -62,14 +62,16 @@ export function FdmTaskPanel(
         ? { kind: "edit", feature: editing }
         : null
   const frameOptions = useReferenceFrameOptions(report.snapshot, report.rebuild, editing?.id)
-  if (!mode) return null
-  const options = exactSolidBodyOptions(
+  const options = useExactSolidBodyOptions(
     report.snapshot,
     report.rebuild,
     editing?.id,
     props.parts,
     tree("unnamedFeature"),
+    undefined,
+    mode !== null,
   )
+  if (!mode) return null
   return (
     <TaskPanelSurface
       aria-label={task("ariaLabel")}

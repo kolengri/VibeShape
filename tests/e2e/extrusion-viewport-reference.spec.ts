@@ -63,12 +63,7 @@ async function clickVisibleReference(page: Page, field: Locator) {
   const viewport = page.getByRole("region", { name: "3D viewport" })
   const canvas = viewport.locator("canvas")
   const bounds = await canvas.boundingBox()
-  const center = await page.getByTestId("workspace-center").boundingBox()
-  if (!bounds || !center) throw new Error("The reference viewport must be measurable.")
-  const left = Math.max(bounds.x, center.x)
-  const top = Math.max(bounds.y, center.y)
-  const right = Math.min(bounds.x + bounds.width, center.x + center.width)
-  const bottom = Math.min(bounds.y + bounds.height, center.y + center.height)
+  if (!bounds) throw new Error("The reference viewport must be measurable.")
   for (const [x, y] of [
     [0.5, 0.5],
     [0.4, 0.5],
@@ -77,7 +72,13 @@ async function clickVisibleReference(page: Page, field: Locator) {
     [0.5, 0.6],
   ]) {
     if (x === undefined || y === undefined) throw new Error("Missing reference sample.")
-    await page.mouse.click(left + (right - left) * x, top + (bottom - top) * y)
+    const position = { x: bounds.x + bounds.width * x, y: bounds.y + bounds.height * y }
+    const receivesPointer = await canvas.evaluate(
+      (element, point) => element.ownerDocument.elementFromPoint(point.x, point.y) === element,
+      position,
+    )
+    if (!receivesPointer) continue
+    await page.mouse.click(position.x, position.y)
     if ((await field.getAttribute("aria-pressed")) === "false") return
   }
   throw new Error("The armed reference field did not accept a visible model face.")

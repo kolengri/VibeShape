@@ -11,6 +11,7 @@ import {
   selectOriginPlaneInViewport,
   selectSketchEntities,
   selectSketchTool,
+  unobscuredDrawingBounds,
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
@@ -2033,11 +2034,10 @@ test.describe("full sketch editor", () => {
 
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const sketchSurface = page.locator("[data-sketch-shortcut-surface]")
-    const sketchSurfaceBounds = await sketchSurface.boundingBox()
-    if (!sketchSurfaceBounds) throw new Error("The sketch orbit surface is not measurable.")
+    const sketchSurfaceBounds = await unobscuredDrawingBounds(page, sketchSurface)
     await page.mouse.move(
       sketchSurfaceBounds.x + sketchSurfaceBounds.width / 4,
-      sketchSurfaceBounds.y + 16,
+      sketchSurfaceBounds.y + sketchSurfaceBounds.height / 2,
     )
     await page.keyboard.press("s")
 
@@ -2080,8 +2080,7 @@ test.describe("full sketch editor", () => {
     )
     expect(
       await taskPanel
-        .locator(":scope > div")
-        .last()
+        .locator("[data-slot='task-panel-content']")
         .evaluate(
           (element) => element.ownerDocument.defaultView?.getComputedStyle(element).overflowY,
         ),
@@ -3849,6 +3848,31 @@ test.describe("full sketch editor", () => {
       .click()
     await selectSketchEntities(page, drawing, "point", [0, 1])
     await addDimension(page, "Horizontal distance", "#width")
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    // Expose the same corners after the width constraint shrinks them beneath the model tree.
+    const free = await unobscuredDrawingBounds(page, drawing)
+    const panStart = { x: free.x + free.width / 2, y: free.y + free.height * 0.8 }
+    await page.mouse.move(panStart.x, panStart.y)
+    await page.mouse.down({ button: "middle" })
+    await page.mouse.move(panStart.x + free.width / 4, panStart.y, { steps: 8 })
+    await page.mouse.up({ button: "middle" })
+    for (const index of [1, 2]) {
+      await expect
+        .poll(() =>
+          drawing
+            .locator('[data-sketch-entity-type="point"]')
+            .nth(index)
+            .evaluate((element) => {
+              const bounds = element.getBoundingClientRect()
+              const hit = element.ownerDocument.elementFromPoint(
+                bounds.x + bounds.width / 2,
+                bounds.y + bounds.height / 2,
+              )
+              return hit !== null && element.closest("svg")?.contains(hit)
+            }),
+        )
+        .toBe(true)
+    }
     await selectSketchEntities(page, drawing, "point", [1, 2])
     await addDimension(page, "Vertical distance", "20 mm")
 

@@ -27,10 +27,10 @@ import { parsePrimitiveLengthExpression } from "../part-design/primitive-form"
 import {
   type EdgeTreatmentCandidate,
   legacyEdgeReference,
-  resolveTreatmentReference,
+  type PreparedTreatmentReferenceResolution,
+  prepareTreatmentReferenceResolution,
   sameTreatmentReference,
   toggleSelectedEdgeReference,
-  treatmentReferenceMatchesCandidate,
 } from "./edge-treatment-candidates"
 import type {
   EdgeTreatmentFormCopy,
@@ -114,6 +114,7 @@ export function promoteTreatmentTargets(
   candidates: readonly EdgeTreatmentCandidate[],
 ): TreatmentValues {
   const targets = [...values.targets]
+  const resolution = prepareTreatmentReferenceResolution(candidates)
   for (const reference of values.references) {
     if (
       targets.some(
@@ -121,7 +122,7 @@ export function promoteTreatmentTargets(
       )
     )
       continue
-    const target = projectedEdgeTarget(reference, values.targetFeatureId, candidates)
+    const target = projectedEdgeTarget(reference, values.targetFeatureId, resolution)
     if (target) targets.push(target)
   }
   return { ...values, targets }
@@ -130,12 +131,9 @@ export function promoteTreatmentTargets(
 function projectedEdgeTarget(
   reference: EdgeTopoRef,
   optionId: string,
-  candidates: readonly EdgeTreatmentCandidate[],
+  resolution: PreparedTreatmentReferenceResolution,
 ): ChamferTarget | null {
-  const resolved = resolveTreatmentReference(
-    reference,
-    candidates.filter((candidate) => candidate.optionId === optionId),
-  )
+  const resolved = resolution.resolve(reference, optionId)
   if (resolved.status !== "resolved") return null
   const candidate = resolved.candidate
   if (
@@ -154,14 +152,14 @@ export function toggleTreatmentCandidate(
   values: TreatmentValues,
   picked: EdgeTreatmentCandidate,
   candidates: readonly EdgeTreatmentCandidate[],
+  resolution = prepareTreatmentReferenceResolution(candidates),
 ): TreatmentValues {
   const next =
     values.targetFeatureId === picked.optionId
       ? values
       : clearTreatmentSelection(values, picked.optionId)
   const reference = picked.reference
-  const matches = (stored: EdgeTopoRef | BodyTopoRef) =>
-    treatmentReferenceMatchesCandidate(stored, picked, candidates)
+  const matches = (stored: EdgeTopoRef | BodyTopoRef) => resolution.matchesCandidate(stored, picked)
   const selected =
     next.targets.some((target) => matches(target.kind === "edge" ? target.edge : target.face)) ||
     next.references.some(matches)
@@ -201,10 +199,10 @@ export function toggleTreatmentCandidate(
 
 function referenceIssue(
   reference: EdgeTopoRef | BodyTopoRef,
-  candidates: readonly EdgeTreatmentCandidate[],
+  resolution: PreparedTreatmentReferenceResolution,
   copy: TreatmentValidationCopy,
 ) {
-  const resolved = resolveTreatmentReference(reference, candidates)
+  const resolved = resolution.resolve(reference)
   if (resolved.status !== "resolved")
     return resolved.status === "ambiguous" ? copy.ambiguousEdge : copy.missingEdge
   const match = resolved.candidate
@@ -238,14 +236,14 @@ function circularOffsetReference(reference: EdgeTopoRef | BodyTopoRef, values: T
 function selectionIssue(
   values: TreatmentValues,
   v3: boolean,
-  candidates: readonly EdgeTreatmentCandidate[],
+  resolution: PreparedTreatmentReferenceResolution,
   copy: TreatmentValidationCopy,
 ) {
   if (values.scope === "all" && !v3) return undefined
   const references = treatmentReferences(values, v3)
   if (!references.length || references.length > 256) return copy.missingEdge
   for (const reference of references) {
-    const issue = selectedReferenceIssue(reference, v3, candidates, copy, values)
+    const issue = selectedReferenceIssue(reference, v3, resolution, copy, values)
     if (issue) return issue
   }
   return undefined
@@ -254,11 +252,11 @@ function selectionIssue(
 function selectedReferenceIssue(
   reference: EdgeTopoRef | BodyTopoRef,
   v3: boolean,
-  candidates: readonly EdgeTreatmentCandidate[],
+  resolution: PreparedTreatmentReferenceResolution,
   copy: TreatmentValidationCopy,
   values: TreatmentValues,
 ) {
-  const issue = referenceIssue(reference, candidates, copy)
+  const issue = referenceIssue(reference, resolution, copy)
   if (issue) return issue
   if (!v3) return undefined
   if (reference.schemaVersion !== 1) return copy.missingCatalogue
@@ -269,11 +267,11 @@ function selectedReferenceIssue(
 
 function planarCandidateIssue(
   reference: EdgeTopoRef | BodyTopoRef,
-  candidates: readonly EdgeTreatmentCandidate[],
+  resolution: PreparedTreatmentReferenceResolution,
   copy: TreatmentValidationCopy,
 ) {
   return (
-    referenceIssue(reference, candidates, copy) ??
+    referenceIssue(reference, resolution, copy) ??
     (planarReference(reference) ? undefined : copy.planarOnly)
   )
 }
@@ -281,25 +279,25 @@ function planarCandidateIssue(
 function sideFaceIssue(
   target: ChamferTarget,
   mode: TreatmentValues["mode"],
-  candidates: readonly EdgeTreatmentCandidate[],
+  resolution: PreparedTreatmentReferenceResolution,
   copy: TreatmentValidationCopy,
 ) {
   if (target.kind !== "edge") return undefined
-  if (target.sideFace) return planarCandidateIssue(target.sideFace, candidates, copy)
+  if (target.sideFace) return planarCandidateIssue(target.sideFace, resolution, copy)
   return mode === "equal-distance" ? undefined : copy.missingSideFace
 }
 
 function sideIssue(
   values: TreatmentValues,
-  candidates: readonly EdgeTreatmentCandidate[],
+  resolution: PreparedTreatmentReferenceResolution,
   copy: TreatmentValidationCopy,
 ) {
   for (const target of values.targets) {
-    const issue = sideFaceIssue(target, values.mode, candidates, copy)
+    const issue = sideFaceIssue(target, values.mode, resolution, copy)
     if (issue) return issue
   }
   for (const reference of values.directionOverrides) {
-    const issue = planarCandidateIssue(reference, candidates, copy)
+    const issue = planarCandidateIssue(reference, resolution, copy)
     if (issue) return issue
   }
   return undefined
@@ -332,6 +330,9 @@ type TreatmentContext = {
   unit: DocumentDisplayUnits["length"]
   copy: TreatmentValidationCopy
 }
+type ResolvedTreatmentContext = TreatmentContext & {
+  resolution: PreparedTreatmentReferenceResolution
+}
 type ParametersResult = { ok: true; parameters: unknown } | { ok: false; issues: TreatmentIssues }
 
 function parseTreatmentLength(raw: string, context: TreatmentContext, v3: boolean) {
@@ -355,7 +356,7 @@ function parseTreatmentLength(raw: string, context: TreatmentContext, v3: boolea
 
 function parseTreatmentBase(
   values: TreatmentValues,
-  context: TreatmentContext,
+  context: ResolvedTreatmentContext,
   option: EdgeTreatmentTargetOption | undefined,
   v3: boolean,
 ) {
@@ -364,7 +365,7 @@ function parseTreatmentBase(
   const issues: TreatmentIssues = {}
   if (!distance.ok) issues.distance = distance.message
   if (!target.success) issues.targetFeatureId = context.copy.missingTarget
-  const selection = selectionIssue(values, v3, context.candidates, context.copy)
+  const selection = selectionIssue(values, v3, context.resolution, context.copy)
   if (selection) issues.references = selection
   if (!distance.ok || !target.success || Object.keys(issues).length)
     return { ok: false as const, issues }
@@ -389,13 +390,13 @@ function directionalQuantities(values: TreatmentValues, context: TreatmentContex
 
 function v3Parameters(
   values: TreatmentValues,
-  context: TreatmentContext,
+  context: ResolvedTreatmentContext,
   option: EdgeTreatmentTargetOption | undefined,
   distance: ReturnType<typeof chamferFeatureParametersSchema.parse>["distance"],
 ): ParametersResult {
   if (!option?.body || !option.edgeEvidence || !option.faceEvidence)
     return { ok: false, issues: { references: context.copy.missingCatalogue } }
-  const side = sideIssue(values, context.candidates, context.copy)
+  const side = sideIssue(values, context.resolution, context.copy)
   if (side) return { ok: false, issues: { references: side } }
   const quantities = directionalQuantities(values, context)
   if (!quantities.ok) return quantities
@@ -451,8 +452,8 @@ export function treatmentFeature(
   const option = fullContext.options.find(({ id }) => id === values.targetFeatureId)
   const context = {
     ...fullContext,
-    candidates: fullContext.candidates.filter(
-      ({ optionId }) => optionId === values.targetFeatureId,
+    resolution: prepareTreatmentReferenceResolution(
+      fullContext.candidates.filter(({ optionId }) => optionId === values.targetFeatureId),
     ),
   }
   const v3 = context.operation === "chamfer" && treatmentUsesV3(values, option)

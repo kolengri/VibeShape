@@ -14,7 +14,7 @@ import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ViewerSelection } from "@vibeshape/viewer"
-import { type ReactNode, useMemo, useState } from "react"
+import { type ReactNode, useCallback, useMemo, useState } from "react"
 import {
   TaskPanelContentProvider,
   TaskPanelLayout,
@@ -67,7 +67,7 @@ import {
   type BasicPrimitiveFormMode,
   type BasicPrimitiveKind,
 } from "../features/part-design/basic-primitive-form"
-import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
+import { useExactSolidBodyOptions } from "../features/part-design/exact-body-options"
 import {
   type ActivePartDesignTool,
   isBooleanFeature,
@@ -1055,40 +1055,6 @@ function createDatumPlaneFormMode(
   return activeTool.support ? { ...mode, support: activeTool.support } : mode
 }
 
-function booleanOptions(
-  report: NonNullable<DocumentControllerState["report"]>,
-  editingFeatureId: string | undefined,
-  unnamedFeature: string,
-  parts: readonly ResolvedAuthoredPart[],
-  legacyLabel: (name: string) => string,
-) {
-  return exactSolidBodyOptions(
-    report.snapshot,
-    report.rebuild,
-    editingFeatureId,
-    parts,
-    unnamedFeature,
-    legacyLabel,
-  )
-}
-
-function revolveOptions(
-  report: NonNullable<DocumentControllerState["report"]>,
-  editingFeatureId: string | undefined,
-  unnamedFeature: string,
-  parts: readonly ResolvedAuthoredPart[],
-  legacyLabel: (name: string) => string,
-) {
-  return exactSolidBodyOptions(
-    report.snapshot,
-    report.rebuild,
-    editingFeatureId,
-    parts,
-    unnamedFeature,
-    legacyLabel,
-  )
-}
-
 function canCreateFeature(controller: DocumentControllerState) {
   return (
     controller.status === "ready" &&
@@ -1364,14 +1330,17 @@ function ActiveSubtractTaskPanel({
     report,
     t("boolean.featureLabel", { number: booleanCount + 1 }),
   )
-  if (!mode) return null
-  const options = booleanOptions(
-    report,
-    mode.kind === "edit" ? mode.feature.id : undefined,
-    modelTreeT("unnamedFeature"),
+  const legacyLabel = useCallback((label: string) => t("legacyBodyLabel", { label }), [t])
+  const options = useExactSolidBodyOptions(
+    report.snapshot,
+    report.rebuild,
+    mode?.kind === "edit" ? mode.feature.id : undefined,
     parts,
-    (label) => t("legacyBodyLabel", { label }),
+    modelTreeT("unnamedFeature"),
+    legacyLabel,
+    mode !== null,
   )
+  if (!mode) return null
   return (
     <BooleanTaskPanel
       report={report}
@@ -1616,15 +1585,16 @@ function RevolveToolTaskPanel(props: ActiveTaskPanelProps) {
     props.featureProfileSelections ?? [],
   )
   const modelTreeT = useTranslations("app.shell.modelTree")
-  const options = mode
-    ? revolveOptions(
-        props.report,
-        mode.kind === "edit" ? mode.feature.id : undefined,
-        modelTreeT("unnamedFeature"),
-        props.parts,
-        (label) => taskT("legacyBodyLabel", { label }),
-      )
-    : []
+  const legacyLabel = useCallback((label: string) => taskT("legacyBodyLabel", { label }), [taskT])
+  const options = useExactSolidBodyOptions(
+    props.report.snapshot,
+    props.report.rebuild,
+    mode?.kind === "edit" ? mode.feature.id : undefined,
+    props.parts,
+    modelTreeT("unnamedFeature"),
+    legacyLabel,
+    mode !== null,
+  )
   return mode ? (
     <RevolveTaskPanel
       angleRequest={props.revolveAngleRequest}
@@ -2047,8 +2017,19 @@ function selectedExtrusionFace(props: TaskPanelProps): ExtrusionFaceSelection | 
   return { planar, canCreateSketch: planar && canCreateFeature(props.controller) }
 }
 
+const taskKindsWithoutAuthoredParts = new Set<string | undefined>([
+  undefined,
+  "surface-texture",
+  "measure",
+])
+
 function ModelTaskPanel(props: TaskPanelProps) {
   const report = props.controller.report
+  const hasActiveTask = !taskKindsWithoutAuthoredParts.has(props.activeTool?.kind)
+  const parts = useMemo(
+    () => (hasActiveTask && report ? currentAuthoredParts(props.controller) : []),
+    [props.controller.authoredSnapshot, report, hasActiveTask],
+  )
   if (props.activeTool?.kind === "surface-texture")
     return <ModelSurfaceTextureTaskPanel props={props} />
   if (props.activeTool?.kind === "measure")
@@ -2058,7 +2039,7 @@ function ModelTaskPanel(props: TaskPanelProps) {
       <ActiveTaskPanel
         selectedFace={props.selectedFace}
         authority={currentAuthoredSnapshot(props.controller)}
-        parts={currentAuthoredParts(props.controller)}
+        parts={parts}
         activeTool={props.activeTool}
         extrusionFaceSelection={selectedExtrusionFace(props)}
         onCreateSketch={props.onCreateSketch}

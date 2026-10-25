@@ -69,7 +69,7 @@ test.describe("Boolean subtraction", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
 
@@ -79,7 +79,7 @@ test.describe("Boolean subtraction", () => {
       await form.getByRole("combobox", { name: "Radius" }).fill(radius)
       await form.getByRole("combobox", { name: "Height" }).fill("40 mm")
       await form.getByRole("checkbox", { name: "Center height about placement origin" }).check()
-      await form.getByRole("button", { name: "Create cylinder" }).click()
+      await form.getByRole("button", { name: "Create cylinder", exact: true }).click()
       await expect(page.getByRole("treeitem", { name: label, exact: true })).toBeVisible()
     }
 
@@ -121,7 +121,7 @@ test.describe("Boolean subtraction", () => {
     })
     if (dark) await page.locator("html").evaluate((element) => element.classList.add("dark"))
     await expect(createForm.getByRole("checkbox", { name: "Keep tool solid" })).not.toBeChecked()
-    await createForm.getByRole("button", { name: "Subtract" }).dblclick()
+    await createForm.getByRole("button", { name: "Subtract", exact: true }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Subtract 1", exact: true })).toBeVisible()
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -179,6 +179,7 @@ test.describe("Boolean subtraction", () => {
     await expect(
       nextForm.locator('select[name="targetFeatureId"] option:not([value=""])'),
     ).toHaveText(["Cylinder 1", "Box 1"])
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
     await nextForm.getByRole("button", { name: "Cancel", exact: true }).click()
     await expect(nextForm).not.toBeVisible()
 
@@ -205,10 +206,10 @@ test.describe("Boolean subtraction", () => {
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toHaveCount(0)
     await expect(page.getByRole("treeitem", { name: "Subtract 1", exact: true })).toBeVisible()
     await expect(
-      page.locator(`[data-history-id="${savedSubtract.id}"]`).getByRole("img", {
-        name: "Missing references — open this item to select replacement inputs.",
-        exact: true,
-      }),
+      page
+        .locator(`[data-history-id="${savedSubtract.id}"]`)
+        .getByRole("alert")
+        .filter({ hasText: "Missing references — open this item to select replacement inputs." }),
     ).toBeVisible()
     const removed = (await saveProject(page)).project.snapshot
     if (removed.schemaVersion !== 5)
@@ -292,6 +293,7 @@ test.describe("Boolean subtraction", () => {
     await expect(
       compoundCut.locator('select[name="toolFeatureId"] option:not([value=""])'),
     ).toHaveText(["Box 1", "Cylinder 1"])
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 30_000 })
     await compoundCut.getByRole("button", { name: "Cancel", exact: true }).click()
     await toolbar.getByRole("button", { name: "Undo", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Compound 1", exact: true })).not.toBeVisible()

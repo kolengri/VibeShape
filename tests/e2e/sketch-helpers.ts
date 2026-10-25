@@ -95,18 +95,24 @@ export async function selectIdleOriginPlaneInViewport(page: Page, plane: "xy" | 
   throw new Error(`The ${plane.toUpperCase()} origin plane was not pickable while idle.`)
 }
 
-async function unobscuredDrawingBounds(page: Page, drawing: Locator) {
-  const [bounds, center] = await Promise.all([
-    drawing.boundingBox(),
-    page.getByTestId("workspace-center").boundingBox(),
-  ])
-  if (!bounds || !center) throw new Error("The unobscured drawing area is not visible.")
-  const x = Math.max(bounds.x, center.x)
-  const y = Math.max(bounds.y, center.y)
-  const width = Math.min(bounds.x + bounds.width, center.x + center.width) - x
-  const height = Math.min(bounds.y + bounds.height, center.y + center.height) - y
-  if (width <= 0 || height <= 0) throw new Error("The unobscured drawing area is empty.")
-  return { x, y, width, height }
+export async function unobscuredDrawingBounds(page: Page, drawing: Locator) {
+  await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
+  const bounds = await drawing.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    const style = element.ownerDocument.defaultView?.getComputedStyle(element)
+    if (!style) throw new Error("The drawing has no browser style context.")
+    const inset = (edge: string) =>
+      Math.max(0, Number.parseFloat(style.getPropertyValue(`--workspace-chrome-${edge}`)) || 0)
+    return {
+      x: rect.x + inset("left"),
+      y: rect.y + inset("top"),
+      width: rect.width - inset("left") - inset("right"),
+      height: rect.height - inset("top") - inset("bottom"),
+    }
+  })
+  if (bounds.width <= 0 || bounds.height <= 0)
+    throw new Error("The unobscured drawing area is empty.")
+  return bounds
 }
 
 function* savedProfileSamplePositions(bounds: {
@@ -130,7 +136,8 @@ function* savedProfileSamplePositions(bounds: {
 export async function clickSavedProfileInViewport(page: Page, label: string, additive = false) {
   const viewport = page.getByRole("region", { name: "3D viewport" })
   const canvas = viewport.locator("canvas")
-  const bounds = await unobscuredDrawingBounds(page, canvas)
+  const bounds = await canvas.boundingBox()
+  if (!bounds) throw new Error("The saved profile viewport must be measurable.")
   const status = viewport.getByText(`Select profile: ${label}`, { exact: true })
   for (const position of savedProfileSamplePositions(bounds)) {
     const canvasReceivesPointer = await canvas.evaluate((element, point) => {
@@ -295,6 +302,7 @@ export async function addDimension(
   })
 
   const editor = page.getByRole("form", { name: "Dimension value" })
+  await expect(editor).toBeVisible()
   const typeControl = editor.getByRole("combobox", { name: "Dimension type" })
   if (await typeControl.isVisible()) {
     const optionLabels = {

@@ -1,7 +1,7 @@
 import type { PartId } from "@vibeshape/domain/identifiers"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { SketchCameraMode } from "../editor-session/editor-session-store"
-import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
+import { hasMultipleExactSolidBodies } from "../features/part-design/exact-body-options"
 import {
   type activePartDesignCommand,
   modifyingSolidTargetFeatures,
@@ -1224,8 +1224,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
       const eligibility = canCreateFeature(context)
       if (!eligibility.enabled) return eligibility
       const report = context.state.controller.report
-      return report &&
-        exactSolidBodyOptions(report.snapshot, report.rebuild, undefined, [], "").length >= 2
+      return report && hasMultipleExactSolidBodies(report.snapshot, report.rebuild)
         ? editorCommandEnabled()
         : editorCommandDisabled("selectTwoSolids")
     },

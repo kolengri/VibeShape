@@ -278,6 +278,7 @@ function itemPresentation(item: ViewportGridEntry, cap: number | undefined) {
   return {
     fullHeight: item.fullHeight && item.area !== "bottom",
     height: itemHeight(item),
+    availableHeight: available,
     maxHeight: item.maxHeight ? `min(${item.maxHeight}, ${available})` : available,
   }
 }
@@ -303,6 +304,7 @@ function ItemHost({
     host.dataset.viewportArea = item.area
     host.dataset.fullHeight = String(presentation.fullHeight)
     host.style.height = presentation.height
+    host.style.setProperty("--viewport-grid-available-height", presentation.availableHeight)
     host.style.maxHeight = presentation.maxHeight
   }, [item.area, item.fullHeight, item.height, item.maxHeight, registration, cap])
   return (

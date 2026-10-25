@@ -3,6 +3,7 @@ import type { SketchId } from "@vibeshape/domain"
 import { partIdSchema } from "@vibeshape/domain/identifiers"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
+import { bodyCatalogueFixture } from "../features/part-design/exact-body-catalogue.test-fixtures"
 import {
   type BuiltInEditorCommandContext,
   builtInEditorCommandDescriptors,
@@ -923,4 +924,61 @@ it("guards selected-part commands against saving, read-only access and missing s
     command?.invoke()
     expect(placePart).not.toHaveBeenCalled()
   }
+})
+
+it("shares precise Boolean eligibility across command surfaces and refreshes replaced rebuilds", () => {
+  const fixture = bodyCatalogueFixture(1, 2)
+  const context = commandContext()
+  const ready = readyController()
+  if (!ready.report) throw new Error("Expected ready report")
+  const controller = {
+    ...ready,
+    report: { ...ready.report, snapshot: fixture.snapshot, rebuild: fixture.rebuild },
+  } as DocumentControllerState
+  const resolve = (state = controller) =>
+    resolveBuiltInEditorCommands({
+      ...context,
+      state: { ...context.state, controller: state },
+    }).find(({ descriptor }) => descriptor.id === editorCommandIds.createSubtract)
+  const command = resolve()
+  expect(command?.eligibility.enabled).toBe(true)
+  expect(command?.descriptor.toolbarGroup).toBe("model-primary")
+  command?.invoke()
+  expect(context.actions.createSubtract).toHaveBeenCalledTimes(1)
+
+  const record = fixture.rebuild.response.geometry[0]
+  if (!record?.geometry.bodies) throw new Error("Expected exact body fixture")
+  if (!controller.report) throw new Error("Expected current report")
+  const unavailable = {
+    ...controller,
+    report: {
+      ...controller.report,
+      rebuild: {
+        ...fixture.rebuild,
+        response: {
+          ...fixture.rebuild.response,
+          geometry: [
+            {
+              ...record,
+              geometry: {
+                ...record.geometry,
+                bodies: record.geometry.bodies.map((body) => ({
+                  ...body,
+                  representation: "triangle-mesh" as const,
+                })),
+              },
+            },
+          ],
+        },
+      },
+    },
+  }
+  const blocked = resolve(unavailable)
+  expect(blocked?.eligibility).toEqual({ enabled: false, reason: "selectTwoSolids" })
+  blocked?.invoke()
+  expect(context.actions.createSubtract).toHaveBeenCalledTimes(1)
+  expect(resolve({ ...controller, saveStatus: "saving" })?.eligibility).toEqual({
+    enabled: false,
+    reason: "saving",
+  })
 })

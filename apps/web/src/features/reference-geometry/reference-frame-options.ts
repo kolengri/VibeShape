@@ -33,7 +33,8 @@ type MutableOptions = {
   axes: ReferenceFrameOption<ReferenceAxis>[]
 }
 type Rebuilt = Extract<DocumentRebuildOutcome, { ok: true }>
-type Body = NonNullable<Rebuilt["response"]["geometry"][number]["geometry"]["bodies"]>[number]
+type Geometry = Rebuilt["response"]["geometry"][number]
+type Body = NonNullable<Geometry["geometry"]["bodies"]>[number]
 function addDatumOptions(feature: FeatureRecord, options: MutableOptions) {
   const label = feature.label ?? feature.type.typeId
   options.planes.push({
@@ -64,13 +65,29 @@ function addBodyOptions(
     kind,
   })
   if (!result.ok) return
+  const eligible = result.evidence.candidates.filter(({ kind, signature }) =>
+    kind === "face"
+      ? signature.geometryClass === "PLANE" &&
+        signature.directionMode === "oriented" &&
+        Boolean(signature.direction)
+      : signature.geometryClass === "LINE" && Boolean(signature.direction),
+  )
+  if (eligible.length === 0) return
+  // Identity and ambiguity depend on the complete validated evidence, including ineligible peers.
   const project = createBodyTopologyReferenceProjector(result.evidence)
   const resolve = createBodyTopologyReferenceResolver(result.evidence)
-  for (const candidate of result.evidence.candidates) {
+  const meshFaceIds = new Map<string, number | undefined>()
+  if (kind === "face")
+    for (const candidate of body.topologyCandidates) {
+      // Preserve the original find's first match across topology kinds, even without a mesh ID.
+      if (!meshFaceIds.has(candidate.candidateId))
+        meshFaceIds.set(candidate.candidateId, candidate.meshFaceId)
+    }
+  for (const candidate of eligible) {
     const reference = project(candidate),
       resolved = resolve(reference)
     if (resolved.status !== "resolved" || resolved.candidateId !== candidate.candidateId) continue
-    addCandidateOptions(feature, body, candidate, reference, options)
+    addCandidateOptions(feature, body, candidate, reference, options, meshFaceIds)
   }
 }
 function addCandidateOptions(
@@ -79,32 +96,34 @@ function addCandidateOptions(
   candidate: ModelBodyTopologyEvidence["candidates"][number],
   reference: BodyTopoRef,
   options: MutableOptions,
+  meshFaceIds: ReadonlyMap<string, number | undefined>,
 ) {
   const key = JSON.stringify([feature.id, body.outputRole, candidate.candidateId])
   const label = `${feature.label ?? feature.type.typeId} · ${body.outputRole} · ${candidate.semanticRole ?? candidate.candidateId}`
-  const plane = referencePlaneSchema.safeParse({ kind: "planar-face", reference })
-  if (plane.success) {
-    const meshFaceId = body.topologyCandidates.find(
-      ({ candidateId }) => candidateId === candidate.candidateId,
-    )?.meshFaceId
-    options.planes.push({
-      key,
-      label,
-      support: plane.data,
-      ...(meshFaceId === undefined ? {} : { meshFaceId }),
-    })
+  if (candidate.kind === "face") {
+    const plane = referencePlaneSchema.safeParse({ kind: "planar-face", reference })
+    if (plane.success) {
+      const meshFaceId = meshFaceIds.get(candidate.candidateId)
+      options.planes.push({
+        key,
+        label,
+        support: plane.data,
+        ...(meshFaceId === undefined ? {} : { meshFaceId }),
+      })
+    }
+  } else {
+    const axis = referenceAxisSchema.safeParse({ kind: "linear-edge", reference })
+    if (axis.success) options.axes.push({ key, label, support: axis.data })
   }
-  const axis = referenceAxisSchema.safeParse({ kind: "linear-edge", reference })
-  if (axis.success) options.axes.push({ key, label, support: axis.data })
 }
 function addFeatureOptions(
   topology: ModelBodyTopologyEvidenceResolver,
-  rebuild: Rebuilt,
+  geometries: ReadonlyMap<string, Geometry>,
   feature: FeatureRecord,
   options: MutableOptions,
 ) {
   if (feature.suppressed) return
-  const record = rebuild.response.geometry.find(({ featureId }) => featureId === feature.id)
+  const record = geometries.get(feature.id)
   if (!record) return
   if (readDatumPlaneFeatureParameters(feature)) addDatumOptions(feature, options)
   for (const body of record.geometry.bodies ?? [])
@@ -119,10 +138,15 @@ export function referenceFrameOptions(
   const options: MutableOptions = { planes: [], axes: [] }
   if (!rebuild.ok) return options
   const topology = createModelBodyTopologyEvidenceResolver(snapshot, rebuild)
+  const geometries = new Map<string, Geometry>()
+  for (const record of rebuild.response.geometry) {
+    // Keep the first raw record, including on invalid evidence paths where datum options still exist.
+    if (!geometries.has(record.featureId)) geometries.set(record.featureId, record)
+  }
   const stop = excludedFeatureId
     ? snapshot.features.findIndex(({ id }) => id === excludedFeatureId)
     : -1
   const features = stop >= 0 ? snapshot.features.slice(0, stop) : snapshot.features
-  for (const feature of features) addFeatureOptions(topology, rebuild, feature, options)
+  for (const feature of features) addFeatureOptions(topology, geometries, feature, options)
   return options
 }

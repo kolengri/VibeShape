@@ -117,6 +117,7 @@ export class ModelMeshPresentation {
   readonly #preparation: EdgePreparationPort
   readonly #onChange: () => void
   #entries: ModelMeshEntry[] = []
+  #entriesByKey = new Map<string, ModelMeshEntry[]>()
   #disposed = false
 
   constructor(materials: SharedMaterials, preparation: EdgePreparationPort, onChange: () => void) {
@@ -130,11 +131,9 @@ export class ModelMeshPresentation {
   }
 
   geometryFor(source: ViewerMesh) {
-    const entry = this.#entries.find(
-      (candidate) =>
-        viewerBodyKey(candidate.source) === viewerBodyKey(source) &&
-        sameViewerGeometry(candidate.source, source),
-    )
+    const entry = this.#entriesByKey
+      .get(viewerBodyKey(source))
+      ?.find((candidate) => sameViewerGeometry(candidate.source, source))
     return entry ? { surface: entry.surface.geometry, edges: entry.edges.geometry } : null
   }
 
@@ -154,7 +153,15 @@ export class ModelMeshPresentation {
     for (const entries of available.values()) {
       for (const entry of entries) disposeEntry(entry)
     }
+    const byKey = new Map<string, ModelMeshEntry[]>()
+    for (const entry of next) {
+      const key = viewerBodyKey(entry.source)
+      const entries = byKey.get(key)
+      if (entries) entries.push(entry)
+      else byKey.set(key, [entry])
+    }
     this.#entries = next
+    this.#entriesByKey = byKey
     this.group.clear()
     for (const entry of next) this.group.add(entry.surface, entry.edges)
     return next
@@ -165,6 +172,7 @@ export class ModelMeshPresentation {
     this.#disposed = true
     for (const entry of this.#entries) disposeEntry(entry)
     this.#entries = []
+    this.#entriesByKey.clear()
     this.group.clear()
   }
 

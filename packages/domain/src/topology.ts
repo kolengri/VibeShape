@@ -350,13 +350,14 @@ function resolveExactGeometrySignature(
   // A freshly picked edge or face must survive nearby, geometrically similar candidates. Identical
   // signatures still fail closed; semantic/history ownership and explicit intent win.
   if (reference.kind === "vertex" || reference.intent) return null
-  const signature = exactSignatureKey(reference.signature)
-  const exact =
-    indexedMatches ??
-    candidates.filter(
+  let exact = indexedMatches
+  if (exact === undefined) {
+    const signature = exactSignatureKey(reference.signature)
+    exact = candidates.filter(
       (candidate) =>
         candidate.kind === reference.kind && exactSignatureKey(candidate.signature) === signature,
     )
+  }
   if (exact.length === 1)
     return {
       status: "resolved",
