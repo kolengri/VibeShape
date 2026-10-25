@@ -5,7 +5,7 @@ import { FieldError } from "@vibeshape/ui/components/field"
 import { Scan, X } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import type { ComponentProps } from "react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -13,9 +13,9 @@ import { ReferencePickField } from "../part-design/reference-pick-field"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import {
   type EdgeTreatmentCandidate,
-  resolveTreatmentReference,
+  type PreparedTreatmentReferenceResolution,
+  prepareTreatmentReferenceResolution,
   sameTreatmentReference,
-  treatmentReferenceMatchesCandidate,
 } from "./edge-treatment-candidates"
 import type { EdgeTreatmentFormCopy, EdgeTreatmentOperation } from "./edge-treatment-form"
 import {
@@ -42,12 +42,16 @@ export type TreatmentControlsProps = {
   onPick: (candidate: EdgeTreatmentCandidate, pick: EdgeTreatmentPick) => void
 }
 
+type PreparedTreatmentControlsProps = TreatmentControlsProps & {
+  resolution: PreparedTreatmentReferenceResolution
+}
+
 function PickButton({
   kind,
   props,
 }: {
   kind: "edges" | "faces" | "overrides"
-  props: TreatmentControlsProps
+  props: PreparedTreatmentControlsProps
 }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   const labels = {
@@ -76,7 +80,7 @@ function CandidateChoice({
   props,
   candidate,
 }: {
-  props: TreatmentControlsProps
+  props: PreparedTreatmentControlsProps
   candidate: EdgeTreatmentCandidate
 }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
@@ -103,7 +107,7 @@ function CandidateChoice({
   )
 }
 
-function CandidateFallback({ props }: { props: TreatmentControlsProps }) {
+function CandidateFallback({ props }: { props: PreparedTreatmentControlsProps }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState(false)
@@ -163,7 +167,7 @@ function CandidateFallback({ props }: { props: TreatmentControlsProps }) {
 }
 
 function removeReference(
-  props: TreatmentControlsProps,
+  props: PreparedTreatmentControlsProps,
   reference: ReturnType<typeof treatmentReferences>[number],
   candidate: EdgeTreatmentCandidate | undefined,
 ) {
@@ -177,7 +181,7 @@ function removeReference(
     directionOverrides: props.values.directionOverrides.filter(
       (ref) =>
         !sameTreatmentReference(ref, reference) &&
-        !(candidate && treatmentReferenceMatchesCandidate(ref, candidate, props.candidates)),
+        !(candidate && props.resolution.matchesCandidate(ref, candidate)),
     ),
   })
 }
@@ -188,18 +192,13 @@ function SideFaceField({
   label,
   side,
 }: {
-  props: TreatmentControlsProps
+  props: PreparedTreatmentControlsProps
   index: number
   label: string
   side: Extract<TreatmentValues["targets"][number], { kind: "edge" }>["sideFace"]
 }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
-  const resolvedSide = side
-    ? resolveTreatmentReference(
-        side,
-        props.candidates.filter(({ optionId }) => optionId === props.values.targetFeatureId),
-      )
-    : null
+  const resolvedSide = side ? props.resolution.resolve(side, props.values.targetFeatureId) : null
   const sideLabel = resolvedSide?.status === "resolved" ? resolvedSide.candidate.label : null
   return (
     <>
@@ -244,7 +243,7 @@ function EdgeOverrideCheckbox({
   label,
   candidate,
 }: {
-  props: TreatmentControlsProps
+  props: PreparedTreatmentControlsProps
   label: string
   candidate: EdgeTreatmentCandidate | undefined
 }) {
@@ -255,7 +254,7 @@ function EdgeOverrideCheckbox({
       disabled={props.disabled || candidate?.resolveStatus() !== "resolved"}
       aria-label={t("reverseNamedEdge", { edge: label })}
       checked={props.values.directionOverrides.some(
-        (ref) => candidate && treatmentReferenceMatchesCandidate(ref, candidate, props.candidates),
+        (ref) => candidate && props.resolution.matchesCandidate(ref, candidate),
       )}
       onChange={() => {
         if (candidate) props.onPick(candidate, { kind: "overrides" })
@@ -270,7 +269,7 @@ function SelectedEdgeDirection({
   label,
   candidate,
 }: {
-  props: TreatmentControlsProps
+  props: PreparedTreatmentControlsProps
   index: number
   label: string
   candidate: EdgeTreatmentCandidate | undefined
@@ -290,16 +289,13 @@ function SelectedRow({
   index,
   v3,
 }: {
-  props: TreatmentControlsProps
+  props: PreparedTreatmentControlsProps
   index: number
   v3: boolean
 }) {
   const reference = treatmentReferences(props.values, v3)[index]
   if (!reference) return null
-  const resolved = resolveTreatmentReference(
-    reference,
-    props.candidates.filter((entry) => entry.optionId === props.values.targetFeatureId),
-  )
+  const resolved = props.resolution.resolve(reference, props.values.targetFeatureId)
   const candidate = resolved.status === "resolved" ? resolved.candidate : undefined
   const label = candidate?.label ?? props.copy.missingEdge
   return (
@@ -333,7 +329,7 @@ function SelectionHeading({
   v3,
   count,
 }: {
-  props: TreatmentControlsProps
+  props: PreparedTreatmentControlsProps
   v3: boolean
   count: number
 }) {
@@ -353,7 +349,7 @@ function SelectionHeading({
   )
 }
 
-function SelectedTargets({ props }: { props: TreatmentControlsProps }) {
+function SelectedTargets({ props }: { props: PreparedTreatmentControlsProps }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   if (props.values.scope !== "selected") return null
   const v3 =
@@ -403,7 +399,7 @@ function SelectedTargets({ props }: { props: TreatmentControlsProps }) {
   )
 }
 
-function ChamferControls({ props }: { props: TreatmentControlsProps }) {
+function ChamferControls({ props }: { props: PreparedTreatmentControlsProps }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   if (props.operation !== "chamfer") return null
   const values = props.values
@@ -511,7 +507,12 @@ function ChamferControls({ props }: { props: TreatmentControlsProps }) {
   )
 }
 
-export function EdgeTreatmentControls(props: TreatmentControlsProps) {
+export function EdgeTreatmentControls(input: TreatmentControlsProps) {
+  const resolution = useMemo(
+    () => prepareTreatmentReferenceResolution(input.candidates),
+    [input.candidates],
+  )
+  const props = { ...input, resolution }
   const allUnavailable = edgeTreatmentRequiresV3(
     props.options.find(({ id }) => id === props.values.targetFeatureId),
   )

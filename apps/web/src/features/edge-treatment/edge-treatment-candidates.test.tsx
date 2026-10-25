@@ -4,9 +4,18 @@ import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { i18n } from "../../i18n"
-import { candidate, defaultProps, geometry, option, sourceId } from "./edge-treatment.test-fixtures"
-import { edgeTreatmentCandidates } from "./edge-treatment-candidates"
+import {
+  candidate,
+  defaultProps,
+  geometry,
+  option,
+  sourceId,
+  treatmentId,
+} from "./edge-treatment.test-fixtures"
+import { edgeTreatmentCandidates, legacyEdgeReference } from "./edge-treatment-candidates"
+import { EdgeTreatmentControls, type TreatmentControlsProps } from "./edge-treatment-controls"
 import { EdgeTreatmentForm } from "./edge-treatment-form"
+import { initialTreatmentValues } from "./edge-treatment-model"
 
 afterEach(cleanup)
 
@@ -95,4 +104,73 @@ it("keeps anonymous signature ambiguity conservative when resolution is requeste
   const edges = edgeTreatmentCandidates(options, geometry(options), () => "edge", "edge")
   expect(edges[0]?.resolveStatus()).toBe("ambiguous")
   expect(edges[1]?.resolveStatus()).toBe("ambiguous")
+})
+
+it("shares row resolution across a mounted controls owner and replaces its index with candidate inputs", () => {
+  const options = [
+    option(
+      sourceId,
+      "result",
+      "Body",
+      Array.from({ length: 16 }, (_, index) => candidate("edge", index + 1)),
+    ),
+  ]
+  const entries = edgeTreatmentCandidates(
+    options,
+    geometry(options),
+    (_kind, ordinal) => `Edge ${ordinal}`,
+    "edge",
+  )
+  let reads = 0
+  const track = (label: string) =>
+    entries.map((entry, index) => {
+      const tracked = { ...entry, label: `${label} ${index + 1}` }
+      // React's development prop diff must not read the resolution work counter.
+      return Object.defineProperty(tracked, "candidate", {
+        enumerable: false,
+        get() {
+          reads++
+          return entry.candidate
+        },
+      })
+    })
+  const props: TreatmentControlsProps = {
+    values: {
+      ...initialTreatmentValues(
+        { kind: "create", createFeatureId: () => treatmentId, featureLabel: "Fillet" },
+        "fillet",
+        options,
+        "mm",
+      ),
+      references: entries.map(({ reference }) => {
+        const result = legacyEdgeReference(reference)
+        if (!result) throw new Error("The mounted fixture requires legacy edges.")
+        return result
+      }),
+    },
+    candidates: track("Original"),
+    options,
+    operation: "fillet",
+    copy: defaultProps(options).copy,
+    disabled: false,
+    issues: {},
+    suggestions: [],
+    pick: null,
+    onChange() {},
+    onArm() {},
+    onPick() {},
+  }
+  const controls = (value: TreatmentControlsProps) => (
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <EdgeTreatmentControls {...value} />
+    </I18nProvider>
+  )
+  const view = render(controls(props))
+  expect(screen.getAllByRole("button", { name: /^Remove Original/ })).toHaveLength(16)
+  expect(reads).toBe(16)
+  view.rerender(controls({ ...props, values: { ...props.values, distance: "2 mm" } }))
+  expect(reads).toBe(16)
+  view.rerender(controls({ ...props, candidates: track("Replacement") }))
+  expect(screen.getAllByRole("button", { name: /^Remove Replacement/ })).toHaveLength(16)
+  expect(reads).toBe(32)
 })

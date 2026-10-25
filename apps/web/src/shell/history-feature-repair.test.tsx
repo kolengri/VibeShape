@@ -1,15 +1,10 @@
 import "../../../../tests/unit/support/dom"
 
-import { afterEach, beforeAll, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import type { FeatureRecord } from "@vibeshape/domain"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
-import type { ExactBodyOption } from "../features/part-design/exact-body-options"
-
-const candidates = (() => ({ options: [] as readonly ExactBodyOption[] }))()
-mock.module("../features/part-design/exact-body-options", () => ({
-  exactSolidBodyOptions: vi.fn(() => candidates.options),
-}))
+import { bodyCatalogueFixture } from "../features/part-design/exact-body-catalogue.test-fixtures"
 
 const { cleanup, render, screen, waitFor } = await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
@@ -64,18 +59,56 @@ const authority = {
     },
   ],
 }
+const replacementFixture = bodyCatalogueFixture(1, 1)
+const replacementSource = replacementFixture.snapshot.features[0]
+const replacementGeometry = replacementFixture.rebuild.response.geometry[0]
+if (!replacementSource || !replacementGeometry?.geometry.bodies?.[0])
+  throw new Error("Expected replacement body fixture")
+const replacementFeature = { ...replacementSource, id: replacementId, label: "Earlier part" }
+const replacementRebuild = {
+  ...replacementFixture.rebuild,
+  response: {
+    ...replacementFixture.rebuild.response,
+    evaluation: {
+      ...replacementFixture.rebuild.response.evaluation,
+      records: [
+        {
+          featureId: replacementId,
+          status: "succeeded" as const,
+          contentHash: replacementGeometry.contentHash,
+        },
+      ],
+    },
+    geometry: [
+      {
+        ...replacementGeometry,
+        featureId: replacementId,
+        geometry: {
+          ...replacementGeometry.geometry,
+          bodies: [{ ...replacementGeometry.geometry.bodies[0], outputRole: "pattern.instance.2" }],
+        },
+      },
+    ],
+  },
+}
 const controller = {
   status: "ready",
   saveStatus: "saved",
   authoredSnapshot: authority,
   report: {
     mode: "read-write",
-    snapshot: { id: sourceId, revision: 7, features: [active], variables: [], sketches: [] },
-    rebuild: { ok: false },
+    snapshot: {
+      id: sourceId,
+      revision: 7,
+      features: [replacementFeature, active],
+      variables: [],
+      sketches: [],
+    },
+    rebuild: replacementRebuild,
   },
 } as unknown as DocumentControllerState
 const option = {
-  id: "replacement-instance",
+  id: JSON.stringify([replacementId, "pattern.instance.2"]),
   label: "Earlier part",
   body: { schemaVersion: 0 as const, featureId: replacementId, outputRole: "pattern.instance.2" },
 }
@@ -86,7 +119,6 @@ const copy = {
   invalidRange: messages.app.placement.invalidTranslationRange,
 }
 function setup() {
-  candidates.options = [option]
   const onSave = vi.fn(async (_revision: number, _feature: FeatureRecord) => ({
     ok: true as const,
   }))
@@ -192,8 +224,17 @@ describe("explicit retained body input repair", () => {
     expect(
       (screen.getByRole("combobox", { name: "Replacement body" }) as HTMLSelectElement).disabled,
     ).toBe(true)
-    candidates.options = []
-    rerenderState(controller)
+    if (!controller.report) throw new Error("Expected report")
+    rerenderState({
+      ...controller,
+      report: {
+        ...controller.report,
+        rebuild: {
+          ...replacementRebuild,
+          response: { ...replacementRebuild.response, geometry: [] },
+        },
+      },
+    })
     expect(screen.queryByRole("button", { name: "Update placement" })).toBeNull()
     expect(screen.getByRole("status").textContent).toContain("No earlier exact solid bodies")
     expect(screen.getByRole("button", { name: "Delete retained feature" })).toBeTruthy()

@@ -7,13 +7,13 @@ import {
   confirmSketchPlane,
   fitIsometricView,
   selectSketchTool,
+  unobscuredDrawingBounds,
 } from "./sketch-helpers"
 
 async function drawProfileAwayFromBothOriginAxes(page: Page) {
   await selectSketchTool(page, "Rectangle tools", "Rectangle G")
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  const bounds = await drawing.boundingBox()
-  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+  const bounds = await unobscuredDrawingBounds(page, drawing)
 
   await page.mouse.click(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.42)
   await page.mouse.click(bounds.x + bounds.width * 0.74, bounds.y + bounds.height * 0.3)
@@ -22,8 +22,7 @@ async function drawProfileAwayFromBothOriginAxes(page: Page) {
 
 async function drawTwoProfilesAwayFromOriginAxes(page: Page) {
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  const bounds = await page.getByTestId("workspace-center").boundingBox()
-  if (!bounds) throw new Error("The unobscured sketch drawing area is not visible.")
+  const bounds = await unobscuredDrawingBounds(page, drawing)
   const rectangles = [
     [0.18, 0.42, 0.4, 0.28],
     [0.6, 0.42, 0.82, 0.28],
@@ -61,17 +60,21 @@ async function startRevolveWithOccludedProfile(page: Page) {
     .click()
   const form = page.getByRole("form", { name: "Revolve profile" })
   await expect(form).toBeVisible()
-  await form.getByRole("button", { name: "Select a profile in the 3D viewport" }).click()
+  const viewport = page.getByRole("region", { name: "3D viewport" })
+  await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+  const selectProfile = form.getByRole("button", { name: "Select a profile in the 3D viewport" })
+  await selectProfile.click()
+  await expect(selectProfile).toHaveAttribute("aria-pressed", "true")
   const remove = form.getByRole("button", { name: /^Remove Sketch 1 · Profile \d+$/ })
   const selected = await remove.count()
   expect(selected).toBeGreaterThan(0)
   for (let index = 0; index < selected; index += 1) await remove.first().click()
   await expect(form).toHaveCount(0)
-  await page
-    .getByRole("region", { name: "3D viewport" })
-    .getByRole("combobox", { name: "Select saved profile" })
-    .selectOption({ label: "Sketch 1 · Profile 1" })
+  const savedProfile = viewport.getByRole("combobox", { name: "Select saved profile" })
+  await expect(savedProfile).toBeVisible()
+  await savedProfile.selectOption({ label: "Sketch 1 · Profile 1" })
   await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+  await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
 }
 
 test.describe("selector-backed revolve", () => {
@@ -91,7 +94,7 @@ test.describe("selector-backed revolve", () => {
     for (const dimension of ["Width", "Depth", "Height"] as const) {
       await boxForm.getByRole("combobox", { name: dimension }).fill("500 mm")
     }
-    await boxForm.getByRole("button", { name: "Create box" }).click()
+    await boxForm.getByRole("button", { name: "Create box", exact: true }).click()
     await invokeModelCommand(page, "Create", "Create sketch")
     await confirmSketchPlane(page, "xy")
     await drawProfileAwayFromBothOriginAxes(page)
@@ -225,6 +228,8 @@ test.describe("selector-backed revolve", () => {
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
       await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Show Box 1" }).click()
+      await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+      await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
       await form.getByRole("radio", { name: resultOperationLabels[operation], exact: true }).check()
       await expect(
         form.getByRole("button", { name: "Select Target body in 3D", exact: true }),
@@ -265,14 +270,20 @@ test.describe("selector-backed revolve", () => {
       await viewport
         .getByRole("combobox", { name: "Select saved profile" })
         .selectOption({ label: "Sketch 1 · Profile 1" })
-      await downstreamForm
-        .getByRole("button", { name: "Select a profile in the 3D viewport" })
-        .click()
+      await expect(downstreamForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+      await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+      const downstreamProfileSelector = downstreamForm.getByRole("button", {
+        name: "Select a profile in the 3D viewport",
+      })
+      await downstreamProfileSelector.click()
+      await expect(downstreamProfileSelector).toHaveAttribute("aria-pressed", "true")
       await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Hide Revolve 1" }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
       await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Show Revolve 1" }).click()
+      await expect(downstreamForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+      await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
       await downstreamForm
         .getByRole("radio", { name: resultOperationLabels[operation], exact: true })
         .check()
@@ -410,7 +421,7 @@ test.describe("selector-backed revolve", () => {
     for (const dimension of ["Width", "Depth", "Height"] as const) {
       await boxForm.getByRole("combobox", { name: dimension }).fill("500 mm")
     }
-    await boxForm.getByRole("button", { name: "Create box" }).click()
+    await boxForm.getByRole("button", { name: "Create box", exact: true }).click()
 
     await invokeModelCommand(page, "Create", "Create sketch")
     await confirmSketchPlane(page, "xy")
@@ -523,7 +534,7 @@ test.describe("selector-backed revolve", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await invokeModelCommand(page, "Create", "Create sketch")
     await confirmSketchPlane(page, "xy")

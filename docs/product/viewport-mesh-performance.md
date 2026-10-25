@@ -1,5 +1,49 @@
 # Viewport mesh update performance
 
+## October 25 catalogue, reference and graph preparation
+
+Edge-treatment batches and mounted controls share lazy body-scoped topology resolution instead of
+constructing the domain index for each selected reference. Nine alternating paired Bun samples,
+including fresh preparation, measured 128 references over 2,000 candidates at 928.300 to 8.320 ms
+for exact signatures, 942.811 to 7.989 ms for semantic roles, and 1,155.469 to 186.982 ms for drifted
+signatures. Statuses and resolved candidate object identities matched. Drift ranking still scans
+the complete body for each reference. This is local CPU evidence without memory or browser-frame
+measurements; it does not imply equivalent improvement in end-to-end interaction.
+
+Exact-body catalogues index current geometry, successful evaluation and part ownership once per
+invocation. Boolean command availability avoids display-option allocation, and mounted Boolean,
+Revolve, FDM and History repair tasks retain preparation until their immutable inputs or locale
+change. Seven alternating paired Bun samples measured catalogue medians of 2.329 to 0.620 ms for
+600 bodies and 73.716 to 3.286 ms for 4,000 bodies; Boolean eligibility measured 0.634 to 0.476 ms
+and 5.346 to 2.568 ms respectively. Both variants used the same current application/domain graph
+implementation. These are synthetic CPU measurements, excluding browser interaction and drawing.
+
+Reference-frame catalogues validate complete evidence, then prepare only usable planar or straight
+supports while retaining every candidate for reference projection and resolution. Local first-match
+indexes avoid repeated geometry and graphical-ID scans. Nine alternating paired Bun samples on
+2,000-face fixtures measured medians of 70.951 to 60.072 ms for planar faces, 66.200 to 6.057 ms for
+spherical faces, and 66.159 to 34.711 ms for a mixture with 20 percent eligible faces. A separate
+2,000-body, one-face fixture measured 107.632 to 89.142 ms. Complete catalogue outputs matched;
+these timings exclude kernel evaluation and browser latency.
+
+Feature highlights now find installed geometry through an index of the currently presented body
+keys. Exact buffer equality still decides whether an overlay may borrow a surface, including copied
+arrays and duplicate body keys. The index follows presentation ordering and is replaced or cleared
+with its resource owner; it does not own extra geometry or retain removed bodies.
+
+A synthetic Bun 1.4.3 fixture with 2,000 displayed triangle meshes queried each body's installed
+surface once per sample. Seven alternating samples after warmup measured a median of 32.719 ms
+before and 0.881 ms after indexing. Every lookup returned the exact installed surface geometry for
+its body. This measures CPU lookup work only, excluding scene construction, edge-worker completion,
+WebGL drawing and total selection latency.
+
+Snapshot dependency-graph construction also reuses its validated records and collected edges while
+deriving legacy History and assembling the graph. On synthetic 2,000-node fixtures, seven alternating
+samples measured 12.008 to 7.492 ms for independent nodes and 11.880 to 6.900 ms for a dependency
+chain. Node records, relations, History, evaluation order and adjacency results matched. This is
+graph-preparation evidence, not complete preview or kernel latency. Full document validation and
+the existing conservative preview scoping rules remain in place.
+
 ## October 24 camera and saved-copy follow-up
 
 Camera-only updates reuse the viewport's world-space scene bounds and installed material clipping.

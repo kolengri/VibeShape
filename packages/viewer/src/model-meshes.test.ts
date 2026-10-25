@@ -61,6 +61,36 @@ function denseMesh(geometry: BufferGeometry = new SphereGeometry(3, 128, 64)): V
 }
 
 describe("current model mesh resource ownership", () => {
+  it("borrows exact body geometry in duplicate-key order and releases its lookup on replacement", () => {
+    const { presentation, preparation, dispose } = fixture()
+    try {
+      const first = { ...mesh, outputRole: "left" }
+      const second = { ...first, positions: new Float32Array([1, 0, 0, 2, 0, 0, 0, 3, 0]) }
+      const sibling = { ...first, outputRole: "right" }
+      const entries = presentation.setMeshes([first, second, sibling])
+      const [a, b, c] = entries
+      if (!a || !b || !c) throw new Error("Expected three displayed entries.")
+      const requests = preparation.worker.requests.length
+      expect(presentation.geometryFor(structuredClone(first))?.surface).toBe(a.surface.geometry)
+      expect(presentation.geometryFor(second)?.surface).toBe(b.surface.geometry)
+      expect(presentation.geometryFor(sibling)?.surface).toBe(c.surface.geometry)
+      expect(presentation.geometryFor({ ...first, outputRole: "missing" })).toBeNull()
+      expect(preparation.worker.requests).toHaveLength(requests)
+
+      const reordered = presentation.setMeshes([second, first])
+      expect(presentation.geometryFor(second)?.surface).toBe(reordered[0]?.surface.geometry)
+      expect(presentation.geometryFor(first)?.surface).toBe(reordered[1]?.surface.geometry)
+      expect(presentation.geometryFor(sibling)).toBeNull()
+      presentation.setMeshes([])
+      expect(presentation.geometryFor(first)).toBeNull()
+      presentation.setMeshes([first])
+      presentation.dispose()
+      expect(presentation.geometryFor(first)).toBeNull()
+    } finally {
+      dispose()
+    }
+  })
+
   it("accelerates dense all-hit picking without changing face identity, clipping, or model buffers", async () => {
     const { presentation, preparation, dispose } = fixture()
     const source = denseMesh()

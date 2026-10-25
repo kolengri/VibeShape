@@ -9,6 +9,7 @@ import {
   drawRectangle,
   fitIsometricView,
   selectSketchTool,
+  unobscuredDrawingBounds,
 } from "./sketch-helpers"
 
 function extrudeCommand(page: Page) {
@@ -216,6 +217,8 @@ test.describe("selector-backed extrusion", () => {
       await extrudeCommand(page).click()
       const form = page.getByRole("form", { name: "Extrude profile" })
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
+      await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+      await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
       await form.getByRole("radio", { name: resultOperationLabels[operation], exact: true }).check()
       await expect(form.locator('select[name="targetFeatureId"]')).toHaveValue(/.+/)
       await expect(
@@ -255,6 +258,8 @@ test.describe("selector-backed extrusion", () => {
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
       await expandHistoryDetails(page)
       await page.getByRole("button", { name: "Show Extrusion 1", exact: true }).click()
+      await expect(downstreamForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+      await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
       await downstreamForm
         .getByRole("radio", { name: resultOperationLabels[operation], exact: true })
         .check()
@@ -687,7 +692,7 @@ test.describe("selector-backed extrusion", () => {
     ).toBeVisible()
     await invokeModelCommand(page, "Primitives", "Box")
     const boxForm = page.getByRole("form", { name: "Create box" })
-    await boxForm.getByRole("button", { name: "Create box" }).click()
+    await boxForm.getByRole("button", { name: "Create box", exact: true }).click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(boxForm).toHaveCount(0)
@@ -873,13 +878,8 @@ test.describe("selector-backed extrusion", () => {
     await invokeModelCommand(page, "Create", "Create sketch")
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
-    const center = await page.getByTestId("workspace-center").boundingBox()
-    if (!bounds || !center)
-      throw new Error("The unobscured geometry canvas has no measurable bounds.")
-    const left = Math.max(bounds.x, center.x)
-    const top = Math.max(bounds.y, center.y)
-    const width = Math.min(bounds.x + bounds.width, center.x + center.width) - left
-    const height = Math.min(bounds.y + bounds.height, center.y + center.height) - top
+    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+    const { x: left, y: top, width, height } = await unobscuredDrawingBounds(page, canvas)
     expect(width).toBeGreaterThan(0)
     expect(height).toBeGreaterThan(0)
     const sidePosition = {
@@ -981,7 +981,7 @@ test.describe("selector-backed extrusion", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await invokeModelCommand(page, "Create", "Create sketch")
     await confirmSketchPlane(page, "xy")
@@ -1049,7 +1049,7 @@ test.describe("selector-backed extrusion", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await invokeModelCommand(page, "Create", "Create sketch")
     await confirmSketchPlane(page, "xy")
@@ -1062,7 +1062,7 @@ test.describe("selector-backed extrusion", () => {
     await invokeModelCommand(page, "Primitives", "Cylinder")
     await page
       .getByRole("form", { name: "Create cylinder" })
-      .getByRole("button", { name: "Create cylinder" })
+      .getByRole("button", { name: "Create cylinder", exact: true })
       .click()
     await expect(page.getByRole("form", { name: "Create cylinder" })).toHaveCount(0)
     await expect(page.getByRole("treeitem", { name: "Part Cylinder 1", exact: true })).toBeVisible()

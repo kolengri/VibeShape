@@ -1444,13 +1444,19 @@ function deriveHeapOrder(
   return legacyCycleFailure(document, collected, indegree)
 }
 
+function prepareLegacyGraph(input: LegacyDocumentSnapshot) {
+  const document = parseRecords({ ...input, history: [] })
+  if (isFailure(document)) return document
+  const collected = collectEdges(document)
+  if (isFailure(collected)) return collected
+  const order = deriveHeapOrder(document, collected, legacyOrdinalMap(document))
+  return isFailure(order) ? order : { document, collected, history: order.history }
+}
+
 export function deriveLegacyHistory(input: LegacyDocumentSnapshot): LegacyHistoryResult {
   try {
-    const document = parseRecords({ ...input, history: [] })
-    if (isFailure(document)) return document
-    const collected = collectEdges(document)
-    if (isFailure(collected)) return collected
-    return deriveHeapOrder(document, collected, legacyOrdinalMap(document))
+    const prepared = prepareLegacyGraph(input)
+    return isFailure(prepared) ? prepared : { ok: true, history: prepared.history }
   } catch {
     return diagnostic("invalid-history", "Document graph input could not be evaluated safely.")
   }
@@ -1485,9 +1491,18 @@ export function createDocumentDependencyGraphFromSnapshot(
 export function createDocumentDependencyGraphFromSnapshot(
   input: LegacyDocumentSnapshot,
 ): DocumentDependencyGraphResult {
-  const history = deriveLegacyHistory(input)
-  if (isFailure(history)) return history
-  return createDocumentDependencyGraph({ ...input, history: history.history })
+  try {
+    const prepared = prepareLegacyGraph(input)
+    if (isFailure(prepared)) return prepared
+    const { document, collected } = prepared
+    const history = indexHistory(prepared.history, document)
+    if (isFailure(history)) return history
+    const validation = validateGraph(history, collected)
+    if (validation) return validation
+    return { ok: true, graph: assembleGraph(document, history, collected) }
+  } catch {
+    return diagnostic("invalid-history", "Document graph input could not be evaluated safely.")
+  }
 }
 
 export function createDocumentDependencyGraph(input: Input): DocumentDependencyGraphResult {

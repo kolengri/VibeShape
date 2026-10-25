@@ -111,10 +111,9 @@ test("binds current Datum frames and a viewport planar face without consuming su
   const bounds = await canvas.boundingBox()
   if (!bounds) throw new Error("The geometry canvas must have measurable bounds.")
   const samples = [
-    [0.5, 0.5],
-    [0.4, 0.55],
-    [0.6, 0.55],
-    [0.5, 0.3],
+    [0.47, 0.5],
+    [0.53, 0.5],
+    [0.5, 0.35],
   ]
   let sampleIndex = 0
   await expect
@@ -123,7 +122,11 @@ test("binds current Datum frames and a viewport planar face without consuming su
       await canvas.click({
         position: { x: bounds.width * (sample[0] ?? 0.5), y: bounds.height * (sample[1] ?? 0.5) },
       })
-      return page.locator("main > footer").textContent()
+      return page
+        .locator("footer")
+        .getByRole("status")
+        .filter({ hasText: /^Selection:/ })
+        .textContent()
     })
     .toMatch(/Selection: Box 1 · Face \d+/)
   await commands.getByRole("button", { name: "Mirror", exact: true }).click()

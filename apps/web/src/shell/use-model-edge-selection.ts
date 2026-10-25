@@ -6,7 +6,7 @@ import type { DocumentControllerState } from "../document/document-controller"
 import type { PartVisibilityOverrides } from "../editor-session/part-visibility"
 import {
   edgeTreatmentCandidates,
-  resolveTreatmentReference,
+  prepareTreatmentReferenceResolution,
 } from "../features/edge-treatment/edge-treatment-candidates"
 import { edgeTreatmentTargetOptions } from "../features/edge-treatment/edge-treatment-options"
 import type { ModelEdgeSelection } from "../features/part-design/model-edge-selection"
@@ -73,18 +73,17 @@ export function useModelEdgeSelection({
           reference: t("edgeTreatmentEdgeLabel", { ordinal }),
         }),
       "edge",
-    ).filter(({ reference, edgePolyline }) => reference.kind === "edge" && edgePolyline)
+    )
   }, [enabled, report, authority, hiddenFeatureIds, visibility, t, treatmentT])
+  const resolution = useMemo(() => prepareTreatmentReferenceResolution(candidates), [candidates])
   useEffect(() => {
     if (
       selected &&
       enabled &&
-      !selected.edges.every(
-        (edge) => resolveTreatmentReference(edge, candidates).status === "resolved",
-      )
+      !selected.edges.every((edge) => resolution.resolve(edge).status === "resolved")
     )
       onChange?.(null)
-  }, [selected, enabled, candidates, onChange])
+  }, [selected, enabled, resolution, onChange])
   return useMemo<
     (GeometryViewportSketchContext & { edgeSelection: ViewportEdgeSelection }) | undefined
   >(() => {
@@ -92,7 +91,7 @@ export function useModelEdgeSelection({
     const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]))
     const selectedIds = new Set(
       selected?.edges.flatMap((edge) => {
-        const resolved = resolveTreatmentReference(edge, candidates)
+        const resolved = resolution.resolve(edge)
         return resolved.status === "resolved" ? [resolved.candidate.id] : []
       }),
     )
@@ -178,5 +177,5 @@ export function useModelEdgeSelection({
         },
       },
     }
-  }, [enabled, onToggle, onChange, selected, candidates, report])
+  }, [enabled, onToggle, onChange, selected, candidates, resolution, report])
 }

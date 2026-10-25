@@ -2,11 +2,11 @@ import type { FeatureId, FeatureRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { fieldVariants } from "@vibeshape/ui/components/field"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
-import { createContext, type ReactNode, useContext, useId, useState } from "react"
+import { createContext, type ReactNode, useContext, useId, useMemo, useState } from "react"
 import { TaskPanelContentProvider, TaskPanelLayout } from "../components/task-panel-layout"
 import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import type { DocumentControllerState } from "../document/document-controller"
-import { exactSolidBodyOptions } from "../features/part-design/exact-body-options"
+import { useExactSolidBodyOptions } from "../features/part-design/exact-body-options"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
 import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
 import {
@@ -70,15 +70,26 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
   const task = retainedFeatureBodyTask(controller, tool)
   const formController = historyRepairTaskContext(controller, tool)
   const report = controller.report
+  const hasRepairTask = task !== null
+  const parts = useMemo(
+    () => (hasRepairTask ? currentAuthoredParts(controller) : []),
+    [controller.authoredSnapshot, report, hasRepairTask],
+  )
+  const bodyOptions = useExactSolidBodyOptions(
+    report?.snapshot,
+    report?.rebuild,
+    task?.feature.id,
+    parts,
+    t("unnamedBody"),
+    undefined,
+    hasRepairTask,
+  )
+  const options = useMemo(
+    () => bodyOptions.flatMap((option) => (option.body ? [{ ...option, body: option.body }] : [])),
+    [bodyOptions],
+  )
   if (!task || !report) return children(formController)
   const { feature, intent } = task
-  const options = exactSolidBodyOptions(
-    report.snapshot,
-    report.rebuild,
-    feature.id,
-    currentAuthoredParts(controller),
-    t("unnamedBody"),
-  ).flatMap((option) => (option.body ? [{ ...option, body: option.body }] : []))
   const selected = options.find(({ id }) => id === selectedBodyId)
   const replacement = selected
     ? replaceHistoryFeatureBody(feature, intent.missingInputs, selected.body)

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { ComponentProps } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
+import { bodyCatalogueFixture } from "../features/part-design/exact-body-catalogue.test-fixtures"
 
 const ports = (() => ({
   registerSubmission: vi.fn(),
@@ -319,5 +320,66 @@ describe("captured-source History task", () => {
       }
       expect(removeFeature).not.toHaveBeenCalled()
     },
+  )
+})
+
+it("retains Boolean body choices without rebuilding the catalogue for preview and controller wrapper updates", () => {
+  const fixture = bodyCatalogueFixture(1, 2)
+  const source = fixture.snapshot.features[0]
+  if (!source) throw new Error("Expected Boolean producer")
+  const geometry = fixture.rebuild.response.geometry
+  let geometryReads = 0
+  Object.defineProperty(fixture.rebuild.response, "geometry", {
+    get() {
+      geometryReads += 1
+      return geometry
+    },
+  })
+  const controller = {
+    status: "ready",
+    saveStatus: "saved",
+    diagnostic: null,
+    report: {
+      status: "clean",
+      mode: "read-write",
+      snapshot: fixture.snapshot,
+      rebuild: fixture.rebuild,
+      historyItems: null,
+      lostRevisionCount: 0,
+      corruptRecords: [],
+      migration: null,
+      writeAccessDiagnostic: null,
+    },
+  } satisfies DocumentControllerState
+  const task = renderFeatureTask("read-write", undefined, source, {
+    activeTool: { kind: "create-subtract" },
+    controller,
+  })
+  const reads = geometryReads
+  expect(reads).toBeGreaterThan(0)
+  expect(screen.getByRole("combobox", { name: "Target solid" }).textContent).toContain(
+    "Producer 1 · pattern.instance.0",
+  )
+  task.rerender(
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <TaskPanel {...task.props} controller={{ ...controller }} featurePreviewStatus="loading" />
+    </I18nProvider>,
+  )
+  expect(geometryReads).toBe(reads)
+  const changed = {
+    ...controller,
+    report: {
+      ...controller.report,
+      snapshot: { ...fixture.snapshot, features: [{ ...source, label: "Changed producer" }] },
+    },
+  } satisfies DocumentControllerState
+  task.rerender(
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <TaskPanel {...task.props} controller={changed} />
+    </I18nProvider>,
+  )
+  expect(geometryReads).toBeGreaterThan(reads)
+  expect(screen.getByRole("combobox", { name: "Target solid" }).textContent).toContain(
+    "Changed producer · pattern.instance.0",
   )
 })

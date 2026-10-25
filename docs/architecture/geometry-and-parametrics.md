@@ -228,10 +228,27 @@ candidate set. Repeated reference projections reuse that index instead of serial
 again for each query. Semantic and lineage precedence, duplicate ambiguity, explicit intent and
 approximate vertex matching keep their existing rules; the index is disposable and never persisted.
 
+Snapshot dependency-graph construction shares one parsed record set and collected relation set with
+legacy History derivation. The derived order still passes History coverage, cycle and forward-reference
+validation before graph publication. This reuse is local to one invocation; it adds no cross-revision
+cache and leaves opaque dependency-model diagnostics and full-preview fallback intact.
+
 Reference-frame, extrusion-target and Sweep/Loft catalogues are retained while their immutable
 snapshot, rebuild and editing scope remain current. Localized catalogues also follow the current
 locale. Replacing any source invalidates the corresponding options. Sweep does not prepare Loft-only
 support faces. These caches do not change geometry tolerances or permit stale references.
+
+Boolean, Revolve, FDM and History repair share mounted-task exact-body preparation. Invocation-local
+indexes retain the first geometry record, any successful evaluation matching its hash, and ambiguous
+part ownership. Boolean command availability applies the same terminal-body, consumption and schema
+checks without allocating display labels or option references. Locale, parts, editing scope, snapshot
+and rebuild replacements invalidate the corresponding task options.
+
+Reference-frame catalogues validate complete body evidence before screening for usable oriented
+planar faces or directed straight edges. Projectors and resolvers retain the complete candidate set,
+including ineligible peers, so semantic/lineage uniqueness and ambiguity remain authoritative. Local
+feature and graphical-ID indexes preserve the original first-match rules; empty support sets do not
+construct unused reference projectors or resolvers.
 
 Extrusion builds face options only after the existing body-consumption pass selects the available
 outputs. Each retained body's graphical face IDs are indexed once; duplicate or missing mesh face IDs
@@ -253,6 +270,12 @@ Edge-treatment forms retain target options for the same immutable snapshot, rebu
 editing scope. Form validation and graphical fields share one projected topology catalogue; changing
 only a radius or distance does not validate and allocate every body's catalogue again. Replacing the
 geometry or target options invalidates the catalogue before another selection can be authored.
+
+Repeated treatment queries share a prepared resolver within one invocation or mounted candidate
+owner. Each feature, topology kind, output role and optional target restriction is prepared lazily;
+unqueried scopes remain unvalidated. Complete same-body peers participate even when a peer has no
+display polyline. Only displayed edges are offered for picking. Candidate validation still precedes
+reference parsing, and candidate replacement discards the prepared scopes.
 
 - Editing a feature marks all downstream nodes dirty.
 - Independent upstream branches retain their caches.

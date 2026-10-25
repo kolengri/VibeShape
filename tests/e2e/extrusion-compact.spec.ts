@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures"
-import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
+import { confirmSketchPlane, drawRectangle, unobscuredDrawingBounds } from "./sketch-helpers"
 
 test("keeps the Extrude preview visible above the compact parameter panel", async ({ page }) => {
   test.setTimeout(90_000)
@@ -26,7 +26,7 @@ test("keeps the Extrude preview visible above the compact parameter panel", asyn
   for (const height of [900, 600]) {
     await page.setViewportSize({ width: 800, height })
     await expect(async () => {
-      const drawing = await canvas.boundingBox()
+      const drawing = await unobscuredDrawingBounds(page, canvas)
       const panel = await form.boundingBox()
       expect(drawing).not.toBeNull()
       expect(panel).not.toBeNull()
