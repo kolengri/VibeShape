@@ -130,7 +130,8 @@ function* savedProfileSamplePositions(bounds: {
 export async function clickSavedProfileInViewport(page: Page, label: string, additive = false) {
   const viewport = page.getByRole("region", { name: "3D viewport" })
   const canvas = viewport.locator("canvas")
-  const bounds = await unobscuredDrawingBounds(page, canvas)
+  const bounds = await canvas.boundingBox()
+  if (!bounds) throw new Error("The saved profile viewport must be measurable.")
   const status = viewport.getByText(`Select profile: ${label}`, { exact: true })
   for (const position of savedProfileSamplePositions(bounds)) {
     const canvasReceivesPointer = await canvas.evaluate((element, point) => {

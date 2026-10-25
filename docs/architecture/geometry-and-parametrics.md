@@ -233,6 +233,13 @@ snapshot, rebuild and editing scope remain current. Localized catalogues also fo
 locale. Replacing any source invalidates the corresponding options. Sweep does not prepare Loft-only
 support faces. These caches do not change geometry tolerances or permit stale references.
 
+Extrusion builds face options only after the existing body-consumption pass selects the available
+outputs. Each retained body's graphical face IDs are indexed once; duplicate or missing mesh face IDs
+leave the stable reference available without enabling an ambiguous viewport hit. Exact body evidence,
+reference projection and resolution still validate ownership and ambiguity. Indexed signature matches
+also avoid serializing the same query signature again before resolution; history fallback keeps its
+existing signature comparison.
+
 Interactive feature previews use the complete document dependency graph to select the changed
 feature, its downstream features and sketches, and every required upstream input. Unrelated branches
 reuse geometry only from the exact committed document ID and revision. The combined viewport still
