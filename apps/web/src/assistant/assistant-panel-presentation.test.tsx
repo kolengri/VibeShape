@@ -6,6 +6,7 @@ import { I18nProvider } from "@vibeshape/i18n/provider"
 import { type ComponentProps, useEffect } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { i18n } from "../i18n"
+import * as transcript from "./assistant-messages"
 import { AssistantPanel } from "./assistant-panel"
 
 type PanelProps = ComponentProps<typeof AssistantPanel>
@@ -77,7 +78,7 @@ function ConnectionControls({ mount, disconnect }: { mount: () => void; disconne
   return <input aria-label="Connection label" defaultValue="Connected" />
 }
 
-it("retains mounted composer, pending attachments, transcript expansion, settings, questions, and reading position through hide and reopen", async () => {
+it("retains mounted composer, pending attachments, transcript expansion, settings, and questions through hide and reopen, returning to the latest message", async () => {
   const readers: { onload: (() => void) | null; result: ArrayBuffer }[] = []
   vi.stubGlobal(
     "FileReader",
@@ -117,10 +118,11 @@ it("retains mounted composer, pending attachments, transcript expansion, setting
       },
     ],
   }
-  const view = render(panel(props))
+  const view = render(panel({ ...props, question: null }))
   const aside = screen.getByRole("complementary", { name: "AI chat" })
   const draft = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement
   fireEvent.change(draft, { target: { value: "Unsent description" } })
+  view.rerender(panel(props))
   const answer = screen.getByRole("textbox", { name: "Finish" }) as HTMLInputElement
   await userEvent.click(screen.getByRole("button", { name: "AI settings" }))
   const setting = screen.getByRole("textbox", { name: "Connection label" }) as HTMLInputElement
@@ -159,7 +161,7 @@ it("retains mounted composer, pending attachments, transcript expansion, setting
   )
   expect(disconnect).not.toHaveBeenCalled()
   view.rerender(panel(props))
-  expect(screen.getByRole("textbox", { name: "Message" })).toBe(draft)
+  expect(screen.getByLabelText("Message", { selector: "textarea" })).toBe(draft)
   expect(attachment?.getAttribute("aria-busy")).toBe("true")
   view.rerender(
     panel({
@@ -189,8 +191,9 @@ it("retains mounted composer, pending attachments, transcript expansion, setting
   )
   expect(details?.open).toBe(true)
   expect(log.scrollTop).toBe(120)
-  expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledTimes(scrollCalls)
-  expect(screen.getByRole("button", { name: "Remove pending.txt" })).toBeTruthy()
+  expect(vi.mocked(HTMLElement.prototype.scrollTo).mock.calls.length).toBeGreaterThan(scrollCalls)
+  expect(HTMLElement.prototype.scrollTo).toHaveBeenLastCalledWith({ top: 900 })
+  expect(aside.querySelector('button[aria-label="Remove pending.txt"]')).toBeTruthy()
   await userEvent.click(screen.getByRole("button", { name: "AI settings" }))
   expect(screen.getByRole("textbox", { name: "Connection label" })).toBe(setting)
   expect(setting.value).toBe("Keep this connection")
@@ -234,4 +237,28 @@ it("distinguishes retained transcript from bounded provider context and exposes 
   )
   expect(screen.queryByText(/outside the API context budget/)).toBeNull()
   expect(screen.queryByRole("button", { name: "Retry chat storage" })).toBeNull()
+})
+
+it("keeps the transcript out of typing renders in a retained conversation", () => {
+  const renders = vi.spyOn(transcript, "AssistantMessages")
+  try {
+    render(
+      panel({
+        messages: Array.from({ length: 60 }, (_, index) => ({
+          id: `saved-${index}`,
+          role: "assistant" as const,
+          text: `Saved answer ${index}`,
+        })),
+      }),
+    )
+    expect(renders).toHaveBeenCalled()
+    renders.mockClear()
+    const input = screen.getByRole("textbox", { name: "Message" })
+    for (const value of ["A", "An", "Another", "Another instruction"]) {
+      fireEvent.change(input, { target: { value } })
+    }
+    expect(renders).not.toHaveBeenCalled()
+  } finally {
+    renders.mockRestore()
+  }
 })

@@ -1910,20 +1910,27 @@ describe("native ACP service", () => {
     ).toBe(true)
   })
 
-  it("expires unanswered questions without hanging a turn", async () => {
-    const context = await host({ questionTimeoutMs: 20 })
+  it("keeps unanswered questions pending until the person replies", async () => {
+    const context = await host()
     const session = ready(await context.connect())
+    const prompting = context.service.handle({
+      operation: "prompt",
+      input: { ...scope(session), text: "ask-question" },
+    })
+    const event = await context.waitFor((event) => event.type === "question")
+    if (event.type !== "question") throw new Error("Question not received")
+    expect(event.question.expiresAt).toBeUndefined()
     expect(
       await context.service.handle({
-        operation: "prompt",
-        input: { ...scope(session), text: "ask-question" },
+        operation: "respondQuestion",
+        input: {
+          ...scope(session),
+          requestId: event.question.requestId,
+          answers: { size: "Small" },
+        },
       }),
     ).toMatchObject({ ok: true })
-    expect(
-      context.events.some(
-        (event) => event.type === "question-resolved" && event.reason === "expired",
-      ),
-    ).toBe(true)
+    expect(await prompting).toMatchObject({ ok: true })
   })
 
   it("binds native question callbacks to the captured owner and retains readiness after premature completion", async () => {

@@ -25,6 +25,7 @@ const input = {
       label: "Size",
       required: true,
       secret: false as const,
+      allowCustomAnswer: false,
       options: [
         { id: "small", name: "Small" },
         { id: "large", name: "Large" },
@@ -36,7 +37,7 @@ const input = {
 describe("owner-scoped assistant questions", () => {
   it("waits for a valid answer and settles once across duplicate reply and abort", async () => {
     const events: AssistantEvent[] = []
-    const owner = createAssistantQuestions(snapshot, (event) => events.push(event), 1000)
+    const owner = createAssistantQuestions(snapshot, (event) => events.push(event))
     const abort = new AbortController()
     const waiting = owner.requestInput(input, abort.signal)
     const event = events[0]
@@ -61,24 +62,29 @@ describe("owner-scoped assistant questions", () => {
     ])
   })
 
-  it("checks the deadline before a delayed timer runs and rejects late replies", async () => {
-    const events: AssistantEvent[] = []
-    const owner = createAssistantQuestions(snapshot, (event) => events.push(event), 1000)
-    const abort = new AbortController()
-    const waiting = owner.requestInput(input, abort.signal)
-    const event = events[0]
-    if (event?.type !== "question") throw new Error("Missing question")
-    const now = vi.spyOn(Date, "now").mockReturnValue(event.question.expiresAt)
+  it("keeps unanswered questions pending across a day and cancels them only on abort", async () => {
+    vi.useFakeTimers()
     try {
-      expect(owner.respond(event.question.requestId, { size: "large" })).toBe(false)
+      const events: AssistantEvent[] = []
+      const owner = createAssistantQuestions(snapshot, (event) => events.push(event))
+      const abort = new AbortController()
+      const waiting = owner.requestInput(input, abort.signal)
+      const event = events[0]
+      if (event?.type !== "question") throw new Error("Missing question")
+      expect(event.question.expiresAt).toBeUndefined()
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000)
+      expect(owner.hasPending()).toBe(true)
+      expect(events).toHaveLength(1)
+      expect(owner.respond(event.question.requestId, { size: "large" })).toBe(true)
+      expect(await waiting).toEqual({ action: "accept", content: { size: "large" } })
+      const cancelled = owner.requestInput(input, abort.signal)
       abort.abort()
       owner.cancel()
-      expect(await waiting).toEqual({ action: "cancel" })
+      expect(await cancelled).toEqual({ action: "cancel" })
       expect(owner.hasPending()).toBe(false)
-      expect(events.filter((event) => event.type === "question-resolved")).toHaveLength(1)
-      expect(events.at(-1)).toMatchObject({ reason: "expired" })
+      expect(events.at(-1)).toMatchObject({ reason: "cancelled" })
     } finally {
-      now.mockRestore()
+      vi.useRealTimers()
     }
   })
 })

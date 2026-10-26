@@ -428,8 +428,9 @@ test("transfers selected files, answers structured model questions, collapses to
   await panel.getByRole("button", { name: "Send", exact: true }).click()
   const question = panel.getByRole("form", { name: "Agent question", exact: true })
   await expect(question).toBeVisible()
-  await question.getByText("Fillet", { exact: true }).click()
+  await question.getByRole("radio", { name: "Fillet", exact: true }).check()
   await expect(question.getByRole("radio", { name: "Fillet", exact: true })).toBeChecked()
+  await question.getByRole("button", { name: "Next", exact: true }).click()
   await question
     .getByRole("textbox", { name: "Custom instructions", exact: true })
     .fill("Use a 2 mm radius")

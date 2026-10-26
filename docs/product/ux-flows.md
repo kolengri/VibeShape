@@ -190,8 +190,7 @@ move the transcript when the person is reading earlier messages. Inspection lock
 connection settings, and control/display changes do not trigger transcript following without new
 message content. The compact chat header contains the chat title and actions in one row. The project
 name remains in the top project navigation; working status stays in the composer. Hiding chat preserves
-its mounted transcript, draft,
-attachment reads, scroll position, settings and active connection. The header AI chat toggle reopens
+its draft, attachment reads, tool disclosure state, settings and active connection. The header AI chat toggle reopens
 the same panel; show/hide and message updates do not resize or remount the viewport canvas.
 
 Files can be dropped into the composer or chosen through Attach files. Both routes enforce the same
@@ -229,12 +228,23 @@ cannot certify a language model's semantic fulfillment from delivery alone.
 
 The embedded native and browser API assistants expose `ask_user_question` for a bounded non-secret
 form. A required answer pauses dependent CAD work, queued delivery, steering and automatic recovery
-continuation. A premature provider ready event cannot dismiss the form. A valid unexpired reply
-releases the wait; dismissal, timeout, Stop or disconnection pauses the queue and grants no answer.
+continuation. A premature provider ready event cannot dismiss the form. Questions use the composer
+surface with choices, custom text, and Back/Next navigation; the unsent message and attachments remain
+available after resolution. Custom text is accepted unless a choice explicitly sets
+`allowCustomAnswer: false`; provider-supplied closed enumerations remain strict. A valid reply
+releases the wait; dismissal, Stop or disconnection pauses the queue and grants no answer.
 The API also stops later tool calls in the same response after an unanswered question is abandoned.
-Native forms normally expire after five minutes and API forms after two; a provider may impose a
-shorter MCP request timeout. The native tool uses a captured session/transport callback and does not
-depend on provider-specific elicitation forwarding or questions inferred from prose.
+Application questions have no deadline, and the API turn budget excludes time waiting for an answer.
+A provider may still cancel its MCP request through its own transport policy. The native tool uses a
+captured session/transport callback and does not depend on provider-specific elicitation forwarding
+or questions inferred from prose.
+
+Composer drafts update independently of the transcript. Histories exceeding eighty displayed message
+groups use TanStack Virtual with measured variable heights and stable message IDs. Offscreen groups
+unmount; expanded tool groups retain their disclosure state and mount detailed output on demand.
+Opening or unfolding chat starts at its latest message, including after project restoration. A scroll
+to latest message button returns from older history, while streaming preserves an active reader's
+position until they return to the end or send a new message.
 
 During an active AI operation or review, a blocked durable visibility change can use the existing
 project-local view override for inspection. A neutral status explicitly states that it was not

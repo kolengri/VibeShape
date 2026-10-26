@@ -120,12 +120,12 @@ const questionInput: AssistantQuestionInput = {
     },
   ],
 }
-function questionFixture() {
+function questionFixture(input: AssistantQuestionInput = questionInput) {
   const decisions: Decision[] = [
     {
       kind: "tool",
       tool: question,
-      arguments: questionInput,
+      arguments: input,
       needsArguments: false,
       confidence: 1,
     },
@@ -618,7 +618,10 @@ describe("Jev structured questions", () => {
       },
     ],
   ])("stops dependent CAD after a %s question result", async (_name, value) => {
-    const f = questionFixture()
+    const f = questionFixture({
+      ...questionInput,
+      fields: questionInput.fields.map((field) => ({ ...field, allowCustomAnswer: false })),
+    })
     const original = f.port.call
     f.port.call = async (name, args, signal) => {
       if (name !== question.name) return original(name, args, signal)
@@ -631,6 +634,33 @@ describe("Jev structured questions", () => {
     expect(f.calls).toContain(question.name)
     expect(f.calls).not.toContain(tool.name)
   })
+
+  it.each(["default", "explicit"])(
+    "executes dependent CAD after a custom choice accepted by the %s contract",
+    async (mode) => {
+      const input =
+        mode === "default"
+          ? questionInput
+          : {
+              ...questionInput,
+              fields: questionInput.fields.map((field) => ({ ...field, allowCustomAnswer: true })),
+            }
+      const f = questionFixture(input)
+      const original = f.port.call
+      f.port.call = async (name, args, signal) => {
+        if (name !== question.name) return original(name, args, signal)
+        f.calls.push(name)
+        return {
+          value: { action: "accept", content: { material: "Carbon-fiber PETG" } },
+          photos: [],
+          failed: false,
+        }
+      }
+      await f.controller.run("Make the part", [], new AbortController().signal, async () => {})
+      expect(f.calls.filter((name) => name === question.name)).toHaveLength(1)
+      expect(f.calls.filter((name) => name === tool.name)).toHaveLength(1)
+    },
+  )
 
   it("honors Stop during a question without classifying the question as an uncertain CAD write", async () => {
     const f = questionFixture()
