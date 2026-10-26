@@ -246,6 +246,11 @@ Opening or unfolding chat starts at its latest message, including after project 
 to latest message button returns from older history, while streaming preserves an active reader's
 position until they return to the end or send a new message.
 
+The saved-chat list also windows histories exceeding eighty entries. Tab, Shift+Tab, arrow keys,
+Home and End reach entries outside the mounted range; focus and a pending conversation switch
+retain their row while other offscreen entries unmount. A successful switch returns focus to the
+Chat history control.
+
 During an active AI operation or review, a blocked durable visibility change can use the existing
 project-local view override for inspection. A neutral status explicitly states that it was not
 saved. Returning to the saved visibility clears that override without a metadata command. Idle
@@ -665,6 +670,12 @@ A row's context menu offers **Insert above** and **Insert below**. The insertion
 **Delete** remains available when later History items use the selected item. It removes the selected item, retains downstream operations, and disconnects their affected inputs. A missing-reference status identifies operations that need repair. Opening one restores its authored parameters for selecting replacement inputs; successful repair can restore downstream operations whose original inputs become valid again. Undo restores the removed item and its references. The repair state survives browser reload and native Save/Open.
 
 Ctrl/Cmd-click toggles individual History rows; Shift-click selects a contiguous range from the last selection anchor. A normal click establishes an anchor while opening the editor. With a row focused, Shift+Space establishes or extends a range without opening the editor. **Add selection to folder** is available beside History and in the selected rows' context menu, and asks only for a folder name. **New folder** also accepts an explicit first and last History item. Selection cannot create a folder across a gap or overlap another folder. A row's context menu can add the selection to an existing folder only when the combined membership remains contiguous and does not overlap another folder; no History items move. Folders show their member count and support expand/collapse, Rename, Edit items, and Ungroup. Collapse and selection are presentation state; saved names and contiguous membership are organizational metadata. Ungroup removes only the folder. It never deletes or reorders geometry. Part names, visibility, folders, and feature history survive native Save/Open as a fresh document copy.
+
+Long History operation tracks and sidebar sketch lists use measured TanStack Virtual windows.
+Expanded folders also window their members. Keyboard navigation, search reveal and selection can
+reach unmounted operations; folder disclosure state and open row actions survive scrolling.
+Rollback cursor positions use the complete track layout rather than only the mounted rows.
+Parts, Bodies and construction-plane branches retain their existing rendering.
 
 Export scope chooses All parts or one named part, including hidden parts. STL exports the selected current solid; multipart 3MF retains names and positions. Opening Export resets the scope to All parts. Print preparation is available for All parts and creates a disposable print copy; it does not modify the authored model. A changed document or unavailable selected body produces an error instead of silently exporting another body.
 

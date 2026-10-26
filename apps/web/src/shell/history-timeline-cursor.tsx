@@ -14,7 +14,13 @@ import {
 } from "react"
 import { useHistoryNavigation } from "./history-navigation"
 
-type Segment = { first: number; last: number; left: number; right: number }
+export type HistoryTimelineSegment = Readonly<{
+  first: number
+  last: number
+  left: number
+  right: number
+}>
+type Segment = HistoryTimelineSegment
 type Anchor = { position: number; x: number }
 type Layout = { anchors: Anchor[]; segments: Segment[]; settling: boolean }
 type Drag = {
@@ -125,7 +131,7 @@ function pointerPosition(track: HTMLElement, layout: Layout, clientX: number) {
   )
 }
 
-function useCursorLayout(items: readonly HistoryItemRef[]) {
+function useCursorLayout(items: readonly HistoryItemRef[], virtualSegments?: readonly Segment[]) {
   const handle = useRef<HTMLHRElement>(null)
   const [layout, setLayout] = useState<Layout>({ anchors: [], segments: [], settling: false })
   useLayoutEffect(() => {
@@ -160,7 +166,20 @@ function useCursorLayout(items: readonly HistoryItemRef[]) {
         }
         return
       }
-      setLayout(readLayout(track, items))
+      if (virtualSegments) {
+        const anchors: Anchor[] = []
+        for (const segment of virtualSegments) {
+          const previous = anchors.at(-1)
+          if (previous?.position === segment.first) previous.x = (previous.x + segment.left) / 2
+          else anchors.push({ position: segment.first, x: segment.left })
+          anchors.push({ position: segment.last + 1, x: segment.right })
+        }
+        setLayout({
+          anchors: completeAnchors(anchors, items.length),
+          segments: [...virtualSegments],
+          settling: false,
+        })
+      } else setLayout(readLayout(track, items))
     }
     const observe = () => {
       resize.disconnect()
@@ -227,7 +246,7 @@ function useCursorLayout(items: readonly HistoryItemRef[]) {
       for (const event of events) track.removeEventListener(event, rowAnimation, true)
       if (scheduled !== null) cancelAnimationFrame(scheduled)
     }
-  }, [items])
+  }, [items, virtualSegments])
   return { handle, layout }
 }
 function edgeScrollDelta(track: HTMLElement, clientX: number) {
@@ -362,10 +381,14 @@ function useCursorGestures(
   return { disabled, start, finish, pointerMove, keyDown, cancel }
 }
 
-export function HistoryTimelineCursor() {
+export function HistoryTimelineCursor({
+  virtualSegments,
+}: {
+  virtualSegments?: readonly Segment[] | undefined
+}) {
   const t = useTranslations("app.historyNavigation")
   const navigation = useHistoryNavigation()
-  const { handle, layout } = useCursorLayout(navigation.items)
+  const { handle, layout } = useCursorLayout(navigation.items, virtualSegments)
   const gestures = useCursorGestures(navigation, layout, handle)
   const disabled = gestures.disabled
   const instructions = useId()

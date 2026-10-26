@@ -1,3 +1,4 @@
+import { resolve } from "node:path"
 import type {
   AssistantBridge,
   AssistantEvent,
@@ -122,7 +123,63 @@ async function installAgent(page: Page) {
   })
 }
 
-async function connect(page: Page, savedMessages = 0) {
+async function seedSavedChats(page: Page, count: number) {
+  await page.evaluate(
+    async ({ count, root }) => {
+      const controllerPath = "/src/document/document-controller.ts"
+      const historyPath = "/src/assistant/chat-history-storage.ts"
+      const app: {
+        getDocumentControllerState: () => {
+          report: {
+            snapshot: { id: import("../../packages/domain/src/identifiers").DocumentId }
+          } | null
+        }
+      } = await import(controllerPath)
+      const history: {
+        createChatHistoryStore: () => import("../../packages/persistence/src/transcript-store").TranscriptStore
+      } = await import(historyPath)
+      const projectId = app.getDocumentControllerState().report?.snapshot.id
+      if (!projectId) throw new Error("Expected an open project")
+      await history.createChatHistoryStore().load(projectId)
+      const databasePath = `/@fs${root}/packages/persistence/src/transcript-store.ts`
+      const persistence: typeof import("../../packages/persistence/src/transcript-store") =
+        await import(databasePath)
+      const database = new persistence.TranscriptDatabase()
+      try {
+        await database.archives.bulkAdd(
+          Array.from({ length: count }, (_, index) => {
+            const id = crypto.randomUUID()
+            const messageId = crypto.randomUUID()
+            return {
+              version: 1 as const,
+              projectId,
+              id,
+              title:
+                index === 1
+                  ? `Saved chat 1: ${"A detailed archived modeling discussion. ".repeat(8)}`
+                  : `Saved chat ${index}`,
+              updatedAt: count - index,
+              entries: [
+                {
+                  version: 1 as const,
+                  projectId,
+                  id: messageId,
+                  position: 0,
+                  value: { id: messageId, role: "user", text: `Archived instruction ${index}` },
+                },
+              ],
+            }
+          }),
+        )
+      } finally {
+        database.close()
+      }
+    },
+    { count, root: resolve(import.meta.dirname, "../..") },
+  )
+}
+
+async function connect(page: Page, savedMessages = 0, savedChats = 0) {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
@@ -130,6 +187,13 @@ async function connect(page: Page, savedMessages = 0) {
     timeout: 30_000,
   })
   await createEditorProject(page)
+  if (savedChats) {
+    await seedSavedChats(page, savedChats)
+    await page.reload()
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
+    )
+  }
   if (savedMessages) {
     await page.evaluate(async (count) => {
       const controllerPath = "/src/document/document-controller.ts"
@@ -359,4 +423,62 @@ test("virtualizes variable-height history, preserves disclosures, and opens rest
   if (!(await panel.isVisible())) await toggle.click()
   await expect(panel.getByRole("log")).toContainText("Stream line 60:")
   await expect.poll(distance).toBeLessThanOrEqual(2)
+})
+
+test("windows saved chats while preserving scrolling, keyboard traversal and conversation switching", async ({
+  page,
+}) => {
+  await installAgent(page)
+  const panel = await connect(page, 0, 600)
+  const trigger = panel.getByRole("button", { name: "Chat history", exact: true })
+  await trigger.click()
+  const history = panel.getByRole("region", { name: "Chat history", exact: true })
+  const list = history.getByRole("list")
+  const first = list.getByRole("button", { name: "Saved chat 0", exact: true })
+  const last = list.getByRole("button", { name: "Saved chat 599", exact: true })
+  await expect(first).toBeVisible()
+  await expect(list.getByRole("listitem").first()).toHaveAttribute("aria-setsize", "600")
+  expect(await list.getByRole("listitem").count()).toBeLessThan(24)
+  await list.evaluate((node) => node.scrollTo({ top: node.scrollHeight }))
+  await expect(last).toBeInViewport({ ratio: 1 })
+  await expect(first).toHaveCount(0)
+  expect(await list.getByRole("listitem").count()).toBeLessThan(24)
+  await last.focus()
+  await last.press("Home")
+  await expect(first).toBeFocused()
+  await expect(first).toBeInViewport({ ratio: 1 })
+  await list.evaluate((node) => node.scrollTo({ top: node.scrollHeight }))
+  await expect(last).toBeInViewport({ ratio: 1 })
+  await expect(first).toBeFocused()
+  expect(await list.getByRole("listitem").count()).toBeLessThan(24)
+  await first.press("End")
+  await expect(last).toBeFocused()
+  await last.press("ArrowUp")
+  const previous = list.getByRole("button", { name: "Saved chat 598", exact: true })
+  await expect(previous).toBeFocused()
+  await previous.press("Tab")
+  await expect(last).toBeFocused()
+  await last.press("Shift+Tab")
+  await expect(previous).toBeFocused()
+  await previous.press("End")
+  await last.press("Tab")
+  expect(await list.evaluate((node) => node.contains(node.ownerDocument.activeElement))).toBe(false)
+  await last.click()
+  await expect(history).toBeHidden()
+  await expect(panel.getByRole("log")).toContainText("Archived instruction 599")
+  await expect(trigger).toBeFocused()
+  await trigger.click()
+  await expect(first).toBeVisible()
+  await expect(list.getByRole("listitem").first()).toHaveAttribute("aria-setsize", "599")
+  for (const width of [1024, 512]) {
+    await page.setViewportSize({ width, height: width === 512 ? 450 : 900 })
+    for (const theme of ["light", "dark"]) {
+      await page.locator("html").evaluate((node, theme) => {
+        node.classList.toggle("dark", theme === "dark")
+      }, theme)
+      await expect(first).toBeInViewport({ ratio: 1 })
+      expect(await list.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
+      expect(await list.getByRole("listitem").count()).toBeLessThan(24)
+    }
+  }
 })

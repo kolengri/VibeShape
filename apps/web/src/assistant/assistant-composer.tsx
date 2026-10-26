@@ -689,11 +689,11 @@ function useComposerFocus(
   answering: boolean,
   focusOnMount: boolean,
 ) {
-  const mounted = useRef(false)
   const enabled = !pending && !answering
+  const previouslyEnabled = useRef(enabled)
   useEffect(() => {
-    if (enabled && (mounted.current || focusOnMount)) composer.current?.focus()
-    mounted.current = true
+    if (enabled && (focusOnMount || !previouslyEnabled.current)) composer.current?.focus()
+    previouslyEnabled.current = enabled
   }, [composer, enabled, focusOnMount])
 }
 
