@@ -126,6 +126,36 @@ it("releases the submission lock after rejection, retains answers, and never sub
   expect((screen.getByRole("radio", { name: "Square" }) as HTMLInputElement).checked).toBe(true)
 })
 
+it.each(["round", "rounded"])(
+  "preserves custom text %s when it matches or passes through an option ID",
+  async (text) => {
+    const answer = vi.fn(async () => true)
+    render(<Harness answer={answer} />)
+    await userEvent.click(screen.getByRole("button", { name: "Ask" }))
+    await userEvent.type(screen.getByRole("textbox", { name: "Custom answer for Finish" }), text)
+    expect(
+      (screen.getByRole("textbox", { name: "Custom answer for Finish" }) as HTMLTextAreaElement)
+        .value,
+    ).toBe(text)
+    expect((screen.getByRole("radio", { name: "Round" }) as HTMLInputElement).checked).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
+    await userEvent.click(screen.getByRole("button", { name: "Back" }))
+    const custom = screen.getByRole("textbox", {
+      name: "Custom answer for Finish",
+    }) as HTMLTextAreaElement
+    expect(custom.value).toBe(text)
+    expect((screen.getByRole("radio", { name: "Round" }) as HTMLInputElement).checked).toBe(false)
+    await userEvent.click(screen.getByRole("radio", { name: "Square" }))
+    expect(custom.value).toBe("")
+    expect((screen.getByRole("radio", { name: "Square" }) as HTMLInputElement).checked).toBe(true)
+    await userEvent.type(custom, text)
+    expect((screen.getByRole("radio", { name: "Square" }) as HTMLInputElement).checked).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
+    await userEvent.click(screen.getByRole("button", { name: "Submit answers" }))
+    await waitFor(() => expect(answer).toHaveBeenCalledWith({ finish: text }))
+  },
+)
+
 it("allows skipping unanswered required fields without treating a choice as submitted", async () => {
   const answer = vi.fn(async () => true)
   render(<Harness answer={answer} />)

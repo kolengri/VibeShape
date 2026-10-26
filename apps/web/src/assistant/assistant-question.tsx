@@ -20,6 +20,7 @@ export function AssistantQuestionForm({
   const t = useTranslations("app.assistant")
   const [failed, setFailed] = useState(false)
   const [index, setIndex] = useState(0)
+  const [answerModes, setAnswerModes] = useState<Record<string, "choice" | "custom">>({})
   const heading = useRef<HTMLHeadingElement>(null)
   const customId = useId()
   const questionField = question.fields[index]
@@ -67,6 +68,7 @@ export function AssistantQuestionForm({
     await form.handleSubmit()
   }
   if (!questionField) return null
+  const custom = answerModes[questionField.id] === "custom"
   return (
     <form.Subscribe selector={(state) => state.isSubmitting}>
       {(pending) => (
@@ -115,8 +117,11 @@ export function AssistantQuestionForm({
                     label={questionField.label}
                     description={questionField.description}
                     disabled={pending}
-                    value={field.state.value}
-                    onValueChange={field.handleChange}
+                    value={custom ? "" : field.state.value}
+                    onValueChange={(value) => {
+                      setAnswerModes((current) => ({ ...current, [questionField.id]: "choice" }))
+                      field.handleChange(value)
+                    }}
                     onBlur={field.handleBlur}
                     error={field.state.meta.errors.join(" ")}
                     options={questionField.options.map((option) => ({
@@ -133,15 +138,17 @@ export function AssistantQuestionForm({
                       <Textarea
                         id={customId}
                         className="field-sizing-content min-h-16 max-h-40 resize-none"
-                        value={
-                          questionField.options.some((option) => option.id === field.state.value)
-                            ? ""
-                            : field.state.value
-                        }
+                        value={custom ? field.state.value : ""}
                         maxLength={questionField.maxLength ?? 16_384}
                         disabled={pending}
                         onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.currentTarget.value)}
+                        onChange={(event) => {
+                          setAnswerModes((current) => ({
+                            ...current,
+                            [questionField.id]: "custom",
+                          }))
+                          field.handleChange(event.currentTarget.value)
+                        }}
                         onKeyDown={(event) => {
                           if (
                             event.key === "Enter" &&
