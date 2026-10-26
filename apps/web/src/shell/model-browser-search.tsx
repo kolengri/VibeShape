@@ -4,9 +4,11 @@ import { SearchIcon, X } from "@vibeshape/ui/components/icons"
 import { Input } from "@vibeshape/ui/components/input"
 import { cn } from "@vibeshape/ui/lib/cn"
 import {
+  createContext,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
+  useContext,
   useEffect,
   useId,
   useRef,
@@ -16,6 +18,11 @@ import { modelBrowserSelectedRow } from "./model-browser-styles"
 
 type SearchType = "part" | "body" | "sketch" | "plane" | "operation"
 const searchGroups = ["parts", "planes", "history"] as const
+const ModelBrowserTreeVisibility = createContext(true)
+
+export function useModelBrowserTreeVisible() {
+  return useContext(ModelBrowserTreeVisibility)
+}
 
 export type ModelBrowserSearchEntry = Readonly<{
   key: string
@@ -192,7 +199,9 @@ export function ModelBrowserSearch({
           </div>
         </div>
       )}
-      <div hidden={active}>{children}</div>
+      <ModelBrowserTreeVisibility value={!active}>
+        <div hidden={active}>{children}</div>
+      </ModelBrowserTreeVisibility>
     </>
   )
 }

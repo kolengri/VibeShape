@@ -115,6 +115,29 @@ function folderVisualRange(folder: HistoryFolder, rows: readonly HistoryViewRow[
   const end = start + folder.items.length - 1
   return { start, end, first: historyRefKey(first), last: historyRefKey(rows[end]?.ref ?? first) }
 }
+type HistoryFolderGroupProps = {
+  authority: AuthoredDocumentSnapshot
+  folder: HistoryFolder
+  rows: readonly HistoryViewRow[]
+  disabled: boolean
+  onCommit: AuthoredMetadataCommit
+  children: ReactNode
+  horizontal?: boolean
+  revealRequest?: Readonly<{ featureId: string; sequence: number }> | null | undefined
+  expanded?: boolean | undefined
+  onExpandedChange?: ((expanded: boolean) => void) | undefined
+  virtualLayout?:
+    | Readonly<{
+        width: number
+        height: number
+        controlIndex: number
+        collapsed: boolean
+        unitKey: string
+        measureElement: (element: HTMLDivElement | null) => void
+      }>
+    | undefined
+}
+
 export function HistoryFolderGroup({
   authority,
   folder,
@@ -124,83 +147,148 @@ export function HistoryFolderGroup({
   children,
   horizontal = false,
   revealRequest,
-}: {
-  authority: AuthoredDocumentSnapshot
-  folder: HistoryFolder
-  rows: readonly HistoryViewRow[]
-  disabled: boolean
-  onCommit: AuthoredMetadataCommit
-  children: ReactNode
-  horizontal?: boolean
-  revealRequest?: Readonly<{ featureId: string; sequence: number }> | null | undefined
-}) {
-  const t = useTranslations("app.authoredTree")
-  const [expanded, setExpanded] = useState(true)
-  useEffect(() => {
-    if (revealRequest && folder.items.some((item) => item.id === revealRequest.featureId))
-      setExpanded(true)
-  }, [folder.items, revealRequest])
+  expanded: controlledExpanded,
+  onExpandedChange,
+  virtualLayout,
+}: HistoryFolderGroupProps) {
+  const { expanded, setExpanded } = useFolderExpansion(
+    folder,
+    controlledExpanded,
+    onExpandedChange,
+    revealRequest,
+  )
   const range = horizontal ? folderVisualRange(folder, rows) : null
   return (
     <div
+      {...folderVirtualAttributes(virtualLayout, folder.id)}
       role="none"
       data-folder-id={folder.id}
       data-history-expanded={horizontal ? String(expanded) : undefined}
-      data-history-range-start={range?.start}
-      data-history-range-end={range?.end}
-      data-history-range-first={range?.first}
-      data-history-range-last={range?.last}
+      {...folderRangeAttributes(range)}
       className={horizontal ? "shrink-0 border-x" : undefined}
     >
-      <div role="none" className="flex min-w-0 items-center">
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          role="treeitem"
-          aria-label={t("folderLabel", { name: folder.name })}
-          aria-expanded={expanded}
-          tabIndex={-1}
-          className="min-w-0 flex-1 justify-start pl-3 font-normal"
-          onClick={() => setExpanded(!expanded)}
-        >
-          <ChevronDown
-            className={cn("size-3 shrink-0", !expanded && "-rotate-90")}
-            aria-hidden="true"
-          />
-          <FolderOpen className="size-4 shrink-0" aria-hidden="true" />
-          <span className="truncate">{folder.name}</span>
-          <span className="ml-auto text-xs text-muted-foreground" aria-hidden="true">
-            {folder.items.length}
-          </span>
-        </Button>
-        <AuthoredItemRename
-          item={folder}
-          kind="folder"
-          revision={authority.revision}
-          disabled={disabled}
-          onCommit={onCommit}
-        />
-        <RemoveFolder
-          folder={folder}
-          revision={authority.revision}
-          disabled={disabled}
-          onCommit={onCommit}
-        />
-      </div>
+      <HistoryFolderHeader
+        folder={folder}
+        authority={authority}
+        disabled={disabled}
+        onCommit={onCommit}
+        expanded={expanded}
+        setExpanded={setExpanded}
+      />
       {expanded && (
-        <fieldset className={horizontal ? "flex items-start" : "ml-3 border-l border-border pl-1"}>
+        <fieldset
+          className={horizontal ? "relative flex items-start" : "ml-3 border-l border-border pl-1"}
+          style={virtualLayout ? { height: virtualLayout.height } : undefined}
+        >
           <legend className="sr-only">{folder.name}</legend>
-          <HistoryFolderDialog
-            authority={authority}
-            folder={folder}
-            rows={rows}
-            disabled={disabled}
-            onCommit={onCommit}
-          />
+          <div
+            ref={virtualLayout?.measureElement}
+            data-index={virtualLayout?.controlIndex}
+            className="w-max shrink-0"
+          >
+            <HistoryFolderDialog
+              authority={authority}
+              folder={folder}
+              rows={rows}
+              disabled={disabled}
+              onCommit={onCommit}
+            />
+          </div>
           {children}
         </fieldset>
       )}
     </div>
   )
+}
+
+function HistoryFolderHeader({
+  folder,
+  authority,
+  disabled,
+  onCommit,
+  expanded,
+  setExpanded,
+}: Pick<HistoryFolderGroupProps, "folder" | "authority" | "disabled" | "onCommit"> & {
+  expanded: boolean
+  setExpanded: (expanded: boolean) => void
+}) {
+  const t = useTranslations("app.authoredTree")
+  return (
+    <div role="none" className="flex min-w-0 items-center">
+      <Button
+        type="button"
+        size="xs"
+        variant="ghost"
+        role="treeitem"
+        aria-label={t("folderLabel", { name: folder.name })}
+        aria-expanded={expanded}
+        tabIndex={-1}
+        className="min-w-0 flex-1 justify-start pl-3 font-normal"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <ChevronDown
+          className={cn("size-3 shrink-0", !expanded && "-rotate-90")}
+          aria-hidden="true"
+        />
+        <FolderOpen className="size-4 shrink-0" aria-hidden="true" />
+        <span className="truncate">{folder.name}</span>
+        <span className="ml-auto text-xs text-muted-foreground" aria-hidden="true">
+          {folder.items.length}
+        </span>
+      </Button>
+      <AuthoredItemRename
+        item={folder}
+        kind="folder"
+        revision={authority.revision}
+        disabled={disabled}
+        onCommit={onCommit}
+      />
+      <RemoveFolder
+        folder={folder}
+        revision={authority.revision}
+        disabled={disabled}
+        onCommit={onCommit}
+      />
+    </div>
+  )
+}
+
+function folderVirtualAttributes(
+  layout: HistoryFolderGroupProps["virtualLayout"],
+  folderId: string,
+) {
+  if (!layout) return { "data-history-unit": `folder:${folderId}` }
+  if (layout.collapsed)
+    return {
+      ref: layout.measureElement,
+      "data-index": layout.controlIndex,
+      "data-history-unit": layout.unitKey,
+      style: { width: "max-content" },
+    }
+  return { "data-history-unit": layout.unitKey, style: { width: layout.width } }
+}
+function folderRangeAttributes(range: ReturnType<typeof folderVisualRange>) {
+  if (!range) return {}
+  return {
+    "data-history-range-start": range.start,
+    "data-history-range-end": range.end,
+    "data-history-range-first": range.first,
+    "data-history-range-last": range.last,
+  }
+}
+
+function useFolderExpansion(
+  folder: HistoryFolder,
+  controlledExpanded: boolean | undefined,
+  onExpandedChange: HistoryFolderGroupProps["onExpandedChange"],
+  revealRequest: HistoryFolderGroupProps["revealRequest"],
+) {
+  const [localExpanded, setLocalExpanded] = useState(true)
+  const expanded = controlledExpanded ?? localExpanded
+  const setExpanded = onExpandedChange ?? setLocalExpanded
+  useEffect(() => {
+    if (revealRequest && folder.items.some((item) => item.id === revealRequest.featureId))
+      setExpanded(true)
+  }, [folder.items, revealRequest, setExpanded])
+  return { expanded, setExpanded }
 }

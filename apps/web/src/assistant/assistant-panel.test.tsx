@@ -6,7 +6,7 @@ import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
 import { createI18n, defaultFormats } from "@vibeshape/i18n"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { ActivityProvider, useActivityPending } from "@vibeshape/ui/components/activity"
-import type { ComponentProps } from "react"
+import { type ComponentProps, StrictMode } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { messages } from "../i18n"
 import { AssistantPanel } from "./assistant-panel"
@@ -179,6 +179,20 @@ describe("assistant transcript and composer", () => {
     await userEvent.click(screen.getByRole("button", { name: "Chat history" }))
     expect(screen.getByText("No previous chats in this project.")).toBeTruthy()
     expect(screen.getByRole("textbox", { name: "Message" })).toBeTruthy()
+  })
+  it("restores focus to history after switching conversations in StrictMode", async () => {
+    render(
+      <StrictMode>
+        {panel({
+          previousChats: [{ id: "previous", title: "Removable lid", updatedAt: 1 }],
+          onOpenChat: async () => true,
+        })}
+      </StrictMode>,
+    )
+    const history = screen.getByRole("button", { name: "Chat history" })
+    await userEvent.click(history)
+    await userEvent.click(screen.getByRole("button", { name: "Removable lid" }))
+    await waitFor(() => expect(document.activeElement === history).toBe(true))
   })
   it("defers hidden transcript rendering until first opened and retains its DOM on later closes", () => {
     const messages: PanelProps["messages"] = [
