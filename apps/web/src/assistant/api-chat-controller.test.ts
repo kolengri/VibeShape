@@ -3,6 +3,7 @@ import {
   type AssistantAttachment,
   assistantToolTargetsSchema,
 } from "@vibeshape/automation-api/assistant"
+import { vi } from "../../../../tests/unit/support/bun-test"
 import type { ApiToolCall } from "./api-chat-completions"
 import {
   createApiChatController as createController,
@@ -982,6 +983,7 @@ describe("browser API project chat", () => {
                     id: "finish",
                     label: "Finish",
                     required: true,
+                    allowCustomAnswer: false,
                     options: [
                       { id: "fillet", name: "Fillet" },
                       { id: "chamfer", name: "Chamfer" },
@@ -1018,11 +1020,12 @@ describe("browser API project chat", () => {
     chat.dispose()
   })
 
-  it.each(["answer", "dismiss", "expire", "stop"])(
+  it.each(["answer", "dismiss", "delayed answer", "stop"])(
     "blocks same-batch CAD and queued prompts until question resolution: %s",
     async (resolution) => {
       let cadCalls = 0,
         requests = 0
+      if (resolution === "delayed answer") vi.useFakeTimers()
       const chat = createApiChatController({
         projectId,
         storage: disk(),
@@ -1053,22 +1056,16 @@ describe("browser API project chat", () => {
         expect(requests).toBe(1)
         expect(await chat.respondQuestion({ size: "" })).toBe(false)
         if (resolution === "stop") await chat.cancel()
-        else if (resolution === "expire") {
-          const question = chat.getSnapshot().question
-          if (!question) throw new Error("Missing question")
-          const now = Date.now
-          Date.now = () => question.expiresAt
-          try {
-            expect(await chat.respondQuestion({ size: "10 mm" })).toBe(false)
-          } finally {
-            Date.now = now
-          }
+        else if (resolution === "delayed answer") {
+          await vi.advanceTimersByTimeAsync(24 * 60 * 60_000)
+          expect(chat.getSnapshot().question?.expiresAt).toBeUndefined()
+          expect(await chat.respondQuestion({ size: "10 mm" })).toBe(true)
         } else
           expect(
             await chat.respondQuestion(resolution === "dismiss" ? null : { size: "10 mm" }),
           ).toBe(true)
         await idle(chat)
-        if (resolution === "answer") {
+        if (resolution === "answer" || resolution === "delayed answer") {
           expect(cadCalls).toBe(1)
           expect(requests).toBe(3)
         } else {
@@ -1082,6 +1079,7 @@ describe("browser API project chat", () => {
         expect(await chat.respondQuestion({ size: "late answer" })).toBe(false)
       } finally {
         chat.dispose()
+        if (resolution === "delayed answer") vi.useRealTimers()
       }
     },
   )

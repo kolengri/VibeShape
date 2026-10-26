@@ -1,8 +1,22 @@
+import { useVirtualizer } from "@tanstack/react-virtual"
 import type { AssistantToolTargets } from "@vibeshape/automation-api/assistant"
 import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import { ChevronDown } from "@vibeshape/ui/components/icons"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type FocusEvent, type ReactNode, useEffect, useId, useMemo, useRef } from "react"
+import {
+  type FocusEvent,
+  type ReactNode,
+  type RefObject,
+  type UIEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { AssistantMarkdown } from "./assistant-markdown"
 import { AssistantToolDetails, hasToolDetails } from "./assistant-tool-details"
 import type { AssistantToolHighlight } from "./assistant-tool-highlight"
@@ -253,16 +267,52 @@ function EmptyToolMessage({
   )
 }
 
+function useToolDisclosure(id: string, expanded: Set<string>) {
+  const [open, setOpen] = useState(expanded.has(id))
+  const remember = useCallback(
+    (next: boolean) => {
+      if (next) expanded.add(id)
+      else expanded.delete(id)
+    },
+    [expanded, id],
+  )
+  const mount = useCallback(
+    (element: HTMLDetailsElement | null) => {
+      if (!element) return
+      element.open = expanded.has(id)
+      // Native toggle events can arrive after a virtual row has left the window.
+      return () => remember(element.open)
+    },
+    [expanded, id, remember],
+  )
+  const update = (next: boolean) => {
+    remember(next)
+    setOpen(next)
+  }
+  return {
+    open,
+    mount,
+    onToggle(event: import("react").SyntheticEvent<HTMLDetailsElement>) {
+      if (event.currentTarget.isConnected) update(event.currentTarget.open)
+    },
+  }
+}
+
 function ToolMessage({
   messages,
   onHighlight,
+  expanded,
+  lazy = false,
 }: {
   messages: MessageGroup
   onHighlight?: AssistantToolHighlight | undefined
+  expanded: Set<string>
+  lazy?: boolean | undefined
 }) {
   const t = useTranslations("app.assistant")
   const highlight = useToolHighlight(messages, onHighlight)
   const message = messages[0]
+  const disclosure = useToolDisclosure(message.id, expanded)
   const rawTitle = message.tool?.title?.trim() ?? ""
   const action = toolAction(rawTitle)
   const hasDetails = messages.some((item) => hasToolDetails(item.text))
@@ -275,7 +325,11 @@ function ToolMessage({
     />
   )
   return (
-    <details className="group mb-2 min-w-0 rounded-md border">
+    <details
+      className="group mb-2 min-w-0 rounded-md border"
+      ref={disclosure.mount}
+      onToggle={disclosure.onToggle}
+    >
       <summary
         {...(highlight.enabled ? highlight.handlers : {})}
         aria-describedby={highlight.enabled ? highlight.hintId : undefined}
@@ -287,42 +341,56 @@ function ToolMessage({
         />
         {heading}
       </summary>
-      <section aria-label={t("toolDetails")} className="max-h-72 overflow-auto border-t p-2">
-        {messages.length === 1 ? (
-          <>
-            <ToolFailureNotice message={message} />
-            <AssistantToolDetails action={action.action} identity={rawTitle} text={message.text} />
-          </>
-        ) : (
-          <ol aria-label={t("toolCalls")} className="divide-y">
-            {messages.map((item, index) => (
-              <ToolCallOutput
-                key={item.id}
-                message={item}
-                number={index + 1}
-                onHighlight={onHighlight}
+      {(!lazy || disclosure.open) && (
+        <section aria-label={t("toolDetails")} className="max-h-72 overflow-auto border-t p-2">
+          {messages.length === 1 ? (
+            <>
+              <ToolFailureNotice message={message} />
+              <AssistantToolDetails
+                action={action.action}
+                identity={rawTitle}
+                text={message.text}
               />
-            ))}
-          </ol>
-        )}
-      </section>
+            </>
+          ) : (
+            <ol aria-label={t("toolCalls")} className="divide-y">
+              {messages.map((item, index) => (
+                <ToolCallOutput
+                  key={item.id}
+                  message={item}
+                  number={index + 1}
+                  onHighlight={onHighlight}
+                />
+              ))}
+            </ol>
+          )}
+        </section>
+      )}
     </details>
   )
 }
 
-export function AssistantMessages({
-  messages,
-  onHighlight,
-  footer,
-}: {
-  messages: readonly ChatMessage[]
-  onHighlight?: AssistantToolHighlight | undefined
-  footer?: ReactNode
-}) {
-  const t = useTranslations("app.assistant")
-  const groups = useMemo(() => groupMessages(messages), [messages])
-  const log = useRef<HTMLDivElement>(null)
+function isNewUserTurn(previous: readonly ChatMessage[] | null, messages: readonly ChatMessage[]) {
+  const latest = messages.filter((message) => message.role === "user").at(-1)
+  return Boolean(previous && latest && !previous.some((message) => message.id === latest.id))
+}
+
+function transcriptChanged(
+  previous: readonly ChatMessage[] | null,
+  messages: readonly ChatMessage[],
+) {
+  return previous === null || !sameTranscript(previous, messages)
+}
+
+function useAssistantTranscriptScroll(
+  log: RefObject<HTMLDivElement | null>,
+  messages: readonly ChatMessage[],
+  active: boolean,
+  scrollToEnd: () => void,
+) {
   const following = useRef(true)
+  const wasActive = useRef(false)
+  const [canJump, setCanJump] = useState(false)
   const previousMessages = useRef<readonly ChatMessage[] | null>(null)
   useEffect(() => {
     const element = log.current
@@ -330,79 +398,202 @@ export function AssistantMessages({
     const observeToggle = (event: Event) => {
       const target = event.target
       const closedTool =
-        target instanceof HTMLDetailsElement && target.parentElement === element && !target.open
+        target instanceof HTMLDetailsElement &&
+        (target.parentElement === element || target.parentElement?.hasAttribute("data-index")) &&
+        !target.open
       following.current = (closedTool || following.current) && nearBottom(element)
+      setCanJump(!nearBottom(element))
     }
     element.addEventListener("toggle", observeToggle, true)
     return () => element.removeEventListener("toggle", observeToggle, true)
-  }, [])
-  useEffect(() => {
+  }, [log])
+  useLayoutEffect(() => {
     const previous = previousMessages.current
     previousMessages.current = messages
-    const latestUser = messages.filter((message) => message.role === "user").at(-1)
-    // Sending a new turn returns the reader to the live conversation.
-    if (previous && latestUser && !previous.some((message) => message.id === latestUser.id))
-      following.current = true
+    const reopened = active && !wasActive.current
+    wasActive.current = active
+    if (!active) return
+    // Opening chat and sending a new turn return to the live conversation.
+    if (reopened || isNewUserTurn(previous, messages)) following.current = true
     // Checkpoint/display publications may clone the transcript without adding content.
     const element = log.current
     // Keep automatic following inside the transcript; scrolling an end marker can move ancestors.
-    if (element && following.current && (!previous || !sameTranscript(previous, messages)))
-      element.scrollTo({ top: element.scrollHeight })
-  }, [messages])
+    if (!element) return
+    const changed = transcriptChanged(previous, messages)
+    if (following.current && (reopened || changed)) {
+      scrollToEnd()
+      setCanJump(false)
+    } else setCanJump(!nearBottom(element))
+  }, [log, messages, active, scrollToEnd])
+  useEffect(() => {
+    const element = log.current
+    if (!element || !active || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(() => {
+      if (!element.clientHeight) return
+      if (following.current) scrollToEnd()
+      setCanJump(!nearBottom(element))
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [log, active, scrollToEnd])
+  return {
+    canJump,
+    onScroll(event: UIEvent<HTMLDivElement>) {
+      const target = event.target
+      following.current =
+        nearBottom(event.currentTarget) && (!(target instanceof HTMLElement) || nearBottom(target))
+      setCanJump(!nearBottom(event.currentTarget))
+    },
+    followLatest() {
+      following.current = true
+      scrollToEnd()
+      setCanJump(false)
+    },
+  }
+}
+
+export function AssistantMessages({
+  messages,
+  onHighlight,
+  footer,
+  active = true,
+}: {
+  messages: readonly ChatMessage[]
+  onHighlight?: AssistantToolHighlight | undefined
+  footer?: ReactNode
+  active?: boolean | undefined
+}) {
+  const t = useTranslations("app.assistant")
+  const groups = useMemo(() => groupMessages(messages), [messages])
+  const log = useRef<HTMLDivElement>(null)
+  const expanded = useRef(new Set<string>())
+  const virtualized = groups.length > 80
+  const virtualizer = useVirtualizer({
+    count: groups.length,
+    getScrollElement: () => log.current,
+    getItemKey: (index) => groups[index]?.[0].id ?? index,
+    estimateSize: () => 120,
+    overscan: 6,
+    enabled: virtualized && active,
+    anchorTo: "end",
+    followOnAppend: true,
+    scrollEndThreshold: 48,
+  })
+  const scrollToEnd = useCallback(() => {
+    if (virtualized) virtualizer.scrollToEnd()
+    else log.current?.scrollTo({ top: log.current.scrollHeight })
+  }, [virtualized, virtualizer])
+  const scrolling = useAssistantTranscriptScroll(log, messages, active, scrollToEnd)
   return (
-    <div
-      ref={log}
-      className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
-      role="log"
-      aria-label={t("messages")}
-      aria-live="polite"
-      aria-relevant="additions text"
-      onScrollCapture={(event) => {
-        const target = event.target
-        following.current =
-          nearBottom(event.currentTarget) &&
-          (!(target instanceof HTMLElement) || nearBottom(target))
-      }}
-    >
-      {messages.length === 0 && <p className="text-sm text-muted-foreground">{t("empty")}</p>}
-      {groups.map((group) => {
-        const message = group[0]
-        return message.role === "tool" ? (
-          <ToolMessage key={message.id} messages={group} onHighlight={onHighlight} />
-        ) : (
-          <article
-            key={message.id}
-            data-message-role={message.role}
-            className={cn(
-              "mb-4 min-w-0",
-              message.role === "user" &&
-                "ml-auto w-fit max-w-[90%] rounded-2xl rounded-tr-sm bg-secondary px-3 py-2 text-secondary-foreground",
-            )}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={log}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
+        role="log"
+        aria-label={t("messages")}
+        aria-live="polite"
+        aria-relevant="additions text"
+        style={virtualized ? { overflowAnchor: "none" } : undefined}
+        onScrollCapture={scrolling.onScroll}
+      >
+        {messages.length === 0 && <p className="text-sm text-muted-foreground">{t("empty")}</p>}
+        {virtualized ? (
+          <div
+            className="relative w-full"
+            style={{ height: virtualizer.getTotalSize(), overflowAnchor: "none" }}
           >
-            <h3 className="mb-1 text-xs font-medium text-muted-foreground">
-              {t(`role.${message.role}`)}
-            </h3>
-            {message.role === "assistant" ? (
-              <AssistantMarkdown text={message.text} />
-            ) : (
-              <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
-            )}
-            {message.attachments && message.attachments.length > 0 && (
-              <ul aria-label={t("attachments")} className="mt-1 flex flex-wrap gap-1">
-                {message.attachments.map((attachment) => (
-                  <li
-                    key={attachment.id}
-                    className="max-w-full truncate rounded-md border px-2 py-1 text-xs text-muted-foreground"
-                  >
-                    {attachment.name}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        )
-      })}
-      {footer}
+            {virtualizer.getVirtualItems().map((item) => {
+              const group = groups[item.index]
+              return group ? (
+                <div
+                  key={item.key}
+                  ref={virtualizer.measureElement}
+                  data-index={item.index}
+                  className="absolute top-0 left-0 flow-root w-full"
+                  style={{ transform: `translateY(${item.start}px)` }}
+                >
+                  <AssistantMessageGroup
+                    group={group}
+                    onHighlight={onHighlight}
+                    expanded={expanded.current}
+                    lazy
+                  />
+                </div>
+              ) : null
+            })}
+          </div>
+        ) : (
+          groups.map((group) => (
+            <AssistantMessageGroup
+              key={group[0].id}
+              group={group}
+              onHighlight={onHighlight}
+              expanded={expanded.current}
+            />
+          ))
+        )}
+        {footer}
+      </div>
+      {scrolling.canJump && (
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="outline"
+          aria-label={t("jumpToLatest")}
+          className="absolute right-3 bottom-2 rounded-full bg-background shadow-md"
+          onClick={scrolling.followLatest}
+        >
+          <ChevronDown aria-hidden="true" />
+        </Button>
+      )}
     </div>
+  )
+}
+
+function AssistantMessageGroup({
+  group,
+  onHighlight,
+  expanded,
+  lazy,
+}: {
+  group: MessageGroup
+  onHighlight?: AssistantToolHighlight | undefined
+  expanded: Set<string>
+  lazy?: boolean | undefined
+}) {
+  const t = useTranslations("app.assistant")
+  const message = group[0]
+  return message.role === "tool" ? (
+    <ToolMessage messages={group} onHighlight={onHighlight} expanded={expanded} lazy={lazy} />
+  ) : (
+    <article
+      data-message-role={message.role}
+      className={cn(
+        "mb-4 min-w-0",
+        message.role === "user" &&
+          "ml-auto w-fit max-w-[90%] rounded-2xl rounded-tr-sm bg-secondary px-3 py-2 text-secondary-foreground",
+      )}
+    >
+      <h3 className="mb-1 text-xs font-medium text-muted-foreground">
+        {t(`role.${message.role}`)}
+      </h3>
+      {message.role === "assistant" ? (
+        <AssistantMarkdown text={message.text} />
+      ) : (
+        <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
+      )}
+      {message.attachments && message.attachments.length > 0 && (
+        <ul aria-label={t("attachments")} className="mt-1 flex flex-wrap gap-1">
+          {message.attachments.map((attachment) => (
+            <li
+              key={attachment.id}
+              className="max-w-full truncate rounded-md border px-2 py-1 text-xs text-muted-foreground"
+            >
+              {attachment.name}
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
   )
 }

@@ -128,6 +128,7 @@ const questionField = z
     description: label.optional(),
     required: z.boolean(),
     secret: z.boolean(),
+    allowCustomAnswer: z.boolean().optional(),
     options: z
       .array(z.strictObject({ ...choice.shape, description: label.optional() }))
       .max(32)
@@ -139,7 +140,7 @@ const questionField = z
 export const assistantQuestionSchema = z.strictObject({
   requestId: id,
   message: z.string().max(4096),
-  expiresAt: z.number().int().positive(),
+  expiresAt: z.number().int().positive().optional(),
   fields: z.array(questionField).min(1).max(16),
 })
 
@@ -148,7 +149,11 @@ export const assistantQuestionInputSchema = z.strictObject({
   fields: z
     .array(
       z
-        .strictObject({ ...questionField.shape, secret: z.literal(false).default(false) })
+        .strictObject({
+          ...questionField.shape,
+          secret: z.literal(false).default(false),
+          allowCustomAnswer: z.boolean().default(true),
+        })
         .refine(
           (field) =>
             questionField.safeParse(field).success &&
@@ -161,14 +166,14 @@ export const assistantQuestionInputSchema = z.strictObject({
     .max(8)
     .refine((fields) => new Set(fields.map((field) => field.id)).size === fields.length),
 })
-export type AssistantQuestionInput = z.infer<typeof assistantQuestionInputSchema>
+export type AssistantQuestionInput = z.input<typeof assistantQuestionInputSchema>
 export type AssistantQuestionReply =
   | { action: "accept"; content: Record<string, string> }
   | { action: "cancel" | "decline" }
 export const assistantQuestionTool = {
   name: "ask_user_question",
   description:
-    "Ask the person a bounded structured question and wait for their answer before dependent work. Fields accept text or one advertised choice; include a separate optional text field for custom instructions. Secrets are not supported. Cancellation or expiration supplies no answer or authority; stop dependent work.",
+    "Ask the person a bounded structured question and wait for their answer before dependent work. Fields accept text or one advertised choice, with custom text allowed unless allowCustomAnswer is false. Questions wait without a deadline. Secrets are not supported. Cancellation supplies no answer or authority; stop dependent work.",
   inputSchema: z.toJSONSchema(assistantQuestionInputSchema, { io: "input" }),
   annotations: {
     readOnlyHint: true,
@@ -184,14 +189,16 @@ export function assistantQuestionAnswersMatch(
 ) {
   if (Object.keys(answers).some((id) => !question.fields.some((field) => field.id === id)))
     return false
-  return question.fields.every((field) => {
-    const value = answers[field.id]
-    return value === undefined || (value === "" && field.required)
-      ? !field.required
-      : value.length >= (field.minLength ?? 0) &&
-          value.length <= (field.maxLength ?? 16_384) &&
-          (!field.options || field.options.some((option) => option.id === value))
-  })
+  return question.fields.every((field) => questionAnswerMatches(field, answers[field.id]))
+}
+
+function questionAnswerMatches(field: z.infer<typeof questionField>, value: string | undefined) {
+  if (value === undefined || (value === "" && field.required)) return !field.required
+  const { minLength = 0, maxLength = 16_384 } = field
+  const validLength = value.length >= minLength && value.length <= maxLength
+  const choices = field.allowCustomAnswer ? undefined : field.options
+  const validChoice = choices?.some((option) => option.id === value) ?? true
+  return validLength && validChoice
 }
 
 export const assistantAgentSchema = z.union([assistantExternalAgentSchema, assistantJevAgentSchema])

@@ -20,6 +20,7 @@
     "@dnd-kit/dom": "catalog:",
     "@dnd-kit/react": "catalog:",
     "@tanstack/hotkeys": "catalog:",
+    "@tanstack/react-virtual": "3.14.23",
     "@vibeshape/application": "workspace:*",
     "@vibeshape/automation-api": "workspace:*",
     "@vibeshape/automation-host": "workspace:*",

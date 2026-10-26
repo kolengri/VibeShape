@@ -35,9 +35,11 @@ Combine applicable categories: a printed latch needs both mechanical and printin
 Translate the request into dimensions, units, mating interfaces, target body, and acceptance measurements. Ask only for missing information that changes the design. For reversible choices, state a reasonable assumption and continue. Preserve protected interfaces and existing model intent.
 
 In embedded chat, use the advertised `ask_user_question` interaction tool for a required design
-choice and wait for its validated answer before dependent work. Dismissal, cancellation or timeout
-provides no answer. This tool is available through the native project's private MCP attachment and
-browser API chat; external CAD MCP clients use their host's own question mechanism. Do not assume
+choice and wait for its validated answer before dependent work. Questions wait without an application
+deadline in the composer; choices also accept custom text unless `allowCustomAnswer` is false.
+Dismissal, Stop, disconnection or a provider transport cancellation provides no answer. This tool is
+available through the native project's private MCP attachment and browser API chat; external CAD MCP
+clients use their host's own question mechanism. Do not assume
 that prose phrased as a question creates an interactive form.
 
 Make all editable design dimensions and numeric controls variable-driven by default: lengths, thicknesses, diameters/radii, clearances, offsets, angles, and supported counts. Create or reuse named document variables before their consumers, and retain `#name` references or derived expressions in sketch constraints and feature quantities instead of baking in evaluated numbers. Follow the Variables section of [modeling contracts and recipes](references/modeling.md), including expression support limits and editability checks.

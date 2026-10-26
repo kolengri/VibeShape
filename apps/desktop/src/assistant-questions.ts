@@ -49,7 +49,7 @@ function questionField(id: string, field: ElicitationPropertySchema, required: b
   }
 }
 
-function question(params: CreateElicitationRequest, timeoutMs: number): AssistantQuestion | null {
+function question(params: CreateElicitationRequest): AssistantQuestion | null {
   if (!CreateElicitationRequest.isForm(params)) return null
   const required = new Set(params.requestedSchema.required ?? [])
   const fields = Object.entries(params.requestedSchema.properties ?? {}).map(([id, field]) =>
@@ -58,7 +58,6 @@ function question(params: CreateElicitationRequest, timeoutMs: number): Assistan
   const parsed = assistantQuestionSchema.safeParse({
     requestId: randomUUID(),
     message: params.message,
-    expiresAt: Date.now() + timeoutMs,
     fields,
   })
   return parsed.success ? parsed.data : null
@@ -67,13 +66,12 @@ function question(params: CreateElicitationRequest, timeoutMs: number): Assistan
 export function createAssistantQuestions(
   snapshot: AssistantSnapshot,
   emit: (event: AssistantEvent) => void,
-  timeoutMs: number,
 ) {
   const pending = new Map<
     string,
     {
       question: AssistantQuestion
-      settle: (answers: Record<string, string> | null, reason?: "expired" | "cancelled") => void
+      settle: (answers: Record<string, string> | null) => void
     }
   >()
   const scope = { projectId: snapshot.projectId, sessionToken: snapshot.sessionToken }
@@ -85,22 +83,17 @@ export function createAssistantQuestions(
       return Promise.resolve({ action: "decline" })
     return new Promise((resolve) => {
       const abort = () => settle(null)
-      const settle = (
-        answers: Record<string, string> | null,
-        reason: "expired" | "cancelled" = "cancelled",
-      ) => {
+      const settle = (answers: Record<string, string> | null) => {
         if (!pending.delete(request.requestId)) return
-        clearTimeout(timer)
         signal.removeEventListener("abort", abort)
         resolve(answers === null ? { action: "cancel" } : { action: "accept", content: answers })
         emit({
           ...scope,
           type: "question-resolved",
           requestId: request.requestId,
-          reason: answers === null ? reason : "answered",
+          reason: answers === null ? "cancelled" : "answered",
         })
       }
-      const timer = setTimeout(() => settle(null, "expired"), timeoutMs)
       pending.set(request.requestId, { question: request, settle })
       signal.addEventListener("abort", abort, { once: true })
       emit({ ...scope, type: "question", question: request })
@@ -112,7 +105,7 @@ export function createAssistantQuestions(
       params: CreateElicitationRequest,
       signal: AbortSignal,
     ): Promise<CreateElicitationResponse> {
-      return enqueue(question(params, timeoutMs), signal)
+      return enqueue(question(params), signal)
     },
     requestInput(input: AssistantQuestionInput, signal: AbortSignal) {
       const parsed = assistantQuestionInputSchema.safeParse(input)
@@ -121,7 +114,6 @@ export function createAssistantQuestions(
           ? {
               ...parsed.data,
               requestId: randomUUID(),
-              expiresAt: Date.now() + timeoutMs,
             }
           : null,
         signal,
@@ -133,10 +125,6 @@ export function createAssistantQuestions(
     respond(requestId: string, answers: Record<string, string> | null) {
       const entry = pending.get(requestId)
       if (!entry) return false
-      if (Date.now() >= entry.question.expiresAt) {
-        entry.settle(null, "expired")
-        return false
-      }
       if (answers !== null && !assistantQuestionAnswersMatch(entry.question, answers)) return false
       entry.settle(answers)
       return true

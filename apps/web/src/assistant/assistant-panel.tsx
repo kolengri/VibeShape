@@ -43,7 +43,6 @@ import {
 import type { AssistantDraftDisplay } from "./assistant-draft-display"
 import { AssistantIconAction } from "./assistant-icon-action"
 import { AssistantMessages } from "./assistant-messages"
-import { AssistantQuestionForm } from "./assistant-question"
 import { AssistantSettingsDialog, useAssistantSettings } from "./assistant-settings-dialog"
 import type { AssistantToolHighlight } from "./assistant-tool-highlight"
 import type { ChatMessage } from "./chat-history"
@@ -327,14 +326,7 @@ function AssistantHistoryFeedback(
 function AssistantFeedback(
   props: Pick<
     AssistantPanelProps,
-    | "permission"
-    | "error"
-    | "storageFailed"
-    | "question"
-    | "onAnswer"
-    | "contextOmittedMessages"
-    | "onRetryHistory"
-    | "busy"
+    "permission" | "error" | "storageFailed" | "contextOmittedMessages" | "onRetryHistory" | "busy"
   >,
 ) {
   const centralized = useReportApplicationError(props.error)
@@ -342,15 +334,6 @@ function AssistantFeedback(
     <>
       <AssistantHistoryFeedback {...props} />
       {props.permission}
-      {props.question && props.onAnswer && (
-        <div className="max-h-72 overflow-y-auto">
-          <AssistantQuestionForm
-            key={props.question.requestId}
-            question={props.question}
-            onAnswer={props.onAnswer}
-          />
-        </div>
-      )}
       {props.error && !centralized && <Alert>{props.error}</Alert>}
     </>
   )
@@ -358,13 +341,17 @@ function AssistantFeedback(
 
 function AssistantPanelMessages({
   open,
+  collapsed,
   ...props
-}: ComponentProps<typeof AssistantMessages> & { open: boolean }) {
+}: Omit<ComponentProps<typeof AssistantMessages>, "active"> & {
+  open: boolean
+  collapsed?: boolean | undefined
+}) {
   const [mounted, setMounted] = useState(open)
   useEffect(() => {
     if (open) setMounted(true)
   }, [open])
-  return open || mounted ? <AssistantMessages {...props} /> : null
+  return open || mounted ? <AssistantMessages {...props} active={open && !collapsed} /> : null
 }
 
 function AssistantChatHistory({
@@ -487,7 +474,7 @@ function AssistantPanelContent(props: AssistantPanelProps) {
   const t = useTranslations("app.assistant")
   const titleId = useId()
   const settings = useAssistantSettings(props.open)
-  const [draft, setDraft] = useState<AssistantComposerDraft>({ text: "", attachments: [] })
+  const [composerKey, setComposerKey] = useState(0)
   return (
     <TooltipProvider>
       <aside
@@ -503,7 +490,7 @@ function AssistantPanelContent(props: AssistantPanelProps) {
           props={props}
           titleId={titleId}
           settings={settings}
-          onOpened={() => setDraft({ text: "", attachments: [] })}
+          onOpened={() => setComposerKey((key) => key + 1)}
         />
         <div
           id={collapse?.contentId}
@@ -517,6 +504,7 @@ function AssistantPanelContent(props: AssistantPanelProps) {
           )}
           <AssistantPanelMessages
             open={props.open}
+            collapsed={collapse?.collapsed}
             messages={props.messages}
             onHighlight={props.onToolHighlight}
           />
@@ -531,10 +519,10 @@ function AssistantPanelContent(props: AssistantPanelProps) {
             </div>
           )}
           <AssistantReviewControls props={props} />
-          <AssistantComposer
+          <AssistantConversationComposer
+            key={composerKey}
+            focusOnMount={composerKey === 0}
             {...props}
-            draft={draft}
-            onDraftChange={setDraft}
             feedback={<AssistantFeedback {...props} />}
           />
         </div>
@@ -548,5 +536,20 @@ function AssistantPanelContent(props: AssistantPanelProps) {
         {props.configuration}
       </AssistantSettingsDialog>
     </TooltipProvider>
+  )
+}
+
+function AssistantConversationComposer({
+  focusOnMount,
+  ...props
+}: AssistantComposerProps & { focusOnMount: boolean }) {
+  const [draft, setDraft] = useState<AssistantComposerDraft>({ text: "", attachments: [] })
+  return (
+    <AssistantComposer
+      {...props}
+      draft={draft}
+      onDraftChange={setDraft}
+      focusOnMount={focusOnMount}
+    />
   )
 }

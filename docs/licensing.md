@@ -64,6 +64,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Radix UI | MIT | Include a third-party notice |
 | Lucide React (presentation site) | ISC | Include a third-party notice |
 | TanStack Form | MIT | Include a third-party notice |
+| TanStack React Virtual 3.14.23 / Virtual Core 3.19.8 | MIT | Browser-shipped chat virtualization; preserve notices for both locked packages |
 | dnd-kit React / DOM 0.5.0 | MIT | Browser-shipped History interaction; preserve notices for the exact locked dnd-kit packages and their transitives |
 | TanStack Hotkeys 0.9.0 | MIT | Browser-shipped keyboard matching; preserve the TanStack notice and inventory the locked store dependency |
 | react-dropzone 20.1.2 | MIT | Browser-only local file selection; preserve its notice and locked file-selector / attr-accept notices; no upload service is included |

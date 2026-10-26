@@ -155,7 +155,9 @@ describe("assistant transcript and composer", () => {
     await userEvent.click(within(list).getByRole("button", { name: "Removable lid" }))
     expect(onOpenChat).toHaveBeenCalledWith("previous")
     expect(screen.queryByRole("region", { name: "Chat history" })).toBeNull()
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Chat history" }))
+    expect(document.activeElement === screen.getByRole("button", { name: "Chat history" })).toBe(
+      true,
+    )
     view.rerender(panel({ previousChats, onOpenChat, busy: true }))
     await userEvent.click(screen.getByRole("button", { name: "Chat history" }))
     expect(screen.getByRole("button", { name: "Removable lid" }).hasAttribute("disabled")).toBe(
@@ -719,11 +721,13 @@ describe("structured agent questions", () => {
       ],
     }
     render(panel({ question: asked, onAnswer: answer }))
-    await userEvent.click(screen.getByRole("button", { name: "Submit answers" }))
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
     expect(answer).not.toHaveBeenCalled()
     fireEvent.change(screen.getByRole("textbox", { name: "Required size" }), {
       target: { value: "10 mm" },
     })
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
     await userEvent.click(screen.getByRole("button", { name: "Submit answers" }))
     expect(answer).toHaveBeenCalledWith({ size: "10 mm" })
   })
@@ -733,6 +737,7 @@ describe("structured agent questions", () => {
     const answer = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValueOnce(true)
     render(panel({ busy: true, question: question(), onAnswer: answer }))
     await userEvent.click(screen.getByRole("radio", { name: "Fillet" }))
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
     fireEvent.change(screen.getByRole("textbox", { name: "Custom instructions" }), {
       target: { value: "Use a 2 mm radius" },
     })
@@ -752,17 +757,18 @@ describe("structured agent questions", () => {
       await pending.promise
     })
     expect(screen.getByRole("alert").textContent).toBe("The answer was not accepted. Try again.")
+    await userEvent.click(screen.getByRole("button", { name: "Back" }))
     expect((screen.getByRole("radio", { name: "Fillet" }) as HTMLInputElement).checked).toBe(true)
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
     expect(
       (screen.getByRole("textbox", { name: "Custom instructions" }) as HTMLInputElement).value,
     ).toBe("Use a 2 mm radius")
     await userEvent.click(screen.getByRole("button", { name: "Submit answers" }))
     expect(answer).toHaveBeenCalledTimes(2)
-    await userEvent.click(screen.getByText("Which corner treatment should I use?"))
-    expect(form.closest("details")?.open).toBe(false)
+    expect(form.closest('section[aria-label="Message"]')).toBeTruthy()
   })
 
-  it("declines through the protocol callback and prevents answers after expiration", async () => {
+  it("declines through the protocol callback and accepts answers despite a legacy deadline", async () => {
     const answer = vi.fn().mockResolvedValue(true)
     const active = question()
     const view = render(panel({ question: active, onAnswer: answer }))
@@ -770,16 +776,15 @@ describe("structured agent questions", () => {
     expect(answer).toHaveBeenCalledWith(null)
     view.rerender(
       panel({
-        question: { ...active, requestId: "expired", expiresAt: Date.now() - 1 },
+        question: { ...active, requestId: "legacy-deadline", expiresAt: Date.now() - 1 },
         onAnswer: answer,
       }),
     )
-    expect(screen.getByText("This question has expired.")).toBeTruthy()
-    fireEvent.submit(screen.getByRole("form", { name: "Agent question" }))
-    expect(answer).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole("button", { name: "Submit answers" }).hasAttribute("disabled")).toBe(
-      true,
-    )
+    await userEvent.click(screen.getByRole("radio", { name: "Chamfer" }))
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
+    await userEvent.click(screen.getByRole("button", { name: "Submit answers" }))
+    expect(answer).toHaveBeenCalledTimes(2)
+    expect(answer).toHaveBeenLastCalledWith({ finish: "chamfer" })
   })
 
   it("allows skipping a question after required-field validation fails", async () => {
@@ -824,6 +829,7 @@ describe("structured agent questions", () => {
     expect(answer).not.toHaveBeenCalled()
     expect(token.getAttribute("aria-invalid")).toBe("true")
     fireEvent.change(token, { target: { value: "abcde" } })
+    await userEvent.click(screen.getByRole("button", { name: "Next" }))
     fireEvent.change(screen.getByLabelText("Connection note"), {
       target: { value: "Keep this literal" },
     })

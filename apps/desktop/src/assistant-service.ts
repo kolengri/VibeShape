@@ -99,7 +99,6 @@ export type AssistantServiceOptions = {
   requestTimeoutMs?: number
   promptTimeoutMs?: number
   permissionTimeoutMs?: number
-  questionTimeoutMs?: number
   cancelTimeoutMs?: number
   shutdownTimeoutMs?: number
   connectionTestTimeoutMs?: number
@@ -550,11 +549,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         (event) => emit(owner, event),
         options.permissionTimeoutMs ?? 60_000,
       ),
-      questions: createAssistantQuestions(
-        state,
-        (event) => questionEvent(owner, event),
-        options.questionTimeoutMs ?? 300_000,
-      ),
+      questions: createAssistantQuestions(state, (event) => questionEvent(owner, event)),
       mcpQuestions: undefined,
       configRevision: 0,
       modeRevision: 0,
