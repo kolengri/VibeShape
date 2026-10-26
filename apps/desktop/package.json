@@ -28,6 +28,6 @@
     "@types/node": "26.1.2",
     "@types/semver": "7.8.0",
     "@vibeshape/typescript-config": "workspace:*",
-    "electron": "44.9.0"
+    "electron": "44.9.1"
   }
 }
