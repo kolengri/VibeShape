@@ -238,7 +238,7 @@ export function createNativeChatController({
     })
   }
   function settleCheckpoints() {
-    if (numericalJobs.pending()) return
+    if (numericalJobs.pending() || state.settlingCheckpoint) return
     if (!promptInFlight && !steering && !state.busy)
       void (checkpoints?.finish() ?? Promise.resolve()).then(drainQueue)
   }
@@ -1462,9 +1462,11 @@ export function createNativeChatController({
         !checkpoints
       )
         return false
-      const applied = await checkpoints.applyDraft(operation)
-      drainQueue()
-      return applied
+      try {
+        return await checkpoints.applyDraft(operation, { retainActive: numericalJobs.pending() })
+      } finally {
+        settleCheckpoints()
+      }
     },
     async viewBefore() {
       if (state.busy || state.switchingChat || promptInFlight || steering || activeControl)

@@ -248,6 +248,82 @@ describe("native numerical completion delivery", () => {
     expect(f.model.restores).toEqual([{ baseline: 1, revision: 2 }])
   })
 
+  it("applies a manual draft during numerical work and retains the initiating Undo baseline", async () => {
+    const f = fixture()
+    await f.connect()
+    f.model.save()
+    f.update([activeJob])
+    await f.finish()
+    expect(
+      await f.chat.applyDraft(async () => {
+        f.model.save()
+        return true
+      }),
+    ).toBe(true)
+    expect(f.chat.getSnapshot().canUndoAgentChanges).toBe(false)
+    expect(f.chat.getSnapshot().numericalJobs).toEqual([activeJob])
+    f.model.save()
+    f.update([finishedJob])
+    await flush()
+    await f.finish()
+    expect(await f.chat.undoAgentChanges()).toBe(true)
+    expect(f.model.restores).toEqual([{ baseline: 1, revision: 4 }])
+  })
+
+  it("waits for manual draft persistence when a numerical job completes during confirmation", async () => {
+    const f = fixture()
+    await f.connect()
+    f.update([activeJob])
+    await f.finish()
+    let release = () => {}
+    const saving = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const operation = vi.fn(async () => {
+      await saving
+      f.model.save()
+      return true
+    })
+    const applied = f.chat.applyDraft(operation)
+    expect(f.chat.getSnapshot().settlingCheckpoint).toBe(true)
+    expect(await f.chat.applyDraft(operation)).toBe(false)
+    f.update([finishedJob])
+    await flush()
+    expect(f.prompts).toHaveLength(1)
+    expect(operation).toHaveBeenCalledTimes(1)
+    release()
+    expect(await applied).toBe(true)
+    await flush()
+    expect(f.prompts).toHaveLength(2)
+    await f.finish()
+    expect(await f.chat.undoAgentChanges()).toBe(true)
+    expect(f.model.restores).toEqual([{ baseline: 1, revision: 2 }])
+  })
+
+  it("releases failed manual confirmation without closing the numerical checkpoint", async () => {
+    const f = fixture()
+    await f.connect()
+    f.update([activeJob])
+    await f.finish()
+    await expect(
+      f.chat.applyDraft(async () => {
+        throw new Error("Save rejected")
+      }),
+    ).rejects.toThrow("Save rejected")
+    expect(f.chat.getSnapshot().settlingCheckpoint).toBe(false)
+    expect(
+      await f.chat.applyDraft(async () => {
+        f.model.save()
+        return true
+      }),
+    ).toBe(true)
+    f.update([finishedJob])
+    await flush()
+    await f.finish()
+    expect(await f.chat.undoAgentChanges()).toBe(true)
+    expect(f.model.restores).toEqual([{ baseline: 1, revision: 2 }])
+  })
+
   it("delivers physical failure as data without silently retrying the calculation", async () => {
     const f = fixture()
     await f.connect()
