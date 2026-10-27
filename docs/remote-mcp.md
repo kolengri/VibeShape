@@ -1,5 +1,9 @@
 # Remote MCP operation and limits
 
+The paired remote tool set includes `model_dependencies`, the same revision-bound, read-only
+History change-impact query as local MCP. See the [inspection workflow](../.agents/skills/vibeshape-inspection/SKILL.md)
+for direct/transitive traversal, paging, partial coverage and exclusions.
+
 The remote adapter connects a standard HTTPS MCP client to the exact browser tab its owner approves.
 It reuses existing CAD, sketch, variable, topology and metadata tools. The editor owns geometry,
 documents, review, persistence and Undo. The local Bun/stdio workflow remains available separately.

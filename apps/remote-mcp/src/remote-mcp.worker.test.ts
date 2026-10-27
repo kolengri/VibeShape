@@ -218,6 +218,64 @@ afterEach(async () => {
   await reset()
 })
 
+it.each(["direction", "documentId"] as const)(
+  "forwards guarded dependency pages and rejects a different %s",
+  async (field) => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const entity = { kind: "sketch" as const, id: "0195b5ac-b280-7a2c-8c33-000000000001" }
+    const result = {
+      ok: true,
+      value: {
+        kind: "org.vibeshape.cad.dependencies",
+        schemaVersion: 1,
+        documentId: "0195b5ac-b280-7a2c-8c33-000000000002",
+        revision: 4,
+        entity,
+        direction: "dependents",
+        transitive: false,
+        classification: "semantic",
+        nextCursor: null,
+        data: { coverage: "complete", total: 0, items: [] },
+      },
+    }
+    const send = async (requestId: number, value: typeof result) => {
+      const work = nextMessage(tab.socket)
+      const response = mcp(authenticated.token, requestId, "tools/call", {
+        name: "model_dependencies",
+        arguments: { revision: 4, entity, projectId: result.value.documentId },
+      })
+      const operation = await work
+      if (operation.type !== "work") throw new Error("Expected dependency inspection work.")
+      tab.socket.send(
+        JSON.stringify({
+          type: "result",
+          protocolVersion: 1,
+          requestId: operation.requestId,
+          tool: "model_dependencies",
+          result: value,
+        }),
+      )
+      return (await response).json()
+    }
+    expect(await send(1, result)).toMatchObject({ result: { structuredContent: { result } } })
+    const changed = structuredClone(result)
+    changed.value[field] =
+      field === "direction" ? "dependencies" : "0195b5ac-b280-7a2c-8c33-000000000099"
+    expect(await send(2, changed)).toMatchObject({
+      result: {
+        structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+      },
+    })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  },
+)
+
 it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
   "correlates draft body inspection %s before forwarding remote success",
   async (field) => {
@@ -943,6 +1001,12 @@ describe("remote MCP in workerd", () => {
       await client.connect(transport)
       const tools = (await client.listTools()).tools
       const projectList = tools.find((tool) => tool.name === "list_projects")
+      const dependencies = tools.find((tool) => tool.name === "model_dependencies")
+      expect(dependencies?.annotations).toMatchObject({ readOnlyHint: true, idempotentHint: true })
+      expect(dependencies?.inputSchema.required).toEqual(["revision", "entity"])
+      expect(dependencies?.inputSchema.properties?.direction).toMatchObject({
+        default: "dependents",
+      })
       expect(projectList).toBeDefined()
       expect(projectList?.inputSchema.required ?? []).not.toContain("limit")
       expect(projectList?.inputSchema.properties?.limit).toMatchObject({ default: 50 })

@@ -30,6 +30,7 @@ import type {
   CadInspectionListQuery,
   ModelBodyMeasurementQuery,
   ModelBodyTopologyQuery,
+  ModelDependenciesQuery,
   ModelEdgeQuery,
   ModelMeasurementQuery,
   QueryResult,
@@ -1105,7 +1106,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         | ModelEdgeQuery
         | ModelMeasurementQuery
         | ModelBodyMeasurementQuery
-        | ModelBodyTopologyQuery,
+        | ModelBodyTopologyQuery
+        | ModelDependenciesQuery,
     ): QueryResult => {
       const report = currentReport()
       if (!report) return queryDispatcher.dispatcher.dispatch(null, query)

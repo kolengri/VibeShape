@@ -161,6 +161,31 @@ describe("History feature deletion", () => {
     expect(props.onDeleted).toHaveBeenCalledTimes(1)
   })
 
+  it("inspects a broken model's dependency links without changing it and restores menu focus", async () => {
+    const props = setup({ references: true })
+    const user = userEvent.setup()
+    const trigger = screen.getByRole("button", { name: "Actions for Box 1" })
+    await user.click(trigger)
+    await user.click(screen.getByRole("menuitem", { name: "Inspect dependencies" }))
+    const dialog = screen.getByRole("dialog", { name: "Dependencies of Box 1" })
+    expect(within(dialog).getByRole("list", { name: "Used by" }).textContent).toContain(
+      "Repairable sketch",
+    )
+    await user.click(within(dialog).getByRole("button", { name: "Depends on" }))
+    expect(within(dialog).getByText("No related History items in this direction.")).toBeTruthy()
+    await user.click(within(dialog).getByRole("button", { name: "Include indirect links" }))
+    expect(
+      within(dialog)
+        .getByRole("button", { name: "Include indirect links" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true")
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+    expect(props.onRemove).not.toHaveBeenCalled()
+    expect(props.onSuppressionChange).not.toHaveBeenCalled()
+    expect(props.onRename).not.toHaveBeenCalled()
+  })
+
   it("lists affected sketch references and preserves them only after confirmation", async () => {
     const props = setup({ references: true })
     const user = userEvent.setup()

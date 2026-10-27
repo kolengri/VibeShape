@@ -61,7 +61,6 @@ import {
   useRef,
   useState,
 } from "react"
-import { OriginPlaneVisibilityControls } from "../components/origin-plane-visibility-controls"
 import {
   type DocumentControllerState,
   saveActiveProjectThumbnail,
@@ -155,7 +154,6 @@ export type GeometryViewportSketchContext = Readonly<{
 }>
 
 const ignoreOriginPlaneSelection = () => undefined
-const ignoreOriginPlaneVisibilityChange = () => undefined
 
 async function loadGeometryViewport(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
   const { createGeometryViewport } = await import("@vibeshape/viewer/three-viewport")
@@ -1504,7 +1502,6 @@ type GeometryViewportProps = Readonly<{
     onSelect: (plane: ViewerOriginPlane) => void
   }>
   originPlaneVisibility?: Readonly<{
-    onChange: (plane: ViewerOriginPlane, visible: boolean) => void
     visibility: ViewerOriginPlaneVisibility
   }>
   preselectedSketchId?: string | null | undefined
@@ -1638,12 +1635,6 @@ function useOriginPlaneInteraction(
     onSelect,
     selectedPlane: selectedOriginPlane(selection, idleSelection),
   }
-}
-
-function changeOriginPlaneVisibilityHandler(
-  originPlaneVisibility: GeometryViewportProps["originPlaneVisibility"],
-) {
-  return originPlaneVisibility?.onChange ?? ignoreOriginPlaneVisibilityChange
 }
 
 function previewAllowsViewportMessage(preview: FeaturePreviewState | undefined) {
@@ -2225,7 +2216,6 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     sketchProfileSelectionRequest: interaction.sketchProfileSelectionRequest,
     sketchReferenceCandidateStack: interaction.sketchReferenceCandidateStack,
     originPlaneVisibility: visibleOriginPlanes(props.originPlaneVisibility),
-    onOriginPlaneVisibilityChange: changeOriginPlaneVisibilityHandler(props.originPlaneVisibility),
     viewportRef: interaction.viewportRef,
     selectedSketchProfileCount: props.sketchProfileSelection?.selectedProfiles.length ?? 0,
     selectedSketchProfileKey: selectedSketchProfileKey(props.sketchProfileSelection),
@@ -2237,8 +2227,6 @@ function ViewportControlsSlot({
   meshes,
   sketches,
   originPlaneSelection,
-  originPlaneVisibility,
-  onOriginPlaneVisibilityChange,
   selection,
   onBodyClear,
   onEdgeClear,
@@ -2248,8 +2236,6 @@ function ViewportControlsSlot({
   meshes: readonly ViewerMesh[]
   sketches: readonly ViewerSketch[]
   originPlaneSelection: GeometryViewportProps["originPlaneSelection"]
-  originPlaneVisibility: ViewerOriginPlaneVisibility
-  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   onBodyClear?: (() => void) | undefined
   onEdgeClear?: (() => void) | undefined
   selection: ViewerSelection | ModelBodySelection | null
@@ -2258,12 +2244,6 @@ function ViewportControlsSlot({
   const t = useTranslations("app.shell.viewport")
   return (
     <>
-      <div className={cn("absolute left-3 top-3 max-sm:hidden", SAFE_VIEWPORT_LEFT)}>
-        <OriginPlaneVisibilityControls
-          onChange={onOriginPlaneVisibilityChange}
-          visibility={originPlaneVisibility}
-        />
-      </div>
       {viewControls || meshes.length > 0 || sketches.length > 0 || originPlaneSelection ? (
         <ViewportControls
           viewControls={viewControls}
@@ -2954,10 +2934,8 @@ function ModelViewportChrome({
   featurePreview,
   message,
   meshes,
-  onOriginPlaneVisibilityChange,
   originPlanePreselection,
   originPlaneSelection,
-  originPlaneVisibility,
   profileChrome,
   selection,
   onBodyClear,
@@ -2971,10 +2949,8 @@ function ModelViewportChrome({
   featurePreview: FeaturePreviewState | undefined
   message: ReturnType<typeof translatedViewportMessage>
   meshes: readonly ViewerMesh[]
-  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   originPlanePreselection: ViewerOriginPlane | null
   originPlaneSelection: GeometryViewportProps["originPlaneSelection"]
-  originPlaneVisibility: ViewerOriginPlaneVisibility
   profileChrome: ReactNode
   onBodyClear?: (() => void) | undefined
   onEdgeClear?: (() => void) | undefined
@@ -2994,8 +2970,6 @@ function ModelViewportChrome({
         meshes={meshes}
         sketches={sketches}
         originPlaneSelection={originPlaneSelection}
-        originPlaneVisibility={originPlaneVisibility}
-        onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
         selection={selection}
         onBodyClear={onBodyClear}
         onEdgeClear={onEdgeClear}
@@ -3319,10 +3293,8 @@ function ModelViewportContextChrome({
       featurePreview={featurePreview}
       message={model.message}
       meshes={model.meshes}
-      onOriginPlaneVisibilityChange={model.onOriginPlaneVisibilityChange}
       originPlanePreselection={model.originPlanePreselection}
       originPlaneSelection={originPlaneSelection}
-      originPlaneVisibility={model.originPlaneVisibility}
       profileChrome={
         <SavedProfileViewportChrome
           controller={props.controller}

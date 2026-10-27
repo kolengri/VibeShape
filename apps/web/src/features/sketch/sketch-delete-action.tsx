@@ -39,11 +39,13 @@ type SketchDeleteActionProps = Readonly<{
   sketch: SketchRecord
   sketchName: string
   renameAction?: SketchRenameAction
+  dependenciesAction?: { onSelect: () => void; open: boolean }
 }>
 
 function SketchActionsMenu(props: {
   triggerRef: RefObject<HTMLButtonElement | null>
   renameAction: SketchRenameAction | undefined
+  dependenciesAction: SketchDeleteActionProps["dependenciesAction"]
   onDelete: () => void
   open: boolean
   unavailable: boolean
@@ -76,9 +78,15 @@ function SketchActionsMenu(props: {
       <DropdownMenuContent
         align="end"
         onCloseAutoFocus={(event) => {
-          if (props.open || props.renameAction?.open) event.preventDefault()
+          if (props.open || props.renameAction?.open || props.dependenciesAction?.open)
+            event.preventDefault()
         }}
       >
+        {props.dependenciesAction && (
+          <DropdownMenuItem onSelect={props.dependenciesAction.onSelect}>
+            {t("dependencies.action")}
+          </DropdownMenuItem>
+        )}
         {props.renameAction ? (
           <DropdownMenuItem
             disabled={props.renameAction?.disabled}
@@ -119,6 +127,7 @@ export function SketchDeleteAction({
   sketch,
   sketchName,
   renameAction,
+  dependenciesAction,
 }: SketchDeleteActionProps) {
   const t = useTranslations("app.shell.modelTree")
   const [open, setOpen] = useState(false)
@@ -158,6 +167,7 @@ export function SketchDeleteAction({
       <SketchActionsMenu
         triggerRef={triggerRef}
         renameAction={renameAction}
+        dependenciesAction={dependenciesAction}
         onDelete={() => handleOpenChange(true)}
         open={open}
         unavailable={unavailable}

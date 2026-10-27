@@ -133,6 +133,8 @@ import {
   modelBodyMeasurementViewSchema,
   modelBodyTopologyArgumentsSchema,
   modelBodyTopologyViewSchema,
+  modelDependenciesArgumentsSchema,
+  modelDependenciesViewSchema,
   modelEdgeQuerySchema,
   modelEdgeViewSchema,
   modelMeasurementQuerySchema,
@@ -234,6 +236,7 @@ export const localToolInputs = {
   ...libraryToolInputs,
   ...surfaceTextureToolInputs,
   model_history: authoredHistoryListArgumentsSchema,
+  model_dependencies: modelDependenciesArgumentsSchema,
   model_parts: authoredListArgumentsSchema,
   model_folders: authoredListArgumentsSchema,
   change_metadata: metadataChangeArgumentsSchema,
@@ -429,6 +432,7 @@ export const localToolOutputs = {
 
   model_tree: resultOf(cadInspectionListViewSchema),
   model_entity: resultOf(cadInspectionDetailViewSchema),
+  model_dependencies: resultOf(modelDependenciesViewSchema),
   create_sketch: resultOf(automationDraftStateSchema),
   update_sketch: resultOf(automationDraftStateSchema),
   create_extrude: resultOf(automationDraftStateSchema),
@@ -556,6 +560,7 @@ export const localToolNameSchema = z.enum([
 
   "model_tree",
   "model_entity",
+  "model_dependencies",
   "create_sketch",
   "update_sketch",
   "create_extrude",
@@ -682,6 +687,12 @@ const untargetedOperationSchema = z.discriminatedUnion("tool", [
 
   z.object({ tool: z.literal("model_tree"), arguments: localToolInputs.model_tree }).strict(),
   z.object({ tool: z.literal("model_entity"), arguments: localToolInputs.model_entity }).strict(),
+  z
+    .object({
+      tool: z.literal("model_dependencies"),
+      arguments: localToolInputs.model_dependencies,
+    })
+    .strict(),
   z.object({ tool: z.literal("model_info"), arguments: localToolInputs.model_info }).strict(),
   z
     .object({
@@ -798,6 +809,7 @@ export type LocalInspectionOperation = Extract<
       | "model_measurements"
       | "model_tree"
       | "model_entity"
+      | "model_dependencies"
       | "model_variables"
       | "model_edges"
       | "model_body_measurements"
@@ -843,6 +855,7 @@ export function isLocalInspection(
     operation.tool === "model_measurements" ||
     operation.tool === "model_tree" ||
     operation.tool === "model_entity" ||
+    operation.tool === "model_dependencies" ||
     operation.tool === "model_variables" ||
     operation.tool === "model_edges" ||
     operation.tool === "model_body_measurements" ||

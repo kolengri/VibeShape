@@ -367,6 +367,13 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
       classification: "semantic",
       automation: { exposure: "resource", pagination: "none" },
     },
+    {
+      kind: "org.vibeshape.cad.dependencies",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "semantic",
+      automation: { exposure: "resource", pagination: "cursor" },
+    },
   ],
 })
 

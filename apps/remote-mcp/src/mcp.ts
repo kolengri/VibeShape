@@ -151,7 +151,12 @@ export async function mcpRequest(request: Request, env: RemoteEnv, ctx: Executio
           inputSchema: {
             ...z.toJSONSchema(mcpToolInputSchema(name), {
               reused: "ref",
-              io: isAssemblyLibraryToolName(name) || name === "list_projects" ? "input" : "output",
+              io:
+                isAssemblyLibraryToolName(name) ||
+                name === "list_projects" ||
+                name === "model_dependencies"
+                  ? "input"
+                  : "output",
             }),
             type: "object" as const,
           },

@@ -73,6 +73,7 @@ import {
   currentAuthoredSnapshot,
   selectedAuthoredBody,
 } from "./authored-tree-state"
+import { HistoryDependenciesDialog } from "./history-dependencies-dialog"
 import { HistoryFeatureActions } from "./history-feature-actions"
 import { HistoryFeatureIcon } from "./history-feature-icon"
 import {
@@ -510,6 +511,7 @@ function SketchTreeActions({
 }) {
   const label = sketch.label || unnamedSketch
   const actionsTriggerRef = useRef<HTMLButtonElement>(null)
+  const [dependenciesOpen, setDependenciesOpen] = useState(false)
 
   return (
     <>
@@ -529,6 +531,7 @@ function SketchTreeActions({
         target={{ kind: "sketch", record: sketch }}
       />
       <SketchDeleteAction
+        dependenciesAction={{ onSelect: () => setDependenciesOpen(true), open: dependenciesOpen }}
         renameAction={{
           triggerRef: actionsTriggerRef,
           onSelect: () => onRenameOpenChange(true),
@@ -543,6 +546,15 @@ function SketchTreeActions({
         onDeleted={onSketchDeleted}
         onRemove={onSketchRemove}
       />
+      {dependenciesOpen && (
+        <HistoryDependenciesDialog
+          controller={controller}
+          entity={{ kind: "sketch", id: sketch.id }}
+          label={label}
+          onClose={() => setDependenciesOpen(false)}
+          triggerRef={actionsTriggerRef}
+        />
+      )}
     </>
   )
 }

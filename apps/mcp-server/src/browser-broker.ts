@@ -66,6 +66,7 @@ import { projectResultContextMatches } from "@vibeshape/automation-api/project-r
 import {
   cadInspectionDetailViewSchema,
   cadInspectionListViewSchema,
+  dependenciesResultContextMatches,
   modelBodyMeasurementViewSchema,
   modelBodyTopologyViewSchema,
   modelEdgeViewSchema,
@@ -366,6 +367,7 @@ function resultContextMatches(
   const { projectId: _projectId, ...command } = operation
   operation = command
   const context = [
+    dependenciesResultContextMatches(operation, result, documentId),
     recoveryResultContextMatches(operation, result, documentId, actor),
     renderPreviewResultContextMatches(operation, result, documentId),
     historyResultContextMatches(operation, result, documentId),

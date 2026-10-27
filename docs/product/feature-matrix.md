@@ -413,6 +413,19 @@ status, DOF, conflicts, solved authored coordinates/radii and stable profile sel
 `model_sketch_solution` and `draft_sketch_solution`. These disposable reads preserve authored
 intent and use bounded section paging; see [ADR-0085](../adr/0085-disposable-solved-sketch-inspection.md).
 
+## History dependency inspection
+
+Feature and sketch action menus offer **Inspect dependencies**. **Used by** shows direct consumers;
+**Depends on** shows upstream inputs. **Include indirect links** traverses the same validated domain
+graph and reports shortest hop distance. Suppressed operations remain included. Inspection reads
+saved intent without rebuilding or changing the model; it works when geometry has failed.
+
+Local/development and paired remote MCP expose the same semantic query as `model_dependencies`,
+bound to a committed revision and stable feature/sketch entity. Pages contain up to 100 entries,
+with explicit totals and `nextCursor`. Invalid graphs fail rather than implying no dependents;
+opaque feature semantics report partial coverage. Variable usage, assembly constraints and deletion
+eligibility remain separate. See the [inspection workflow](../../.agents/skills/vibeshape-inspection/SKILL.md).
+
 ## Editable FDM features
 
 The Model FDM tools panel and local/paired remote `create_fdm`/`update_fdm` draft commands implement twelve editable exact-geometry kinds, including Web/Rib, reliefs, teardrop holes, fit and fastener pockets, enclosure joints, sacrificial supports, and calibration coupons. See [Editable FDM features](fdm-tools.md) for targeting, units, bounded wall extension/plane termination, ownership, and process limitations. Metric thread size presets select diameter/pitch while retaining custom groove parameters; STL/3MF quality controls affect export tessellation only.

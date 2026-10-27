@@ -33,6 +33,7 @@ import {
   externalModelCurveLabelKind,
   externalModelReferenceLabels,
 } from "../features/sketch/external-model-geometry"
+import { HistoryDependenciesDialog } from "./history-dependencies-dialog"
 
 type HistoryFeatureActionsProps = {
   onFindInBrowser?: (() => void) | undefined
@@ -59,6 +60,7 @@ function featureDeletionIsBlocked(eligibility: ReturnType<typeof featureDeleteEl
 
 function useHistoryFeatureMenu(props: HistoryFeatureActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [dependenciesOpen, setDependenciesOpen] = useState(false)
   const [deleteMode, setDeleteMode] = useState<"delete" | "preserve" | null>(null)
   const deleteOpen = deleteMode !== null
   const [actionFailed, setActionFailed] = useState(false)
@@ -100,6 +102,8 @@ function useHistoryFeatureMenu(props: HistoryFeatureActionsProps) {
     }
   }
   return {
+    dependenciesOpen,
+    setDependenciesOpen,
     actionFailed,
     blocked,
     deleteMode,
@@ -149,11 +153,22 @@ function FeatureHistoryMenu({
       <DropdownMenuContent
         align="end"
         onCloseAutoFocus={(event) => {
-          if (model.deleteOpen || props.renameOpen || revealingResult.current)
+          if (
+            model.deleteOpen ||
+            model.dependenciesOpen ||
+            props.renameOpen ||
+            revealingResult.current
+          )
             event.preventDefault()
           revealingResult.current = false
         }}
       >
+        <DropdownMenuItem
+          disabled={!props.controller.report}
+          onSelect={() => model.setDependenciesOpen(true)}
+        >
+          {t("dependencies.action")}
+        </DropdownMenuItem>
         {props.onFindInBrowser && (
           <DropdownMenuItem
             onSelect={() => {
@@ -335,6 +350,15 @@ export function HistoryFeatureActions(props: HistoryFeatureActionsProps) {
   return (
     <>
       <FeatureHistoryMenu props={props} model={model} />
+      {model.dependenciesOpen && (
+        <HistoryDependenciesDialog
+          controller={props.controller}
+          entity={{ kind: "feature", id: props.feature.id }}
+          label={props.label}
+          onClose={() => model.setDependenciesOpen(false)}
+          triggerRef={props.triggerRef}
+        />
+      )}
       <FeatureDeleteDialog
         copy={copy}
         baseRevision={props.controller.report?.snapshot.revision ?? 0}
