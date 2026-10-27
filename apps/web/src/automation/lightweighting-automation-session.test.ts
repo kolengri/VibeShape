@@ -136,24 +136,27 @@ describe("browser lightweighting snapshot authority", () => {
     expect(test.commit).not.toHaveBeenCalled()
   })
 
-  it("returns actionable numerical failure codes without review or mutation", async () => {
-    const test = setup()
-    mocks.optimize.mockRejectedValueOnce(
-      new StructuralOptimizationError(
-        "serialization-precision",
-        "Move the source closer to the origin.",
-      ),
-    )
-    expect(await test.session.execute(actor, lightweightingOperation(true))).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: "serialization-precision",
-        message: "Move the source closer to the origin.",
-      },
-    })
-    expect(test.commit).not.toHaveBeenCalled()
-    expect(automationReviews.getSnapshot()).toBeNull()
-  })
+  it.each([
+    { code: "serialization-precision", message: "Move the source closer to the origin." },
+    {
+      code: "runtime-unavailable",
+      message: "The numerical runtime failed during module loading: Failed to fetch pyodide.mjs",
+    },
+  ] as const)(
+    "returns numerical failure causes without review or mutation: %s",
+    async (diagnostic) => {
+      const test = setup()
+      mocks.optimize.mockRejectedValueOnce(
+        new StructuralOptimizationError(diagnostic.code, diagnostic.message),
+      )
+      expect(await test.session.execute(actor, lightweightingOperation(true))).toMatchObject({
+        ok: false,
+        diagnostic: { ...diagnostic, retryable: true },
+      })
+      expect(test.commit).not.toHaveBeenCalled()
+      expect(automationReviews.getSnapshot()).toBeNull()
+    },
+  )
   it("captures an immutable STL and requires manual preview Apply before one atomic transaction", async () => {
     const test = setup()
     const pending = test.session.execute(actor, lightweightingOperation(true))

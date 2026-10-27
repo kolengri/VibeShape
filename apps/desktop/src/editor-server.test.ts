@@ -127,14 +127,25 @@ describe("desktop editor HTTP host", () => {
     })
     const stderr = new Response(child.stderr).text()
     const reader = child.stdout.getReader()
+    const readiness = (async () => {
+      const decoder = new TextDecoder()
+      let output = ""
+      while (!output.includes("\n")) {
+        const chunk = await reader.read()
+        output += decoder.decode(chunk.value, { stream: !chunk.done })
+        if (chunk.done) throw new Error(`Node host closed stdout before readiness: ${output}`)
+        if (output.length > 4096) throw new Error("Node host readiness output exceeded its bound.")
+      }
+      return output
+    })()
     const first = await Promise.race([
-      reader.read(),
+      readiness,
       child.exited.then(async (code) => {
         throw new Error(`Node host exited ${code}: ${await stderr}`)
       }),
     ])
     reader.releaseLock()
-    expect(new TextDecoder().decode(first.value)).toContain("ready")
+    expect(first).toBe("ready\n")
     const wasm = await fetch(`${origin}/assets/kernel.wasm`)
     expect(wasm.headers.get("content-type")).toBe("application/wasm")
     const body = new Uint8Array(await wasm.arrayBuffer())

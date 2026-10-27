@@ -99,7 +99,14 @@ function runtimeFixture() {
     ["geometry-worker", ["memory-profile", "occt-shapes"]],
     [
       "structural-optimization",
-      ["contract", "quick-contract", "quick-errors", "quick-generation", "quick-isosurface"],
+      [
+        "contract",
+        "quick-contract",
+        "quick-errors",
+        "quick-generation",
+        "quick-isosurface",
+        "runtime-diagnostics",
+      ],
     ],
   ] as const)
     for (const file of files) repo.write(`packages/${directory}/src/${file}.ts`, "export {}")

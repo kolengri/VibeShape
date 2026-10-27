@@ -20,6 +20,11 @@ indices must exist in the actual captured source. Input diagnostics include boun
 messages; inspect that cause before changing a study or retrying. Passing input validation alone
 does not establish a solved or feasible study.
 
+For `runtime-unavailable`, inspect the reported stage and bounded cause. Module/package loading
+failures require checking the installed build's same-origin numerical runtime assets and HTTP
+responses; changing material, forces or mesh settings cannot repair a missing runtime module.
+Runtime errors omit traceback frames, captured inputs and sensitive URL components.
+
 1. Read `model_info`, then `model_parts` at the same committed revision. Select one current,
    available exact solid Part, retaining its `partId` and body `featureId`/`outputRole`.
 2. Read `model_body_measurements` for that body at the same revision and retain its exact

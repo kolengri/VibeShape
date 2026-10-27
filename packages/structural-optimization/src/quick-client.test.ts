@@ -174,6 +174,17 @@ describe("disposable quick lightweighting worker client", () => {
     expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
   })
 
+  it("preserves the runtime stage and original cause while releasing a failed worker", async () => {
+    const error = {
+      code: "runtime-unavailable",
+      message: "The numerical runtime failed during package loading: Wheel request returned 404",
+    }
+    const pending = generateQuickLightweighting(input, options)
+    FakeWorker.instance.emit({ type: "complete", response: { ok: false, error } })
+    await expect(pending).rejects.toMatchObject(error)
+    expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
+  })
+
   it("rejects invalid source indices before starting a worker", async () => {
     const worker = vi.fn()
     vi.stubGlobal("Worker", worker)

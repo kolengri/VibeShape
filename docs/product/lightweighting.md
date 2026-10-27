@@ -139,6 +139,14 @@ provenance. The pinned inputs total 31,471,575 bytes; they load only when analys
 geometry is processed in the browser and is not uploaded. Preparation requires upstream access
 only when the verified local artifact cache is absent.
 
+The desktop and standalone static hosts serve the runtime's `.mjs` modules as JavaScript and
+its standard-library ZIP and Python wheels as binary ZIP archives, under the existing same-origin
+and path-containment policies. Vite development success alone does not verify this delivery path.
+`runtime-unavailable` diagnostics include the failed stage and a bounded original cause, such as
+module loading, runtime initialization, package loading or solving. Python failures retain the final
+exception without traceback frames or captured inputs. An asset-loading failure requires checking
+the installed runtime files and their HTTP responses, rather than changing physical settings.
+
 Numerical bounds are 12,000 grid cells, 3,000 occupied cells,
 5,000 nodes, eight supports, eight cases, sixteen preservation regions, forty removal iterations,
 and a 180-second client computation deadline. Cancel terminates the worker. Poisson ratio is

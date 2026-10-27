@@ -10,6 +10,37 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 describe("local static editor boundary", () => {
+  it("serves numerical runtime modules, archives and wheels with their actual bytes and MIME types", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vibeshape-static-numerical-"))
+    roots.push(root)
+    await mkdir(join(root, "structural-runtime"))
+    await writeFile(join(root, "index.html"), "<html><head></head><body>Editor</body></html>")
+    const assets = [
+      ["pyodide.mjs", "text/javascript; charset=utf-8", "export const loadPyodide = () => {}"],
+      ["pyodide.asm.mjs", "text/javascript; charset=utf-8", "export default function() {}"],
+      ["python_stdlib.zip", "application/zip", "stdlib archive bytes"],
+      ["scikit_fem-12.0.2-py3-none-any.whl", "application/zip", "FEM wheel bytes"],
+      ["trimesh-4.12.2-py3-none-any.whl", "application/zip", "mesh wheel bytes"],
+    ] as const
+    for (const [name, , bytes] of assets)
+      await writeFile(join(root, "structural-runtime", name), bytes)
+    const origin = "http://127.0.0.1:43115"
+    const serve = await createStaticEditor({ directory: root, origin })
+    for (const [name, mimeType, bytes] of assets) {
+      const response = await serve(
+        new Request(`${origin}/structural-runtime/${name}`, {
+          headers: { Host: "127.0.0.1:43115" },
+        }),
+      )
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toBe(mimeType)
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff")
+      expect(response.headers.get("cross-origin-resource-policy")).toBe("same-origin")
+      expect(response.headers.get("access-control-allow-origin")).toBeNull()
+      expect(await response.text()).toBe(bytes)
+    }
+  })
+
   it("streams injected file bodies and opens CORS only for the built opaque-panel runtime", async () => {
     const root = await mkdtemp(join(tmpdir(), "vibeshape-static-runtime-"))
     roots.push(root)

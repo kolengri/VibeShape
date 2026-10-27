@@ -1,6 +1,7 @@
 import type { loadPyodide as LoadPyodide } from "pyodide"
 import { z } from "zod"
 import { structuralOptimizationInputSchema, structuralSolverResponseSchema } from "./contract"
+import { type NumericalRuntimeStage, numericalRuntimeMessage } from "./runtime-diagnostics"
 import solverSource from "./solver.py?raw"
 
 const requestSchema = z
@@ -13,40 +14,47 @@ let running = false
 self.onmessage = async (event: MessageEvent<unknown>) => {
   if (running) return
   running = true
+  let stage: NumericalRuntimeStage = "request validation"
   try {
     const { input, runtimeBaseUrl } = requestSchema.parse(event.data)
     const base = new URL(runtimeBaseUrl)
     if (base.origin !== self.location.origin || !base.pathname.endsWith("/structural-runtime/"))
       throw new Error("The numerical runtime must be served by this application.")
     self.postMessage({ type: "progress", stage: "loading" })
+    stage = "module loading"
     const runtimeModule = runtimeModuleSchema.parse(
       await import(/* @vite-ignore */ new URL("pyodide.mjs", base).href),
     )
+    stage = "runtime initialization"
     const pyodide = await runtimeModule.loadPyodide({
       indexURL: base.href,
       packages: ["numpy", "scipy"],
     })
+    stage = "package loading"
     await pyodide.loadPackage([
       new URL("scikit_fem-12.0.2-py3-none-any.whl", base).href,
       new URL("trimesh-4.12.2-py3-none-any.whl", base).href,
     ])
+    stage = "solver loading"
     await pyodide.runPythonAsync(solverSource)
+    stage = "solve"
     pyodide.globals.set("_structural_request_json", JSON.stringify(input))
     self.postMessage({ type: "progress", stage: "solving" })
     const response: unknown = await pyodide.runPythonAsync("solve_json(_structural_request_json)")
+    stage = "response validation"
     if (typeof response !== "string") throw new Error("The solver response must be JSON.")
     self.postMessage({
       type: "complete",
       response: structuralSolverResponseSchema.parse(JSON.parse(response)),
     })
-  } catch {
+  } catch (error) {
     self.postMessage({
       type: "complete",
       response: {
         ok: false,
         error: {
           code: "runtime-unavailable",
-          message: "The local numerical runtime could not complete analysis.",
+          message: numericalRuntimeMessage(stage, error),
         },
       },
     })

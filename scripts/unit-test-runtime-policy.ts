@@ -62,11 +62,11 @@ const python = new Map([
 const callers = new Map([
   [
     "packages/structural-optimization/src/worker.ts",
-    "ddba07df02a1d3f4dfb051930bf5ea87c80597a01abd480339b10a5a56b0977b",
+    "583eac7626a630e52f9d8e302e8b3206f01111ebf135a523715cbcd12b6ed207",
   ],
   [
     "packages/structural-optimization/src/quick-worker.ts",
-    "a04578ee9f8b163beff0fff1342f87d09fb7ea103c97faf0256cd29bd587e0c7",
+    "e7796468ee117e353e5f0819a7160de7cfe2a294d5c4c3e435b5c862ad054339",
   ],
   [
     "packages/structural-optimization/tests/quick-wasm.test.ts",

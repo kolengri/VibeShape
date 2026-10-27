@@ -16,6 +16,7 @@ const headers = {
 const mimeTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json",
   ".wasm": "application/wasm",
@@ -28,6 +29,8 @@ const mimeTypes: Record<string, string> = {
   ".md": "text/plain; charset=utf-8",
   ".tar": "application/x-tar",
   ".gz": "application/gzip",
+  ".zip": "application/zip",
+  ".whl": "application/zip",
 }
 function staticRequestStatus(request: Request, origin: URL, url: URL) {
   if (url.origin !== origin.origin || request.headers.get("host") !== origin.host) return 403
