@@ -39,15 +39,7 @@ export interface PrintVolumeResult extends PrintVolumeFit {
   meshes: PrintVolumeMeshFit[]
 }
 
-const meshesSchema = printPreparationResultSchema.shape.meshes.superRefine((meshes, context) => {
-  if (meshes.reduce((sum, mesh) => sum + mesh.triangles.length, 0) > 312_000) {
-    context.addIssue({
-      code: "custom",
-      message:
-        "Print volume analysis is limited to 104,000 triangles in total, including supports.",
-    })
-  }
-})
+const meshesSchema = printPreparationResultSchema.shape.meshes
 
 function fitBounds(box: PrintVolumeBounds, limits: PrintVolumeBounds): PrintVolumeFit {
   const signedOutside = {

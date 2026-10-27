@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-27
-- Partially supersedes resource admission policies in [ADR-0101](0101-browser-structural-lightweighting.md), [ADR-0102](0102-lightweighting-task-workflows.md), [ADR-0133](0133-lightweighting-mesh-density.md), [ADR-0062](0062-durable-source-assets-and-portable-closure.md), and [ADR-0065](0065-bounded-exchange-geometry-import.md)
+- Partially supersedes resource admission policies in [ADR-0101](0101-browser-structural-lightweighting.md), [ADR-0102](0102-lightweighting-task-workflows.md), [ADR-0133](0133-lightweighting-mesh-density.md), [ADR-0062](0062-durable-source-assets-and-portable-closure.md), [ADR-0065](0065-bounded-exchange-geometry-import.md), and [ADR-0073](0073-immutable-local-assembly-library.md)
 
 ## Decision
 
@@ -30,6 +30,11 @@ backup no longer impose fixed mesh-count or geometry-byte admission ceilings. Ke
 source formats, parser policy, immutable source authority and atomic import transaction. Explicit
 caller-supplied parser budgets remain available. Preserve malformed-data, finite/index/manifold,
 archive traversal, URI/entity/reference/cycle, digest and source-identity checks.
+The same policy applies to ordinary document-source materialization, frozen library byte closures,
+assembly source and occurrence buffers, assembly export files, prepared print meshes and rectangular
+build-volume analysis. Disposable cache eviction budgets and catalogue/selection cardinality remain
+separate from geometry admission. Optional experimental support generation retains its documented
+unsupported-case warnings and coverage limitations.
 
 Generated MCP candidates use the existing reviewed prepared-import authority directly rather than
 uploading their own bytes through the public chunk endpoint. Public network upload/chunk budgets,

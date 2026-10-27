@@ -44,6 +44,8 @@ through the desktop static HTTP host, including real module/WASM/wheel loading u
 headers and a missing-module diagnostic regression. Build the editor before this suite; Vite-only
 worker tests do not exercise static-host MIME policy. Large-output unit fixtures exercise the
 ordinary local encoding/import/capture/rebuild path and former source-byte admission thresholds.
+Host source-materialization tests also send a source above 64 MiB through the document-worker
+session and its retained-source recovery path, rather than checking only the wire schema.
 `tests/e2e/large-mesh-import-ui.spec.ts` imports more than 83,333 triangles through the actual
 browser preview and Apply, then checks Undo/Redo, IndexedDB reload and native backup reopen.
 

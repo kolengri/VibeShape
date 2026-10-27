@@ -52,8 +52,8 @@ function combinedStl(meshes: ReturnType<typeof worldMeshes>) {
   return writeStlMeshes([{ vertices, triangles }])
 }
 function checkedFile(file: unknown): Uint8Array {
-  if (!(file instanceof Uint8Array) || file.byteLength === 0 || file.byteLength > 64 * 1024 * 1024)
-    throw new Error("Assembly export produced an invalid or oversized file.")
+  if (!(file instanceof Uint8Array) || file.byteLength === 0)
+    throw new Error("Assembly export produced an invalid or empty file.")
   return Uint8Array.from(file)
 }
 
@@ -72,13 +72,9 @@ async function exportStep(
     bodyCount: selected.length,
   }
 }
-function assertPrintMeshBudget(meshes: ReturnType<typeof worldMeshes>) {
-  if (
-    meshes.length > 4096 ||
-    meshes.reduce((sum, mesh) => sum + (mesh.vertices.length + mesh.triangles.length) * 4, 0) >
-      64 * 1024 * 1024
-  )
-    throw new Error("The assembly print copy exceeds its geometry resource budget.")
+function assertPrintBodyCount(meshes: ReturnType<typeof worldMeshes>) {
+  if (meshes.length > 4096)
+    throw new Error("The assembly print copy exceeds its body catalog budget.")
 }
 function exportThreeMf(
   meshes: ReturnType<typeof worldMeshes>,
@@ -91,7 +87,7 @@ function exportThreeMf(
     )
   const printPreparation = settings ? preparePrintMeshes({ meshes, settings }) : undefined
   const prepared = printPreparation?.meshes ?? meshes
-  assertPrintMeshBudget(prepared)
+  assertPrintBodyCount(prepared)
   const file = writeThreeMfMeshes({
     title: "VibeShape assembly",
     meshes: prepared,
