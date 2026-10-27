@@ -238,7 +238,7 @@ export function createNativeChatController({
     })
   }
   function settleCheckpoints() {
-    if (numericalJobs.pending() || state.settlingCheckpoint) return
+    if (numericalJobs.pending() || checkpoints?.isApplyingDraft()) return
     if (!promptInFlight && !steering && !state.busy)
       void (checkpoints?.finish() ?? Promise.resolve()).then(drainQueue)
   }

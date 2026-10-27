@@ -400,6 +400,57 @@ describe("queued native steering", () => {
     chat.dispose()
   })
 
+  it.each([false, true])(
+    "settles an asynchronous steer checkpoint after turn completion (queued prompt: %s)",
+    async (queuedPrompt) => {
+      const f = fixture(true),
+        model = checkpointFixture()
+      const chat = createNativeChatController({
+        projectId,
+        bridge: f.bridge,
+        storage: storage(),
+        checkpointHost: model.host,
+      })
+      chat.start()
+      try {
+        await chat.connect(agent)
+        await chat.send("Active")
+        model.save()
+        await chat.enqueue("Steered")
+        if (queuedPrompt) await chat.enqueue("Next")
+        const acknowledgment = f.deferSteer()
+        const steered = chat.steerQueued(queuedId(chat))
+        const save = model.deferSave()
+        acknowledgment.resolve("injected")
+        expect(await steered).toBe(true)
+        f.finish()
+        await until(() => !chat.getSnapshot().busy)
+        expect(chat.getSnapshot()).toMatchObject({
+          settlingCheckpoint: true,
+          canUndoAgentChanges: false,
+          queuePaused: false,
+        })
+        expect(f.prompts).toHaveLength(1)
+        save()
+        if (queuedPrompt) {
+          await until(() => f.prompts.length === 2)
+          expect(f.prompts[1]?.text).toBe("Next")
+          f.finish()
+        }
+        await until(() => chat.getSnapshot().canUndoAgentChanges)
+        expect(chat.getSnapshot()).toMatchObject({
+          settlingCheckpoint: false,
+          queuedMessages: [],
+          queuePaused: false,
+        })
+        expect(await chat.undoAgentChanges()).toBe(true)
+        expect(model.restores).toEqual([{ baseline: 2, revision: 3 }])
+      } finally {
+        chat.dispose()
+      }
+    },
+  )
+
   it("captures saved changes through Stop and exposes one internal Undo after settlement", async () => {
     const f = fixture(true),
       model = checkpointFixture()

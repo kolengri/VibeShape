@@ -348,5 +348,6 @@ export function createAssistantCheckpoints(
     viewBefore,
     clearPreview,
     applyDraft,
+    isApplyingDraft: () => applying,
   }
 }
