@@ -345,7 +345,6 @@ function renderViewport(
   featurePreview?: FeaturePreviewState,
   originPlaneVisibility?: Readonly<{
     visibility: { xy: boolean; xz: boolean; yz: boolean }
-    onChange: (plane: "xy" | "xz" | "yz", visible: boolean) => void
   }>,
   featureHighlight?: Readonly<{
     edgeSelection?: ModelEdgeViewportSelection | undefined
@@ -2883,26 +2882,18 @@ describe("GeometryViewport", () => {
     expect(listbox).not.toBe(document.activeElement)
   })
 
-  it("forwards individual origin-plane visibility and exposes accessible toggles", async () => {
-    const onChange = vi.fn()
+  it("forwards tree-owned origin-plane visibility without floating plane buttons", async () => {
     const visibility = { xy: true, xz: false, yz: true }
     const { port } = renderViewport(readyController([], []), null, undefined, undefined, {
       visibility,
-      onChange,
     })
 
     await waitFor(() => expect(port.setOriginPlaneVisibility).toHaveBeenCalledWith(visibility))
     const viewport = screen.getByRole("region", { name: "3D viewport" })
     expect(viewport.getAttribute("data-origin-plane-visibility")).toBe("xy,yz")
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide XY plane" }))
-    fireEvent.click(screen.getByRole("button", { name: "Show XZ plane" }))
-
-    expect(onChange).toHaveBeenNthCalledWith(1, "xy", false)
-    expect(onChange).toHaveBeenNthCalledWith(2, "xz", true)
-    expect(document.querySelector('[data-plane-symbol="XY"]')).toBeTruthy()
-    expect(document.querySelector('[data-plane-symbol="XZ"]')).toBeTruthy()
-    expect(document.querySelector('[data-plane-symbol="YZ"]')).toBeTruthy()
+    expect(screen.queryByRole("group", { name: "Origin plane visibility" })).toBeNull()
+    expect(screen.queryByRole("button", { name: /(?:Hide|Show) (?:XY|XZ|YZ) plane/ })).toBeNull()
   })
 
   it("replaces the viewport skeleton only after the renderer has initialized its scene", async () => {
@@ -2910,7 +2901,6 @@ describe("GeometryViewport", () => {
     const pendingViewport = new Promise<GeometryViewportPort>((resolve) => {
       resolveViewport = resolve
     })
-    const onVisibilityChange = vi.fn()
     const rendered = renderViewport(
       readyController([], []),
       null,
@@ -2918,7 +2908,6 @@ describe("GeometryViewport", () => {
       undefined,
       {
         visibility: { xy: true, xz: false, yz: false },
-        onChange: onVisibilityChange,
       },
       {
         pendingViewport,
@@ -2945,8 +2934,12 @@ describe("GeometryViewport", () => {
     expect(rendered.createViewport).toHaveBeenCalledTimes(1)
     expect(canvas?.parentElement?.hasAttribute("inert")).toBe(false)
     expect(screen.getByLabelText("3D viewport", { selector: "canvas" })).toBe(canvas)
-    fireEvent.click(screen.getByRole("button", { name: "Hide XY plane" }))
-    expect(onVisibilityChange).toHaveBeenCalledWith("xy", false)
+    expect(screen.queryByRole("button", { name: "Hide XY plane" })).toBeNull()
+    expect(rendered.port.setOriginPlaneVisibility).toHaveBeenLastCalledWith({
+      xy: true,
+      xz: false,
+      yz: false,
+    })
   })
 
   it("contains renderer initialization failures as a localized viewport state", async () => {

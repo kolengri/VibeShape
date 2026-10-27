@@ -85,7 +85,7 @@ function discoverTools(input: unknown) {
       schema: () =>
         z.toJSONSchema(mcpToolInputSchema(name), {
           reused: "ref",
-          io: isAssemblyLibraryToolName(name) ? "input" : "output",
+          io: isAssemblyLibraryToolName(name) || name === "model_dependencies" ? "input" : "output",
         }),
     })),
   ].filter((tool) =>

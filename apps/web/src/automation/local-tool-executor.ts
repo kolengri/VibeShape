@@ -33,6 +33,7 @@ import type {
   CadInspectionListQuery,
   ModelBodyMeasurementQuery,
   ModelBodyTopologyQuery,
+  ModelDependenciesQuery,
   ModelEdgeQuery,
   ModelMeasurementQuery,
   QueryResult,
@@ -120,7 +121,8 @@ type LocalSessionPort = Readonly<{
       | ModelEdgeQuery
       | ModelMeasurementQuery
       | ModelBodyMeasurementQuery
-      | ModelBodyTopologyQuery,
+      | ModelBodyTopologyQuery
+      | ModelDependenciesQuery,
   ) => QueryResult
   exportRevisionBound: (
     format: "step" | "stl" | "3mf",

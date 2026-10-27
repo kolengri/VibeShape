@@ -2705,7 +2705,7 @@ describe("ModelTree visibility and deletion", () => {
     renderTree({ onSketchRemove })
     const actions = timeline().getByRole("button", { name: "Actions for Profile" })
     actions.focus()
-    await user.keyboard("{Enter}{ArrowDown}{Enter}")
+    await user.keyboard("{Enter}{End}{Enter}")
     expect(screen.getByRole("alertdialog", { name: "Delete Profile?" })).toBeTruthy()
     await user.click(screen.getByRole("button", { name: "Keep sketch" }))
     expect(screen.queryByRole("alertdialog")).toBeNull()

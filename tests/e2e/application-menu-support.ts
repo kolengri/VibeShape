@@ -11,7 +11,7 @@ export async function openApplicationMenuItem(page: Page, name: string) {
 }
 
 export async function openAiConnections(page: Page) {
-  const footer = page.locator("main > footer")
+  const footer = page.locator("main footer:visible")
   await expect(footer).toBeVisible()
   return footer
 }

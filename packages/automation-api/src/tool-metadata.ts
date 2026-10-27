@@ -2,6 +2,8 @@ import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-met
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  model_dependencies:
+    "Inspect authored History dependencies or dependents of one stable feature/sketch entity at the committed revision. Direction defaults to dependents (change impact); transitive=true includes indirect relations with shortest hop distance. Includes suppressed features and sketch profile/support/external references, independent of geometry success. Paginate up to 100 items with nextCursor while keeping entity/direction/transitive/revision unchanged. Coverage=partial means some feature types have opaque dependency semantics. This is the History graph, not variable usage, assembly constraints, a geometric-validity guarantee or deletion permission. Read-only; no draft, preview or Apply required.",
   list_lightweighting_materials:
     "Read the same eight editable material examples as the Lightweighting UI: PLA, PETG, ABS, ASA, PC Blend, Nylon, aluminum 6061-T6 and stainless steel 304. Returns named manufacturer grades, tensile specimen/product conditions, source revisions and URLs, material values (MPa, kg/m3), and explicit assumed Poisson ratios. Copy a preset's material into analyze_lightweighting/request_lightweighting settings.material and adjust for the actual grade/process. Printed examples use 100% infill in one test orientation; the solver remains isotropic. No document or geometry mutation, network fetch, or material-strength certification.",
   analyze_quick_lightweighting:
@@ -312,6 +314,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "model_folders",
       "model_tree",
       "model_entity",
+      "model_dependencies",
       "model_variables",
       "model_edges",
       "model_body_measurements",
@@ -346,6 +349,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "remove_sketch",
     ].includes(name),
     idempotentHint: [
+      "model_dependencies",
       "list_lightweighting_materials",
       "analyze_lightweighting",
       "analyze_quick_lightweighting",

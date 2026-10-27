@@ -161,7 +161,6 @@ import {
   type WheelEvent,
 } from "react"
 import { createPortal } from "react-dom"
-import { OriginPlaneVisibilityControls } from "../../components/origin-plane-visibility-controls"
 import {
   type ActiveSketchSolveOptions,
   type ActiveSketchSolveResult,
@@ -12468,7 +12467,6 @@ type SketchDrawingConfiguration = Readonly<{
   onDraggingPointCancel: () => void
   onDraggingPointChange: (pointId: SketchEntityId | null, point?: SketchPoint2) => void
   onEditorToolChange: (tool: SketchEditorTool) => void
-  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
@@ -13004,7 +13002,6 @@ type SketchViewportActions = Readonly<{
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onEditorToolChange: (tool: SketchEditorTool) => void
   onFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
-  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   onConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
   onProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
   onReferenceDimensionLabelsChange: (labels: Readonly<Record<string, string>>) => void
@@ -13142,7 +13139,6 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
     onDraggingPointCancel,
     onDraggingPointChange,
     onEditorToolChange,
-    onOriginPlaneVisibilityChange,
     onProfileSelect,
     onRedo,
     onSelectionChange,
@@ -13175,7 +13171,6 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
       onDraggingPointCancel,
       onDraggingPointChange,
       onEditorToolChange,
-      onOriginPlaneVisibilityChange,
       onProfileSelect,
       onRedo,
       onSelectionChange,
@@ -13302,12 +13297,6 @@ function SketchViewportChrome({
           selectedEntityIds={state.selectedEntityIds}
         />
       </div>
-      <div className={cn("absolute bottom-3 right-3", SAFE_VIEWPORT_RIGHT)}>
-        <OriginPlaneVisibilityControls
-          onChange={actions.onOriginPlaneVisibilityChange}
-          visibility={state.originPlaneVisibility}
-        />
-      </div>
       {spatial ? null : <SketchOrientation plane={plane} />}
     </>
   )
@@ -13350,7 +13339,6 @@ export function SketchViewport({
     onEditorToolChange,
     onConstraintSelectionChange,
     onFailedConstraintsChange,
-    onOriginPlaneVisibilityChange,
     onProfilesChange,
     onReferenceDimensionLabelsChange,
     onProfileSelect,
@@ -13391,7 +13379,6 @@ export function SketchViewport({
     onDraggingPointCancel,
     onDraggingPointChange,
     onEditorToolChange,
-    onOriginPlaneVisibilityChange,
     selectedProfile,
     selectedConstraintId,
     selectedEntityIds,

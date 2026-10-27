@@ -231,9 +231,6 @@ type SketchViewportTestProps = Readonly<{
     typeof SketchViewport
   >["actions"]["onConstraintSelectionChange"]
   onProfileSelect?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfileSelect"]
-  onOriginPlaneVisibilityChange?: React.ComponentProps<
-    typeof SketchViewport
-  >["actions"]["onOriginPlaneVisibilityChange"]
   onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
   onReferenceDimensionLabelsChange?: React.ComponentProps<
     typeof SketchViewport
@@ -305,7 +302,6 @@ function viewportActions(props: SketchViewportTestProps) {
     onEditorToolChange: valueOr(props.onEditorToolChange, noOperation),
     onConstraintSelectionChange: valueOr(props.onConstraintSelectionChange, noOperation),
     onFailedConstraintsChange: noOperation,
-    onOriginPlaneVisibilityChange: valueOr(props.onOriginPlaneVisibilityChange, noOperation),
     onProfileSelect: valueOr(props.onProfileSelect, noOperation),
     onProfilesChange: valueOr(props.onProfilesChange, noOperation),
     onReferenceDimensionLabelsChange: valueOr(props.onReferenceDimensionLabelsChange, noOperation),
@@ -3923,13 +3919,11 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("keeps individually toggleable origin references visible while editing a sketch", () => {
+  it("keeps tree-owned origin references visible without floating plane buttons while editing a sketch", () => {
     const fixture = lineSketchFixture("b250", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
-    const onOriginPlaneVisibilityChange = vi.fn()
 
     renderViewport({
       draft: fixture,
-      onOriginPlaneVisibilityChange,
       originPlaneVisibility: { xy: true, xz: false, yz: true },
       sketch: fixture,
       solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
@@ -3939,11 +3933,8 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-origin-plane="xz"]')).toBeNull()
     expect(document.querySelector('[data-sketch-origin-plane="yz"]')).toBeTruthy()
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide XY plane" }))
-    fireEvent.click(screen.getByRole("button", { name: "Show XZ plane" }))
-
-    expect(onOriginPlaneVisibilityChange).toHaveBeenNthCalledWith(1, "xy", false)
-    expect(onOriginPlaneVisibilityChange).toHaveBeenNthCalledWith(2, "xz", true)
+    expect(screen.queryByRole("group", { name: "Origin plane visibility" })).toBeNull()
+    expect(screen.queryByRole("button", { name: /(?:Hide|Show) (?:XY|XZ|YZ) plane/ })).toBeNull()
   })
 
   it("splits a clicked line at the pointer as one draft edit", () => {

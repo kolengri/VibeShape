@@ -1,4 +1,15 @@
 import { type ModelBodyTopologyView, queryModelBodyTopology } from "./body-topology-queries"
+import { type ModelDependenciesView, queryModelDependencies } from "./dependency-queries"
+
+export type { ModelDependenciesQuery, ModelDependenciesView } from "./dependency-queries"
+export {
+  dependenciesResultContextMatches,
+  modelDependenciesArgumentsSchema,
+  modelDependenciesQuerySchema,
+  modelDependenciesViewSchema,
+  queryModelDependencies,
+} from "./dependency-queries"
+
 import { querySketchSolution, type SketchSolutionView } from "./sketch-solution-queries"
 
 export type { ModelBodyTopologyQuery, ModelBodyTopologyView } from "./body-topology-queries"
@@ -156,6 +167,7 @@ export type VariableListQuery = Readonly<z.infer<typeof variableListQuerySchema>
 export type VariableListView = Readonly<z.infer<typeof variableListViewSchema>>
 const VARIABLE_LIST_MAX_SERIALIZED_BYTES = 128 * 1024
 export type AutomationQueryView =
+  | ModelDependenciesView
   | SketchSolutionView
   | ModelBodyTopologyView
   | ModelEdgeView
@@ -584,6 +596,12 @@ export function createQueryDispatcher(
 }
 
 export const documentCoreQueryHandlers: readonly TrustedQueryHandler[] = [
+  {
+    kind: "org.vibeshape.cad.dependencies",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: queryModelDependencies,
+  },
   {
     kind: "org.vibeshape.sketch.solution",
     schemaVersion: 1,

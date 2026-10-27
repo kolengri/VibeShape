@@ -1,5 +1,10 @@
 # Local MCP quickstart
 
+For change-impact inspection, `model_dependencies` reads direct or transitive History links at the
+saved revision, including sketch consumers and suppressed operations. See the
+[inspection workflow](../.agents/skills/vibeshape-inspection/SKILL.md) for direction, paging and
+coverage limits. It does not require a draft or successful geometry rebuild.
+
 VibeShape is a browser CAD editor with opt-in local stdio and development HTTP MCP bridges. External agents use
 named tools; the browser remains the document owner and manual approval is the default.
 The desktop app provides project chat through installed ACP agents and an MCP connection to its open

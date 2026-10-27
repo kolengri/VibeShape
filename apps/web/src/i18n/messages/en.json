@@ -874,6 +874,25 @@
         "ariaLabel": "Sketch shortcuts"
       },
       "modelTree": {
+        "dependencies": {
+          "action": "Inspect dependencies",
+          "title": "Dependencies of {item}",
+          "description": "See what this saved History item depends on and which sketches or features use it.",
+          "direction": "Dependency direction",
+          "dependents": "Used by",
+          "dependencies": "Depends on",
+          "transitive": "Include indirect links",
+          "summary": "{count, plural, one {# related item} other {# related items}} at saved revision {revision}",
+          "entry": "{kind, select, sketch {Sketch} other {Feature}} · {distance, plural, one {# link away} other {# links away}}",
+          "suppressed": "Suppressed",
+          "unnamed": "{kind, select, sketch {Unnamed sketch} other {Unnamed feature}}",
+          "partial": "Some feature types have opaque dependencies. Additional links may exist.",
+          "empty": "No related History items in this direction.",
+          "unavailable": "Saved History dependencies could not be read. Finish any save and check the model's History diagnostics before reopening this view.",
+          "firstPage": "First page",
+          "nextPage": "Next page",
+          "close": "Close dependencies"
+        },
         "ariaLabel": "Model tree",
         "items": {
           "bodies": "Bodies",

@@ -44,7 +44,7 @@ async function planeOverlayContrast(page: Page, shown: Buffer, hidden: Buffer) {
         const context = canvas.getContext("2d")
         if (!context) throw new Error("Screenshot comparison needs a 2D context.")
         context.drawImage(image, 0, 0)
-        // Exclude view-control chrome whose pressed state changes with plane visibility.
+        // Keep viewport chrome outside the plane-contrast sample.
         return context.getImageData(0, 80, image.width, image.height - 180).data
       }
       const [visible, background] = await Promise.all([pixels(shown), pixels(hidden)])
@@ -88,16 +88,25 @@ for (const theme of ["light", "dark"] as const) {
       .locator("html")
       .evaluate((element, dark) => element.classList.toggle("dark", dark), theme === "dark")
     const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(
+      viewport.getByRole("group", { name: "Origin plane visibility", exact: true }),
+    ).toHaveCount(0)
+    const browser = page.getByRole("complementary", { name: "Model tree", exact: true })
+    await browser.getByRole("treeitem", { name: "Planes", exact: true }).click()
     const canvas = viewport.locator("canvas")
     await expect(viewport).toHaveAttribute("data-origin-plane-visibility", "xy,xz,yz")
     await page.mouse.move(1430, 10)
-    const shown = await canvas.screenshot()
+    const shown = await canvas.screenshot({ mask: [browser] })
     for (const plane of ["XY", "XZ", "YZ"] as const) {
-      await viewport.getByRole("button", { name: `Hide ${plane} plane`, exact: true }).click()
+      await browser.getByRole("button", { name: `Hide ${plane}`, exact: true }).click()
     }
     await expect(viewport).toHaveAttribute("data-origin-plane-visibility", "")
     await page.mouse.move(1430, 10)
-    const contrast = await planeOverlayContrast(page, shown, await canvas.screenshot())
+    const contrast = await planeOverlayContrast(
+      page,
+      shown,
+      await canvas.screenshot({ mask: [browser] }),
+    )
     expect(
       contrast.coverage,
       "Visible datums must still differ from the empty background.",
@@ -110,21 +119,24 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({ path: test.info().outputPath(`hidden-planes-${theme}.png`) })
 
     for (const plane of ["XY", "XZ", "YZ"] as const) {
-      const show = viewport.getByRole("button", { name: `Show ${plane} plane`, exact: true })
+      const show = browser.getByRole("button", { name: `Show ${plane}`, exact: true })
       await show.focus()
       await page.keyboard.press("Space")
       await expect(
-        viewport.getByRole("button", { name: `Hide ${plane} plane`, exact: true }),
+        browser.getByRole("button", { name: `Hide ${plane}`, exact: true }),
       ).toHaveAttribute("aria-pressed", "true")
     }
     await expect(viewport.getByRole("img", { name: "World axes" })).toBeVisible()
     await selectIdleOriginPlaneInViewport(page, "xz")
-    await expect(page.locator("main > footer")).toContainText("Selection: XZ plane")
+    await expect(page.locator("main footer:visible")).toContainText("Selection: XZ plane")
     await page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+    await expect(
+      page.getByRole("group", { name: "Origin plane visibility", exact: true }),
+    ).toHaveCount(0)
     await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("xz")
     await page.screenshot({ path: test.info().outputPath(`selected-plane-sketch-${theme}.png`) })
   })

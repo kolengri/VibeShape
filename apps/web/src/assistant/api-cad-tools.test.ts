@@ -47,6 +47,10 @@ describe("browser CAD gateway", () => {
     expect(box.tools.some((tool) => tool.name === "create_box" && Boolean(tool.inputSchema))).toBe(
       true,
     )
+    const dependencies = pageSchema.parse(
+      await gateway("discover_cad_tools", { query: "model_dependencies" }, signal),
+    ).tools[0]
+    expect(dependencies?.inputSchema).toMatchObject({ required: ["revision", "entity"] })
     expect(
       await gateway("call_cad_tool", { name: "read_agent_skill", arguments: {} }, signal),
     ).toMatchObject({ ok: true, value: { mimeType: "application/json" } })

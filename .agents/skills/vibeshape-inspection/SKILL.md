@@ -13,6 +13,7 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 | --- | --- |
 | Which project/revision, aggregate exact bounds/volume and model health? | `model_info`; inspect `diagnostics` and retain `measurementDiagnostic` when measurements are unavailable |
 | What authored feature/sketch IDs and dependencies exist? | `model_tree`, then complete `model_entity` records for relevant IDs |
+| What uses a History item, or what does it depend on before an edit? | `model_dependencies` with stable `entity: {kind, id}`, committed `revision`, `direction` and optional `transitive: true` |
 | What solved coordinates, DOF, conflicts and usable sketch profiles exist? | `model_sketch_solution` or `draft_sketch_solution` |
 | What drives a dimension or fails expression evaluation? | `model_variables` or `draft_variables` |
 | Which authored parts/folders or canonical History order? | `model_parts`, `model_folders`, `model_history` |
@@ -29,6 +30,15 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 Use the exact committed revision from `model_info` for model reads; draft reads use the draft's current revision and host-returned draft ID. Follow `nextCursor` until null for a complete requested collection, or stop when a targeted question is answered. Start with `cursor: null` where required. Reduce page size when a response exceeds budget. Do not mix pages across revisions.
 
 Tree dependency summaries include authored sketch inputs for Hole, Loft and Sweep, profile inputs and Revolve axis inputs as well as producer dependencies. Read complete entity records before changing those inputs; a summary does not include all parameters or establish current geometry availability.
+
+`model_dependencies` is available through local/development and paired remote MCP. It defaults to
+direct `dependents` (change impact); `direction: "dependencies"` reads upstream inputs and
+`transitive: true` includes indirect links with the shortest hop `distance`. Suppressed features
+remain included. Follow `nextCursor` with unchanged entity, direction, transitive flag and revision;
+pages contain at most 100 entries. `coverage: "partial"` means some feature dependency semantics
+are opaque, so an empty page is not proof of independence. This is saved History inspection, not a
+draft query, variable-usage report, assembly-constraint graph, geometry validation or deletion
+permission. An invalid graph fails explicitly; inspection does not require a successful rebuild.
 
 ## Measure selected topology
 

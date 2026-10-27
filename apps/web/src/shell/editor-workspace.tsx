@@ -553,7 +553,6 @@ type WorkspaceContentProps = Readonly<{
     onSketchEditorToolChange: (tool: SketchEditorTool) => void
     onSketchFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
     onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
-    onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
     onOriginPlaneSelect: (plane: ViewerOriginPlane | null) => void
     onSketchProfileSelect: (profile: SketchProfileSelector) => void
     onSketchProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
@@ -663,7 +662,6 @@ function SketchWorkspaceContent({
         onDraftChange: actions.onSketchDraftChange,
         onEditorToolChange: actions.onSketchEditorToolChange,
         onFailedConstraintsChange: actions.onSketchFailedConstraintsChange,
-        onOriginPlaneVisibilityChange: actions.onOriginPlaneVisibilityChange,
         onProfileSelect: actions.onSketchProfileSelect,
         onProfilesChange: actions.onSketchProfilesChange,
         onReferenceDimensionLabelsChange: actions.onSketchReferenceDimensionLabelsChange,
@@ -829,7 +827,6 @@ function ModelingWorkspaceContent({
       hiddenSketchIds={hiddenSketchIds}
       originPlaneVisibility={{
         visibility: model.originPlaneVisibility,
-        onChange: actions.onOriginPlaneVisibilityChange,
       }}
       preselectedFeatureId={model.preselectedFeatureId}
       {...workspaceBodySelectionProps(model, actions)}
@@ -2486,7 +2483,6 @@ function EditorContent({
         onSketchEditorToolChange: actions.setSketchEditorTool,
         onSketchFailedConstraintsChange: actions.setSketchFailedConstraintIds,
         onSketchPlaneSelect: actions.selectSketchPlane,
-        onOriginPlaneVisibilityChange: actions.setOriginPlaneVisibility,
         onOriginPlaneSelect: actions.selectOriginPlane,
         onSketchProfileSelect: actions.setSketchSelectedProfile,
         onSketchProfilesChange: actions.setSketchProfiles,

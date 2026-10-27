@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { draftIdSchema, featureIdSchema, generateUuidV7 } from "@vibeshape/domain"
+import { documentIdSchema, draftIdSchema, featureIdSchema, generateUuidV7 } from "@vibeshape/domain"
 import { createLocalInspectionQuery } from "./local-inspection-query"
 
 const id = featureIdSchema.parse(
@@ -8,6 +8,35 @@ const id = featureIdSchema.parse(
     randomBytes: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 0]),
   }),
 )
+
+it("binds committed dependency inspection to the paired document and retains traversal controls", () => {
+  expect(
+    createLocalInspectionQuery(
+      {
+        tool: "model_dependencies",
+        arguments: {
+          revision: 7,
+          entity: { kind: "feature", id },
+          direction: "dependencies",
+          transitive: true,
+          cursor: "10",
+          limit: 5,
+        },
+      },
+      id,
+    ),
+  ).toEqual({
+    kind: "org.vibeshape.cad.dependencies",
+    schemaVersion: 1,
+    documentId: documentIdSchema.parse(id),
+    revision: 7,
+    entity: { kind: "feature", id },
+    direction: "dependencies",
+    transitive: true,
+    cursor: "10",
+    limit: 5,
+  })
+})
 
 describe("local body measurement query", () => {
   it("binds the paired document identity and preserves role selection", () => {
