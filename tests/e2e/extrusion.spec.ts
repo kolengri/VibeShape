@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test"
-import { saveProject } from "./authored-parts-ui-support"
+import { saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 import { resultOperationLabels } from "./result-operation-helpers"
@@ -666,6 +666,7 @@ test.describe("selector-backed extrusion", () => {
     })
 
     await page.reload()
+    await saved(page)
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
