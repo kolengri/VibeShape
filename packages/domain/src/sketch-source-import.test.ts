@@ -158,6 +158,25 @@ function change(snapshot: DocumentSnapshotV4, kind: string, payload: unknown) {
   return { event, snapshot: value(reduceDocumentV4Event(snapshot, event)).snapshot }
 }
 
+it("keeps planar provenance bounded independently of large mesh source assets", () => {
+  const source = imported().sketch.sourceImport
+  expect(sketchSourceImportSchema.safeParse({ ...source, byteLength: 33_554_432 }).success).toBe(
+    true,
+  )
+  expect(sketchSourceImportSchema.safeParse({ ...source, byteLength: 33_554_433 }).success).toBe(
+    false,
+  )
+  expect(
+    sourceAssetSchema.safeParse({
+      ...asset,
+      filename: "Candidate.stl",
+      format: "stl",
+      representation: "triangle-mesh",
+      byteLength: 33_554_433,
+    }).success,
+  ).toBe(true)
+})
+
 it("captures asset output UUIDs and omits transient parser IDs without changing old sketches", () => {
   const f = imported()
   expect(f.sketch.sourceImport).toMatchObject({

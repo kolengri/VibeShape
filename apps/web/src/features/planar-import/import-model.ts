@@ -3,9 +3,9 @@ import { type CommandActor, commandActorSchema } from "@vibeshape/domain/command
 import { documentV4AssetsCommandSchema } from "@vibeshape/domain/document-v4-command-schemas"
 import { draftIdSchema, sketchEntityIdSchema, sketchIdSchema } from "@vibeshape/domain/identifiers"
 import { authorPreparedPlanarImport } from "@vibeshape/domain/planar-import-authoring"
+import { MAX_SKETCH_SOURCE_BYTES } from "@vibeshape/domain/sketch-source-import"
 import { attachSketchSourceImport } from "@vibeshape/domain/sketch-source-import-edit"
 import {
-  MAX_SOURCE_ASSET_BYTES,
   sourceAssetIdSchema,
   sourceAssetOutputIdSchema,
   sourceAssetSchema,
@@ -40,7 +40,8 @@ export async function readPlanarSource(
 ) {
   const format = planarFormat(file.name)
   if (!format) throw new PlanarFileError("format")
-  if (file.size <= 0 || file.size > MAX_SOURCE_ASSET_BYTES) throw new PlanarFileError("budget")
+  if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > MAX_SKETCH_SOURCE_BYTES)
+    throw new PlanarFileError("budget")
   const filename = sourceAssetSchema.shape.filename.safeParse(file.name)
   if (!filename.success) throw new PlanarFileError("filename")
   if (!unit || (format === "svg" && unit === "declared") || (format === "dxf" && unit === "px"))

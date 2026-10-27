@@ -64,6 +64,10 @@ describe("planar import worker and authored transaction", () => {
     for (const metadata of [
       { name: "../outline.svg", size: 1 },
       { name: "outline.stl", size: 1 },
+      { name: "outline.svg", size: Number.NaN },
+      { name: "outline.svg", size: Number.POSITIVE_INFINITY },
+      { name: "outline.svg", size: 0 },
+      { name: "outline.svg", size: 1.5 },
       { name: "outline.svg", size: 32 * 1024 * 1024 + 1 },
     ])
       await expect(
