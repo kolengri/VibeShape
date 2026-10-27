@@ -96,6 +96,13 @@ revokes that project's access and keeps it disabled across reload or reopening u
 chooses **Connect** in AI settings (or **Enable AI session** in standalone web status). Automatic ACP recovery and New chat do not undo Stop. No tool can change
 the approval mode or restore a stopped connection.
 
+The desktop Codex preset configures its project-specific `vs_…` server with at least a ten-minute
+client tool deadline for the verified `@agentclientprotocol/codex-acp` 2.2.2 adapter. It preserves a
+longer process-local setting. This applies to new and resumed connections after the updated desktop
+build starts a new adapter process; it does not alter an already open call. A separate `vibeshape`
+entry in global Codex configuration does not configure this project-specific name. Unknown adapters
+and custom launcher commands retain standard ACP injection and their own timeout policy.
+
 ## Jev ACP client
 
 The bundled **Jev (TypeSafe)** agent and the compatible source-checkout Custom ACP launch use the

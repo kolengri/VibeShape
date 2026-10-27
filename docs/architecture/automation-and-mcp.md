@@ -35,6 +35,14 @@ See [ADR-0126](../adr/0126-explicit-native-assistant-project-access.md). Connect
 chat authorizes validated model writes under [ADR-0116](../adr/0116-connected-assistant-model-authority-and-checkpoints.md);
 external clients retain their separate approval policy.
 
+The verified JavaScript Codex ACP 2.2.2 adapter receives its complete project-specific MCP entry
+through process-local `CODEX_CONFIG`, with transport fields and a minimum 600-second tool deadline
+in the same nested object. The host omits standard ACP server injection only after this adapter's
+initialization identity is verified. This preserves the timeout for new and resumed threads; the
+adapter otherwise reconstructs injected servers without timeout fields. Generic adapters retain
+their original ACP server list. No global Codex configuration or installed adapter is changed.
+See [ADR-0136](../adr/0136-native-codex-project-tool-deadline.md).
+
 Native ACP and browser API chat share completion instructions: in-project modeling ends with
 validated commits to the original project's editable History. Before reporting a saved result,
 the assistant must read the saved document identity, revision and relevant model or assembly

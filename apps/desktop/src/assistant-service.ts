@@ -20,6 +20,7 @@ import { JEV_IMAGE_CONSTRAINTS } from "@vibeshape/automation-api/assistant-jev"
 import { type DesktopMcpSetup, desktopMcpSetupSchema } from "@vibeshape/automation-api/desktop-host"
 import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
 import { z } from "zod"
+import { prepareCodexMcpLaunch, supportsCodexMcpRuntimeConfig } from "./assistant-codex-mcp"
 import { createAssistantConnectionTests } from "./assistant-connection-test"
 import type { createAssistantLaunchResolver } from "./assistant-jev-runtime"
 import { createAssistantPermissions } from "./assistant-permissions"
@@ -431,7 +432,12 @@ export function createAssistantService(options: AssistantServiceOptions) {
     input: Extract<AssistantRequest, { operation: "connect" }>["input"],
   ) {
     if (!isCurrent(owner) || disposed) throw new AssistantFailure("stale-session")
-    const child = spawnAssistantProcess({ ...options, ...resolveLaunch(input) }, (code) => {
+    const prepared = prepareCodexMcpLaunch(
+      resolveLaunch(input),
+      owner.mcp,
+      options.env ?? process.env,
+    )
+    const child = spawnAssistantProcess({ ...options, ...prepared.launch }, (code) => {
       if (owner.process) stop(owner, code)
     })
     owner.process = child
@@ -468,6 +474,8 @@ export function createAssistantService(options: AssistantServiceOptions) {
       }),
     )
     applyInitialization(owner, init, input.agent)
+    // This adapter replaces ACP-injected server options; keep the complete process-local entry.
+    if (prepared.configured && supportsCodexMcpRuntimeConfig(init)) owner.mcp = []
   }
   async function prepareConnection(owner: Owner, projectId: string) {
     await stopping.get(projectId)
