@@ -21,6 +21,7 @@
     "./draft-inspection": "./src/draft-inspection.ts",
     "./queries": "./src/queries.ts",
     "./local-tools": "./src/local-tools.ts",
+    "./numerical-jobs": "./src/numerical-jobs.ts",
     "./local-sketch-text-tools": "./src/local-sketch-text-tools.ts",
     "./local-session": "./src/local-session.ts",
     "./remote-session": "./src/remote-session.ts",

@@ -43,6 +43,20 @@ adapter otherwise reconstructs injected servers without timeout fields. Generic 
 their original ACP server list. No global Codex configuration or installed adapter is changed.
 See [ADR-0136](../adr/0136-native-codex-project-tool-deadline.md).
 
+Structural and Quick numerical tools return browser-owned job receipts immediately, independently
+of any client's request deadline. `get_numerical_job` retrieves running/completed state and the
+original final result; `cancel_numerical_job` explicitly interrupts work. Computation does not hold
+the broker's operation slot, so model reads remain available. Source identity, review and atomic
+persistence stay in their existing proposal coordinators. Jobs are actor-bound session memory,
+cancelled on Stop/disposal or source changes, with no computation or retained-result expiry.
+See [ADR-0137](../adr/0137-browser-owned-numerical-jobs.md) and the
+[operator workflow](../../.agents/skills/vibeshape-modeling/references/numerical-jobs.md).
+
+The built-in browser API gateway bypasses MCP and waits directly for the original numerical
+result, without the job facade or an overall assistant-turn deadline. Individual language-provider
+requests retain their separate timeout. This avoids spending agent tool rounds polling a local
+calculation; Stop and session disposal still interrupt it.
+
 Native ACP and browser API chat share completion instructions: in-project modeling ends with
 validated commits to the original project's editable History. Before reporting a saved result,
 the assistant must read the saved document identity, revision and relevant model or assembly

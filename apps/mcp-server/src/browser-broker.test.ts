@@ -4,7 +4,11 @@ import {
   localConnectResponseSchema,
   localPollResponseSchema,
 } from "@vibeshape/automation-api/local-session"
-import { type LocalToolResult, localOperationSchema } from "@vibeshape/automation-api/local-tools"
+import {
+  type LocalToolResult,
+  localOperationSchema,
+  localToolOutputs,
+} from "@vibeshape/automation-api/local-tools"
 import { modelVariableUsageViewSchema } from "@vibeshape/automation-api/queries"
 import {
   lightweightingMaterialCatalogResult,
@@ -58,6 +62,100 @@ async function connect(broker: ReturnType<typeof createBrowserBroker>) {
 }
 
 describe("browser automation broker", () => {
+  it("accepts fast numerical receipts then correlates job controls and completed evidence", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const jobId = "0195b5ac-b220-7a2c-8c33-000000000030"
+    const value = {
+      jobId,
+      tool: "request_quick_lightweighting",
+      documentId: document.id,
+      baseRevision: 4,
+      status: "running",
+    }
+    let sequence = 0
+    const dispatch = async (operation: Parameters<typeof broker.invoke>[0]) => {
+      const pending = broker.invoke(operation)
+      const poll = await broker.handle(
+        request(
+          "poll",
+          { protocolVersion: 1, sequence: ++sequence, document, progress: null },
+          token,
+        ),
+      )
+      const { work } = localPollResponseSchema.parse(await poll.json())
+      if (!work) throw new Error("Expected numerical job work.")
+      const respond = (output: unknown) =>
+        broker.handle(
+          request(
+            "result",
+            {
+              protocolVersion: 1,
+              requestId: work.requestId,
+              tool: operation.tool,
+              result: { ok: true, value: output },
+            },
+            token,
+          ),
+        )
+      return { pending, respond }
+    }
+    const started = await dispatch(quickLightweightingOperation(true))
+    for (const patch of [
+      { baseRevision: 3 },
+      { documentId: "0195b5ac-b220-7a2c-8c33-000000000099" },
+      { tool: "analyze_quick_lightweighting" },
+    ])
+      expect((await started.respond({ ...value, ...patch })).status).toBe(400)
+    expect((await started.respond(value)).status).toBe(200)
+    await expect(started.pending).resolves.toEqual(
+      localToolOutputs.request_quick_lightweighting.parse({ ok: true, value }),
+    )
+
+    for (const tool of ["get_numerical_job", "cancel_numerical_job"] as const) {
+      const control = await dispatch(localOperationSchema.parse({ tool, arguments: { jobId } }))
+      const status = {
+        ...value,
+        status: tool === "get_numerical_job" ? "running" : "cancelling",
+        result: null,
+      }
+      for (const patch of [
+        { jobId: "0195b5ac-b220-7a2c-8c33-000000000099" },
+        { documentId: "0195b5ac-b220-7a2c-8c33-000000000099" },
+      ])
+        expect((await control.respond({ ...status, ...patch })).status).toBe(400)
+      expect((await control.respond(status)).status).toBe(200)
+      await expect(control.pending).resolves.toEqual(
+        localToolOutputs[tool].parse({ ok: true, value: status }),
+      )
+    }
+    const finished = await dispatch(
+      localOperationSchema.parse({ tool: "get_numerical_job", arguments: { jobId } }),
+    )
+    const original = quickLightweightingValue(true)
+    const result = {
+      ok: true,
+      value: {
+        ...original,
+        documentId: document.id,
+        snapshot: { ...original.snapshot, documentId: document.id },
+      },
+    }
+    const completed = { ...value, status: "completed", result }
+    expect(
+      (
+        await finished.respond({
+          ...completed,
+          result: { ...result, value: { ...result.value, baseRevision: 3 } },
+        })
+      ).status,
+    ).toBe(400)
+    expect((await finished.respond(completed)).status).toBe(200)
+    await expect(finished.pending).resolves.toEqual(
+      localToolOutputs.get_numerical_job.parse({ ok: true, value: completed }),
+    )
+  })
+
   it("binds variable usage response identity and paging to the paired saved document", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)

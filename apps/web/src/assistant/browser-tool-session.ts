@@ -26,7 +26,8 @@ export function createBrowserToolSession(projectId: string): BrowserToolSession 
     ...createLocalAutomationActor(Date.now(), crypto.getRandomValues(new Uint8Array(10))),
     clientId: "org.vibeshape.direct-api-client",
   }
-  const executor = createLocalToolExecutor(session, actor)
+  const { numericalJobs: _numericalJobs, ...inlineSession } = session
+  const executor = createLocalToolExecutor(inlineSession, actor)
   const isActive = () => !closed && session.readIdentity()?.id === projectId
   return {
     execute: createApiCadGateway({

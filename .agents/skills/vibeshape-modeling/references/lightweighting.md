@@ -115,6 +115,9 @@ The multi-candidate study remains editor-only; these tools run one selected algo
 
 ## Analyze and request a snapshot
 
+Use the [numerical job workflow](numerical-jobs.md): both tools return a job receipt immediately.
+Read the final nested result with `get_numerical_job`; a receipt alone contains no metrics or snapshot.
+
 `analyze_lightweighting` computes bounded baseline and feasible-candidate evidence without editing
 the model or requesting Apply. `maxIterations: 0` evaluates the baseline without removal. Examine
 the baseline and optimized volume/mass, worst stress, displacement, achieved safety factor and
@@ -147,8 +150,8 @@ When the user authorized creating the result, call `request_lightweighting` with
 inputs and an English `label`. It computes again against the captured committed body. An improved
 candidate is encoded as a private immutable STL SourceAsset, inspected and shown in the ordinary
 browser mesh preview together with the material, constraints, regions and analysis evidence.
-External clients require manual Apply/Reject, including CAD auto-apply sessions. Keep the tool call open
-while the user reviews it; no caller approval substitutes for browser Apply.
+External clients require manual Apply/Reject, including CAD auto-apply sessions. The job remains
+pending while the user reviews it; no caller approval substitutes for browser Apply.
 
 Apply performs one ordinary atomic import transaction and creates one Undo entry, retaining the
 original Part. The saved revision can advance by several command revisions within that transaction.

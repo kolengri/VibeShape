@@ -809,6 +809,76 @@ describe("remote MCP in workerd", () => {
     },
   )
 
+  it.each(["jobId", "documentId", "nestedRevision", null] as const)(
+    "routes numerical receipts and rejects forged job status (%s)",
+    async (forged) => {
+      const tab = await pair()
+      const authenticated = await authorizeTab(tab)
+      const jobId = lightweightingId(30)
+      const documentId = lightweightingId(3)
+      const command = quickLightweightingOperation(true)
+      const receipt = { jobId, documentId, baseRevision: 4, tool: command.tool, status: "running" }
+      const send = async (id: number, tool: string, args: unknown, value: unknown) => {
+        const work = nextMessage(tab.socket)
+        const pending = mcp(authenticated.token, id, "tools/call", { name: tool, arguments: args })
+        const operation = await work
+        if (operation.type !== "work") throw new Error("Expected numerical job work.")
+        tab.socket.send(
+          JSON.stringify({
+            type: "result",
+            protocolVersion: 1,
+            requestId: operation.requestId,
+            tool,
+            result: { ok: true, value },
+          }),
+        )
+        return (await pending).json()
+      }
+      expect(
+        await send(1, command.tool, { ...command.arguments, projectId: documentId }, receipt),
+      ).toMatchObject({ result: { structuredContent: { result: { ok: true, value: receipt } } } })
+      const cancelling = { ...receipt, status: "cancelling", result: null }
+      expect(
+        await send(2, "cancel_numerical_job", { jobId, projectId: documentId }, cancelling),
+      ).toMatchObject({
+        result: { structuredContent: { result: { ok: true, value: cancelling } } },
+      })
+      const original = quickLightweightingValue(true)
+      const completed = {
+        ...receipt,
+        status: "completed",
+        result: {
+          ok: true,
+          value: { ...original, baseRevision: forged === "nestedRevision" ? 3 : 4 },
+        },
+        ...(forged === "jobId" ? { jobId: lightweightingId(99) } : {}),
+        ...(forged === "documentId" ? { documentId: lightweightingId(99) } : {}),
+      }
+      const response = await send(
+        3,
+        "get_numerical_job",
+        { jobId, projectId: documentId },
+        completed,
+      )
+      if (forged) {
+        expect(response).toMatchObject({
+          result: {
+            structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+          },
+        })
+        expect(
+          await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+            sessionId: tab.credential.sessionId,
+            clientId: authenticated.clientId,
+          }),
+        ).toBe(false)
+      } else
+        expect(response).toMatchObject({
+          result: { structuredContent: { result: { ok: true, value: completed } } },
+        })
+    },
+  )
+
   it.each([
     { quick: false, request: false, variant: false },
     { quick: false, request: true, variant: false },

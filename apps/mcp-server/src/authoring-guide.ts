@@ -161,6 +161,13 @@ stress safety and displacement constraints. Optional \`objective\` selects minim
 or stiffness-guided removal with \`retainedMassFraction\` 0.1–1 of the FEM baseline mass. Inspect
 objective target mass, achieved fraction and reached/not-reached status; the energy-ranked heuristic
 makes no globally optimal stiffness claim. Both call the editor's preliminary FEM worker.
+All four structural/Quick analyze and request tools immediately return a browser-owned job receipt,
+not final metrics or a saved snapshot. Read \`get_numerical_job\` with \`jobId\` until
+\`status: "completed"\`, then inspect the nested \`result.ok\` and original result. Running and
+cancelling states contain no result. Use \`cancel_numerical_job\` for explicit cancellation;
+computation has no execution deadline and does not block \`model_info\`. Stop/session disposal
+also interrupts work. An already accepted atomic write must report its actual outcome. Job results
+remain actor-bound in session memory until disposal and are never replayed after reconnect.
 An improved snapshot requires native mesh preview and manual browser Apply even in Auto-apply
 sessions, then one atomic immutable STL import retaining the original. No improvement mutates nothing.
 Only bounded metrics and snapshot identifiers cross MCP. Grid/cell/node counts and elapsed

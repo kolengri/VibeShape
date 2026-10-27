@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-27
+- Numerical-call waiting policy superseded by [ADR-0137](0137-browser-owned-numerical-jobs.md)
 - Extends: [ADR-0135](0135-cad-execution-without-default-deadlines.md) for the built-in Codex client
 
 ## Context

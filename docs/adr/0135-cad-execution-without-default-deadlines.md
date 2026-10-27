@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-27
+- Numerical-call waiting policy superseded by [ADR-0137](0137-browser-owned-numerical-jobs.md)
 - Partially supersedes execution deadlines in [ADR-0043](0043-local-stdio-mcp-browser-session.md), [ADR-0058](0058-remote-mcp-paired-browser-transport.md) and [ADR-0134](0134-local-geometry-resource-policy.md)
 
 ## Decision

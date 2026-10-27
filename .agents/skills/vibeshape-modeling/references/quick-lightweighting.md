@@ -10,6 +10,10 @@ use the editor's browser worker. These tools generate periodic lattice geometry 
 material strength, stiffness, safety factors, fatigue, buckling or printing performance.
 For explicit loads and constraints, use [structural lightweighting](lightweighting.md).
 
+Follow the [numerical job workflow](numerical-jobs.md). Both tools return a receipt immediately;
+read `get_numerical_job` until completion and inspect its nested result. A receipt is not a mesh
+result or a saved snapshot. Explicit cancellation uses `cancel_numerical_job`.
+
 ## Capture the source and settings
 
 Read `model_info` and `model_parts` at the same committed revision. Choose one available exact
@@ -60,7 +64,7 @@ requested target. A candidate with no positive measured removal fails with
 When creating the result is authorized, call `request_quick_lightweighting` with the same complete
 inputs and an English `label`. It computes against the captured source and privately stages an
 immutable STL SourceAsset directly through the ordinary prepared-import browser review path.
-The public MCP upload byte/chunk budget does not apply to this internal candidate. External clients require manual Apply/Discard, including CAD auto-apply sessions. Keep the request open while the person reviews it.
+The public MCP upload byte/chunk budget does not apply to this internal candidate. External clients require manual Apply/Discard, including CAD auto-apply sessions. The job remains pending while the person reviews it.
 
 Apply retains the original Part, commits one ordinary atomic import transaction and creates one
 Undo entry. The result contains bounded `summary` and the committed `snapshot` identity:

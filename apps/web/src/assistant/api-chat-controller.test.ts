@@ -3,6 +3,10 @@ import {
   type AssistantAttachment,
   assistantToolTargetsSchema,
 } from "@vibeshape/automation-api/assistant"
+import {
+  quickLightweightingOperation,
+  quickLightweightingValue,
+} from "../../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { ApiToolCall } from "./api-chat-completions"
 import {
@@ -490,6 +494,79 @@ describe("browser API project chat", () => {
     expect(JSON.stringify(chat.getSnapshot())).not.toContain("runtime-secret")
     chat.dispose()
     expect(released).toBe(1)
+  })
+
+  it("awaits numerical CAD beyond ten minutes without aborting or disposing its tool session", async () => {
+    vi.useFakeTimers()
+    const dispose = vi.fn()
+    const operation = quickLightweightingOperation()
+    const finalResult = {
+      ok: true,
+      value: { ...quickLightweightingValue(), documentId: projectId },
+    }
+    let finishTool: (result: unknown) => void = () => {}
+    let enteredTool: () => void = () => {}
+    const started = new Promise<void>((resolve) => {
+      enteredTool = resolve
+    })
+    const receivedSignals: AbortSignal[] = []
+    let requests = 0
+    const chat = createApiChatController({
+      projectId,
+      storage: disk(),
+      createTools: () => ({
+        isActive: () => true,
+        dispose,
+        execute: async (_name, _input, signal) => {
+          receivedSignals.push(signal)
+          enteredTool()
+          return new Promise<unknown>((resolve) => {
+            finishTool = resolve
+          })
+        },
+      }),
+      fetch: async (_url, init) => {
+        requests += 1
+        if (requests === 1)
+          return completion("", [
+            call("long-numerical", "call_cad_tool", {
+              name: operation.tool,
+              arguments: operation.arguments,
+            }),
+          ])
+        const request = JSON.parse(String(init?.body)) as {
+          messages: { role: string; content: string }[]
+        }
+        expect(
+          JSON.parse(request.messages.find(({ role }) => role === "tool")?.content ?? "null"),
+        ).toEqual(finalResult)
+        return completion("Numerical analysis completed.")
+      },
+    })
+    try {
+      await chat.connect(configuration)
+      expect(await chat.send("Analyze this part")).toBe(true)
+      await started
+      await vi.advanceTimersByTimeAsync(601_000)
+      expect(chat.getSnapshot()).toMatchObject({ busy: true, error: null })
+      expect(requests).toBe(1)
+      expect(receivedSignals).toHaveLength(1)
+      expect(receivedSignals[0]?.aborted).toBe(false)
+      expect(dispose).not.toHaveBeenCalled()
+      finishTool(finalResult)
+      await idle(chat)
+      expect(chat.getSnapshot()).toMatchObject({ busy: false, error: null, connected: true })
+      expect(chat.getSnapshot().messages.at(-1)?.text).toBe("Numerical analysis completed.")
+      expect(chat.getSnapshot().messages.find(({ role }) => role === "tool")?.tool?.status).toBe(
+        "completed",
+      )
+      expect(requests).toBe(2)
+      expect(dispose).not.toHaveBeenCalled()
+    } finally {
+      chat.dispose()
+      vi.useRealTimers()
+    }
+    expect(dispose).toHaveBeenCalledTimes(1)
   })
 
   it("awaits canceled work, ignores late responses, and requires explicit queue resume without overlapping turns", async () => {
