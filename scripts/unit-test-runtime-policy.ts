@@ -40,7 +40,7 @@ const python = new Map([
   ],
   [
     "packages/structural-optimization/src/solver.py",
-    "1c0be90b9c60d1ff10772b8cb880c480cdd5c577b62f8616f0b6a0619f8b9bb8",
+    "1898b03023370e26df80114bebec47b7bb388656f690f0c861c32a9f5d75d67e",
   ],
   [
     "packages/structural-optimization/src/quick-solver.py",
@@ -86,7 +86,7 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/wasm-solver.test.ts",
-    "b995f469a1b4fd43ff5e66da4aa8cec26a211d77e80f16ca8b569e92924c9308",
+    "41b8b17c31e5c8e3c1d630def846723a66bbb2c14cac49884279f16ace2bb11f",
   ],
 ])
 

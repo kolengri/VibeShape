@@ -740,14 +740,68 @@ json.dumps({"selectionCount": len(_dense_region["triangles"]), "outOfSourceRejec
   )
 
   it(
-    "rejects an infeasible displacement baseline without returning geometry",
+    "reports measured displacement and its limit for an infeasible SIMP baseline without geometry",
     async () => {
       const input = axialBar(1)
       input.maxDisplacementMm = 0.001
+      input.algorithm = { kind: "simp", volumeFraction: 0.8, filterRadiusMm: 1.5, penalty: 3 }
       const response = await run(structuralOptimizationInputSchema.parse(input))
       expect(response.ok).toBe(false)
       if (response.ok) throw new Error("An infeasible baseline must not return a mesh.")
       expect(response.error.code).toBe("infeasible-baseline")
+      const displacement = response.error.message.match(
+        /load case 1 "axial": maximum displacement ([\d.e+-]+) mm exceeds limit ([\d.e+-]+) mm/,
+      )
+      expect(displacement).not.toBeNull()
+      expect(Number(displacement?.[1])).toBeCloseTo(0.025, 8)
+      expect(Number(displacement?.[2])).toBe(0.001)
+      expect(response.error.message).not.toContain("von Mises stress")
+      expect(response).not.toHaveProperty("result")
+    },
+    timeout,
+  )
+
+  it.each([
+    ["named", "axial", "bending"],
+    ["escaped", "\u0000".repeat(80), "\u0001".repeat(80)],
+    ["unicode", "😀".repeat(40), "🚀".repeat(40)],
+  ])(
+    "reports separate controlling cases and physical limits within the automation error envelope for %s names",
+    async (_kind, axialName, bendingName) => {
+      const input = axialBar(1)
+      input.material.yieldStrengthMpa = 4
+      input.maxDisplacementMm = 0.04
+      const axial = input.loadCases[0]
+      if (!axial) throw new Error("The fixture must supply an axial load case.")
+      input.loadCases = [
+        { ...axial, name: axialName },
+        { ...axial, name: bendingName, forceN: [0, 0, -0.2] },
+      ]
+      const response = await run(structuralOptimizationInputSchema.parse(input))
+      expect(response.ok).toBe(false)
+      if (response.ok) throw new Error("An infeasible baseline must not return a mesh.")
+      expect(response.error.code).toBe("infeasible-baseline")
+      const stress = response.error.message.match(
+        /load case 1 .*: von Mises stress ([\d.e+-]+) MPa exceeds allowable ([\d.e+-]+) MPa; safety factor ([\d.e+-]+) is below required ([\d.e+-]+)\. /,
+      )
+      if (!stress)
+        throw new Error("The diagnostic must include controlling stress and safety limits.")
+      expect(Number(stress[1])).toBeCloseTo(2.5, 8)
+      expect(Number(stress[2])).toBe(2)
+      expect(Number(stress[3])).toBeCloseTo(1.6, 8)
+      expect(Number(stress[4])).toBe(2)
+      const displacement = response.error.message.match(
+        /load case 2 .*: maximum displacement ([\d.e+-]+) mm exceeds limit ([\d.e+-]+) mm/,
+      )
+      if (!displacement)
+        throw new Error("The diagnostic must include controlling displacement limits.")
+      expect(Number(displacement[1])).toBeCloseTo(0.05, 2)
+      expect(Number(displacement[2])).toBe(0.04)
+      expect(response.error.message.length).toBeLessThanOrEqual(512)
+      if (_kind === "named") {
+        expect(response.error.message).toContain('load case 1 "axial"')
+        expect(response.error.message).toContain('load case 2 "bending"')
+      }
       expect(response).not.toHaveProperty("result")
     },
     timeout,

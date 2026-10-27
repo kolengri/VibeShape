@@ -110,6 +110,17 @@ async function reviewReady() {
   return review
 }
 describe("browser lightweighting snapshot authority", () => {
+  it("preserves native runtime failure codes across the smaller MCP diagnostic envelope", async () => {
+    const test = setup()
+    const message = "Native runtime cause. ".repeat(40)
+    mocks.optimize.mockRejectedValueOnce(
+      new QuickLightweightingError("runtime-unavailable", message),
+    )
+    expect(await test.session.execute(actor, lightweightingOperation())).toEqual({
+      ok: false,
+      diagnostic: { code: "runtime-unavailable", message: message.slice(0, 512), retryable: true },
+    })
+  })
   it.each([
     { code: "serialization-precision", message: "Move the source closer to the origin." },
     {

@@ -162,7 +162,9 @@ or stiffness-guided removal with \`retainedMassFraction\` 0.1–1 of the FEM bas
 objective target mass, achieved fraction and reached/not-reached status; the energy-ranked heuristic
 makes no globally optimal stiffness claim. Both call the editor's preliminary FEM worker.
 All four structural/Quick analyze and request tools immediately return a browser-owned job receipt,
-not final metrics or a saved snapshot. Read \`get_numerical_job\` with \`jobId\` until
+not final metrics or a saved snapshot. In the embedded native chat, end the turn after a receipt:
+the host shows work and automatically delivers the result in one continuation, without polling.
+External clients can read \`get_numerical_job\` with \`jobId\` until
 \`status: "completed"\`, then inspect the nested \`result.ok\` and original result. Running and
 cancelling states contain no result. Use \`cancel_numerical_job\` for explicit cancellation;
 computation has no execution deadline and does not block \`model_info\`. Stop/session disposal

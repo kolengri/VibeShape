@@ -33,6 +33,7 @@ import {
   mcpToolInputSchema,
   parseMcpToolCall,
 } from "@vibeshape/automation-api/local-tools"
+import { numericalToolNameSchema } from "@vibeshape/automation-api/numerical-jobs"
 import {
   renderPreviewMcpResult,
   renderPreviewMetadataSchema,
@@ -93,9 +94,18 @@ export function createLocalMcpAdapter(
 ) {
   const questionHost = options.accessPolicy === "native-project" ? options.questions : undefined
   const canInvokeCad = () => questionHost === undefined || questionHost.canInvoke()
+  function toolDescription(name: LocalToolName) {
+    const description = localToolDescriptions[name]
+    if (
+      options.accessPolicy !== "native-project" ||
+      !numericalToolNameSchema.safeParse(name).success
+    )
+      return description
+    return `${description} In this embedded chat, completion is delivered automatically. End the turn after the receipt; do not poll get_numerical_job. The status-reading guidance above applies to external clients without automatic delivery.`
+  }
   const pairingInstructions =
     options.accessPolicy === "native-project"
-      ? "VibeShape automatically connects this embedded assistant to its current project's read and model-editing tools. Connecting the built-in chat authorizes validated model commits without another Apply step. The first model_info may wait up to five seconds for that connection. Respect Stop AI; never enable access or switch projects to bypass it."
+      ? "VibeShape automatically connects this embedded assistant to its current project's read and model-editing tools. Connecting the built-in chat authorizes validated model commits without another Apply step. The first model_info may wait up to five seconds for that connection. Background numerical jobs are displayed by the chat, which automatically delivers their final result in a continuation. After receiving a job receipt, end the current turn and wait for that notification; do not poll get_numerical_job or repeat the calculation. Respect Stop AI; never enable access or switch projects to bypass it."
       : options.accessPolicy === "desktop-external"
         ? "The desktop host automatically connects this authenticated local client to the current project. The first model_info may wait up to five seconds for discovery. Model changes require manual Apply unless the person explicitly chose a supported automatic approval mode. Respect Stop AI; only the person can restart access in Settings > Connections."
         : "Open the editor and explicitly enable the AI session for one document. The person approves model changes in the browser unless they explicitly chose a supported automatic approval mode."
@@ -134,7 +144,7 @@ export function createLocalMcpAdapter(
         : []),
       ...localToolNameSchema.options.map((name) => ({
         name,
-        description: localToolDescriptions[name],
+        description: toolDescription(name),
         inputSchema: {
           ...z.toJSONSchema(mcpToolInputSchema(name), {
             reused: "ref",

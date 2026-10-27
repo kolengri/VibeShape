@@ -72,6 +72,69 @@ async function settle(test: ReturnType<typeof setup>, result: unknown) {
 afterEach(() => vi.useRealTimers())
 
 describe("browser-owned numerical jobs", () => {
+  it("publishes stable actor-bound snapshots once for each lifecycle transition", async () => {
+    const test = setup()
+    const changed = vi.fn()
+    const unsubscribe = test.jobs.subscribe(changed)
+    const empty = test.jobs.getSnapshot(actor)
+    const job = started(test)
+    const running = test.jobs.getSnapshot(actor)
+    expect(running).toEqual([{ ...job, result: null }])
+    expect(test.jobs.getSnapshot(actor)).toBe(running)
+    expect(started(test)).toEqual(job)
+    expect(changed).toHaveBeenCalledTimes(1)
+    for (const invalidActor of [other, null, { type: "user" }])
+      expect(test.jobs.getSnapshot(invalidActor)).toBe(empty)
+    await settle(test, { ok: true, value: quickLightweightingValue() })
+    const completed = test.jobs.getSnapshot(actor)
+    expect(completed).not.toBe(running)
+    expect(completed[0]).toMatchObject({ status: "completed" })
+    expect(running[0]).toMatchObject({ status: "running", result: null })
+    expect(test.jobs.getSnapshot(actor)).toBe(completed)
+    expect(changed).toHaveBeenCalledTimes(2)
+    unsubscribe()
+    test.jobs.dispose()
+    expect(changed).toHaveBeenCalledTimes(2)
+    expect(test.jobs.getSnapshot(actor)).toBe(empty)
+  })
+
+  it("coalesces cancellation and ignores completion after its reset notification", async () => {
+    const test = setup()
+    const changed = vi.fn()
+    test.jobs.subscribe(changed)
+    const job = started(test)
+    test.jobs.cancel()
+    const cancelling = test.jobs.getSnapshot(actor)
+    test.jobs.cancel()
+    test.jobs.read(actor, job.jobId, true)
+    expect(changed).toHaveBeenCalledTimes(2)
+    expect(cancelling[0]).toMatchObject({ status: "cancelling", result: null })
+    test.jobs.dispose()
+    const empty = test.jobs.getSnapshot(actor)
+    expect(empty).toEqual([])
+    expect(changed).toHaveBeenCalledTimes(3)
+    test.jobs.dispose()
+    await settle(test, { ok: true, value: quickLightweightingValue() })
+    expect(test.jobs.getSnapshot(actor)).toBe(empty)
+    expect(changed).toHaveBeenCalledTimes(3)
+  })
+
+  it("isolates observer failures from completion and solver cleanup", async () => {
+    const test = setup()
+    test.jobs.subscribe(() => {
+      throw new Error("Observer failed.")
+    })
+    const changed = vi.fn()
+    test.jobs.subscribe(changed)
+    started(test)
+    await settle(test, { ok: true, value: quickLightweightingValue() })
+    expect(test.jobs.getSnapshot(actor)[0]).toMatchObject({ status: "completed" })
+    expect(started(test)).toMatchObject({ status: "running" })
+    test.jobs.dispose()
+    expect(test.signal()?.aborted).toBe(true)
+    expect(changed).toHaveBeenCalledTimes(4)
+  })
+
   it("returns before computation and retains a result after more than ten minutes", async () => {
     vi.useFakeTimers()
     const test = setup()
@@ -171,6 +234,7 @@ describe("browser-owned numerical jobs", () => {
     const job = started(test)
     await settle(test, { ok: true, value: quickLightweightingValue() })
     test.deactivate()
+    expect(test.jobs.getSnapshot(actor)).toEqual([])
     expect(test.jobs.read(actor, job.jobId)).toMatchObject({
       ok: false,
       diagnostic: { code: "session-revoked" },

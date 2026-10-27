@@ -316,8 +316,14 @@ export function createAssistantCheckpoints(
       notify()
     }
   }
-  async function applyDraft(operation: () => Promise<boolean>) {
-    if (!begin(crypto.randomUUID())) return false
+  async function applyDraft(
+    operation: () => Promise<boolean>,
+    { retainActive = false }: { retainActive?: boolean } = {},
+  ) {
+    if (retainActive) {
+      if (!active || lifecycleBusy() || preparingBefore) return false
+      clearPreview()
+    } else if (!begin(crypto.randomUUID())) return false
     const at = generation
     applying = true
     notify()
@@ -325,7 +331,7 @@ export function createAssistantCheckpoints(
       return await operation()
     } finally {
       try {
-        if (at === generation) await finish()
+        if (at === generation && !retainActive) await finish()
       } finally {
         applying = false
         notify()
@@ -342,5 +348,6 @@ export function createAssistantCheckpoints(
     viewBefore,
     clearPreview,
     applyDraft,
+    isApplyingDraft: () => applying,
   }
 }

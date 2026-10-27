@@ -25,7 +25,7 @@ export function createBrowserLightweightingAutomationSession(
   const coordinator = createLightweightingProposalCoordinator({
     describeFailure(error) {
       return error instanceof StructuralOptimizationError
-        ? localFailure(error.code, error.message, true)
+        ? localFailure(error.code, error.message.slice(0, 512), true)
         : null
     },
     createCancellation() {

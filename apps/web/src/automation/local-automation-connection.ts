@@ -11,6 +11,7 @@ import {
   localFailureSchema,
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
+import type { NumericalJobStatus } from "@vibeshape/automation-api/numerical-jobs"
 import type { CommandActor } from "@vibeshape/domain/commands"
 import { z } from "zod"
 import { createActiveDocumentAutomationSession as createVisibleDocumentAutomationSession } from "../document/document-controller"
@@ -236,6 +237,51 @@ export function createLocalAutomationConnection(
   let accessRecoveryRetryable = false
   let accessRecoveryPending = false
   const listeners = new Set<() => void>()
+  const emptyNumericalJobs: readonly NumericalJobStatus[] = []
+  let numericalJobs = emptyNumericalJobs
+  let unsubscribeNumericalJobs: (() => void) | null = null
+  const numericalJobListeners = new Set<() => void>()
+  function currentNumericalSession() {
+    const current = pair
+    if (!current || !snapshot.connected) return null
+    const identity = current.handle.readIdentity()
+    if (!identity || (options.projectId && identity.id !== options.projectId)) return null
+    return { current, identity }
+  }
+  function readNumericalJobs() {
+    const session = currentNumericalSession()
+    if (!session) return emptyNumericalJobs
+    const registry = session.current.handle.numericalJobs
+    if (!registry?.getSnapshot) return emptyNumericalJobs
+    return registry
+      .getSnapshot(session.current.credential.actor)
+      .filter((job) => job.documentId === session.identity.id)
+  }
+  function refreshNumericalJobs() {
+    const next = readNumericalJobs()
+    if (
+      numericalJobs.length === next.length &&
+      numericalJobs.every((job, index) => job === next[index])
+    )
+      return
+    numericalJobs = next.length ? next : emptyNumericalJobs
+    for (const listener of [...numericalJobListeners]) {
+      try {
+        listener()
+      } catch {
+        // A view observer must not interrupt connection cleanup.
+      }
+    }
+  }
+  function observeNumericalJobs(current: Pair) {
+    unsubscribeNumericalJobs?.()
+    const handle = current.handle
+    unsubscribeNumericalJobs =
+      handle.numericalJobs?.subscribe?.(() => {
+        if (pair === current && current.handle === handle) refreshNumericalJobs()
+      }) ?? null
+    refreshNumericalJobs()
+  }
   function publish(next: Snapshot) {
     snapshot = automaticProjectAccess
       ? {
@@ -319,12 +365,17 @@ export function createLocalAutomationConnection(
     if (current.timer) clearTimeout(current.timer)
     current.active?.controller.abort()
     current.queuedWork = null
+    if (pair === current) {
+      unsubscribeNumericalJobs?.()
+      unsubscribeNumericalJobs = null
+      pair = null
+      refreshNumericalJobs()
+    }
     if (retainIntent && !isProjectChange(current)) {
       current.handle.cancel?.("request-cancelled")
       recoveryOwner.retain(current.handle, current.credential)
     } else recoveryOwner.clear()
     current.handle.dispose()
-    if (pair === current) pair = null
   }
   function publishDisconnected() {
     if (!snapshot.connected && !snapshot.recovering && !automaticProjectAccess) return
@@ -411,10 +462,13 @@ export function createLocalAutomationConnection(
           const created = createActiveDocumentAutomationSession()
           if (!created.ok) return false
           recoveryOwner.clear()
+          unsubscribeNumericalJobs?.()
+          unsubscribeNumericalJobs = null
           current.handle.dispose()
           current.handle = created
           current.executor = createExecutor(current)
           const autoApply = snapshot.autoApply && created.enableAutoApply(current.credential.actor)
+          observeNumericalJobs(current)
           publish({ ...snapshot, autoApply })
           saveResume(current)
           return true
@@ -640,6 +694,7 @@ export function createLocalAutomationConnection(
     )
       throw new Error("The local session identity changed.")
     current.credential = credential
+    refreshNumericalJobs()
     saveResume(current)
   }
   async function deliverPoll(current: Pair, info: NonNullable<ReturnType<Handle["readIdentity"]>>) {
@@ -807,6 +862,7 @@ export function createLocalAutomationConnection(
     recoveryOwner.authorize(saved?.token, credential, info)
     current.executor = createExecutor(current)
     publishConnection(current, preferredAutoApply(credential.client, saved?.autoApply === true))
+    observeNumericalJobs(current)
     if (!writePreference(credential.client, snapshot.autoApply))
       publish({ ...snapshot, error: true })
     saveResume(current)
@@ -1146,7 +1202,17 @@ export function createLocalAutomationConnection(
     },
     validateDocumentScope,
     cancelNumericalJobs() {
-      pair?.handle.numericalJobs.cancel()
+      pair?.handle.numericalJobs?.cancel()
+    },
+    getNumericalJobs(): readonly NumericalJobStatus[] {
+      const session = currentNumericalSession()
+      return session && numericalJobs.every((job) => job.documentId === session.identity.id)
+        ? numericalJobs
+        : emptyNumericalJobs
+    },
+    subscribeNumericalJobs(listener: () => void) {
+      numericalJobListeners.add(listener)
+      return () => numericalJobListeners.delete(listener)
     },
     isProjectActionPending: () =>
       pair !== null && snapshot.projectManagement && isProjectChange(pair),

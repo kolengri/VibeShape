@@ -67,6 +67,7 @@ export function createNativeProjectChatRegistry(
         const state = controller.getSnapshot()
         return (
           state.busy ||
+          state.numericalJobs.some((job) => job.status !== "completed") ||
           state.controlBusy ||
           state.switchingChat ||
           state.connecting ||
@@ -98,6 +99,7 @@ export function createNativeProjectChatRegistry(
         const state = chat.getSnapshot()
         return (
           state.busy ||
+          state.numericalJobs.some((job) => job.status !== "completed") ||
           state.controlBusy ||
           state.switchingChat ||
           state.connecting ||

@@ -11,6 +11,27 @@ original final numerical result. It does not advertise job controls. Its CAD exe
 assistant turn have no execution deadline; individual language-provider requests retain their
 separate timeout. Stop or disposal still cancels its ordinary numerical coordinator.
 
+## Embedded native chat
+
+The built-in native assistant receives lifecycle events from its paired browser session. The chat
+shows active numerical work even after the model turn ends. After a start receipt, end the current
+turn and wait: do not poll `get_numerical_job` or restart the calculation. Completion automatically
+starts one continuation in the initiating chat with the original final result, including physical
+or runtime failures. This is an internal completion event, not a new user request or additional
+permission to change the model. Respect the latest user instructions and the captured revision.
+
+The host defers delivery while a model turn, user question or checkpoint boundary is pending.
+Stop suppresses pending completion continuations; disconnect, session replacement and disposal
+discard them. A stale or foreign chat cannot receive another session's result. Large results use
+a text attachment when supported and the complete result fits the attachment contract; otherwise
+the notification requests one final retrieval of the already completed result, never repeated
+status checks.
+
+## External clients
+
+External MCP clients do not automatically receive a model turn from the embedded chat host.
+Their status controls remain available for explicit retrieval and compatibility:
+
 1. Call the appropriate analysis or snapshot request once with the complete captured inputs.
 2. Retain the receipt and call `get_numerical_job` with its `jobId`. Each status call returns
    promptly. Allow time between checks; do not start duplicate calculations or loop continuously.
@@ -19,6 +40,10 @@ separate timeout. Stop or disposal still cancels its ordinary numerical coordina
    diagnostic. Outer `ok: true` means the status was read successfully.
 4. Apply the analysis-specific acceptance checks to `result.value` only after nested `ok: true`.
    A snapshot exists only when the completed request identifies its actual committed `snapshot`.
+
+An `infeasible-baseline` diagnostic identifies controlling load cases, measured stress/safety and
+displacement, and the requested limits. It is a physical failure, not a timeout. Finer sampling
+does not by itself establish feasibility; do not relax the user's constraints to obtain success.
 
 Use `cancel_numerical_job` with the same `jobId` for explicit cancellation. Cancellation can report
 `cancelling` until the worker/review settles. An atomic persistence transaction already accepted
