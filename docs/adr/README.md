@@ -147,6 +147,7 @@ See also [ADR-0133: Tessellation-independent lightweighting inputs](0133-lightwe
 See also [ADR-0135: CAD execution without default deadlines](0135-cad-execution-without-default-deadlines.md).
 See also [ADR-0136: Native Codex project tool deadline](0136-native-codex-project-tool-deadline.md).
 See also [ADR-0137: Browser-owned numerical jobs](0137-browser-owned-numerical-jobs.md).
+See also [ADR-0138: Native numerical completion events](0138-native-numerical-completion-events.md).
 
 Statuses:
 

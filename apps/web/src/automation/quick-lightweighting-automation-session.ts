@@ -21,7 +21,7 @@ export function createBrowserQuickLightweightingAutomationSession(
   const coordinator = createQuickLightweightingProposalCoordinator({
     describeFailure(error) {
       return error instanceof QuickLightweightingError
-        ? localFailure(error.code, error.message, true)
+        ? localFailure(error.code, error.message.slice(0, 512), true)
         : null
     },
     createCancellation() {

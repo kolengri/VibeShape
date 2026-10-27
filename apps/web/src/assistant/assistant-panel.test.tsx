@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
+import { numericalJobStatusSchema } from "@vibeshape/automation-api/numerical-jobs"
 import { createI18n, defaultFormats } from "@vibeshape/i18n"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { ActivityProvider, useActivityPending } from "@vibeshape/ui/components/activity"
@@ -224,6 +225,48 @@ describe("assistant transcript and composer", () => {
     view.rerender(panel({ busy: false }))
     expect(heading.textContent).toBe("AI chat")
     expect(within(chat).queryByText("Thinking")).toBeNull()
+  })
+
+  it("keeps Stop and queued messages available after a turn ends without blocking draft confirmation", async () => {
+    const job = numericalJobStatusSchema.parse({
+      jobId: "0195b5ac-b250-7a2c-8c33-000000000101",
+      documentId: "0195b5ac-b250-7a2c-8c33-000000000102",
+      baseRevision: 4,
+      tool: "request_lightweighting",
+      status: "running",
+      result: null,
+    })
+    const apply = vi.fn(async () => true)
+    const queue = vi.fn(async () => true)
+    const cancel = vi.fn(async () => {})
+    const view = render(
+      panel({
+        numericalJobs: [job],
+        messages: [{ id: "receipt", role: "assistant", text: "Computation started." }],
+        onCancel: cancel,
+        onQueue: queue,
+        onApplyDraft: async (operation) => operation(),
+        draftDisplay: {
+          mode: "result",
+          onChange: () => {},
+          application: { status: "ready", diagnostic: null, onApply: apply },
+        },
+      }),
+    )
+    expect(screen.queryByText("Thinking")).toBeNull()
+    expect(screen.getByText("Structural generation — Running")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "New chat" }).hasAttribute("disabled")).toBe(true)
+    const confirm = screen.getByRole("button", { name: "Confirm changes" })
+    expect(confirm.hasAttribute("disabled")).toBe(false)
+    await userEvent.click(confirm)
+    expect(apply).toHaveBeenCalledTimes(1)
+    fireEvent.change(draft(), { target: { value: "Continue when ready" } })
+    await userEvent.click(screen.getByRole("button", { name: "Queue message" }))
+    expect(queue).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole("button", { name: "Stop" }))
+    expect(cancel).toHaveBeenCalledTimes(1)
+    view.rerender(panel())
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull()
   })
 
   it("applies only a ready private draft through its checkpoint wrapper and keeps the action pending", async () => {

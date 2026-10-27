@@ -19,6 +19,7 @@ import {
   assistantQuestionResponseSchema,
 } from "@vibeshape/automation-api/assistant"
 import type { AssistantJevCredentials } from "@vibeshape/automation-api/assistant-jev"
+import type { NumericalJobStatus } from "@vibeshape/automation-api/numerical-jobs"
 import type { TranscriptArchiveSummary } from "@vibeshape/persistence/transcript-store"
 import {
   type AssistantCheckpointHost,
@@ -30,6 +31,7 @@ import { type AgentChatSession, type ChatMessage, retainChatMessages } from "./c
 
 import { createChatHistoryCoordinator } from "./chat-history-coordinator"
 import type { ChatHistoryStore } from "./chat-history-storage"
+import { createNativeNumericalJobs, numericalCompletionPrompt } from "./native-numerical-jobs"
 
 type Permission = Extract<AssistantEvent, { type: "permission" }>
 type ToolMessageState = NonNullable<ChatMessage["tool"]> & { id: string; text?: string }
@@ -89,6 +91,7 @@ type ChatState = Readonly<
     steerStartedNewTurn: boolean
     error: AssistantErrorCode | null
     busy: boolean
+    numericalJobs: readonly NumericalJobStatus[]
     controlBusy: boolean
     connecting: boolean
     storageFailed: boolean
@@ -130,6 +133,8 @@ export function createNativeChatController({
     retryRecovery: (options?: { automatic?: boolean }) => Promise<boolean>
     ensureConnected: (options: { automatic: boolean; signal: AbortSignal }) => Promise<boolean>
     cancelNumericalJobs?: () => void
+    getNumericalJobs?: () => readonly NumericalJobStatus[]
+    subscribeNumericalJobs?: (listener: () => void) => () => void
   }
 }) {
   let agentSession: AgentChatSession | undefined
@@ -146,6 +151,7 @@ export function createNativeChatController({
     steerStartedNewTurn: false,
     error: null,
     busy: false,
+    numericalJobs: [],
     controlBusy: false,
     connecting: false,
     storageFailed: false,
@@ -186,6 +192,7 @@ export function createNativeChatController({
   } | null = null
   let automaticRecoveryAllowed = false
   let unsubscribeAutomation: (() => void) | undefined
+  let unsubscribeNumericalJobs: (() => void) | undefined
   let automationWait: AbortController | undefined
   const queued: QueuedPrompt[] = []
   let steering: QueuedSteer | null = null
@@ -205,8 +212,35 @@ export function createNativeChatController({
     for (const listener of listeners) listener()
   }
   const checkpoints = checkpointHost ? createAssistantCheckpoints(checkpointHost, publish) : null
+  const numericalJobs = createNativeNumericalJobs(projectId, (jobs) => {
+    publish({ numericalJobs: jobs })
+    settleCheckpoints()
+  })
+  function numericalOwner() {
+    const current = scope()
+    return current ? `${generation}:${current.sessionToken}` : null
+  }
+  function refreshNumericalJobs() {
+    numericalJobs.observe(
+      automation?.getNumericalJobs?.() ?? [],
+      numericalOwner(),
+      automaticRecoveryAllowed && (promptInFlight || hostTurnActive()),
+    )
+  }
+  function continueNumericalJob() {
+    if (!automaticRecoveryAllowed) return
+    numericalJobs.deliver(numericalOwner(), (job) => {
+      const prompt = numericalCompletionPrompt(
+        job,
+        state.snapshot?.attachmentCapabilities.text === true,
+      )
+      return launchPrompt(prompt.text, prompt.attachments, undefined, true)
+    })
+  }
   function settleCheckpoints() {
-    if (!promptInFlight && !steering && !state.busy) void checkpoints?.finish().then(drainQueue)
+    if (numericalJobs.pending()) return
+    if (!promptInFlight && !steering && !state.busy)
+      void (checkpoints?.finish() ?? Promise.resolve()).then(drainQueue)
   }
   const history = createChatHistoryCoordinator({
     projectId,
@@ -505,6 +539,7 @@ export function createNativeChatController({
     checkpoints?.clearPreview()
     const current = scope()
     const at = ++generation
+    numericalJobs.reset()
     activeControl = null
     connecting = null
     if (!activePrompt?.continued) restoreQueued(activePrompt?.queuedPrompt)
@@ -803,6 +838,7 @@ export function createNativeChatController({
     const interrupted = interruptedWorkCanContinue()
     const resumeSessionId = matchingResume(configuration) ?? previous?.sessionId ?? undefined
     const at = ++generation
+    numericalJobs.reset()
     if (current) ignoredTokens.add(current.sessionToken)
     return {
       at,
@@ -1032,15 +1068,21 @@ export function createNativeChatController({
   function controlLocked() {
     return activeControl !== null || steering !== null
   }
+  function modelTurnReady() {
+    return (
+      !numericalJobs.pending() &&
+      !promptInFlight &&
+      !hasPendingQuestion() &&
+      state.snapshot?.status === "ready"
+    )
+  }
   function promptReady() {
     return (
       !recovery &&
       (!automation || !state.connecting) &&
       automationReady() &&
-      !promptInFlight &&
       !controlLocked() &&
-      !hasPendingQuestion() &&
-      state.snapshot?.status === "ready"
+      modelTurnReady()
     )
   }
   function removeQueuedPrompt(item: QueuedPrompt) {
@@ -1050,8 +1092,12 @@ export function createNativeChatController({
   }
   function drainQueue() {
     const next = queued[0]
-    if (!next || !promptReady()) return
+    if (!promptReady()) return
     if (state.busy || state.settlingCheckpoint || state.queuePaused) return
+    if (!next) {
+      continueNumericalJob()
+      return
+    }
     if (!validPrompt(next.text, next.attachments)) {
       publish({ queuePaused: true })
       return
@@ -1126,6 +1172,8 @@ export function createNativeChatController({
   ) {
     const current = scope()
     if (!current || !promptReady()) return false
+    // Existing jobs belong to their initiating turn, never a newly attached conversation.
+    refreshNumericalJobs()
     if (checkpoints && !checkpoints.begin(queuedPrompt?.id ?? crypto.randomUUID())) {
       publish({ queuePaused: true })
       return false
@@ -1291,6 +1339,7 @@ export function createNativeChatController({
   }
   function canSwitchChat() {
     return (
+      !numericalJobs.pending() &&
       !disposed &&
       !state.switchingChat &&
       !activeControl &&
@@ -1328,6 +1377,8 @@ export function createNativeChatController({
       if (unsubscribe) return
       disposed = false
       unsubscribe = bridge.onEvent(event)
+      unsubscribeNumericalJobs = automation?.subscribeNumericalJobs?.(refreshNumericalJobs)
+      refreshNumericalJobs()
       let wasRecoveryBlocked = automation?.getSnapshot().recoveryBlocked === true
       unsubscribeAutomation = automation?.subscribe(() => {
         const value = automation.getSnapshot()
@@ -1439,6 +1490,7 @@ export function createNativeChatController({
       return true
     },
     async cancel() {
+      numericalJobs.suppress()
       automation?.cancelNumericalJobs?.()
       automaticRecoveryAllowed = false
       if (recovery || connecting !== null) {
@@ -1542,6 +1594,9 @@ export function createNativeChatController({
       const current = scope()
       cancelRecovery()
       automaticRecoveryAllowed = false
+      unsubscribeNumericalJobs?.()
+      unsubscribeNumericalJobs = undefined
+      numericalJobs.reset()
       unsubscribeAutomation?.()
       unsubscribeAutomation = undefined
       steering?.settle()

@@ -5,6 +5,10 @@ import type {
   AssistantEvent,
   AssistantSnapshot,
 } from "@vibeshape/automation-api/assistant"
+import {
+  type NumericalJobStatus,
+  numericalJobStatusSchema,
+} from "@vibeshape/automation-api/numerical-jobs"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import { checkpointFixture } from "./assistant-checkpoints.test-fixture"
 import { createNativeChatController } from "./native-chat-controller"
@@ -111,6 +115,8 @@ function fixture(resumable = true) {
   }
   const model = checkpointFixture()
   const automationListeners = new Set<() => void>()
+  const jobListeners = new Set<() => void>()
+  let jobs: readonly NumericalJobStatus[] = []
   let automationState = {
     connected: true,
     recovering: false,
@@ -120,6 +126,13 @@ function fixture(resumable = true) {
     recoveryAttempt: 0,
   }
   const automation = {
+    getNumericalJobs: () => jobs,
+    subscribeNumericalJobs(callback: () => void) {
+      jobListeners.add(callback)
+      return () => {
+        jobListeners.delete(callback)
+      }
+    },
     cancelNumericalJobs: vi.fn(),
     getSnapshot: () => automationState,
     subscribe(callback: () => void) {
@@ -183,6 +196,10 @@ function fixture(resumable = true) {
     retryModel: automation.retryRecovery,
     cancelNumericalJobs: automation.cancelNumericalJobs,
     ensureModel: automation.ensureConnected,
+    jobs(value: readonly NumericalJobStatus[]) {
+      jobs = value
+      for (const listener of jobListeners) listener()
+    },
     fail(code?: AssistantErrorCode) {
       failure = code
     },
@@ -215,6 +232,40 @@ function fixture(resumable = true) {
 }
 
 describe("internal native connection recovery", () => {
+  it("recovers an interrupted turn with a running job and ignores its old-session completion", async () => {
+    const f = fixture()
+    await f.chat.connect(agent)
+    await f.chat.send("Analyze the part")
+    const job = numericalJobStatusSchema.parse({
+      jobId: "0195b5ac-b250-7a2c-8c33-000000000111",
+      documentId: projectId,
+      baseRevision: 1,
+      tool: "analyze_lightweighting",
+      status: "running",
+      result: null,
+    })
+    f.jobs([job])
+    expect(f.chat.getSnapshot().numericalJobs).toHaveLength(1)
+    f.crash()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(f.connections).toHaveLength(2)
+    expect(f.prompts).toHaveLength(2)
+    expect(f.chat.getSnapshot().recovery).toBeNull()
+    expect(f.chat.getSnapshot().error).toBeNull()
+    f.jobs([
+      numericalJobStatusSchema.parse({
+        ...job,
+        status: "completed",
+        result: {
+          ok: false,
+          diagnostic: { code: "session-revoked", message: "Old session ended.", retryable: false },
+        },
+      }),
+    ])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.chat.getSnapshot().numericalJobs).toEqual([])
+    expect(f.prompts).toHaveLength(2)
+  })
   it("replaces a definitively missing session only on explicit Connect and preserves the transcript", async () => {
     const f = fixture()
     await f.chat.connect(agent)

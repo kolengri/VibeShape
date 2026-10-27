@@ -1,4 +1,5 @@
 import type { AssistantQuestion } from "@vibeshape/automation-api/assistant"
+import type { NumericalJobStatus } from "@vibeshape/automation-api/numerical-jobs"
 import { useTranslations } from "@vibeshape/i18n"
 import type { TranscriptArchiveSummary } from "@vibeshape/persistence/transcript-store"
 import { Alert } from "@vibeshape/ui/components/alert"
@@ -44,6 +45,7 @@ import {
 import type { AssistantDraftDisplay } from "./assistant-draft-display"
 import { AssistantIconAction } from "./assistant-icon-action"
 import { AssistantMessages } from "./assistant-messages"
+import { AssistantNumericalJobs } from "./assistant-numerical-jobs"
 import { AssistantSettingsDialog, useAssistantSettings } from "./assistant-settings-dialog"
 import type { AssistantToolHighlight } from "./assistant-tool-highlight"
 import type { ChatMessage } from "./chat-history"
@@ -51,6 +53,7 @@ import type { ChatMessage } from "./chat-history"
 type AssistantPanelProps = AssistantComposerProps & {
   open: boolean
   messages: readonly ChatMessage[]
+  numericalJobs?: readonly NumericalJobStatus[]
   onToolHighlight?: AssistantToolHighlight | undefined
   draftDisplay?: AssistantDraftDisplay | undefined
   onApplyDraft?: (apply: () => Promise<boolean>) => Promise<boolean>
@@ -222,7 +225,9 @@ function AssistantChangeReview({ props }: { props: AssistantPanelProps }) {
             {t("applyingChanges")}
           </p>
         )}
-        <AssistantCheckpointActions checkpoint={{ ...props, busy: busy || applying }} />
+        <AssistantCheckpointActions
+          checkpoint={{ ...props, busy: busy || applying || numericalWorkPending(props) }}
+        />
       </div>
     </section>
   )
@@ -358,11 +363,16 @@ function AssistantPanelMessages({
 function conversationBusy(props: AssistantPanelProps) {
   return (
     props.busy ||
+    numericalWorkPending(props) ||
     props.historyBusy ||
     Boolean(props.queuedMessages?.length) ||
     props.preparingBefore ||
     props.undoingAgentChanges
   )
+}
+
+function numericalWorkPending(props: Pick<AssistantPanelProps, "numericalJobs">) {
+  return props.numericalJobs?.some((job) => job.status !== "completed") ?? false
 }
 
 function AssistantConversationHeader({
@@ -434,6 +444,21 @@ function AssistantReviewControls({ props }: { props: AssistantPanelProps }) {
   ) : null
 }
 
+function AssistantThinking({ busy }: { busy: boolean }) {
+  const t = useTranslations("app.assistant")
+  if (!busy) return null
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-muted-foreground"
+    >
+      <AssistantThinkingIcon aria-hidden="true" className="size-4 shrink-0" />
+      <span className="application-wordmark-ink">{t("thinking")}</span>
+    </div>
+  )
+}
+
 function AssistantPanelContent(props: AssistantPanelProps) {
   const collapse = useWindowCollapse()
   const t = useTranslations("app.assistant")
@@ -473,21 +498,14 @@ function AssistantPanelContent(props: AssistantPanelProps) {
             messages={props.messages}
             onHighlight={props.onToolHighlight}
           />
-          {props.busy && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-muted-foreground"
-            >
-              <AssistantThinkingIcon aria-hidden="true" className="size-4 shrink-0" />
-              <span className="application-wordmark-ink">{t("thinking")}</span>
-            </div>
-          )}
+          <AssistantNumericalJobs jobs={props.numericalJobs} />
+          <AssistantThinking busy={props.busy} />
           <AssistantReviewControls props={props} />
           <AssistantConversationComposer
             key={composerKey}
             focusOnMount={composerKey === 0}
             {...props}
+            busy={props.busy || numericalWorkPending(props)}
             feedback={<AssistantFeedback {...props} />}
           />
         </div>

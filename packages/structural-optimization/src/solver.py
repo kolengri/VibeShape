@@ -724,6 +724,36 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
             "safetyFactor": min(case["safetyFactor"] for case in metrics), "cases": metrics}, energy, surface
 
 
+def _baseline_failure_message(metrics, yield_strength, safety_factor, max_displacement):
+    violations = []
+    index, case = min(enumerate(metrics["cases"]), key=lambda item: item[1]["safetyFactor"])
+    if case["safetyFactor"] < safety_factor:
+        violations.append((index, case["name"], f"von Mises stress {case['maxVonMisesMpa']} MPa exceeds allowable "
+                           f"{yield_strength / safety_factor} MPa; safety factor {case['safetyFactor']} is below required {safety_factor}"))
+    index, case = max(enumerate(metrics["cases"]), key=lambda item: item[1]["maxDisplacementMm"])
+    if case["maxDisplacementMm"] > max_displacement:
+        violations.append((index, case["name"], f"maximum displacement {case['maxDisplacementMm']} mm exceeds limit {max_displacement} mm"))
+
+    def render(labels):
+        return "The conservative full-solid baseline is infeasible. " + ". ".join(
+            f"load case {index + 1}{label}: {detail}" for (index, _, detail), label in zip(violations, labels)) + "."
+
+    labels = [""] * len(violations)
+    # Keep metrics and ordinals intact within the downstream automation envelope.
+    remaining = 512 - len(render(labels))
+    for position, (_, name, _) in enumerate(violations):
+        budget = remaining // (len(violations) - position)
+        for length in range(len(name), 0, -1):
+            excerpt = name[:length] + ("..." if length < len(name) else "")
+            # ASCII escapes make this budget identical to JavaScript string length.
+            label = " " + json.dumps(excerpt)
+            if len(label) <= budget:
+                labels[position] = label
+                remaining -= len(label)
+                break
+    return render(labels)
+
+
 def _sensitivity_filter(cells, radius, deadline):
     tree = cKDTree(cells.astype(float))
     pointers, cols, values = [0], [], []
@@ -985,7 +1015,8 @@ def solve(request):
 
     baseline, energy, _ = _evaluate(cells, origin, cell_size, parameters, fixed_keys, loads, density, deadline,
                                     field=algorithm["field"] if algorithm and algorithm["kind"] == "adaptive-lattice" else "strain-energy")
-    _require(feasible(baseline), "infeasible-baseline", "The conservative full-solid baseline violates stress, safety-factor, or displacement limits.")
+    if not feasible(baseline):
+        raise SolverError("infeasible-baseline", _baseline_failure_message(baseline, parameters[2], safety_factor, max_displacement))
     evaluations, iterations = 1, 0
     termination = "iteration-limit"
     algorithm_evidence = None

@@ -1,5 +1,9 @@
 import "../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import {
+  type NumericalJobStatus,
+  numericalJobStatusSchema,
+} from "@vibeshape/automation-api/numerical-jobs"
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import {
   recoveryActor,
@@ -141,6 +145,157 @@ function deliverProjectChange(projectId: string = "0195b5ac-b250-7a2c-8c33-00000
     return original?.(path, ...args)
   })
 }
+
+function observedNumericalJobs() {
+  let snapshot: readonly NumericalJobStatus[] = []
+  const listeners = new Set<() => void>()
+  return {
+    getSnapshot: vi.fn(() => snapshot),
+    subscribe(listener: () => void) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    publish(next: readonly NumericalJobStatus[]) {
+      snapshot = next
+      for (const listener of listeners) listener()
+    },
+    listenerCount: () => listeners.size,
+  }
+}
+function runningNumericalJob(documentId = id) {
+  return numericalJobStatusSchema.parse({
+    jobId: "0195b5ac-b250-7a2c-8c33-000000000100",
+    tool: "analyze_quick_lightweighting",
+    documentId,
+    baseRevision: 4,
+    status: "running",
+    result: null,
+  })
+}
+
+describe("local numerical job observation", () => {
+  it("supports handles without a numerical registry", async () => {
+    const empty = connection.getNumericalJobs()
+    await ready()
+    await connection.enable()
+    expect(connection.getNumericalJobs()).toBe(empty)
+  })
+
+  it("observes current actor and document jobs without changing ordinary request busy state", async () => {
+    const registry = observedNumericalJobs()
+    const original = mocks.createHandle.getMockImplementation()
+    mocks.createHandle.mockImplementation(() => ({ ...original?.(), numericalJobs: registry }))
+    const changed = vi.fn()
+    const unsubscribe = connection.subscribeNumericalJobs(changed)
+    await ready()
+    await connection.enable()
+    const running = runningNumericalJob()
+    registry.publish([running, runningNumericalJob("0195b5ac-b250-7a2c-8c33-000000000002")])
+    const snapshot = connection.getNumericalJobs()
+    expect(snapshot).toEqual([running])
+    expect(connection.getNumericalJobs()).toBe(snapshot)
+    expect(registry.getSnapshot).toHaveBeenLastCalledWith(credential.actor)
+    expect(connection.getSnapshot().busy).toBe(false)
+    registry.publish([running])
+    expect(connection.getNumericalJobs()).toBe(snapshot)
+    expect(changed).toHaveBeenCalledTimes(1)
+    const completed = numericalJobStatusSchema.parse({
+      ...running,
+      status: "completed",
+      result: failedResult,
+    })
+    registry.publish([completed])
+    expect(connection.getNumericalJobs()).toEqual([completed])
+    expect(snapshot[0]?.status).toBe("running")
+    expect(changed).toHaveBeenCalledTimes(2)
+    unsubscribe()
+    await connection.disconnect()
+    expect(registry.listenerCount()).toBe(0)
+    expect(connection.getNumericalJobs()).toEqual([])
+    expect(changed).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(["disconnect", "credential loss", "dispose"] as const)(
+    "clears jobs and releases old observers on %s before reconnecting",
+    async (reason) => {
+      const previous = observedNumericalJobs()
+      const originalHandle = mocks.createHandle.getMockImplementation()
+      mocks.createHandle.mockImplementation(() => ({
+        ...originalHandle?.(),
+        numericalJobs: previous,
+      }))
+      await ready()
+      await connection.enable()
+      const changed = vi.fn()
+      connection.subscribeNumericalJobs(changed)
+      previous.publish([runningNumericalJob()])
+      const originalRequest = mocks.request.getMockImplementation()
+      if (reason === "dispose") connection.dispose()
+      else if (reason === "disconnect") await connection.disconnect()
+      else {
+        mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+          path === "/poll"
+            ? { ok: false, status: 401, data: null }
+            : originalRequest?.(path, ...args),
+        )
+        await vi.advanceTimersByTimeAsync(500)
+      }
+      expect(connection.getNumericalJobs()).toEqual([])
+      expect(previous.listenerCount()).toBe(0)
+      expect(changed).toHaveBeenCalledTimes(2)
+      previous.publish([runningNumericalJob()])
+      expect(changed).toHaveBeenCalledTimes(2)
+      if (reason === "dispose") return
+      const next = observedNumericalJobs()
+      const nextActor = { ...credential.actor, sessionId: "0195b5ac-b250-7a2c-8c33-000000000003" }
+      mocks.createHandle.mockImplementation(() => ({ ...originalHandle?.(), numericalJobs: next }))
+      mocks.request.mockImplementation((path: string, ...args: unknown[]) =>
+        path === "/connect"
+          ? ok({ ...credential, actor: nextActor })
+          : originalRequest?.(path, ...args),
+      )
+      expect(await connection.enable()).toBe(true)
+      next.publish([runningNumericalJob()])
+      expect(next.getSnapshot).toHaveBeenLastCalledWith(nextActor)
+      expect(connection.getNumericalJobs()).toHaveLength(1)
+      expect(next.listenerCount()).toBe(1)
+      expect(changed).toHaveBeenCalledTimes(3)
+    },
+  )
+
+  it("rebinds observers when a project action replaces the document handle", async () => {
+    const previous = observedNumericalJobs()
+    const original = mocks.createHandle.getMockImplementation()
+    mocks.createHandle.mockImplementation(() => ({ ...original?.(), numericalJobs: previous }))
+    await ready()
+    await connection.enable()
+    connection.setProjectManagement(true)
+    previous.publish([runningNumericalJob()])
+    const nextId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    const next = observedNumericalJobs()
+    mocks.createHandle.mockReturnValue({
+      ...original?.(),
+      documentId: nextId,
+      readIdentity: () => ({ id: nextId, name: "Assembly", revision: 1 }),
+      numericalJobs: next,
+    })
+    const options = projectOptions()
+    mocks.execute.mockImplementation(async () => {
+      expect(options.replaceSession()).toBe(true)
+      return { ok: true, value: { projectId: nextId, name: "Assembly", revision: 1 } }
+    })
+    deliverProjectChange(nextId)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(previous.listenerCount()).toBe(0)
+    expect(next.listenerCount()).toBe(1)
+    expect(connection.getNumericalJobs()).toEqual([])
+    previous.publish([runningNumericalJob()])
+    expect(connection.getNumericalJobs()).toEqual([])
+    next.publish([runningNumericalJob(nextId)])
+    expect(connection.getNumericalJobs()).toEqual([runningNumericalJob(nextId)])
+  })
+})
+
 describe("unpaired local client discovery", () => {
   it("keeps a status read alive across navigation and ignores its expired generation", async () => {
     const pending = deferred<ReturnType<typeof ok>>()

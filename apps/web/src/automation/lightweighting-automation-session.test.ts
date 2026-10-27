@@ -112,6 +112,17 @@ async function reviewReady() {
   return review
 }
 describe("browser lightweighting snapshot authority", () => {
+  it("preserves a physical failure code when native diagnostic text exceeds the MCP envelope", async () => {
+    const test = setup()
+    const message = "Measured displacement exceeds the requested limit. ".repeat(20)
+    mocks.optimize.mockRejectedValueOnce(
+      new StructuralOptimizationError("infeasible-baseline", message),
+    )
+    expect(await test.session.execute(actor, lightweightingOperation())).toEqual({
+      ok: false,
+      diagnostic: { code: "infeasible-baseline", message: message.slice(0, 512), retryable: true },
+    })
+  })
   it("compacts captured display seams without changing source revision or identity", async () => {
     const positions = Float32Array.from(
       mesh.indices.flatMap((index) => mesh.vertices.slice(index * 3, index * 3 + 3)),

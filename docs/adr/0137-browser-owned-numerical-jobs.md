@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-27
+- Native completion delivery superseded by [ADR-0138](0138-native-numerical-completion-events.md)
 - Partially supersedes the numerical-call waiting policy in [ADR-0135](0135-cad-execution-without-default-deadlines.md) and [ADR-0136](0136-native-codex-project-tool-deadline.md)
 
 ## Context

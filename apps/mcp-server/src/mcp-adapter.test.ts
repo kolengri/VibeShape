@@ -129,6 +129,19 @@ it.each(["manual", "native-project", "desktop-external"] as const)(
         )
         expect(instructions).toContain("Respect Stop AI; never enable access or switch projects")
         expect(instructions).toContain("Project management is unavailable")
+        expect(instructions).toContain("automatically delivers their final result")
+        expect(instructions).toContain("do not poll get_numerical_job")
+        const numerical = (await client.listTools()).tools.filter((tool) =>
+          [
+            "analyze_lightweighting",
+            "request_lightweighting",
+            "analyze_quick_lightweighting",
+            "request_quick_lightweighting",
+          ].includes(tool.name),
+        )
+        expect(numerical).toHaveLength(4)
+        for (const tool of numerical)
+          expect(tool.description).toContain("End the turn after the receipt; do not poll")
       }
       expect(broker.isPaired()).toBe(false)
       expect(await client.callTool({ name: "model_info", arguments: {} })).toMatchObject({

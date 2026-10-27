@@ -3860,6 +3860,15 @@
       "footnoteLabel": "Footnotes",
       "footnoteBackLabel": "Back to reference {reference}{occurrence, plural, one {} other {, occurrence #}}",
       "thinking": "Thinking",
+      "numericalJobs": {
+        "title": "Background computations",
+        "structuralAnalysis": "Structural analysis",
+        "structuralGeneration": "Structural generation",
+        "quickAnalysis": "Quick analysis",
+        "quickGeneration": "Quick generation",
+        "status": "{tool} — {status, select, running {Running} cancelling {Cancel requested} cancelled {Cancelled} failed {Failed} other {Completed}}",
+        "automaticNotification": "Computation is running in the background. The assistant will be notified automatically when it finishes."
+      },
       "reconnecting": "Reconnecting… attempt {attempt} of {limit}",
       "reconnectFailed": "Connection recovery stopped after {attempts, plural, =0 {a permanent error} one {# attempt} other {# attempts}}.",
       "retryConnection": "Retry connection",

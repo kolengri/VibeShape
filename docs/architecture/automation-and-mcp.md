@@ -49,6 +49,11 @@ original final result; `cancel_numerical_job` explicitly interrupts work. Comput
 the broker's operation slot, so model reads remain available. Source identity, review and atomic
 persistence stay in their existing proposal coordinators. Jobs are actor-bound session memory,
 cancelled on Stop/disposal or source changes, with no computation or retained-result expiry.
+The native chat subscribes to actor-bound browser job snapshots. It displays work independently
+of ACP turn state and automatically sends each completed result once to the initiating session
+when the current turn and checkpoint boundary settle. Stop, disconnect and session replacement
+invalidate pending delivery. No model-driven status loop or computation timer is involved.
+See [ADR-0138](../adr/0138-native-numerical-completion-events.md).
 See [ADR-0137](../adr/0137-browser-owned-numerical-jobs.md) and the
 [operator workflow](../../.agents/skills/vibeshape-modeling/references/numerical-jobs.md).
 

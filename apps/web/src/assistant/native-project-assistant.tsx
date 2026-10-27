@@ -69,10 +69,13 @@ function NativeProjectChat({
   const { chat, state, canSend, activeSteerTurn, historyBusy } = useNativeChat(projectId, bridge)
   const onToolHighlight = useAssistantToolHighlight(projectId)
   const error = useNativeChatError(state)
+  const numericalBusy = numericalWorkPending(state)
+  useReportActivity(numericalBusy)
   return (
     <AssistantPanel
       open={open}
       messages={state.messages}
+      numericalJobs={state.numericalJobs}
       draftDisplay={draftDisplay}
       onToolHighlight={onToolHighlight}
       onApplyDraft={chat.applyDraft}
@@ -116,7 +119,7 @@ function NativeProjectChat({
           <NativeSessionControls
             chat={chat}
             snapshot={state.snapshot}
-            busy={state.busy || state.connecting}
+            busy={state.busy || numericalBusy || state.connecting}
           />
         </>
       }
@@ -202,10 +205,15 @@ function NativeAutomationRecoveryStatus({
 function nativeProjectActionBlocked(state: NativeChatState) {
   return (
     state.busy ||
+    numericalWorkPending(state) ||
     state.controlBusy ||
     nativeInteractionBusy(state) ||
     state.queuedMessages.length > 0
   )
+}
+
+function numericalWorkPending(state: NativeChatState) {
+  return state.numericalJobs.some((job) => job.status !== "completed")
 }
 
 function useNativeChatError(state: NativeChatState) {
