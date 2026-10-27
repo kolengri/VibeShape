@@ -51,9 +51,10 @@ class _SpatialTriangleIndex:
         center = (bounds[:3] + bounds[3:]) / 2
         radius = np.linalg.norm(bounds[3:] - bounds[:3]) / 2 + self.radius + 1e-8
         candidate = np.asarray(self.tree.query_ball_point(center, radius), dtype=np.int64)
-        if len(candidate):
-            candidate = candidate[np.all((self.lo[candidate] <= bounds[3:])
-                                         & (self.hi[candidate] >= bounds[:3]), axis=1)]
+        for axis in range(3):
+            if len(candidate):
+                candidate = candidate[(self.lo[candidate, axis] <= bounds[axis + 3])
+                                      & (self.hi[candidate, axis] >= bounds[axis])]
         return candidate
 
 
@@ -114,7 +115,19 @@ def _distances(context, points, phase="validation"):
     _report_progress(phase, 0, len(points))
     for start in range(0, len(points), batch_size):
         end = min(start + batch_size, len(points))
-        pieces.append(trimesh.proximity.signed_distance(context["source"], points[start:end]))
+        samples = points[start:end]
+        if phase == "sampling":
+            bounds = context["source"].bounds
+            inside_bounds = np.all((samples >= bounds[0]) & (samples <= bounds[1]), axis=1)
+            # Outside samples cannot share a positive-envelope cube: the inset is
+            # at least one cell diagonal. Their negative magnitude is irrelevant.
+            distance = np.full(len(samples), -1.0)
+            if np.any(inside_bounds):
+                distance[inside_bounds] = trimesh.proximity.signed_distance(
+                    context["source"], samples[inside_bounds])
+        else:
+            distance = trimesh.proximity.signed_distance(context["source"], samples)
+        pieces.append(distance)
         _report_progress(phase, end, len(points))
     return np.concatenate(pieces) if pieces else np.empty(0)
 
@@ -181,10 +194,12 @@ def _prepare(request):
     context["sourceVolume"] = float(source.volume * cell ** 3)
     z, y, x = np.indices((resolution,) * 3, dtype=np.float64) - 3
     points = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
+    del x, y, z
     distances = _distances(context, points, "sampling")
     _ensure(np.all(np.isfinite(distances)), "invalid-mesh", "The source signed distance is not finite.")
-    phase = points * (2 * math.pi / period_samples) + np.array([0.37, 0.73, 1.11])
-    gx, gy, gz = phase.T
+    points *= 2 * math.pi / period_samples
+    points += np.array([0.37, 0.73, 1.11])
+    gx, gy, gz = points.T
     # Nodal approximations in https://doi.org/10.1038/s41467-020-17570-1,
     # Methods equations 1-3. The existing construction retains a band |F| <= t.
     if cell_type == "gyroid":
@@ -199,17 +214,22 @@ def _prepare(request):
                    + np.cos(gx) * np.sin(gy) * np.cos(gz)
                    + np.cos(gx) * np.cos(gy) * np.sin(gz))
         amplitude = math.sqrt(2)
-    lattice = np.abs(lattice)
+    np.abs(lattice, out=lattice)
     # One cell diagonal conservatively contains every reconstructed triangle,
     # including interpolation over a curved or concave captured source boundary.
     inset = (skin / cell if mode == "preserve-exterior" else 0) + math.sqrt(3)
     envelope = distances - inset
+    clearance_mm = float(distances.max() * cell)
+    margin_mm = math.sqrt(3) * cell
     if mode == "preserve-exterior":
         _ensure(np.any(envelope > 0), "no-removable-material",
-                "The retained skin leaves no internal room. Reduce skin thickness or use finer detail cells.")
+                f"Maximum sampled interior clearance {clearance_mm:g} mm does not exceed "
+                f"the preserved skin {skin:g} mm plus sampling margin {margin_mm:g} mm "
+                f"({skin + margin_mm:g} mm total). Use finer detail cells or reduce skin thickness.")
     else:
         _ensure(np.any(envelope > 0), "no-removable-material",
-                "The solid is thinner than the conservative sampling margin. Use finer detail cells.")
+                f"Maximum sampled interior clearance {clearance_mm:g} mm does not exceed "
+                f"the sampling margin {margin_mm:g} mm. Use finer detail cells.")
     context.update({"distance": distances, "lattice": lattice, "envelope": envelope,
                     "thresholdMin": amplitude * (0.65 / 1.5), "thresholdMax": amplitude})
     return context
@@ -268,19 +288,41 @@ def _finish(candidate):
     _, material_components = ndimage.label(material.reshape((context["resolution"],) * 3))
     _ensure(material_components == 1, "disconnected-mesh",
             "The requested lattice separates material at this resolution. Reduce removal or use finer detail cells.")
-    checks = np.vstack((mesh.vertices, mesh.triangles_center))
-    distance = _distances(context, checks)
+    # Validate the coordinates that binary STL actually stores. World-space float32
+    # rounding must not be mistaken for a fixed fraction of the sampling detail.
+    rounded_candidate = (mesh.vertices * context["cell"] + context["origin"]).astype(np.float32).astype(np.float64)
+    rounded_candidate = (rounded_candidate - context["origin"]) / context["cell"]
+    rounded_triangles = rounded_candidate[mesh.faces]
+    rounded_centers = rounded_triangles.mean(axis=1)
+    rounded_volumes = [trimesh.triangles.mass_properties(rounded_triangles[labels == label])["volume"]
+                       for label in range(count)]
+    _ensure(all(np.isfinite(rounded) and original * rounded > 0
+                for original, rounded in zip(volumes, rounded_volumes)), "serialization-precision",
+            "STL rounding inverted or collapsed a closed surface.")
+    rounded_source_vertices = (context["source"].vertices * context["cell"] + context["origin"]).astype(np.float32).astype(np.float64)
+    rounded_source = trimesh.Trimesh((rounded_source_vertices - context["origin"]) / context["cell"],
+                                    context["source"].faces, process=False)
+    rounded_source.merge_vertices(digits_vertex=10)
+    rounded_source_count, _ = _surface_components(rounded_source, "Serialized source mesh")
+    _ensure(rounded_source_count == 1 and rounded_source.is_volume, "serialization-precision",
+            "STL rounding invalidated the captured source solid.")
+    rounded_source._cache["triangles_tree"] = _SpatialTriangleIndex(rounded_source.triangles)
     required_distance = request["skinThicknessMm"] / context["cell"] if mode == "preserve-exterior" else 0
+    logical_distance = _distances(context, np.vstack((mesh.vertices, mesh.triangles_center)))
+    _ensure(np.all(logical_distance >= required_distance - 2e-5), "invalid-mesh",
+            "The reconstructed surface leaves its conservative source envelope. Use finer detail cells.")
+    checks = np.vstack((rounded_candidate, rounded_centers))
+    distance = _distances({"source": rounded_source}, checks)
     _ensure(np.all(distance >= required_distance - 2e-5), "invalid-mesh",
             "The reconstructed surface leaves its conservative source envelope. Use finer detail cells.")
     if mode == "open-organic":
         _ensure(sum(volume > 0 for volume in volumes) == 1, "disconnected-mesh",
                 "The generated organic mesh contains separate pieces. Reduce removal or use finer detail cells.")
         outer_label = next(label for label, volume in enumerate(volumes) if volume > 0)
-        outer = trimesh.Trimesh(mesh.vertices, mesh.faces[labels == outer_label], process=False)
+        outer = trimesh.Trimesh(rounded_candidate, mesh.faces[labels == outer_label], process=False)
         outer.remove_unreferenced_vertices()
         outer._cache["triangles_tree"] = _SpatialTriangleIndex(outer.triangles)
-        representatives = [mesh.triangles_center[np.flatnonzero(labels == label)[0]]
+        representatives = [rounded_centers[np.flatnonzero(labels == label)[0]]
                            for label in range(count) if label != outer_label]
         _ensure(not representatives or np.all(_contains(outer, np.asarray(representatives))), "invalid-mesh",
                 "A generated cavity lies outside its material shell.")
@@ -298,12 +340,13 @@ def _finish(candidate):
     # serialization, including vertex fans, before releasing double-precision metrics.
     output_array = np.asarray(output_vertices, dtype=np.float64).reshape(-1, 3)
     rounded_array = output_array.astype(np.float32).astype(np.float64)
-    _ensure(np.max(np.abs(rounded_array - output_array)) <= context["cell"] * 1e-5,
-            "serialization-precision", "STL rounding exceeds one hundred-thousandth of a detail cell. Move the source closer to the origin or increase the detail cell size.")
     serialized = trimesh.Trimesh((rounded_array - context["origin"]) / context["cell"],
                                 np.asarray(output_indices).reshape(-1, 3), process=False)
     serialized.merge_vertices(digits_vertex=10)
     _surface_components(serialized, "Serialized mesh")
+    serialized_volume = float(serialized.volume)
+    _ensure(0 < serialized_volume < rounded_source.volume, "serialization-precision",
+            "The serialized result must retain positive material volume and positive removal.")
     removed = 100 * (1 - result_volume / context["sourceVolume"])
     _ensure(result_volume > 0 and 0 < removed < 100, "no-removable-material",
             "No positive-volume lightweighting result was found. Adjust removal, skin, or detail.")
@@ -315,6 +358,9 @@ def _finish(candidate):
         warnings.append("The organic envelope is conservatively inset by one detail-cell diagonal; the original exterior is not retained.")
     if abs(removed - request["removalPercent"]) > 2:
         warnings.append(f"Requested {request['removalPercent']:g}% removal; measured {removed:.2f}%. Retained skin, source shape, and sampling limits constrain the result.")
+    serialized_removed = 100 * (1 - serialized_volume / rounded_source.volume)
+    if abs(serialized_removed - removed) > 2:
+        warnings.append(f"Float32 STL removal is {serialized_removed:.2f}%; the logical mesh removal is {removed:.2f}%.")
     return {"schemaVersion": 1, "mode": mode, "requestedRemovalPercent": request["removalPercent"],
             "removedPercent": removed, "sourceVolumeMm3": context["sourceVolume"],
             "resultVolumeMm3": result_volume, "cellSizeMm": context["cell"],

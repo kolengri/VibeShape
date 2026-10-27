@@ -361,6 +361,7 @@ describe("native unit-test result inputs", () => {
       "packages/geometry-worker/src/engine.ts",
       "packages/structural-optimization/tests/quick-wasm.test.ts",
       "packages/structural-optimization/tests/quick-wasm-curved.test.ts",
+      "packages/structural-optimization/tests/quick-wasm-sampling.test.ts",
       "packages/structural-optimization/tests/quick-wasm-helpers.ts",
       "packages/structural-optimization/tests/wasm-solver.test.ts",
     ]

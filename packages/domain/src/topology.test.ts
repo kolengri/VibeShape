@@ -48,6 +48,24 @@ function candidate(
   }
 }
 
+function obliqueEdgeSignature(
+  z = 0,
+  overrides: Partial<TopoRef["signature"]> = {},
+): TopoRef["signature"] {
+  return {
+    kind: "edge",
+    geometryClass: "LINE",
+    measure: 100,
+    centroid: [0, 0, z],
+    bounds: { min: [-30, -40, z], max: [30, 40, z] },
+    direction: [0.6, 0.8, 0],
+    directionMode: "axis",
+    boundaryCount: 2,
+    adjacentGeometryClasses: ["PLANE", "PLANE"],
+    ...overrides,
+  }
+}
+
 describe("resolveTopologyReference", () => {
   it("reuses one validated candidate index across multiple references", () => {
     const resolve = createTopologyReferenceResolver([
@@ -167,6 +185,155 @@ describe("resolveTopologyReference", () => {
       candidateIds: ["left", "right"],
       method: "signature",
     })
+  })
+
+  it("preserves an otherwise identical edge through normalized-direction roundoff", () => {
+    const picked = reference({ kind: "edge", signature: obliqueEdgeSignature() })
+    const edges = [
+      candidate("neighbor", { kind: "edge", signature: obliqueEdgeSignature(6) }),
+      candidate("picked", {
+        kind: "edge",
+        signature: obliqueEdgeSignature(0, {
+          direction: [0.6000000000000001, 0.8000000000000002, 0],
+        }),
+      }),
+    ]
+
+    for (const ordered of [edges, [...edges].reverse()]) {
+      expect(resolveTopologyReference(picked, ordered)).toMatchObject({
+        status: "resolved",
+        candidateId: "picked",
+        method: "signature",
+        score: 0,
+      })
+    }
+    expect(
+      resolveTopologyReference({ ...picked, intent: { nearPoint: [0, 0, 0] } }, edges),
+    ).toMatchObject({ status: "ambiguous" })
+  })
+
+  it("preserves identical directions whose squared components sum below one", () => {
+    const signature = obliqueEdgeSignature(0, { direction: [0.6, 0.7999999999999999, 0] })
+    expect(
+      resolveTopologyReference(reference({ kind: "edge", signature }), [
+        candidate("picked", { kind: "edge", signature }),
+        candidate("neighbor", { kind: "edge", signature: obliqueEdgeSignature(6) }),
+      ]),
+    ).toMatchObject({ status: "resolved", candidateId: "picked", score: 0 })
+  })
+
+  it.each(["axis", "oriented"] as const)(
+    "keeps real angular changes ambiguous for %s directions even when their dot product rounds to one",
+    (directionMode) => {
+      const picked = reference({
+        kind: "edge",
+        signature: obliqueEdgeSignature(0, { direction: [1, 0, 0], directionMode }),
+      })
+      for (const direction of [
+        [1, 0.001, 0],
+        [Math.cos(1e-8), Math.sin(1e-8), 0],
+      ] as const) {
+        const edges = [
+          candidate("different", {
+            kind: "edge",
+            signature: obliqueEdgeSignature(0, { direction: [...direction], directionMode }),
+          }),
+          candidate("neighbor", {
+            kind: "edge",
+            signature: obliqueEdgeSignature(6, { direction: [...direction], directionMode }),
+          }),
+        ]
+        expect(resolveTopologyReference(picked, edges)).toMatchObject({
+          status: "ambiguous",
+          candidateIds: ["different", "neighbor"],
+        })
+        expect(createTopologyReferenceResolver(edges)(picked)).toMatchObject({
+          status: "ambiguous",
+          candidateIds: ["different", "neighbor"],
+        })
+      }
+    },
+  )
+
+  it.each(["axis", "oriented"] as const)(
+    "respects %s semantics for opposite signature directions",
+    (directionMode) => {
+      const picked = reference({
+        kind: "edge",
+        signature: obliqueEdgeSignature(0, { directionMode }),
+      })
+      const reversed = { direction: [-0.6, -0.8, 0] as [number, number, number], directionMode }
+      const result = resolveTopologyReference(picked, [
+        candidate("neighbor", {
+          kind: "edge",
+          signature: obliqueEdgeSignature(6, reversed),
+        }),
+        candidate("picked", { kind: "edge", signature: obliqueEdgeSignature(0, reversed) }),
+      ])
+
+      if (directionMode === "axis") {
+        expect(result).toMatchObject({ status: "resolved", candidateId: "picked", score: 0 })
+      } else {
+        expect(result).toMatchObject({ status: "ambiguous", bestScore: 0.2 })
+      }
+    },
+  )
+
+  it("keeps indistinguishable edges ambiguous across direction roundoff", () => {
+    const signature = obliqueEdgeSignature()
+    expect(
+      resolveTopologyReference(reference({ kind: "edge", signature }), [
+        candidate("original", { kind: "edge", signature }),
+        candidate("coincident", {
+          kind: "edge",
+          signature: obliqueEdgeSignature(0, {
+            direction: [0.6000000000000001, 0.8000000000000002, 0],
+          }),
+        }),
+      ]),
+    ).toMatchObject({
+      status: "ambiguous",
+      candidateIds: ["coincident", "original"],
+      bestScore: 0,
+      confidenceMargin: 0,
+    })
+  })
+
+  it("retains approximate ambiguity for a materially different direction", () => {
+    const direction: [number, number, number] = [0.8, 0.6, 0]
+    expect(
+      resolveTopologyReference(reference({ kind: "edge", signature: obliqueEdgeSignature() }), [
+        candidate("neighbor", {
+          kind: "edge",
+          signature: obliqueEdgeSignature(6, { direction }),
+        }),
+        candidate("different", {
+          kind: "edge",
+          signature: obliqueEdgeSignature(0, { direction }),
+        }),
+      ]),
+    ).toMatchObject({ status: "ambiguous", candidateIds: ["different", "neighbor"] })
+  })
+
+  it("restricts direction-equivalent matches to the authoritative lineage", () => {
+    const signature = obliqueEdgeSignature()
+    expect(
+      resolveTopologyReference(reference({ kind: "edge", signature, lineageToken: "owned" }), [
+        candidate("outside", { kind: "edge", signature, lineageTokens: ["other"] }),
+        candidate("picked", {
+          kind: "edge",
+          lineageTokens: ["owned"],
+          signature: obliqueEdgeSignature(0, {
+            direction: [0.6000000000000001, 0.8000000000000002, 0],
+          }),
+        }),
+        candidate("neighbor", {
+          kind: "edge",
+          lineageTokens: ["owned"],
+          signature: obliqueEdgeSignature(6),
+        }),
+      ]),
+    ).toMatchObject({ status: "resolved", candidateId: "picked", method: "history", score: 0 })
   })
 
   it.each([1, 10, 100])(
