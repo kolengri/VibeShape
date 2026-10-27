@@ -46,6 +46,9 @@ worker tests do not exercise static-host MIME policy. Large-output unit fixtures
 ordinary local encoding/import/capture/rebuild path and former source-byte admission thresholds.
 Host source-materialization tests also send a source above 64 MiB through the document-worker
 session and its retained-source recovery path, rather than checking only the wire schema.
+Authored-session transaction regressions publish more than 64 MiB through the ordinary authority
+adapter and verify failed-save rollback, immutable byte copies, event replay and whole-transaction
+Undo/Redo; the repository and rebuild ports are controlled test doubles.
 `tests/e2e/large-mesh-import-ui.spec.ts` imports more than 83,333 triangles through the actual
 browser preview and Apply, then checks Undo/Redo, IndexedDB reload and native backup reopen.
 

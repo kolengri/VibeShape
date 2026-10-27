@@ -42,17 +42,6 @@ export const authorityTransactionSchema = z
     assetBlobs: z.array(sourceAssetBlobSchema).max(128).default([]),
   })
   .strict()
-  .superRefine((input, context) => {
-    if (
-      input.assetBlobs.reduce((total, blob) => total + blob.bytes.byteLength, 0) >
-      64 * 1024 * 1024
-    )
-      context.addIssue({
-        code: "custom",
-        path: ["assetBlobs"],
-        message: "Source publication exceeds its aggregate byte budget.",
-      })
-  })
 
 export function prepareAuthorityTransaction(
   base: AuthoredAuthoritySnapshot,

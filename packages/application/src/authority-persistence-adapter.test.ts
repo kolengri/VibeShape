@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { createHash } from "node:crypto"
 import {
   applyDocumentCommand,
   applyDocumentV3Command,
@@ -22,6 +23,7 @@ import {
   sessionIdSchema,
 } from "@vibeshape/domain/identifiers"
 import { sourceAssetSchema } from "@vibeshape/domain/source-assets"
+import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { vi } from "../../../tests/unit/support/bun-test"
 import {
   historyRepairFixture,
@@ -38,6 +40,7 @@ import { runtimeProjection } from "./authority-persistence-operations"
 import { DocumentUndoHistory } from "./document-undo-history"
 import {
   type DocumentHistoryPreview,
+  type DocumentRebuildPort,
   PersistentDocumentSession,
 } from "./persistent-document-session"
 
@@ -1406,88 +1409,144 @@ describe("source asset authority session writes", () => {
   })
 })
 
-it("publishes an authority upgrade, source bytes and authored change as one transaction with whole-authority undo", async () => {
-  const seed = initial().v2
-  const f = fixture(seed)
-  const bytes = new Uint8Array([1, 2, 3])
-  const hash = "a".repeat(64)
-  const asset = sourceAssetSchema.parse({
-    id: id(350),
-    digest: hash,
-    byteLength: bytes.byteLength,
-    filename: "Original.step",
-    format: "step",
-    representation: "exact-solid",
-    normalization: {
-      sourceUnit: "millimeter",
-      scaleToMillimeters: 1,
-      normalizedUnit: "millimeter",
-    },
-    outputs: [id(351)],
-  })
-  const command = {
-    transactionId: id(352),
-    assetBlobs: [{ digest: hash, bytes }],
-    commands: [
-      {
-        ...f.envelope(349),
-        schemaVersion: 3,
-        kind: "org.vibeshape.document.upgrade-v3",
-        payload: { change: null },
+it.each([3, 67_108_865])(
+  "publishes %i source bytes through an authored session transaction with rollback and whole-authority undo",
+  async (byteLength) => {
+    const seed = initial().v2
+    const f = fixture(seed)
+    const bytes = new Uint8Array(byteLength)
+    bytes[bytes.length - 1] = 23
+    const hash = createHash("sha256").update(bytes).digest("hex")
+    const asset = sourceAssetSchema.parse({
+      id: id(350),
+      digest: hash,
+      byteLength: bytes.byteLength,
+      filename: "Candidate.stl",
+      format: "stl",
+      representation: "triangle-mesh",
+      normalization: {
+        sourceUnit: "millimeter",
+        scaleToMillimeters: 1,
+        normalizedUnit: "millimeter",
       },
-      {
-        ...f.envelope(353),
-        baseRevision: seed.revision + 1,
-        schemaVersion: 4,
-        kind: "org.vibeshape.document.upgrade-v4",
-        payload: {},
+      outputs: [id(351)],
+    })
+    const command = {
+      transactionId: id(352),
+      assetBlobs: [{ digest: hash, bytes }],
+      commands: [
+        {
+          ...f.envelope(349),
+          schemaVersion: 3,
+          kind: "org.vibeshape.document.upgrade-v3",
+          payload: { change: null },
+        },
+        {
+          ...f.envelope(353),
+          baseRevision: seed.revision + 1,
+          schemaVersion: 4,
+          kind: "org.vibeshape.document.upgrade-v4",
+          payload: {},
+        },
+        {
+          ...f.envelope(354),
+          schemaVersion: 4,
+          baseRevision: seed.revision + 2,
+          kind: "org.vibeshape.document.add-source-assets",
+          payload: { assets: [asset] },
+        },
+        {
+          ...f.envelope(355),
+          schemaVersion: 1,
+          baseRevision: seed.revision + 3,
+          kind: "org.vibeshape.document.rename",
+          payload: { name: "Imported model" },
+        },
+      ],
+    }
+    const unexpected = async () => {
+      throw new Error("Unexpected transaction side effect.")
+    }
+    const rebuildPort: DocumentRebuildPort = {
+      rebuild: async ({ document }) => ({
+        protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+        requestId: id(358),
+        documentId: document.id,
+        revision: document.revision,
+        generation: 1,
+        type: "documentRebuilt",
+        evaluation: {
+          records: [],
+          dirtyFeatureIds: [],
+          evaluatedFeatureIds: [],
+          reusedFeatureIds: [],
+        },
+        geometry: [],
+        sketches: [],
+        modelReferenceEvidence: [],
+      }),
+      exportDocument: unexpected,
+      solveSketch: unexpected,
+      dispose: unexpected,
+      terminate() {},
+    }
+    const session = new PersistentDocumentSession({
+      snapshot: f.runtime(),
+      sessionId,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      leaseDurationMs: 30_000,
+      lease: null,
+      rebuildPort,
+      dependencies: {
+        commandDispatcher: { dispatch: applyDocumentCommand },
+        repository: f.adapter,
+        leases: {
+          acquire: async () => ({
+            ok: true,
+            value: { lease: { epoch: 1, expiresAt: lease.nowMs + 30_000 } },
+          }),
+          release: unexpected,
+        },
+        createRebuildPort: () => rebuildPort,
+        now: () => lease.nowMs,
       },
-      {
-        ...f.envelope(354),
-        schemaVersion: 4,
-        baseRevision: seed.revision + 2,
-        kind: "org.vibeshape.document.add-source-assets",
-        payload: { assets: [asset] },
-      },
-      {
-        ...f.envelope(355),
-        schemaVersion: 1,
-        baseRevision: seed.revision + 3,
-        kind: "org.vibeshape.document.rename",
-        payload: { name: "Imported model" },
-      },
-    ],
-  }
-  const input = { sessionId, lease, baseSnapshot: f.runtime(), command }
-  f.fail(true)
-  expect((await f.adapter.authoredTransaction.apply(input)).ok).toBe(false)
-  expect(f.current()).toBe(seed)
-  expect(f.adapter.history.availability.canUndo).toBe(false)
-  f.fail(false)
-  success(await f.adapter.authoredTransaction.apply(input))
-  const published = f.current()
-  expect(published).toMatchObject({
-    schemaVersion: 4,
-    assets: [asset],
-    name: "Imported model",
-    revision: seed.revision + 4,
-  })
-  const draft = f.drafts.at(-1)
-  expect(draft?.events).toHaveLength(4)
-  expect(draft?.events.every((event) => event.transactionId === command.transactionId)).toBe(true)
-  expect(draft?.assetBlobs).toEqual([{ digest: hash, bytes }])
-  expect(draft?.assetBlobs?.[0]?.bytes).not.toBe(bytes)
-  const replayed = success(replayDocumentAuthorityEvents(seed, draft?.events ?? [])).snapshot
-  expect(replayed).toEqual(published)
-  success(await f.navigate(356, "undo"))
-  expect(f.current()).toMatchObject({ schemaVersion: 4, assets: [], name: seed.name })
-  success(await f.navigate(357, "redo"))
-  expect(f.current()).toMatchObject({ schemaVersion: 4, assets: [asset], name: "Imported model" })
-  const before = f.current()
-  const stale = await f.adapter.authoredTransaction.apply({ ...input, baseSnapshot: f.runtime() })
-  expect(stale.ok).toBe(false)
-  expect(f.current()).toBe(before)
-})
+    })
+    f.fail(true)
+    expect((await session.commitAuthoredTransaction(command)).ok).toBe(false)
+    expect(f.current()).toBe(seed)
+    expect(f.adapter.history.availability.canUndo).toBe(false)
+    f.fail(false)
+    const committed = success(await session.commitAuthoredTransaction(command))
+    expect(committed.rebuild.ok).toBe(true)
+    const published = f.current()
+    expect(published).toMatchObject({
+      schemaVersion: 4,
+      assets: [asset],
+      name: "Imported model",
+      revision: seed.revision + 4,
+    })
+    const draft = f.drafts.at(-1)
+    expect(draft?.events).toHaveLength(4)
+    expect(draft?.events.every((event) => event.transactionId === command.transactionId)).toBe(true)
+    expect(draft?.assetBlobs).toHaveLength(1)
+    const blob = draft?.assetBlobs?.[0]
+    if (!blob) throw new Error("The committed transaction requires its source bytes.")
+    expect(blob.digest).toBe(hash)
+    expect(blob.bytes.byteLength).toBe(byteLength)
+    expect(createHash("sha256").update(blob.bytes).digest("hex")).toBe(hash)
+    expect(blob.bytes).not.toBe(bytes)
+    const replayed = success(replayDocumentAuthorityEvents(seed, draft?.events ?? [])).snapshot
+    expect(replayed).toEqual(published)
+    success(await f.navigate(356, "undo"))
+    expect(f.current()).toMatchObject({ schemaVersion: 4, assets: [], name: seed.name })
+    success(await f.navigate(357, "redo"))
+    expect(f.current()).toMatchObject({ schemaVersion: 4, assets: [asset], name: "Imported model" })
+    const before = f.current()
+    const stale = await session.commitAuthoredTransaction(command)
+    expect(stale.ok).toBe(false)
+    expect(f.current()).toBe(before)
+  },
+)
 
 describe("surface texture persistence and undo", () => {
   it("persists one first Apply event and restores layers with one undo and redo", async () => {
