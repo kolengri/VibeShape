@@ -334,11 +334,29 @@ function scoreSignature(
 }
 
 function exactSignatureKey(signature: TopoRef["signature"]) {
+  const { direction: _direction, ...geometry } = signature
   return canonicalJson({
-    ...signature,
-    direction: signature.direction ?? null,
+    ...geometry,
     directionMode: signature.directionMode ?? null,
   })
+}
+
+function equivalentSignatureDirection(reference: TopoRef, candidate: TopologyCandidate) {
+  const left = reference.signature.direction
+  const right = candidate.signature.direction
+  if (!left || !right) return left === right
+  const leftLength = Math.hypot(...left)
+  const rightLength = Math.hypot(...right)
+  // A rounded dot product can hide a real angular difference. Compare normalized
+  // components at machine precision, independently of the schema's unit-length tolerance.
+  const equivalent = (sign: number) =>
+    left.every(
+      (component, index) =>
+        Math.abs(component / leftLength - (sign * (right[index] as number)) / rightLength) <=
+        4 * Number.EPSILON,
+    )
+  const axisMode = reference.signature.directionMode === "axis"
+  return equivalent(1) || (axisMode && equivalent(-1))
 }
 
 function resolveExactGeometrySignature(
@@ -347,8 +365,8 @@ function resolveExactGeometrySignature(
   method: "history" | "signature",
   indexedMatches?: readonly TopologyCandidate[],
 ): TopologyResolution | null {
-  // A freshly picked edge or face must survive nearby, geometrically similar candidates. Identical
-  // signatures still fail closed; semantic/history ownership and explicit intent win.
+  // Keep geometry exact while respecting direction semantics and normalization roundoff. Equivalent
+  // duplicates still fail closed; semantic/history ownership and explicit intent win.
   if (reference.kind === "vertex" || reference.intent) return null
   let exact = indexedMatches
   if (exact === undefined) {
@@ -358,6 +376,7 @@ function resolveExactGeometrySignature(
         candidate.kind === reference.kind && exactSignatureKey(candidate.signature) === signature,
     )
   }
+  exact = exact.filter((candidate) => equivalentSignatureDirection(reference, candidate))
   if (exact.length === 1)
     return {
       status: "resolved",

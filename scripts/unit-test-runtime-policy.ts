@@ -44,7 +44,7 @@ const python = new Map([
   ],
   [
     "packages/structural-optimization/src/quick-solver.py",
-    "a960c2db2f8d7aab3eb21cf681273069cb9058c20bb4e01f19e6989f506eeee3",
+    "aaf23ff14de2c210be66ddc0363b9e65d20ad21c9975070d5dafeed5bb5f249d",
   ],
   [
     "packages/structural-optimization/tests/surface_target_fixtures.py",
@@ -79,6 +79,10 @@ const callers = new Map([
   [
     "packages/structural-optimization/tests/quick-wasm-curved.test.ts",
     "cfe0b0d97192b59dfac5a5a4ad2daf69c534ec8808eb5bf94e6f5ab787ff4c57",
+  ],
+  [
+    "packages/structural-optimization/tests/quick-wasm-sampling.test.ts",
+    "2375206123546c065e3970e23201550eb2591f3b03e26f1a0fc8c782b5660709",
   ],
   [
     "packages/structural-optimization/tests/quick-wasm-helpers.ts",

@@ -240,7 +240,19 @@ that minimum resolution. Numeric input can exceed the convenience slider ranges.
 removal is strictly between 0 and 100 percent; measured positive removal has no minimum percentage.
 A preserved skin requires at least two sampling cells,
 plus conservative geometric margins. These margins and connected-material validation can limit
-actual removal. Results report source/result volume, requested/achieved removal, cell period, and
+actual removal. The envelope reserves one sampling-cell diagonal in addition to the preserved
+skin. A `no-removable-material` preparation error reports the maximum sampled interior clearance,
+skin and sampling margin. Finer detail can open internal space while keeping the same physical
+skin and lattice period; it does not guarantee the requested removal percentage.
+Quick validates cavity or organic-surface containment and retained skin against the rounded captured
+exterior using the actual float32 coordinates written to binary STL. It checks serialized shell
+winding, positive material volume and removal, collapsed triangles, nonmanifold edges and invalid
+vertex fans. Ordinary coordinate rounding is not rejected merely
+because it exceeds a fixed fraction of the sampling detail. Geometry that cannot survive the
+round trip still fails validation.
+The shared 3MF mesh validator also checks logical and serialized shell intersections and nesting
+before Quick analysis returns a result; STL encoding repeats that validation at its boundary.
+Results report source/result volume, requested/achieved removal, cell period, and
 warnings. They do not report stress, displacement, or a maximum-stiffness score. Use the structural
 workflow for explicit isotropic numerical load assumptions. Neither workflow certifies printability
 or physical strength.
