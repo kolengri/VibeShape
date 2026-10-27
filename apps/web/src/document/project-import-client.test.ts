@@ -261,18 +261,22 @@ it("releases worker resources on timeout and constructor failure", async () => {
   expect(worker.terminate).toHaveBeenCalledTimes(1)
 })
 
-it("rejects oversized archives with the existing format diagnostic before allocating a worker", async () => {
-  const create = vi.fn(() => port() as unknown as Worker)
-  expect(
-    await prepareProjectImport({ ...input(), bytes: new Uint8Array(32 * 1024 * 1024 + 1) }, create),
-  ).toEqual({
-    ok: false,
-    diagnostic: {
-      code: "resource-limit",
-      message: "The archive exceeds the compressed-size limit.",
-    },
-  })
-  expect(create).not.toHaveBeenCalled()
+it("forwards archives above the former 32 MiB ceiling to worker validation", async () => {
+  const worker = port()
+  const create = vi.fn(() => worker as unknown as Worker)
+  const bytes = new Uint8Array(32 * 1024 * 1024 + 1)
+  bytes[bytes.length - 1] = 23
+  const pending = prepareProjectImport({ ...input(), bytes }, create)
+  expect(create).toHaveBeenCalledTimes(1)
+  const request = worker.postMessage.mock.calls[0]?.[0]
+  expect(request.kind).toBe("decode")
+  expect(request.bytes).not.toBe(bytes)
+  expect(request.bytes.byteLength).toBe(33_554_433)
+  expect(request.bytes.at(-1)).toBe(23)
+  deliver(worker, { kind: "name", sourceName: "Housing" })
+  deliver(worker, prepared())
+  expect(await pending).toEqual({ ok: true, value: prepared().value })
+  expect(worker.terminate).toHaveBeenCalledTimes(1)
 })
 
 it("keeps opaque worker data untrusted until repository validation, before any transaction", async () => {

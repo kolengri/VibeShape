@@ -87,7 +87,7 @@
       "errors": {
         "backupFailed": "The project backup could not be created. Your browser-saved document is unchanged.",
         "openFailed": "This file is not a valid or supported VibeShape project.",
-        "tooLarge": "This project exceeds the current 32 MiB archive limit.",
+        "tooLarge": "This project exceeds an archive or document validation limit.",
         "alreadyExists": "The imported copy could not be added because its identity already exists. The existing project is unchanged; try opening the file again.",
         "switchFailed": "This local project could not be opened. The current project remains unchanged.",
         "newFailed": "A new local project could not be created. The current project remains unchanged.",
