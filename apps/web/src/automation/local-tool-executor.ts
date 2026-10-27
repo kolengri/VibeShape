@@ -36,6 +36,7 @@ import type {
   ModelDependenciesQuery,
   ModelEdgeQuery,
   ModelMeasurementQuery,
+  ModelVariableUsageQuery,
   QueryResult,
   SketchSolutionQuery,
   VariableListQuery,
@@ -122,7 +123,8 @@ type LocalSessionPort = Readonly<{
       | ModelMeasurementQuery
       | ModelBodyMeasurementQuery
       | ModelBodyTopologyQuery
-      | ModelDependenciesQuery,
+      | ModelDependenciesQuery
+      | ModelVariableUsageQuery,
   ) => QueryResult
   exportRevisionBound: (
     format: "step" | "stl" | "3mf",

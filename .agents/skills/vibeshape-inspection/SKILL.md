@@ -16,6 +16,7 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 | What uses a History item, or what does it depend on before an edit? | `model_dependencies` with stable `entity: {kind, id}`, committed `revision`, `direction` and optional `transitive: true` |
 | What solved coordinates, DOF, conflicts and usable sketch profiles exist? | `model_sketch_solution` or `draft_sketch_solution` |
 | What drives a dimension or fails expression evaluation? | `model_variables` or `draft_variables` |
+| Where is a saved variable used before editing it? | `model_variable_usage` with stable `variableId`, committed `revision`, and optional `transitive: true` |
 | Which authored parts/folders or canonical History order? | `model_parts`, `model_folders`, `model_history` |
 | Which exact body is available, with which output role? | `model_body_measurements` or `draft_body_measurements` |
 | Which exact body faces/edges can be measured or selected by supported features? | `model_body_topology` or `draft_body_topology` |
@@ -39,6 +40,20 @@ pages contain at most 100 entries. `coverage: "partial"` means some feature depe
 are opaque, so an empty page is not proof of independence. This is saved History inspection, not a
 draft query, variable-usage report, assembly-constraint graph, geometry validation or deletion
 permission. An invalid graph fails explicitly; inspection does not require a successful rebuild.
+
+`model_variable_usage` is available through local/development and paired remote MCP. Obtain the
+stable variable ID from `model_variables`; names alone are not identifiers. The query defaults to
+direct uses in saved variable formulas, typed feature quantities and sketch dimensions.
+`transitive: true` follows dependent variable formulas and reports the shortest `distance` to each
+consumer expression. It does not expand geometry dependencies through later History items; use
+`model_dependencies` for that question. Suppressed feature parameters remain included.
+
+Every result carries the exact expression and structured `parameterPath`; sketch dimensions also
+carry the stable constraint ID and type. Follow `nextCursor` with unchanged variable ID, revision
+and transitive flag, using pages of at most 100 entries. `coverage: "partial"` and diagnostics mean
+some expressions could not be scanned, so an empty result is not proof of independence. Arbitrary
+strings, labels, metadata, drafts and unapplied edits in the Variables table are outside the query
+scope. This is read-only inspection, not permission to delete or proof of valid expression evaluation.
 
 ## Measure selected topology
 

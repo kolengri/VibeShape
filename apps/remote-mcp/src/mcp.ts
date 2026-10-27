@@ -154,7 +154,8 @@ export async function mcpRequest(request: Request, env: RemoteEnv, ctx: Executio
               io:
                 isAssemblyLibraryToolName(name) ||
                 name === "list_projects" ||
-                name === "model_dependencies"
+                name === "model_dependencies" ||
+                name === "model_variable_usage"
                   ? "input"
                   : "output",
             }),

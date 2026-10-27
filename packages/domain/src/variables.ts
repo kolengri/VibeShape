@@ -512,16 +512,30 @@ export function evaluateExpression(
   })
 }
 
-export function variableReferencesInExpression(expression: string) {
+export function inspectVariableReferencesInExpression(expression: string): {
+  references: string[]
+  diagnostic: VariableExpressionDiagnostic | null
+} {
   const parsedExpression = variableExpressionSchema.safeParse(expression)
-  if (!parsedExpression.success) return []
+  if (!parsedExpression.success)
+    return {
+      references: [],
+      diagnostic: failure("invalid-expression-syntax", "The expression is invalid.").diagnostic,
+    }
   const tokenized = tokenize(parsedExpression.data, null)
-  if (!tokenized.ok) return []
-  return [
-    ...new Set(
-      tokenized.tokens.flatMap((token) => (token.type === "variable" ? [token.name] : [])),
-    ),
-  ]
+  if (!tokenized.ok) return { references: [], diagnostic: tokenized.diagnostic }
+  return {
+    references: [
+      ...new Set(
+        tokenized.tokens.flatMap((token) => (token.type === "variable" ? [token.name] : [])),
+      ),
+    ],
+    diagnostic: null,
+  }
+}
+
+export function variableReferencesInExpression(expression: string) {
+  return inspectVariableReferencesInExpression(expression).references
 }
 
 export function rewriteVariableReferencesInExpression(
@@ -627,27 +641,40 @@ export function rewriteParameterVariableReferences(
   return { ok: true as const, value: result }
 }
 
-export function parameterVariableReferences(input: unknown) {
-  const references = new Set<string>()
-  const pending: unknown[] = [input]
+function parameterExpressionChildren(value: unknown, path: (string | number)[]) {
+  if (isArray(value)) return value.map((child, index) => ({ value: child, path: [...path, index] }))
+  if (isAnyObject(value))
+    return Object.entries(value).map(([key, child]) => ({ value: child, path: [...path, key] }))
+  return []
+}
+
+/** Locate only typed quantity expressions, retaining the existing reverse traversal order. */
+export function parameterExpressionReferences(input: unknown) {
+  const expressions: Array<{
+    path: (string | number)[]
+    expression: string
+    references: string[]
+    diagnostic: VariableExpressionDiagnostic | null
+  }> = []
+  const pending: Array<{ value: unknown; path: (string | number)[] }> = [{ value: input, path: [] }]
   while (pending.length > 0) {
-    const value = pending.pop()
+    const frame = pending.pop()
+    if (!frame) continue
+    const { value, path } = frame
     const quantity = quantitySchema.safeParse(value)
     if (quantity.success) {
-      for (const name of variableReferencesInExpression(quantity.data.source.expression ?? "")) {
-        references.add(name)
-      }
+      const expression = quantity.data.source.expression
+      if (expression !== null)
+        expressions.push({ path, expression, ...inspectVariableReferencesInExpression(expression) })
       continue
     }
-    if (isArray(value)) {
-      pending.push(...value)
-      continue
-    }
-    if (isAnyObject(value)) {
-      pending.push(...Object.values(value))
-    }
+    for (const child of parameterExpressionChildren(value, path)) pending.push(child)
   }
-  return [...references]
+  return expressions
+}
+
+export function parameterVariableReferences(input: unknown) {
+  return [...new Set(parameterExpressionReferences(input).flatMap(({ references }) => references))]
 }
 
 function duplicateDiagnostic(

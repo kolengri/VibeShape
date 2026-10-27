@@ -141,7 +141,8 @@ export function createLocalMcpAdapter(
             io:
               isAssemblyLibraryToolName(name) ||
               name === "list_projects" ||
-              name === "model_dependencies"
+              name === "model_dependencies" ||
+              name === "model_variable_usage"
                 ? "input"
                 : "output",
           }),

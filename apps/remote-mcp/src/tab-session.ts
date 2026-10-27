@@ -26,7 +26,10 @@ import {
   planarImportResultMatches,
 } from "@vibeshape/automation-api/planar-imports"
 import { projectResultContextMatches } from "@vibeshape/automation-api/project-result-context"
-import { dependenciesResultContextMatches } from "@vibeshape/automation-api/queries"
+import {
+  dependenciesResultContextMatches,
+  variableUsageResultContextMatches,
+} from "@vibeshape/automation-api/queries"
 import { quickLightweightingResultContextMatches } from "@vibeshape/automation-api/quick-lightweighting-tools"
 import {
   REMOTE_MESSAGE_MAX_BYTES,
@@ -400,6 +403,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
     const { projectId: _projectId, ...command } = operation
     return (
       dependenciesResultContextMatches(command, result, operation.projectId) !== false &&
+      variableUsageResultContextMatches(command, result, operation.projectId) !== false &&
       (!isProjectOperation(command) || projectResultContextMatches(command, result)) &&
       authoredResultContextMatches(command, result) &&
       this.transferResultMatches(result) &&

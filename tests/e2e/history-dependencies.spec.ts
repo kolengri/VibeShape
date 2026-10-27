@@ -38,6 +38,14 @@ test("inspects saved sketch and feature dependencies in UI and MCP without chang
     )
     await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
+    await enableLocalAi(page)
+    const before = localToolOutputs.model_info.parse(await call("model_info", {}))
+    if (!before.ok) throw new Error(before.diagnostic.message)
+    const revision = before.value.summary.revision
+    const tree = localToolOutputs.model_tree.parse(
+      await call("model_tree", { revision, cursor: null, limit: 100 }),
+    )
+    if (!tree.ok) throw new Error(tree.diagnostic.message)
     await expandHistoryDetails(page)
     const history = page.getByRole("region", { name: "Feature history", exact: true })
     const sketchActions = history.getByRole("button", { name: "Actions for Sketch 1", exact: true })
@@ -53,6 +61,17 @@ test("inspects saved sketch and feature dependencies in UI and MCP without chang
     ).toHaveAttribute("aria-pressed", "true")
     await page.keyboard.press("Escape")
     await expect(sketchActions).toBeFocused()
+    await sketchActions.click()
+    await page.getByRole("menuitem", { name: "Inspect dependencies", exact: true }).click()
+    await sketchDialog
+      .getByRole("button", { name: "Show Extrusion 1 in History", exact: true })
+      .focus()
+    await page.keyboard.press("Enter")
+    const featureItem = history.getByRole("treeitem", { name: "Extrusion 1", exact: true })
+    await expect(sketchDialog).toHaveCount(0)
+    await expect(featureItem).toBeFocused()
+    await expect(featureItem).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByRole("form", { name: "Extrude profile", exact: true })).toHaveCount(0)
 
     const featureActions = history.getByRole("button", {
       name: "Actions for Extrusion 1",
@@ -73,7 +92,10 @@ test("inspects saved sketch and feature dependencies in UI and MCP without chang
       await page
         .locator("html")
         .evaluate((root, theme) => root.classList.toggle("dark", theme === "dark"), theme)
-      await page.screenshot({ path: testInfo.outputPath(`dependencies-${theme}.png`) })
+      await page.screenshot({
+        path: testInfo.outputPath(`dependencies-${theme}.png`),
+        animations: "disabled",
+      })
     }
     await page.setViewportSize({ width: 512, height: 384 })
     await expect(
@@ -82,15 +104,22 @@ test("inspects saved sketch and feature dependencies in UI and MCP without chang
     await featureDialog.getByRole("button", { name: "Close dependencies", exact: true }).click()
     await page.setViewportSize({ width: 1024, height: 768 })
     await expect(featureActions).toBeFocused()
-
-    await enableLocalAi(page)
-    const before = localToolOutputs.model_info.parse(await call("model_info", {}))
-    if (!before.ok) throw new Error(before.diagnostic.message)
-    const revision = before.value.summary.revision
-    const tree = localToolOutputs.model_tree.parse(
-      await call("model_tree", { revision, cursor: null, limit: 100 }),
+    await featureActions.click()
+    await page.getByRole("menuitem", { name: "Inspect dependencies", exact: true }).click()
+    await featureDialog.getByRole("button", { name: "Depends on", exact: true }).click()
+    await featureDialog
+      .getByRole("button", { name: "Show Sketch 1 in History", exact: true })
+      .focus()
+    await page.keyboard.press("Space")
+    const sketchItem = history.getByRole("treeitem", { name: "Edit Sketch 1", exact: true })
+    await expect(featureDialog).toHaveCount(0)
+    await expect(sketchItem).toBeFocused()
+    await expect(sketchItem).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByRole("button", { name: "Finish sketch", exact: true })).toHaveCount(0)
+    await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
+      "Saved",
     )
-    if (!tree.ok) throw new Error(tree.diagnostic.message)
+
     const sketch = tree.value.data.items.find((item) => item.kind === "sketch")
     if (!sketch) throw new Error("Expected a saved sketch.")
     const request = { revision, entity: { kind: "sketch", id: sketch.id } }
@@ -113,6 +142,11 @@ test("inspects saved sketch and feature dependencies in UI and MCP without chang
     })
     const after = localToolOutputs.model_info.parse(await call("model_info", {}))
     expect(after).toMatchObject({ ok: true, value: { summary: { revision } } })
+    expect(
+      localToolOutputs.model_tree.parse(
+        await call("model_tree", { revision, cursor: null, limit: 100 }),
+      ),
+    ).toEqual(tree)
     await expect(page.getByRole("region", { name: "Review AI changes", exact: true })).toHaveCount(
       0,
     )

@@ -891,6 +891,7 @@
           "unavailable": "Saved History dependencies could not be read. Finish any save and check the model's History diagnostics before reopening this view.",
           "firstPage": "First page",
           "nextPage": "Next page",
+          "reveal": "Show {item} in History",
           "close": "Close dependencies"
         },
         "ariaLabel": "Model tree",
@@ -2216,6 +2217,24 @@
       "description": "Define reusable dimensions and formulas. Reference a variable in a model parameter with #name.",
       "loading": "Opening the local document…",
       "loadFailed": "The local document could not be opened.",
+      "usage": {
+        "action": "Where is #{name} used?",
+        "title": "Uses of #{name}",
+        "saved": "Saved revision {revision}. Unapplied edits in this table are not included.",
+        "scope": "Searches variable formulas, typed feature parameters, and sketch dimensions. Geometry dependencies are available from History.",
+        "transitive": "Include indirect uses through other variables",
+        "summary": "{count, plural, one {# use} other {# uses}}",
+        "consumer": "{kind, select, variable {Variable} sketch {Sketch} other {Feature}} · {distance, plural, one {direct use} other {# links away}}",
+        "constraint": "{type} constraint {id}",
+        "suppressed": "Suppressed",
+        "unnamed": "{kind, select, sketch {Unnamed sketch} other {Unnamed feature}}",
+        "empty": "No uses found in saved expressions.",
+        "unavailable": "Variable uses could not be read at this saved revision. Reopen Variables after the document finishes saving.",
+        "partial": "Some expressions could not be read. Additional uses may exist.",
+        "firstPage": "First page of uses",
+        "nextPage": "Next page of uses",
+        "close": "Close variable uses"
+      },
       "table": {
         "caption": "Document variables",
         "name": "Name",

@@ -1,4 +1,5 @@
 import type { Virtualizer } from "@tanstack/react-virtual"
+import type { HistoryItemRef } from "@vibeshape/domain"
 import {
   type KeyboardEvent,
   type RefObject,
@@ -9,6 +10,7 @@ import {
   useState,
 } from "react"
 import type { FolderHistoryGroup } from "./authored-tree-state"
+import type { HistoryRevealRequest } from "./history-reveal-request"
 import type { HistoryTrackGroup, HistoryTrackUnit } from "./history-virtual-layout"
 import { historyRefKey } from "./model-tree-history"
 
@@ -19,7 +21,7 @@ type TrackFocusOptions = {
   layout: readonly HistoryTrackGroup[]
   virtualized: boolean
   virtualizer: Virtualizer<HTMLDivElement, HTMLDivElement>
-  revealRequest: Readonly<{ featureId: string; sequence: number }> | null | undefined
+  revealRequest: HistoryRevealRequest | null | undefined
   selectedId: string | null | undefined
   focused: string | null
   setFocused: (key: string) => void
@@ -82,9 +84,11 @@ function useHistoryTrackReveal(
   const revealedRequest = useRef<number | null>(null)
   const { groups, track, virtualized, onExpand } = options
   const reveal = useCallback(
-    (id: string, focus: boolean) => {
-      const group = groups.find((group) => group.rows.some(({ row }) => row.ref.id === id))
-      const row = group?.rows.find(({ row }) => row.ref.id === id)
+    (id: string, focus: boolean, kind?: HistoryItemRef["kind"]) => {
+      const matches = ({ row }: FolderHistoryGroup["rows"][number]) =>
+        row.ref.id === id && (kind === undefined || row.ref.kind === kind)
+      const group = groups.find((group) => group.rows.some(matches))
+      const row = group?.rows.find(matches)
       if (!row) return
       if (group?.folder) onExpand(group.folder.id, true)
       const key = historyRefKey(row.row.ref)
@@ -102,7 +106,9 @@ function useHistoryTrackReveal(
     const revealRequest = options.revealRequest
     if (!revealRequest || revealedRequest.current === revealRequest.sequence) return
     revealedRequest.current = revealRequest.sequence
-    reveal(revealRequest.featureId, true)
+    if (revealRequest.historyItem)
+      reveal(revealRequest.historyItem.id, true, revealRequest.historyItem.kind)
+    else reveal(revealRequest.featureId, true, "feature")
   }, [options.revealRequest, reveal])
   useEffect(() => {
     const selectedId = options.selectedId
