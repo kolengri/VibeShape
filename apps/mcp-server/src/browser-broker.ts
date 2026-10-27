@@ -74,6 +74,7 @@ import {
   sketchSolutionPageMatches,
   sketchSolutionViewSchema,
   variableListViewSchema,
+  variableUsageResultContextMatches,
 } from "@vibeshape/automation-api/queries"
 import { quickLightweightingResultContextMatches } from "@vibeshape/automation-api/quick-lightweighting-tools"
 import { renderPreviewResultContextMatches } from "@vibeshape/automation-api/render-preview"
@@ -368,6 +369,7 @@ function resultContextMatches(
   operation = command
   const context = [
     dependenciesResultContextMatches(operation, result, documentId),
+    variableUsageResultContextMatches(operation, result, documentId),
     recoveryResultContextMatches(operation, result, documentId, actor),
     renderPreviewResultContextMatches(operation, result, documentId),
     historyResultContextMatches(operation, result, documentId),

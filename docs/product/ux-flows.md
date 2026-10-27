@@ -827,6 +827,19 @@ The left tree supports Shift range selection and Ctrl/Cmd toggle selection for a
 
 Variables opens a modal from its existing tree entry, retaining the model behind it and returning focus on close. Creating a sketch starts plane selection directly. Redundant Model/Sketch toolbar switches are omitted. Dragging the orientation inset orbits around the existing camera target; short axis clicks choose standard views. Cancellation restores ordinary navigation, and normal sketch-projection locks remain authoritative.
 
+Saved variable rows expose **Where is #name used?**, including in read-only documents. The inline
+inspector focuses its heading and reports uses in saved formulas, typed feature parameters and
+sketch dimensions. It displays the saved revision, exact expression locations and an explicit
+warning that unapplied table edits are excluded. **Include indirect uses through other variables**
+expands the shortest variable-reference paths; it does not traverse later geometry operations.
+Closing the inspector returns focus to its row action without applying or discarding edits.
+
+In **Inspect dependencies**, selecting a related feature or sketch closes the dialog and reveals,
+selects and focuses the exact History row. Available geometry uses the ordinary selection highlight;
+suppressed or unavailable outputs still retain their navigable row. Navigation does not start an
+edit, rebuild, save or create an Undo checkpoint. Escape without navigation returns focus to the
+original action trigger.
+
 ### Direct part manipulation
 
 Placement exposes translation handles and an X/Y/Z rotation mode at the current draft pose. Split

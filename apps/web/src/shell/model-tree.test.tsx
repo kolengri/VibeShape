@@ -388,6 +388,7 @@ type RenderTreeOptions = Partial<
     | "onBodyPreselectionChange"
     | "onBodyActivate"
     | "onRevealFeature"
+    | "onRevealHistoryItem"
     | "revealRequest"
   >
 >
@@ -2282,6 +2283,121 @@ describe("History pointer preselection", () => {
     tree.unmount()
     await act(async () => vi.advanceTimersByTimeAsync(300))
     expect(onFeaturePreselectionChange).not.toHaveBeenCalled()
+  })
+})
+
+describe("History dependency navigation", () => {
+  function savedController() {
+    const source = controllerWithBrokenModelReference()
+    const report = source.controller.report
+    if (!report || !controllerReport) throw new Error("Expected the dependency fixture report.")
+    return {
+      target: source.target,
+      controller: {
+        ...source.controller,
+        saveStatus: "saved" as const,
+        report: {
+          ...report,
+          rebuild: controllerReport.rebuild,
+          snapshot: { ...authoredTreeFixture().snapshot, ...report.snapshot },
+          historyItems: [
+            { kind: "feature" as const, id: featureId },
+            { kind: "sketch" as const, id: source.target.id },
+          ],
+        },
+      },
+    }
+  }
+
+  it.each(["feature", "sketch"] as const)(
+    "selects and focuses a related saved %s with the keyboard without opening edit",
+    async (kind) => {
+      const user = userEvent.setup()
+      const fixture = savedController()
+      const entity =
+        kind === "feature"
+          ? ({ kind, id: featureId } as const)
+          : ({ kind, id: fixture.target.id } as const)
+      const label = kind === "feature" ? "Box 1" : "Model dependent"
+      const sourceLabel = kind === "feature" ? "Model dependent" : "Box 1"
+      const onModelTreeSelectionChange = vi.fn()
+      const onFeatureActivate = vi.fn()
+      const onSketchActivate = vi.fn()
+      const onFeatureRemove = vi.fn()
+      const onSketchRemove = vi.fn()
+      const onHistoryMove = vi.fn()
+      const onRevealHistoryItem = vi.fn((historyItem) => {
+        rendered.rerenderTree({
+          modelTreeSelection: [historyItem],
+          revealRequest: { historyItem, destination: "timeline", sequence: 1 },
+        })
+      })
+      const rendered = renderTree({
+        controller: fixture.controller,
+        activeFeatureId: null,
+        onModelTreeSelectionChange,
+        onRevealHistoryItem,
+        onFeatureActivate,
+        onSketchActivate,
+        onFeatureRemove,
+        onSketchRemove,
+        onHistoryMove,
+      })
+      await user.click(timeline().getByRole("button", { name: `Actions for ${sourceLabel}` }))
+      await user.click(screen.getByRole("menuitem", { name: "Inspect dependencies" }))
+      if (kind === "feature") await user.click(screen.getByRole("button", { name: "Depends on" }))
+      const reveal = screen.getByRole("button", { name: `Show ${label} in History` })
+      reveal.focus()
+      await user.keyboard("{Enter}")
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          timeline().getByRole("treeitem", {
+            name: kind === "feature" ? label : `Edit ${label}`,
+          }),
+        ),
+      )
+      expect(onModelTreeSelectionChange.mock.calls).toEqual([[[entity]]])
+      expect(onRevealHistoryItem.mock.calls).toEqual([[entity]])
+      expect(onFeatureActivate).not.toHaveBeenCalled()
+      expect(onSketchActivate).not.toHaveBeenCalled()
+      expect(onFeatureRemove).not.toHaveBeenCalled()
+      expect(onSketchRemove).not.toHaveBeenCalled()
+      expect(onHistoryMove).not.toHaveBeenCalled()
+    },
+  )
+
+  it("removes stale navigation actions when a saved revision removes the related item", async () => {
+    const user = userEvent.setup()
+    const fixture = savedController()
+    const onModelTreeSelectionChange = vi.fn()
+    const onRevealHistoryItem = vi.fn()
+    const { rerenderTree } = renderTree({
+      controller: fixture.controller,
+      onModelTreeSelectionChange,
+      onRevealHistoryItem,
+    })
+    await user.click(timeline().getByRole("button", { name: "Actions for Box 1" }))
+    await user.click(screen.getByRole("menuitem", { name: "Inspect dependencies" }))
+    expect(screen.getByRole("button", { name: "Show Model dependent in History" })).toBeTruthy()
+    rerenderTree({
+      controller: {
+        ...fixture.controller,
+        report: {
+          ...fixture.controller.report,
+          snapshot: {
+            ...fixture.controller.report.snapshot,
+            revision: fixture.controller.report.snapshot.revision + 1,
+            sketches: [],
+          },
+          historyItems: [{ kind: "feature", id: featureId }],
+        },
+      },
+    })
+    expect(screen.queryByRole("button", { name: "Show Model dependent in History" })).toBeNull()
+    await user.keyboard("{Escape}")
+    expect(onModelTreeSelectionChange).not.toHaveBeenCalled()
+    expect(onRevealHistoryItem).not.toHaveBeenCalled()
   })
 })
 

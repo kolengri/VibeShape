@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test"
-import { documentIdSchema, draftIdSchema, featureIdSchema, generateUuidV7 } from "@vibeshape/domain"
+import {
+  documentIdSchema,
+  draftIdSchema,
+  featureIdSchema,
+  generateUuidV7,
+  variableIdSchema,
+} from "@vibeshape/domain"
 import { createLocalInspectionQuery } from "./local-inspection-query"
 
 const id = featureIdSchema.parse(
@@ -8,6 +14,33 @@ const id = featureIdSchema.parse(
     randomBytes: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 0]),
   }),
 )
+
+it("binds saved variable usage to the paired document and retains exact lookup and paging", () => {
+  expect(
+    createLocalInspectionQuery(
+      {
+        tool: "model_variable_usage",
+        arguments: {
+          revision: 7,
+          variableId: variableIdSchema.parse(id),
+          transitive: true,
+          cursor: "10",
+          limit: 5,
+        },
+      },
+      id,
+    ),
+  ).toEqual<unknown>({
+    kind: "org.vibeshape.cad.variable-usage",
+    schemaVersion: 1,
+    documentId: id,
+    revision: 7,
+    variableId: id,
+    transitive: true,
+    cursor: "10",
+    limit: 5,
+  })
+})
 
 it("binds committed dependency inspection to the paired document and retains traversal controls", () => {
   expect(

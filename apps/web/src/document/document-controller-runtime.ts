@@ -33,6 +33,7 @@ import type {
   ModelDependenciesQuery,
   ModelEdgeQuery,
   ModelMeasurementQuery,
+  ModelVariableUsageQuery,
   QueryResult,
   VariableListQuery,
 } from "@vibeshape/automation-api/queries"
@@ -1107,7 +1108,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         | ModelMeasurementQuery
         | ModelBodyMeasurementQuery
         | ModelBodyTopologyQuery
-        | ModelDependenciesQuery,
+        | ModelDependenciesQuery
+        | ModelVariableUsageQuery,
     ): QueryResult => {
       const report = currentReport()
       if (!report) return queryDispatcher.dispatcher.dispatch(null, query)

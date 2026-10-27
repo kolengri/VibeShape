@@ -5,6 +5,11 @@ saved revision, including sketch consumers and suppressed operations. See the
 [inspection workflow](../.agents/skills/vibeshape-inspection/SKILL.md) for direction, paging and
 coverage limits. It does not require a draft or successful geometry rebuild.
 
+For variable impact, `model_variable_usage` reads direct saved expression consumers by stable
+`variableId` and revision; `transitive: true` includes uses through other variable formulas. Results
+give exact parameter paths and sketch constraint IDs. Follow `nextCursor` to finish a collection;
+partial coverage is explicit. Drafts, unapplied UI edits and geometry-only dependencies are excluded.
+
 VibeShape is a browser CAD editor with opt-in local stdio and development HTTP MCP bridges. External agents use
 named tools; the browser remains the document owner and manual approval is the default.
 The desktop app provides project chat through installed ACP agents and an MCP connection to its open

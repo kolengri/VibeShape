@@ -85,6 +85,7 @@ import {
 import { effectiveHistoryBoundaryIndex, historyInsertionContext } from "./history-insertion-context"
 import { HistoryNavigationControls, HistoryNavigationProvider } from "./history-navigation"
 import { HistoryProfileSources } from "./history-profile-sources"
+import type { HistoryRevealRequest } from "./history-reveal-request"
 import {
   type HistorySelectionDeleteTarget,
   useHistorySelectionDelete,
@@ -361,6 +362,7 @@ type FeatureTreeItemProps = {
   onActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
   onFindInBrowser?: (() => void) | undefined
+  onRevealDependency?: ((entity: HistoryItemRef) => void) | undefined
   onPreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onSuppressionChange: FeatureSuppressionHandler
   onVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
@@ -411,6 +413,7 @@ function FeatureTreeItem({
   onActivate,
   onFeatureRename,
   onFindInBrowser,
+  onRevealDependency,
   onPreselectionChange,
   onSuppressionChange,
   onVisibilityChange,
@@ -467,6 +470,7 @@ function FeatureTreeItem({
       <HistoryItemActions>
         <HistoryFeatureActions
           onFindInBrowser={onFindInBrowser}
+          onRevealDependency={onRevealDependency}
           controller={controller}
           deleteDisabled={historyActions.disabled}
           feature={feature}
@@ -492,6 +496,7 @@ function SketchTreeActions({
   onSketchDeleted,
   onSketchRemove,
   onSketchRename,
+  onRevealDependency,
   renameBlocked,
   renameOpen,
   sketch,
@@ -504,6 +509,7 @@ function SketchTreeActions({
   onSketchDeleted: () => void
   onSketchRemove: SketchRemoveHandler
   onSketchRename: SketchRenameHandler
+  onRevealDependency?: ((entity: HistoryItemRef) => void) | undefined
   renameBlocked: boolean
   renameOpen: boolean
   sketch: SketchRecord
@@ -552,6 +558,7 @@ function SketchTreeActions({
           entity={{ kind: "sketch", id: sketch.id }}
           label={label}
           onClose={() => setDependenciesOpen(false)}
+          onReveal={onRevealDependency}
           triggerRef={actionsTriggerRef}
         />
       )}
@@ -693,12 +700,10 @@ function SketchTreeRow({
 function SketchTreeItem({
   active,
   controller,
-  deletionBlocked,
+  historyActions,
   onActivate,
   onSketchSupportRepair,
   onFeatureRename,
-  onSketchDeleted,
-  onSketchRemove,
   onSketchRename,
   onSketchPreselectionChange,
   onVisibilityChange,
@@ -709,12 +714,15 @@ function SketchTreeItem({
 }: {
   active: boolean
   controller: DocumentControllerState
-  deletionBlocked: boolean
+  historyActions: {
+    disabled: boolean
+    onDeleted: () => void
+    onRemove: SketchRemoveHandler
+    onRevealDependency?: ((entity: HistoryItemRef) => void) | undefined
+  }
   onActivate: (sketchId: SketchId) => void
   onSketchSupportRepair: (sketchId: SketchId) => void
   onFeatureRename: FeatureRenameHandler
-  onSketchDeleted: () => void
-  onSketchRemove: SketchRemoveHandler
   onSketchPreselectionChange?: ((id: SketchId | null) => void) | undefined
   onSketchRename: SketchRenameHandler
   onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
@@ -760,12 +768,13 @@ function SketchTreeItem({
       <HistoryItemActions>
         <SketchTreeActions
           controller={controller}
-          deletionBlocked={deletionBlocked}
+          deletionBlocked={historyActions.disabled}
           onRenameOpenChange={setRenameOpen}
           onFeatureRename={onFeatureRename}
-          onSketchDeleted={onSketchDeleted}
-          onSketchRemove={onSketchRemove}
+          onSketchDeleted={historyActions.onDeleted}
+          onSketchRemove={historyActions.onRemove}
           onSketchRename={onSketchRename}
+          onRevealDependency={historyActions.onRevealDependency}
           renameBlocked={renameBlocked}
           renameOpen={renameOpen}
           sketch={sketch}
@@ -979,12 +988,9 @@ type ModelTreeProps = {
   highlightedFeatureIds?: readonly FeatureRecord["id"][] | undefined
   highlightedSketchIds?: readonly SketchId[] | undefined
   selectedResultFeatureId?: string | null | undefined
-  revealRequest?: Readonly<{
-    featureId: FeatureRecord["id"]
-    sequence: number
-    destination?: "browser" | "timeline"
-  }> | null
+  revealRequest?: HistoryRevealRequest | null
   onRevealFeature?: ((featureId: FeatureRecord["id"]) => void) | undefined
+  onRevealHistoryItem?: ((item: HistoryItemRef) => void) | undefined
   surface?: "browser" | "timeline"
   onHistoryReturnToEnd?: (() => Promise<boolean>) | undefined
   onHistoryInsert?:
@@ -1625,14 +1631,12 @@ function SketchHistoryRow({
       }
       content={
         <SketchTreeItem
-          active={row.ref.id === props.activeSketchId}
+          active={row.ref.id === props.activeSketchId || historyItemIsSelected(props, row.ref)}
           controller={props.controller}
-          deletionBlocked={view.graphFailed || view.reorderUnavailable}
+          historyActions={sketchHistoryActions({ ...props, view, t })}
           onActivate={props.onSketchActivate}
           onSketchSupportRepair={props.onSketchSupportRepair}
           onFeatureRename={props.onFeatureRename}
-          onSketchDeleted={props.onSketchDeleted}
-          onSketchRemove={props.onSketchRemove}
           onSketchRename={props.onSketchRename}
           onSketchPreselectionChange={props.onSketchPreselectionChange}
           onVisibilityChange={props.onSketchVisibilityChange}
@@ -1644,6 +1648,39 @@ function SketchHistoryRow({
       }
     />
   )
+}
+
+function historyItemIsSelected(props: ModelTreeProps, item: HistoryItemRef) {
+  return (
+    props.modelTreeSelection?.some(
+      (selected) => modelTreeSelectionKey(selected) === historyRefKey(item),
+    ) ?? false
+  )
+}
+
+function dependencyRevealAction(props: ModelTreeProps) {
+  if (!props.onModelTreeSelectionChange || !props.onRevealHistoryItem) return undefined
+  return (entity: HistoryItemRef) => {
+    const { controller } = props
+    const snapshot = controller.report?.snapshot
+    if (controller.status !== "ready" || controller.saveStatus === "saving" || !snapshot) return
+    const exists =
+      entity.kind === "feature"
+        ? snapshot.features.some(({ id }) => id === entity.id)
+        : snapshot.sketches.some(({ id }) => id === entity.id)
+    if (!exists) return
+    props.onModelTreeSelectionChange?.([entity])
+    props.onRevealHistoryItem?.(entity)
+  }
+}
+
+function sketchHistoryActions(props: ModelTreeHistoryBranchProps) {
+  return {
+    disabled: props.view.graphFailed || props.view.reorderUnavailable,
+    onDeleted: props.onSketchDeleted,
+    onRemove: props.onSketchRemove,
+    onRevealDependency: dependencyRevealAction(props),
+  }
 }
 
 function historyFeatureDeleteIsUnavailable(
@@ -1749,8 +1786,11 @@ function FeatureHistoryRow({
       content={
         <FeatureTreeItem
           onFindInBrowser={revealResult}
+          onRevealDependency={dependencyRevealAction(props)}
           active={
-            row.ref.id === props.activeFeatureId || row.ref.id === props.selectedResultFeatureId
+            row.ref.id === props.activeFeatureId ||
+            row.ref.id === props.selectedResultFeatureId ||
+            historyItemIsSelected(props, row.ref)
           }
           controller={props.controller}
           historyActions={{
@@ -2210,18 +2250,14 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
               >
                 <SketchTreeItem
                   active={
-                    props.modelTreeSelection?.some(
-                      (item) => item.kind === "sketch" && item.id === row.ref.id,
-                    ) || row.ref.id === props.activeSketchId
+                    historyItemIsSelected(props, row.ref) || row.ref.id === props.activeSketchId
                   }
                   controller={props.controller}
-                  deletionBlocked={props.view.graphFailed || props.view.reorderUnavailable}
+                  historyActions={sketchHistoryActions(props)}
                   onActivate={props.onSketchActivate}
                   onSketchPreselectionChange={props.onSketchPreselectionChange}
                   onSketchSupportRepair={props.onSketchSupportRepair}
                   onFeatureRename={props.onFeatureRename}
-                  onSketchDeleted={props.onSketchDeleted}
-                  onSketchRemove={props.onSketchRemove}
                   onSketchRename={props.onSketchRename}
                   onVisibilityChange={props.onSketchVisibilityChange}
                   renameBlocked={row.ref.id === props.sketchRenameBlockedId}
@@ -2275,7 +2311,7 @@ function AuthoredPartsBranch({
   const selectionRequiresBody = bodyController !== props.controller
   return (
     <AuthoredPartsGroup
-      revealRequest={revealRequest}
+      revealRequest={revealRequest?.historyItem ? null : revealRequest}
       parts={parts}
       revision={snapshot.revision}
       selectedPartId={selectedPartId}
@@ -2907,7 +2943,7 @@ function ModelTreeContent(props: ModelTreeProps) {
   const browser = useRef<HTMLElement>(null)
   useEffect(() => {
     const request = props.revealRequest
-    if (!request || props.surface === "timeline") return
+    if (!request || request.historyItem || props.surface === "timeline") return
     expandWindow?.()
     const frame = requestAnimationFrame(() => {
       const target = findModelTreeRow(browser.current, "data-feature-id", request.featureId)

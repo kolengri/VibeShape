@@ -276,6 +276,75 @@ it.each(["direction", "documentId"] as const)(
   },
 )
 
+it.each(["variableId", "revision", "transitive", "documentId", "nextCursor"] as const)(
+  "correlates saved variable usage %s before forwarding remote success",
+  async (field) => {
+    const tab = await pair()
+    const authenticated = await authorizeTab(tab)
+    const variableId = "0195b5ac-b280-7a2c-8c33-000000000001"
+    const result = {
+      ok: true,
+      value: {
+        kind: "org.vibeshape.cad.variable-usage",
+        schemaVersion: 1,
+        documentId: "0195b5ac-b280-7a2c-8c33-000000000002",
+        revision: 4,
+        variableId,
+        variableName: "root",
+        transitive: false,
+        classification: "semantic",
+        nextCursor: null,
+        data: { coverage: "complete", total: 0, items: [], diagnosticTotal: 0, diagnostics: [] },
+      },
+    }
+    const send = async (requestId: number, value: unknown) => {
+      const work = nextMessage(tab.socket)
+      const response = mcp(authenticated.token, requestId, "tools/call", {
+        name: "model_variable_usage",
+        arguments: { revision: 4, variableId, projectId: result.value.documentId },
+      })
+      const operation = await work
+      if (operation.type !== "work") throw new Error("Expected variable usage inspection work.")
+      tab.socket.send(
+        JSON.stringify({
+          type: "result",
+          protocolVersion: 1,
+          requestId: operation.requestId,
+          tool: "model_variable_usage",
+          result: value,
+        }),
+      )
+      return (await response).json()
+    }
+    expect(await send(1, result)).toMatchObject({ result: { structuredContent: { result } } })
+    const changed = {
+      ...result,
+      value: {
+        ...result.value,
+        [field]:
+          field === "revision"
+            ? 3
+            : field === "transitive"
+              ? true
+              : field === "nextCursor"
+                ? "1"
+                : "0195b5ac-b280-7a2c-8c33-000000000099",
+      },
+    }
+    expect(await send(2, changed)).toMatchObject({
+      result: {
+        structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+      },
+    })
+    expect(
+      await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+        sessionId: tab.credential.sessionId,
+        clientId: authenticated.clientId,
+      }),
+    ).toBe(false)
+  },
+)
+
 it.each(["draftId", "revision", "outputRole", "rebuildId"] as const)(
   "correlates draft body inspection %s before forwarding remote success",
   async (field) => {
@@ -1006,6 +1075,15 @@ describe("remote MCP in workerd", () => {
       expect(dependencies?.inputSchema.required).toEqual(["revision", "entity"])
       expect(dependencies?.inputSchema.properties?.direction).toMatchObject({
         default: "dependents",
+      })
+      const variableUsage = tools.find((tool) => tool.name === "model_variable_usage")
+      expect(variableUsage?.annotations).toMatchObject({ readOnlyHint: true, idempotentHint: true })
+      expect(variableUsage?.inputSchema.required).toEqual(["revision", "variableId"])
+      expect(variableUsage?.inputSchema.properties?.transitive).toMatchObject({ default: false })
+      expect(variableUsage?.inputSchema.properties?.cursor).toMatchObject({ default: null })
+      expect(variableUsage?.inputSchema.properties?.limit).toMatchObject({
+        default: 100,
+        maximum: 100,
       })
       expect(projectList).toBeDefined()
       expect(projectList?.inputSchema.required ?? []).not.toContain("limit")

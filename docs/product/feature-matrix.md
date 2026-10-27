@@ -419,12 +419,27 @@ Feature and sketch action menus offer **Inspect dependencies**. **Used by** show
 **Depends on** shows upstream inputs. **Include indirect links** traverses the same validated domain
 graph and reports shortest hop distance. Suppressed operations remain included. Inspection reads
 saved intent without rebuilding or changing the model; it works when geometry has failed.
+Selecting a related item closes the inspector, reveals and focuses its exact History row, and
+projects selection onto available geometry without opening an editor or changing saved intent.
 
 Local/development and paired remote MCP expose the same semantic query as `model_dependencies`,
 bound to a committed revision and stable feature/sketch entity. Pages contain up to 100 entries,
 with explicit totals and `nextCursor`. Invalid graphs fail rather than implying no dependents;
 opaque feature semantics report partial coverage. Variable usage, assembly constraints and deletion
 eligibility remain separate. See the [inspection workflow](../../.agents/skills/vibeshape-inspection/SKILL.md).
+
+## Variable usage inspection
+
+Saved variable rows offer **Where is #name used?** inside the Variables dialog. The inline inspector
+shows direct formulas, typed feature parameter locations and sketch dimensions, with an option to
+include indirect consumers through other variables. Results identify each expression, exact
+parameter path and stable sketch constraint where applicable; suppressed parameters remain visible.
+The saved revision is explicit, and inspection preserves unapplied table edits.
+
+Local/development and paired remote MCP expose the same bounded query as `model_variable_usage`,
+using a stable variable ID, exact revision, optional transitive traversal and cursor pagination.
+Unreadable expressions report partial coverage. Arbitrary strings and geometry-only downstream
+dependencies are outside its expression scope; this does not establish deletion eligibility.
 
 ## Editable FDM features
 
