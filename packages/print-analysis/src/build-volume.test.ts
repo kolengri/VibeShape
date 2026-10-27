@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { type PrintPreparationMesh, printerProfileSchema } from "@vibeshape/protocol"
+import { denseBoxMesh } from "../../../tests/support/dense-box-fixture"
 import { checkPrintVolume, PRINT_VOLUME_EPSILON_MM } from "./build-volume"
 import type { Point } from "./mesh-geometry"
 
@@ -234,8 +235,26 @@ describe("current-placement rectangular build-volume checks", () => {
     }
   })
 
-  it("bounds the total triangle budget across body and support meshes", () => {
-    const large = { ...inside, triangles: Array.from({ length: 156_003 }, () => 0) }
-    expect(() => checkPrintVolume([large, large], printer)).toThrow(/104,000 triangles/)
+  it("reports fit and physical overruns above the former triangle and vertex budgets", () => {
+    const dense = denseBoxMesh({
+      subdivisions: 96,
+      min: [-10, -10, 0],
+      max: [10, 10, 20],
+      faceLocal: true,
+    })
+    const large = { name: "Dense candidate", vertices: dense.vertices, triangles: dense.indices }
+    expect(large.triangles.length / 3).toBe(110_592)
+    expect(checkPrintVolume([large], printer)).toMatchObject({
+      fits: true,
+      dimensions: [20, 20, 20],
+    })
+    const outside = {
+      ...large,
+      vertices: large.vertices.map((value, axis) => value + (axis % 3 === 0 ? 100 : 0)),
+    }
+    expect(checkPrintVolume([outside], printer)).toMatchObject({
+      fits: false,
+      overruns: [{ axis: "x", side: "max", millimeters: 10 }],
+    })
   })
 })

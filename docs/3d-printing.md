@@ -45,8 +45,8 @@ disposable and does not become a persisted CAD topology reference.
 The same build-volume check evaluates all prepared meshes, including generated fins. It reports
 each exceeded lower or upper boundary and the overrun in millimeters, plus combined and per-mesh
 bounds. A fit verdict tolerates at most `1e-6 mm` numerical error and preserves unrounded bounds.
-The bounded analysis accepts at most ten meshes and 104,000 triangles including supports; unsupported
-display models report an unavailable check rather than a successful fit.
+The analysis accepts at most ten meshes, including supports, without a fixed vertex or triangle
+ceiling. Unsupported display models report an unavailable check rather than a successful fit.
 
 This is a tessellation-based check of the **current orientation**. An overflow does not prove that no
 other orientation fits, and a fit does not prove successful printing. Slicer-generated supports,

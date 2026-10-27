@@ -91,11 +91,12 @@ function algorithmResponse(
 }
 
 describe("bounded paired-browser lightweighting contracts", () => {
-  it("advertises tessellation-independent computation with separate numerical bounds", () => {
+  it("advertises tessellation-independent computation and caller-selected search budgets", () => {
     const description = localToolDescriptions.analyze_lightweighting
     expect(description).toContain("no fixed vertex or triangle count cutoff for computation")
     expect(description).toContain("actual captured triangles")
-    expect(description).toContain("3,000 cells, 5,000 nodes, 8 load cases and 40 iterations")
+    expect(description).toContain("No fixed grid/cell/node/filter-entry")
+    expect(description).toContain("caller-selected nonnegative search budget")
   })
 
   it.each(["simp", "adaptive-lattice"] as const)(
@@ -445,10 +446,10 @@ describe("bounded paired-browser lightweighting contracts", () => {
         ).toBe(false)
     }
   })
-  it("rejects infeasible, non-finite and unbounded settings before transport", () => {
+  it("rejects infeasible and non-finite settings before transport", () => {
     const operation = lightweightingOperation()
     for (const settings of [
-      { ...lightweightingSettings, maxIterations: 41 },
+      { ...lightweightingSettings, maxIterations: -1 },
       { ...lightweightingSettings, cellSizeMm: Number.NaN },
       { ...lightweightingSettings, safetyFactor: 0.99 },
       {

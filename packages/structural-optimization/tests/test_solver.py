@@ -25,6 +25,9 @@ from surface_target_fixtures import (verify_curved_surface_membership_and_preser
                                      verify_rotated_surface_membership,
                                      verify_surface_boundary_freeze,
                                      verify_trimmed_surface_ties_and_missing_facets)
+from resource_fixtures import (verify_large_analytical_beam, verify_large_filter_and_morphology,
+                               verify_many_cavity_shells, verify_many_settings_and_user_iterations,
+                               verify_sparse_candidate_grid)
 
 
 spec = importlib.util.spec_from_file_location("structural_solver", Path(__file__).parents[1] / "src" / "solver.py")
@@ -292,10 +295,9 @@ def test_repeated_runs_are_deterministic_without_mutating_the_source():
     ("supports", [{"min": [-5, -1, -1], "max": [-5, -1, -1]}], "underconstrained"),
     ("maxDisplacementMm", 0.001, "infeasible-baseline"),
     ("safetyFactor", 50, "infeasible-baseline"),
-    ("cellSizeMm", 0.01, "resource-limit"),
     ("cellSizeMm", 20, "resolution-empty"),
     ("maxIterations", -1, "invalid-input"),
-    ("maxIterations", 41, "invalid-input"),
+    ("maxIterations", 41.5, "invalid-input"),
     ("cellSizeMm", float("nan"), "invalid-input"),
 ])
 def test_rejected_inputs_never_return_a_mesh(field, value, code):
@@ -424,16 +426,16 @@ def test_implicit_algorithm_failures():
 
 
 @pytest.mark.parametrize("kind", ["simp", "adaptive-lattice"])
-def test_implicit_deadline_during_search(kind, monkeypatch):
+def test_legacy_deadline_does_not_stop_authorized_search(kind, monkeypatch):
     original = solver._algorithm_search
     def expired(*args, **kwargs):
-        # Expire after voxelization and baseline analysis, inside the search.
+        # Existing callers may still pass a deadline; only user cancellation stops execution.
         values = list(args); values[-1] = time.monotonic() - 1
         return original(*values, **kwargs)
     monkeypatch.setattr(solver, "_algorithm_search", expired)
-    with pytest.raises(solver.SolverError) as failure:
-        solver.solve(implicit_request(solver, kind))
-    assert failure.value.code == "resource-limit"
+    result = solver.solve(implicit_request(solver, kind))
+    assert result["algorithm"]["kind"] == kind
+    assert result["finalCellCount"] > 0
 
 
 def test_cavity_shells_accept_one_material_solid_and_reject_separate_or_nested_material():
@@ -459,11 +461,11 @@ def test_implicit_keepout_fdm_and_all_case_constraints(kind):
     verify_implicit_constraints(solver, kind)
 
 
-def test_simp_filter_resource_budget():
-    cells = np.array(list(itertools.product(range(10), repeat=3)))
-    with pytest.raises(solver.SolverError) as failure:
-        solver._sensitivity_filter(cells, 100000, time.monotonic() + 60)
-    assert failure.value.code == "resource-limit"
+@pytest.mark.parametrize("verify", [verify_sparse_candidate_grid, verify_large_analytical_beam,
+                                  verify_large_filter_and_morphology, verify_many_cavity_shells,
+                                  verify_many_settings_and_user_iterations])
+def test_execution_size_is_not_an_input_rejection(verify):
+    verify(solver)
 
 
 @pytest.mark.parametrize("budget", [1, 3])

@@ -6,6 +6,7 @@ import {
   type QuickLightweightingInput,
   quickLightweightingInputSchema,
 } from "../src/quick-contract"
+import { quickGridSchema } from "../src/quick-isosurface"
 import { encodeQuickLightweightingStl } from "../src/quick-mesh"
 import { denseBoxMesh } from "./dense-box-fixture"
 import { createQuickWasmHarness, input, root, timeout, volume } from "./quick-wasm-helpers"
@@ -41,6 +42,63 @@ afterAll(() => {
 })
 
 describe("load-free TPMS nodal geometry in the pinned WASM runtime", () => {
+  it.each([0.2, 0.005])(
+    "generates beyond the former 56-sample grid ceiling at %s mm while preserving the captured exterior",
+    async (cellSizeMm) => {
+      const raw = await wasm.runtime.runPythonAsync(
+        "_fixture = trimesh.creation.box(extents=[10, 10, 10]); _fixture.apply_translation([5, 5, 5]); json.dumps({'vertices': _fixture.vertices.ravel().tolist(), 'indices': _fixture.faces.ravel().tolist()})",
+      )
+      const mesh: StructuralMesh = JSON.parse(String(raw))
+      const request = quickLightweightingInputSchema.parse({
+        ...input(),
+        mesh: { ...mesh, vertices: mesh.vertices.map((value) => value * (cellSizeMm / 0.2)) },
+        cellSizeMm,
+        latticeCellSizeMm: 6 * cellSizeMm,
+        skinThicknessMm: 2.5 * cellSizeMm,
+      })
+      const response = await run(request, (rawGrid) => {
+        const grid = quickGridSchema.parse(rawGrid)
+        expect(grid.resolution).toBe(57)
+        expect(grid.envelope.length).toBe(185_193)
+        expect(grid.lattice.length).toBe(185_193)
+      })
+      if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
+      const result = response.result
+      expect(result.mesh.vertices.slice(0, request.mesh.vertices.length)).toEqual(
+        request.mesh.vertices,
+      )
+      expect(result.mesh.indices.slice(0, request.mesh.indices.length)).toEqual(
+        request.mesh.indices,
+      )
+      expect(result.sourceVolumeMm3).toBeCloseTo((50 * cellSizeMm) ** 3, 8)
+      expect(result.resultVolumeMm3).toBeGreaterThan(0)
+      expect(volume(result.mesh) / result.resultVolumeMm3).toBeCloseTo(1, 6)
+      expect(result.removedPercent).toBeGreaterThan(0)
+      expect(result.removedPercent).toBeLessThan(100)
+      expect(() => encodeQuickLightweightingStl(result.mesh, result.cellSizeMm)).not.toThrow()
+    },
+    timeout,
+  )
+
+  it.each([
+    { scale: 0.005, removalPercent: 1, samples: 6 },
+    { scale: 1001, removalPercent: 99, samples: 13 },
+  ])(
+    "prepares positive physical settings at scale $scale and $samples samples per lattice cell",
+    async ({ scale, removalPercent, samples }) => {
+      const request = input()
+      request.mesh.vertices = request.mesh.vertices.map((coordinate) => coordinate * scale)
+      request.cellSizeMm = scale
+      request.latticeCellSizeMm = samples * scale
+      request.skinThicknessMm = 2 * scale
+      request.removalPercent = removalPercent
+      const prepared = await wasm.prepare(request)
+      if (!prepared.ok) throw new Error(`${prepared.error?.code}: ${prepared.error?.message}`)
+      expect(quickGridSchema.parse(prepared.grid).resolution).toBe(17)
+    },
+    timeout,
+  )
+
   it.each(["preserve-exterior", "open-organic"] as const)(
     "accepts dense captured surfaces in %s without changing sampling resolution",
     async (mode) => {
@@ -213,7 +271,7 @@ describe("load-free TPMS nodal geometry in the pinned WASM runtime", () => {
   )
 
   it(
-    "generates the default organic cube as a bounded closed snapshot",
+    "generates the default organic cube as a closed snapshot",
     async () => {
       const request = input("open-organic")
       request.cellSizeMm = 10 / 32
@@ -224,8 +282,6 @@ describe("load-free TPMS nodal geometry in the pinned WASM runtime", () => {
         JSON.stringify(response.result),
       )
       expect(response.result.removedPercent).toBeCloseTo(50, 0)
-      expect(response.result.mesh.vertices.length / 3).toBeLessThanOrEqual(80_000)
-      expect(response.result.mesh.indices.length / 3).toBeLessThanOrEqual(140_000)
       expect(() =>
         encodeQuickLightweightingStl(response.result.mesh, response.result.cellSizeMm),
       ).not.toThrow()
@@ -288,13 +344,6 @@ describe("load-free TPMS nodal geometry in the pinned WASM runtime", () => {
       "invalid-mesh",
     ],
     [
-      "overfine grid",
-      (request: QuickLightweightingInput) => {
-        request.cellSizeMm = 0.01
-      },
-      "resource-limit",
-    ],
-    [
       "empty internal space",
       (request: QuickLightweightingInput) => {
         request.skinThicknessMm = 5
@@ -325,6 +374,67 @@ describe("load-free TPMS nodal geometry in the pinned WASM runtime", () => {
       expect(response.ok).toBe(false)
       if (response.ok) throw new Error("Invalid geometry must not be returned.")
       expect(response.error.code).toBe(code)
+      expect(response).not.toHaveProperty("result")
+    },
+    timeout,
+  )
+
+  it.each([
+    [
+      "zero detail",
+      (request: QuickLightweightingInput) => {
+        request.cellSizeMm = 0
+      },
+    ],
+    [
+      "zero lattice period",
+      (request: QuickLightweightingInput) => {
+        request.latticeCellSizeMm = 0
+      },
+    ],
+    [
+      "undersampled lattice",
+      (request: QuickLightweightingInput) => {
+        request.latticeCellSizeMm = 5 * request.cellSizeMm
+      },
+    ],
+    [
+      "zero removal",
+      (request: QuickLightweightingInput) => {
+        request.removalPercent = 0
+      },
+    ],
+    [
+      "complete removal",
+      (request: QuickLightweightingInput) => {
+        request.removalPercent = 100
+      },
+    ],
+    [
+      "negative skin",
+      (request: QuickLightweightingInput) => {
+        request.skinThicknessMm = -1
+      },
+    ],
+    [
+      "nonfinite coordinates",
+      (request: QuickLightweightingInput) => {
+        request.mesh.vertices[0] = Number.NaN
+      },
+    ],
+    [
+      "missing source vertex",
+      (request: QuickLightweightingInput) => {
+        request.mesh.indices[0] = request.mesh.vertices.length / 3
+      },
+    ],
+  ] as const)(
+    "retains numerical input validation for %s",
+    async (_name, mutate) => {
+      const request = input()
+      mutate(request)
+      const response = await run(request)
+      expect(response).toMatchObject({ ok: false, error: { code: "invalid-input" } })
       expect(response).not.toHaveProperty("result")
     },
     timeout,

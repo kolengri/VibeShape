@@ -12,7 +12,7 @@ const reflectedGlobals = new Map([
   ],
   [
     "packages/formats/src/vshape.ts",
-    "c3bad5a4a7e328585d3f5031071583361e5565757f91af7f8fe1ebd0e7b945d9",
+    "39ee755a963585565d1b16529b79595c91f03542d639de33618801732a0c140e",
   ],
   [
     "packages/formats/src/vshape.test.ts",
@@ -35,12 +35,16 @@ const preparation = new Map([
 ])
 const python = new Map([
   [
+    "packages/structural-optimization/tests/resource_fixtures.py",
+    "cdb7b73c9dad1c073117c0ee1e685da7f6352f4692afbb33bd149f1c0d2e98be",
+  ],
+  [
     "packages/structural-optimization/src/solver.py",
-    "2fe47ab1eac6e51e0236d2a62e5c98155f49183f7f3e7ef89f8db2e40ab9a124",
+    "1c0be90b9c60d1ff10772b8cb880c480cdd5c577b62f8616f0b6a0619f8b9bb8",
   ],
   [
     "packages/structural-optimization/src/quick-solver.py",
-    "b784af9f14d3504734d9b694ba09c6ba82b4c3df004cd345fe274ff2fc6ef296",
+    "a960c2db2f8d7aab3eb21cf681273069cb9058c20bb4e01f19e6989f506eeee3",
   ],
   [
     "packages/structural-optimization/tests/surface_target_fixtures.py",
@@ -48,7 +52,7 @@ const python = new Map([
   ],
   [
     "packages/structural-optimization/tests/obstacle_fixtures.py",
-    "43c7689e26184fe7be8628ed515bc8fa64677343e3895e543ec6970794f173ac",
+    "dd14ca19ebb7f85faa05ac468a1eee5d6276e54276f6a9bad5bfce608875c375",
   ],
   [
     "packages/structural-optimization/tests/implicit_fixtures.py",
@@ -70,7 +74,7 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/quick-wasm.test.ts",
-    "52891ebb5f85cc248947364ff58e2feebbc1161cbfe67b3da033e20c67d4a588",
+    "1c4930fe4a0d5c12c2c775a036c0f18998fe35053e06baba00e637a83c0bef18",
   ],
   [
     "packages/structural-optimization/tests/quick-wasm-curved.test.ts",
@@ -78,11 +82,11 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/quick-wasm-helpers.ts",
-    "8291201866097696e88d6aee156fcbe9bc300de9c62aade25e0ce49d24c1b8fc",
+    "c01831cf9da8e9abd61f20311e73b84956d21818709df765b954c16a6947df5d",
   ],
   [
     "packages/structural-optimization/tests/wasm-solver.test.ts",
-    "79a06f2d8f5f1a15aaa7e4a7d7143f77d2f21d00b25ee24b93b761980ed59e0c",
+    "b995f469a1b4fd43ff5e66da4aa8cec26a211d77e80f16ca8b569e92924c9308",
   ],
 ])
 

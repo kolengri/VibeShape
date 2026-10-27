@@ -6,7 +6,10 @@ import {
 } from "@vibeshape/automation-api/local-session"
 import { type LocalToolResult, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { modelVariableUsageViewSchema } from "@vibeshape/automation-api/queries"
-import { lightweightingMaterialCatalogResult } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
+import {
+  lightweightingMaterialCatalogResult,
+  lightweightingOperation,
+} from "../../../packages/automation-api/src/lightweighting.test-fixtures"
 import {
   quickLightweightingOperation,
   quickLightweightingValue,
@@ -1080,73 +1083,75 @@ describe("browser automation broker", () => {
     ).toBe(200)
   })
 
-  it("keeps a live CAD commit pending beyond the operation timeout and still honors revocation", async () => {
-    vi.useFakeTimers()
-    const broker = makeBroker({ origin })
-    const { token } = await connect(broker)
-    const pending = broker.invoke(
-      localOperationSchema.parse({
-        tool: "commit_draft",
-        arguments: { draftId: document.id },
-      }),
-    )
-    const settled = vi.fn()
-    void pending.then(settled)
-    let requestId = ""
-    for (let sequence = 1; sequence <= 43; sequence += 1) {
-      const poll = await broker.handle(
-        request(
-          "poll",
-          {
-            protocolVersion: 1,
-            sequence,
-            document,
-            progress: requestId ? { requestId, stage: "review" } : null,
-          },
-          token,
-        ),
-      )
-      expect(poll.status).toBe(200)
-      const body = (await poll.json()) as { work: { requestId: string } | null }
-      if (body.work) requestId = body.work.requestId
-      await vi.advanceTimersByTimeAsync(10_000)
-    }
-    expect(broker.isPaired()).toBe(true)
-    expect(settled).not.toHaveBeenCalled()
-    const result = {
-      ok: false,
-      diagnostic: {
-        code: "draft-review-rejected",
-        message: "Discarded",
-        retryable: false,
-      },
-    }
-    expect(
-      (
-        await broker.handle(
+  it.each([
+    localOperationSchema.parse({ tool: "commit_draft", arguments: { draftId: document.id } }),
+    lightweightingOperation(false),
+    lightweightingOperation(true),
+  ])(
+    "keeps live $tool pending beyond the operation timeout and honors revocation",
+    async (operation) => {
+      vi.useFakeTimers()
+      const broker = makeBroker({ origin })
+      const { token } = await connect(broker)
+      const pending = broker.invoke(localOperationSchema.parse(operation))
+      const settled = vi.fn()
+      void pending.then(settled)
+      let requestId = ""
+      for (let sequence = 1; sequence <= 62; sequence += 1) {
+        const poll = await broker.handle(
           request(
-            "result",
+            "poll",
             {
               protocolVersion: 1,
-              requestId,
-              tool: "commit_draft",
-              result,
+              sequence,
+              document,
+              progress: requestId ? { requestId, stage: "review" } : null,
             },
             token,
           ),
         )
-      ).status,
-    ).toBe(200)
-    await expect(pending).resolves.toEqual<unknown>(result)
-    const next = broker.invoke(
-      localOperationSchema.parse({ tool: "commit_draft", arguments: { draftId: document.id } }),
-    )
-    broker.revoke()
-    await expect(next).resolves.toMatchObject({
-      ok: false,
-      diagnostic: { code: "session-revoked" },
-    })
-  })
+        expect(poll.status).toBe(200)
+        const body = (await poll.json()) as { work: { requestId: string } | null }
+        if (body.work) requestId = body.work.requestId
+        await vi.advanceTimersByTimeAsync(10_000)
+      }
+      expect(broker.isPaired()).toBe(true)
+      expect(settled).not.toHaveBeenCalled()
+      const result = {
+        ok: false,
+        diagnostic: {
+          code: "draft-review-rejected",
+          message: "Discarded",
+          retryable: false,
+        },
+      }
+      expect(
+        (
+          await broker.handle(
+            request(
+              "result",
+              {
+                protocolVersion: 1,
+                requestId,
+                tool: operation.tool,
+                result,
+              },
+              token,
+            ),
+          )
+        ).status,
+      ).toBe(200)
+      await expect(pending).resolves.toEqual<unknown>(result)
+      const next = broker.invoke(
+        localOperationSchema.parse({ tool: "commit_draft", arguments: { draftId: document.id } }),
+      )
+      broker.revoke()
+      await expect(next).resolves.toMatchObject({
+        ok: false,
+        diagnostic: { code: "session-revoked" },
+      })
+    },
+  )
 
   it("retains bounded execution for other live local operations", async () => {
     vi.useFakeTimers()

@@ -1,9 +1,10 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
-import type {
-  QuickLightweightingInput,
-  QuickLightweightingResult,
+import {
+  type QuickLightweightingInput,
+  type QuickLightweightingResult,
+  quickLightweightingInputSchema,
 } from "@vibeshape/structural-optimization/quick-contract"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../../document/document-controller"
@@ -542,7 +543,7 @@ describe("quick lightweighting task panel", () => {
     },
   )
 
-  it("keeps physical cell size independent of detail and clamps it only outside six to twelve sampling spacings", async () => {
+  it("keeps physical cell size independent of detail and enforces only the minimum six sampling spacings", async () => {
     setup()
     const period = () => screen.getByRole("slider", { name: /Cell size:/ })
     const detail = () => screen.getByRole("slider", { name: "Sampling detail" })
@@ -576,7 +577,49 @@ describe("quick lightweighting task panel", () => {
     fireEvent.change(detail(), { target: { value: "40" } })
     await advance(650)
     expect(ports.generate.mock.lastCall?.[0].cellSizeMm).toBe(0.15)
-    expect(ports.generate.mock.lastCall?.[0].latticeCellSizeMm).toBeCloseTo(1.8)
+    expect(ports.generate.mock.lastCall?.[0].latticeCellSizeMm).toBeCloseTo(3)
+  })
+
+  it("offers valid removal slider endpoints and accepts numeric targets outside them", async () => {
+    setup()
+    const slider = screen.getByRole<HTMLInputElement>("slider", { name: /Requested removal:/ })
+    for (const value of [Number(slider.min), Number(slider.max)]) {
+      fireEvent.change(slider, { target: { value: String(value) } })
+      await advance(650)
+      const request = quickLightweightingInputSchema.parse(ports.generate.mock.lastCall?.[0])
+      expect(request.removalPercent).toBe(value)
+    }
+    for (const value of [1, 99.5]) {
+      fireEvent.change(screen.getByRole("spinbutton", { name: /Requested removal:/ }), {
+        target: { value: String(value) },
+      })
+      await advance(650)
+      const request = quickLightweightingInputSchema.parse(ports.generate.mock.lastCall?.[0])
+      expect(request.removalPercent).toBe(value)
+    }
+  })
+
+  it("accepts physical millimeter values beyond the convenience slider ranges", async () => {
+    setup()
+    fireEvent.click(screen.getByRole("button", { name: "Keep exterior" }))
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Sampling detail" }), {
+      target: { value: "80" },
+    })
+    fireEvent.change(screen.getByRole("spinbutton", { name: /Cell size:/ }), {
+      target: { value: "3" },
+    })
+    fireEvent.change(screen.getByRole("spinbutton", { name: /Skin thickness:/ }), {
+      target: { value: "2" },
+    })
+    await advance(650)
+    expect(ports.generate.mock.lastCall?.[0]).toMatchObject({
+      cellSizeMm: 0.075,
+      latticeCellSizeMm: 3,
+      skinThicknessMm: 2,
+    })
+    expect(screen.getByRole<HTMLInputElement>("spinbutton", { name: "Sampling detail" }).max).toBe(
+      "",
+    )
   })
 
   it.each([

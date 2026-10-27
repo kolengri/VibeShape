@@ -2,6 +2,7 @@
 
 - Status: Accepted with reduced scope
 - Date: 2026-10-07
+- Local geometry/resource admission policy partially superseded by [ADR-0134](0134-local-geometry-resource-policy.md)
 - Mesh-count resource policy superseded by [ADR-0133](0133-lightweighting-mesh-density.md)
 - Related: [ADR-0013](0013-microkernel-modules-and-mcp-automation.md), [ADR-0020](0020-local-slicer-handoff-bridge.md)
 

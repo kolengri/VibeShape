@@ -4,8 +4,8 @@ const coordinate = z.number().finite().min(-100_000).max(100_000)
 const printMeshSchema = z
   .strictObject({
     name: z.string().min(1).max(4096),
-    vertices: z.array(coordinate).min(12).max(300_000),
-    triangles: z.array(z.number().int().nonnegative()).min(12).max(300_000),
+    vertices: z.array(coordinate).min(12),
+    triangles: z.array(z.number().int().nonnegative()).min(12),
   })
   .superRefine((mesh, context) => {
     if (
@@ -31,19 +31,10 @@ export const printPreparationSettingsSchema = z.strictObject({
   reach: z.number().min(1).max(25).default(6),
   supports: z.boolean().default(true),
 })
-export const printPreparationInputSchema = z
-  .strictObject({
-    meshes: z.array(printMeshSchema).min(1).max(8),
-    settings: printPreparationSettingsSchema,
-  })
-  .superRefine((input, context) => {
-    if (input.meshes.reduce((sum, mesh) => sum + mesh.triangles.length, 0) > 300_000) {
-      context.addIssue({
-        code: "custom",
-        message: "Print preparation is limited to 100,000 triangles in total.",
-      })
-    }
-  })
+export const printPreparationInputSchema = z.strictObject({
+  meshes: z.array(printMeshSchema).min(1).max(8),
+  settings: printPreparationSettingsSchema,
+})
 const printPreparationWarningSchema = z.enum([
   "partial-coverage",
   "multiple-bodies",
@@ -56,7 +47,7 @@ export const printPreparationResultSchema = z
   .strictObject({
     meshes: z.array(printMeshSchema).min(1).max(10),
     normals: z
-      .array(z.array(z.number().finite().min(-1).max(1)).max(300_000))
+      .array(z.array(z.number().finite().min(-1).max(1)))
       .min(1)
       .max(10),
     report: z.strictObject({
@@ -75,12 +66,11 @@ export const printPreparationResultSchema = z
     if (
       result.normals.length !== result.meshes.length ||
       result.meshes.some((mesh, i) => mesh.vertices.length !== result.normals[i]?.length) ||
-      result.meshes.length !== result.report.bodyCount + result.report.finCount ||
-      result.meshes.reduce((sum, mesh) => sum + mesh.triangles.length, 0) > 312_000
+      result.meshes.length !== result.report.bodyCount + result.report.finCount
     ) {
       context.addIssue({
         code: "custom",
-        message: "Print result mesh counts or complexity do not match the bounded report.",
+        message: "Print result mesh counts do not match the report.",
       })
     }
   })

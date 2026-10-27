@@ -400,15 +400,8 @@ async function verifiedBytes(
   const required = new Map(
     models.flatMap(({ pinned }) => pinned.assets.map((asset) => [asset.id, asset] as const)),
   )
-  if (
-    required.size > 128 ||
-    [...required.values()].reduce((total, asset) => total + asset.byteLength, 0) >
-      MAX_ASSEMBLY_MATERIALIZATION_BYTES
-  )
-    fail(
-      "assembly-budget-exceeded",
-      "Assembly source materialization exceeds its asset byte budget.",
-    )
+  if (required.size > 128)
+    fail("assembly-budget-exceeded", "Assembly source materialization exceeds its asset catalog.")
   const verified = new Map<string, SourceAssetMaterialization>()
   for (const asset of required.values()) {
     let input: Uint8Array | null
@@ -564,8 +557,6 @@ function stateBytes(state: FeatureRebuildState) {
   )
 }
 function ownState(state: FeatureRebuildState): FeatureRebuildState {
-  if (stateBytes(state) > MAX_ASSEMBLY_MATERIALIZATION_BYTES)
-    fail("assembly-budget-exceeded", "The frozen geometry exceeds the derived buffer budget.")
   return {
     ...state,
     geometry: state.geometry.map((record) => ({
@@ -724,18 +715,13 @@ async function occurrences(
     document.assembly.definitions.map((definition) => [definition.id, definition]),
   )
   const result: AssemblyMaterializedOccurrence[] = []
-  let bytes = 0
   for (const pose of poses) {
     const definition = definitions.get(pose.definitionId)
     if (!definition) fail("invalid-assembly-document", "An assembly definition is unavailable.")
     for (const pinned of definition.pinnedModels) {
       const body = occurrenceBody(definition, pinned, states)
-      bytes += meshBytes(body.mesh)
-      if (
-        result.length >= MAX_ASSEMBLY_OCCURRENCE_BODIES ||
-        bytes > MAX_ASSEMBLY_MATERIALIZATION_BYTES
-      )
-        fail("assembly-budget-exceeded", "Transformed assembly meshes exceed their output budget.")
+      if (result.length >= MAX_ASSEMBLY_OCCURRENCE_BODIES)
+        fail("assembly-budget-exceeded", "Assembly occurrences exceed their body catalog budget.")
       result.push(occurrenceEvidence(pose, definition, pinned, body))
     }
   }

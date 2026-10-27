@@ -35,6 +35,7 @@ import {
   type SourceImportInspection,
   sourceImportInspectionSchema,
 } from "@vibeshape/protocol"
+import { z } from "zod"
 import {
   createImportTransaction,
   type ImportDocumentContext,
@@ -46,6 +47,20 @@ import { appendOwnedSourceChunk } from "./source-upload-chunks"
 type Inspection = SourceImportInspection | MeshImportInspection
 type Transaction = ReturnType<typeof createImportTransaction>
 type Result<T> = { ok: true; value: T } | LocalFailure
+// Local prepared sources never cross the bounded public upload transport.
+const preparedImportDescriptorSchema = importUploadDescriptorSchema.safeExtend({
+  byteLength: z.number().int().positive().safe(),
+  receivedBytes: z.number().int().nonnegative().safe(),
+})
+const preparedImportInspectionSchema = importUploadInspectionSchema.safeExtend({
+  upload: preparedImportDescriptorSchema,
+})
+export type PreparedImportRequest = Readonly<{
+  prepared: PreparedImportSource
+  revision: number
+  sourceUnit: ImportUploadDescriptor["sourceUnit"]
+  label: string
+}>
 export type ImportReviewInput = Readonly<{
   kind: "import"
   actor: CommandActor
@@ -99,6 +114,8 @@ type Upload = {
   bytes: Uint8Array
   label: string
   captured: Captured | null
+  prepared: PreparedImportSource | null
+  expires: boolean
 }
 
 /** One paired actor owns temporary source bytes and a closed reviewed transaction. */
@@ -119,6 +136,8 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
   }
   function scheduleExpiry(record: Upload) {
     if (expiry !== null) clearTimeout(expiry)
+    expiry = null
+    if (!record.expires) return
     expiry = setTimeout(
       () => {
         if (upload === record && !persisting) release()
@@ -139,19 +158,27 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
     owner ??= parsed.data
     return parsed.data
   }
+  function authorizeOperation(inputActor: unknown, signal?: AbortSignal): Result<CommandActor> {
+    if (busy) return failure("busy", "Another import operation is pending.", true)
+    const paired = actor(inputActor)
+    if (!paired || !available())
+      return failure("session-revoked", "The import owner session is unavailable.")
+    if (signal?.aborted) return failure("import-cancelled", "The import request was cancelled.")
+    return { ok: true, value: paired }
+  }
   function current(record: Upload, generation: number, signal?: AbortSignal) {
     return (
       available() &&
       !signal?.aborted &&
       upload === record &&
       epoch === generation &&
-      Date.parse(record.descriptor.expiresAt) > now() &&
+      (!record.expires || Date.parse(record.descriptor.expiresAt) > now()) &&
       configuration.readContext()?.revision === record.descriptor.baseRevision
     )
   }
   function owned(uploadId: string) {
     if (!upload || upload.descriptor.uploadId !== uploadId) return null
-    if (Date.parse(upload.descriptor.expiresAt) <= now()) {
+    if (upload.expires && Date.parse(upload.descriptor.expiresAt) <= now()) {
       release()
       return null
     }
@@ -199,6 +226,8 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
       bytes: new Uint8Array(descriptor.byteLength),
       label: options.label ?? options.filename.slice(0, 120),
       captured: null,
+      prepared: null,
+      expires: true,
     }
     scheduleExpiry(upload)
     return { ok: true as const, value: structuredClone(descriptor) }
@@ -230,14 +259,16 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
     if (record.captured) return { ok: true as const, value: structuredClone(record.captured.view) }
     if (record.descriptor.receivedBytes !== record.bytes.byteLength)
       return failure("incomplete-import-upload", "Upload every source byte before inspection.")
-    const prepared = await readImportSource(
-      {
-        name: record.descriptor.filename,
-        size: record.bytes.byteLength,
-        arrayBuffer: async () => Uint8Array.from(record.bytes).buffer,
-      },
-      record.descriptor.sourceUnit,
-    )
+    const prepared =
+      record.prepared ??
+      (await readImportSource(
+        {
+          name: record.descriptor.filename,
+          size: record.bytes.byteLength,
+          arrayBuffer: async () => Uint8Array.from(record.bytes).buffer,
+        },
+        record.descriptor.sourceUnit,
+      ))
     if (!current(record, generation, signal))
       return failure(
         "import-cancelled",
@@ -264,15 +295,14 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
       lightweightingSourcePartId(reviewContext),
     )
     transaction.transactionId = draftIdSchema.parse(record.descriptor.uploadId)
-    const digest =
-      prepared.representation === "exact-solid" ? prepared.source.digest : prepared.digest
-    const descriptor = importUploadDescriptorSchema.parse({
-      ...record.descriptor,
-      sha256: digest,
-      status: "ready",
-      uploadVersion: record.descriptor.uploadVersion + 1,
-    })
-    const view = inspectionView(descriptor, prepared, inspection, transaction)
+    const descriptor = readyUploadDescriptor(record, prepared)
+    const view = inspectionView(
+      descriptor,
+      prepared,
+      inspection,
+      transaction,
+      record.prepared !== null,
+    )
     record.descriptor = descriptor
     record.captured = { prepared, inspection, transaction, view }
     return { ok: true as const, value: structuredClone(view) }
@@ -300,6 +330,16 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
         true,
       )
     const reviewContext = configuration.reviewContext?.()
+    if (!record.expires) {
+      // Start the manual review lease after both expensive inspections have finished.
+      record.expires = true
+      record.descriptor = {
+        ...record.descriptor,
+        expiresAt: new Date(now() + IMPORT_UPLOAD_TTL_MS).toISOString(),
+      }
+      captured.view.upload = record.descriptor
+      scheduleExpiry(record)
+    }
     const review: ImportReviewInput = {
       ...reviewContext,
       kind: "import",
@@ -385,16 +425,71 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
     return await commit(record, operation.arguments.uploadVersion, generation, signal)
   }
   return {
+    async requestPrepared(
+      inputActor: unknown,
+      request: PreparedImportRequest,
+      signal?: AbortSignal,
+    ) {
+      const authorized = authorizeOperation(inputActor, signal)
+      if (!authorized.ok) return authorized
+      const context = configuration.readContext()
+      if (
+        !context ||
+        context.documentId !== configuration.documentId ||
+        context.revision !== request.revision
+      )
+        return failure("stale-revision", "The import base is no longer current.", true)
+      busy = true
+      let record: Upload | null = null
+      try {
+        const prepared = structuredClone(request.prepared)
+        const descriptor = preparedImportDescriptorSchema.parse({
+          uploadId: configuration.createId(),
+          documentId: configuration.documentId,
+          baseRevision: context.revision,
+          uploadVersion: 0,
+          filename: prepared.filename,
+          byteLength: prepared.bytes.byteLength,
+          sourceUnit: request.sourceUnit,
+          format:
+            prepared.representation === "exact-solid"
+              ? prepared.source.format
+              : prepared.input.format,
+          receivedBytes: prepared.bytes.byteLength,
+          sha256: null,
+          status: "uploading",
+          expiresAt: new Date(now() + IMPORT_UPLOAD_TTL_MS).toISOString(),
+          chunkMaxBytes: IMPORT_UPLOAD_CHUNK_MAX_BYTES,
+        })
+        release()
+        record = {
+          actor: authorized.value,
+          descriptor,
+          bytes: prepared.bytes,
+          label: request.label,
+          captured: null,
+          prepared,
+          expires: false,
+        }
+        upload = record
+        const generation = epoch
+        const captured = await capture(record, generation, signal)
+        if (!captured.ok) return captured
+        return await commit(record, record.descriptor.uploadVersion, generation, signal)
+      } catch {
+        return failure("import-failed", "The native source could not be inspected or imported.")
+      } finally {
+        busy = false
+        if (upload === record) release()
+      }
+    },
     async execute(inputActor: unknown, operation: LocalImportOperation, signal?: AbortSignal) {
-      if (busy) return failure("busy", "Another import operation is pending.", true)
-      const paired = actor(inputActor)
-      if (!paired || !available())
-        return failure("session-revoked", "The import owner session is unavailable.")
-      if (signal?.aborted) return failure("import-cancelled", "The import request was cancelled.")
+      const authorized = authorizeOperation(inputActor, signal)
+      if (!authorized.ok) return authorized
       busy = true
       const generation = epoch
       try {
-        if (operation.tool === "begin_import_upload") return begin(operation, paired)
+        if (operation.tool === "begin_import_upload") return begin(operation, authorized.value)
         return await executeOwned(operation, generation, signal)
       } catch {
         return failure("import-failed", "The native source could not be inspected or imported.")
@@ -417,6 +512,18 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
   }
 }
 
+function readyUploadDescriptor(record: Upload, prepared: PreparedImportSource) {
+  const digest =
+    prepared.representation === "exact-solid" ? prepared.source.digest : prepared.digest
+  const schema = record.prepared ? preparedImportDescriptorSchema : importUploadDescriptorSchema
+  return schema.parse({
+    ...record.descriptor,
+    sha256: digest,
+    status: "ready",
+    uploadVersion: record.descriptor.uploadVersion + 1,
+  })
+}
+
 function inspectionIdentity(inspection: Inspection) {
   return canonicalJson(
     "unitEvidence" in inspection
@@ -431,12 +538,7 @@ function inspectionIdentity(inspection: Inspection) {
         },
   )
 }
-function inspectionView(
-  upload: ImportUploadDescriptor,
-  prepared: PreparedImportSource,
-  inspection: Inspection,
-  transaction: Transaction,
-) {
+function capturedImportManifest(transaction: Transaction) {
   const feature = transaction.commands.at(-1)
   if (feature?.kind !== "org.vibeshape.history.insert-feature")
     throw new Error("The captured import feature is unavailable.")
@@ -447,28 +549,43 @@ function inspectionView(
     throw new Error("The captured import asset is unavailable.")
   const outputs = asset.payload.assets[0]?.outputs
   if (!outputs) throw new Error("Captured import outputs are unavailable.")
-  const exact = "unitEvidence" in inspection
-  return importUploadInspectionSchema.parse({
+  return { featureId: feature.payload.feature.id, outputs }
+}
+
+function inspectionView(
+  upload: ImportUploadDescriptor,
+  prepared: PreparedImportSource,
+  inspection: Inspection,
+  transaction: Transaction,
+  preparedLocally = false,
+) {
+  const { featureId, outputs } = capturedImportManifest(transaction)
+  return (preparedLocally ? preparedImportInspectionSchema : importUploadInspectionSchema).parse({
     upload,
-    featureId: feature.payload.feature.id,
+    featureId,
     representation: prepared.representation,
     normalization:
       prepared.representation === "exact-solid"
         ? prepared.source.normalization
         : meshImportInspectionSchema.parse(inspection).normalization,
     warnings: "warnings" in inspection ? inspection.warnings : [],
-    outputs: inspection.outputs.map((output, index) => {
-      const outputId = outputs[index]
-      if (!outputId) throw new Error("The captured output manifest is incomplete.")
-      const shape = "signature" in output ? output.signature : output.shape
-      return {
-        outputRole: exact ? importedBodyOutputRole(outputId) : meshImportOutputRole(outputId),
-        bounds: shape.bounds,
-        volumeMm3: exact ? shape.volume : null,
-        surfaceAreaMm2: "area" in shape ? shape.area : shape.surfaceArea,
-        triangleCount: output.mesh.indices.length / 3,
-      }
-    }),
+    outputs: inspectionOutputViews(inspection, outputs),
+  })
+}
+
+function inspectionOutputViews(inspection: Inspection, outputIds: readonly string[]) {
+  const exact = "unitEvidence" in inspection
+  return inspection.outputs.map((output, index) => {
+    const outputId = outputIds[index]
+    if (!outputId) throw new Error("The captured output manifest is incomplete.")
+    const shape = "signature" in output ? output.signature : output.shape
+    return {
+      outputRole: exact ? importedBodyOutputRole(outputId) : meshImportOutputRole(outputId),
+      bounds: shape.bounds,
+      volumeMm3: exact ? shape.volume : null,
+      surfaceAreaMm2: "area" in shape ? shape.area : shape.surfaceArea,
+      triangleCount: output.mesh.indices.length / 3,
+    }
   })
 }
 

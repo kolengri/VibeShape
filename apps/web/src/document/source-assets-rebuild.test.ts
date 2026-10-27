@@ -1,9 +1,14 @@
 import { describe, expect, it } from "bun:test"
+import { createHash } from "node:crypto"
+import { projectDocumentSnapshotV1ToV0 } from "@vibeshape/domain"
+import { projectAuthoredDocumentSnapshotToV1 } from "@vibeshape/domain/document-v2"
 import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
 import { applyHistoryRemoveRetainingDependentsCommand } from "@vibeshape/domain/document-v5-commands"
 import { importedBodyOutputRole, importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { sourceAssetSchema } from "@vibeshape/domain/source-assets"
 import { VibeShapeDatabase } from "@vibeshape/persistence"
+import type { DocumentWorkerRequest, DocumentWorkerTerminalResponse } from "@vibeshape/protocol"
+import { DocumentWorkerSession } from "../../../../packages/document-worker/src/session-core"
 import {
   historyRepairFixture,
   repairId,
@@ -60,6 +65,85 @@ describe("owned disposable assembly source bytes", () => {
 })
 
 describe("owned history source descriptors", () => {
+  it("materializes a source above 64 MiB through document rebuild and worker recovery", async () => {
+    const fixture = assemblyLibraryFixture()
+    const bytes = new Uint8Array(64 * 1024 * 1024 + 1)
+    bytes[bytes.length - 1] = 23
+    const digest = createHash("sha256").update(bytes).digest("hex")
+    const asset = sourceAssetSchema.parse({ ...fixture.asset, digest, byteLength: bytes.length })
+    const authority = documentSnapshotV4Schema.parse({
+      ...fixture.document,
+      assets: [asset],
+      features: fixture.document.features.map((feature) => ({
+        ...feature,
+        parameters: {
+          ...feature.parameters,
+          source: {
+            digest,
+            byteLength: bytes.length,
+            format: asset.format,
+            normalization: asset.normalization,
+            parserPolicyVersion: 1,
+          },
+        },
+      })),
+    })
+    const projected = projectDocumentSnapshotV1ToV0(projectAuthoredDocumentSnapshotToV1(authority))
+    if (!projected.ok) throw new Error(projected.diagnostic.message)
+    const database = new VibeShapeDatabase("large-document-source-materialization")
+    const read = vi.spyOn(database.assetBlobs, "get").mockResolvedValue({ digest, bytes })
+    const materialize = vi.fn(
+      (document: Extract<DocumentWorkerRequest, { type: "rebuildDocument" }>["document"]) =>
+        materializeDocumentSourceAssets(database, async () => authority, document.features),
+    )
+    const request = vi.fn(
+      async (input: DocumentWorkerRequest): Promise<DocumentWorkerTerminalResponse> => {
+        if (input.type !== "rebuildDocument") throw new Error("Expected a document rebuild.")
+        const source = input.sourceAssets?.[0]
+        if (!source) throw new Error("The rebuilt feature requires its immutable source.")
+        expect(source.asset).toEqual(asset)
+        expect(source.bytes.byteLength).toBe(67_108_865)
+        expect(source.bytes.at(-1)).toBe(23)
+        expect(createHash("sha256").update(source.bytes).digest("hex")).toBe(digest)
+        return {
+          protocolVersion: input.protocolVersion,
+          requestId: input.requestId,
+          documentId: input.documentId,
+          revision: input.revision,
+          generation: input.generation,
+          type: "documentRebuilt",
+          evaluation: {
+            records: [],
+            dirtyFeatureIds: [],
+            evaluatedFeatureIds: [],
+            reusedFeatureIds: [],
+          },
+          geometry: [],
+          sketches: [],
+          modelReferenceEvidence: [],
+        }
+      },
+    )
+    const session = new DocumentWorkerSession(authority.id, () => ({ request, terminate() {} }), {
+      materializeSourceAssets: materialize,
+    })
+    try {
+      await session.rebuild({
+        document: projected.snapshot,
+        mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      })
+      expect(read).toHaveBeenCalledWith(digest)
+      expect(materialize).toHaveBeenCalledTimes(1)
+      bytes.fill(0)
+      await session.restartAndRecover()
+      expect(request).toHaveBeenCalledTimes(2)
+      expect(materialize).toHaveBeenCalledTimes(1)
+    } finally {
+      session.terminate()
+      database.close()
+    }
+  })
+
   it("materializes independent STEP assets after deletion adopts V5 repair authority", async () => {
     const imported = assemblyLibraryFixture()
     const asset = sourceAssetSchema.parse({

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { createHash } from "node:crypto"
 import {
   assemblyInstanceIdSchema,
   assemblyJointIdSchema,
@@ -23,10 +24,12 @@ import {
   assemblyMateGraphSchema,
 } from "@vibeshape/domain/assembly-mates"
 import {
+  assemblyInspectionSchema,
   type FeatureContentEnvironment,
   featureEvaluationEngineResultSchema,
   topologyCandidateSchema,
 } from "@vibeshape/protocol"
+import { denseBoxMesh } from "../../../tests/support/dense-box-fixture"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { type AssemblyMateSourceGeometry, resolveAssemblyMateFrames } from "./assembly-mate-frames"
 import {
@@ -499,12 +502,12 @@ describe("general assembly materialization authority", () => {
     expect(await materializeAssembly(options())).toMatchObject({ ok: true })
   })
 })
-function meshFixture() {
+function meshFixture(byteLength = 3, digest = "b".repeat(64)) {
   const document = base()
   const asset = sourceAssetSchema.parse({
     id: id(80),
-    digest: "b".repeat(64),
-    byteLength: 3,
+    digest,
+    byteLength,
     filename: "Body.stl",
     format: "stl",
     representation: "triangle-mesh",
@@ -747,6 +750,95 @@ describe("immutable assembly materialization", () => {
     expect(input.readSourceBytes).toHaveBeenCalledTimes(4)
     expect(input.sha256.mock.calls.filter(([data]) => data instanceof Uint8Array)).toHaveLength(3)
   })
+  it("verifies frozen source bytes above 64 MiB before rebuilding an imported mesh", async () => {
+    const bytes = new Uint8Array(64 * 1024 * 1024 + 1)
+    bytes[bytes.length - 1] = 29
+    const digest = createHash("sha256").update(bytes).digest("hex")
+    const input = options(meshFixture(bytes.byteLength, digest))
+    input.sha256.mockImplementation(async (value) =>
+      createHash("sha256").update(value).digest("hex"),
+    )
+    input.readSourceBytes.mockResolvedValue(bytes)
+    input.rebuildPinnedModel.mockImplementation(async (snapshot) =>
+      state(snapshot, meshImportOutputRole(id(81)), true),
+    )
+    const result = success(await materializeAssembly(input))
+    expect(result.occurrences).toHaveLength(1)
+    expect(result.occurrences[0]?.representation).toBe("triangle-mesh")
+    expect(input.readSourceBytes).toHaveBeenCalledTimes(1)
+    expect(input.rebuildPinnedModel).toHaveBeenCalledTimes(1)
+    expect(bytes.at(-1)).toBe(29)
+  })
+  it("materializes and transfers derived geometry and placed occurrences above 64 MiB", async () => {
+    const input = options(meshFixture())
+    const first = required(input.document.assembly.instances[0])
+    input.document = documentSnapshotV4Schema.parse({
+      ...input.document,
+      assembly: {
+        ...input.document.assembly,
+        instances: [
+          first,
+          {
+            ...first,
+            id: id(61),
+            name: "Second mesh",
+            worldFrame: { ...pose, translation: [4, 0, 0] },
+          },
+        ],
+      },
+    })
+    const dense = denseBoxMesh({ subdivisions: 320, min: [0, 0, 0], max: [2, 3, 4] })
+    const positions = Float32Array.from(dense.vertices)
+    const normals = new Float32Array(positions.length)
+    const verticesPerFace = 321 * 321
+    for (let vertex = 0; vertex < positions.length / 3; vertex++) {
+      const face = Math.floor(vertex / verticesPerFace)
+      normals[vertex * 3 + Math.floor(face / 2)] = face % 2 === 0 ? -1 : 1
+    }
+    const mesh = {
+      positions,
+      normals,
+      indices: Uint32Array.from(dense.indices),
+      triangleFaceIds: new Uint32Array(dense.indices.length / 3),
+    }
+    input.rebuildPinnedModel.mockImplementation(async (snapshot) => {
+      const rebuilt = state(snapshot, meshImportOutputRole(id(81)), true)
+      const record = required(rebuilt.geometry[0])
+      const body = required(record.geometry.bodies?.[0])
+      return {
+        ...rebuilt,
+        geometry: [
+          { ...record, geometry: { ...record.geometry, mesh, bodies: [{ ...body, mesh }] } },
+        ],
+      }
+    })
+    const result = success(await materializeAssembly(input))
+    expect(result.occurrences).toHaveLength(2)
+    expect(result.occurrences[0]?.mesh.positions).not.toBe(positions)
+    expect(result.occurrences[0]?.geometry.mesh.normals).not.toBe(normals)
+    expect(result.occurrences[1]?.bounds).toEqual({ min: [4, 0, 0], max: [6, 3, 4] })
+    expect(
+      result.occurrences.reduce(
+        (total, occurrence) =>
+          total +
+          occurrence.mesh.positions.byteLength +
+          occurrence.mesh.normals.byteLength +
+          occurrence.mesh.indices.byteLength +
+          occurrence.mesh.triangleFaceIds.byteLength,
+        0,
+      ),
+    ).toBeGreaterThan(64 * 1024 * 1024)
+    const transferred = assemblyInspectionSchema.parse({
+      occurrences: result.occurrences.map(({ geometry, ...occurrence }) => ({
+        ...occurrence,
+        contentHash: geometry.contentHash,
+        topologyCandidates: geometry.topologyCandidates,
+      })),
+      interference: [],
+    })
+    expect(transferred.occurrences).toHaveLength(2)
+    expect(required(transferred.occurrences[0]).mesh.indices.length / 3).toBe(1_228_800)
+  }, 30_000)
   it("includes mesh and geometry environment identities in the caller-owned cache", async () => {
     const input = options()
     success(await materializeAssembly(input))

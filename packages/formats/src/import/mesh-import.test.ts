@@ -3,7 +3,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
 import { BufferGeometry, Float32BufferAttribute, Mesh } from "three"
 import { STLExporter } from "three/addons/exporters/STLExporter.js"
 import { writeThreeMf } from "../three-mf"
-import { parseGeometryImport } from "./index"
+import { DEFAULT_IMPORT_LIMITS, importLimitsSchema, parseGeometryImport } from "./index"
 
 const vertices: [number, number, number][] = [
   [0, 0, 0],
@@ -49,6 +49,15 @@ function binaryTriangle() {
   return bytes
 }
 describe("bounded mesh import", () => {
+  it("accepts explicit default local policy while retaining finite safety limits", async () => {
+    const limits = importLimitsSchema.parse(DEFAULT_IMPORT_LIMITS)
+    const input = { format: "stl", bytes: binaryTriangle(), units: "mm" }
+    expect(await parseGeometryImport({ ...input, limits })).toEqual(
+      await parseGeometryImport(input),
+    )
+    expect(importLimitsSchema.safeParse({ ...limits, xmlNodes: Infinity }).success).toBe(false)
+    expect(importLimitsSchema.safeParse({ ...limits, bodies: Infinity }).success).toBe(false)
+  })
   it("reads independent Three STL writer output in binary and ASCII without mutating bytes", async () => {
     const geometry = new BufferGeometry()
     geometry.setAttribute(
@@ -116,6 +125,14 @@ describe("bounded mesh import", () => {
   })
   it.each([
     ["truncated", (bytes: Uint8Array) => bytes.slice(0, -1), "invalid-format"],
+    [
+      "UInt32 count without matching triangle data",
+      (bytes: Uint8Array) => {
+        new DataView(bytes.buffer).setUint32(80, 0xffff_ffff, true)
+        return bytes
+      },
+      "invalid-format",
+    ],
     [
       "NaN",
       (bytes: Uint8Array) => {

@@ -7,10 +7,7 @@ export const inspectMeshImportInputSchema = z
     format: z.enum(["stl", "3mf"]),
     bytes: z
       .instanceof(Uint8Array)
-      .refine(
-        (bytes) => bytes.length > 0 && bytes.length <= 32 * 1024 * 1024,
-        "Mesh source bytes exceed their file budget.",
-      )
+      .refine((bytes) => bytes.length > 0, "Mesh source bytes must be nonempty.")
       .transform((bytes) => Uint8Array.from(bytes)),
     units: z.enum(["mm", "cm", "m", "in", "ft", "um"]).optional(),
   })
@@ -48,13 +45,10 @@ export const meshImportInspectionSchema = z
   })
   .strict()
   .superRefine(({ outputs }, context) => {
-    if (
-      new Set(outputs.map(({ nodeKey }) => nodeKey)).size !== outputs.length ||
-      outputs.reduce((total, output) => total + output.mesh.positions.length, 0) > 2_250_000
-    )
+    if (new Set(outputs.map(({ nodeKey }) => nodeKey)).size !== outputs.length)
       context.addIssue({
         code: "custom",
-        message: "Mesh inspection repeats source nodes or exceeds its aggregate transfer budget.",
+        message: "Mesh inspection repeats source nodes.",
       })
     if (
       outputs.some(

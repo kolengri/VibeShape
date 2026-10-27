@@ -539,7 +539,9 @@ Document worker protocol v26 adds optional bounded mesh quality to geometry expo
 The separate numerical worker analyzes conservative full-solid hexahedral cells from a pristine
 source tessellation. Loads/supports are frozen to baseline geometry, candidate removal is gated by
 every supplied constraint, and the final exported surface is exactly the repeated analyzed solid.
-It introduces no B-Rep feature or document-worker protocol change. See
+It introduces no B-Rep feature or new computation authority. Numerical work has no fixed
+resource rejection ceiling; ordinary validated local mesh import owns result persistence under
+[ADR-0134](../adr/0134-local-geometry-resource-policy.md). See
 [Structural lightweighting](../product/lightweighting.md) for limitations and snapshot semantics.
 
 [ADR-0122](../adr/0122-density-topology-and-adaptive-lattices.md) extends the same numerical owner

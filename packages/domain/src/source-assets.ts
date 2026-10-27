@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const MAX_SOURCE_ASSET_BYTES = 32 * 1024 * 1024
+export const MAX_SOURCE_ASSET_BYTES = Infinity
 export const MAX_DOCUMENT_SOURCE_ASSETS = 1024
 const uuidV7Schema = z
   .string()
@@ -18,7 +18,7 @@ export const sourceAssetSchema = z
   .object({
     id: sourceAssetIdSchema,
     digest: sourceAssetDigestSchema,
-    byteLength: z.number().int().positive().max(MAX_SOURCE_ASSET_BYTES),
+    byteLength: z.number().int().positive().safe(),
     filename: z
       .string()
       .trim()
@@ -101,10 +101,7 @@ export const sourceAssetBlobSchema = z
     digest: sourceAssetDigestSchema,
     bytes: z
       .instanceof(Uint8Array)
-      .refine(
-        (bytes) => bytes.byteLength > 0 && bytes.byteLength <= MAX_SOURCE_ASSET_BYTES,
-        "Source bytes exceed the supported asset budget.",
-      ),
+      .refine((bytes) => bytes.byteLength > 0, "Source bytes must be nonempty."),
   })
   .strict()
 export type SourceAssetBlob = Readonly<z.infer<typeof sourceAssetBlobSchema>>

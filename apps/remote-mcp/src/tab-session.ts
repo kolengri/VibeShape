@@ -9,10 +9,7 @@ import { draftInspectionMatches } from "@vibeshape/automation-api/draft-inspecti
 import { historyMoveResultContextMatches } from "@vibeshape/automation-api/history-move-tools"
 import { historyResultContextMatches } from "@vibeshape/automation-api/history-tools"
 import { importResultMatches, isLocalImport } from "@vibeshape/automation-api/imports"
-import {
-  LIGHTWEIGHTING_REQUEST_TIMEOUT_MS,
-  lightweightingResultContextMatches,
-} from "@vibeshape/automation-api/lightweighting-tools"
+import { lightweightingResultContextMatches } from "@vibeshape/automation-api/lightweighting-tools"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
 import {
   isLocalDraftInspection,
@@ -228,16 +225,13 @@ export class TabSession extends DurableObject<RemoteEnv> {
     return new Promise<unknown>((resolve) => {
       const timer =
         operation.tool === "analyze_quick_lightweighting" ||
-        operation.tool === "request_quick_lightweighting"
+        operation.tool === "request_quick_lightweighting" ||
+        operation.tool === "analyze_lightweighting" ||
+        operation.tool === "request_lightweighting"
           ? null
-          : setTimeout(
-              () => {
-                if (this.pending?.id === id) void this.revoke()
-              },
-              operation.tool === "request_lightweighting"
-                ? LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
-                : REMOTE_REQUEST_TIMEOUT_MS,
-            )
+          : setTimeout(() => {
+              if (this.pending?.id === id) void this.revoke()
+            }, REMOTE_REQUEST_TIMEOUT_MS)
       this.pending = { id, operation, resolve, timer }
       this.send({ type: "work", requestId: id, operation })
     })

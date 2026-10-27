@@ -369,13 +369,17 @@ Validate all counts before allocation and protect size arithmetic from overflow.
 
 ## Reader limits
 
-The deliberately narrow v0 reader uses these current hard limits:
+Native archives retain structural safety limits. Under
+[ADR-0134](../adr/0134-local-geometry-resource-policy.md), local geometry bytes have no fixed
+archive, per-entry or expanded-total admission ceiling; actual allocation and storage capacity still
+apply. The v0 structural policies remain. Current source entries are stored without compression to avoid
+rejecting the writer's own repetitive geometry under the compression-ratio check:
 
 | Limit | Default |
 |---|---:|
-| Compressed ZIP input | 32 MiB |
-| Total uncompressed ZIP size | 64 MiB |
-| Per-entry size | 32 MiB |
+| Compressed ZIP input | No fixed geometry-byte ceiling |
+| Total uncompressed ZIP size | No fixed geometry-byte ceiling |
+| Per-entry size | No fixed geometry-byte ceiling |
 | Compression ratio | 200:1 |
 | Entry count | 16, with exactly 3 allowed by v0 |
 | Feature count | 100,000 hard limit with a much lower UX warning |

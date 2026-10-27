@@ -278,25 +278,32 @@ describe("DocumentProjectPage", () => {
     expect(screen.getByRole("alertdialog")).toBeTruthy()
   })
 
-  it("keeps an import collision visible and allows the same file to be chosen again", async () => {
-    const user = userEvent.setup()
-    controllerMocks.importProjectBackup.mockResolvedValue({
-      ok: false,
-      diagnostic: { code: "document-already-exists", message: "collision" },
-    })
-    renderPage()
-    const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
-    const file = projectFile()
-
-    await user.upload(input, file)
-
-    expect((await screen.findByRole("alert")).textContent).toContain(
+  it.each([
+    [
+      "document-already-exists",
       "The imported copy could not be added because its identity already exists.",
-    )
-    expect(input.value).toBe("")
-    await user.upload(input, file)
-    expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(2)
-  })
+    ],
+    ["resource-limit", "This project exceeds an archive or document validation limit."],
+  ])(
+    "keeps import failure %s visible and allows the same file to be chosen again",
+    async (code, message) => {
+      const user = userEvent.setup()
+      controllerMocks.importProjectBackup.mockResolvedValue({
+        ok: false,
+        diagnostic: { code, message: "Import rejected." },
+      })
+      renderPage()
+      const input = screen.getByLabelText("Choose VibeShape project file") as HTMLInputElement
+      const file = projectFile()
+
+      await user.upload(input, file)
+
+      expect((await screen.findByRole("alert")).textContent).toContain(message)
+      expect(input.value).toBe("")
+      await user.upload(input, file)
+      expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(2)
+    },
+  )
 
   it("imports a selected .vshape file and activates it through the validated project flow", async () => {
     const user = userEvent.setup()
@@ -369,8 +376,9 @@ describe("DocumentProjectPage", () => {
     await waitFor(() => expect(controllerMocks.activateLocalProject).toHaveBeenCalledTimes(1))
   })
 
-  it("rejects oversized files before reading and guards concurrent imports while extraction is pending", async () => {
+  it("accepts files above the former size ceiling and guards concurrent imports while extraction is pending", async () => {
     const user = userEvent.setup()
+    controllerMocks.importProjectBackup.mockResolvedValue({ ok: true, documentId: otherDocumentId })
     let finishRead: ((value: ArrayBuffer) => void) | undefined
     const pendingFile = projectFile()
     Object.defineProperty(pendingFile, "arrayBuffer", {
@@ -388,17 +396,16 @@ describe("DocumentProjectPage", () => {
     finishRead?.(new Uint8Array([1, 2, 3]).buffer)
     await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(1))
 
-    const oversizedFile = projectFile()
-    Object.defineProperty(oversizedFile, "size", {
-      configurable: true,
-      value: 33 * 1024 * 1024,
-    })
-    await user.upload(input, oversizedFile)
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "This project exceeds the current 32 MiB archive limit.",
-    )
-    expect(oversizedFile.arrayBuffer).not.toHaveBeenCalled()
-    expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(1)
+    const bytes = new Uint8Array(33 * 1024 * 1024)
+    bytes[bytes.length - 1] = 23
+    const largeFile = projectFile("Large.vshape", bytes)
+    await user.upload(input, largeFile)
+    await waitFor(() => expect(controllerMocks.importProjectBackup).toHaveBeenCalledTimes(2))
+    expect(largeFile.arrayBuffer).toHaveBeenCalledTimes(1)
+    const imported = controllerMocks.importProjectBackup.mock.calls[1]?.[0]
+    expect(imported.byteLength).toBe(34_603_008)
+    expect(imported.at(-1)).toBe(23)
+    expect(screen.queryByRole("alert")).toBeNull()
   })
   it("keeps Open first and refuses replacing actions while an edit is active", async () => {
     renderPage(controller, "editor-draft")

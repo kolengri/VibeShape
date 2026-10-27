@@ -155,7 +155,7 @@ const sourceAssetWireDescriptorSchema = z
   .object({
     id: uuid,
     digest: importedSourceContentSchema.shape.digest,
-    byteLength: importedSourceContentSchema.shape.byteLength,
+    byteLength: z.number().int().positive().safe(),
     filename,
     format: z.enum(["step", "brep", "stl", "3mf", "obj", "svg", "dxf"]),
     representation: z.enum(["exact-solid", "triangle-mesh", "sketch-curves"]),
@@ -197,13 +197,6 @@ export const sourceAssetMaterializationsSchema = z
   .array(sourceAssetMaterializationObjectSchema)
   .max(128)
   .superRefine((values, context) => {
-    if (values.reduce((total, value) => total + value.bytes.byteLength, 0) > 64 * 1024 * 1024) {
-      context.addIssue({
-        code: "custom",
-        message: "Source materialization exceeds its aggregate byte budget.",
-      })
-      return
-    }
     if (new Set(values.map(({ asset }) => asset.id)).size !== values.length)
       context.addIssue({ code: "custom", message: "Wire source asset identities cannot repeat." })
     const digests = new Map<string, Uint8Array>()

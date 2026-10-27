@@ -22,10 +22,9 @@ async function renameMeshPart(page: Page, part: { id: string; name: string }) {
   await saved(page)
   await row.getByRole("treeitem").click()
   await expect(row.getByText(/Triangle mesh: print preparation/)).toBeVisible()
-  for (const action of ["Place part", "Mirror part", "Shell", "Split part", "Pattern", "Thread"])
-    await expect(
-      row.getByRole("button", { name: `${action} Captured mesh`, exact: true }),
-    ).toBeDisabled()
+  await expect(page.getByRole("group", { name: "Selected part actions", exact: true })).toHaveCount(
+    0,
+  )
   return row
 }
 async function printMeshCopy(page: Page) {
@@ -51,7 +50,11 @@ for (const format of ["stl", "3mf"] as const) {
     await page.goto("/")
     await saved(page)
     await createSolids(page)
-    const source = await exportGeometry(page, format === "stl" ? "STL" : "3MF")
+    const source = await exportGeometry(
+      page,
+      format === "stl" ? "STL" : "3MF",
+      format === "stl" ? "Box 1" : undefined,
+    )
     const before = await saveProject(page)
     const choose = () =>
       chooseImportSource(

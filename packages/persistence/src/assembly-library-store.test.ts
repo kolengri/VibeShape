@@ -6,6 +6,7 @@ import {
   libraryFixtureId,
   libraryFixtureTimestamp,
 } from "../../../scripts/assembly-library-fixture"
+import { vi } from "../../../tests/unit/support/bun-test"
 import { AssemblyLibraryDatabase, LocalAssemblyLibraryRepository } from "./assembly-library-store"
 
 function input() {
@@ -20,7 +21,7 @@ function input() {
     createdAt: libraryFixtureTimestamp,
   }
 }
-function oversizedClosure() {
+function largeClosure() {
   const f = assemblyLibraryFixture()
   const pinned = f.definition.pinnedModels[0]
   const original = pinned?.snapshot.features[0]
@@ -101,13 +102,21 @@ describe("library storage prepublication boundaries", () => {
     })
     expect(repository.database.isOpen()).toBe(false)
   })
-  it("rejects a valid semantic closure above the aggregate source byte budget before a transaction", async () => {
+  it("admits a valid source closure above 64 MiB to the storage transaction", async () => {
     const repository = new LocalAssemblyLibraryRepository(
       new AssemblyLibraryDatabase("library-budget-unit"),
     )
-    expect(
-      await repository.publishVersion({ ...input(), definition: oversizedClosure(), blobs: [] }),
-    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-input" } })
-    expect(repository.database.isOpen()).toBe(false)
+    const transaction = vi
+      .spyOn(repository.database, "transaction")
+      .mockRejectedValue(new Error("storage admission reached"))
+    try {
+      expect(
+        await repository.publishVersion({ ...input(), definition: largeClosure(), blobs: [] }),
+      ).toMatchObject({ ok: false, diagnostic: { code: "storage-unavailable" } })
+      expect(transaction).toHaveBeenCalledTimes(1)
+      expect(repository.database.isOpen()).toBe(false)
+    } finally {
+      transaction.mockRestore()
+    }
   })
 })

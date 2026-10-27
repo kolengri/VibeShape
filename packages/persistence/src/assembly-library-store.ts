@@ -128,13 +128,7 @@ async function verifyVersion(version: AssemblyLibraryVersion) {
     )
 }
 function closureSizes(assets: readonly SourceAsset[]) {
-  const sizes = new Map(assets.map(({ digest, byteLength }) => [digest, byteLength]))
-  if ([...sizes.values()].reduce((sum, size) => sum + size, 0) > 64 * 1024 * 1024)
-    throw persistenceInvariantError(
-      "invalid-input",
-      "The library source closure exceeds its byte budget.",
-    )
-  return sizes
+  return new Map(assets.map(({ digest, byteLength }) => [digest, byteLength]))
 }
 async function verifiedBlob(
   input: unknown,
@@ -279,7 +273,6 @@ export class LocalAssemblyLibraryRepository {
       const definition = parsed(assemblyLibraryDefinitionSchema, owned(request.definition))
       const prepared = await verifySourceAssetBlobs(request.blobs)
       const assets = assemblyLibraryDefinitionAssets(definition)
-      closureSizes(assets)
       const result = await this.database.transaction(
         "rw",
         this.database.items,

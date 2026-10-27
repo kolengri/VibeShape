@@ -149,22 +149,22 @@ describe("captured structural surface contract", () => {
     ).toBe(true)
   })
 
-  it("retains support, load-case, and preservation count bounds", () => {
+  it("accepts support, load-case, and preservation counts beyond former bounds", () => {
     const request = input()
     const support = request.supports[0]
     const preserved = request.preserveRegions[0]
     const load = request.loadCases[0]
     if (!support || !preserved || !load) throw new Error("The fixture regions are required.")
     request.supports = Array.from({ length: 9 }, () => support)
-    expect(structuralOptimizationInputSchema.safeParse(request).success).toBe(false)
+    expect(structuralOptimizationInputSchema.safeParse(request).success).toBe(true)
     request.supports = [support]
     request.preserveRegions = Array.from({ length: 17 }, () => preserved)
-    expect(structuralOptimizationInputSchema.safeParse(request).success).toBe(false)
+    expect(structuralOptimizationInputSchema.safeParse(request).success).toBe(true)
     request.preserveRegions = []
     request.loadCases = Array.from({ length: 9 }, (_, index) => ({
       ...load,
       name: `load-${index}`,
     }))
-    expect(structuralOptimizationInputSchema.safeParse(request).success).toBe(false)
+    expect(structuralOptimizationInputSchema.safeParse(request).success).toBe(true)
   })
 })

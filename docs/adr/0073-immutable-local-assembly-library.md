@@ -2,6 +2,7 @@
 
 - Status: Accepted storage and authority contract; staged product integration
 - Date: 2026-10-03
+- Source-byte admission policy partially superseded by [ADR-0134](0134-local-geometry-resource-policy.md); metadata and immutable publication contracts remain in force.
 - Extends: [ADR-0067](0069-frozen-assembly-source-authority.md),
   [ADR-0060](0062-durable-source-assets-and-portable-closure.md)
 

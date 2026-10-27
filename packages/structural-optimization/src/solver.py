@@ -1,4 +1,4 @@
-"""Bounded, conservative voxel lightweighting with full-solid linear elasticity.
+"""Conservative voxel lightweighting with full-solid linear elasticity.
 
 All lengths are millimetres, forces newtons, and stresses MPa.  The returned
 unsmoothed mesh is exactly the surface of the cells used in the final FEM solve.
@@ -8,7 +8,6 @@ This heuristic supplies discretized numerical evidence, not a strength rating.
 import json
 import itertools
 import math
-import time
 import warnings
 
 import numpy as np
@@ -26,10 +25,7 @@ from skfem.helpers import dot, sym_grad
 from skfem.models.elasticity import lame_parameters, linear_elasticity, linear_stress
 
 
-MAX_CELLS = 3000
-MAX_NODES = 5000
-MAX_GRID_CELLS = 12000
-MAX_SECONDS = 180
+# Deadline arguments remain compatible with existing callers; worker disposal owns cancellation.
 CELL_TOLERANCE = 1e-6
 HEX_CORNERS = np.asarray(MeshHex().p.T, dtype=np.int64)
 NEIGHBORS = np.asarray([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]])
@@ -130,8 +126,7 @@ def _within(points, region, tolerance):
 
 def _obstacle_regions(request):
     regions = request.get("obstacleRegions", [])
-    _require(isinstance(regions, list) and len(regions) <= 16,
-             "invalid-input", "At most 16 obstacle box regions are supported.")
+    _require(isinstance(regions, list), "invalid-input", "Obstacle regions must be a list.")
     boxes = []
     for region in regions:
         _require(isinstance(region, dict) and set(region) == {"min", "max"},
@@ -189,7 +184,6 @@ def _fdm_feature_bound(cells, origin, cell_size, context):
     # bounded by the original voxel grid, not by requested physical dimensions.
     if k ** 3 > len(cells) or np.any(shape < k):
         return 0.0
-    _require(math.prod(int(x) for x in shape) <= MAX_GRID_CELLS, "resource-limit", "FDM morphology exceeds the bounded voxel grid.")
     occupied = np.zeros(tuple(shape), dtype=np.int32)
     occupied[tuple((cells - lo).T)] = 1
     prefix = np.pad(occupied, ((1, 0),) * 3).cumsum(0).cumsum(1).cumsum(2)
@@ -245,7 +239,6 @@ def _fdm_uncovered_face(face, lower_rectangles, expansion):
 
 
 def _fdm_metrics(cells, origin, cell_size, context, deadline):
-    _require(time.monotonic() < deadline, "resource-limit", "FDM verification exceeded its time budget.")
     world_lo, world_hi = origin + cells * cell_size, origin + (cells + 1) * cell_size
     for coordinates in (world_lo, world_hi):
         _require(np.all(np.abs(coordinates.astype(np.float32).astype(float) - coordinates) <= cell_size * 1e-6),
@@ -274,7 +267,6 @@ def _fdm_metrics(cells, origin, cell_size, context, deadline):
     for index, cell in enumerate(cells):
         if levels[index] == context["bed"] or tuple(cell - step) in occupied:
             continue
-        _require(time.monotonic() < deadline, "resource-limit", "FDM footprint verification exceeded its time budget.")
         lower = layers.get(int(levels[index]) - 1, np.array([], dtype=int))
         unsupported += max(_fdm_uncovered_face(raw[index], raw[lower], expansion),
                            _fdm_uncovered_face(rounded[index], rounded[lower], expansion))
@@ -379,8 +371,6 @@ def _require_shells_disjoint(first, other, rays, label, deadline):
     lengths = np.linalg.norm(directions, axis=1)
     directions /= lengths[:, None]
     for start in range(0, len(edges), 32):
-        if deadline is not None:
-            _require(time.monotonic() < deadline, "resource-limit", "Cavity intersection checks exceeded their budget.")
         locations, ids, _ = rays.intersects_location(edges[start:start + 32, 0], directions[start:start + 32])
         if len(locations):
             distances = np.linalg.norm(locations - edges[start + ids, 0], axis=1)
@@ -402,7 +392,6 @@ def _check_surface(mesh, label, deadline=None):
                              shape=(len(mesh.faces), len(mesh.faces)))
     shell_count, labels = connected_components(graph, directed=False, return_labels=True)
     if shell_count > 1:
-        _require(shell_count <= 64, "resource-limit", "At most 64 boundary shells are supported.")
         shells = [trimesh.Trimesh(mesh.vertices, mesh.faces[labels == i], process=False) for i in range(shell_count)]
         for shell in shells:
             shell.remove_unreferenced_vertices()
@@ -416,8 +405,6 @@ def _check_surface(mesh, label, deadline=None):
                 for j, rays in enumerate(intersectors):
                     if i == j:
                         continue
-                    if deadline is not None:
-                        _require(time.monotonic() < deadline, "resource-limit", "Cavity validation exceeded its time budget.")
                     contained = contains_points(rays, shell.vertices, check_direction=[0.811107, 0.324443, 0.486664])
                     _require(np.all(contained) if j == outer else not np.any(contained),
                              "invalid-mesh", f"{label} contains intersecting, nested, or external cavity shells.")
@@ -496,25 +483,20 @@ def _boundary_crosses_cell(mesh, index, cell):
 def _voxelize(mesh, deadline):
     shape = np.floor(mesh.bounds[1] + CELL_TOLERANCE).astype(int)
     _require(np.all(shape >= 1), "resolution-empty", "Cell size is too large to retain a complete source cell.")
-    _require(math.prod(int(x) for x in shape) <= MAX_GRID_CELLS,
-             "resource-limit", "Candidate grid exceeds 12000 cells; increase cell size.")
-    grid = np.indices(tuple(shape)).reshape(3, -1).T
+    grid = itertools.product(*(range(int(length)) for length in shape))
     rays = _RayIntersector(mesh)
-    inside = np.zeros(len(grid), dtype=bool)
     # Two deterministic directions agree for a retained centre.  Disagreement
     # conservatively excludes that cell rather than perturbing the mesh.
     directions = ([0.4395064455, 0.617598629942, 0.652231566745], [0.811107, 0.324443, 0.486664])
-    for start in range(0, len(grid), 32):
-        _require(time.monotonic() < deadline, "resource-limit", "Voxelization exceeded its time budget.")
-        points = grid[start:start + 32] + 0.5
-        masks = [contains_points(rays, points, check_direction=d) for d in directions]
-        inside[start:start + len(points)] = masks[0] & masks[1]
     cells = []
-    for cell in grid[inside]:
-        _require(time.monotonic() < deadline, "resource-limit", "Voxelization exceeded its time budget.")
-        if not _boundary_crosses_cell(mesh, rays.tree, cell):
-            cells.append(cell)
-    _require(0 < len(cells) <= MAX_CELLS, "resource-limit", "Retained solid must contain 1 to 3000 complete cells; adjust cell size.")
+    while batch := list(itertools.islice(grid, 32)):
+        batch = np.asarray(batch)
+        points = batch + 0.5
+        masks = [contains_points(rays, points, check_direction=d) for d in directions]
+        for cell in batch[masks[0] & masks[1]]:
+            if not _boundary_crosses_cell(mesh, rays.tree, cell):
+                cells.append(cell)
+    _require(len(cells) > 0, "resolution-empty", "Cell size is too large to retain a complete source cell.")
     cells = np.asarray(cells)
     _require(_connected(cells), "disconnected-mesh", "Conservative voxelization separates the body; decrease cell size.")
     return cells
@@ -523,7 +505,6 @@ def _voxelize(mesh, deadline):
 def _hex_mesh(cells, origin, cell_size):
     corners = (cells[:, None, :] + HEX_CORNERS).reshape(-1, 3)
     nodes, inverse = np.unique(corners, axis=0, return_inverse=True)
-    _require(len(nodes) <= MAX_NODES, "resource-limit", "The FEM mesh exceeds 5000 nodes; increase cell size.")
     mesh = MeshHex((origin + nodes * cell_size).T, inverse.reshape(-1, 8).T)
     return mesh, nodes
 
@@ -552,7 +533,6 @@ def _nearest_surface(source, points, deadline, normals=None):
     source._cache["triangles_tree"] = _TriangleIndex(source.triangles)
     matches = []
     for start in range(0, len(points), 32):
-        _require(time.monotonic() < deadline, "resource-limit", "Surface mapping exceeded its time budget.")
         batch = points[start:start + 32]
         candidates = trimesh.proximity.nearby_faces(source, batch)
         for offset, (point, candidate) in enumerate(zip(batch, candidates)):
@@ -578,16 +558,16 @@ def _conditions(request, mesh, nodes, cells, cell_size, source, deadline):
     origin = mesh.p[:, 0] - nodes[0] * cell_size
     boundary_nodes = np.unique(mesh.facets[:, mesh.boundary_facets()])
     supports = request.get("supports")
-    _require(isinstance(supports, list) and 0 < len(supports) <= 8, "no-support-nodes", "One to eight support regions are required.")
+    _require(isinstance(supports, list) and len(supports) > 0, "no-support-nodes", "Support regions are required.")
     supports = [_region(region, len(source.faces)) for region in supports]
     cases = request.get("loadCases")
-    _require(isinstance(cases, list) and 0 < len(cases) <= 8, "invalid-input", "One to eight load cases are required.")
+    _require(isinstance(cases, list) and len(cases) > 0, "invalid-input", "Load cases are required.")
     case_regions = []
     for case in cases:
         _require(isinstance(case, dict) and set(case) == {"name", "region", "forceN"}, "invalid-input", "Each load case requires exactly name, region, forceN.")
         case_regions.append(_region(case.get("region"), len(source.faces)))
     regions = request.get("preserveRegions", [])
-    _require(isinstance(regions, list) and len(regions) <= 16, "invalid-input", "At most 16 preserve regions are supported.")
+    _require(isinstance(regions, list), "invalid-input", "Preserve regions must be a list.")
     preserve = [_region(region, len(source.faces)) for region in regions]
     surfaces = [region for region in supports + case_regions + preserve if isinstance(region, dict)]
     facets = mesh.boundary_facets()
@@ -665,7 +645,6 @@ def _conditions(request, mesh, nodes, cells, cell_size, source, deadline):
 
 
 def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, deadline, relative_modulus=None, field="strain-energy", sum_cases=False):
-    _require(time.monotonic() < deadline, "resource-limit", "Optimization exceeded its time budget.")
     _require(_connected(cells), "disconnected-mesh", "Removal disconnects the analyzed solid.")
     mesh, nodes = _hex_mesh(cells, origin, cell_size)
     surface = _surface(mesh, deadline)
@@ -685,7 +664,6 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
     energy = np.zeros(len(cells))
     metrics = []
     for load in loads:
-        _require(time.monotonic() < deadline, "resource-limit", "Elasticity exceeded its time budget.")
         _require(all(key in facet_lookup for key in load["facets"]), "boundary-condition-lost", "A candidate changes a loaded exterior facet.")
         load_facets = np.array([facet_lookup[key] for key in load["facets"]])
         facet_basis = FacetBasis(mesh, basis.elem, facets=load_facets, intorder=3)
@@ -705,7 +683,6 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
                 displacement = fem_solve(*condense(stiffness, force, D=fixed_dofs))
         except (MatrixRankWarning, RuntimeError, ValueError) as error:
             raise SolverError("numerical-failure", "The full-solid elasticity solve failed or is singular.") from error
-        _require(time.monotonic() < deadline, "resource-limit", "Elasticity exceeded its time budget.")
         _require(np.isfinite(displacement).all(), "numerical-failure", "Elasticity returned a non-finite displacement.")
         free = np.setdiff1d(np.arange(basis.N), fixed_dofs)
         residual = (stiffness @ displacement - force)[free]
@@ -749,16 +726,16 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
 
 def _sensitivity_filter(cells, radius, deadline):
     tree = cKDTree(cells.astype(float))
-    rows, cols, values = [], [], []
-    for i, point in enumerate(cells):
-        _require(time.monotonic() < deadline, "resource-limit", "SIMP filtering exceeded its time budget.")
-        neighbors = tree.query_ball_point(point, radius)
-        _require(len(values) + len(neighbors) <= 300000, "resource-limit", "SIMP filter exceeds 300000 neighbor weights; reduce filter radius or use coarser cells.")
+    pointers, cols, values = [0], [], []
+    for point in cells:
+        neighbors = np.asarray(tree.query_ball_point(point, radius), dtype=np.int64)
         weights = radius - np.linalg.norm(cells[neighbors] - point, axis=1)
-        rows.extend([i] * len(neighbors))
-        cols.extend(neighbors)
-        values.extend(np.maximum(weights, 0))
-    matrix = sparse.csr_matrix((values, (rows, cols)), shape=(len(cells), len(cells)))
+        cols.append(neighbors)
+        values.append(np.maximum(weights, 0))
+        pointers.append(pointers[-1] + len(neighbors))
+    matrix = sparse.csr_matrix((np.concatenate(values), np.concatenate(cols), np.asarray(pointers)),
+                              shape=(len(cells), len(cells)))
+    matrix.sort_indices()
     return matrix, np.asarray(matrix.sum(axis=1)).ravel()
 
 
@@ -790,7 +767,6 @@ def _simp_density(cells, frozen, algorithm, max_iterations, evaluate, deadline):
     iterations, change = 0, 1.0
     matrix, sums = _sensitivity_filter(cells, algorithm["filterRadiusMm"] / evaluate.cell_size, deadline)
     for i in range(max_iterations):
-        _require(time.monotonic() < deadline, "resource-limit", "SIMP exceeded its time budget.")
         modulus = 1e-6 + (1 - 1e-6) * rho ** algorithm["penalty"]
         _, energy, _ = evaluate(cells, relative_modulus=modulus, sum_cases=True)
         derivative = -algorithm["penalty"] * (1 - 1e-6) * rho ** (algorithm["penalty"] - 1) * energy / modulus
@@ -808,10 +784,9 @@ def _simp_density(cells, frozen, algorithm, max_iterations, evaluate, deadline):
 
 
 def _coverage_opening(mask, cells, cube_cells):
-    """Union of fully occupied k-cubes, using bounded SciPy morphology."""
+    """Union of fully occupied k-cubes, using SciPy morphology."""
     from scipy.ndimage import binary_opening
     shape = cells.max(axis=0) + 1
-    _require(cube_cells ** 3 <= MAX_GRID_CELLS, "resource-limit", "TPMS thickness exceeds the bounded morphology budget.")
     grid = np.zeros(tuple(shape), dtype=bool)
     grid[tuple(cells[mask].T)] = True
     opened = binary_opening(grid, structure=np.ones((cube_cells,) * 3, dtype=bool))
@@ -858,7 +833,6 @@ def _protect_cube_coverage(cells, frozen, cube_cells, deadline):
     anchors = np.argwhere(sums == cube_cells ** 3)
     grid = np.zeros(tuple(shape), dtype=bool)
     for cell in cells[frozen]:
-        _require(time.monotonic() < deadline, "resource-limit", "TPMS interface coverage exceeded its time budget.")
         possible = anchors[np.all((anchors <= cell) & (anchors + cube_cells > cell), axis=1)]
         _require(len(possible) > 0, "infeasible-baseline", "A protected TPMS interface cannot meet the resolved minimum thickness.")
         distances = np.sum((possible + cube_cells / 2 - cell - 0.5) ** 2, axis=1)
@@ -894,7 +868,7 @@ def _algorithm_search(cells, protected, origin, cell_size, algorithm, max_iterat
         # Projection restores in density order when a lower-volume binary solid
         # fails. No relaxed stress/displacement metric is used for acceptance.
         minimum = max(target, int(frozen.sum()))
-        counts = np.unique(np.ceil(np.linspace(minimum, len(original), min(40, max_iterations) + 1)).astype(int))
+        counts = np.unique(np.ceil(np.linspace(minimum, len(original), max_iterations + 1)).astype(int))
         candidates = []
         for count in counts:
             mask = frozen.copy()
@@ -927,7 +901,6 @@ def _algorithm_search(cells, protected, origin, cell_size, algorithm, max_iterat
     termination = "iteration-limit" if max_iterations == 0 else "constraints-or-topology"
     if max_iterations:
         for mask in candidates:
-            _require(time.monotonic() < deadline, "resource-limit", "Binary projection exceeded its time budget.")
             candidate = original[mask]
             if not len(candidate) or (target_count is not None and len(candidate) < target_count):
                 continue
@@ -968,8 +941,7 @@ def solve(request):
     _require(required <= request.keys() and request.keys() <= required | {"objective", "fdm", "obstacleRegions", "algorithm"},
              "invalid-input", "Structural requests require exactly the supported settings.")
     _require(type(request["schemaVersion"]) is int, "invalid-input", "schemaVersion must be the integer 1.")
-    started = time.monotonic()
-    deadline = started + MAX_SECONDS
+    deadline = None
     objective = _objective(request)
     fdm_settings = _fdm_settings(request)
     cell_size = _number(request.get("cellSizeMm"), "cellSizeMm", 0.01, 100000)
@@ -979,8 +951,8 @@ def solve(request):
     max_displacement = _number(request.get("maxDisplacementMm"), "maxDisplacementMm", 1e-9, 100000)
     safety_factor = _number(request.get("safetyFactor"), "safetyFactor", 1, 100)
     max_iterations = request.get("maxIterations")
-    _require(isinstance(max_iterations, int) and not isinstance(max_iterations, bool) and 0 <= max_iterations <= 40,
-             "invalid-input", "maxIterations must be an integer from 0 to 40.")
+    _require(isinstance(max_iterations, int) and not isinstance(max_iterations, bool) and max_iterations >= 0,
+             "invalid-input", "maxIterations must be a nonnegative integer.")
     material = request.get("material")
     _require(isinstance(material, dict) and set(material) == {"youngModulusMpa", "poissonRatio", "yieldStrengthMpa", "densityKgM3"}, "invalid-input", "material requires exactly the supported isotropic properties.")
     parameters = (_number(material.get("youngModulusMpa"), "youngModulusMpa", 1e-3, 1e6),

@@ -54,11 +54,7 @@ async function readMaterializations(
   assets: readonly SourceAsset[],
   ownedBlobs: readonly SourceAssetBlob[] = [],
 ) {
-  if (
-    assets.length > 128 ||
-    assets.reduce((total, asset) => total + asset.byteLength, 0) > 64 * 1024 * 1024
-  )
-    throw new Error("Source geometry exceeds its materialization budget.")
+  if (assets.length > 128) throw new Error("Source geometry exceeds its materialization budget.")
   const materials: SourceAssetMaterialization[] = []
   const prepared = new Map(
     (await verifySourceAssetBlobs(ownedBlobs)).map((blob) => [blob.digest, blob.bytes]),

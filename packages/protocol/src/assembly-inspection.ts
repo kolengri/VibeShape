@@ -119,22 +119,10 @@ export const assemblyInspectionSchema = z
       ({ instanceId, sourceIndex }) => `${instanceId}:${sourceIndex}`,
     )
     const instances = new Set(occurrences.map(({ instanceId }) => instanceId))
-    if (
-      new Set(identities).size !== identities.length ||
-      occurrences.reduce(
-        (count, value) =>
-          count +
-          value.mesh.positions.byteLength +
-          value.mesh.normals.byteLength +
-          value.mesh.indices.byteLength +
-          value.mesh.triangleFaceIds.byteLength,
-        0,
-      ) >
-        64 * 1024 * 1024
-    )
+    if (new Set(identities).size !== identities.length)
       context.addIssue({
         code: "custom",
-        message: "Assembly occurrences repeat identity or exceed their transfer budget.",
+        message: "Assembly occurrences repeat identity.",
       })
     if (
       interference.some(

@@ -2,13 +2,14 @@ import { z } from "zod"
 import { canonicalJson } from "./canonical-json"
 import { sketchEntityIdSchema } from "./identifiers"
 import {
-  MAX_SOURCE_ASSET_BYTES,
   type SourceAsset,
   sourceAssetDigestSchema,
   sourceAssetIdSchema,
   sourceAssetOutputIdSchema,
   sourceAssetSchema,
 } from "./source-assets"
+
+export const MAX_SKETCH_SOURCE_BYTES = 32 * 1024 * 1024
 
 const ordinal = z.number().int().nonnegative().max(1_661)
 const label = z.string().min(1).max(256)
@@ -90,7 +91,7 @@ export const sketchSourceImportSchema = budgetSchema.pipe(
       schemaVersion: z.literal(0),
       assetId: sourceAssetIdSchema,
       digest: sourceAssetDigestSchema,
-      byteLength: z.number().int().positive().max(MAX_SOURCE_ASSET_BYTES),
+      byteLength: z.number().int().positive().max(MAX_SKETCH_SOURCE_BYTES),
       format: z.enum(["dxf", "svg"]),
       normalization: sourceAssetSchema.shape.normalization,
       parserPolicyVersion: z.literal(1),

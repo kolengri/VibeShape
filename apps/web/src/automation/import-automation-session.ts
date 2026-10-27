@@ -3,7 +3,11 @@ import type { AutomationHostDiagnosticCode } from "@vibeshape/automation-host/ho
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import { PRODUCT_MESH_POLICY } from "../document/document-worker-settings"
 import { automationReviews } from "./automation-review-controller"
-import { createImportUploadSession, type ImportSessionConfiguration } from "./import-upload-session"
+import {
+  createImportUploadSession,
+  type ImportSessionConfiguration,
+  type PreparedImportRequest,
+} from "./import-upload-session"
 
 /** Native inspection and its manual review belong to the captured paired session. */
 export function createImportAutomationSession(
@@ -40,26 +44,40 @@ export function createImportAutomationSession(
     worker = null
     if (!uploads.isPersisting()) reviews.cancel(owner, reason)
   }
+  async function run(
+    action: () => ReturnType<typeof uploads.execute>,
+    completesReview: boolean,
+    signal?: AbortSignal,
+  ) {
+    const onAbort = () => cancel()
+    signal?.addEventListener("abort", onAbort, { once: true })
+    try {
+      const result = await action()
+      if (completesReview)
+        reviews.complete(
+          owner,
+          result.ok
+            ? result
+            : {
+                ok: false,
+                diagnostic: { ...result.diagnostic, code: "document-commit-failed", issues: [] },
+              },
+        )
+      return result
+    } finally {
+      signal?.removeEventListener("abort", onAbort)
+    }
+  }
   return {
-    async execute(actor: unknown, operation: LocalImportOperation, signal?: AbortSignal) {
-      const onAbort = () => cancel()
-      signal?.addEventListener("abort", onAbort, { once: true })
-      try {
-        const result = await uploads.execute(actor, operation, signal)
-        if (operation.tool === "commit_import_upload")
-          reviews.complete(
-            owner,
-            result.ok
-              ? result
-              : {
-                  ok: false,
-                  diagnostic: { ...result.diagnostic, code: "document-commit-failed", issues: [] },
-                },
-          )
-        return result
-      } finally {
-        signal?.removeEventListener("abort", onAbort)
-      }
+    execute(actor: unknown, operation: LocalImportOperation, signal?: AbortSignal) {
+      return run(
+        () => uploads.execute(actor, operation, signal),
+        operation.tool === "commit_import_upload",
+        signal,
+      )
+    },
+    requestPrepared(actor: unknown, request: PreparedImportRequest, signal?: AbortSignal) {
+      return run(() => uploads.requestPrepared(actor, request, signal), true, signal)
     },
     cancel,
     dispose() {

@@ -3,6 +3,7 @@ import type { AssemblyMaterializedOccurrence } from "@vibeshape/application/asse
 type ReplicadGeometryEngine = import("@vibeshape/geometry-worker/engine").ReplicadGeometryEngine
 
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { denseBoxMesh } from "../../../tests/support/dense-box-fixture"
 import { vi } from "../../../tests/unit/support/bun-test"
 
 const materialization = (() => ({
@@ -30,6 +31,7 @@ const {
   featureIdSchema,
 } = await import("@vibeshape/domain")
 const { parseGeometryImport } = await import("@vibeshape/formats/import")
+const threeMfWriter = await import("@vibeshape/formats/three-mf-meshes")
 const { ReplicadGeometryEngine } = await import("@vibeshape/geometry-worker/engine")
 const { inspectAssemblyInputSchema, printPreparationSettingsSchema } = await import(
   "@vibeshape/protocol"
@@ -200,6 +202,60 @@ describe("assembly export policy over verified world occurrences", () => {
     const parsed = await parseGeometryImport({ format: "3mf", bytes: result.file })
     expect(parsed.ok).toBe(true)
   })
+  it("exports a real prepared 3MF above the former print vertex, normal and triangle limits", async () => {
+    const dense = denseBoxMesh({
+      subdivisions: 96,
+      min: [0, 0, 0],
+      max: [2, 3, 4],
+      faceLocal: true,
+    })
+    const source = occurrence(id(60), 0, true)
+    const mesh = {
+      positions: Float32Array.from(dense.vertices),
+      normals: new Float32Array(dense.vertices.length),
+      indices: Uint32Array.from(dense.indices),
+      triangleFaceIds: new Uint32Array(dense.indices.length / 3),
+    }
+    materialization.occurrences = [{ ...source, mesh, geometry: { ...source.geometry, mesh } }]
+    const result = await exportWith(new ReplicadGeometryEngine(), {
+      format: "3mf",
+      printPreparation: printPreparationSettingsSchema.parse({ rotationX: 0, supports: false }),
+    })
+    expect(result.printPreparation?.meshes[0]?.vertices.length).toBe(995_328)
+    expect(result.printPreparation?.normals[0]?.length).toBe(995_328)
+    expect(result.printPreparation?.report).toMatchObject({
+      bodyCount: 1,
+      finCount: 0,
+      bounds: [2, 3, 4],
+      warnings: [],
+    })
+    const parsed = await parseGeometryImport({ format: "3mf", bytes: result.file })
+    if (!parsed.ok || parsed.geometry.kind !== "triangle-mesh")
+      throw new Error("Expected a complete prepared 3MF.")
+    expect(parsed.geometry.meshes[0]?.triangles.length).toBe(110_592)
+    expect(mesh.positions[0]).toBe(0)
+    expect(mesh.positions.at(-1)).toBe(4)
+  }, 30_000)
+  it("admits a print copy above 64 MiB to the serializer without constructing a huge archive", async () => {
+    const source = occurrence(id(60), 0, true)
+    const positions = new Float32Array(16_777_218)
+    for (let vertex = 0; vertex < positions.length; vertex += 3) positions[vertex] = 1
+    positions.set([1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, 0])
+    const mesh = { ...source.mesh, positions, normals: positions }
+    materialization.occurrences = [{ ...source, mesh, geometry: { ...source.geometry, mesh } }]
+    const writer = vi.spyOn(threeMfWriter, "writeThreeMfMeshes").mockImplementation(() => {
+      throw new Error("large print serializer reached")
+    })
+    try {
+      await expect(exportWith(new ReplicadGeometryEngine(), { format: "3mf" })).rejects.toThrow(
+        "large print serializer reached",
+      )
+      expect(writer).toHaveBeenCalledTimes(1)
+      expect(writer.mock.calls[0]?.[0].meshes[0]?.vertices.length).toBe(16_777_218)
+    } finally {
+      writer.mockRestore()
+    }
+  })
   it("enforces the existing eight-body preparation budget without limiting plain 3MF", async () => {
     materialization.occurrences = Array.from({ length: 9 }, (_, index) =>
       occurrence(id(60 + index), index * 40),
@@ -234,11 +290,16 @@ describe("assembly export policy over verified world occurrences", () => {
     ).rejects.toThrow()
     expect(withMaterializedAssemblyRuntime).not.toHaveBeenCalled()
   })
-  it("rejects empty or oversized native files instead of returning partial export evidence", async () => {
+  it("rejects empty native files and preserves complete callback-owned files above 64 MiB", async () => {
     const engine = new ReplicadGeometryEngine()
     const step = vi.spyOn(engine, "exportAssemblyStep").mockResolvedValue(new Uint8Array())
-    await expect(exportWith(engine, { format: "step" })).rejects.toThrow(/invalid or oversized/)
-    step.mockResolvedValue(new Uint8Array(64 * 1024 * 1024 + 1))
-    await expect(exportWith(engine, { format: "step" })).rejects.toThrow(/invalid or oversized/)
+    await expect(exportWith(engine, { format: "step" })).rejects.toThrow(/invalid or empty/)
+    const bytes = new Uint8Array(64 * 1024 * 1024 + 1)
+    bytes[bytes.length - 1] = 31
+    step.mockResolvedValue(bytes)
+    const result = await exportWith(engine, { format: "step" })
+    expect(result.file).not.toBe(bytes)
+    expect(result.file.byteLength).toBe(67_108_865)
+    expect(result.file.at(-1)).toBe(31)
   })
 })

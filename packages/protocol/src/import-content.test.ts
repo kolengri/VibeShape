@@ -148,7 +148,7 @@ describe("transferable source asset materializations", () => {
     ).toBe(false)
   })
 
-  it("allows identical digest reuse and rejects conflicting bytes, repeated assets and byte budgets", () => {
+  it("allows identical digest reuse and rejects conflicting bytes, repeated assets and catalog overflow", () => {
     const input = fixture()
     const first = { asset: input.asset, bytes: input.bytes }
     const second = { ...first, asset: { ...first.asset, id: id(3), outputs: [id(4)] } }
@@ -165,17 +165,34 @@ describe("transferable source asset materializations", () => {
     expect(
       sourceAssetMaterializationsSchema.safeParse(Array.from({ length: 129 }, () => first)).success,
     ).toBe(false)
-    const bytes = new Uint8Array(32 * 1024 * 1024)
-    const large = { asset: { ...first.asset, byteLength: bytes.length }, bytes }
-    expect(
-      sourceAssetMaterializationsSchema.safeParse([
-        large,
-        { ...large, asset: { ...large.asset, id: id(5) } },
-        second,
-      ]).success,
-    ).toBe(false)
     expect(
       sourceAssetMaterializationSchema.safeParse({ ...first, bytes: new Uint8Array(4) }).success,
     ).toBe(false)
+  })
+  it("materializes sources above 32 MiB and aggregate bytes above 64 MiB", () => {
+    const bytes = new Uint8Array(32 * 1024 * 1024 + 1)
+    bytes[bytes.length - 1] = 17
+    const asset = {
+      ...fixture().asset,
+      format: "stl",
+      filename: "Result.stl",
+      representation: "triangle-mesh",
+      byteLength: bytes.length,
+    }
+    const values = sourceAssetMaterializationsSchema.parse([
+      { asset, bytes },
+      { asset: { ...asset, id: id(3), outputs: [id(4)] }, bytes },
+    ])
+    expect(values).toHaveLength(2)
+    for (const value of values) {
+      expect(value.bytes).not.toBe(bytes)
+      expect(value.bytes.length).toBe(33_554_433)
+      expect(value.bytes.at(-1)).toBe(17)
+    }
+    for (const byteLength of [Infinity, Number.MAX_SAFE_INTEGER + 1, -1, 1.5])
+      expect(
+        sourceAssetMaterializationSchema.safeParse({ asset: { ...asset, byteLength }, bytes })
+          .success,
+      ).toBe(false)
   })
 })

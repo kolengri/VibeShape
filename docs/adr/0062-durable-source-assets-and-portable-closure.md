@@ -2,6 +2,7 @@
 
 - Status: Accepted architecture; staged product integration
 - Date: 2026-10-03
+- Local geometry/resource admission policy partially superseded by [ADR-0134](0134-local-geometry-resource-policy.md)
 - Extends: [ADR-0004](0004-local-first-storage.md), [ADR-0035](0035-versioned-portable-history.md), [ADR-0054](0054-authored-parts-and-organizational-history-folders.md)
 
 ## Context

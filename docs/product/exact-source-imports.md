@@ -2,8 +2,11 @@
 
 Import opens a local STEP/BREP/STL/3MF workflow next to Export. Choose a source file, inspect it,
 and review the detached preview before Apply. The browser hashes the retained bytes with SHA-256
-and sends a bounded copy to the existing worker. No source URL or remote upload is used. The
-per-file limit is 32 MiB and 128 outputs; format readers enforce their geometry and transfer budgets.
+and sends the retained source to the existing worker. No source URL or remote upload is used.
+Local triangle-mesh sources have no fixed geometry-byte or vertex/triangle admission ceiling;
+128 inspected outputs and format-specific validity rules remain. Exact-source kernel policies and
+public MCP transfer budgets remain separate. See
+[ADR-0134](../adr/0134-local-geometry-resource-policy.md).
 
 The detached preview displays inspected geometry with camera navigation only. Its display keys never
 become topology references or authored body identities. Apply requires valid inspection and a rendered
@@ -31,7 +34,8 @@ operations, and STEP export.
 STL (`.stl`) has no declared units and requires an explicit source unit. The worker scales its
 coordinates to millimeters once. 3MF (`.3mf`) uses its declared source units and component transforms;
 the UI exposes no unit override. Degenerate triangles omitted by the reader appear as counted warnings.
-Empty, malformed, unsupported, and out-of-budget mesh sources fail before Apply.
+Empty, malformed and unsupported mesh sources fail before Apply; explicit caller parser budgets
+remain enforceable.
 
 Each captured mesh output gets a fresh UUID pinned to its source node key. Its Part uses
 `mesh.<output UUID>` and retains triangle-mesh representation through rebuild and native Save/Open.

@@ -5,7 +5,6 @@ import { commandActorSchema } from "@vibeshape/domain/commands"
 import { documentV4AssetsCommandSchema } from "@vibeshape/domain/document-v4-command-schemas"
 import { readImportedFeatureParameters } from "@vibeshape/domain/part-design-import"
 import { readMeshImportFeatureParameters } from "@vibeshape/domain/part-design-mesh-import"
-import { MAX_SOURCE_ASSET_BYTES } from "@vibeshape/domain/source-assets"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import {
   createImportTransaction,
@@ -102,7 +101,7 @@ describe("captured exact source authoring", () => {
     [sourceFile("source.obj"), "format"],
     [sourceFile("bad/name.step"), "filename"],
     [sourceFile("empty.step", new Uint8Array()), "budget"],
-    [{ ...sourceFile(), size: MAX_SOURCE_ASSET_BYTES + 1 }, "budget"],
+    [{ ...sourceFile(), size: Number.MAX_SAFE_INTEGER + 1 }, "budget"],
     [{ ...sourceFile(), size: 4 }, "budget"],
   ] as const)(
     "rejects unsupported or unsafe file metadata before inspection %j",
@@ -110,11 +109,11 @@ describe("captured exact source authoring", () => {
       await expect(readImportSource(file, "millimeter")).rejects.toMatchObject({ code })
     },
   )
-  it("does not read unsupported, oversized or unsafe filenames", async () => {
+  it("does not read unsupported formats, unsafe byte lengths or unsafe filenames", async () => {
     const read = vi.fn(async () => new ArrayBuffer(0))
     for (const file of [
       { name: "source.obj", size: 10 },
-      { name: "source.step", size: MAX_SOURCE_ASSET_BYTES + 1 },
+      { name: "source.step", size: Number.MAX_SAFE_INTEGER + 1 },
       { name: "../source.step", size: 10 },
     ])
       await expect(
@@ -197,6 +196,30 @@ describe("captured exact source authoring", () => {
 })
 
 describe("captured triangle-mesh source authoring", () => {
+  it("prepares and captures local mesh source bytes above 32 MiB", async () => {
+    const bytes = new Uint8Array(32 * 1024 * 1024 + 1)
+    bytes[bytes.length - 1] = 41
+    const prepared = await readImportSource(sourceFile("Candidate.stl", bytes), "millimeter")
+    if (prepared.representation !== "triangle-mesh") throw new Error("Expected a mesh source.")
+    expect(prepared.bytes.byteLength).toBe(33_554_433)
+    expect(prepared.input.bytes.at(-1)).toBe(41)
+    let ordinal = 100
+    const transaction = createImportTransaction(
+      context,
+      prepared,
+      meshInspection,
+      "Candidate",
+      () => id(ordinal++),
+    )
+    const command = transaction.commands.find(
+      ({ kind }) => kind === "org.vibeshape.document.add-source-assets",
+    )
+    if (command?.kind !== "org.vibeshape.document.add-source-assets")
+      throw new Error("Expected captured source assets.")
+    expect(command.payload.assets[0]?.byteLength).toBe(33_554_433)
+    expect(transaction.assetBlobs[0]?.bytes.at(-1)).toBe(41)
+  })
+
   it.each(importSourceUnits.map((unit) => ({ unit })))(
     "requires and maps explicit STL %s units",
     async ({ unit }) => {

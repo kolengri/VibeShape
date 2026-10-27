@@ -15,11 +15,6 @@ export const THREE_MF_CORE_NAMESPACE =
   "http://schemas.microsoft.com/3dmanufacturing/core/2015/02" as const
 
 const MAX_RESOURCE_ID = 2_147_483_647
-const MAX_OBJECTS = 10_000
-const MAX_VERTICES = 1_000_000
-const MAX_TRIANGLES = 2_000_000
-const MAX_COMPONENTS = 100_000
-const MAX_BUILD_ITEMS = 10_000
 const MAX_THUMBNAIL_BYTES = 20 * 1024 * 1024
 const GEOMETRY_EPSILON = 1e-12
 const ZIP_MTIME = new Date(1980, 0, 1, 0, 0, 0)
@@ -93,8 +88,8 @@ export const threeMfTransformSchema = z
 
 const meshBaseSchema = z
   .object({
-    vertices: z.array(vector3Schema).min(4).max(MAX_VERTICES),
-    triangles: z.array(triangleSchema).min(4).max(MAX_TRIANGLES),
+    vertices: z.array(vector3Schema).min(4),
+    triangles: z.array(triangleSchema).min(4),
   })
   .strict()
 
@@ -125,7 +120,7 @@ const componentsObjectSchema = z
     id: resourceIdSchema,
     name: xmlTextSchema.optional(),
     partNumber: xmlTextSchema.optional(),
-    components: z.array(componentSchema).min(1).max(MAX_COMPONENTS),
+    components: z.array(componentSchema).min(1),
   })
   .strict()
 
@@ -171,9 +166,8 @@ const threeMfDocumentBaseSchema = z
     metadata: metadataSchema.optional(),
     objects: z
       .array(z.discriminatedUnion("kind", [meshObjectSchema, componentsObjectSchema]))
-      .min(1)
-      .max(MAX_OBJECTS),
-    build: z.array(buildItemSchema).min(1).max(MAX_BUILD_ITEMS),
+      .min(1),
+    build: z.array(buildItemSchema).min(1),
     thumbnail: thumbnailSchema.optional(),
   })
   .strict()
@@ -424,11 +418,8 @@ function validateDisjointShells(bvh: MeshBVH, shellByTriangle: Uint32Array) {
   const cache = new Map<number, number>()
   const first = new ExtendedTriangle()
   const second = new ExtendedTriangle()
-  let work = 0
-  const budget = Math.min(32_000_000, Math.max(100_000, shellByTriangle.length * 128))
   const intersecting = bvh.bvhcast(bvh, new Matrix4(), {
     intersectsRanges: (offset1, count1, offset2, count2) => {
-      if (++work > budget) return true
       const shell1 = rangeShell(bvh, shellByTriangle, offset1, count1, cache)
       const shell2 = rangeShell(bvh, shellByTriangle, offset2, count2, cache)
       // Most candidate leaves belong to the same surface; skip their whole Cartesian product.
@@ -437,7 +428,6 @@ function validateDisjointShells(bvh: MeshBVH, shellByTriangle: Uint32Array) {
         const triangle1 = bvh.resolveTriangleIndex(index1)
         setBvhTriangle(bvh, triangle1, first)
         for (let index2 = offset2; index2 < offset2 + count2; index2++) {
-          if (++work > budget) return true
           const triangle2 = bvh.resolveTriangleIndex(index2)
           if (shellByTriangle[triangle1] === shellByTriangle[triangle2]) continue
           setBvhTriangle(bvh, triangle2, second)
@@ -447,7 +437,6 @@ function validateDisjointShells(bvh: MeshBVH, shellByTriangle: Uint32Array) {
       return false
     },
   })
-  if (work > budget) return "Model mesh shell validation exceeds the spatial-query work budget."
   if (intersecting) return "Model mesh shell surfaces must not touch or intersect."
   return undefined
 }
@@ -501,7 +490,6 @@ function shellContainmentDepth(
   shells: readonly MeshShell[],
   shellByTriangle: Uint32Array,
   shellIndex: number,
-  work: { hits: number; limit: number },
 ) {
   const firstTriangle = shells[shellIndex]?.triangleIndices[0] as number
   const indices = bvh.geometry.index as BufferAttribute
@@ -515,8 +503,6 @@ function shellContainmentDepth(
   point.multiplyScalar(1 / 3)
   for (const direction of CONTAINMENT_DIRECTIONS) {
     const hits = bvh.raycast(new Ray(point, direction), DoubleSide)
-    work.hits += hits.length
-    if (work.hits > work.limit) return undefined
     const closest = closestOtherShellHits(hits, shellByTriangle, shellIndex)
     const depth = containmentDepthFromHits(closest, shells, direction)
     if (depth !== undefined) return depth
@@ -531,14 +517,9 @@ function validateShellNesting(
 ) {
   const intersectionIssue = validateDisjointShells(bvh, shellByTriangle)
   if (intersectionIssue) return intersectionIssue
-  const work = {
-    hits: 0,
-    limit: Math.min(4_000_000, Math.max(100_000, shellByTriangle.length * 16)),
-  }
   for (const [shellIndex, shell] of shells.entries()) {
-    const depth = shellContainmentDepth(bvh, shells, shellByTriangle, shellIndex, work)
-    if (depth === undefined)
-      return "Model mesh shell containment is ambiguous or exceeds the spatial-query work budget."
+    const depth = shellContainmentDepth(bvh, shells, shellByTriangle, shellIndex)
+    if (depth === undefined) return "Model mesh shell containment is ambiguous."
     if (shell.volume > 0 !== (depth % 2 === 0))
       return `Model mesh component ${shellIndex} must face away from material: outward at even nesting depth and inward at odd depth.`
   }
@@ -641,23 +622,9 @@ function validatePartNumbers(document: ThreeMfDocumentValues, context: z.Refinem
   }
 }
 
-function validateTotalMeshSize(document: ThreeMfDocumentValues, context: z.RefinementCtx) {
-  const meshes = document.objects.filter((object) => object.kind === "mesh")
-  const vertexCount = meshes.reduce((sum, object) => sum + object.mesh.vertices.length, 0)
-  const triangleCount = meshes.reduce((sum, object) => sum + object.mesh.triangles.length, 0)
-  if (vertexCount > MAX_VERTICES || triangleCount > MAX_TRIANGLES) {
-    context.addIssue({
-      code: "custom",
-      message: "3MF document exceeds the initial mesh resource budget.",
-      path: ["objects"],
-    })
-  }
-}
-
 function validateDocument(document: ThreeMfDocumentValues, context: z.RefinementCtx) {
   validateResourceReferences(document, context)
   validatePartNumbers(document, context)
-  validateTotalMeshSize(document, context)
 }
 
 function escapeXml(value: string) {

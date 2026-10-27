@@ -187,19 +187,11 @@ export function optimizeStructuralModel(
     const finish = (operation: () => void) => {
       if (settled) return
       settled = true
-      clearTimeout(timeout)
       options.signal?.removeEventListener("abort", abort)
       worker.terminate()
       operation()
     }
     const abort = () => finish(() => reject(new DOMException("Analysis canceled.", "AbortError")))
-    const timeout = setTimeout(
-      () =>
-        finish(() =>
-          reject(new StructuralOptimizationError("timeout", "Analysis exceeded its time budget.")),
-        ),
-      180_000,
-    )
     options.signal?.addEventListener("abort", abort, { once: true })
     worker.onerror = () =>
       finish(() =>

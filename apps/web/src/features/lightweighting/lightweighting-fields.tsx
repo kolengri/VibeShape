@@ -298,7 +298,7 @@ export function LightweightingParameters({
           {numeric("safetyFactor", 1)}
           {numeric("maxDisplacementMm", 0)}
           {numeric("cellSizeMm", 0.01)}
-          {numeric("maxIterations", 0, 40, "1")}
+          {numeric("maxIterations", 0, undefined, "1")}
         </div>
         <p className="text-xs text-muted-foreground">{t("discretizationDescription")}</p>
       </fieldset>
@@ -389,7 +389,6 @@ export function LightweightingParameters({
           type="button"
           variant="outline"
           size="sm"
-          disabled={fields.loadCases.length >= 8}
           onClick={() => {
             const first = fields.loadCases[0]
             if (!first) return

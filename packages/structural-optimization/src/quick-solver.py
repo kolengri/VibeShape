@@ -1,4 +1,4 @@
-"""Bounded load-free TPMS nodal geometry; no stiffness or load-capacity prediction."""
+"""Load-free TPMS nodal geometry; no stiffness or load-capacity prediction."""
 
 import json
 import math
@@ -10,7 +10,6 @@ from scipy.spatial import cKDTree
 
 _QUICK_CONTEXT = None
 _QUICK_PROGRESS = None
-_MAX_RESOLUTION = 56
 _MAX_BATCH_PAIRS = 262144
 
 
@@ -25,7 +24,7 @@ def _ensure(condition, code, message):
         raise QuickError(code, message)
 
 
-def _finite(value, name, lower, upper):
+def _finite(value, name, lower=-math.inf, upper=math.inf):
     _ensure(isinstance(value, (int, float)) and not isinstance(value, bool)
             and math.isfinite(value) and lower <= value <= upper,
             "invalid-input", f"{name} is outside its supported range.")
@@ -140,16 +139,19 @@ def _prepare(request):
             and request["schemaVersion"] == 1, "invalid-input", "Quick lightweighting requires schema version 1 and its supported settings.")
     mode = request["mode"]
     _ensure(mode in ("preserve-exterior", "open-organic"), "invalid-input", "Unknown lightweighting mode.")
-    cell = _finite(request["cellSizeMm"], "cellSizeMm", 0.01, 1000)
+    cell = _finite(request["cellSizeMm"], "cellSizeMm")
+    _ensure(cell > 0, "invalid-input", "cellSizeMm must be positive.")
     cell_type = request.get("cellType", "gyroid")
     _ensure(cell_type in ("gyroid", "schwarz-p", "schwarz-d"), "invalid-input", "Unknown lattice cell type.")
     default_samples = 12 if cell_type == "schwarz-d" else 6
-    period = _finite(request.get("latticeCellSizeMm", cell * default_samples), "latticeCellSizeMm", 0.06, 12000)
+    period = _finite(request.get("latticeCellSizeMm", cell * default_samples), "latticeCellSizeMm")
+    _ensure(period > 0, "invalid-input", "latticeCellSizeMm must be positive.")
     period_samples = period / cell if "latticeCellSizeMm" in request else default_samples
-    _ensure(6 - 1e-8 <= period_samples <= 12 + 1e-8, "invalid-input",
-            "A lattice cell requires between six and twelve sampling cells.")
-    skin = _finite(request["skinThicknessMm"], "skinThicknessMm", 0, 1000)
-    _finite(request["removalPercent"], "removalPercent", 5, 80)
+    _ensure(period_samples >= 6 - 1e-8, "invalid-input",
+            "A lattice cell requires at least six sampling cells.")
+    skin = _finite(request["skinThicknessMm"], "skinThicknessMm", 0)
+    removal = _finite(request["removalPercent"], "removalPercent")
+    _ensure(0 < removal < 100, "invalid-input", "removalPercent must be greater than zero and less than 100.")
     _ensure(mode != "preserve-exterior" or skin >= 2 * cell, "invalid-input",
             "Preserving the exterior requires skin thickness of at least two detail cells.")
     mesh = request["mesh"]
@@ -164,9 +166,9 @@ def _prepare(request):
             "invalid-input", "Source indices must reference captured vertices.")
     origin = original.min(axis=0)
     normalized = (original - origin) / cell
+    _ensure(np.all(np.isfinite(normalized)), "invalid-input",
+            "The source cannot be represented at the requested detail scale.")
     resolution = int(math.ceil(float(normalized.max()))) + 7
-    _ensure(10 <= resolution <= _MAX_RESOLUTION, "resource-limit",
-            "The source requires 10 to 56 samples along its longest padded dimension. Adjust the detail cell size.")
     context = {"request": request, "origin": origin, "cell": cell, "resolution": resolution,
                "cellType": cell_type, "latticeCellSizeMm": period}
     source = trimesh.Trimesh(normalized, np.array(indices).reshape(-1, 3), process=False)
@@ -303,8 +305,8 @@ def _finish(candidate):
     serialized.merge_vertices(digits_vertex=10)
     _surface_components(serialized, "Serialized mesh")
     removed = 100 * (1 - result_volume / context["sourceVolume"])
-    _ensure(result_volume > 0 and 0.5 <= removed < 100, "no-removable-material",
-            "No meaningful positive-volume lightweighting result was found. Adjust removal, skin, or detail.")
+    _ensure(result_volume > 0 and 0 < removed < 100, "no-removable-material",
+            "No positive-volume lightweighting result was found. Adjust removal, skin, or detail.")
     warnings = ["Load-free TPMS nodal geometry: stiffness, strength, and suitability for any load are not evaluated.",
                 "The lattice cell size is independent of sampling detail. Features below the sampling size may be lost."]
     if mode == "preserve-exterior":

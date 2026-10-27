@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test"
+import { createHash } from "node:crypto"
 import {
+  applyDocumentV4Command,
   canonicalJson,
   documentRestoredV4EventSchema,
   reduceDocumentV4Event,
@@ -13,10 +15,32 @@ import {
 import { sourceAssetsFixture } from "../../../scripts/source-assets-fixture"
 import { readAuthoredVShape, readVShapeV3, readVShapeV5, writeVShapeV5 } from "./vshape"
 
-async function input() {
+async function input(bytes?: Uint8Array<ArrayBuffer>) {
   const f = await sourceAssetsFixture()
+  const blob = bytes ? { bytes, digest: createHash("sha256").update(bytes).digest("hex") } : f.blob
+  const added = bytes
+    ? evidenceValue(
+        applyDocumentV4Command(f.upgraded.snapshot, {
+          ...authorityEnvelope(5),
+          schemaVersion: 4,
+          kind: "org.vibeshape.document.add-source-assets",
+          payload: {
+            assets: [
+              {
+                ...f.asset,
+                format: "stl",
+                filename: "Candidate.stl",
+                representation: "triangle-mesh",
+                digest: blob.digest,
+                byteLength: blob.bytes.byteLength,
+              },
+            ],
+          },
+        }),
+      )
+    : f.added
   return {
-    snapshot: f.added.snapshot,
+    snapshot: added.snapshot,
     seed: null,
     legacyEvents: [],
     versionedEvents: [
@@ -25,9 +49,9 @@ async function input() {
       f.authored.upgraded.event,
       f.textureUpgraded.event,
       f.upgraded.event,
-      f.added.event,
+      added.event,
     ],
-    assetBlobs: [f.blob],
+    assetBlobs: [blob],
     historyMode: "complete",
     promotionRevision: 0,
     upgradeRevision: 3,
@@ -50,6 +74,17 @@ describe("portable source asset closure", () => {
     expect(evidenceValue(await readAuthoredVShape(archive)).value.version).toBe(5)
     expect((await readVShapeV3(archive)).ok).toBe(false)
   })
+
+  it("round trips source bytes above the former archive, entry and expansion budgets", async () => {
+    const source = await input(new Uint8Array(64 * 1024 * 1024 + 1))
+    const archive = evidenceValue(await writeVShapeV5(source)).value
+    expect(archive.byteLength).toBeGreaterThan(64 * 1024 * 1024)
+    const reopened = evidenceValue(await readVShapeV5(archive)).value
+    expect(reopened.snapshot).toEqual(source.snapshot)
+    expect(reopened.assetBlobs[0]?.digest).toBe(source.assetBlobs[0]?.digest)
+    expect(reopened.assetBlobs[0]?.bytes.byteLength).toBe(67_108_865)
+    expect(reopened.assetBlobs[0]?.bytes.at(-1)).toBe(0)
+  }, 30_000)
 
   it("includes cancelled imports required by Redo even when the current snapshot is empty", async () => {
     const source = await input()

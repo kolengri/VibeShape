@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-27
+- Local geometry/resource admission policy partially superseded by [ADR-0134](0134-local-geometry-resource-policy.md)
 - Partially supersedes the mesh-count resource policy of [ADR-0101](0101-browser-structural-lightweighting.md) and [ADR-0102](0102-lightweighting-task-workflows.md)
 
 ## Decision

@@ -176,9 +176,12 @@ def verify_invalid_obstacle_boxes(solver):
                [{"min": [float("nan"), 0, 0], "max": [1, 1, 1]}],
                [{"min": [0, 0, 0], "max": [float("inf"), 1, 1]}],
                [{"min": [True, 0, 0], "max": [2, 1, 1]}],
-               [{"min": [0, 0, 0], "max": [1, 1, 1], "kind": "box"}],
-               [{"min": [0, 0, 0], "max": [1, 1, 1]}] * 17]
+               [{"min": [0, 0, 0], "max": [1, 1, 1], "kind": "box"}]]
     for boxes in invalid:
         request = obstacle_bar()
         request["obstacleRegions"] = boxes
         expect_code(solver, request, "invalid-input")
+
+    many = obstacle_bar()
+    many["obstacleRegions"] = [{"min": [0, 0, 0], "max": [1, 1, 1]}] * 17
+    assert solver.solve(many)["initialCellCount"] > 0

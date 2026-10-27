@@ -30,7 +30,7 @@ export async function generateValidatedQuickLightweighting(
       // three searches can repeat the same disconnected maximum-removal mesh.
       const base =
         input.mode === "preserve-exterior"
-          ? Math.min(input.removalPercent, Math.max(0.5, actualRemoval))
+          ? Math.min(input.removalPercent, actualRemoval)
           : input.removalPercent
       targets.push(base * (65 / 80), base * (50 / 80))
     }
