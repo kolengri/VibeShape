@@ -24,7 +24,9 @@ mock.module("@vibeshape/structural-optimization/client", () => ({
   optimizeStructuralModel: ports.optimize,
   StructuralOptimizationError,
 }))
+const structuralMeshModule = { ...(await import("@vibeshape/structural-optimization/mesh")) }
 mock.module("@vibeshape/structural-optimization/mesh", () => ({
+  ...structuralMeshModule,
   encodeStructuralStl: ports.encode,
 }))
 mock.module("../../document/document-controller", () => ({
