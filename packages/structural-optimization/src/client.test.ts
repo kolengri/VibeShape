@@ -523,16 +523,23 @@ describe("bounded structural worker client", () => {
       expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
     },
   )
-  it("preserves solver failure codes without publishing a result", async () => {
+  it.each([
+    { code: "infeasible-baseline", message: "Baseline exceeds limits." },
+    {
+      code: "runtime-unavailable",
+      message: "The numerical runtime failed during module loading: Failed to fetch pyodide.mjs",
+    },
+  ])("preserves worker failure codes and causes without publishing a result: %s", async (error) => {
     const pending = optimizeStructuralModel(input, options)
     FakeWorker.instance.emit({
       type: "complete",
       response: {
         ok: false,
-        error: { code: "infeasible-baseline", message: "Baseline exceeds limits." },
+        error,
       },
     })
-    await expect(pending).rejects.toMatchObject({ code: "infeasible-baseline" })
+    await expect(pending).rejects.toMatchObject(error)
+    expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
   })
   it("releases the worker if a progress consumer throws", async () => {
     const pending = optimizeStructuralModel(input, {

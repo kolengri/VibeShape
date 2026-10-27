@@ -37,6 +37,10 @@ Live schemas remain authoritative. Source and result meshes have no fixed vertex
 count cutoff in computation. Shared STL export and untrusted import budgets still apply before
 publication. Invalid inputs include bounded validation paths and causes; inspect those before
 changing settings or retrying. The independent sampling grid remains limited to 56³ points.
+`runtime-unavailable` also includes the failed stage and a bounded original cause. For module or
+package loading failures, check the installed build's same-origin runtime assets and HTTP responses;
+removal, skin or lattice settings cannot repair a missing runtime module. Full traceback frames
+and captured inputs are not returned.
 The browser-owned Web Worker uses
 local WebAssembly and adaptive batches to bound intermediate memory. Quick generation has no
 fixed elapsed-time or cumulative-query cutoff, including local and remote MCP operation handling.
