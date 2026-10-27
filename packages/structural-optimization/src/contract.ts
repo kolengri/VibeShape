@@ -7,8 +7,8 @@ import { z } from "zod"
 const coordinate = z.number().finite().min(-100_000).max(100_000)
 export const structuralMeshSchema = z
   .object({
-    vertices: z.array(coordinate).min(12).max(60_000),
-    indices: z.array(z.number().int().nonnegative()).min(12).max(200_000),
+    vertices: z.array(coordinate).min(12),
+    indices: z.array(z.number().int().nonnegative()).min(12),
   })
   .strict()
   .refine(
@@ -21,10 +21,7 @@ export const structuralMeshSchema = z
 export const structuralOptimizationInputSchema = structuralOptimizationSettingsSchema
   .safeExtend({
     schemaVersion: z.literal(1),
-    mesh: structuralMeshSchema.refine(
-      ({ vertices, indices }) => vertices.length <= 30_000 && indices.length <= 60_000,
-      "The source mesh exceeds the 10,000-vertex or 20,000-triangle analysis budget.",
-    ),
+    mesh: structuralMeshSchema,
   })
   .superRefine((input, context) => {
     const regions = [

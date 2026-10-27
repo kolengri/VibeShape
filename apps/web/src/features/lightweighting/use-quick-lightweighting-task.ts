@@ -37,7 +37,7 @@ type Copy = {
   saveFailed: string
   stale: string
   label: (name: string) => string
-  error: (code: string) => string
+  error: (code: string, detail: string) => string
 }
 
 function samplingSize(source: LightweightingSource, detail: number) {
@@ -57,7 +57,9 @@ function samplingSize(source: LightweightingSource, detail: number) {
 }
 
 function quickFailure(error: unknown, copy: Copy) {
-  return error instanceof QuickLightweightingError ? copy.error(error.code) : copy.failed
+  return error instanceof QuickLightweightingError
+    ? copy.error(error.code, error.message)
+    : copy.failed
 }
 
 function quickGenerationInput(source: LightweightingSource | null, settings: Settings) {

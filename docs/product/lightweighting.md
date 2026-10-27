@@ -15,10 +15,12 @@ remain unselected. A later viewport selection does not replace the source being 
 
 Choose one available, valid exact single-solid Part, or keep the valid selected Part prefilled on opening. Analysis uses its pristine display
 tessellation, excluding surface textures. Capture removes unreferenced vertices and welds only
-exactly equal XYZ coordinates within a bounded raw source mesh. This preserves every triangle's
+exactly equal XYZ coordinates. This preserves every triangle's
 coordinates, order and winding, including selected surface regions; it does not simplify geometry
-or raise the 10,000-vertex analysis budget. Raw capture is bounded to 20,000 vertices and 20,000
-triangles. Invalid or genuinely oversized inputs retain explicit validation diagnostics.
+or approximate the surface. The computation schemas and solvers impose no fixed vertex or triangle
+count cutoff. Finite coordinates, complete triangles and valid indices remain required; surface selections
+are checked against the actual captured triangle count. Invalid inputs retain bounded validation
+paths and messages. Dense tessellations still increase memory and proximity-query work.
 Enter Young's modulus and yield strength in MPa, density
 in kg/m3, Poisson ratio, required safety factor, maximum displacement in mm, cell size in mm, and
 total forces in N. Choose **Custom material** or an editable named material example. The application
@@ -137,7 +139,7 @@ provenance. The pinned inputs total 31,471,575 bytes; they load only when analys
 geometry is processed in the browser and is not uploaded. Preparation requires upstream access
 only when the verified local artifact cache is absent.
 
-Bounds are 10,000 source vertices, 20,000 source triangles, 12,000 grid cells, 3,000 occupied cells,
+Numerical bounds are 12,000 grid cells, 3,000 occupied cells,
 5,000 nodes, eight supports, eight cases, sixteen preservation regions, forty removal iterations,
 and a 180-second client computation deadline. Cancel terminates the worker. Poisson ratio is
 limited to 0 through 0.45. Resource-limit failures require a coarser grid or smaller analysis domain.
@@ -254,14 +256,20 @@ failure, comparison evidence, and the distinction from slicer simulation.
 
 ### Quick runtime and exchange bounds
 
-Quick generation accepts 10,000 source vertices and 20,000 source triangles, at most 56³ samples,
-and 120,000 generated triangles. The complete result is bounded
-by 80,000 vertices and 140,000 triangles. At most three connectivity candidates reuse the same
+Quick computation has no fixed source or result vertex/triangle count cutoff. It samples at most
+56³ points and sizes marching-cubes buffers from that grid's maximum possible triangle count,
+without truncating dense output. At most three connectivity candidates reuse the same
 source distance grid. Generation runs in a dedicated Web Worker through the local Pyodide
 WebAssembly runtime, without a fixed elapsed-time or cumulative proximity-query cutoff.
-Distance and containment work uses adaptive batches of at most 128 points, with at most 262,144
-worst-case triangle/ray pairs per batch. Larger surfaces use smaller batches to bound intermediate
-memory. Sampling and validation show current-pass progress; validation can restart for another
+The ordinary STL export and untrusted mesh-import boundaries retain their separate exchange
+budgets; removing computation cutoffs does not enlarge those format policies. See
+[ADR-0065](../adr/0065-bounded-exchange-geometry-import.md). A generated candidate still needs
+successful serialization, import inspection and source-bound publication before it can be applied.
+Distance and containment work uses adaptive batches of at most 128 points, targeting 262,144
+worst-case triangle/ray pairs per batch. Batches retain at least one query point, so very dense
+sources exceed that target and intermediate memory still scales with source density.
+Invalid Quick inputs include the validation cause in MCP errors and the editor task panel.
+Sampling and validation show current-pass progress; validation can restart for another
 pass or connectivity candidate. **Cancel generation**, closing the panel, or changing inputs
 terminates the worker. Local and remote MCP impose no Quick operation deadline; cancellation,
 revocation, source identity, pairing lifetime and the five-minute import/review lease still apply.

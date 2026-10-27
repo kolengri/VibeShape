@@ -87,6 +87,29 @@ def test_uniform_axial_elasticity_matches_analytical_solution(cell_size):
     assert output_mesh(result).volume == pytest.approx(40)
 
 
+def test_dense_source_simp_preserves_the_fixed_resolution_analytical_problem():
+    mesh = trimesh.creation.box(extents=[10, 2, 2])
+    for _ in range(6):
+        mesh = mesh.subdivide()
+    assert len(mesh.vertices) == 24578
+    assert len(mesh.faces) == 49152
+    request = request_for_box(1)
+    request["mesh"] = {"vertices": mesh.vertices.ravel().tolist(), "indices": mesh.faces.ravel().tolist()}
+    request["algorithm"] = {"kind": "simp", "volumeFraction": 0.8, "filterRadiusMm": 1.5, "penalty": 3}
+    result = solver.solve(request)
+    assert result["initialCellCount"] == 40
+    assert result["sourceVolumeMm3"] == pytest.approx(40)
+    assert result["baseline"]["maxVonMisesMpa"] == pytest.approx(2.5, rel=1e-9)
+    assert result["baseline"]["maxDisplacementMm"] == pytest.approx(0.025, rel=1e-9)
+    assert result["algorithm"]["densityIterations"] == 1
+    assert output_mesh(result).volume == pytest.approx(result["optimized"]["volumeMm3"])
+    region = solver._region({"kind": "surface", "triangleIndices": list(range(49152)), "depthMm": 1}, 49152)
+    assert len(region["triangles"]) == 49152
+    with pytest.raises(solver.SolverError) as error:
+        solver._region({"kind": "surface", "triangleIndices": [49152], "depthMm": 1}, 49152)
+    assert error.value.code == "invalid-input"
+
+
 def test_feasible_removal_retains_frozen_boundaries_and_emits_analyzed_solid():
     result = solver.solve(request_for_box(4))
     assert result["status"] == "improved"

@@ -239,7 +239,7 @@ describe("structural objectives", () => {
 describe("structural regions", () => {
   it("preserves strict legacy boxes and accepts captured surface triangles", () => {
     const box = { min: [-2, 0, 1], max: [2, 0, 3] }
-    const surface = { kind: "surface", triangleIndices: [0, 19_999], depthMm: 0.5 }
+    const surface = { kind: "surface", triangleIndices: [0, 20_000, 80_000], depthMm: 0.5 }
     expect(structuralRegionSchema.parse(box)).toEqual<unknown>(box)
     expect(structuralRegionSchema.parse(surface)).toEqual<unknown>(surface)
   })
@@ -249,7 +249,7 @@ describe("structural regions", () => {
     { kind: "surface", triangleIndices: [1, 1], depthMm: 1 },
     { kind: "surface", triangleIndices: [-1], depthMm: 1 },
     { kind: "surface", triangleIndices: [0.5], depthMm: 1 },
-    { kind: "surface", triangleIndices: [20_000], depthMm: 1 },
+    { kind: "surface", triangleIndices: [Number.POSITIVE_INFINITY], depthMm: 1 },
     { kind: "surface", triangleIndices: [0], depthMm: 0 },
     { kind: "surface", triangleIndices: [0], depthMm: Number.POSITIVE_INFINITY },
     { kind: "surface", triangleIndices: [0], depthMm: Number.NaN },
@@ -257,12 +257,12 @@ describe("structural regions", () => {
     { kind: "surface", triangleIndices: [0], depthMm: 1, min: [0, 0, 0] },
     { min: [0, 0, 0], max: [-1, 0, 0] },
     { min: [0, 0, 0], max: [1, 1, 1], kind: "box" },
-  ])("rejects malformed, ambiguous, or unbounded region %j", (region) => {
+  ])("rejects malformed or ambiguous region %j", (region) => {
     expect(structuralRegionSchema.safeParse(region).success).toBe(false)
   })
 
-  it("enforces the captured source triangle budget", () => {
-    const triangleIndices = Array.from({ length: 20_000 }, (_, index) => index)
+  it("accepts large unique captured selections while retaining duplicate rejection", () => {
+    const triangleIndices = Array.from({ length: 20_001 }, (_, index) => index)
     expect(
       structuralSurfaceRegionSchema.safeParse({ kind: "surface", triangleIndices, depthMm: 1 })
         .success,

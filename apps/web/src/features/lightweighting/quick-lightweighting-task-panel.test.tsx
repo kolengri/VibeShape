@@ -29,8 +29,11 @@ mock.module("@vibeshape/structural-optimization/quick-client", () => ({
   generateQuickLightweighting: ports.generate,
   encodeQuickLightweightingStl: ports.encode,
   QuickLightweightingError: class extends Error {
-    constructor(readonly code: string) {
-      super(code)
+    constructor(
+      readonly code: string,
+      message = code,
+    ) {
+      super(message)
     }
   },
 }))
@@ -337,6 +340,19 @@ describe("quick lightweighting task panel", () => {
     setup()
     await advance(650)
     expect(screen.getByText(messages.app.quickLightweighting.resourceLimit)).toBeTruthy()
+    expect(applyButton().disabled).toBe(true)
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Regenerate preview" }).disabled,
+    ).toBe(false)
+  })
+
+  it("shows the invalid input cause and keeps regeneration available", async () => {
+    const detail =
+      "Lightweighting settings are invalid. input: A preserved exterior requires a skin at least two sampling cells thick."
+    ports.generate.mockRejectedValueOnce(new QuickLightweightingError("invalid-input", detail))
+    setup()
+    await advance(650)
+    expect(screen.getByText(`Cannot generate lightweighting: ${detail}`)).toBeTruthy()
     expect(applyButton().disabled).toBe(true)
     expect(
       screen.getByRole<HTMLButtonElement>("button", { name: "Regenerate preview" }).disabled,

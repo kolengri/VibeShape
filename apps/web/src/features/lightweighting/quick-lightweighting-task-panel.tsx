@@ -126,16 +126,18 @@ export function QuickLightweightingTaskPanel({
       saveFailed: t("saveFailed"),
       stale: t("stale"),
       label: (name: string) => t("featureLabel", { name }),
-      error: (code: string) =>
-        t(
-          code === "resource-limit"
-            ? "resourceLimit"
-            : code === "disconnected-mesh"
-              ? "disconnected"
-              : code === "no-removable-material"
-                ? "noRemovable"
-                : "failed",
-        ),
+      error: (code: string, detail: string) =>
+        code === "invalid-input"
+          ? t("invalidInput", { detail })
+          : t(
+              code === "resource-limit"
+                ? "resourceLimit"
+                : code === "disconnected-mesh"
+                  ? "disconnected"
+                  : code === "no-removable-material"
+                    ? "noRemovable"
+                    : "failed",
+            ),
     }),
     [t],
   )

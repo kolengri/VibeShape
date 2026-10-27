@@ -3688,6 +3688,7 @@
       "cellSizeDescription": "Adjust the repeating lattice independently of sampling detail. Cell size is kept within 6–12 sampling spacings; changing detail may clamp it to this range.",
       "length": "{value, number} mm",
       "schwarzDSampling": "Schwarz D starts at 12 sampling spacings per cell to resolve its finer pattern. Smaller cells may produce disconnected material; increase cell size or detail if generation fails.",
+      "invalidInput": "Cannot generate lightweighting: {detail}",
       "resourceLimit": "The source and sampling settings exceed the local geometry budget. Reduce sampling detail and regenerate.",
       "samplingProgress": "Sampling the source surface: {completed, number} / {total, number}",
       "validationProgress": "Checking mesh surface samples: {completed, number} / {total, number}",

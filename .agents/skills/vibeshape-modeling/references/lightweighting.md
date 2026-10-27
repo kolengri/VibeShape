@@ -10,11 +10,13 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
 
 ## Capture the source and physical inputs
 
-Source capture removes unreferenced vertices and welds exactly equal XYZ coordinates before the
-10,000-vertex analysis limit. It preserves triangle positions, order, winding, surface-selection indices and
-the source body/hash/revision; it does not approximate the surface or raise solver limits. Capture
-work remains bounded to 20,000 raw vertices and 20,000 triangles. A genuinely oversized, invalid or
-non-finite source still fails explicitly. Input diagnostics include bounded validation paths and
+Structural source capture removes unreferenced vertices and welds exactly equal XYZ coordinates.
+It preserves triangle positions, order, winding, surface-selection indices and the source
+body/hash/revision without approximating the surface. Structural and Quick source/result meshes
+have no fixed vertex or triangle count cutoff in computation. Ordinary format export/import budgets
+still apply before publication. Quick preserved-exterior output retains the original
+captured vertices and triangles. Invalid or non-finite sources still fail explicitly; selected triangle
+indices must exist in the actual captured source. Input diagnostics include bounded validation paths and
 messages; inspect that cause before changing a study or retrying. Passing input validation alone
 does not establish a solved or feasible study.
 
@@ -44,8 +46,8 @@ does not establish a solved or feasible study.
    current bounds and mesh resolution; they do not follow later source edits.
 5. Supply `safetyFactor` (at least 1), `maxDisplacementMm`, `cellSizeMm`, `preserveRegions` (possibly
    empty), and `maxIterations` (0–40). Poisson ratio is limited to 0–0.45. Schema bounds remain
-   authoritative. Analysis is limited to 20,000 source triangles, 10,000 source vertices,
-   3,000 FEM cells, 5,000 nodes and 8 load cases.
+   authoritative. Analysis is limited to 3,000 FEM cells, 5,000 nodes and 8 load cases;
+   these numerical-resolution limits are independent of source tessellation density.
 
    Optional `obstacleRegions` accepts up to sixteen positive-size world-mm `{min,max}` boxes.
    Any closed FEM-cell box intersecting a keep-out box is excluded before baseline analysis,

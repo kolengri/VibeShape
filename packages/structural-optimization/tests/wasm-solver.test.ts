@@ -14,6 +14,7 @@ import {
 } from "../src/contract"
 import { generateStructuralDesigns } from "../src/generative-design"
 import { encodeStructuralStl } from "../src/mesh"
+import { denseBoxMesh } from "./dense-box-fixture"
 
 const timeout = 120_000
 const root = fileURLToPath(new URL("../../../", import.meta.url))
@@ -174,6 +175,57 @@ beforeAll(async () => {
 }, timeout)
 
 describe("pinned Pyodide full-solid structural solver", () => {
+  it(
+    "accepts dense captured surfaces for SIMP without changing the analytical FEM problem",
+    async () => {
+      const input = structuralOptimizationInputSchema.parse({
+        ...axialBar(1),
+        mesh: denseBoxMesh(),
+        algorithm: { kind: "simp", volumeFraction: 0.8, filterRadiusMm: 1.5, penalty: 3 },
+      })
+      expect(input.mesh.vertices.length / 3).toBe(11_094)
+      expect(input.mesh.indices.length / 3).toBe(21_168)
+      const response = await run(input)
+      if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
+      expect(response.result.initialCellCount).toBe(40)
+      expect(response.result.baseline.maxVonMisesMpa).toBeCloseTo(2.5, 8)
+      expect(response.result.baseline.maxDisplacementMm).toBeCloseTo(0.025, 8)
+      expect(response.result.algorithm).toMatchObject({
+        kind: "simp",
+        settings: input.algorithm,
+        densityIterations: 1,
+      })
+      expect(signedSurfaceVolume(response.result.mesh)).toBeCloseTo(
+        response.result.optimized.volumeMm3,
+        8,
+      )
+    },
+    timeout,
+  )
+
+  it(
+    "validates large captured surface selections against the actual Python source triangle count",
+    async () => {
+      const mesh = denseBoxMesh()
+      runtime.globals.set("_dense_source_json", JSON.stringify(mesh))
+      const raw = await runtime.runPythonAsync(`
+_dense_source, _, _ = _source({"mesh": json.loads(_dense_source_json)}, 1, time.monotonic() + 180)
+_dense_region = _region({"kind": "surface", "triangleIndices": list(range(21168)), "depthMm": 1}, len(_dense_source.faces))
+try:
+    _region({"kind": "surface", "triangleIndices": [21168], "depthMm": 1}, len(_dense_source.faces))
+    _dense_rejected = False
+except SolverError as error:
+    _dense_rejected = error.code == "invalid-input"
+json.dumps({"selectionCount": len(_dense_region["triangles"]), "outOfSourceRejected": _dense_rejected})
+`)
+      expect(JSON.parse(String(raw))).toEqual({
+        selectionCount: 21_168,
+        outOfSourceRejected: true,
+      })
+    },
+    timeout,
+  )
+
   it(
     "executes penalized SIMP FEM, independent sensitivities, filtering, projection and protected target failure",
     async () => {

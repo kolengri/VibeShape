@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-07
+- Mesh-count resource policy superseded by [ADR-0133](0133-lightweighting-mesh-density.md)
 - Supersedes interaction and preserved-surface scope in [ADR-0101](0101-browser-structural-lightweighting.md)
 - Related: [ADR-0013](0013-microkernel-modules-and-mcp-automation.md), [ADR-0006](0006-3mf-primary-print-export.md)
 

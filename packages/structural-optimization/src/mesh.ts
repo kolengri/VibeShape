@@ -5,12 +5,7 @@ import { StructuralOptimizationError } from "./errors"
 
 /** Removes display seams without changing captured triangle positions, order, or winding. */
 export function compactStructuralSourceMesh(input: StructuralMesh): StructuralMesh {
-  if (
-    input.vertices.length > 60_000 ||
-    input.indices.length > 60_000 ||
-    !structuralMeshSchema.safeParse(input).success
-  )
-    return input
+  if (!structuralMeshSchema.safeParse(input).success) return input
   const vertices: number[] = []
   const indices: number[] = []
   const compactedBySource = new Map<number, number>()

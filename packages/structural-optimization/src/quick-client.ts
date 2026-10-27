@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { invalidInputMessage } from "./input-diagnostics"
 import {
   type QuickLightweightingInput,
   type QuickLightweightingProgress,
@@ -68,7 +69,10 @@ export function generateQuickLightweighting(
   const parsed = quickLightweightingInputSchema.safeParse(input)
   if (!parsed.success)
     return Promise.reject(
-      new QuickLightweightingError("invalid-input", "Lightweighting settings are invalid."),
+      new QuickLightweightingError(
+        "invalid-input",
+        invalidInputMessage("Lightweighting settings are invalid.", parsed.error),
+      ),
     )
   if (options.signal?.aborted)
     return Promise.reject(new DOMException("Lightweighting canceled.", "AbortError"))

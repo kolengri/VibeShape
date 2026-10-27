@@ -21,7 +21,7 @@ import {
   localToolOutputs,
 } from "./local-tools"
 import { remoteOperationSchema } from "./remote-session"
-import { localToolAnnotations } from "./tool-metadata"
+import { localToolAnnotations, localToolDescriptions } from "./tool-metadata"
 
 function algorithmEvidence(kind: "simp" | "adaptive-lattice"): StructuralAlgorithmSummary {
   return kind === "simp"
@@ -91,6 +91,13 @@ function algorithmResponse(
 }
 
 describe("bounded paired-browser lightweighting contracts", () => {
+  it("advertises tessellation-independent computation with separate numerical bounds", () => {
+    const description = localToolDescriptions.analyze_lightweighting
+    expect(description).toContain("no fixed vertex or triangle count cutoff for computation")
+    expect(description).toContain("actual captured triangles")
+    expect(description).toContain("3,000 cells, 5,000 nodes, 8 load cases and 40 iterations")
+  })
+
   it.each(["simp", "adaptive-lattice"] as const)(
     "binds %s projection evidence to its budget and total FEM evaluations",
     (kind) => {

@@ -12,9 +12,8 @@ export const structuralSurfaceRegionSchema = z
   .object({
     kind: z.literal("surface"),
     triangleIndices: z
-      .array(z.number().int().min(0).max(19_999))
+      .array(z.number().int().nonnegative())
       .min(1)
-      .max(20_000)
       .refine((indices) => new Set(indices).size === indices.length, {
         message: "Surface triangle indices must be unique.",
       }),

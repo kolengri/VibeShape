@@ -175,11 +175,50 @@ describe("disposable quick lightweighting worker client", () => {
   })
 
   it("rejects invalid source indices before starting a worker", async () => {
+    const worker = vi.fn()
+    vi.stubGlobal("Worker", worker)
     await expect(
       generateQuickLightweighting(
         { ...input, mesh: { vertices, indices: [90, ...indices.slice(1)] } },
         options,
       ),
-    ).rejects.toMatchObject({ code: "invalid-input" })
+    ).rejects.toMatchObject({
+      code: "invalid-input",
+      message: expect.stringContaining("mesh:"),
+    })
+    expect(worker).not.toHaveBeenCalled()
+  })
+
+  it("explains invalid skin and period settings before creating a worker", async () => {
+    const worker = vi.fn()
+    vi.stubGlobal("Worker", worker)
+    const error = await generateQuickLightweighting(
+      { ...input, skinThicknessMm: 1, latticeCellSizeMm: 3 },
+      options,
+    ).catch((error: unknown) => error)
+    expect(error).toBeInstanceOf(Error)
+    if (!(error instanceof Error)) throw new Error("Expected a validation diagnostic.")
+    expect(error.message).toContain("Lightweighting settings are invalid. input:")
+    expect(error.message).toContain("skin")
+    expect(worker).not.toHaveBeenCalled()
+  })
+
+  it("bounds validation diagnostics forwarded through automation", async () => {
+    const malformed = {
+      ...input,
+      mode: "x".repeat(1_000),
+      removalPercent: -1,
+      cellSizeMm: -1,
+      skinThicknessMm: -1,
+    } as unknown as QuickLightweightingInput
+    const error = await generateQuickLightweighting(malformed, options).catch(
+      (error: unknown) => error,
+    )
+    expect(error).toBeInstanceOf(Error)
+    if (!(error instanceof Error)) throw new Error("Expected a validation diagnostic.")
+    expect(error.message).toContain("mode:")
+    expect(error.message).toContain("cellSizeMm:")
+    expect(error.message.length).toBeLessThanOrEqual(512)
+    expect(error.message).not.toContain("skinThicknessMm:")
   })
 })

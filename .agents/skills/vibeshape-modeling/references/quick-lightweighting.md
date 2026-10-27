@@ -33,8 +33,11 @@ Supply the complete `settings`:
 - `skinThicknessMm`: 0–1,000 mm; preserve-exterior requires at least two sampling cells.
   Open-organic ignores skin thickness; use zero.
 
-Live schemas remain authoritative. Source input is bounded to 10,000 vertices and 20,000 triangles;
-output is bounded to 80,000 vertices and 140,000 triangles. The browser-owned Web Worker uses
+Live schemas remain authoritative. Source and result meshes have no fixed vertex or triangle
+count cutoff in computation. Shared STL export and untrusted import budgets still apply before
+publication. Invalid inputs include bounded validation paths and causes; inspect those before
+changing settings or retrying. The independent sampling grid remains limited to 56³ points.
+The browser-owned Web Worker uses
 local WebAssembly and adaptive batches to bound intermediate memory. Quick generation has no
 fixed elapsed-time or cumulative-query cutoff, including local and remote MCP operation handling.
 Keep the request pending; cancellation, pairing revocation and source changes still invalidate it.

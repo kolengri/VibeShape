@@ -7,6 +7,7 @@ import {
   quickLightweightingInputSchema,
 } from "../src/quick-contract"
 import { encodeQuickLightweightingStl } from "../src/quick-mesh"
+import { denseBoxMesh } from "./dense-box-fixture"
 import { createQuickWasmHarness, input, root, timeout, volume } from "./quick-wasm-helpers"
 
 const wasm = createQuickWasmHarness()
@@ -40,6 +41,42 @@ afterAll(() => {
 })
 
 describe("load-free TPMS nodal geometry in the pinned WASM runtime", () => {
+  it.each(["preserve-exterior", "open-organic"] as const)(
+    "accepts dense captured surfaces in %s without changing sampling resolution",
+    async (mode) => {
+      const request = quickLightweightingInputSchema.parse({
+        ...input(mode),
+        mesh: denseBoxMesh({
+          subdivisions: 50,
+          min: [0, 0, 0],
+          max: [10, 10, 10],
+          faceLocal: true,
+        }),
+        removalPercent: 20,
+        cellSizeMm: 1,
+        skinThicknessMm: mode === "preserve-exterior" ? 2 : 0,
+      })
+      expect(request.mesh.vertices.length / 3).toBe(90_000)
+      expect(request.mesh.indices.length / 3).toBe(30_000)
+      const response = await run(request)
+      if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
+      expect(response.result.sourceVolumeMm3).toBeCloseTo(1000, 8)
+      expect(response.result.cellSizeMm).toBe(1)
+      expect(response.result.removedPercent).toBeGreaterThanOrEqual(0.5)
+      expect(volume(response.result.mesh)).toBeCloseTo(response.result.resultVolumeMm3, 6)
+      if (mode === "preserve-exterior") {
+        expect(response.result.mesh.vertices.length / 3).toBeGreaterThan(80_000)
+        expect(response.result.mesh.vertices.slice(0, request.mesh.vertices.length)).toEqual(
+          request.mesh.vertices,
+        )
+        expect(response.result.mesh.indices.slice(0, request.mesh.indices.length)).toEqual(
+          request.mesh.indices,
+        )
+      }
+    },
+    timeout,
+  )
+
   it.each(
     (["toleranced-bounds", "mesh-span"] as const).flatMap((samplingSource) =>
       ([2, 2.5] as const).map((skinCells) => ({ samplingSource, skinCells })),

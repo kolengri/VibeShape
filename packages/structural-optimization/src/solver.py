@@ -29,8 +29,6 @@ from skfem.models.elasticity import lame_parameters, linear_elasticity, linear_s
 MAX_CELLS = 3000
 MAX_NODES = 5000
 MAX_GRID_CELLS = 12000
-MAX_TRIANGLES = 20000
-MAX_VERTICES = 10000
 MAX_SECONDS = 180
 CELL_TOLERANCE = 1e-6
 HEX_CORNERS = np.asarray(MeshHex().p.T, dtype=np.int64)
@@ -110,8 +108,8 @@ def _region(value, triangle_count):
     if value.get("kind") == "surface":
         _require(set(value) == {"kind", "triangleIndices", "depthMm"}, "invalid-input", "Surface regions require only kind, triangleIndices, and depthMm.")
         indices = value["triangleIndices"]
-        _require(isinstance(indices, list) and 0 < len(indices) <= MAX_TRIANGLES,
-                 "invalid-input", "Surface selections require 1 to 20000 captured source triangles.")
+        _require(isinstance(indices, list) and len(indices) > 0,
+                 "invalid-input", "Surface selections require captured source triangles.")
         _require(all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < triangle_count for i in indices),
                  "invalid-input", "Surface triangle indices must reference the captured source mesh.")
         _require(len(set(indices)) == len(indices), "invalid-input", "Surface triangle indices must be unique.")
@@ -459,10 +457,10 @@ def _source(request, cell_size, deadline=None):
     value = request.get("mesh")
     _require(isinstance(value, dict) and set(value) == {"vertices", "indices"}, "invalid-input", "mesh requires exactly vertices and indices.")
     raw_vertices, raw_indices = value.get("vertices"), value.get("indices")
-    _require(isinstance(raw_vertices, list) and 12 <= len(raw_vertices) <= MAX_VERTICES * 3 and len(raw_vertices) % 3 == 0,
-             "resource-limit", "Source vertex count is outside the supported budget.")
-    _require(isinstance(raw_indices, list) and 12 <= len(raw_indices) <= MAX_TRIANGLES * 3 and len(raw_indices) % 3 == 0,
-             "resource-limit", "Source triangle count is outside the supported budget.")
+    _require(isinstance(raw_vertices, list) and 12 <= len(raw_vertices) and len(raw_vertices) % 3 == 0,
+             "invalid-input", "Source vertices require complete XYZ triples for at least four vertices.")
+    _require(isinstance(raw_indices, list) and 12 <= len(raw_indices) and len(raw_indices) % 3 == 0,
+             "invalid-input", "Source indices require complete triples for at least four triangles.")
     vertices = np.array([_number(x, "mesh coordinate", -100000, 100000) for x in raw_vertices]).reshape(-1, 3)
     _require(all(isinstance(x, int) and not isinstance(x, bool) and 0 <= x < len(vertices) for x in raw_indices),
              "invalid-input", "Mesh indices must reference source vertices.")
