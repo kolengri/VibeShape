@@ -19,7 +19,7 @@ import type {
 } from "./contracts"
 import { JevFailure, jevOperation } from "./failure"
 import { createSessionContext } from "./session-context"
-import { readOnlyTool, toolTimeoutMs, validateToolInput } from "./tool-contract"
+import { readOnlyTool, validateToolInput } from "./tool-contract"
 
 export type ToolResult = { value: unknown; photos: Photo[]; failed: boolean }
 export type ToolPort = {
@@ -99,12 +99,12 @@ export function createController(options: ControllerOptions) {
   const session = createSessionContext()
   let referencePhotos: Photo[] = []
   let previewPhotos: Photo[] = []
-  const timed = (signal: AbortSignal, timeoutMs = options.timeoutMs) =>
-    AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+  const timed = (signal: AbortSignal) =>
+    AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs)])
   const call = (name: string, args: Record<string, unknown>, signal: AbortSignal) =>
     jevOperation(
       `The VibeShape MCP request ${name} failed`,
-      () => options.port.call(name, args, timed(signal, toolTimeoutMs(name, options.timeoutMs))),
+      () => options.port.call(name, args, signal),
       signal,
     )
   async function failedRead(

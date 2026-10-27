@@ -3,7 +3,7 @@ export interface BrowserWorkerStartupLease {
   rejectWaiting(): void
 }
 
-/** Only unacknowledged native starts occupy slots, including timed-out starts. */
+/** Only unacknowledged native starts occupy slots, including retired starts. */
 export class BrowserWorkerStartupQueue {
   readonly #waiting = new Set<BrowserWorkerStartupLease>()
   readonly #active = new Set<BrowserWorkerStartupLease>()

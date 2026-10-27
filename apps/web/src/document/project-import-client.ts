@@ -64,13 +64,11 @@ function prepareProjectCopy(
 > {
   return new Promise((resolve, reject) => {
     let worker: Worker | null = null
-    let timeout: ReturnType<typeof setTimeout> | undefined
     let settled = false
     let name: string | null = input.kind === "duplicate" ? input.name : null
     const jobId = crypto.randomUUID()
     const cleanup = () => {
       settled = true
-      clearTimeout(timeout)
       input.signal.removeEventListener("abort", abort)
       if (worker) {
         worker.onmessage = null
@@ -140,7 +138,6 @@ function prepareProjectCopy(
         worker.terminate()
         return
       }
-      timeout = setTimeout(() => fail(new Error("The native project import timed out.")), 300_000)
       worker.onerror = () => fail(new Error("The native project import worker could not run."))
       worker.onmessageerror = () =>
         fail(new Error("The native project import could not be received."))

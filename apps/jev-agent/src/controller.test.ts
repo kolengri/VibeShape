@@ -845,57 +845,99 @@ describe("Jev CAD control loop", () => {
       expect(f.calls).toContain(name)
     },
   )
-  it("still forwards Stop to a pending manual review after the ordinary budget expires", async () => {
-    const review: Tool = { name: "commit_draft", inputSchema: { type: "object" } }
-    const f = fixture({
-      timeoutMs: 10,
-      decide: async () => ({
-        kind: "tool",
-        tool: review,
-        arguments: { draftId: documentId },
-        needsArguments: false,
-        confidence: 1,
-      }),
-    })
-    f.port.tools = [review]
-    const started = Promise.withResolvers<AbortSignal>()
-    const original = f.port.call
-    f.port.call = async (name, args, signal) => {
-      if (name !== review.name) return original(name, args, signal)
-      started.resolve(signal)
-      return new Promise((_, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true })
-        if (signal.aborted) reject(signal.reason)
+  it.each(["commit_draft", "create_draft"])(
+    "forwards the original Stop signal to pending %s after the provider budget expires",
+    async (name) => {
+      const review: Tool = { name, inputSchema: { type: "object" } }
+      const f = fixture({
+        timeoutMs: 10,
+        decide: async () => ({
+          kind: "tool",
+          tool: review,
+          arguments: name === "commit_draft" ? { draftId: documentId } : { baseRevision: 0 },
+          needsArguments: false,
+          confidence: 1,
+        }),
       })
-    }
-    const cancellation = new AbortController()
-    const pending = f.controller
-      .run("Apply", [], cancellation.signal, async () => {})
-      .then(
-        () => null,
-        (error: unknown) => error,
-      )
-    const reviewSignal = await started.promise
-    await Bun.sleep(30)
-    const wasAborted = reviewSignal.aborted
-    cancellation.abort(new Error("Stopped manual review"))
-    expect(await pending).toEqual(new Error("Stopped manual review"))
-    expect(wasAborted).toBe(false)
-    expect(reviewSignal.aborted).toBe(true)
-  })
-  it("retains the short timeout for an ordinary operation", async () => {
+      f.port.tools = [review]
+      const started = Promise.withResolvers<AbortSignal>()
+      const original = f.port.call
+      f.port.call = async (name, args, signal) => {
+        if (name !== review.name) return original(name, args, signal)
+        started.resolve(signal)
+        return new Promise((_, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+          if (signal.aborted) reject(signal.reason)
+        })
+      }
+      const cancellation = new AbortController()
+      const pending = f.controller
+        .run("Apply", [], cancellation.signal, async () => {})
+        .then(
+          () => null,
+          (error: unknown) => error,
+        )
+      const reviewSignal = await started.promise
+      expect(reviewSignal).toBe(cancellation.signal)
+      await Bun.sleep(30)
+      const wasAborted = reviewSignal.aborted
+      cancellation.abort(new Error("Stopped CAD operation"))
+      expect(await pending).toEqual(new Error("Stopped CAD operation"))
+      expect(wasAborted).toBe(false)
+      expect(reviewSignal.aborted).toBe(true)
+    },
+  )
+  it("lets ordinary CAD finish beyond a short provider deadline", async () => {
     const f = fixture({ timeoutMs: 10 })
     const original = f.port.call
+    const cancellation = new AbortController()
     f.port.call = async (name, args, signal) => {
+      expect(signal).toBe(cancellation.signal)
       if (name === tool.name) await Bun.sleep(30)
       signal.throwIfAborted()
       return original(name, args, signal)
     }
-    await expect(
-      f.controller.run("Create", [], new AbortController().signal, async () => {}),
-    ).rejects.toThrow()
-    expect(f.calls).not.toContain(tool.name)
+    expect(await f.controller.run("Create", [], cancellation.signal, async () => {})).toContain(
+      "ended the turn",
+    )
+    expect(f.calls).toContain(tool.name)
   })
+  it.each(["decision", "arguments", "resolution"] as const)(
+    "retains the provider deadline for %s work",
+    async (stage) => {
+      const started = Promise.withResolvers<AbortSignal>()
+      const waitForDeadline = async (signal: AbortSignal): Promise<never> => {
+        started.resolve(signal)
+        return new Promise((_, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+          if (signal.aborted) reject(signal.reason)
+        })
+      }
+      const f = fixture({
+        timeoutMs: 10,
+        decide: async (_state, _tools, signal) =>
+          stage === "decision"
+            ? waitForDeadline(signal)
+            : {
+                kind: "tool",
+                tool,
+                arguments: { baseRevision: 0 },
+                needsArguments: stage === "arguments",
+                confidence: stage === "resolution" ? 0 : 1,
+              },
+        completeArguments: async (_tool, _state, _args, signal) => waitForDeadline(signal),
+        resolveDecision: async (_state, _tools, signal) => waitForDeadline(signal),
+      })
+      const cancellation = new AbortController()
+      const pending = f.controller.run("Create", [], cancellation.signal, async () => {})
+      const providerSignal = await started.promise
+      expect(providerSignal).not.toBe(cancellation.signal)
+      await expect(pending).rejects.toThrow()
+      expect(providerSignal.aborted).toBe(true)
+      expect(cancellation.signal.aborted).toBe(false)
+      expect(f.calls).not.toContain(tool.name)
+    },
+  )
   it("keeps authoring available when cancelled during the pre-dispatch notification", async () => {
     let decisions = 0
     const f = fixture({

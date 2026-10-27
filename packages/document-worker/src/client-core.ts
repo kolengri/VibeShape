@@ -28,7 +28,7 @@ type PendingRequest = {
   resolve: (response: DocumentWorkerTerminalResponse) => void
   reject: (error: Error) => void
   onProgress?: (progress: ProgressResponse) => void
-  timeoutId: ReturnType<typeof setTimeout>
+  timeoutId: ReturnType<typeof setTimeout> | undefined
 }
 
 const terminalResponseTypeByRequest = {
@@ -119,7 +119,7 @@ export class DocumentWorkerClient {
 
   request(input: DocumentWorkerRequest, options: DocumentWorkerRequestOptions = {}) {
     const request = documentWorkerRequestSchema.parse(input)
-    const timeoutMs = options.timeoutMs ?? 120_000
+    const timeoutMs = options.timeoutMs
     if (!this.#available) {
       return Promise.reject(
         new DocumentWorkerRequestError("Document worker is unavailable.", "worker-terminated"),
@@ -134,15 +134,18 @@ export class DocumentWorkerClient {
       )
     }
     return new Promise<DocumentWorkerTerminalResponse>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.#pending.delete(request.requestId)
-        reject(
-          new DocumentWorkerRequestError(
-            `Document request timed out after ${timeoutMs} ms.`,
-            "request-timeout",
-          ),
-        )
-      }, timeoutMs)
+      const timeoutId =
+        timeoutMs === undefined
+          ? undefined
+          : setTimeout(() => {
+              this.#pending.delete(request.requestId)
+              reject(
+                new DocumentWorkerRequestError(
+                  `Document request timed out after ${timeoutMs} ms.`,
+                  "request-timeout",
+                ),
+              )
+            }, timeoutMs)
       this.#pending.set(request.requestId, {
         documentId: request.documentId,
         revision: request.revision,
@@ -153,7 +156,13 @@ export class DocumentWorkerClient {
         timeoutId,
         ...(options.onProgress ? { onProgress: options.onProgress } : {}),
       })
-      this.worker.postMessage(request)
+      try {
+        this.worker.postMessage(request)
+      } catch (error) {
+        if (timeoutId !== undefined) clearTimeout(timeoutId)
+        this.#pending.delete(request.requestId)
+        reject(error)
+      }
     })
   }
 
@@ -239,7 +248,7 @@ export class DocumentWorkerClient {
   #finish(requestId: string, response: DocumentWorkerTerminalResponse) {
     const pending = this.#pending.get(requestId)
     if (!pending) return
-    clearTimeout(pending.timeoutId)
+    if (pending.timeoutId !== undefined) clearTimeout(pending.timeoutId)
     this.#pending.delete(requestId)
     if (response.type === "failure") {
       pending.reject(
@@ -253,14 +262,14 @@ export class DocumentWorkerClient {
   #reject(requestId: string, error: Error) {
     const pending = this.#pending.get(requestId)
     if (!pending) return
-    clearTimeout(pending.timeoutId)
+    if (pending.timeoutId !== undefined) clearTimeout(pending.timeoutId)
     this.#pending.delete(requestId)
     pending.reject(error)
   }
 
   #rejectAll(error: Error) {
     for (const [requestId, pending] of this.#pending) {
-      clearTimeout(pending.timeoutId)
+      if (pending.timeoutId !== undefined) clearTimeout(pending.timeoutId)
       pending.reject(error)
       this.#pending.delete(requestId)
     }

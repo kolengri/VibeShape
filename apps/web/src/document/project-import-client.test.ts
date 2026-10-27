@@ -245,21 +245,64 @@ it("aborts before startup and during either phase, ignoring queued completions",
   }
 })
 
-it("releases worker resources on timeout and constructor failure", async () => {
+it("releases worker resources on constructor failure", async () => {
   await expect(
     prepareProjectImport(input(), () => {
       throw new Error("Unavailable.")
     }),
   ).rejects.toThrow("Unavailable.")
-  vi.useFakeTimers()
-  const worker = port()
-  const outcome = prepareProjectImport(input(), () => worker as unknown as Worker).catch(
-    (error: unknown) => error,
-  )
-  vi.advanceTimersByTime(300_000)
-  expect(await outcome).toBeInstanceOf(Error)
-  expect(worker.terminate).toHaveBeenCalledTimes(1)
 })
+
+it.each(["import", "duplicate"] as const)(
+  "completes a native project %s after more than ten minutes without a deadline",
+  async (kind) => {
+    vi.useFakeTimers()
+    const worker = port()
+    const create = () => worker as unknown as Worker
+    const pending =
+      kind === "import"
+        ? prepareProjectImport(input(), create)
+        : prepareProjectDuplicate(duplicateInput(), create)
+    const settled = vi.fn()
+    void pending.then(settled, settled)
+    await vi.advanceTimersByTimeAsync(11 * 60_000)
+    expect(settled).not.toHaveBeenCalled()
+    expect(worker.terminate).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+    if (kind === "import") {
+      deliver(worker, { kind: "name", sourceName: "Housing" })
+      await vi.advanceTimersByTimeAsync(11 * 60_000)
+      expect(settled).not.toHaveBeenCalled()
+    }
+    deliver(worker, prepared())
+    expect(await pending).toEqual({ ok: true, value: prepared().value })
+    expect(worker.terminate).toHaveBeenCalledTimes(1)
+  },
+)
+
+it.each(["import", "duplicate"] as const)(
+  "cancels a native project %s after a long wait and ignores its queued completion",
+  async (kind) => {
+    vi.useFakeTimers()
+    const worker = port()
+    const abort = new AbortController()
+    const create = () => worker as unknown as Worker
+    const pending =
+      kind === "import"
+        ? prepareProjectImport({ ...input(), signal: abort.signal }, create)
+        : prepareProjectDuplicate({ ...duplicateInput(), signal: abort.signal }, create)
+    const outcome = pending.catch((error: unknown) => error)
+    const queued = worker.onmessage
+    await vi.advanceTimersByTimeAsync(11 * 60_000)
+    expect(worker.terminate).not.toHaveBeenCalled()
+    abort.abort()
+    expect(await outcome).toMatchObject({ name: "AbortError" })
+    queued?.call(worker as unknown as Worker, new MessageEvent("message", { data: prepared() }))
+    expect(worker.terminate).toHaveBeenCalledTimes(1)
+    expect(worker.onmessage).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  },
+)
 
 it("forwards archives above the former 32 MiB ceiling to worker validation", async () => {
   const worker = port()

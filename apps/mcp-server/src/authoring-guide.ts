@@ -778,11 +778,15 @@ must fit within 192 KiB. Semantic entity/page responses are bounded to 128 KiB; 
 schemas for per-page limits. Hole/selected-treatment selections allow at most 256 IDs/references.
 Drafts expire five minutes after creation or the last successful command/preview; inspection does
 not renew expiry. An open CAD draft review has no time limit: its idle expiry is suspended while
-waiting for Apply/Discard, with access and base revision rechecked before saving. Local commit_draft
-and lightweighting analysis/review have no absolute broker execution deadline while the approved browser remains live; heartbeat
+waiting for Apply/Discard, with access and base revision rechecked before saving. Local and remote
+CAD operations have no automatic broker execution deadline while the approved browser remains live; heartbeat
 loss, cancellation, revocation and credential/approval expiry still apply. Separate import,
 assembly, metadata, history and texture proposals retain their advertised expiry. Client request timeouts can
-still cancel review; inspect the saved revision before requesting another review. The pairing
+still cancel work; the server cannot override a client's tools/call deadline. Disable that client
+deadline where supported, otherwise allow at least ten minutes for CAD tools. A client that abandons
+a call without sending MCP cancellation can leave the operation pending and later reads busy.
+Use Stop AI to cancel the pending operation before reconnecting and inspecting the saved revision;
+never replay an unconfirmed write. The pairing
 expires after one hour or loss of browser polling.
 
 Both transports support \`prepare_model_export\` with exact committed \`revision\` and geometry

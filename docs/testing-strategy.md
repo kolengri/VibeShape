@@ -74,6 +74,12 @@ transitions and automatic crossing of neighboring faces are outside its guarante
 
 ## CI unit-test receipts
 
+CAD deadline regressions use virtual waits beyond ten minutes at the document/geometry client,
+startup, native archive and local/remote broker boundaries. Explicit Stop, worker failure and
+caller-requested deadlines remain independently tested. Actual MCP SDK cancellation and an abandoned
+native HTTP Quick stream verify pending work is released before reconnection; a provider deadline
+must not cancel Jev's CAD calls. These tests establish lifecycle behavior, not solver completion time.
+
 `bun run test` always runs the complete matching native unit corpus. CI can use
 `bun run test --cache` to reuse successful complete workspace Node/DOM results;
 `--force` runs without reading or writing receipts. Focused paths, watch,

@@ -87,7 +87,6 @@ type Pending = {
   id: string
   operation: LocalOperation
   resolve: (result: LocalToolResult) => void
-  timer: ReturnType<typeof setTimeout> | null
   delivered: boolean
   progress?: Progress
   abortCleanup?: () => void
@@ -119,18 +118,6 @@ const JSON_TYPE = "application/json"
 const MAX_BODY = 1 * 1024 * 1024
 const MAX_EXPORT_BODY = 8 * 1024 * 1024 + 64 * 1024
 const TTL = 60 * 60 * 1000
-const OPERATION_TTL = 6 * 60 * 1000
-function operationTimeout(tool: LocalOperation["tool"]) {
-  if (tool === "commit_draft") return null
-  if (
-    tool === "analyze_quick_lightweighting" ||
-    tool === "request_quick_lightweighting" ||
-    tool === "analyze_lightweighting" ||
-    tool === "request_lightweighting"
-  )
-    return null
-  return OPERATION_TTL
-}
 const LIVENESS = 15 * 1000
 
 function response(status: number, body: unknown) {
@@ -578,7 +565,6 @@ export function createBrowserBroker({
   }
 
   function clearPending(record: Pending, result: LocalToolResult) {
-    if (record.timer !== null) clearTimeout(record.timer)
     record.abortCleanup?.()
     record.resolve(result)
   }
@@ -993,16 +979,7 @@ export function createBrowserBroker({
   ) {
     return new Promise<LocalToolResult>((resolve) => {
       const id = randomUUID()
-      // CAD review has no wall-clock deadline; disconnect and revocation still cancel it.
-      const timeout = operationTimeout(operation.tool)
-      const timer =
-        timeout === null
-          ? null
-          : setTimeout(() => {
-              if (pair?.pending?.id === id) suspendBackground(pair)
-            }, timeout)
       if (options.signal?.aborted) {
-        if (timer !== null) clearTimeout(timer)
         resolve(failure("session-revoked", "The local automation session was revoked."))
         return
       }
@@ -1013,7 +990,6 @@ export function createBrowserBroker({
         id,
         operation,
         resolve,
-        timer,
         delivered: false,
         lastProgress: 0,
         ...(options.onProgress ? { progress: options.onProgress } : {}),

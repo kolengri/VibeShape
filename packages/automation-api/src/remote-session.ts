@@ -5,7 +5,6 @@ import { localOperationSchema } from "./local-tools"
 
 export const REMOTE_MESSAGE_MAX_BYTES = 192 * 1024
 export const REMOTE_SESSION_TTL_MS = 60 * 60 * 1000
-export const REMOTE_REQUEST_TIMEOUT_MS = 6 * 60 * 1000
 export const REMOTE_SESSION_MAX_OPERATIONS = 128
 export const REMOTE_SCOPE = "editor:session"
 

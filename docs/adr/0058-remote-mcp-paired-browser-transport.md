@@ -2,6 +2,7 @@
 
 - Status: Accepted with reduced scope; deployment verification remains gated
 - Date: 2026-10-03
+- Execution deadlines superseded by [ADR-0135](0135-cad-execution-without-default-deadlines.md).
 - Extends: [ADR-0043](0043-local-stdio-mcp-browser-session.md), [ADR-0052](0052-session-cad-auto-apply.md)
 
 ## Decision

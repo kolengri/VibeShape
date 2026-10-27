@@ -119,8 +119,9 @@ The AI settings modal offers a connection
 test: it checks the selected Jev and configured argument providers without sending project data,
 images or CAD requests. Other ACP agents receive an initialization-only check. A successful provider
 test does not establish project MCP readiness or verify a CAD result.
-Manual-review calls use a separate client horizon of about 24.8 days, bypassing the short provider
-and ordinary-operation timeout. Stop and the server's authority, liveness and proposal expiry still
+CAD calls use Stop directly, without the short language-provider deadline. The bundled MCP SDK
+requires a finite timer, so ordinary Jev tool calls allow at least ten minutes; manual-review calls
+retain a separate client horizon of about 24.8 days. Stop and the server's authority, liveness and proposal expiry still
 apply; this client horizon does not extend consent or guarantee that a review remains available.
 If advertised, `ask_user_question` uses the native host's structured-question owner and the same long
 client ceiling. Host question expiry and Stop still apply. Only a valid accepted answer allows
@@ -223,5 +224,6 @@ preview/review/commit path.
 - Current shared serialized operation limit is 192 KiB; semantic pages are bounded to 128 KiB. Reduce page size or divide valid authoring work when necessary. Do not truncate a replacement record.
 - Remote additionally limits operations to 30/minute and 128 per tab lifetime, with bounded onboarding attempts. Follow reported rate-limit guidance; do not repeatedly reconnect to evade budgets.
 - `busy` requires waiting for the pending request. Stale committed state requires a fresh read/draft. Validation failures require corrected input. A duplicate command ID is an error, not proof of an earlier success.
-- Local CAD draft review has no wall-clock deadline while the browser remains live and authorized; other review operations retain their advertised expiry, typically up to six minutes. Keep the request pending while the person reviews; client timeout/cancellation interrupts pending work. Local access can recover without replay. Do not start a second commit.
+- Local and remote CAD operations have no automatic broker execution deadline while the browser remains live and authorized. Document/geometry worker execution, startup, native project import/duplication and backup have no default deadline either. Separate proposals retain their advertised expiry. Disable the external MCP client's tools/call deadline where supported, otherwise allow at least ten minutes. The server cannot override it. Keep one request pending; do not start a second commit.
+- A client timeout must send MCP cancellation or close the transport to interrupt pending work. The native HTTP host also releases its attachment on an unfinished POST stream closing. If the client abandons the request without any observable signal, subsequent reads can remain `busy` while the original work continues. Stop AI cancels it. Reconnect and inspect the saved revision before retrying any unconfirmed write; never replay blindly.
 - Unknown outcomes require inspection before retrying; a fresh ID does not make a duplicate write safe.

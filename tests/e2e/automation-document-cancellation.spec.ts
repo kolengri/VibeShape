@@ -132,19 +132,16 @@ for (const mode of Object.keys(cases) as Array<keyof typeof cases>) {
           if (!applied.ok)
             throw new Error(applied.diagnostic?.message ?? "The draft command failed.")
         }
-        const held = holdFirstRebuild(worker)
-
         const connection = app.createActiveDocumentAutomationSession()
-        if (!connection.ok) {
-          held.restore()
-          throw new Error(connection.diagnostic.message)
-        }
+        if (!connection.ok) throw new Error(connection.diagnostic.message)
         const { host, documentId, revision } = connection
         const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
         const actor = { type: "mcp", clientId: "org.vibeshape.cancel-test", sessionId: id(1) }
         const operation = { schemaVersion: 1, draftId: id(2) }
+        let held: ReturnType<typeof holdFirstRebuild> | undefined
         try {
           await seedDraft(host, domain, actor, operation, documentId, revision, id)
+          held = holdFirstRebuild(worker)
 
           const autoApply = mode.startsWith("auto-")
           if (autoApply && !connection.enableAutoApply(actor)) throw new Error("Opt-in failed.")
@@ -174,8 +171,8 @@ for (const mode of Object.keys(cases) as Array<keyof typeof cases>) {
           }))
           return { mode, settledBeforeRelease, latePreview, committed }
         } finally {
-          held.release()
-          held.restore()
+          held?.release()
+          held?.restore()
           connection.dispose()
         }
       },

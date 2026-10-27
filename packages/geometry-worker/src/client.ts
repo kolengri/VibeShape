@@ -17,7 +17,11 @@ import GeometryWorkerConstructor from "./worker-entry?worker"
 interface WorkerLike {
   postMessage(message: GeometryWorkerRequest): void
   addEventListener(type: "message", listener: (event: MessageEvent<unknown>) => void): void
+  addEventListener(type: "error", listener: (event: ErrorEvent) => void): void
+  addEventListener(type: "messageerror", listener: (event: MessageEvent<unknown>) => void): void
   removeEventListener(type: "message", listener: (event: MessageEvent<unknown>) => void): void
+  removeEventListener(type: "error", listener: (event: ErrorEvent) => void): void
+  removeEventListener(type: "messageerror", listener: (event: MessageEvent<unknown>) => void): void
   terminate(): void
 }
 
@@ -26,7 +30,7 @@ type PendingRequest = {
   resolve: (response: GeometryTerminalResponse) => void
   reject: (error: Error) => void
   onProgress?: (stage: GeometryProgressStage, fraction: number) => void
-  timeoutId: ReturnType<typeof setTimeout>
+  timeoutId: ReturnType<typeof setTimeout> | undefined
 }
 
 export class GeometryWorkerRequestError extends Error {
@@ -56,9 +60,22 @@ export function createGeometryRequestEnvelope(
 export class GeometryWorkerClient {
   readonly #pending = new Map<string, PendingRequest>()
   readonly #handleMessage = (event: MessageEvent<unknown>) => this.#onMessage(event.data)
+  readonly #handleError = (event: ErrorEvent) => {
+    this.#available = false
+    this.#rejectAll(new GeometryWorkerRequestError(event.message || "Geometry worker failed."))
+  }
+  readonly #handleMessageError = () => {
+    this.#available = false
+    this.#rejectAll(
+      new GeometryWorkerRequestError("Geometry worker could not deserialize a message."),
+    )
+  }
+  #available = true
 
   constructor(private readonly worker: WorkerLike = new GeometryWorkerConstructor()) {
     this.worker.addEventListener("message", this.#handleMessage)
+    this.worker.addEventListener("error", this.#handleError)
+    this.worker.addEventListener("messageerror", this.#handleMessageError)
   }
 
   request(
@@ -69,13 +86,24 @@ export class GeometryWorkerClient {
     } = {},
   ) {
     const request = geometryWorkerRequestSchema.parse(input)
-    const timeoutMs = options.timeoutMs ?? 120_000
+    const timeoutMs = options.timeoutMs
+    if (!this.#available)
+      return Promise.reject(new GeometryWorkerRequestError("Geometry worker is unavailable."))
+    if (this.#pending.has(request.requestId))
+      return Promise.reject(
+        new GeometryWorkerRequestError("Geometry request ID is already pending."),
+      )
 
     return new Promise<GeometryTerminalResponse>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.#pending.delete(request.requestId)
-        reject(new GeometryWorkerRequestError(`Geometry request timed out after ${timeoutMs} ms.`))
-      }, timeoutMs)
+      const timeoutId =
+        timeoutMs === undefined
+          ? undefined
+          : setTimeout(() => {
+              this.#pending.delete(request.requestId)
+              reject(
+                new GeometryWorkerRequestError(`Geometry request timed out after ${timeoutMs} ms.`),
+              )
+            }, timeoutMs)
 
       const pending: PendingRequest = {
         generation: request.generation,
@@ -89,7 +117,16 @@ export class GeometryWorkerClient {
       }
 
       this.#pending.set(request.requestId, pending)
-      this.worker.postMessage(request)
+      try {
+        this.worker.postMessage(request)
+      } catch (error) {
+        this.#finish(
+          request.requestId,
+          isError(error)
+            ? error
+            : new GeometryWorkerRequestError("Geometry request could not be sent."),
+        )
+      }
     })
   }
 
@@ -115,7 +152,10 @@ export class GeometryWorkerClient {
   }
 
   terminate() {
+    this.#available = false
     this.worker.removeEventListener("message", this.#handleMessage)
+    this.worker.removeEventListener("error", this.#handleError)
+    this.worker.removeEventListener("messageerror", this.#handleMessageError)
     this.worker.terminate()
     this.#rejectAll(new GeometryWorkerRequestError("Geometry worker terminated."))
   }

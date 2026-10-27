@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-27
+- Execution deadlines superseded by [ADR-0135](0135-cad-execution-without-default-deadlines.md).
 - Partially supersedes resource admission policies in [ADR-0101](0101-browser-structural-lightweighting.md), [ADR-0102](0102-lightweighting-task-workflows.md), [ADR-0133](0133-lightweighting-mesh-density.md), [ADR-0062](0062-durable-source-assets-and-portable-closure.md), [ADR-0065](0065-bounded-exchange-geometry-import.md), and [ADR-0073](0073-immutable-local-assembly-library.md)
 
 ## Decision

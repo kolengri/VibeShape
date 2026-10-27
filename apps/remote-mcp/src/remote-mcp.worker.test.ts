@@ -769,19 +769,23 @@ describe("remote MCP in workerd", () => {
     },
   )
   it.each([
+    { quick: null, request: false },
     { quick: true, request: false },
     { quick: true, request: true },
     { quick: false, request: false },
     { quick: false, request: true },
   ])(
-    "keeps lightweighting alive beyond ten minutes and honors revocation (quick=$quick, request=$request)",
+    "keeps CAD work alive beyond ten minutes and honors revocation (quick=$quick, request=$request)",
     async ({ quick, request }) => {
       const tab = await pair()
       const authenticated = await authorizeTab(tab)
       vi.useFakeTimers()
-      const command = quick
-        ? quickLightweightingOperation(request)
-        : lightweightingOperation(request)
+      const command =
+        quick === null
+          ? { tool: "model_info", arguments: {} }
+          : quick
+            ? quickLightweightingOperation(request)
+            : lightweightingOperation(request)
       const work = nextMessage(tab.socket)
       const pending = mcp(authenticated.token, 1, "tools/call", {
         name: command.tool,
@@ -931,6 +935,63 @@ describe("remote MCP in workerd", () => {
       }),
     ).toBe(false)
   })
+  it.each(["throw", "missing"] as const)(
+    "releases pending Quick work when browser dispatch is %s",
+    async (mode) => {
+      const tab = await pair()
+      const authenticated = await authorizeTab(tab)
+      const stub = bindings.TAB_SESSIONS.getByName(tab.credential.sessionId)
+      const grant = { sessionId: tab.credential.sessionId, clientId: authenticated.clientId }
+      let restore = () => {}
+      try {
+        await runInDurableObject(stub, (_instance, state) => {
+          if (mode === "throw") {
+            const socket = state.getWebSockets()[0]
+            if (!socket) throw new Error("Expected the authenticated browser socket.")
+            const send = vi.spyOn(socket, "send").mockImplementationOnce(() => {
+              throw new Error("The socket closed during dispatch.")
+            })
+            restore = () => send.mockRestore()
+          } else {
+            // Authorization and post-save liveness pass; the socket disappears at dispatch.
+            const sockets = state.getWebSockets.bind(state)
+            const read = vi
+              .spyOn(state, "getWebSockets")
+              .mockImplementationOnce(sockets)
+              .mockImplementationOnce(sockets)
+              .mockImplementationOnce(sockets)
+              .mockReturnValueOnce([])
+            restore = () => read.mockRestore()
+          }
+        })
+        const operation = quickLightweightingOperation(false)
+        const response = await mcp(authenticated.token, 1, "tools/call", {
+          name: operation.tool,
+          arguments: operation.arguments,
+        })
+        expect(await response.json()).toMatchObject({
+          result: {
+            isError: true,
+            structuredContent: { result: { diagnostic: { code: "outcome-unknown" } } },
+          },
+        })
+        expect(await stub.isAuthorized(grant)).toBe(false)
+        await runInDurableObject(stub, async (_instance, state) => {
+          expect(await state.storage.get("session")).toMatchObject({
+            revoked: true,
+            active: null,
+            activeKey: null,
+          })
+        })
+        expect(
+          await stub.invoke(grant, "f".repeat(64), { tool: "model_info", arguments: {} }),
+        ).toMatchObject({ ok: false, diagnostic: { code: "session-revoked" } })
+      } finally {
+        restore()
+      }
+    },
+  )
+
   it("rejects a successful draft result when the session expires during result persistence", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)
