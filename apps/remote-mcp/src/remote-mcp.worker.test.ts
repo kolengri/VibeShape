@@ -768,13 +768,20 @@ describe("remote MCP in workerd", () => {
       expect(JSON.stringify(response.result.structuredContent)).not.toContain(png)
     },
   )
-  it.each([false, true])(
-    "keeps quick work alive beyond ten minutes and honors revocation (request=%s)",
-    async (request) => {
+  it.each([
+    { quick: true, request: false },
+    { quick: true, request: true },
+    { quick: false, request: false },
+    { quick: false, request: true },
+  ])(
+    "keeps lightweighting alive beyond ten minutes and honors revocation (quick=$quick, request=$request)",
+    async ({ quick, request }) => {
       const tab = await pair()
       const authenticated = await authorizeTab(tab)
       vi.useFakeTimers()
-      const command = quickLightweightingOperation(request)
+      const command = quick
+        ? quickLightweightingOperation(request)
+        : lightweightingOperation(request)
       const work = nextMessage(tab.socket)
       const pending = mcp(authenticated.token, 1, "tools/call", {
         name: command.tool,

@@ -74,10 +74,10 @@ export function encodeQuickLightweightingStl(
   cellSizeMm: number,
 ): Uint8Array<ArrayBuffer> {
   const mesh = quickLightweightingMeshSchema.parse(input)
-  if (!Number.isFinite(cellSizeMm) || cellSizeMm < 0.01)
+  if (!Number.isFinite(cellSizeMm) || cellSizeMm <= 0)
     throw new QuickLightweightingError(
       "serialization-precision",
-      "A finite detail cell size is required for STL export.",
+      "A finite positive detail cell size is required for STL export.",
     )
   const vertices = mesh.vertices.map((coordinate) => {
     const rounded = Math.fround(coordinate)

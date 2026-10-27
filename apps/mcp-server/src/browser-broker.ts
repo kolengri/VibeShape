@@ -24,11 +24,7 @@ import {
   isLocalImport,
   type LocalImportOperation,
 } from "@vibeshape/automation-api/imports"
-import {
-  LIGHTWEIGHTING_ANALYSIS_TIMEOUT_MS,
-  LIGHTWEIGHTING_REQUEST_TIMEOUT_MS,
-  lightweightingResultContextMatches,
-} from "@vibeshape/automation-api/lightweighting-tools"
+import { lightweightingResultContextMatches } from "@vibeshape/automation-api/lightweighting-tools"
 import {
   createLocalAutomationActor,
   LOCAL_AUTOMATION_PATH,
@@ -126,10 +122,13 @@ const TTL = 60 * 60 * 1000
 const OPERATION_TTL = 6 * 60 * 1000
 function operationTimeout(tool: LocalOperation["tool"]) {
   if (tool === "commit_draft") return null
-  if (tool === "analyze_quick_lightweighting" || tool === "request_quick_lightweighting")
+  if (
+    tool === "analyze_quick_lightweighting" ||
+    tool === "request_quick_lightweighting" ||
+    tool === "analyze_lightweighting" ||
+    tool === "request_lightweighting"
+  )
     return null
-  if (tool === "analyze_lightweighting") return LIGHTWEIGHTING_ANALYSIS_TIMEOUT_MS
-  if (tool === "request_lightweighting") return LIGHTWEIGHTING_REQUEST_TIMEOUT_MS
   return OPERATION_TTL
 }
 const LIVENESS = 15 * 1000

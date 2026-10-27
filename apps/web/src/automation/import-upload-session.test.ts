@@ -5,11 +5,19 @@ import {
   IMPORT_UPLOAD_TTL_MS,
   type ImportUploadDescriptor,
   type ImportUploadInspection,
+  importUploadDescriptorSchema,
 } from "@vibeshape/automation-api/imports"
 import { localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import { vi } from "../../../../tests/unit/support/bun-test"
-import { context, id, inspection, meshInspection } from "../features/import/import-test-fixtures"
+import { readImportSource } from "../features/import/import-model"
+import {
+  context,
+  id,
+  inspection,
+  meshInspection,
+  sourceFile,
+} from "../features/import/import-test-fixtures"
 import {
   createImportUploadSession,
   type ImportReviewedCommit,
@@ -112,6 +120,101 @@ function setup(overrides: Partial<ImportSessionConfiguration> = {}) {
 }
 
 describe("actor-owned native import capture", () => {
+  it("reviews local prepared bytes above the public transport ceiling without relaxing public upload admission", async () => {
+    const bytes = new Uint8Array(6 * 1024 * 1024 + 1)
+    bytes[bytes.length - 1] = 31
+    const prepared = await readImportSource(sourceFile("Candidate.stl", bytes), "millimeter")
+    const test = setup({ inspect: async () => structuredClone(meshInspection) })
+    const result = await test.session.requestPrepared(actor, {
+      prepared,
+      revision: context.revision,
+      sourceUnit: "millimeter",
+      label: "Candidate",
+    })
+    expect(result).toMatchObject({ ok: true })
+    expect(test.review).toHaveBeenCalledTimes(1)
+    expect(test.commit).toHaveBeenCalledTimes(1)
+    const review = test.review.mock.calls[0]?.[0]
+    expect(review?.source.upload.byteLength).toBe(6_291_457)
+    expect(importUploadDescriptorSchema.safeParse(review?.source.upload).success).toBe(false)
+    expect(
+      localOperationSchema.safeParse({
+        tool: "begin_import_upload",
+        arguments: {
+          revision: context.revision,
+          filename: "Candidate.stl",
+          byteLength: bytes.length,
+          sourceUnit: "millimeter",
+        },
+      }).success,
+    ).toBe(false)
+    expect(test.commit.mock.calls[0]?.[0].assetBlobs[0]?.bytes.at(-1)).toBe(31)
+    expect(
+      test.commit.mock.calls[0]?.[0].transaction.commands.every(
+        (command) => command.actor.type === "mcp",
+      ),
+    ).toBe(true)
+  })
+  it("starts the local prepared manual review lease after expensive inspection, and still enforces review expiry", async () => {
+    let time = 0
+    const prepared = await readImportSource(sourceFile("Candidate.stl"), "millimeter")
+    const test = setup({
+      now: () => time,
+      inspect: async () => {
+        time += IMPORT_UPLOAD_TTL_MS + 1
+        return structuredClone(meshInspection)
+      },
+    })
+    const request = {
+      prepared,
+      revision: context.revision,
+      sourceUnit: "millimeter" as const,
+      label: "Candidate",
+    }
+    expect(await test.session.requestPrepared(actor, request)).toMatchObject({ ok: true })
+    const reviewed = test.review.mock.calls[0]?.[0]
+    expect(Date.parse(reviewed?.draft.expiresAt ?? "")).toBe(time + IMPORT_UPLOAD_TTL_MS)
+    const expired = setup({
+      now: () => time,
+      inspect: async () => structuredClone(meshInspection),
+      review: async () => {
+        time += IMPORT_UPLOAD_TTL_MS
+        return "approved"
+      },
+    })
+    expect(await expired.session.requestPrepared(actor, request)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "import-review-cancelled" },
+    })
+    expect(expired.commit).not.toHaveBeenCalled()
+  })
+  it("discards local prepared inspection after cancellation or source revision changes", async () => {
+    for (const cancel of [true, false]) {
+      let resolve = (_value: typeof meshInspection) => {}
+      let inspecting = false
+      const prepared = await readImportSource(sourceFile("Candidate.stl"), "millimeter")
+      const test = setup({
+        inspect: () =>
+          new Promise((done) => {
+            resolve = done
+            inspecting = true
+          }),
+      })
+      const pending = test.session.requestPrepared(actor, {
+        prepared,
+        revision: context.revision,
+        sourceUnit: "millimeter",
+        label: "Candidate",
+      })
+      await vi.waitFor(() => expect(inspecting).toBe(true))
+      if (cancel) test.session.cancel()
+      else test.changeRevision()
+      resolve(structuredClone(meshInspection))
+      expect(await pending).toMatchObject({ ok: false, diagnostic: { code: "import-cancelled" } })
+      expect(test.review).not.toHaveBeenCalled()
+      expect(test.commit).not.toHaveBeenCalled()
+    }
+  })
   it("does not start a native worker after cancellation during byte hashing", async () => {
     let resolve = (_value: ArrayBuffer) => {}
     const digest = vi.spyOn(crypto.subtle, "digest").mockImplementationOnce(

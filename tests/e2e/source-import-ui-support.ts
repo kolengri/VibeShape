@@ -19,7 +19,7 @@ export async function exportGeometry(
   partName?: string,
 ) {
   const dialog = await openExport(page, partName)
-  const downloading = page.waitForEvent("download")
+  const downloading = page.waitForEvent("download", { timeout: 30_000 })
   await dialog.getByRole("combobox", { name: "File format" }).selectOption(format.toLowerCase())
   await dialog.getByRole("button", { name: `Save ${format} file`, exact: true }).click()
   const download = await downloading,

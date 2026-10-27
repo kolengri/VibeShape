@@ -4,33 +4,30 @@ import { transformDeterminant } from "./matrix"
 export const importLengthUnitSchema = z.enum(["mm", "cm", "m", "in", "ft", "um"])
 export const importSvgUnitSchema = importLengthUnitSchema.or(z.literal("px"))
 export const DEFAULT_IMPORT_LIMITS = Object.freeze({
-  fileBytes: 32 * 1024 * 1024,
-  expandedBytes: 64 * 1024 * 1024,
+  fileBytes: Infinity,
+  expandedBytes: Infinity,
   zipEntries: 256,
   compressionRatio: 100,
   xmlDepth: 64,
   xmlNodes: 100_000,
-  vertices: 250_000,
-  triangles: 250_000,
+  vertices: Infinity,
+  triangles: Infinity,
   pathSegments: 10_000,
   bodies: 128,
   blockDepth: 16,
 })
 export type ImportLimits = Readonly<Record<keyof typeof DEFAULT_IMPORT_LIMITS, number>>
 const limitFields = Object.fromEntries(
-  Object.entries(DEFAULT_IMPORT_LIMITS).map(([key, maximum]) => [
-    key,
-    z.number().int().positive().max(maximum),
-  ]),
+  Object.entries(DEFAULT_IMPORT_LIMITS).map(([key, maximum]) => {
+    const finiteLimit = z.number().int().positive().max(maximum)
+    return [key, maximum === Infinity ? finiteLimit.or(z.literal(Infinity)) : finiteLimit]
+  }),
 )
 export const importLimitsSchema = z.object(limitFields).strict()
 const limitsOverrideSchema = importLimitsSchema.partial().optional()
 const bytesSchema = z
   .instanceof(Uint8Array)
-  .refine(
-    (bytes) => bytes.byteLength > 0 && bytes.byteLength <= DEFAULT_IMPORT_LIMITS.fileBytes,
-    "Import bytes must be nonempty and within the file-size budget.",
-  )
+  .refine((bytes) => bytes.byteLength > 0, "Import bytes must be nonempty.")
 export const geometryImportInputSchema = z.discriminatedUnion("format", [
   z
     .object({
@@ -172,7 +169,7 @@ export const importedMeshSchema = z
   .object({
     id: inspectionId,
     label: label.optional(),
-    vertices: z.array(importPoint3Schema).min(3).max(DEFAULT_IMPORT_LIMITS.vertices),
+    vertices: z.array(importPoint3Schema).min(3),
     triangles: z
       .array(
         z.tuple([
@@ -181,8 +178,7 @@ export const importedMeshSchema = z
           z.number().int().nonnegative(),
         ]),
       )
-      .min(1)
-      .max(DEFAULT_IMPORT_LIMITS.triangles),
+      .min(1),
   })
   .strict()
   .refine(

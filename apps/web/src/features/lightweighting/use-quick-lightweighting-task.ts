@@ -53,7 +53,7 @@ function samplingSize(source: LightweightingSource, detail: number) {
     }
     return max - min
   })
-  return Math.max(0.01, Math.max(...spans) / detail)
+  return Math.max(...spans) / detail
 }
 
 function quickFailure(error: unknown, copy: Copy) {
@@ -372,12 +372,15 @@ export function useQuickLightweightingTask({
     } else editingControls.current.delete(control)
     setEditing(editingControls.current.size > 0)
   }
-  const changeSettings = (next: Settings) => {
+  const changeSettings = (patch: Partial<Settings>) => {
     if (!applying.current) {
       cancel()
-      setSettings({
-        ...next,
-        periodFraction: Math.max(6 / next.detail, Math.min(12 / next.detail, next.periodFraction)),
+      setSettings((current) => {
+        const next = { ...current, ...patch }
+        return {
+          ...next,
+          periodFraction: Math.max(6 / next.detail, next.periodFraction),
+        }
       })
     }
   }

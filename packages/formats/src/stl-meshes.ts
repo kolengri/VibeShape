@@ -3,8 +3,8 @@ import { z } from "zod"
 const coordinate = z.number().finite().min(-100_000).max(100_000)
 const meshSchema = z
   .object({
-    vertices: z.array(coordinate).min(9).max(2_250_000),
-    triangles: z.array(z.number().int().nonnegative()).min(3).max(750_000),
+    vertices: z.array(coordinate).min(9),
+    triangles: z.array(z.number().int().nonnegative()).min(3),
   })
   .strict()
   .superRefine((mesh, context) => {
@@ -21,10 +21,9 @@ const meshSchema = z
 const inputSchema = z
   .array(meshSchema)
   .min(1)
-  .max(256)
   .refine(
-    (meshes) => meshes.reduce((total, mesh) => total + mesh.triangles.length / 3, 0) <= 250_000,
-    "STL export exceeds its aggregate triangle budget.",
+    (meshes) => meshes.reduce((total, mesh) => total + mesh.triangles.length / 3, 0) <= 0xffff_ffff,
+    "Binary STL requires a UInt32 triangle count.",
   )
 
 /** Writes world-space triangle meshes without inventing an exact solid or changing their winding. */

@@ -1,10 +1,7 @@
-import {
-  IMPORT_UPLOAD_CHUNK_MAX_BYTES,
-  importUploadCommitSchema,
-  importUploadDescriptorSchema,
-  importUploadInspectionSchema,
-} from "@vibeshape/automation-api/imports"
+import { importUploadCommitSchema } from "@vibeshape/automation-api/imports"
+import { localFailure } from "@vibeshape/automation-api/local-tools"
 import type { CommandActor } from "@vibeshape/domain/commands"
+import { readImportSource } from "../features/import/import-model"
 import {
   type LightweightingSource,
   sameLightweightingSource,
@@ -13,7 +10,7 @@ import { automationReviews } from "./automation-review-controller"
 import { createImportAutomationSession } from "./import-automation-session"
 import type { ImportReviewInput, ImportSessionConfiguration } from "./import-upload-session"
 
-/** Private uploads bind both lightweighting workflows to the same reviewed import authority. */
+/** Local generated sources use the same capture, review and commit authority as public uploads. */
 export function createBrowserLightweightingSnapshotSession(
   configuration: Omit<ImportSessionConfiguration, "inspect" | "review"> & {
     readSource: (partId: string) => LightweightingSource | null
@@ -21,6 +18,8 @@ export function createBrowserLightweightingSnapshotSession(
   reviews = automationReviews,
 ) {
   let captured: LightweightingSource | null = null
+  let requesting = false
+  let epoch = 0
   let evidence: Pick<ImportReviewInput, "lightweighting" | "quickLightweighting"> | undefined
   const imports = createImportAutomationSession(
     {
@@ -43,54 +42,29 @@ export function createBrowserLightweightingSnapshotSession(
       reviewEvidence: NonNullable<typeof evidence>,
       signal: AbortSignal,
     ) {
+      if (requesting) return localFailure("busy", "Another snapshot request is pending.", true)
+      requesting = true
+      const generation = epoch
       captured = source
       evidence = reviewEvidence
       try {
-        const begun = await imports.execute(
-          actor,
+        const prepared = await readImportSource(
           {
-            tool: "begin_import_upload",
-            arguments: {
-              revision: source.context.revision,
-              filename,
-              byteLength: bytes.byteLength,
-              sourceUnit: "millimeter",
-              label,
-            },
+            name: filename,
+            size: bytes.byteLength,
+            arrayBuffer: async () => Uint8Array.from(bytes).buffer,
           },
-          signal,
+          "millimeter",
         )
-        if (!begun.ok) return begun
-        const descriptor = importUploadDescriptorSchema.parse(begun.value)
-        for (let offset = 0; offset < bytes.byteLength; offset += IMPORT_UPLOAD_CHUNK_MAX_BYTES) {
-          const chunk = bytes.subarray(
-            offset,
-            Math.min(bytes.byteLength, offset + IMPORT_UPLOAD_CHUNK_MAX_BYTES),
-          )
-          let binary = ""
-          for (const byte of chunk) binary += String.fromCharCode(byte)
-          const appended = await imports.execute(
-            actor,
-            {
-              tool: "append_import_chunk",
-              arguments: { uploadId: descriptor.uploadId, offset, base64: btoa(binary) },
-            },
-            signal,
-          )
-          if (!appended.ok) return appended
-        }
-        const inspected = await imports.execute(
-          actor,
-          { tool: "inspect_import_upload", arguments: { uploadId: descriptor.uploadId } },
-          signal,
-        )
-        if (!inspected.ok) return inspected
-        const view = importUploadInspectionSchema.parse(inspected.value)
-        const applied = await imports.execute(
+        if (signal.aborted || generation !== epoch)
+          return localFailure("import-cancelled", "The snapshot request was cancelled.")
+        const applied = await imports.requestPrepared(
           actor,
           {
-            tool: "commit_import_upload",
-            arguments: { uploadId: descriptor.uploadId, uploadVersion: view.upload.uploadVersion },
+            prepared,
+            revision: source.context.revision,
+            sourceUnit: "millimeter",
+            label,
           },
           signal,
         )
@@ -101,9 +75,16 @@ export function createBrowserLightweightingSnapshotSession(
         imports.cancel()
         captured = null
         evidence = undefined
+        requesting = false
       }
     },
-    cancel: imports.cancel,
-    dispose: imports.dispose,
+    cancel() {
+      epoch++
+      imports.cancel()
+    },
+    dispose() {
+      epoch++
+      imports.dispose()
+    },
   }
 }

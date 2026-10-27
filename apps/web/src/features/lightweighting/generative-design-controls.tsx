@@ -176,7 +176,6 @@ function GenerativeObstacleControls({ state }: { state: StudyState }) {
         type="button"
         size="sm"
         variant="outline"
-        disabled={fields.obstacles.length >= 8}
         className="h-auto max-w-full whitespace-normal"
         onClick={() =>
           state.changeStudyFields({

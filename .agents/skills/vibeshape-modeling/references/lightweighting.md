@@ -50,11 +50,13 @@ Runtime errors omit traceback frames, captured inputs and sensitive URL componen
    inside its region. Loaded facets must not touch support nodes. Verify the regions against the
    current bounds and mesh resolution; they do not follow later source edits.
 5. Supply `safetyFactor` (at least 1), `maxDisplacementMm`, `cellSizeMm`, `preserveRegions` (possibly
-   empty), and `maxIterations` (0–40). Poisson ratio is limited to 0–0.45. Schema bounds remain
-   authoritative. Analysis is limited to 3,000 FEM cells, 5,000 nodes and 8 load cases;
-   these numerical-resolution limits are independent of source tessellation density.
+   empty), and `maxIterations` (a nonnegative search budget). Poisson ratio is limited to 0–0.45. Schema validity remains authoritative. There are no fixed grid/cell/node, filter-entry,
+   shell, support/load/preservation counts or forced computation deadline. The requested resolution
+   and iteration budget determine actual work; browser memory remains finite. Keep long-running
+   work pending or cancel explicitly. `infeasible-baseline` still means the original analyzed body
+   fails the supplied loads/material/displacement constraints; do not fabricate a successful result.
 
-   Optional `obstacleRegions` accepts up to sixteen positive-size world-mm `{min,max}` boxes.
+   Optional `obstacleRegions` accepts positive-size world-mm `{min,max}` boxes.
    Any closed FEM-cell box intersecting a keep-out box is excluded before baseline analysis,
    including boundary contact and the permitted STL coordinate-rounding margin. Intersections with
    support, load, or preserved cells fail explicitly.
@@ -138,8 +140,7 @@ fraction of 1 can already be `reached` without material removal or a new snapsho
 
 Inspect `sourceVolumeMm3` and `sourceVolumeLossFraction`: conservative interior cells already omit
 some original material before optimization. Baseline-to-candidate saving is separate from that
-discretization loss. A finer cell size can improve source approximation while exceeding the cell
-or node budget. Errors require correcting the physical inputs, regions or resolution; do not weaken
+discretization loss. A finer cell size can improve source approximation while increasing memory use and calculation time. Errors require correcting the physical inputs, regions or resolution; do not weaken
 the user's limits merely to obtain a successful result.
 
 When the user authorized creating the result, call `request_lightweighting` with the same complete
@@ -156,8 +157,8 @@ The response contains bounded `summary` plus the committed `snapshot` identity: 
 MCP broker. A `no-improvement` response has `snapshot: null` and creates neither review nor model
 mutation. Do not retry an uncertain successful Apply blindly.
 
-The worker has a three-minute compute budget; transport budgets are scoped to these tools.
-The private import/review lease expires after five minutes. Cancellation, session revocation,
+The worker and paired transport impose no fixed computation deadline while the session remains live.
+The private manual review lease starts after native inspection is ready and expires after five minutes. Cancellation, session revocation,
 changed revision/body/hash, rejected or expired review prevents mutation. Cancellation after an
 atomic persistence transaction has been accepted must report its actual outcome. Re-read the
 source identity and physical regions after a stale-source error.

@@ -10,7 +10,7 @@
 | Package manager/runtime | Bun workspaces | One lockfile, fast installs, `workspace:*`, catalogs, filters, and `bun ci` |
 | CAD kernel | OCCT through Replicad/OpenCascade.js | Exact B-Rep, booleans, fillets, and STEP |
 | Sketch solver | SolveSpace solver subset compiled to WASM | Mature constraint set and GPL-compatible licensing |
-| Structural analysis | Pyodide 314.0.7, scikit-fem 12.0.2, SciPy 1.18.0, NumPy 2.4.6, trimesh 4.12.2 | Bounded separate worker with pinned same-origin assets; see [lightweighting](../product/lightweighting.md) |
+| Structural analysis | Pyodide 314.0.7, scikit-fem 12.0.2, SciPy 1.18.0, NumPy 2.4.6, trimesh 4.12.2 | Disposable separate worker with pinned same-origin assets; see [lightweighting](../product/lightweighting.md) |
 | Viewport | Raw Three.js with WebGL2 baseline | Full control of picking, buffers, clipping, and lifecycle |
 | UI state | Zustand with Immer middleware | Transient editor-session state with explicit actions, separate from committed domain state |
 | Transcript virtualization | `@tanstack/react-virtual` 3.14.23 | Measured variable-height chat groups with stable keys and end anchoring |

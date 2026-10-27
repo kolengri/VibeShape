@@ -95,7 +95,7 @@ the source closer to the origin or choose coarser cells instead of importing a d
 
 ## Output and lifecycle
 
-Optional `obstacleRegions` are up to sixteen positive-size axis-aligned `{min,max}` boxes in mm.
+Optional `obstacleRegions` are positive-size axis-aligned `{min,max}` boxes in mm.
 Closed voxel boxes intersecting them, including boundary contact, are excluded before baseline
 analysis; conflicts with protected support, load, or preservation cells fail explicitly. Targets
 refer to the remaining feasible baseline, and source-volume loss includes excluded material.
@@ -128,7 +128,7 @@ their current visibility; show the original through its visibility control if ne
 ## Runtime and limits
 
 `@vibeshape/domain/lightweighting` owns pure settings/summary schemas.
-`@vibeshape/structural-optimization` owns the browser client, independent worker, bounded Python
+`@vibeshape/structural-optimization` owns the browser client, independent worker, Python
 solver, result validation, and mesh encoding. UI and automation are adapters over this same client.
 The numerical worker does not own document authority or persistence.
 
@@ -147,10 +147,15 @@ module loading, runtime initialization, package loading or solving. Python failu
 exception without traceback frames or captured inputs. An asset-loading failure requires checking
 the installed runtime files and their HTTP responses, rather than changing physical settings.
 
-Numerical bounds are 12,000 grid cells, 3,000 occupied cells,
-5,000 nodes, eight supports, eight cases, sixteen preservation regions, forty removal iterations,
-and a 180-second client computation deadline. Cancel terminates the worker. Poisson ratio is
-limited to 0 through 0.45. Resource-limit failures require a coarser grid or smaller analysis domain.
+There are no fixed candidate-grid, occupied-cell, node, filter-entry, cavity-shell or region-count
+ceilings. `maxIterations` is a nonnegative caller-selected search budget, without a forced upper
+bound. Clients and paired MCP impose no computation deadline while the session remains live;
+Cancel terminates the worker. Sparse candidate grids are streamed in batches and SIMP uses SciPy
+CSR filters. Memory and computation still scale with the requested problem and browser capacity.
+Poisson ratio remains limited to 0 through 0.45. Baseline feasibility, equilibrium, positive geometry,
+float32 precision, protected regions and requested final physical constraints remain enforced.
+`infeasible-baseline` means the unmodified analyzed body fails the supplied physical assumptions;
+removing resource ceilings does not make that study feasible.
 
 ## Accuracy boundaries
 
@@ -158,7 +163,7 @@ This is a preliminary finite-element feasibility result under explicit assumptio
 nonlinear material behavior, buckling, fatigue, contact, thermal effects, FDM anisotropy and process
 defects. The small-strain model rejects strains above 5%; that threshold is a runtime bound, not
 accuracy certification. Sharp corners and voxel stair steps can produce resolution-dependent
-stress concentrations. Smaller cell size changes the numerical problem and can exceed limits.
+stress concentrations. Smaller cell size changes the numerical problem and increases memory and calculation time.
 
 Conservative voxelization can lose thin features and misrepresent curved interfaces. Source meshes
 must bound one connected material solid. Closed inward-oriented cavity shells are permitted;
@@ -205,7 +210,7 @@ Projection evaluations must fit the algorithm budget and account for the reporte
 including baseline, density iterations where applicable, and final validation. Zero search budget
 permits no projections. Apply uses the existing inspected mesh
 snapshot, atomic transaction, and Undo workflow. Results remain mesh Parts, without CAD reconstruction
-or STEP export. Computational and small-strain limits remain unchanged.
+or STEP export. The small-strain model remains unchanged.
 
 Local and paired remote `analyze_lightweighting` and `request_lightweighting` accept both methods.
 The result's `algorithm.settings` must match the request. In Generative Design, each SIMP scenario
@@ -217,7 +222,7 @@ See [ADR-0122](../adr/0122-density-topology-and-adaptive-lattices.md).
 **Quick lightweighting** is a separate registered toolbar and palette command. It assumes a filled
 exact source solid and previews a periodic lattice without requesting structural supports or loads.
 A switch selects **Keep exterior** or **Open organic**. Choose **Gyroid**, **Schwarz P**, or
-**Schwarz D** cells, using trigonometric nodal sheet approximations of TPMS geometry. Sliders control requested removal, physical cell size, sampling detail, and
+**Schwarz D** cells, using trigonometric nodal sheet approximations of TPMS geometry. Sliders and direct numeric inputs control requested removal, physical cell size, sampling detail, and
 (when retaining the exterior) skin thickness. Generation waits until a slider pointer or keyboard
 gesture ends, then debounces the final settings for 650 ms. Pauses during a held gesture do not
 start a worker. Starting another adjustment cancels obsolete work and disables Apply immediately.
@@ -229,8 +234,10 @@ Keep exterior preserves the captured outer triangles and creates inward-oriented
 shells behind a continuous skin. Open organic generates an isosurface inside the source envelope.
 The default cell period is six sampling cells for Gyroid and Schwarz P, or twelve for Schwarz D
 to resolve its finer nodal pattern. The selector starts Schwarz D at this safer size. Explicit coarse
-Schwarz D settings can fail connected-material validation. An explicit period must be 6–12 sampling cells;
-the physical period is preserved when detail changes within this range and clamped otherwise.
+Schwarz D settings can fail connected-material validation. An explicit period must contain at least six sampling cells; there is no upper sampling bound.
+The physical period is retained when detail increases and enlarged only when needed to preserve
+that minimum resolution. Numeric input can exceed the convenience slider ranges. Requested
+removal is strictly between 0 and 100 percent; measured positive removal has no minimum percentage.
 A preserved skin requires at least two sampling cells,
 plus conservative geometric margins. These margins and connected-material validation can limit
 actual removal. Results report source/result volume, requested/achieved removal, cell period, and
@@ -264,23 +271,27 @@ failure, comparison evidence, and the distinction from slicer simulation.
 
 ### Quick runtime and exchange bounds
 
-Quick computation has no fixed source or result vertex/triangle count cutoff. It samples at most
-56³ points and sizes marching-cubes buffers from that grid's maximum possible triangle count,
-without truncating dense output. At most three connectivity candidates reuse the same
+Quick computation has no fixed source/result vertex/triangle count, sampling-resolution or
+total sample-count cutoff. Marching-cubes buffers are sized from the actual Float32 field
+triangle count at each threshold, without truncating output or allocating worst-case geometry. At most three connectivity candidates reuse the same
 source distance grid. Generation runs in a dedicated Web Worker through the local Pyodide
 WebAssembly runtime, without a fixed elapsed-time or cumulative proximity-query cutoff.
-The ordinary STL export and untrusted mesh-import boundaries retain their separate exchange
-budgets; removing computation cutoffs does not enlarge those format policies. See
-[ADR-0065](../adr/0065-bounded-exchange-geometry-import.md). A generated candidate still needs
-successful serialization, import inspection and source-bound publication before it can be applied.
+Local STL/3MF geometry, source storage and native backup do not reject a candidate for fixed
+mesh-count or geometry-byte budgets. Explicit caller-supplied import limits still apply. Ordinary
+finite/index/manifold checks, archive path/entity/reference safety, digest validation and atomic
+source-bound publication remain required. Generated MCP candidates enter the existing reviewed
+prepared-import path directly; public upload/chunk limits are transport admission policies and
+are not applied to an internal loopback upload. See
+[ADR-0134](../adr/0134-local-geometry-resource-policy.md).
 Distance and containment work uses adaptive batches of at most 128 points, targeting 262,144
 worst-case triangle/ray pairs per batch. Batches retain at least one query point, so very dense
 sources exceed that target and intermediate memory still scales with source density.
 Invalid Quick inputs include the validation cause in MCP errors and the editor task panel.
 Sampling and validation show current-pass progress; validation can restart for another
 pass or connectivity candidate. **Cancel generation**, closing the panel, or changing inputs
-terminates the worker. Local and remote MCP impose no Quick operation deadline; cancellation,
-revocation, source identity, pairing lifetime and the five-minute import/review lease still apply.
+terminates the worker. Local and remote MCP impose no lightweighting operation deadline; cancellation,
+revocation, source identity and pairing lifetime still apply. The five-minute manual review lease
+starts after both native inspections finish.
 Geometry and payload capacity failures remain explicit; changing detail or cell size does not
 guarantee a feasible result.
 

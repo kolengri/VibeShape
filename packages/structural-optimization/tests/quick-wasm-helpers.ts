@@ -30,12 +30,17 @@ export function createQuickWasmHarness() {
     )
   }, timeout)
 
-  async function run(request: QuickLightweightingInput, inspectGrid?: (grid: unknown) => void) {
+  async function prepare(request: QuickLightweightingInput) {
     runtime.globals.set("_quick_request_json", JSON.stringify(request))
     const raw: unknown = await runtime.runPythonAsync("prepare_quick_json(_quick_request_json)")
     if (typeof raw !== "string") throw new Error("Preparation must return JSON.")
     const prepared: { ok: boolean; grid?: unknown; error?: { code: string; message: string } } =
       JSON.parse(raw)
+    return prepared
+  }
+
+  async function run(request: QuickLightweightingInput, inspectGrid?: (grid: unknown) => void) {
+    const prepared = await prepare(request)
     if (!prepared.ok) return quickLightweightingResponseSchema.parse(prepared)
     inspectGrid?.(prepared.grid)
     return generateValidatedQuickLightweighting(request, prepared.grid, async (candidate) => {
@@ -52,6 +57,7 @@ export function createQuickWasmHarness() {
     get runtime() {
       return runtime
     },
+    prepare,
     run,
   }
 }

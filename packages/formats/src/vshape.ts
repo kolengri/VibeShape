@@ -55,7 +55,7 @@ export const VSHAPE_MEDIA_TYPE = "application/vnd.vibeshape.project+zip" as cons
 export const VSHAPE_FORMAT_VERSION = 0 as const
 export const VSHAPE_V1_FORMAT_VERSION = 1 as const
 export const VSHAPE_V2_FORMAT_VERSION = 2 as const
-export const VSHAPE_MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+export const VSHAPE_MAX_ARCHIVE_BYTES = Infinity
 
 const MANIFEST_PATH = "manifest.json"
 const DOCUMENT_PATH = "document.json"
@@ -76,8 +76,8 @@ const V2_REQUIRED_PATHS = [
 const MAX_MANIFEST_BYTES = 64 * 1024
 const VSHAPE_LIMITS = {
   archiveBytes: VSHAPE_MAX_ARCHIVE_BYTES,
-  entryBytes: 32 * 1024 * 1024,
-  expandedBytes: 64 * 1024 * 1024,
+  entryBytes: Infinity,
+  expandedBytes: Infinity,
   entryCount: 16,
   pathLength: 160,
   compressionRatio: 200,
@@ -1835,7 +1835,8 @@ export async function writeVShapeV5(inputValue: unknown): Promise<VShapeResult<U
       [V2_LEGACY_PATH]: bytes.legacy,
       [V2_SUFFIX_PATH]: bytes.suffix,
     }
-    for (const blob of assetBlobs) files[assetPath(blob.digest)] = blob.bytes
+    // Stored sources remain readable even when their repetition exceeds the safe ZIP ratio.
+    for (const blob of assetBlobs) files[assetPath(blob.digest)] = [blob.bytes, { level: 0 }]
     requireVShape(
       strToU8(canonicalJson(manifest)).byteLength <= MAX_MANIFEST_BYTES,
       "resource-limit",
@@ -2036,7 +2037,8 @@ async function writeRepairProject(
       [V2_LEGACY_PATH]: bytes.legacy,
       [V2_SUFFIX_PATH]: bytes.suffix,
     }
-    for (const blob of assetBlobs) files[assetPath(blob.digest)] = blob.bytes
+    // Stored sources remain readable even when their repetition exceeds the safe ZIP ratio.
+    for (const blob of assetBlobs) files[assetPath(blob.digest)] = [blob.bytes, { level: 0 }]
     requireVShape(
       strToU8(canonicalJson(manifest)).byteLength <= MAX_MANIFEST_BYTES,
       "resource-limit",

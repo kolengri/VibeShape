@@ -138,7 +138,7 @@ describe("structural FDM settings and response association", () => {
       structuralFdmSummaryMatches(summary, { ...fdmSettings, supportMode: "forbidden" }, 1),
     ).toBe(false)
     expect(
-      structuralFdmSummarySchema.safeParse({ ...summary, minimumFeatureCubeCells: 15 }).success,
+      structuralFdmSummarySchema.safeParse({ ...summary, minimumFeatureCubeCells: 0 }).success,
     ).toBe(false)
     expect(
       structuralFdmSummarySchema.safeParse({
@@ -167,7 +167,7 @@ describe("structural keep-out boxes", () => {
   it("accepts omitted, empty, and bounded closed boxes", () => {
     expect(schema.parse(undefined)).toBeUndefined()
     expect(schema.parse([])).toEqual([])
-    expect(schema.parse(Array.from({ length: 16 }, () => box))).toHaveLength(16)
+    expect(schema.parse(Array.from({ length: 17 }, () => box))).toHaveLength(17)
   })
   it.each(
     [
@@ -179,7 +179,6 @@ describe("structural keep-out boxes", () => {
       [{ ...box, min: [NaN, 0, 0] }],
       [{ ...box, min: [Infinity, 0, 0] }],
       [{ ...box, kind: "box" }],
-      Array.from({ length: 17 }, () => box),
     ].map((regions) => ({ regions })),
   )("rejects unbounded, malformed, and non-box obstacles %j", ({ regions }) => {
     expect(schema.safeParse(regions).success).toBe(false)
@@ -450,4 +449,40 @@ describe("structural algorithm settings and solid evidence", () => {
       structuralAlgorithmSummaryMatches(evidence, latticeSettings, 1, 640, 500, latticeExecution),
     ).toBe(false)
   })
+})
+
+it("accepts structural work counts beyond former resource ceilings", () => {
+  const input = algorithmInput(simpSettings)
+  const region = input.supports[0]
+  const load = input.loadCases[0]
+  expect(
+    structuralOptimizationSettingsSchema.safeParse({
+      ...input,
+      maxIterations: 100,
+      supports: Array.from({ length: 9 }, () => region),
+      loadCases: Array.from({ length: 9 }, (_, index) => ({ ...load, name: `load-${index}` })),
+      preserveRegions: Array.from({ length: 17 }, () => region),
+      obstacleRegions: Array.from({ length: 17 }, () => ({ min: [20, 20, 20], max: [21, 21, 21] })),
+    }).success,
+  ).toBe(true)
+  expect(
+    structuralAlgorithmSummarySchema.safeParse({
+      ...simpEvidence(),
+      densityIterations: 100,
+      projectionEvaluations: 101,
+      targetCellCount: 3012,
+      achievedCellCount: 4000,
+    }).success,
+  ).toBe(true)
+  const fdm = fdmSummary()
+  const settings = { ...fdmSettings, minFeatureSizeMm: 15 }
+  const metrics = { ...fdm.baseline, minFeatureSizeBoundMm: 15, buildHeightMm: 4000 }
+  const large = structuralFdmSummarySchema.parse({
+    ...fdm,
+    settings,
+    minimumFeatureCubeCells: 15,
+    baseline: metrics,
+    optimized: metrics,
+  })
+  expect(structuralFdmSummaryMatches(large, settings, 1)).toBe(true)
 })

@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
 import type { StructuralOptimizationResult } from "@vibeshape/structural-optimization/contract"
+import { denseBoxMesh } from "../../../../packages/structural-optimization/tests/dense-box-fixture"
 import { vi } from "../../../../tests/unit/support/bun-test"
 
 import type { LightweightingSource } from "../features/lightweighting/lightweighting-model"
 
+import { isImportReview } from "./automation-review-state"
 import type { ImportReviewedCommit } from "./import-upload-session"
 
 const mocks = (() => ({ optimize: vi.fn(), inspect: vi.fn(), terminate: vi.fn() }))()
@@ -195,6 +197,23 @@ describe("browser lightweighting snapshot authority", () => {
       false,
     )
     expect(automationReviews.getSnapshot()).toBeNull()
+  })
+  it("reviews and applies generated STL bytes above the public upload ceiling", async () => {
+    const test = setup()
+    mocks.optimize.mockResolvedValueOnce({
+      ...lightweightingSummary(),
+      mesh: denseBoxMesh({ subdivisions: 105 }),
+    })
+    const pending = test.session.execute(actor, lightweightingOperation(true))
+    const review = await reviewReady()
+    expect(review.input).toMatchObject({ kind: "import", source: { upload: { format: "stl" } } })
+    if (!isImportReview(review.input)) throw new Error("Expected the shared source review.")
+    expect(review.input.source.upload.byteLength).toBeGreaterThan(6 * 1024 * 1024)
+    expect(test.commit).not.toHaveBeenCalled()
+    await automationReviews.decide(review.id, "approved")
+    expect(await pending).toMatchObject({ ok: true })
+    expect(test.commit).toHaveBeenCalledTimes(1)
+    expect(test.commit.mock.calls[0]?.[0].assetBlobs[0]?.bytes.byteLength).toBe(6_615_084)
   })
   it("captures the stiffness-guided mass budget in worker inputs and manual review", async () => {
     const test = setup()

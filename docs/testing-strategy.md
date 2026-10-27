@@ -32,13 +32,20 @@ material. These run natively and in the pinned WASM corpus. The browser smoke in
 `tests/e2e/structural-optimization.spec.ts` exercises real worker loading, both methods,
 cancellation/restart, task controls, and compact layout. Dense closed-source fixtures cross the
 former 10,000-vertex/20,000-triangle thresholds at fixed FEM and Quick sampling resolution, including
-real browser workers. Dense output checks retain the captured exterior and cover meshes beyond
+real browser workers. Resource-policy regressions additionally exceed 12,000 candidate cells,
+3,000 occupied cells, 5,000 nodes, 300,000 filter entries, 64 cavity shells and former region/iteration
+budgets. An analytical larger beam checks actual FEM values; Quick resolves 57 sampling points per
+axis through real WASM. Schema and transport tests retain physical validity, source binding and
+cancellation beyond the former wall-clock budgets. Dense output checks retain the captured exterior and cover meshes beyond
 the former result budgets. Isosurface extraction separately checks complete finite buffers above
 120,000 triangles; actual captured surface bounds still reject out-of-range selections.
 `tests/desktop/numerical-runtime.spec.ts` additionally runs the built SIMP and Schwarz P workers
 through the desktop static HTTP host, including real module/WASM/wheel loading under production
 headers and a missing-module diagnostic regression. Build the editor before this suite; Vite-only
-worker tests do not exercise static-host MIME policy.
+worker tests do not exercise static-host MIME policy. Large-output unit fixtures exercise the
+ordinary local encoding/import/capture/rebuild path and former source-byte admission thresholds.
+`tests/e2e/large-mesh-import-ui.spec.ts` imports more than 83,333 triangles through the actual
+browser preview and Apply, then checks Undo/Redo, IndexedDB reload and native backup reopen.
 
 | Level | Coverage | Tool or approach |
 |---|---|---|

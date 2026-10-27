@@ -16,9 +16,6 @@ import {
 import { z } from "zod"
 import { importUploadCommitSchema } from "./imports"
 
-export const LIGHTWEIGHTING_ANALYSIS_TIMEOUT_MS = 4 * 60 * 1000
-export const LIGHTWEIGHTING_REQUEST_TIMEOUT_MS = 9 * 60 * 1000
-
 export const lightweightingSourceIdentitySchema = z
   .object({
     partId: partIdSchema,

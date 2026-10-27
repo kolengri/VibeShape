@@ -23,7 +23,10 @@ function RangeControl({
   label,
   value,
   min,
+  sliderMin = min,
   max,
+  limitMax,
+  unitScale = 1,
   step,
   disabled,
   onChange,
@@ -34,7 +37,10 @@ function RangeControl({
   label: string
   value: number
   min: number
+  sliderMin?: number
   max: number
+  limitMax?: number
+  unitScale?: number
   step: number
   disabled: boolean
   onChange: (value: number) => void
@@ -49,14 +55,38 @@ function RangeControl({
   }
   return (
     <Field>
-      <FieldLabel htmlFor={id} description={description} descriptionId={`${id}-description`}>
+      <FieldLabel
+        id={`${id}-label`}
+        htmlFor={`${id}-value`}
+        description={description}
+        descriptionId={`${id}-description`}
+      >
         {label}
       </FieldLabel>
       <input
+        id={`${id}-value`}
+        type="number"
+        min={min * unitScale}
+        max={limitMax === undefined ? undefined : limitMax * unitScale}
+        step="any"
+        value={value * unitScale}
+        disabled={disabled}
+        aria-describedby={`${id}-description`}
+        onFocus={() => changeGesture("number", true)}
+        onBlur={() => changeGesture("number", false)}
+        onChange={(event) => {
+          const next = event.currentTarget.valueAsNumber / unitScale
+          if (Number.isFinite(next) && next >= min && (limitMax === undefined || next <= limitMax))
+            onChange(next)
+        }}
+        className={fieldVariants()}
+      />
+      <input
         id={id}
         type="range"
-        min={min}
-        max={max}
+        aria-labelledby={`${id}-label`}
+        min={sliderMin}
+        max={Math.max(max, value)}
         step={step}
         value={value}
         disabled={disabled}
@@ -176,8 +206,7 @@ export function QuickLightweightingTaskPanel({
 type QuickState = ReturnType<typeof useQuickLightweightingTask>
 function QuickModeControls({ state, disabled }: { state: QuickState; disabled: boolean }) {
   const t = useTranslations("app.quickLightweighting")
-  const change = (next: Partial<typeof state.settings>) =>
-    state.changeSettings({ ...state.settings, ...next })
+  const change = state.changeSettings
   return (
     <fieldset className={fieldVariants({ orientation: "horizontal" })} aria-label={t("mode")}>
       <legend className="sr-only">{t("mode")}</legend>
@@ -213,13 +242,11 @@ function QuickModeControls({ state, disabled }: { state: QuickState; disabled: b
   )
 }
 
-function QuickControls({ state, disabled }: { state: QuickState; disabled: boolean }) {
+function QuickCellControls({ state, disabled }: { state: QuickState; disabled: boolean }) {
   const t = useTranslations("app.quickLightweighting")
-  const change = (next: Partial<typeof state.settings>) =>
-    state.changeSettings({ ...state.settings, ...next })
+  const change = state.changeSettings
   return (
-    <div className="grid gap-2">
-      <QuickModeControls state={state} disabled={disabled} />
+    <>
       <SelectField
         id="quick-cell-type"
         label={t("cellType")}
@@ -242,6 +269,7 @@ function QuickControls({ state, disabled }: { state: QuickState; disabled: boole
       )}
       <RangeControl
         id="quick-cell-size"
+        unitScale={(state.input?.cellSizeMm ?? 1) * state.settings.detail}
         label={t("cellSize", { value: state.input?.latticeCellSizeMm ?? 0 })}
         value={state.settings.periodFraction}
         min={6 / state.settings.detail}
@@ -252,12 +280,25 @@ function QuickControls({ state, disabled }: { state: QuickState; disabled: boole
         onEditingChange={state.changeEditing}
         description={t("cellSizeDescription")}
       />
+    </>
+  )
+}
+
+function QuickControls({ state, disabled }: { state: QuickState; disabled: boolean }) {
+  const t = useTranslations("app.quickLightweighting")
+  const change = state.changeSettings
+  return (
+    <div className="grid gap-2">
+      <QuickModeControls state={state} disabled={disabled} />
+      <QuickCellControls state={state} disabled={disabled} />
       <RangeControl
         id="quick-removal"
         label={t("removal", { value: state.settings.removalPercent })}
         value={state.settings.removalPercent}
-        min={5}
-        max={80}
+        min={0}
+        sliderMin={5}
+        max={95}
+        limitMax={100}
         step={5}
         disabled={disabled}
         onChange={(removalPercent) => change({ removalPercent })}
@@ -281,6 +322,7 @@ function QuickControls({ state, disabled }: { state: QuickState; disabled: boole
       {state.settings.mode === "preserve-exterior" && (
         <RangeControl
           id="quick-skin"
+          unitScale={state.input?.cellSizeMm ?? 1}
           label={t("skin", { value: state.input?.skinThicknessMm ?? 0 })}
           value={state.settings.skinCells}
           min={2}

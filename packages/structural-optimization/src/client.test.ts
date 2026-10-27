@@ -487,16 +487,14 @@ describe("bounded structural worker client", () => {
     expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
   })
-  it("enforces the hard time budget", async () => {
-    const pending = optimizeStructuralModel(input, options)
-    const rejected = pending.then(
-      () => {
-        throw new Error("Expected the hard time budget to reject the operation.")
-      },
-      (error: unknown) => error,
-    )
-    vi.advanceTimersByTime(180_000)
-    expect(await rejected).toMatchObject({ code: "timeout" })
+  it("keeps long-running work pending and cancellable", async () => {
+    const controller = new AbortController()
+    const pending = optimizeStructuralModel(input, { ...options, signal: controller.signal })
+    vi.advanceTimersByTime(24 * 60 * 60 * 1_000)
+    expect(FakeWorker.instance.terminate).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
     expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
   })
   it.each(["stress", "case", "cells", "mesh", "precision"])(

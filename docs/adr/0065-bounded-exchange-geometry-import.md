@@ -2,6 +2,7 @@
 
 - Status: Accepted parser boundary; product integration remains staged
 - Date: 2026-10-03
+- Local geometry/resource admission policy partially superseded by [ADR-0134](0134-local-geometry-resource-policy.md)
 - Extends: [ADR-0004](0004-local-first-storage.md), [ADR-0060](0062-durable-source-assets-and-portable-closure.md)
 
 ## Context

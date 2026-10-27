@@ -16,7 +16,6 @@ import {
   meshImportFeatureType,
 } from "@vibeshape/domain/part-design-mesh-import"
 import {
-  MAX_SOURCE_ASSET_BYTES,
   sourceAssetIdSchema,
   sourceAssetOutputIdSchema,
   sourceAssetSchema,
@@ -78,7 +77,7 @@ export async function readImportSource(file: ImportFile, unit: ImportSourceUnit 
   const format = importFormat(file.name)
   if (!format) throw new ImportFileError("format")
   if ((format === "3mf") !== (unit === null)) throw new ImportFileError("units")
-  if (file.size <= 0 || file.size > MAX_SOURCE_ASSET_BYTES) throw new ImportFileError("budget")
+  if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new ImportFileError("budget")
   const filename = sourceAssetSchema.shape.filename.safeParse(file.name)
   if (!filename.success) throw new ImportFileError("filename")
   const bytes = new Uint8Array(await file.arrayBuffer())

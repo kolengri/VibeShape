@@ -7,8 +7,8 @@ const finiteCoordinateSchema = z.number().finite().min(-100_000).max(100_000)
 const triangleSoupSchema = z
   .object({
     name: z.string().trim().min(1).max(4_096).optional(),
-    vertices: z.array(finiteCoordinateSchema).min(12).max(3_000_000),
-    triangles: z.array(z.number().int().nonnegative()).min(12).max(6_000_000),
+    vertices: z.array(finiteCoordinateSchema).min(12),
+    triangles: z.array(z.number().int().nonnegative()).min(12),
   })
   .strict()
   .superRefine((mesh, context) => {
@@ -39,7 +39,7 @@ const triangleSoupSchema = z
 export const threeMfMeshExportInputSchema = z
   .object({
     title: z.string().trim().min(1).max(4_096),
-    meshes: z.array(triangleSoupSchema).min(1).max(10_000),
+    meshes: z.array(triangleSoupSchema).min(1),
     assembly: z.boolean().optional(),
   })
   .strict()

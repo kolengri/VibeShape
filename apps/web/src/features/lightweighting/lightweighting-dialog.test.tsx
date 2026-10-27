@@ -518,6 +518,28 @@ describe("Generative Design workflow", () => {
     ).toEqual([0.4, 0.6, 0.8])
   })
 
+  it("passes more than eight keep-out regions from the editor to the solver", async () => {
+    setup(controller, false, "", {}, true)
+    await fill()
+    for (let index = 1; index <= 9; index++) {
+      await userEvent.click(screen.getByRole("button", { name: "Add keep-out region" }))
+      const box = screen.getByRole("group", { name: `Keep-out region ${index}` })
+      for (const axis of ["X", "Y", "Z"]) {
+        fireEvent.change(within(box).getByLabelText(`Min ${axis} (mm)`), {
+          target: { value: "10" },
+        })
+        fireEvent.change(within(box).getByLabelText(`Max ${axis} (mm)`), {
+          target: { value: "12" },
+        })
+      }
+    }
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Add keep-out region" }).disabled,
+    ).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: "Generate alternatives" }))
+    await waitFor(() => expect(ports.optimize.mock.calls[0]?.[0].obstacleRegions).toHaveLength(9))
+  })
+
   it("compares extra materials and excludes incomplete keep-out boxes", async () => {
     setup(controller, false, "", {}, true)
     await fill()

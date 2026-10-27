@@ -19,17 +19,10 @@ export async function verifySourceAssetBlobs(input: unknown): Promise<readonly S
     throw persistenceInvariantError("invalid-input", "The source asset byte payload is invalid.")
   const records: SourceAssetBlob[] = []
   const digests = new Set<string>()
-  let total = 0
   for (const blob of parsed.data) {
     if (digests.has(blob.digest))
       throw persistenceInvariantError("invalid-input", "The source byte payload repeats a digest.")
     const bytes = Uint8Array.from(blob.bytes)
-    total += bytes.byteLength
-    if (total > 64 * 1024 * 1024)
-      throw persistenceInvariantError(
-        "invalid-input",
-        "Source publication exceeds its aggregate byte budget.",
-      )
     if ((await sha256Bytes(bytes)) !== blob.digest)
       throw persistenceInvariantError(
         "invalid-input",

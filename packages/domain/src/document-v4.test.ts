@@ -201,12 +201,15 @@ describe("source asset authority", () => {
     for (const changed of [
       { representation: "triangle-mesh" },
       { byteLength: 0 },
-      { byteLength: 33 * 1024 * 1024 },
+      { byteLength: Number.POSITIVE_INFINITY },
       { filename: "../Body.step" },
       { outputs: [id(201), id(201)] },
       { normalization: { ...asset.normalization, scaleToMillimeters: Number.NaN } },
     ])
       expect(sourceAssetSchema.safeParse({ ...asset, ...changed }).success).toBe(false)
+    expect(sourceAssetSchema.safeParse({ ...asset, byteLength: 33 * 1024 * 1024 }).success).toBe(
+      true,
+    )
     if (f.added.event.type !== "org.vibeshape.document.source-assets-added")
       throw new Error("Expected an asset event.")
     expect(

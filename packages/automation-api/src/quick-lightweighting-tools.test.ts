@@ -77,7 +77,7 @@ describe("load-free lightweighting transport contracts", () => {
     const operation = quickLightweightingOperation()
     for (const patch of [
       { removalPercent: Number.NaN },
-      { removalPercent: 81 },
+      { removalPercent: 100 },
       { cellSizeMm: 0 },
       { skinThicknessMm: 1.99 },
       { mode: "maximum-stiffness" },
@@ -85,7 +85,6 @@ describe("load-free lightweighting transport contracts", () => {
       { cellType: "unsupported" },
       { latticeCellSizeMm: Number.NaN },
       { latticeCellSizeMm: 5.99 },
-      { latticeCellSizeMm: 12.01 },
     ])
       expect(
         localOperationSchema.safeParse({

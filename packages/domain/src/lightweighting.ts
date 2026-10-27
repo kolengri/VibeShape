@@ -134,7 +134,7 @@ export const structuralOptimizationSettingsSchema = z
     safetyFactor: z.number().finite().min(1).max(100),
     maxDisplacementMm: z.number().finite().min(1e-9).max(100_000),
     cellSizeMm: z.number().finite().min(0.01).max(100_000),
-    supports: z.array(structuralRegionSchema).min(1).max(8),
+    supports: z.array(structuralRegionSchema).min(1),
     loadCases: z
       .array(
         z
@@ -155,13 +155,12 @@ export const structuralOptimizationSettingsSchema = z
           .strict(),
       )
       .min(1)
-      .max(8)
       .refine((cases) => new Set(cases.map(({ name }) => name)).size === cases.length, {
         message: "Load case names must be unique.",
       }),
-    preserveRegions: z.array(structuralRegionSchema).max(16),
-    obstacleRegions: z.array(structuralObstacleRegionSchema).max(16).optional(),
-    maxIterations: z.number().int().min(0).max(40),
+    preserveRegions: z.array(structuralRegionSchema),
+    obstacleRegions: z.array(structuralObstacleRegionSchema).optional(),
+    maxIterations: z.number().int().min(0),
   })
   .strict()
   .refine(({ fdm, cellSizeMm }) => !fdm || fdm.layerHeightMm <= cellSizeMm, {
@@ -195,7 +194,7 @@ const metrics = z
     maxVonMisesMpa: nonnegative,
     maxDisplacementMm: nonnegative,
     safetyFactor: positive,
-    cases: z.array(caseMetrics).min(1).max(8),
+    cases: z.array(caseMetrics).min(1),
   })
   .strict()
 const structuralFdmMetricsSchema = z
@@ -210,7 +209,7 @@ export const structuralFdmSummarySchema = z
   .object({
     settings: structuralFdmSettingsSchema,
     approximation: z.literal("conservative-voxel"),
-    minimumFeatureCubeCells: z.number().int().min(1).max(14),
+    minimumFeatureCubeCells: z.number().int().min(1),
     horizontalReachMm: nonnegative,
     buildPlateCoordinateMm: coordinate,
     baseline: structuralFdmMetricsSchema,
@@ -232,7 +231,6 @@ function fdmMetricsMatch(
     metrics.requiresSupports === metrics.unsupportedAreaMm2 > 0 &&
     (settings.supportMode === "allowed" || !metrics.requiresSupports) &&
     heightCells >= cubeCells &&
-    heightCells <= 3_000 &&
     Math.abs(heightCells - Math.round(heightCells)) <= 1e-8
   )
 }
@@ -273,13 +271,13 @@ export const structuralAlgorithmSummarySchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("simp"),
       settings: simpAlgorithmSchema,
-      densityIterations: z.number().int().min(0).max(40),
+      densityIterations: z.number().int().min(0),
       converged: z.boolean(),
       maxDensityChange: z.number().finite().min(0).max(1),
-      targetCellCount: z.number().int().min(1).max(3_000),
-      achievedCellCount: z.number().int().min(1).max(3_000),
+      targetCellCount: z.number().int().min(1),
+      achievedCellCount: z.number().int().min(1),
       targetStatus: z.enum(["reached", "not-reached"]),
-      projectionEvaluations: z.number().int().min(0).max(80),
+      projectionEvaluations: z.number().int().min(0),
     })
     .strict(),
   z
@@ -291,8 +289,8 @@ export const structuralAlgorithmSummarySchema = z.discriminatedUnion("kind", [
       requestedWallMinMm: z.number().finite().positive(),
       requestedWallMaxMm: z.number().finite().positive(),
       minimumFeatureSizeBoundMm: z.number().finite().positive(),
-      projectionEvaluations: z.number().int().min(0).max(80),
-      thresholdPasses: z.number().int().min(0).max(40),
+      projectionEvaluations: z.number().int().min(0),
+      thresholdPasses: z.number().int().min(0),
     })
     .strict(),
 ])
@@ -399,16 +397,16 @@ export const structuralOptimizationSummarySchema = z
     sourceVolumeMm3: positive,
     sourceVolumeLossFraction: z.number().finite().min(0).max(1),
     cellSizeMm: positive,
-    initialCellCount: z.number().int().min(1).max(3_000),
-    finalCellCount: z.number().int().min(1).max(3_000),
-    iterations: z.number().int().min(0).max(40),
-    evaluations: z.number().int().min(2).max(1_000),
+    initialCellCount: z.number().int().min(1),
+    finalCellCount: z.number().int().min(1),
+    iterations: z.number().int().min(0),
+    evaluations: z.number().int().min(2),
     objective: z
       .discriminatedUnion("kind", [
         minimumMassObjectiveSchema,
         stiffnessObjectiveSchema.extend({
           targetMassKg: positive,
-          targetCellCount: z.number().int().min(1).max(3_000),
+          targetCellCount: z.number().int().min(1),
           achievedRetainedMassFraction: z.number().finite().min(0.1).max(1),
           targetStatus: z.enum(["reached", "not-reached"]),
         }),

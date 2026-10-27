@@ -10,6 +10,7 @@ import {
   type StructuralMesh,
   type StructuralOptimizationInput,
   structuralOptimizationInputSchema,
+  structuralOptimizationResultSchema,
   structuralSolverResponseSchema,
 } from "../src/contract"
 import { generateStructuralDesigns } from "../src/generative-design"
@@ -161,6 +162,12 @@ beforeAll(async () => {
       "utf8",
     ),
   )
+  await runtime.runPythonAsync(
+    readFileSync(
+      resolve(root, "packages/structural-optimization/tests/resource_fixtures.py"),
+      "utf8",
+    ),
+  )
   expect(runtime.version).toBe("314.0.7")
   const versions: unknown = await runtime.runPythonAsync(
     'import json, numpy, scipy, skfem, trimesh; json.dumps({"numpy": numpy.__version__, "scipy": scipy.__version__, "skfem": skfem.__version__, "trimesh": trimesh.__version__})',
@@ -175,6 +182,35 @@ beforeAll(async () => {
 }, timeout)
 
 describe("pinned Pyodide full-solid structural solver", () => {
+  it(
+    "solves more than three thousand cells and five thousand nodes with analytical elasticity",
+    async () => {
+      const raw = await runtime.runPythonAsync(
+        "json.dumps(verify_large_analytical_beam(_surface_test_solver))",
+      )
+      const result = structuralOptimizationResultSchema.parse(JSON.parse(String(raw)))
+      expect(result.initialCellCount).toBe(3012)
+      expect(result.finalCellCount).toBe(3012)
+      expect(result.baseline.maxVonMisesMpa).toBeCloseTo(10 / 12, 6)
+      expect(result.baseline.maxDisplacementMm).toBeCloseTo((10 * 251) / (1000 * 12), 6)
+      expect(signedSurfaceVolume(result.mesh)).toBeCloseTo(3012, 6)
+    },
+    timeout,
+  )
+
+  it.each([
+    "verify_sparse_candidate_grid",
+    "verify_large_filter_and_morphology",
+    "verify_many_cavity_shells",
+    "verify_many_settings_and_user_iterations",
+  ])(
+    "executes %s without an automatic resource rejection",
+    async (verification) => {
+      await runtime.runPythonAsync(`${verification}(_surface_test_solver)`)
+    },
+    timeout,
+  )
+
   it(
     "accepts dense captured surfaces for SIMP without changing the analytical FEM problem",
     async () => {
