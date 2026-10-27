@@ -24,6 +24,7 @@ import {
   type LocalOperation,
   localFailure,
 } from "@vibeshape/automation-api/local-tools"
+import { numericalOperationSchema } from "@vibeshape/automation-api/numerical-jobs"
 import {
   isLocalPlanarImport,
   type LocalPlanarImportOperation,
@@ -82,6 +83,7 @@ import { executeSketchCornerCommand } from "./local-sketch-corner-command"
 import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
+import type { createNumericalJobSession } from "./numerical-job-session"
 import type { createPlanarImportAutomationSession } from "./planar-import-automation-session"
 import type { ProjectToolPort } from "./project-tool-port"
 import type { createBrowserQuickLightweightingAutomationSession } from "./quick-lightweighting-automation-session"
@@ -110,6 +112,7 @@ type LocalSessionPort = Readonly<{
   surfaceTextures?: ReturnType<typeof createBrowserSurfaceTextureAutomationSession>
   lightweighting?: ReturnType<typeof createBrowserLightweightingAutomationSession>
   quickLightweighting?: ReturnType<typeof createBrowserQuickLightweightingAutomationSession>
+  numericalJobs?: ReturnType<typeof createNumericalJobSession>
   exports?: ReturnType<typeof createBinaryExportSession>
   imports?: ReturnType<typeof createImportAutomationSession>
   planarImports?: ReturnType<typeof createPlanarImportAutomationSession>
@@ -422,6 +425,20 @@ export function createLocalToolExecutor(
       ? planarImportFile(operation, signal)
       : importFile(operation, signal)
   }
+  function numericalJob(operation: LocalOperation) {
+    const { projectId: _projectId, ...untargeted } = operation
+    if (operation.tool === "get_numerical_job" || operation.tool === "cancel_numerical_job")
+      return session.numericalJobs
+        ? session.numericalJobs.read(
+            actor,
+            operation.arguments.jobId,
+            operation.tool === "cancel_numerical_job",
+          )
+        : localFailure("numerical-jobs-unavailable", "This session cannot track numerical jobs.")
+    if (session.numericalJobs && numericalOperationSchema.safeParse(untargeted).success)
+      return session.numericalJobs.start(actor, untargeted)
+    return null
+  }
   function reviewedProposal(operation: LocalOperation, signal?: AbortSignal) {
     if (operation.tool === "move_history_item") return moveHistoryItem(operation, signal)
     const { projectId: _projectId, ...untargeted } = operation
@@ -550,7 +567,8 @@ export function createLocalToolExecutor(
               "project-management-unavailable",
               "This connection cannot manage projects.",
             )
-      return execute(operation, signal)
+      const job = numericalJob(operation)
+      return job !== null ? job : execute(operation, signal)
     },
   }
 }

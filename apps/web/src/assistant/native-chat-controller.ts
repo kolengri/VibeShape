@@ -129,6 +129,7 @@ export function createNativeChatController({
     subscribe: (listener: () => void) => () => void
     retryRecovery: (options?: { automatic?: boolean }) => Promise<boolean>
     ensureConnected: (options: { automatic: boolean; signal: AbortSignal }) => Promise<boolean>
+    cancelNumericalJobs?: () => void
   }
 }) {
   let agentSession: AgentChatSession | undefined
@@ -1438,6 +1439,7 @@ export function createNativeChatController({
       return true
     },
     async cancel() {
+      automation?.cancelNumericalJobs?.()
       automaticRecoveryAllowed = false
       if (recovery || connecting !== null) {
         await beginDisconnect().done

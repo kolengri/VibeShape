@@ -53,6 +53,7 @@ import {
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
 import { measurementResultContextMatches } from "@vibeshape/automation-api/measurement-tools"
+import { numericalJobResultContextMatches } from "@vibeshape/automation-api/numerical-jobs"
 import {
   isLocalPlanarImport,
   type LocalPlanarImportOperation,
@@ -353,6 +354,8 @@ function resultContextMatches(
 ) {
   const { projectId: _projectId, ...command } = operation
   operation = command
+  const numericalJob = numericalJobResultContextMatches(operation, result, documentId)
+  if (numericalJob !== null) return numericalJob
   const context = [
     dependenciesResultContextMatches(operation, result, documentId),
     variableUsageResultContextMatches(operation, result, documentId),

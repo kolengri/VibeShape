@@ -1145,6 +1145,9 @@ export function createLocalAutomationConnection(
       return enable()
     },
     validateDocumentScope,
+    cancelNumericalJobs() {
+      pair?.handle.numericalJobs.cancel()
+    },
     isProjectActionPending: () =>
       pair !== null && snapshot.projectManagement && isProjectChange(pair),
     setProjectManagement(enabled: boolean) {

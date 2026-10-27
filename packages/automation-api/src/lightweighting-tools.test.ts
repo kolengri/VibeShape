@@ -429,7 +429,7 @@ describe("bounded paired-browser lightweighting contracts", () => {
       expect(localToolAnnotations(operation.tool)).toMatchObject({
         readOnlyHint: !request,
         destructiveHint: request,
-        idempotentHint: !request,
+        idempotentHint: false,
         openWorldHint: false,
       })
       for (const extra of [

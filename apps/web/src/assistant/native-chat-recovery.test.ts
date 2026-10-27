@@ -120,6 +120,7 @@ function fixture(resumable = true) {
     recoveryAttempt: 0,
   }
   const automation = {
+    cancelNumericalJobs: vi.fn(),
     getSnapshot: () => automationState,
     subscribe(callback: () => void) {
       automationListeners.add(callback)
@@ -180,6 +181,7 @@ function fixture(resumable = true) {
     prompts,
     disconnected,
     retryModel: automation.retryRecovery,
+    cancelNumericalJobs: automation.cancelNumericalJobs,
     ensureModel: automation.ensureConnected,
     fail(code?: AssistantErrorCode) {
       failure = code
@@ -673,6 +675,7 @@ describe("internal native connection recovery", () => {
     await f.chat.connect(agent)
     await f.chat.send("Do work")
     await f.chat.cancel()
+    expect(f.cancelNumericalJobs).toHaveBeenCalledTimes(1)
     f.automate({ connected: true })
     f.crash()
     await vi.advanceTimersByTimeAsync(60_000)

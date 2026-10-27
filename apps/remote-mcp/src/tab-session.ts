@@ -18,6 +18,7 @@ import {
   localToolOutputs,
 } from "@vibeshape/automation-api/local-tools"
 import { measurementResultContextMatches } from "@vibeshape/automation-api/measurement-tools"
+import { numericalJobResultContextMatches } from "@vibeshape/automation-api/numerical-jobs"
 import {
   isLocalPlanarImport,
   planarImportResultMatches,
@@ -79,7 +80,10 @@ type BrowserMessage = z.infer<typeof remoteBrowserMessageSchema>
 function authoredResultContextMatches(
   operation: LocalOperation,
   result: { ok: boolean; value?: unknown },
+  documentId?: string,
 ) {
+  const numericalJob = numericalJobResultContextMatches(operation, result, documentId)
+  if (numericalJob !== null) return numericalJob
   return (
     renderPreviewResultContextMatches(operation, result) !== false &&
     historyResultContextMatches(operation, result) !== false &&
@@ -393,7 +397,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
       dependenciesResultContextMatches(command, result, operation.projectId) !== false &&
       variableUsageResultContextMatches(command, result, operation.projectId) !== false &&
       (!isProjectOperation(command) || projectResultContextMatches(command, result)) &&
-      authoredResultContextMatches(command, result) &&
+      authoredResultContextMatches(command, result, operation.projectId) &&
       this.transferResultMatches(result) &&
       draftInspectionResultMatches(command, result)
     )

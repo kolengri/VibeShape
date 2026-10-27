@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test"
 import { localFailure, localToolNameSchema } from "@vibeshape/automation-api/local-tools"
 import { z } from "zod"
+import {
+  quickLightweightingOperation,
+  quickLightweightingValue,
+} from "../../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { apiProviderTools, apiQuestionInputSchema, createApiCadGateway } from "./api-cad-tools"
 
 const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
@@ -38,7 +42,14 @@ describe("browser CAD gateway", () => {
     expect(names).toEqual([
       "read_agent_skill",
       ...localToolNameSchema.options.filter(
-        (name) => !["list_projects", "open_project", "create_project"].includes(name),
+        (name) =>
+          ![
+            "list_projects",
+            "open_project",
+            "create_project",
+            "get_numerical_job",
+            "cancel_numerical_job",
+          ].includes(name),
       ),
     ])
     const box = pageSchema.parse(
@@ -88,7 +99,13 @@ describe("browser CAD gateway", () => {
         return localFailure("not-available", "Unavailable")
       },
     })
-    for (const name of ["create_project", "open_project", "list_projects"])
+    for (const name of [
+      "create_project",
+      "open_project",
+      "list_projects",
+      "get_numerical_job",
+      "cancel_numerical_job",
+    ])
       await expect(gateway("call_cad_tool", { name, arguments: {} }, signal)).rejects.toMatchObject(
         { code: "invalid-tool" },
       )
@@ -125,5 +142,55 @@ describe("browser CAD gateway", () => {
     await expect(
       gateway("call_cad_tool", { name: "model_info", arguments: {} }, signal),
     ).rejects.toMatchObject({ code: "tool-failed", message: "tool-failed" })
+  })
+
+  it("accepts final numerical evidence and rejects MCP receipts in the direct API gateway", async () => {
+    const operation = quickLightweightingOperation()
+    let result: unknown = {
+      ok: true,
+      value: { ...quickLightweightingValue(), documentId: projectId },
+    }
+    const gateway = createApiCadGateway({
+      projectId,
+      isActive: () => true,
+      execute: async () => result,
+    })
+    const input = { name: operation.tool, arguments: operation.arguments }
+    expect(await gateway("call_cad_tool", input, signal)).toEqual(result)
+    result = {
+      ok: true,
+      value: {
+        jobId: otherProjectId,
+        tool: operation.tool,
+        documentId: projectId,
+        baseRevision: 4,
+        status: "running",
+      },
+    }
+    await expect(gateway("call_cad_tool", input, signal)).rejects.toMatchObject({
+      code: "tool-failed",
+    })
+  })
+
+  it("describes numerical execution as awaiting final results in the browser API connection", async () => {
+    const gateway = createApiCadGateway({
+      projectId,
+      isActive: () => true,
+      execute: async () => {
+        throw new Error("Discovery must not execute CAD.")
+      },
+    })
+    for (const name of [
+      "analyze_lightweighting",
+      "request_lightweighting",
+      "analyze_quick_lightweighting",
+      "request_quick_lightweighting",
+    ]) {
+      const tool = pageSchema
+        .parse(await gateway("discover_cad_tools", { query: name }, signal))
+        .tools.find((tool) => tool.name === name)
+      expect(tool?.description).toContain("await the final numerical result directly in this call")
+      expect(tool?.description).toContain("no job receipt is returned")
+    }
   })
 })

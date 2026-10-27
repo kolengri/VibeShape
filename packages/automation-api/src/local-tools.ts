@@ -14,7 +14,6 @@ import { variableExpressionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
 import {
   assemblyCommitViewSchema,
-  assemblyConstraintDiagnosticSchema,
   assemblyDiscardViewSchema,
   assemblyDraftPreviewSchema,
   assemblyDraftStateSchema,
@@ -92,6 +91,7 @@ import {
   localDraftInspectionInputs,
   localDraftInspectionOperations,
 } from "./local-draft-inspection"
+import { localFailureSchema } from "./local-failure"
 import {
   lifecycleToolNames,
   localLifecycleInputs,
@@ -109,6 +109,13 @@ import {
   measurementToolInputs,
   measurementViewSchema,
 } from "./measurement-tools"
+import {
+  numericalJobOperations,
+  numericalJobReceiptSchema,
+  numericalJobStatusSchema,
+  numericalJobToolInputs,
+  numericalJobToolNames,
+} from "./numerical-jobs"
 import {
   localPlanarImportInputs,
   localPlanarImportOperations,
@@ -162,23 +169,8 @@ import {
   surfaceTextureToolNames,
 } from "./surface-texture-tools"
 
-export const localFailureSchema = z
-  .object({
-    ok: z.literal(false),
-    diagnostic: z
-      .object({
-        code: z.string().regex(/^[a-z][a-z0-9-]{0,95}$/),
-        message: z.string().min(1).max(512),
-        retryable: z.boolean(),
-        assembly: assemblyConstraintDiagnosticSchema.optional(),
-      })
-      .strict(),
-  })
-  .strict()
-export type LocalFailure = z.infer<typeof localFailureSchema>
-export function localFailure(code: string, message: string, retryable = false): LocalFailure {
-  return localFailureSchema.parse({ ok: false, diagnostic: { code, message, retryable } })
-}
+export { type LocalFailure, localFailure, localFailureSchema } from "./local-failure"
+
 function resultOf<Schema extends z.ZodType>(schema: Schema) {
   return z.discriminatedUnion("ok", [
     z.object({ ok: z.literal(true), value: schema }).strict(),
@@ -220,6 +212,7 @@ export const localToolInputs = {
   list_lightweighting_materials: z.object({}).strict(),
   ...projectToolInputs,
   ...lightweightingToolInputs,
+  ...numericalJobToolInputs,
   ...quickLightweightingToolInputs,
   render_preview: renderPreviewArgumentsSchema,
   ...historyToolInputs,
@@ -325,10 +318,32 @@ export const localToolOutputs = {
   list_recoverable_drafts: resultOf(recoverableDraftsViewSchema),
   restore_draft: resultOf(restoredDraftViewSchema),
   list_lightweighting_materials: resultOf(structuralMaterialCatalogSchema),
-  analyze_lightweighting: resultOf(lightweightingAnalysisSchema),
-  request_lightweighting: resultOf(lightweightingRequestSchema),
-  analyze_quick_lightweighting: resultOf(quickLightweightingAnalysisSchema),
-  request_quick_lightweighting: resultOf(quickLightweightingRequestSchema),
+  get_numerical_job: resultOf(numericalJobStatusSchema),
+  cancel_numerical_job: resultOf(numericalJobStatusSchema),
+  analyze_lightweighting: resultOf(
+    z.union([
+      lightweightingAnalysisSchema,
+      numericalJobReceiptSchema.extend({ tool: z.literal("analyze_lightweighting") }),
+    ]),
+  ),
+  request_lightweighting: resultOf(
+    z.union([
+      lightweightingRequestSchema,
+      numericalJobReceiptSchema.extend({ tool: z.literal("request_lightweighting") }),
+    ]),
+  ),
+  analyze_quick_lightweighting: resultOf(
+    z.union([
+      quickLightweightingAnalysisSchema,
+      numericalJobReceiptSchema.extend({ tool: z.literal("analyze_quick_lightweighting") }),
+    ]),
+  ),
+  request_quick_lightweighting: resultOf(
+    z.union([
+      quickLightweightingRequestSchema,
+      numericalJobReceiptSchema.extend({ tool: z.literal("request_quick_lightweighting") }),
+    ]),
+  ),
   list_projects: resultOf(projectListSchema),
   create_project: resultOf(projectViewSchema),
   open_project: resultOf(projectViewSchema),
@@ -497,6 +512,7 @@ export const localToolNameSchema = z.enum([
   "list_lightweighting_materials",
   ...projectToolNames,
   ...lightweightingToolNames,
+  ...numericalJobToolNames,
   ...quickLightweightingToolNames,
   "render_preview",
   "model_history_state",
@@ -630,6 +646,7 @@ const untargetedOperationSchema = z.discriminatedUnion("tool", [
     .strict(),
   ...projectOperations,
   ...lightweightingOperations,
+  ...numericalJobOperations,
   ...quickLightweightingOperations,
   z.object({ tool: z.literal("render_preview"), arguments: renderPreviewArgumentsSchema }).strict(),
   ...localPlanarImportOperations,

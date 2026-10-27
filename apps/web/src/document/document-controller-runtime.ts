@@ -172,6 +172,7 @@ import { createImportAutomationSession } from "../automation/import-automation-s
 import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
 import { createBrowserLightweightingAutomationSession } from "../automation/lightweighting-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
+import { createNumericalJobSession } from "../automation/numerical-job-session"
 import { createPlanarImportAutomationSession } from "../automation/planar-import-automation-session"
 import type {
   PlanarImportReviewedCommit,
@@ -1236,6 +1237,15 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       lightweightingConfiguration,
       reviews,
     )
+    const numericalJobs = createNumericalJobSession({
+      documentId: capturedDocumentId,
+      createId: browserUuidV7,
+      isActive: sourceSessionAvailable,
+      execute: (actor, operation, signal) =>
+        operation.tool === "analyze_lightweighting" || operation.tool === "request_lightweighting"
+          ? lightweighting.execute(actor, operation, signal)
+          : quickLightweighting.execute(actor, operation, signal),
+    })
     const planarImports = createPlanarImportAutomationSession(
       {
         documentId: capturedDocumentId,
@@ -1487,6 +1497,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         assembly.cancel("stale-revision")
         history.cancel("stale-revision")
         surfaceTextures.cancel("stale-revision")
+        numericalJobs.cancel()
         lightweighting.cancel()
         quickLightweighting.cancel()
       }
@@ -1506,6 +1517,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         () => assembly.dispose(),
         () => history.dispose(),
         () => surfaceTextures.dispose(),
+        () => numericalJobs.dispose(),
         () => lightweighting.dispose(),
         () => quickLightweighting.dispose(),
         () => exports.dispose(),
@@ -1543,6 +1555,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       surfaceTextures,
       lightweighting,
       quickLightweighting,
+      numericalJobs,
       exports,
       enableAutoApply: (actor: unknown) =>
         currentReport() !== null && factory.enableAutoApply(actor),
@@ -1562,6 +1575,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         assembly.cancel(reason)
         history.cancel(reason)
         surfaceTextures.cancel(reason)
+        numericalJobs.cancel()
         lightweighting.cancel()
         quickLightweighting.cancel()
         exports.cancel()

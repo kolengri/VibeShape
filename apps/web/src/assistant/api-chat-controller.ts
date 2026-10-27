@@ -71,8 +71,6 @@ type ActiveTurn = {
   canceled: boolean
   transcript: readonly ChatMessage[]
   done?: Promise<void>
-  pauseTimeout?: () => void
-  resumeTimeout?: () => void
 }
 const promptSchema = z
   .strictObject({
@@ -318,10 +316,8 @@ export function createApiChatController(options: ApiChatOptions) {
     }
     return new Promise<unknown>((resolve, reject) => {
       const aborted = () => settle(null, signal.reason)
-      turn?.pauseTimeout?.()
       function settle(answers: Record<string, string> | null, error?: unknown) {
         if (pendingQuestion?.question !== question) return
-        turn?.resumeTimeout?.()
         signal.removeEventListener("abort", aborted)
         pendingQuestion = null
         publish({ question: null })
@@ -394,19 +390,6 @@ export function createApiChatController(options: ApiChatOptions) {
     currentConfiguration: ApiConfiguration,
     currentTools: BrowserToolSession,
   ) {
-    let remaining = 10 * 60_000
-    let started = performance.now()
-    let timeout: ReturnType<typeof setTimeout> | undefined
-    turn.pauseTimeout = () => {
-      clearTimeout(timeout)
-      timeout = undefined
-      remaining = Math.max(0, remaining - (performance.now() - started))
-    }
-    turn.resumeTimeout = () => {
-      started = performance.now()
-      timeout = setTimeout(() => turn.abort.abort(new ApiAssistantError("timeout")), remaining)
-    }
-    turn.resumeTimeout()
     let failure: ApiAssistantErrorCode | null = null
     let succeeded = false
     const events = turnEvents(turn)
@@ -431,9 +414,6 @@ export function createApiChatController(options: ApiChatOptions) {
     } catch (error) {
       failure = turn.canceled ? null : apiErrorCode(error)
     } finally {
-      clearTimeout(timeout)
-      delete turn.pauseTimeout
-      delete turn.resumeTimeout
       await finishTurn(turn, { succeeded, failure }, events.finishTools)
     }
   }
