@@ -43,7 +43,6 @@ function surface(
     )
   }
   cubes.update()
-  if (cubes.count > 360_000) return { candidate: null, volume: null }
   if (cubes.count === 0) return { candidate: null, volume: 0 }
   const vertices = Array.from(
     cubes.positionArray.slice(0, cubes.count * 3),
@@ -86,12 +85,6 @@ function fitVolume(input: QuickLightweightingInput, grid: Grid, cubes: MarchingC
   for (let step = 0; step < 8; step++) {
     const threshold = thresholds[step] ?? (lower + upper) / 2
     const { candidate, volume } = surface(cubes, grid, threshold, input.mode)
-    // A high-removal endpoint may exceed the mesh budget even when the
-    // requested result fits. Continue toward thicker, simpler lattice sheets.
-    if (volume === null) {
-      lower = threshold
-      continue
-    }
     const fraction = volume / grid.sourceVolumeCells
     const removed = 100 * (input.mode === "preserve-exterior" ? fraction : 1 - fraction)
     considerFit(fit, candidate, removed, input.removalPercent)
@@ -109,7 +102,10 @@ export function generateQuickIsosurface(
 ): QuickIsosurfaceCandidate {
   const grid = quickGridSchema.parse(rawGrid)
   const material = new MeshBasicMaterial()
-  const cubes = new MarchingCubes(grid.resolution, material, false, false, 120_000)
+  // Marching cubes emits at most five triangles per sampled cell. Size the
+  // buffers from the grid instead of silently truncating dense surfaces.
+  const triangleCapacity = 5 * (grid.resolution - 3) ** 3
+  const cubes = new MarchingCubes(grid.resolution, material, false, false, triangleCapacity)
   try {
     const best = fitVolume(input, grid, cubes)
     if (!best)

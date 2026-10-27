@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import type { StructuralFdmSummary } from "@vibeshape/domain/lightweighting"
 import { vi } from "../../../tests/unit/support/bun-test"
+import { denseBoxMesh } from "../tests/dense-box-fixture"
 import { optimizeStructuralModel } from "./client"
 import type { StructuralOptimizationInput, StructuralOptimizationResult } from "./contract"
 
@@ -86,23 +87,16 @@ describe("bounded structural worker client", () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
-  it.each(["vertices", "triangles"])(
-    "reports the source mesh budget for too many %s before starting a worker",
-    async (kind) => {
-      const worker = vi.fn()
-      vi.stubGlobal("Worker", worker)
-      const source = structuredClone(input)
-      if (kind === "vertices") source.mesh.vertices = Array(30_003).fill(0)
-      else source.mesh.indices = Array(60_003).fill(0)
-      await expect(optimizeStructuralModel(source, options)).rejects.toMatchObject({
-        code: "invalid-input",
-        message: expect.stringContaining(
-          "mesh: The source mesh exceeds the 10,000-vertex or 20,000-triangle analysis budget.",
-        ),
-      })
-      expect(worker).not.toHaveBeenCalled()
-    },
-  )
+  it("starts analysis for a closed source above the former vertex and triangle counts", async () => {
+    const source = { ...input, mesh: denseBoxMesh() }
+    const pending = optimizeStructuralModel(source, options)
+    expect(FakeWorker.instance.postMessage).toHaveBeenCalledWith({
+      input: source,
+      runtimeBaseUrl: options.runtimeBaseUrl,
+    })
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: result() } })
+    await expect(pending).resolves.toMatchObject({ initialCellCount: 40 })
+  })
   it.each(["mesh", "support"])(
     "identifies an invalid captured %s triangle before starting a worker",
     async (kind) => {

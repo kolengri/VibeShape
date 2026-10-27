@@ -7,26 +7,14 @@ import { structuralMeshSchema } from "./contract"
 
 export type { QuickLightweightingSettings } from "@vibeshape/domain/quick-lightweighting"
 
-export const quickLightweightingMeshSchema = z
-  .object({
-    vertices: z.array(z.number().finite().min(-100_000).max(100_000)).min(12).max(240_000),
-    indices: z.array(z.number().int().nonnegative()).min(12).max(420_000),
-  })
-  .strict()
-  .refine(
-    ({ vertices, indices }) =>
-      vertices.length % 3 === 0 &&
-      indices.length % 3 === 0 &&
-      indices.every((index) => index < vertices.length / 3),
-    "Meshes require complete XYZ triples and valid triangle indices.",
-  )
+export const quickLightweightingMeshSchema = structuralMeshSchema
 export { quickLightweightingSettingsSchema }
 
 export const quickLightweightingProgressSchema = z
   .object({
     phase: z.enum(["sampling", "validation"]),
-    completed: z.number().int().min(0).max(1_000_000),
-    total: z.number().int().positive().max(1_000_000),
+    completed: z.number().int().nonnegative(),
+    total: z.number().int().positive(),
   })
   .strict()
   .refine(({ completed, total }) => completed <= total, "Progress cannot exceed its batch total.")
@@ -34,10 +22,7 @@ export type QuickLightweightingProgress = z.infer<typeof quickLightweightingProg
 
 export const quickLightweightingInputSchema = quickLightweightingSettingsSchema.safeExtend({
   schemaVersion: z.literal(1),
-  mesh: structuralMeshSchema.refine(
-    ({ vertices, indices }) => vertices.length <= 30_000 && indices.length <= 60_000,
-    "The source exceeds the 10,000-vertex or 20,000-triangle quick lightweighting budget.",
-  ),
+  mesh: structuralMeshSchema,
 })
 export const quickLightweightingResultSchema = quickLightweightingSummarySchema.safeExtend({
   mesh: quickLightweightingMeshSchema,

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "bun:test"
 import { structuralOptimizationSettingsSchema } from "@vibeshape/domain/lightweighting"
-import { structuralOptimizationInputSchema } from "./contract"
+import { denseBoxMesh } from "../tests/dense-box-fixture"
+import { structuralMeshSchema, structuralOptimizationInputSchema } from "./contract"
+import {
+  quickLightweightingInputSchema,
+  quickLightweightingMeshSchema,
+  quickLightweightingProgressSchema,
+} from "./quick-contract"
 
 function input() {
   return {
@@ -27,6 +33,61 @@ function input() {
 }
 
 describe("captured structural surface contract", () => {
+  it("accepts geometry validation progress beyond one million checks with ordered finite counts", () => {
+    const progress = { phase: "validation", completed: 1_000_001, total: 2_000_000 }
+    expect(quickLightweightingProgressSchema.parse(progress)).toEqual<unknown>(progress)
+    for (const invalid of [
+      { ...progress, completed: -1 },
+      { ...progress, completed: 2_000_001 },
+      { ...progress, completed: Number.POSITIVE_INFINITY },
+      { ...progress, total: 0 },
+      { ...progress, total: 2_000_000.5 },
+    ])
+      expect(quickLightweightingProgressSchema.safeParse(invalid).success).toBe(false)
+  })
+
+  it("uses actual captured mesh bounds for large surface IDs and selections", () => {
+    const request = {
+      ...input(),
+      mesh: denseBoxMesh(),
+      supports: [
+        {
+          kind: "surface",
+          triangleIndices: Array.from({ length: 21_168 }, (_, index) => index),
+          depthMm: 1,
+        },
+      ],
+      preserveRegions: [{ kind: "surface", triangleIndices: [20_000, 21_167], depthMm: 1 }],
+    }
+    expect(structuralOptimizationInputSchema.safeParse(request).success).toBe(true)
+    request.preserveRegions[0]?.triangleIndices.push(21_168)
+    const parsed = structuralOptimizationInputSchema.safeParse(request)
+    expect(parsed.success).toBe(false)
+    if (!parsed.success)
+      expect(parsed.error.issues).toContainEqual(
+        expect.objectContaining({ path: ["preserveRegions", 0, "triangleIndices"] }),
+      )
+  })
+
+  it("accepts dense source and result meshes without a replacement geometry count ceiling", () => {
+    const mesh = denseBoxMesh({ subdivisions: 120 })
+    expect(mesh.vertices.length / 3).toBe(87_846)
+    expect(mesh.indices.length / 3).toBe(172_800)
+    for (const schema of [structuralMeshSchema, quickLightweightingMeshSchema])
+      expect(schema.safeParse(mesh).success).toBe(true)
+    expect(structuralOptimizationInputSchema.safeParse({ ...input(), mesh }).success).toBe(true)
+    expect(
+      quickLightweightingInputSchema.safeParse({
+        schemaVersion: 1,
+        mesh,
+        mode: "open-organic",
+        removalPercent: 50,
+        cellSizeMm: 0.25,
+        skinThicknessMm: 0,
+      }).success,
+    ).toBe(true)
+  })
+
   it("preserves the shared FDM layer-height scope through the worker extension", () => {
     const { mesh: _mesh, schemaVersion: _version, ...settings } = input()
     const fdm = {

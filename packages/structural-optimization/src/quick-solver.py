@@ -99,8 +99,8 @@ def _surface_components(mesh, label):
 
 
 def _query_batch_size(mesh):
-    # Trimesh's containment check casts rays in both directions. Bound the
-    # worst-case triangle-pair scratch arrays, rather than total useful work.
+    # Trimesh casts rays in both directions. Target bounded pair scratch arrays,
+    # with at least one query point; dense sources can exceed the pair target.
     return max(1, min(128, _MAX_BATCH_PAIRS // (2 * len(mesh.faces))))
 
 
@@ -155,10 +155,10 @@ def _prepare(request):
     mesh = request["mesh"]
     _ensure(isinstance(mesh, dict) and set(mesh) == {"vertices", "indices"}, "invalid-input", "A captured source mesh is required.")
     vertices, indices = mesh["vertices"], mesh["indices"]
-    _ensure(isinstance(vertices, list) and 12 <= len(vertices) <= 30000 and len(vertices) % 3 == 0,
-            "resource-limit", "The source supports at most 10,000 vertices.")
-    _ensure(isinstance(indices, list) and 12 <= len(indices) <= 60000 and len(indices) % 3 == 0,
-            "resource-limit", "The source supports at most 20,000 triangles.")
+    _ensure(isinstance(vertices, list) and 12 <= len(vertices) and len(vertices) % 3 == 0,
+            "invalid-input", "Source vertices require complete XYZ triples for at least four vertices.")
+    _ensure(isinstance(indices, list) and 12 <= len(indices) and len(indices) % 3 == 0,
+            "invalid-input", "Source indices require complete triples for at least four triangles.")
     original = np.array([_finite(value, "coordinate", -100000, 100000) for value in vertices]).reshape(-1, 3)
     _ensure(all(isinstance(value, int) and not isinstance(value, bool) and 0 <= value < len(original) for value in indices),
             "invalid-input", "Source indices must reference captured vertices.")
@@ -236,9 +236,9 @@ def _finish(candidate):
             "invalid-result", "The isosurface response is malformed.")
     vertices = np.asarray(candidate["vertices"], dtype=np.float64)
     indices = np.asarray(candidate["indices"])
-    _ensure(vertices.ndim == 1 and 12 <= len(vertices) <= 1080000 and len(vertices) % 3 == 0
+    _ensure(vertices.ndim == 1 and 12 <= len(vertices) and len(vertices) % 3 == 0
             and np.all(np.isfinite(vertices)), "invalid-result", "The isosurface vertices are invalid.")
-    _ensure(indices.ndim == 1 and 12 <= len(indices) <= 360000 and len(indices) % 3 == 0
+    _ensure(indices.ndim == 1 and 12 <= len(indices) and len(indices) % 3 == 0
             and np.issubdtype(indices.dtype, np.integer) and np.all(indices >= 0)
             and np.all(indices < len(vertices) // 3), "invalid-result", "The isosurface triangles are invalid.")
     mesh = trimesh.Trimesh(vertices.reshape(-1, 3), indices.reshape(-1, 3), process=False)
@@ -292,8 +292,6 @@ def _finish(candidate):
         offset = len(request["mesh"]["vertices"]) // 3
         output_indices = request["mesh"]["indices"] + (mesh.faces[:, ::-1] + offset).ravel().tolist()
         result_volume = context["sourceVolume"] - float(mesh.volume * context["cell"] ** 3)
-    _ensure(len(output_vertices) <= 240000 and len(output_indices) <= 420000,
-            "resource-limit", "The generated mesh exceeds the import budget. Increase the detail cell size.")
     # The ordinary STL import receives float32 coordinates. Check the actual
     # serialization, including vertex fans, before releasing double-precision metrics.
     output_array = np.asarray(output_vertices, dtype=np.float64).reshape(-1, 3)

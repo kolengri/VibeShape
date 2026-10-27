@@ -30,7 +30,11 @@ three TPMS families, both FEM fields, exterior skin, resolved occupied-cube boun
 full-solid feasibility. Cavity tests distinguish inward void shells from disconnected or nested
 material. These run natively and in the pinned WASM corpus. The browser smoke in
 `tests/e2e/structural-optimization.spec.ts` exercises real worker loading, both methods,
-cancellation/restart, task controls, and compact layout.
+cancellation/restart, task controls, and compact layout. Dense closed-source fixtures cross the
+former 10,000-vertex/20,000-triangle thresholds at fixed FEM and Quick sampling resolution, including
+real browser workers. Dense output checks retain the captured exterior and cover meshes beyond
+the former result budgets. Isosurface extraction separately checks complete finite buffers above
+120,000 triangles; actual captured surface bounds still reject out-of-range selections.
 
 | Level | Coverage | Tool or approach |
 |---|---|---|

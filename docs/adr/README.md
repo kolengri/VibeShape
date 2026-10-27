@@ -143,6 +143,7 @@
 | [0131](0131-exact-face-signature-resolution.md) | Accepted | Identical face signatures resolve within authoritative scope before approximate ranking |
 
 See also [ADR-0132: Current planar face sketch support](0132-current-planar-face-sketch-support.md).
+See also [ADR-0133: Tessellation-independent lightweighting inputs](0133-lightweighting-mesh-density.md).
 
 Statuses:
 

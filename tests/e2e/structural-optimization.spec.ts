@@ -4,6 +4,11 @@ import type {
   StructuralOptimizationInput,
   StructuralOptimizationResult,
 } from "../../packages/structural-optimization/src/contract"
+import type {
+  QuickLightweightingInput,
+  QuickLightweightingResult,
+} from "../../packages/structural-optimization/src/quick-contract"
+import { denseBoxMesh } from "../../packages/structural-optimization/tests/dense-box-fixture"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
@@ -161,6 +166,9 @@ test.describe("real structural browser worker", () => {
   }) => {
     test.setTimeout(240_000)
     await page.goto("/")
+    await expect(
+      page.getByRole("heading", { name: "Projects", level: 1, exact: true }),
+    ).toBeVisible()
     const result = await page.evaluate(
       async ({ input, latticeInput, moduleUrl, runtimeBaseUrl }) => {
         const {
@@ -220,7 +228,7 @@ test.describe("real structural browser worker", () => {
         return { canceledName, simp: summarize(simp), lattice: summarize(lattice) }
       },
       {
-        input: specimen(),
+        input: { ...specimen(), mesh: denseBoxMesh({ min: [0, 0, 0], max: [10, 2, 2] }) },
         latticeInput: specimen(true),
         moduleUrl: `/@fs${resolve("packages/structural-optimization/src/client.ts")}`,
         runtimeBaseUrl: new URL("/structural-runtime/", page.url()).href,
@@ -243,5 +251,54 @@ test.describe("real structural browser worker", () => {
     }
     expect(result.simp.algorithm?.kind).toBe("simp")
     expect(result.lattice.algorithm?.kind).toBe("adaptive-lattice")
+  })
+
+  test("generates Quick geometry beyond the former source limits in a real browser worker", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000)
+    await page.goto("/")
+    await expect(
+      page.getByRole("heading", { name: "Projects", level: 1, exact: true }),
+    ).toBeVisible()
+    const mesh = denseBoxMesh({ min: [0, 0, 0], max: [10, 10, 10] })
+    expect(mesh.vertices.length / 3).toBeGreaterThan(10_000)
+    expect(mesh.indices.length / 3).toBeGreaterThan(20_000)
+    const result = await page.evaluate(
+      async ({ input, moduleUrl, runtimeBaseUrl }) => {
+        const {
+          generateQuickLightweighting,
+        }: {
+          generateQuickLightweighting: (
+            input: QuickLightweightingInput,
+            options: { runtimeBaseUrl: string },
+          ) => Promise<QuickLightweightingResult>
+        } = await import(moduleUrl)
+        const result = await generateQuickLightweighting(input, { runtimeBaseUrl })
+        return {
+          removedPercent: result.removedPercent,
+          triangles: result.mesh.indices.length / 3,
+          unchangedExterior:
+            input.mesh.vertices.every((value, index) => result.mesh.vertices[index] === value) &&
+            input.mesh.indices.every((value, index) => result.mesh.indices[index] === value),
+        }
+      },
+      {
+        input: {
+          schemaVersion: 1 as const,
+          mesh,
+          mode: "preserve-exterior" as const,
+          removalPercent: 20,
+          cellSizeMm: 1,
+          skinThicknessMm: 2,
+        },
+        moduleUrl: `/@fs${resolve("packages/structural-optimization/src/quick-client.ts")}`,
+        runtimeBaseUrl: new URL("/structural-runtime/", page.url()).href,
+      },
+    )
+    expect(result.unchangedExterior).toBe(true)
+    expect(result.triangles).toBeGreaterThan(mesh.indices.length / 3)
+    expect(result.removedPercent).toBeGreaterThan(0.5)
+    expect(result.removedPercent).toBeLessThan(100)
   })
 })

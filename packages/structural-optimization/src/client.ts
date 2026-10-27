@@ -10,6 +10,7 @@ import {
   structuralSolverResponseSchema,
 } from "./contract"
 import { StructuralOptimizationError } from "./errors"
+import { invalidInputMessage } from "./input-diagnostics"
 import { encodeStructuralStl } from "./mesh"
 
 export { StructuralOptimizationError } from "./errors"
@@ -20,15 +21,6 @@ const progressSchema = z
 const responseSchema = z
   .object({ type: z.literal("complete"), response: structuralSolverResponseSchema })
   .strict()
-
-function invalidInputMessage(error: z.ZodError) {
-  const issues = error.issues.slice(0, 3).map(({ path, message }) => {
-    const location = path.map(String).join(".").slice(0, 80) || "input"
-    return `${location}: ${message.slice(0, 160)}`
-  })
-  // Browser automation forwards this message through its 512-character diagnostic boundary.
-  return ["Analysis inputs are invalid.", ...issues].join(" ").slice(0, 512)
-}
 
 function metricsFeasible(
   input: StructuralOptimizationInput,
@@ -171,7 +163,10 @@ export function optimizeStructuralModel(
   const parsed = structuralOptimizationInputSchema.safeParse(input)
   if (!parsed.success)
     return Promise.reject(
-      new StructuralOptimizationError("invalid-input", invalidInputMessage(parsed.error)),
+      new StructuralOptimizationError(
+        "invalid-input",
+        invalidInputMessage("Analysis inputs are invalid.", parsed.error),
+      ),
     )
   if (options.signal?.aborted)
     return Promise.reject(new DOMException("Analysis canceled.", "AbortError"))
