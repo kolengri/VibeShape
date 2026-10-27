@@ -6,20 +6,6 @@ import {
 } from "@vibeshape/domain"
 import type { DocumentWorkerResponse } from "@vibeshape/protocol"
 
-const supportedFixedPlanarRoles = new Set([
-  "datum.plane",
-  "primitive.box.side.x-min",
-  "primitive.box.side.x-max",
-  "primitive.box.side.y-min",
-  "primitive.box.side.y-max",
-  "primitive.box.cap.start",
-  "primitive.box.cap.end",
-  "primitive.cylinder.cap.start",
-  "primitive.cylinder.cap.end",
-  "extrusion.cap.start",
-  "extrusion.cap.end",
-])
-
 type DocumentRebuiltResponse = Extract<DocumentWorkerResponse, { type: "documentRebuilt" }>
 
 export type SketchSupportHealth = Readonly<{
@@ -64,16 +50,16 @@ export function inspectPlanarSupportHealth(
   rebuild: DocumentRebuiltResponse | undefined,
 ): SketchSupportHealth | null {
   if (!rebuild) return { status: "unknown" }
-  if (!supportedPlanarRole(reference.semanticRole)) return { status: "missing" }
   const evaluation = rebuild.evaluation.records.find(
     ({ featureId }) => featureId === reference.featureId,
   )
   if (evaluation?.status !== "succeeded") return { status: "unknown" }
   const geometry = rebuild.geometry.find(({ featureId }) => featureId === reference.featureId)
   if (!geometry) return { status: "unknown" }
-  const resolution = resolveTopologyReference(
+  const resolution = resolvePlanarSupportReference(
     reference,
-    supportCandidates(reference, geometry.geometry.topologyCandidates.map(domainCandidate)),
+    geometry.geometry.topologyCandidates.map(domainCandidate),
+    geometry.geometry.bodies,
   )
   if (resolution.status !== "resolved") return { status: resolution.status }
   const candidate = geometry.geometry.topologyCandidates.find(
@@ -91,10 +77,14 @@ export function inspectPlanarSupportHealth(
   }
 }
 
-export function supportedPlanarRole(role: string | undefined) {
-  if (!role) return false
-  if (supportedFixedPlanarRoles.has(role)) return true
-  return role.startsWith("extrusion.side.") && role.length > "extrusion.side.".length
+export function resolvePlanarSupportReference(
+  reference: PlanarFaceTopoRef,
+  candidates: readonly TopologyCandidate[],
+  bodies?: readonly Readonly<{ outputRole: string }>[],
+) {
+  if (bodies?.length && !bodies.some(({ outputRole }) => outputRole === "result"))
+    return { status: "missing" } as const
+  return resolveTopologyReference(reference, supportCandidates(reference, candidates))
 }
 
 export function inspectSketchSupportHealth(

@@ -1,5 +1,3 @@
-import { supportedPlanarRole } from "@vibeshape/application/support-health"
-
 export {
   inspectSketchSupportHealth,
   type SketchSupportHealth,
@@ -28,7 +26,12 @@ export function selectedPlanarFaceReference(
 ): PlanarFaceTopoRef | null {
   const candidate = candidates.find((item) => item.meshFaceId === meshFaceId)
   const direction = candidate?.signature.direction
-  if (candidate?.kind !== "face" || candidate.signature.geometryClass !== "PLANE" || !direction) {
+  if (
+    candidate?.kind !== "face" ||
+    candidate.signature.geometryClass !== "PLANE" ||
+    candidate.signature.directionMode !== "oriented" ||
+    !direction
+  ) {
     return null
   }
   const parsed = sketchFeatureFaceSupportSchema.shape.reference.safeParse({
@@ -38,10 +41,6 @@ export function selectedPlanarFaceReference(
     ...(candidate.semanticRole ? { semanticRole: candidate.semanticRole } : {}),
     ...(candidate.lineageTokens.length === 1 ? { lineageToken: candidate.lineageTokens[0] } : {}),
     signature: candidate.signature,
-    intent: {
-      nearPoint: candidate.signature.centroid,
-      expectedDirection: direction,
-    },
   })
   return parsed.success ? parsed.data : null
 }
@@ -59,11 +58,9 @@ export function selectedSketchSupport(
   meshFaceId: number,
   candidates: readonly TopologyCandidate[],
 ): SelectedSketchSupport | null {
-  const candidate = candidates.find((item) => item.meshFaceId === meshFaceId)
   const reference = selectedPlanarFaceReference(featureId, meshFaceId, candidates)
   const direction = reference?.signature.direction
-  if (!candidate || !reference || !direction || !supportedPlanarRole(candidate.semanticRole))
-    return null
+  if (!reference || !direction) return null
   const parsed = sketchFeatureFaceSupportSchema.safeParse({
     kind: "feature-face",
     reference,

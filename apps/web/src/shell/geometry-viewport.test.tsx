@@ -187,7 +187,7 @@ const secondProfileSketchDisplay: SketchDisplayRecord = {
 function planarFaceCandidate(
   candidateId: string,
   meshFaceId: number,
-  semanticRole: string,
+  semanticRole: string | undefined,
   centroid: readonly [number, number, number],
 ) {
   return {
@@ -2791,7 +2791,9 @@ describe("GeometryViewport", () => {
     const boxSelection = { featureId: boxId, faceId: 3, faceOrdinal: 99 }
     const extrusionSelection = { featureId: booleanId, faceId: 7, faceOrdinal: 88 }
     const extrusionSideSelection = { featureId: booleanId, faceId: 9, faceOrdinal: 77 }
-    const unsupportedSelection = { featureId: booleanId, faceId: 11, faceOrdinal: 66 }
+    const generatedSelection = { featureId: booleanId, faceId: 11, faceOrdinal: 66 }
+    const roleFreeSelection = { featureId: booleanId, faceId: 13, faceOrdinal: 55 }
+    const unmappedSelection = { featureId: booleanId, faceId: 99, faceOrdinal: 44 }
     const { createViewport, onSelectionChange, port } = renderViewport(
       readyController(
         [
@@ -2815,7 +2817,8 @@ describe("GeometryViewport", () => {
               topologyCandidates: [
                 planarFaceCandidate("extrusion-cap", 7, "extrusion.cap.end", [0, 0, 10]),
                 planarFaceCandidate("extrusion-wall", 9, "extrusion.side.1", [10, 0, 5]),
-                planarFaceCandidate("unknown-wall", 11, "generated.face", [-10, 0, 5]),
+                planarFaceCandidate("generated-wall", 11, "generated.face", [-10, 0, 5]),
+                planarFaceCandidate("role-free-wall", 13, undefined, [0, -10, 5]),
               ],
             },
           },
@@ -2830,10 +2833,12 @@ describe("GeometryViewport", () => {
     expect(options?.isSelectionCandidateEligible?.(boxSelection)).toBe(true)
     expect(options?.isSelectionCandidateEligible?.(extrusionSelection)).toBe(true)
     expect(options?.isSelectionCandidateEligible?.(extrusionSideSelection)).toBe(true)
-    expect(options?.isSelectionCandidateEligible?.(unsupportedSelection)).toBe(false)
+    expect(options?.isSelectionCandidateEligible?.(generatedSelection)).toBe(true)
+    expect(options?.isSelectionCandidateEligible?.(roleFreeSelection)).toBe(true)
+    expect(options?.isSelectionCandidateEligible?.(unmappedSelection)).toBe(false)
     act(() =>
       options?.onSelectionCandidateStackChange?.([
-        unsupportedSelection,
+        unmappedSelection,
         boxSelection,
         extrusionSelection,
       ]),
@@ -2880,6 +2885,16 @@ describe("GeometryViewport", () => {
     })
     expect(onSelectionChange).toHaveBeenLastCalledWith(boxSelection)
     expect(listbox).not.toBe(document.activeElement)
+
+    act(() => options?.onSelectionCandidateStackChange?.([generatedSelection, roleFreeSelection]))
+    act(() => options?.onSelectionCandidateStackCommit?.([generatedSelection, roleFreeSelection]))
+    await screen.findByRole("listbox", { name: "Select sketch support" })
+    expect(screen.getByRole("option", { name: "1/2 Extrusion 1 · Face 3" })).toBeTruthy()
+    const roleFreeOption = screen.getByRole("option", { name: "2/2 Extrusion 1 · Face 4" })
+    fireEvent.click(roleFreeOption)
+    expect(onSelectionChange).toHaveBeenLastCalledWith(roleFreeSelection)
+    expect(screen.queryByRole("listbox", { name: "Select sketch support" })).toBeNull()
+    expect(document.activeElement).toBe(viewport)
   })
 
   it("forwards tree-owned origin-plane visibility without floating plane buttons", async () => {

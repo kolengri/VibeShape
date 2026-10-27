@@ -10,6 +10,14 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
 
 ## Capture the source and physical inputs
 
+Source capture removes unreferenced vertices and welds exactly equal XYZ coordinates before the
+10,000-vertex analysis limit. It preserves triangle positions, order, winding, surface-selection indices and
+the source body/hash/revision; it does not approximate the surface or raise solver limits. Capture
+work remains bounded to 20,000 raw vertices and 20,000 triangles. A genuinely oversized, invalid or
+non-finite source still fails explicitly. Input diagnostics include bounded validation paths and
+messages; inspect that cause before changing a study or retrying. Passing input validation alone
+does not establish a solved or feasible study.
+
 1. Read `model_info`, then `model_parts` at the same committed revision. Select one current,
    available exact solid Part, retaining its `partId` and body `featureId`/`outputRole`.
 2. Read `model_body_measurements` for that body at the same revision and retain its exact

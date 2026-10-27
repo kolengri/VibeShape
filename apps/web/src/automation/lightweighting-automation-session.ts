@@ -5,7 +5,10 @@ import {
   optimizeStructuralModel,
   StructuralOptimizationError,
 } from "@vibeshape/structural-optimization/client"
-import { encodeStructuralStl } from "@vibeshape/structural-optimization/mesh"
+import {
+  compactStructuralSourceMesh,
+  encodeStructuralStl,
+} from "@vibeshape/structural-optimization/mesh"
 import type { LightweightingSource } from "../features/lightweighting/lightweighting-model"
 import { automationReviews } from "./automation-review-controller"
 import type { ImportSessionConfiguration } from "./import-upload-session"
@@ -55,10 +58,10 @@ export function createBrowserLightweightingAutomationSession(
       const result = await optimizeStructuralModel(
         {
           schemaVersion: 1,
-          mesh: {
+          mesh: compactStructuralSourceMesh({
             vertices: Array.from(source.body.mesh.positions),
             indices: Array.from(source.body.mesh.indices),
-          },
+          }),
           ...settings,
         },
         { signal },

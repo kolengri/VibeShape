@@ -8,6 +8,7 @@ import {
   structuralMaterialCatalog,
 } from "@vibeshape/domain/lightweighting-materials"
 import type { StructuralOptimizationInput } from "@vibeshape/structural-optimization/contract"
+import { compactStructuralSourceMesh } from "@vibeshape/structural-optimization/mesh"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { historyCreationAfter } from "../../document/history-insertion"
 import { historyInsertionContext } from "../../shell/history-insertion-context"
@@ -260,10 +261,10 @@ export function lightweightingInput(
   })
   return {
     schemaVersion: 1,
-    mesh: {
+    mesh: compactStructuralSourceMesh({
       vertices: Array.from(source.body.mesh.positions),
       indices: Array.from(source.body.mesh.indices),
-    },
+    }),
     material: {
       youngModulusMpa: number(fields.youngModulusMpa),
       poissonRatio: number(fields.poissonRatio),

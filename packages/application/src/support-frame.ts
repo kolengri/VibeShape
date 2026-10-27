@@ -5,17 +5,18 @@ import {
   type FeatureRecord,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
-  resolveTopologyReference,
   type SketchRecord,
   type TopologyCandidate,
 } from "@vibeshape/domain"
 import { extrusionExtentBounds, extrusionFrameSchema } from "@vibeshape/protocol"
+import { resolvePlanarSupportReference } from "./support-health"
 
 export type SupportFrame = ReturnType<typeof extrusionFrameSchema.parse>
 type Vector3 = readonly [number, number, number]
 export type SupportFrameGeometryRecord = Readonly<{
   featureId: string
   geometry: Readonly<{
+    bodies?: readonly Readonly<{ outputRole: string }>[] | undefined
     topologyCandidates: readonly (TopologyCandidate &
       Readonly<{ referenceGeometry?: unknown; edgePolyline?: unknown }>)[]
   }>
@@ -74,10 +75,15 @@ function normalize(vector: Vector3): [number, number, number] | null {
     : null
 }
 
-function frameFromNormal(origin: Vector3, normal: Vector3): SupportFrame | null {
+function frameFromNormal(
+  origin: Vector3,
+  normal: Vector3,
+  preferredXAxis?: Vector3,
+): SupportFrame | null {
   const unitNormal = normalize(normal)
   if (!unitNormal) return null
-  const reference: Vector3 = Math.abs(unitNormal[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
+  const reference: Vector3 =
+    preferredXAxis ?? (Math.abs(unitNormal[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0])
   const projection = dot(reference, unitNormal)
   const projected: [number, number, number] = [
     reference[0] - projection * unitNormal[0],
@@ -86,12 +92,13 @@ function frameFromNormal(origin: Vector3, normal: Vector3): SupportFrame | null 
   ]
   const xAxis = normalize(projected)
   if (!xAxis) return null
-  return extrusionFrameSchema.parse({
+  const parsed = extrusionFrameSchema.safeParse({
     origin,
     xAxis,
     yAxis: cross(unitNormal, xAxis),
     normal: unitNormal,
   })
+  return parsed.success ? parsed.data : null
 }
 
 function projectAnchorOntoPlane(anchor: Vector3, planePoint: Vector3, normal: Vector3): Vector3 {
@@ -148,9 +155,10 @@ function currentPlanarSupportFrame(
 ): SupportFrame | null {
   const record = currentFeatureGeometry(geometry, reference.featureId)
   if (!record) return null
-  const resolution = resolveTopologyReference(
+  const resolution = resolvePlanarSupportReference(
     reference,
     record.geometry.topologyCandidates.map(domainCandidate),
+    record.geometry.bodies,
   )
   if (resolution.status !== "resolved") return null
   const plane = orientedPlanarGeometry(
@@ -160,9 +168,13 @@ function currentPlanarSupportFrame(
   )
   if (!plane) return null
   const anchor = reference.intent?.nearPoint ?? reference.signature.centroid
+  const authoredNormal =
+    reference.signature.directionMode === "oriented" ? reference.signature.direction : undefined
+  const authoredFrame = authoredNormal ? frameFromNormal(anchor, authoredNormal) : null
   return frameFromNormal(
     projectAnchorOntoPlane(anchor, plane.centroid, plane.direction),
     plane.direction,
+    authoredFrame?.xAxis,
   )
 }
 
@@ -323,19 +335,7 @@ export function datumPlaneFrame(
   const baseFrame: SupportFrame | null =
     support.kind === "origin-plane"
       ? originPlaneFrame(support.plane)
-      : (() => {
-          const source = features.find(({ id }) => id === support.reference.featureId)
-          const role = support.reference.semanticRole
-          if (!source || !role || visitedFeatureIds.has(source.id)) return null
-          return featureSupportFrame(
-            source,
-            role,
-            document,
-            features,
-            new Set([...visitedFeatureIds, source.id]),
-            geometry,
-          )
-        })()
+      : faceSupportFrame(support.reference, document, features, visitedFeatureIds, geometry)
   return baseFrame
     ? rotatedDatumFrame(translatedFrame(baseFrame, parameters.offset.value), parameters.rotation)
     : null
@@ -376,23 +376,30 @@ export function sketchFrame(
 ): SupportFrame | null {
   const support = sketch.support
   if (!support) return originPlaneFrame(sketch.plane)
-  const reference = support.reference
-  const role = reference.semanticRole
-  if (!role || visitedFeatureIds.has(reference.featureId)) return null
+  return faceSupportFrame(support.reference, document, features, visitedFeatureIds, geometry)
+}
+
+function faceSupportFrame(
+  reference: NonNullable<SketchRecord["support"]>["reference"],
+  document: DocumentSnapshot,
+  features: readonly FeatureRecord[],
+  visitedFeatureIds: ReadonlySet<string>,
+  geometry: CurrentGeometry | undefined,
+): SupportFrame | null {
+  if (visitedFeatureIds.has(reference.featureId)) return null
   const feature = features.find(({ id }) => id === reference.featureId)
   if (!feature) return null
+  const role = reference.semanticRole
   return (
-    featureSupportFrame(
-      feature,
-      role,
-      document,
-      features,
-      new Set([...visitedFeatureIds, reference.featureId]),
-      geometry,
-    ) ??
-    (feature.type.typeId === "org.vibeshape.feature.part-design.extrusion" &&
-    role.startsWith("extrusion.side.")
-      ? currentPlanarSupportFrame(reference, geometry)
-      : null)
+    (role
+      ? featureSupportFrame(
+          feature,
+          role,
+          document,
+          features,
+          new Set([...visitedFeatureIds, reference.featureId]),
+          geometry,
+        )
+      : null) ?? currentPlanarSupportFrame(reference, geometry)
   )
 }

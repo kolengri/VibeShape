@@ -50,6 +50,53 @@ const source: LightweightingSource = {
 }
 
 describe("captured Lightweighting surface targets", () => {
+  it("compacts display seams while preserving selected triangle identity and normal loads", () => {
+    const positions = Float32Array.from(
+      Array.from(body.mesh.indices).flatMap((index) =>
+        Array.from(body.mesh.positions.slice(index * 3, index * 3 + 3)),
+      ),
+    )
+    const seamedSource: LightweightingSource = {
+      ...source,
+      body: {
+        ...body,
+        mesh: {
+          ...body.mesh,
+          positions,
+          normals: new Float32Array(positions.length),
+          indices: Uint32Array.from({ length: positions.length / 3 }, (_, index) => index),
+        },
+      },
+    }
+    const fields = initialLightweightingFields(seamedSource, "Load", true)
+    Object.assign(fields, {
+      youngModulusMpa: "1000",
+      poissonRatio: "0",
+      yieldStrengthMpa: "100",
+      densityKgM3: "1000",
+    })
+    const surface = fields.surfaceSelection
+    const force = fields.loadCases[0]?.surfaceForce
+    if (!surface || !force) throw new Error("Expected graphical boundary-condition fields.")
+    surface.supportFaces = [17]
+    surface.loadFaces[0] = [42]
+    surface.preserveFaces = [99]
+    force.magnitudeN = "10"
+    const input = structuralOptimizationInputSchema.parse(lightweightingInput(seamedSource, fields))
+    expect(input.mesh).toEqual({
+      vertices: Array.from(body.mesh.positions),
+      indices: Array.from(body.mesh.indices),
+    })
+    expect(input.supports).toEqual([{ kind: "surface", triangleIndices: [0, 2], depthMm: 1 }])
+    expect(input.loadCases[0]).toMatchObject({
+      region: { kind: "surface", triangleIndices: [1], depthMm: 1 },
+      forceN: [0, 10, 0],
+    })
+    expect(input.preserveRegions).toEqual([{ kind: "surface", triangleIndices: [3], depthMm: 1 }])
+    expect(seamedSource.body.mesh.positions.length / 3).toBe(12)
+    expect(seamedSource.contentHash).toBe(source.contentHash)
+  })
+
   it("maps display face identity to exact source triangle indices rather than face ordinals", () => {
     expect(faceTriangleIndices(source, [17])).toEqual([0, 2])
     expect(faceTriangleIndices(source, [42, 99])).toEqual([1, 3])

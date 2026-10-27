@@ -7,6 +7,7 @@ import {
   documentCommandSchema,
   featureIdSchema,
   replayDocumentEvents,
+  resolveTopologyReference,
   sketchIdSchema,
   sketchRecordSchema,
   topologyCandidateSchema,
@@ -61,6 +62,7 @@ function rebuiltResponse(
   topologyCandidates: readonly ReturnType<typeof candidate>[],
   status: "succeeded" | "failed" | "blocked" | "suppressed" = "succeeded",
   owner = featureId,
+  bodyRoles?: readonly string[],
 ) {
   const record =
     status === "succeeded"
@@ -90,7 +92,10 @@ function rebuiltResponse(
         featureId: owner,
         contentHash: "a".repeat(64),
         meshPolicy: "visible",
-        geometry: { topologyCandidates },
+        geometry: {
+          topologyCandidates,
+          ...(bodyRoles ? { bodies: bodyRoles.map((outputRole) => ({ outputRole })) } : {}),
+        },
       },
     ],
     sketches: [],
@@ -126,19 +131,46 @@ describe("selectedSketchSupport", () => {
     })
   })
 
-  it("rejects curved, unmapped, and transient-only faces", () => {
+  it.each([undefined, "generated.face", "primitive.cylinder.wall", "extrusion.side."])(
+    "accepts an oriented plane independently of semantic role %s",
+    (semanticRole) => {
+      const selected = selectedSketchSupport(featureId, 42, [
+        candidate({ semanticRole, lineageTokens: ["source-profile:side"] }),
+      ])
+      expect(selected).toMatchObject({
+        plane: "xy",
+        support: {
+          reference: {
+            featureId,
+            lineageToken: "source-profile:side",
+            signature: { geometryClass: "PLANE", direction: [0, 0, 1] },
+          },
+        },
+      })
+      expect(selected?.support.reference.semanticRole).toBe(semanticRole)
+      expect(selected?.support.reference).not.toHaveProperty("meshFaceId")
+      expect(selected?.support.reference).not.toHaveProperty("candidateId")
+      expect(selected?.support.reference).not.toHaveProperty("intent")
+    },
+  )
+
+  it.each([
+    { direction: [0, 0, -1], plane: "xy" },
+    { direction: [-1, 0, 0], plane: "yz" },
+    { direction: [0.6, -0.8, 0], plane: "xz" },
+  ] as const)("preserves the oriented normal $direction", ({ direction, plane }) => {
     expect(
       selectedSketchSupport(featureId, 42, [
-        candidate({ semanticRole: "primitive.cylinder.wall" }),
+        candidate({ semanticRole: undefined, signature: { ...candidate().signature, direction } }),
       ]),
-    ).toBeNull()
+    ).toMatchObject({
+      plane,
+      support: { reference: { signature: { direction } } },
+    })
+  })
+
+  it("rejects curved and unmapped faces", () => {
     expect(selectedSketchSupport(featureId, 7, [candidate()])).toBeNull()
-    expect(
-      selectedSketchSupport(featureId, 42, [candidate({ semanticRole: undefined })]),
-    ).toBeNull()
-    expect(
-      selectedSketchSupport(featureId, 42, [candidate({ semanticRole: "extrusion.side." })]),
-    ).toBeNull()
     expect(
       selectedSketchSupport(featureId, 42, [
         candidate({
@@ -151,7 +183,54 @@ describe("selectedSketchSupport", () => {
 })
 
 describe("selectedPlanarFaceReference", () => {
-  it("creates stable face intent without retaining the mesh face identity", () => {
+  it.each([1, 10, 100])(
+    "resolves the selected annular land beside similar coplanar faces at scale %s",
+    (scale) => {
+      const annulus = (inner: number, outer: number, meshFaceId: number) =>
+        candidate({
+          candidateId: `face:${meshFaceId}`,
+          meshFaceId,
+          semanticRole: undefined,
+          signature: {
+            ...candidate().signature,
+            measure: Math.PI * (outer ** 2 - inner ** 2) * scale ** 2,
+            centroid: [0, 0, 10 * scale],
+            bounds: {
+              min: [-outer * scale, -outer * scale, 10 * scale],
+              max: [outer * scale, outer * scale, 10 * scale],
+            },
+            boundaryCount: 2,
+            adjacentGeometryClasses: ["CYLINDRE", "CYLINDRE"],
+          },
+        })
+      const picked = annulus(31.6, 32.4, 42)
+      const faces = [annulus(32.5, 33.3, 43), picked, annulus(40, 42, 44)]
+      const support = selectedSketchSupport(featureId, 42, faces)
+      if (!support) throw new Error("The selected annular face must support a sketch.")
+      for (const reference of [
+        selectedPlanarFaceReference(featureId, 42, faces),
+        support.support.reference,
+      ]) {
+        if (!reference) throw new Error("The selected annular face must have a stable reference.")
+        for (const ordered of [faces, [...faces].reverse()]) {
+          expect(resolveTopologyReference(reference, ordered)).toMatchObject({
+            status: "resolved",
+            candidateId: "face:42",
+            method: "signature",
+            score: 0,
+          })
+        }
+        expect(
+          resolveTopologyReference(reference, [
+            ...faces,
+            { ...picked, candidateId: "coincident", meshFaceId: 45 },
+          ]),
+        ).toMatchObject({ status: "ambiguous", candidateIds: ["coincident", "face:42"] })
+      }
+    },
+  )
+
+  it("stores the face signature without inventing click intent or retaining mesh identity", () => {
     const reference = selectedPlanarFaceReference(featureId, 42, [
       candidate({ semanticRole: "extrusion.side.source-line" }),
     ])
@@ -160,10 +239,11 @@ describe("selectedPlanarFaceReference", () => {
       featureId,
       kind: "face",
       semanticRole: "extrusion.side.source-line",
-      intent: { nearPoint: [0, 0, 10], expectedDirection: [0, 0, 1] },
+      signature: { centroid: [0, 0, 10], direction: [0, 0, 1] },
     })
     expect(reference).not.toHaveProperty("meshFaceId")
     expect(reference).not.toHaveProperty("candidateId")
+    expect(reference).not.toHaveProperty("intent")
   })
 
   it("rejects curved faces and unknown mesh hits", () => {
@@ -173,6 +253,19 @@ describe("selectedPlanarFaceReference", () => {
       ]),
     ).toBeNull()
     expect(selectedPlanarFaceReference(featureId, 7, [candidate()])).toBeNull()
+  })
+
+  it("rejects unoriented, absent, and zero plane normals for all face support selectors", () => {
+    const face = candidate()
+    const zeroDirection: [number, number, number] = [0, 0, 0]
+    for (const signature of [
+      { ...face.signature, directionMode: "axis" as const },
+      { ...face.signature, direction: undefined, directionMode: undefined },
+      { ...face.signature, direction: zeroDirection },
+    ]) {
+      expect(selectedPlanarFaceReference(featureId, 42, [{ ...face, signature }])).toBeNull()
+      expect(selectedSketchSupport(featureId, 42, [{ ...face, signature }])).toBeNull()
+    }
   })
 })
 
@@ -379,9 +472,9 @@ describe("inspectSketchSupportHealth", () => {
     })
   })
 
-  it("rejects a schema-valid planar reference without an accepted support role", () => {
+  it("resolves a schema-valid planar reference without a semantic support role", () => {
     const sketch = supportedSketch()
-    const unsupported = sketchRecordSchema.parse({
+    const roleFree = sketchRecordSchema.parse({
       ...sketch,
       support: {
         ...sketch.support,
@@ -389,9 +482,32 @@ describe("inspectSketchSupportHealth", () => {
       },
     })
 
-    expect(inspectSketchSupportHealth(unsupported, rebuiltResponse([candidate()]))).toEqual({
-      status: "missing",
+    expect(inspectSketchSupportHealth(roleFree, rebuiltResponse([candidate()]))).toEqual({
+      status: "resolved",
     })
+  })
+
+  it("rejects a role-free aggregate support when only named body outputs are available", () => {
+    const sketch = supportedSketch()
+    const roleFree = sketchRecordSchema.parse({
+      ...sketch,
+      support: {
+        ...sketch.support,
+        reference: { ...sketch.support?.reference, semanticRole: undefined },
+      },
+    })
+    for (const roles of [
+      ["pattern.instance.0", "pattern.instance.1"],
+      ["split.negative", "split.positive"],
+      ["result"],
+    ]) {
+      expect(
+        inspectSketchSupportHealth(
+          roleFree,
+          rebuiltResponse([candidate()], "succeeded", featureId, roles),
+        ),
+      ).toEqual({ status: roles.includes("result") ? "resolved" : "missing" })
+    }
   })
 
   it("does not assign support health to an origin-plane sketch", () => {
@@ -445,4 +561,42 @@ it("never converts a constituent face selection into a whole-feature topology re
   }
   const selection = { featureId, faceId: 42, faceOrdinal: 1 }
   expect(selectedSketchSupportFromController(controller, selection)).not.toBeNull()
+})
+
+it("accepts a role-free oriented face on an actual result body", () => {
+  const response = rebuiltResponse([candidate({ semanticRole: undefined })])
+  const controller = {
+    report: {
+      rebuild: {
+        ok: true,
+        response: {
+          ...response,
+          geometry: response.geometry.map((record) => ({
+            ...record,
+            geometry: { ...record.geometry, bodies: [{ outputRole: "result" }] },
+          })),
+        },
+      },
+    },
+  } as unknown as DocumentControllerState
+  const selection = { featureId, outputRole: "result", faceId: 42, faceOrdinal: 1 }
+  expect(selectedSketchSupportFromController(controller, selection)).toMatchObject({
+    plane: "xy",
+    support: { reference: { featureId, signature: { direction: [0, 0, 1] } } },
+  })
+  expect(selectedPlanarFaceReferenceFromController(controller, selection)).toMatchObject({
+    featureId,
+    kind: "face",
+    signature: { geometryClass: "PLANE" },
+  })
+})
+
+it("rejects failed rebuilds and faces without current owner geometry", () => {
+  const response = rebuiltResponse([candidate()])
+  const selection = { featureId, faceId: 42, faceOrdinal: 1 }
+  for (const rebuild of [{ ok: false }, { ok: true, response: { ...response, geometry: [] } }]) {
+    const controller = { report: { rebuild } } as unknown as DocumentControllerState
+    expect(selectedSketchSupportFromController(controller, selection)).toBeNull()
+    expect(selectedPlanarFaceReferenceFromController(controller, selection)).toBeNull()
+  }
 })

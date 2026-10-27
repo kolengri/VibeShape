@@ -14,7 +14,12 @@ remain unselected. A later viewport selection does not replace the source being 
 ## Inputs and numerical model
 
 Choose one available, valid exact single-solid Part, or keep the valid selected Part prefilled on opening. Analysis uses its pristine display
-tessellation, excluding surface textures. Enter Young's modulus and yield strength in MPa, density
+tessellation, excluding surface textures. Capture removes unreferenced vertices and welds only
+exactly equal XYZ coordinates within a bounded raw source mesh. This preserves every triangle's
+coordinates, order and winding, including selected surface regions; it does not simplify geometry
+or raise the 10,000-vertex analysis budget. Raw capture is bounded to 20,000 vertices and 20,000
+triangles. Invalid or genuinely oversized inputs retain explicit validation diagnostics.
+Enter Young's modulus and yield strength in MPa, density
 in kg/m3, Poisson ratio, required safety factor, maximum displacement in mm, cell size in mm, and
 total forces in N. Choose **Custom material** or an editable named material example. The application
 does not infer a material grade or print process from geometry. Changing a preset cancels pending
