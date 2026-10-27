@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test"
-import type {
-  AssistantBridge,
-  AssistantEvent,
-  AssistantSnapshot,
+import {
+  type AssistantBridge,
+  type AssistantEvent,
+  type AssistantSnapshot,
+  assistantPromptSchema,
 } from "@vibeshape/automation-api/assistant"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import {
@@ -142,32 +143,36 @@ function fixture() {
   }
 }
 
-describe("native numerical completion delivery", () => {
-  it("delivers large final results completely as attachments or one completed-result retrieval", () => {
-    const summary = lightweightingSummary()
-    const originalCase = summary.baseline.cases[0]
-    if (!originalCase) throw new Error("Missing load case fixture.")
-    const cases = Array.from({ length: 200 }, (_, index) => ({
-      ...originalCase,
-      name: `Load ${index}`,
-    }))
-    const job = numericalJobStatusSchema.parse({
-      ...finishedJob,
-      tool: "analyze_lightweighting",
-      result: {
-        ok: true,
-        value: {
-          documentId: projectId,
-          baseRevision: 4,
-          source: lightweightingIdentity,
-          summary: {
-            ...summary,
-            baseline: { ...summary.baseline, cases },
-            optimized: { ...summary.optimized, cases },
-          },
+function structuralCompletedJob(count: number, name?: string) {
+  const summary = lightweightingSummary()
+  const originalCase = summary.baseline.cases[0]
+  if (!originalCase) throw new Error("Missing load case fixture.")
+  const cases = Array.from({ length: count }, (_, index) => ({
+    ...originalCase,
+    name: name ?? `Load ${index}`,
+  }))
+  return numericalJobStatusSchema.parse({
+    ...finishedJob,
+    tool: "analyze_lightweighting",
+    result: {
+      ok: true,
+      value: {
+        documentId: projectId,
+        baseRevision: 4,
+        source: lightweightingIdentity,
+        summary: {
+          ...summary,
+          baseline: { ...summary.baseline, cases },
+          optimized: { ...summary.optimized, cases },
         },
       },
-    })
+    },
+  })
+}
+
+describe("native numerical completion delivery", () => {
+  it("delivers large final results completely as attachments or one completed-result retrieval", () => {
+    const job = structuralCompletedJob(200)
     const attached = numericalCompletionPrompt(job, true)
     expect(attached.text.length).toBeLessThanOrEqual(32_768)
     expect(attached.attachments).toHaveLength(1)
@@ -176,6 +181,26 @@ describe("native numerical completion delivery", () => {
     expect(retrieval.attachments).toEqual([])
     expect(retrieval.text).toContain(`Retrieve completed job ${job.jobId} once`)
   })
+  it.each([
+    { encoding: "ASCII", count: 8_000, name: "A".repeat(80) },
+    { encoding: "UTF-8", count: 4_000, name: "界".repeat(80) },
+  ])(
+    "delivers a valid retrieval notice when $encoding results exceed attachment capacity",
+    ({ encoding, count, name }) => {
+      const job = structuralCompletedJob(count, name)
+      const data = JSON.stringify(job)
+      expect(new TextEncoder().encode(data).byteLength).toBeGreaterThan(2 * 1024 * 1024)
+      if (encoding === "UTF-8") expect(data.length).toBeLessThan(2 * 1024 * 1024)
+      const prompt = numericalCompletionPrompt(job, true)
+      expect(prompt.attachments).toEqual([])
+      expect(prompt.text).toContain(`Retrieve completed job ${job.jobId} once`)
+      expect(
+        assistantPromptSchema.safeParse({ projectId, sessionToken: "native-session", ...prompt })
+          .success,
+      ).toBe(true)
+    },
+  )
+
   it("shows running work, waits without polling, then sends one automatic result continuation", async () => {
     const f = fixture()
     await f.connect()

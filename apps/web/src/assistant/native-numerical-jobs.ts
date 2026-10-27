@@ -1,4 +1,7 @@
-import type { AssistantAttachment } from "@vibeshape/automation-api/assistant"
+import {
+  type AssistantAttachment,
+  assistantAttachmentSchema,
+} from "@vibeshape/automation-api/assistant"
 import type { NumericalJobStatus } from "@vibeshape/automation-api/numerical-jobs"
 
 type TrackedJob = {
@@ -19,21 +22,20 @@ export function numericalCompletionPrompt(job: NumericalJobStatus, textAttachmen
   const data = JSON.stringify(job)
   const inline = instructions + data
   if (inline.length <= 32_768) return { text: inline, attachments: [] }
-  const attachments: AssistantAttachment[] = textAttachments
-    ? [
-        {
-          type: "text",
-          id: crypto.randomUUID(),
-          name: `numerical-job-${job.jobId}.json`,
-          mimeType: "application/json",
-          text: data,
-        },
-      ]
-    : []
+  const attachment = textAttachments
+    ? assistantAttachmentSchema.safeParse({
+        type: "text",
+        id: crypto.randomUUID(),
+        name: `numerical-job-${job.jobId}.json`,
+        mimeType: "application/json",
+        text: data,
+      })
+    : null
+  const attachments: AssistantAttachment[] = attachment?.success ? [attachment.data] : []
   return {
     text:
       instructions +
-      (textAttachments
+      (attachments.length
         ? "The complete result is attached as JSON."
         : `The complete result exceeds inline capacity. Retrieve completed job ${job.jobId} once with get_numerical_job; it is already finished, so no status polling is needed.`),
     attachments,

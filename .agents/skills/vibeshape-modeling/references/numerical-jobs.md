@@ -23,8 +23,9 @@ permission to change the model. Respect the latest user instructions and the cap
 The host defers delivery while a model turn, user question or checkpoint boundary is pending.
 Stop suppresses pending completion continuations; disconnect, session replacement and disposal
 discard them. A stale or foreign chat cannot receive another session's result. Large results use
-a text attachment when supported; otherwise the notification requests one final retrieval of the
-already completed result, never repeated status checks.
+a text attachment when supported and the complete result fits the attachment contract; otherwise
+the notification requests one final retrieval of the already completed result, never repeated
+status checks.
 
 ## External clients
 
