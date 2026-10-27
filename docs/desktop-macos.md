@@ -107,6 +107,14 @@ with recovery guidance; reconnect after correcting the command or authentication
 
 Each embedded connection supplies a project-stable internal MCP server name, so an unrelated
 disabled `vibeshape` entry in the adapter's user configuration does not suppress the project tools.
+For the verified JavaScript `@agentclientprotocol/codex-acp` 2.2.2 adapter launched as `codex-acp`,
+the desktop host supplies the full project server configuration through child-only `CODEX_CONFIG`,
+including a tool deadline of at least 600 seconds. New and resumed sessions use that complete entry
+instead of the adapter's standard ACP conversion, which drops timeout settings. Other runtime
+configuration and server entries remain intact; no global configuration file or installed adapter
+is edited. Unknown versions and other launchers retain standard ACP injection. Reconnect after
+updating the desktop build to start a process with the new configuration; an existing call cannot
+receive it retroactively. See [ADR-0136](adr/0136-native-codex-project-tool-deadline.md).
 Connecting the built-in chat authorizes reads and validated model changes in that project. Valid
 stages save through the ordinary revision-checked commit path without a second Apply action.
 Copied desktop external MCP clients automatically receive the current project with manual Apply

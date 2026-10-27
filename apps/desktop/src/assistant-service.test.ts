@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test"
+import { spawn as nodeSpawn } from "node:child_process"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -94,7 +95,7 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    if (scenario === "bad-version") return reply(id,{protocolVersion:999});
    if (scenario === "client-version" && params.clientInfo.version !== "9.8.7") return send({id,error:{code:-32603,message:"Incorrect host version"}});
    if (process.env.ELECTRON_RUN_AS_NODE || params.clientCapabilities.fs || params.clientCapabilities.terminal) return process.exit(9);
-   return reply(id,{protocolVersion:1,agentCapabilities:{loadSession:scenario.startsWith("resume"),promptCapabilities:{image:scenario !== "no-attachments",embeddedContext:scenario !== "no-attachments"}},authMethods:[{id:"login",name:"Log in"}],...(scenario.startsWith("steer") ? {agentInfo:{name:scenario === "steer-foreign" ? "unverified-agent" : "@agentclientprotocol/codex-acp",version:scenario === "steer-future" ? "2.2.3" : "2.2.2"},_meta:{steering:{supported:true}}} : {})});
+   return reply(id,{protocolVersion:1,agentCapabilities:{loadSession:scenario.startsWith("resume"),promptCapabilities:{image:scenario !== "no-attachments",embeddedContext:scenario !== "no-attachments"}},authMethods:[{id:"login",name:"Log in"}],...(scenario.startsWith("steer") || scenario.includes("codex-env") ? {agentInfo:{name:scenario === "steer-foreign" ? "unverified-agent" : "@agentclientprotocol/codex-acp",version:scenario === "steer-future" || scenario === "codex-env-future" ? "2.2.3" : "2.2.2"},_meta:{steering:{supported:true}}} : {})});
  }
  if (method === "authenticate") { authenticated = true; return reply(id,{}); }
  if (method === "session/new" || method === "session/load") {
@@ -110,9 +111,14 @@ readline.createInterface({input:process.stdin}).on("line", line => {
    // Match adapters that filter every configured name, including disabled global entries.
    const configuredLayers = [{mcp_servers:{vibeshape:{enabled:false}}}];
    const names = new Set(configuredLayers.flatMap(layer=>Object.keys(layer.mcp_servers)));
-   attachedMcp = params.mcpServers.filter(server=>!names.has(server.name));
+   const environmentMcp = scenario.includes("codex-env") && scenario !== "codex-env-future";
+   if (environmentMcp) {
+     const config = JSON.parse(process.env.CODEX_CONFIG || "{}");
+     attachedMcp = Object.entries(config.mcp_servers || {}).filter(([name])=>name.startsWith("vs_")).map(([name,server])=>({...server,name,env:Object.entries(server.env).map(([name,value])=>({name,value}))}));
+     if (params.mcpServers.length !== 0 || attachedMcp[0]?.tool_timeout_sec !== 600 || config.model !== "existing-model" || config.mcp_servers.unrelated.tool_timeout_sec !== 37) return process.exit(13);
+   } else attachedMcp = params.mcpServers.filter(server=>!names.has(server.name));
    const mcp = attachedMcp[0];
-   if (params.mcpServers.length !== 1 || attachedMcp.length !== 1 || !/^vs_[0-9a-f]{16}$/.test(mcp.name) || mcp.command !== "/electron" || mcp.args[1] !== "--descriptor" || mcp.env[0].name !== "ELECTRON_RUN_AS_NODE") return process.exit(10);
+   if ((!environmentMcp && params.mcpServers.length !== 1) || attachedMcp.length !== 1 || !/^vs_[0-9a-f]{16}$/.test(mcp.name) || mcp.command !== "/electron" || mcp.args[1] !== "--descriptor" || mcp.env[0].name !== "ELECTRON_RUN_AS_NODE") return process.exit(10);
    const settings = scenario.startsWith("reconnect") ? {modes:options.modes,configOptions:reconnectConfigs()} : options;
    return reply(id,method === "session/new" ? {sessionId,...settings} : settings);
  }
@@ -1533,6 +1539,45 @@ describe("native active-turn steering", () => {
 })
 
 describe("native ACP service", () => {
+  it.each(["codex-env", "resume-codex-env", "codex-env-future"])(
+    "binds the project client deadline without replacing unrelated config (%s)",
+    async (scenario) => {
+      const CODEX_CONFIG = JSON.stringify({
+        model: "existing-model",
+        mcp_servers: { unrelated: { url: "https://example.test/mcp", tool_timeout_sec: 37 } },
+      })
+      let childConfig = ""
+      const context = await host({
+        env: { ...process.env, CODEX_CONFIG },
+        spawn: ((
+          command: string,
+          args: readonly string[],
+          options: Parameters<typeof nodeSpawn>[2],
+        ) => {
+          expect(command).toBe("codex-acp")
+          childConfig = options?.env?.CODEX_CONFIG ?? ""
+          return nodeSpawn("node", [context.script, ...args], options)
+        }) as typeof nodeSpawn,
+      })
+      const result = ready(
+        await context.service.handle({
+          operation: "connect",
+          input: {
+            projectId: "project-a",
+            agent: { command: "codex-acp", args: [scenario] },
+            ...(scenario.startsWith("resume") ? { resumeSessionId: "restored-session" } : {}),
+          },
+        }),
+      )
+      expect(result.status).toBe("ready")
+      if (scenario.startsWith("resume")) expect(result.sessionId).toBe("restored-session")
+      const configured = JSON.parse(childConfig)
+      expect(configured.model).toBe("existing-model")
+      expect(configured.mcp_servers.unrelated.tool_timeout_sec).toBe(37)
+      expect(Object.keys(configured.mcp_servers)).toHaveLength(2)
+    },
+  )
+
   it("keeps project MCP names available despite a disabled global name and stable across resume", async () => {
     const context = await host({
       getMcpSetup: async (projectId) => ({
