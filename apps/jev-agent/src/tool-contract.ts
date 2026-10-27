@@ -27,8 +27,8 @@ const humanWaitTools = new Set<string>([
 ])
 
 export function toolTimeoutMs(name: string, operationTimeoutMs: number) {
-  // Host expiry and cancellation own human waits; the SDK still requires a timer.
-  return humanWaitTools.has(name) ? 2_147_483_647 : operationTimeoutMs
+  // SDK 1.31 requires a timer. CAD gets at least the ten-minute fallback, independent of short provider deadlines.
+  return humanWaitTools.has(name) ? 2_147_483_647 : Math.max(600_000, operationTimeoutMs)
 }
 
 export function allowedTool(name: string) {

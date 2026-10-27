@@ -2,6 +2,7 @@
 
 - Status: Accepted with reduced scope
 - Date: 2026-09-07
+- Execution deadlines superseded by [ADR-0135](0135-cad-execution-without-default-deadlines.md).
 - Related: [ADR-0013](0013-microkernel-modules-and-mcp-automation.md), [ADR-0042](0042-exact-automation-draft-application-path.md)
 
 The local page-exit revocation rule is superseded by [ADR-0075](0075-local-mcp-tab-reload-recovery.md).

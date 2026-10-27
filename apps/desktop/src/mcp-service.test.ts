@@ -13,6 +13,7 @@ import { DESKTOP_MCP_DESCRIPTOR_NAME } from "@vibeshape/automation-api/desktop-h
 import { localFailureSchema } from "@vibeshape/automation-api/local-tools"
 import type { AssistantQuestionHost } from "@vibeshape/mcp-server/local-host"
 import { z } from "zod"
+import { quickLightweightingOperation } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { startEditorServer } from "./editor-server"
 import { publishMcpDescriptor, readMcpDescriptor } from "./mcp-descriptor"
@@ -409,6 +410,53 @@ describe("app-owned native MCP attachment", () => {
     })
     const replacement = await grant(context)
     expect((await poll(context, replacement.token)).work).toBeNull()
+  })
+
+  it("releases native Quick work when its HTTP caller disappears without MCP cancellation", async () => {
+    const context = await host()
+    const native = await project(context, projectId)
+    const credential = await grant(context)
+    const controller = new AbortController()
+    const operation = quickLightweightingOperation(false)
+    const pending = fetch(native.descriptor.endpoint, {
+      method: "POST",
+      headers: {
+        ...context.headers,
+        Authorization: `Bearer ${native.descriptor.token}`,
+        "Mcp-Session-Id": native.transport.sessionId ?? "",
+        "Mcp-Protocol-Version": LATEST_PROTOCOL_VERSION,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 99,
+        method: "tools/call",
+        params: { name: operation.tool, arguments: operation.arguments },
+      }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        await response.text()
+      })
+      .catch((error: unknown) => error)
+    let sequence = 0
+    await vi.waitFor(async () => {
+      const polled = await poll(context, credential.token, ++sequence)
+      expect(polled.work?.operation.tool).toBe("analyze_quick_lightweighting")
+    })
+    const released = context.service.whenClientReleased(projectId)
+    controller.abort()
+    expect(await pending).toBeInstanceOf(Error)
+    await released
+    expect(await (await browser(context, "status", {}, projectId)).json()).toMatchObject({
+      client: null,
+      paired: false,
+    })
+    const replacement = await project(context, projectId)
+    const current = await grant(context)
+    expect((await poll(context, current.token)).work).toBeNull()
+    await expect(
+      replacement.client.callTool({ name: "read_agent_skill", arguments: {} }),
+    ).resolves.toMatchObject({ isError: false })
   })
 
   it(

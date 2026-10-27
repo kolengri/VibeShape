@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, describe, expect, it } from "bun:test"
 import {
   DOCUMENT_PROTOCOL_VERSION,
   type DocumentWorkerRequest,
@@ -11,6 +11,8 @@ import { DocumentWorkerClient, DocumentWorkerRequestError } from "./client-core"
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
+
+afterEach(() => vi.useRealTimers())
 
 class FakeWorker {
   readonly posted: DocumentWorkerRequest[] = []
@@ -196,6 +198,58 @@ describe("DocumentWorkerClient", () => {
       type: "documentExported",
       file: new Uint8Array([1, 2, 3]),
     })
+  })
+
+  it("allows CAD work to complete after more than ten minutes without a default deadline", async () => {
+    vi.useFakeTimers()
+    const worker = new FakeWorker()
+    const client = new DocumentWorkerClient(worker)
+    const request = exportRequest()
+    const pending = client.request(request)
+    const settled = vi.fn()
+    void pending.then(settled, settled)
+    await vi.advanceTimersByTimeAsync(11 * 60_000)
+    expect(settled).not.toHaveBeenCalled()
+    expect(worker.terminated).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    worker.emit({
+      ...responseEnvelope(request),
+      type: "documentExported",
+      format: "step",
+      file: new Uint8Array([1, 2, 3]),
+      bodyCount: 1,
+    })
+    await expect(pending).resolves.toMatchObject({ type: "documentExported" })
+    client.terminate()
+  })
+
+  it("settles termination after a long wait and ignores a late response", async () => {
+    vi.useFakeTimers()
+    const worker = new FakeWorker()
+    const client = new DocumentWorkerClient(worker)
+    const outcome = client.request(healthRequest()).catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(11 * 60_000)
+    client.terminate()
+    worker.emit(healthResponse())
+    expect(await outcome).toMatchObject({ code: "worker-terminated" })
+    expect(worker.terminated).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("clears a failed post and its explicit timer before another request uses the ID", async () => {
+    vi.useFakeTimers()
+    const worker = new FakeWorker()
+    const failure = new Error("Posting failed.")
+    vi.spyOn(worker, "postMessage").mockImplementationOnce(() => {
+      throw failure
+    })
+    const client = new DocumentWorkerClient(worker)
+    await expect(client.request(healthRequest(), { timeoutMs: 100 })).rejects.toBe(failure)
+    expect(vi.getTimerCount()).toBe(0)
+    const retry = client.request(healthRequest())
+    worker.emit(healthResponse())
+    await expect(retry).resolves.toMatchObject({ type: "health" })
+    client.terminate()
   })
 
   it("resolves only the correlated sketch solution response", async () => {

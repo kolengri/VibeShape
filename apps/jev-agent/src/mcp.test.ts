@@ -20,13 +20,18 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from ${JSON.stringify(i
 import { assistantQuestionInputSchema, assistantQuestionTool } from ${JSON.stringify(import.meta.resolve("@vibeshape/automation-api/assistant"))};
 const server = new Server({name:"test-vibeshape",version:"1"},{capabilities:{tools:{}}});
 let calls = 0;
-server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[...["model_info","read_agent_skill","create_draft","commit_draft","undo_model","change_metadata","list_recoverable_drafts","restore_draft","create_project","foreign_tool"].map(name=>({name,inputSchema:{type:"object"}})),assistantQuestionTool]}));
-server.setRequestHandler(CallToolRequestSchema,async(request)=>{
+let previewStarted = false, cancelled = false;
+server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[...["model_info","read_agent_skill","create_draft","preview_draft","commit_draft","undo_model","change_metadata","list_recoverable_drafts","restore_draft","create_project","foreign_tool"].map(name=>({name,inputSchema:{type:"object"}})),assistantQuestionTool]}));
+server.setRequestHandler(CallToolRequestSchema,async(request,extra)=>{
  if(request.params.name===assistantQuestionTool.name){
   assistantQuestionInputSchema.parse(request.params.arguments);
   return {content:[{type:"text",text:"answered"}],structuredContent:{action:"accept",content:{material:"pla"}}};
  }
- return {content:[{type:"text",text:"ok"}],structuredContent:{calls:++calls,privatePresent:Boolean(process.env.VIBESHAPE_JEV_TEST_PRIVATE),explicit:process.env.VIBESHAPE_JEV_TEST_FORWARD}};
+ if(request.params.name==="preview_draft"){
+  previewStarted = true;
+  await new Promise(resolve=>extra.signal.addEventListener("abort",()=>{cancelled=true;resolve();},{once:true}));
+ }
+ return {content:[{type:"text",text:"ok"}],structuredContent:{calls:++calls,privatePresent:Boolean(process.env.VIBESHAPE_JEV_TEST_PRIVATE),explicit:process.env.VIBESHAPE_JEV_TEST_FORWARD,...(request.params.name==="model_info"&&previewStarted?{previewStarted,cancelled}:{})}};
 });
 await server.connect(new StdioServerTransport());
 `
@@ -47,6 +52,7 @@ await server.connect(new StdioServerTransport());
       expect(port.tools.map((tool) => tool.name)).toEqual([
         "read_agent_skill",
         "create_draft",
+        "preview_draft",
         "commit_draft",
         "undo_model",
         "change_metadata",
@@ -54,12 +60,13 @@ await server.connect(new StdioServerTransport());
         "restore_draft",
         "ask_user_question",
       ])
-      const first = await port.call("model_info", {}, new AbortController().signal)
+      const firstSignal = new AbortController().signal
+      const first = await port.call("model_info", {}, firstSignal)
       expect(first.value).toEqual({ calls: 1, privatePresent: false, explicit: "forwarded" })
       expect(callTool).toHaveBeenLastCalledWith(
         { name: "model_info", arguments: {} },
         expect.anything(),
-        expect.objectContaining({ timeout: 120_000 }),
+        expect.objectContaining({ timeout: 600_000, signal: firstSignal }),
       )
       await expect(port.call("create_project", {}, new AbortController().signal)).rejects.toThrow(
         "contract",
@@ -103,6 +110,19 @@ await server.connect(new StdioServerTransport());
         expect.anything(),
         expect.objectContaining({ timeout: 2_147_483_647 }),
       )
+      const stop = new AbortController()
+      const preview = port
+        .call("preview_draft", { draftId: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac" }, stop.signal)
+        .then(
+          () => null,
+          (error: unknown) => error,
+        )
+      const running = await port.call("model_info", {}, new AbortController().signal)
+      expect(running.value).toMatchObject({ previewStarted: true, cancelled: false })
+      stop.abort(new Error("Stopped CAD preview"))
+      expect(await preview).toBeInstanceOf(Error)
+      const cancelled = await port.call("model_info", {}, new AbortController().signal)
+      expect(cancelled.value).toMatchObject({ previewStarted: true, cancelled: true })
     } finally {
       await port.close()
     }

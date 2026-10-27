@@ -103,7 +103,12 @@ it("rejects malformed or wrong-revision replies and releases the worker for anot
   expect(worker.terminate).toHaveBeenCalledTimes(1)
 })
 
-it("terminates on startup, transport, and timeout failures", async () => {
+it("terminates on startup and transport failures", async () => {
+  await expect(
+    exportProjectBackup(request, () => {
+      throw new Error("Unavailable.")
+    }),
+  ).rejects.toThrow("Unavailable.")
   const throwing = port()
   throwing.postMessage.mockImplementation(() => {
     throw new Error("Posting failed.")
@@ -122,18 +127,55 @@ it("terminates on startup, transport, and timeout failures", async () => {
     await expect(pending).rejects.toThrow()
     expect(worker.terminate).toHaveBeenCalledTimes(1)
   }
+})
+
+it("completes a native project backup after more than ten minutes without a deadline", async () => {
   vi.useFakeTimers()
   const worker = port()
   const pending = exportProjectBackup(request, () => worker as unknown as Worker)
-  const rejected = pending.catch((error: unknown) => error)
+  const settled = vi.fn()
+  void pending.then(settled, settled)
+  await vi.advanceTimersByTimeAsync(11 * 60_000)
+  expect(settled).not.toHaveBeenCalled()
+  expect(worker.terminate).not.toHaveBeenCalled()
   deliver(worker, {
     type: "progress",
     documentId: request.documentId,
     revision: request.revision,
     stage: "building-archive",
   })
-  vi.advanceTimersByTime(300_000)
-  expect(await rejected).toBeInstanceOf(Error)
-  expect(((await rejected) as Error).message).toContain("timed out")
+  await vi.advanceTimersByTimeAsync(11 * 60_000)
+  expect(settled).not.toHaveBeenCalled()
+  deliver(worker, response)
+  expect(await pending).toEqual(response)
   expect(worker.terminate).toHaveBeenCalledTimes(1)
+  expect(vi.getTimerCount()).toBe(0)
 })
+
+it.each(["before", "construction", "after-wait"] as const)(
+  "cancels a native project backup %s and ignores queued responses",
+  async (phase) => {
+    vi.useFakeTimers()
+    const worker = port()
+    const abort = new AbortController()
+    const create = vi.fn(() => {
+      if (phase === "construction") abort.abort()
+      return worker as unknown as Worker
+    })
+    if (phase === "before") abort.abort()
+    const pending = exportProjectBackup(request, create, undefined, abort.signal)
+    const outcome = pending.catch((error: unknown) => error)
+    const queued = worker.onmessage
+    if (phase === "after-wait") {
+      await vi.advanceTimersByTimeAsync(11 * 60_000)
+      expect(worker.terminate).not.toHaveBeenCalled()
+      abort.abort()
+    }
+    expect(await outcome).toMatchObject({ name: "AbortError" })
+    queued?.call(worker as unknown as Worker, new MessageEvent("message", { data: response }))
+    expect(create).toHaveBeenCalledTimes(phase === "before" ? 0 : 1)
+    expect(worker.terminate).toHaveBeenCalledTimes(phase === "before" ? 0 : 1)
+    expect(worker.onmessage).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  },
+)

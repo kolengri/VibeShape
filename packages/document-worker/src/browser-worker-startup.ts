@@ -40,13 +40,11 @@ class BrowserWorkerStartup implements DocumentWorkerLike {
   #native: DocumentWorkerLike | null = null
   #release: (() => void) | undefined
   #retire: (() => void) | undefined
-  #deadline: ReturnType<typeof setTimeout> | undefined
 
   constructor(
     private readonly queue: BrowserWorkerStartupQueue,
     private readonly construct: () => DocumentWorkerLike,
   ) {
-    this.#deadline = setTimeout(() => this.#timeout(), 120_000)
     // The core client must attach its error listeners before construction can fail.
     queueMicrotask(() => {
       if (this.#phase === "waiting") queue.enqueue(this)
@@ -122,7 +120,6 @@ class BrowserWorkerStartup implements DocumentWorkerLike {
       this.#retireStartup("Document worker returned a mismatched startup health response.")
       return
     }
-    this.#clearDeadline()
     this.#phase = "ready"
     this.#releaseSlot()
     if (this.#cancelled) this.#finish()
@@ -168,17 +165,7 @@ class BrowserWorkerStartup implements DocumentWorkerLike {
     this.#finish()
   }
 
-  #timeout() {
-    if (this.#phase === "waiting") {
-      this.#fail("Document worker startup timed out while waiting for capacity.")
-      this.#finish()
-      return
-    }
-    this.#retireStartup("Document worker startup timed out.")
-  }
-
   #retireStartup(message: string) {
-    this.#clearDeadline()
     this.#fail(message)
     if (this.#phase !== "booting") return
     this.#phase = "retired"
@@ -202,11 +189,6 @@ class BrowserWorkerStartup implements DocumentWorkerLike {
     this.#listeners.messageerror.clear()
   }
 
-  #clearDeadline() {
-    clearTimeout(this.#deadline)
-    this.#deadline = undefined
-  }
-
   #releaseSlot() {
     this.#release?.()
     this.#release = undefined
@@ -216,7 +198,6 @@ class BrowserWorkerStartup implements DocumentWorkerLike {
   #finish() {
     this.#phase = "finished"
     this.queue.remove(this)
-    this.#clearDeadline()
     this.#clearListeners()
     const native = this.#native
     this.#native = null

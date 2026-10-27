@@ -465,9 +465,21 @@ bottom status bar exposes neutral connection and Stop AI controls plus an approv
 Returning an idle session to manual review clears its browser-owned grant without revoking pairing;
 active operations or reviews block that change. No MCP tool can change either approval mode.
 
-Local `commit_draft` has no absolute broker execution deadline while its browser remains live and
-authorized. Heartbeats, cancellation, revocation and credential/approval expiry remain enforced;
-other local operations retain their bounded execution deadline.
+Local and remote CAD operations have no automatic broker execution deadline while the browser
+remains live and authorized. Document/geometry worker requests, worker startup, native project
+import/duplication and backup also have no default execution deadline. Explicit caller-requested
+worker deadlines remain available. Heartbeats, cancellation, worker failures, revocation and
+credential/approval expiry remain enforced. Jev passes Stop directly to CAD calls, independently
+of its provider deadline; its MCP SDK requires a finite request timer, so ordinary tool calls allow
+at least ten minutes and manual waits retain their longer client horizon.
+
+An external MCP client owns its own request deadline; the server cannot disable it. MCP cancellation
+or transport closure interrupts pending local work and permits authenticated recovery without
+replay. The native HTTP host also releases its attachment when an unfinished POST response stream
+closes, covering callers that disconnect without an MCP cancellation notification.
+A client abandoning a call without any observable signal leaves genuinely pending work serialized,
+so later reads can report `busy`. Stop AI cancels that operation; inspect the saved revision after
+reconnecting before retrying. See [ADR-0135](../adr/0135-cad-execution-without-default-deadlines.md).
 
 Once the ordinary atomic persistence operation has started, cancellation is not a rollback request.
 The editor keeps action controls locked while it completes. Unexpected persistence failures remain

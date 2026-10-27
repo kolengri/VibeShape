@@ -30,7 +30,6 @@ import {
 import { quickLightweightingResultContextMatches } from "@vibeshape/automation-api/quick-lightweighting-tools"
 import {
   REMOTE_MESSAGE_MAX_BYTES,
-  REMOTE_REQUEST_TIMEOUT_MS,
   REMOTE_SESSION_MAX_OPERATIONS,
   type RemoteClient,
   type RemoteGrant,
@@ -67,7 +66,6 @@ type Pending = {
   id: string
   operation: LocalOperation
   resolve: (result: unknown) => void
-  timer: ReturnType<typeof setTimeout> | null
 }
 type Consent = {
   id: string
@@ -153,8 +151,12 @@ export class TabSession extends DurableObject<RemoteEnv> {
   private send(message: unknown) {
     const socket = this.browser()
     if (!socket) return false
-    socket.send(JSON.stringify(message))
-    return true
+    try {
+      socket.send(JSON.stringify(message))
+      return true
+    } catch {
+      return false
+    }
   }
 
   // fallow-ignore-next-line unused-class-member -- Cloudflare dispatches the browser WebSocket upgrade.
@@ -220,21 +222,15 @@ export class TabSession extends DurableObject<RemoteEnv> {
     this.metadata.active = id
     this.metadata.activeKey = requestKey
     await this.save()
-    if (!this.live() || !this.browser())
+    if (!this.live() || !this.browser()) {
+      await this.revoke()
       return localFailure("session-revoked", "The browser session closed.")
-    return new Promise<unknown>((resolve) => {
-      const timer =
-        operation.tool === "analyze_quick_lightweighting" ||
-        operation.tool === "request_quick_lightweighting" ||
-        operation.tool === "analyze_lightweighting" ||
-        operation.tool === "request_lightweighting"
-          ? null
-          : setTimeout(() => {
-              if (this.pending?.id === id) void this.revoke()
-            }, REMOTE_REQUEST_TIMEOUT_MS)
-      this.pending = { id, operation, resolve, timer }
-      this.send({ type: "work", requestId: id, operation })
+    }
+    const result = new Promise<unknown>((resolve) => {
+      this.pending = { id, operation, resolve }
     })
+    if (!this.send({ type: "work", requestId: id, operation })) await this.revoke()
+    return result
   }
   private operationBudget(metadata: Metadata, requestKey: string) {
     if (metadata.active)
@@ -281,7 +277,6 @@ export class TabSession extends DurableObject<RemoteEnv> {
     this.metadata.active = null
     this.metadata.activeKey = null
     if (this.pending) {
-      if (this.pending.timer !== null) clearTimeout(this.pending.timer)
       this.pending.resolve(
         localFailure(
           "outcome-unknown",
@@ -387,7 +382,6 @@ export class TabSession extends DurableObject<RemoteEnv> {
     this.pending = null
     this.metadata.active = null
     this.metadata.activeKey = null
-    if (pending.timer !== null) clearTimeout(pending.timer)
     return this.confirmResult(pending, result)
   }
   private operationResultMatches(

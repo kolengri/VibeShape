@@ -1084,11 +1084,18 @@ describe("browser automation broker", () => {
   })
 
   it.each([
+    localOperationSchema.parse({ tool: "model_info", arguments: {} }),
+    localOperationSchema.parse({
+      tool: "export_model",
+      arguments: { revision: 4, format: "step" },
+    }),
     localOperationSchema.parse({ tool: "commit_draft", arguments: { draftId: document.id } }),
     lightweightingOperation(false),
     lightweightingOperation(true),
+    quickLightweightingOperation(false),
+    quickLightweightingOperation(true),
   ])(
-    "keeps live $tool pending beyond the operation timeout and honors revocation",
+    "completes live $tool after ten minutes and honors subsequent revocation",
     async (operation) => {
       vi.useFakeTimers()
       const broker = makeBroker({ origin })
@@ -1152,37 +1159,6 @@ describe("browser automation broker", () => {
       })
     },
   )
-
-  it("retains bounded execution for other live local operations", async () => {
-    vi.useFakeTimers()
-    const broker = makeBroker({ origin })
-    const { token } = await connect(broker)
-    const pending = broker.invoke({ tool: "model_info", arguments: {} })
-    for (let sequence = 1; sequence <= 36; sequence += 1) {
-      expect(
-        (
-          await broker.handle(
-            request(
-              "poll",
-              {
-                protocolVersion: 1,
-                sequence,
-                document,
-                progress: null,
-              },
-              token,
-            ),
-          )
-        ).status,
-      ).toBe(200)
-      await vi.advanceTimersByTimeAsync(10_000)
-    }
-    await expect(pending).resolves.toMatchObject({
-      ok: false,
-      diagnostic: { code: "outcome-unknown" },
-    })
-    expect(broker.isPaired()).toBe(false)
-  })
 
   it("expires an idle pair and an absolute TTL through its timers", async () => {
     vi.useFakeTimers()

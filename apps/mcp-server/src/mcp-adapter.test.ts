@@ -10,10 +10,86 @@ import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
 import { localOperationSchema, localToolOutputs } from "@vibeshape/automation-api/local-tools"
 import { renderPreviewMetadataSchema } from "@vibeshape/automation-api/render-preview"
+import { quickLightweightingOperation } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
 import { createLocalMcpAdapter } from "./mcp-adapter"
+
+it("releases a Quick request on actual MCP client timeout and accepts a fresh read after recovery", async () => {
+  vi.useFakeTimers()
+  const origin = "http://127.0.0.1:43114"
+  const document = { id: "0195b5ac-b220-7a2c-8c33-67a36a7f6101", name: "Bracket", revision: 4 }
+  const broker = createBrowserBroker({ origin })
+  const adapter = createLocalMcpAdapter(broker, createExportResources())
+  const client = new Client({ name: "caller-deadline", version: "1" })
+  const request = (path: string, body: unknown, token?: string) =>
+    new Request(`${origin}${LOCAL_AUTOMATION_PATH}/${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin,
+        host: "127.0.0.1:43114",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+  try {
+    const [ct, st] = InMemoryTransport.createLinkedPair()
+    await Promise.all([adapter.connect(st), client.connect(ct)])
+    const { token } = (await (
+      await broker.handle(request("connect", { protocolVersion: 1, document }))
+    ).json()) as { token: string }
+    const operation = quickLightweightingOperation(false)
+    const outcome = client
+      .callTool({ name: operation.tool, arguments: operation.arguments }, undefined, {
+        timeout: 300_000,
+      })
+      .catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(0)
+    let requestId = ""
+    for (let sequence = 1; sequence <= 30; sequence += 1) {
+      const poll = await broker.handle(
+        request("poll", { protocolVersion: 1, sequence, document, progress: null }, token),
+      )
+      expect(poll.status).toBe(200)
+      const body = (await poll.json()) as { work: { requestId: string } | null }
+      if (body.work) requestId = body.work.requestId
+      await vi.advanceTimersByTimeAsync(10_000)
+    }
+    expect(requestId).not.toBe("")
+    expect(await outcome).toBeInstanceOf(Error)
+    await expect(broker.invoke({ tool: "model_info", arguments: {} })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "session-suspended" },
+    })
+    const resumed = await broker.handle(request("resume", { protocolVersion: 1, document }, token))
+    expect(resumed.status).toBe(200)
+    const connection = (await resumed.json()) as { token: string }
+    const pendingRead = broker.invoke({ tool: "model_info", arguments: {} })
+    const poll = (await (
+      await broker.handle(
+        request(
+          "poll",
+          { protocolVersion: 1, sequence: 1, document, progress: null },
+          connection.token,
+        ),
+      )
+    ).json()) as { work: { requestId: string; operation: { tool: string } } }
+    expect(poll.work.operation.tool).toBe("model_info")
+    expect(poll.work.requestId).not.toBe(requestId)
+    broker.revoke()
+    await expect(pendingRead).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "session-revoked" },
+    })
+  } finally {
+    await client.close()
+    await adapter.close()
+    broker.dispose()
+    vi.useRealTimers()
+  }
+})
 
 it.each(["manual", "native-project", "desktop-external"] as const)(
   "advertises %s pairing instructions without granting document authority",

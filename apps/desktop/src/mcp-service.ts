@@ -199,6 +199,11 @@ function createDesktopMcpAttachment(origin: string, projectId?: string) {
       owner.stream = response
       clearTimeout(owner.lease)
       response.once("close", () => void release(owner))
+    } else if (request.method === "POST") {
+      response.once("close", () => {
+        // A caller can abandon its tool stream without sending MCP cancellation.
+        if (!response.writableEnded) void release(owner)
+      })
     }
     await owner.transport.handleRequest(request, response, body)
   }
