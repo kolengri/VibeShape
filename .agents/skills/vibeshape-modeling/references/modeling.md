@@ -86,6 +86,14 @@ Extrude/Revolve profiles identify the sketch and its boundary entity IDs. Bounda
 
 ## Extrude and Revolve
 
+Sketch and datum face supports accept uniquely resolved, oriented planar whole-result faces from
+Boolean, Fillet, Chamfer and placed results as well as primitives and extrusion caps/sides. Retain
+the advertised v0 planar support reference; a body-topology v1 reference cannot be substituted or
+stripped of its body identity. Named constituent outputs remain unsupported. Missing or ambiguous
+references require explicit reselection; do not silently replace them with an origin plane.
+Current geometry supplies frames for general faces and dynamic extrusion caps. Preview downstream
+features at the current revision before committing.
+
 For New/Add/Remove/Intersect, retain explicit dependencies and support references; modifying operations put the target first. Use typed length quantities for extrusion depths and typed radians for Revolve angles. Revolve supports an origin axis, sketch line, or supported stable model-edge reference; check its live schema and preview axis placement.
 
 Independent Extrude extents use the `profiles` contract (even for one profile), `distance`, `secondDistance`, `reversed`, `symmetric`, and `operation`. This selects schema v5. With 10 mm first depth, 3 mm second depth, no reversal, and no symmetry, the solid spans -3 to +10 mm along the normal. Reversal spans -10 to +3 mm. `secondDistance: null` selects one direction. Symmetric requires a null second depth and stores the **total** span split equally about the plane. Enabled depths are at least 0.001 mm; total span is at most 100,000 mm. No starting offset or arbitrary direction is supported by this contract.

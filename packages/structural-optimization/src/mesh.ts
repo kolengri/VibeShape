@@ -1,7 +1,40 @@
 import { writeStlMeshes } from "@vibeshape/formats/stl-meshes"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
-import { structuralMeshSchema } from "./contract"
+import { type StructuralMesh, structuralMeshSchema } from "./contract"
 import { StructuralOptimizationError } from "./errors"
+
+/** Removes display seams without changing captured triangle positions, order, or winding. */
+export function compactStructuralSourceMesh(input: StructuralMesh): StructuralMesh {
+  if (
+    input.vertices.length > 60_000 ||
+    input.indices.length > 60_000 ||
+    !structuralMeshSchema.safeParse(input).success
+  )
+    return input
+  const vertices: number[] = []
+  const indices: number[] = []
+  const compactedBySource = new Map<number, number>()
+  const compactedByPosition = new Map<string, number>()
+  for (const sourceIndex of input.indices) {
+    let compactedIndex = compactedBySource.get(sourceIndex)
+    if (compactedIndex === undefined) {
+      const offset = sourceIndex * 3
+      const point = input.vertices
+        .slice(offset, offset + 3)
+        .map((value) => (value === 0 ? 0 : value))
+      const key = point.join(":")
+      compactedIndex = compactedByPosition.get(key)
+      if (compactedIndex === undefined) {
+        compactedIndex = vertices.length / 3
+        compactedByPosition.set(key, compactedIndex)
+        vertices.push(...point)
+      }
+      compactedBySource.set(sourceIndex, compactedIndex)
+    }
+    indices.push(compactedIndex)
+  }
+  return { vertices, indices }
+}
 
 export function encodeStructuralStl(input: unknown, cellSizeMm: number): Uint8Array<ArrayBuffer> {
   const mesh = structuralMeshSchema.parse(input)

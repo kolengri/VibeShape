@@ -1,6 +1,7 @@
 # ADR-0024: Stable planar-face sketch support
 
 - Status: Accepted
+- Superseded in part by [ADR-0132](0132-current-planar-face-sketch-support.md) for current whole-result planar face support.
 - Date: 2026-08-20
 - Extends: [ADR-0003](0003-parametric-dag-and-toporef.md), [ADR-0019](0019-selector-backed-new-body-extrusion.md), and [ADR-0023](0023-explicit-target-extrusion-operations.md)
 

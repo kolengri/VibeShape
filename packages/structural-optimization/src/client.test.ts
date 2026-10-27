@@ -86,6 +86,78 @@ describe("bounded structural worker client", () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
+  it.each(["vertices", "triangles"])(
+    "reports the source mesh budget for too many %s before starting a worker",
+    async (kind) => {
+      const worker = vi.fn()
+      vi.stubGlobal("Worker", worker)
+      const source = structuredClone(input)
+      if (kind === "vertices") source.mesh.vertices = Array(30_003).fill(0)
+      else source.mesh.indices = Array(60_003).fill(0)
+      await expect(optimizeStructuralModel(source, options)).rejects.toMatchObject({
+        code: "invalid-input",
+        message: expect.stringContaining(
+          "mesh: The source mesh exceeds the 10,000-vertex or 20,000-triangle analysis budget.",
+        ),
+      })
+      expect(worker).not.toHaveBeenCalled()
+    },
+  )
+  it.each(["mesh", "support"])(
+    "identifies an invalid captured %s triangle before starting a worker",
+    async (kind) => {
+      const worker = vi.fn()
+      vi.stubGlobal("Worker", worker)
+      const source = structuredClone(input)
+      if (kind === "mesh") source.mesh.indices[0] = 8
+      else source.supports = [{ kind: "surface", triangleIndices: [12], depthMm: 1 }]
+      await expect(optimizeStructuralModel(source, options)).rejects.toMatchObject({
+        code: "invalid-input",
+        message: expect.stringContaining(
+          kind === "mesh"
+            ? "mesh: Meshes require complete XYZ triples and valid triangle indices."
+            : "supports.0.triangleIndices: Surface triangle indices must reference the captured source mesh.",
+        ),
+      })
+      expect(worker).not.toHaveBeenCalled()
+    },
+  )
+  it("bounds input diagnostics for browser automation without discarding the first issue path", async () => {
+    const source = {
+      ...input,
+      mesh: { ...mesh, vertices: Array(30).fill(Number.NaN) },
+    }
+    try {
+      await optimizeStructuralModel(source, options)
+      throw new Error("Malformed coordinates must reject before analysis.")
+    } catch (error) {
+      if (!(error instanceof Error)) throw error
+      expect(error.message).toContain("mesh.vertices.0:")
+      expect(error.message).toContain("mesh.vertices.2:")
+      expect(error.message).not.toContain("mesh.vertices.3:")
+      expect(error.message.length).toBeLessThanOrEqual(512)
+    }
+  })
+  it("bounds diagnostics containing long unrecognized keys to the automation message limit", async () => {
+    const extra = { ["unsupported".repeat(100)]: true }
+    try {
+      await optimizeStructuralModel(
+        {
+          ...input,
+          ...extra,
+          mesh: { ...mesh, ...extra },
+          material: { ...input.material, ...extra },
+        },
+        options,
+      )
+      throw new Error("Unrecognized keys must reject before analysis.")
+    } catch (error) {
+      if (!(error instanceof Error)) throw error
+      expect(error.message).toContain("material:")
+      expect(error.message).toContain("mesh:")
+      expect(error.message.length).toBeLessThanOrEqual(512)
+    }
+  })
   function fdmOutput(): StructuralFdmSummary {
     return {
       settings: {

@@ -576,7 +576,7 @@ async function prepareFeatureContent(
   }
   const datumPlane = readDatumPlaneFeatureParameters(feature)
   if (datumPlane) {
-    const frame = datumPlaneFrame(feature, document, features, new Set([feature.id]))
+    const frame = datumPlaneFrame(feature, document, features, new Set([feature.id]), geometry)
     if (!frame) {
       return failure("org.vibeshape.feature.datum-plane-support-missing", "support-unresolved")
     }

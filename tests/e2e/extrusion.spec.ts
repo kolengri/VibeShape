@@ -499,9 +499,10 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1", {
       timeout: 120_000,
     })
-    await expect(viewport.locator('[data-plane-symbol="XY"]')).toBeVisible()
-    await expect(viewport.locator('[data-plane-symbol="XZ"]')).toBeVisible()
-    await expect(viewport.locator('[data-plane-symbol="YZ"]')).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-origin-plane-visibility", "xy,xz,yz")
+    await expect(
+      viewport.getByRole("group", { name: "Origin plane visibility", exact: true }),
+    ).toHaveCount(0)
     await page
       .getByRole("complementary", { name: "Model tree", exact: true })
       .getByRole("button", { name: "Hide Sketch 1" })

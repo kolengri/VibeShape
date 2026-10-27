@@ -142,6 +142,8 @@
 | [0130](0130-default-desktop-external-mcp-access.md) | Accepted | Default authenticated desktop external project access with manual Apply and persistent Stop |
 | [0131](0131-exact-face-signature-resolution.md) | Accepted | Identical face signatures resolve within authoritative scope before approximate ranking |
 
+See also [ADR-0132: Current planar face sketch support](0132-current-planar-face-sketch-support.md).
+
 Statuses:
 
 - `Proposed` — under discussion

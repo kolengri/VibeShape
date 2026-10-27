@@ -53,7 +53,7 @@ afterEach(() => {
   vi.resetAllMocks()
   vi.useRealTimers()
 })
-function setup(improved = true) {
+function setup(improved = true, capturedMesh?: LightweightingSource["body"]["mesh"]) {
   let sequence = 100
   const inspectedBody = meshInspection.outputs[0]
   if (!inspectedBody) throw new Error("Expected an inspection body fixture.")
@@ -72,7 +72,7 @@ function setup(improved = true) {
       outputRole: "result",
       representation: "exact-solid",
       shape: { ...inspectedBody.shape, volume: 48, solidCount: 1 },
-      mesh: inspectedBody.mesh,
+      mesh: capturedMesh ?? inspectedBody.mesh,
       topologyCandidates: [],
     },
   }
@@ -110,6 +110,32 @@ async function reviewReady() {
   return review
 }
 describe("browser lightweighting snapshot authority", () => {
+  it("compacts captured display seams without changing source revision or identity", async () => {
+    const positions = Float32Array.from(
+      mesh.indices.flatMap((index) => mesh.vertices.slice(index * 3, index * 3 + 3)),
+    )
+    const capturedMesh: LightweightingSource["body"]["mesh"] = {
+      positions,
+      normals: new Float32Array(positions.length),
+      indices: Uint32Array.from({ length: positions.length / 3 }, (_, index) => index),
+      triangleFaceIds: new Uint32Array([17, 42, 17, 99]),
+    }
+    const test = setup(false, capturedMesh)
+    expect(await test.session.execute(actor, lightweightingOperation())).toMatchObject({
+      ok: true,
+      value: { baseRevision: 4, source: lightweightingIdentity },
+    })
+    expect(mocks.optimize.mock.calls[0]?.[0]).toMatchObject({
+      mesh: {
+        vertices: [0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+        indices: [0, 1, 2, 0, 2, 3, 0, 3, 1, 2, 1, 3],
+      },
+    })
+    expect(capturedMesh.positions).toBe(positions)
+    expect(Array.from(capturedMesh.indices)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    expect(test.commit).not.toHaveBeenCalled()
+  })
+
   it("returns actionable numerical failure codes without review or mutation", async () => {
     const test = setup()
     mocks.optimize.mockRejectedValueOnce(
