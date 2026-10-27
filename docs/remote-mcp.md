@@ -4,6 +4,11 @@ The paired remote tool set includes `model_dependencies`, the same revision-boun
 History change-impact query as local MCP. See the [inspection workflow](../.agents/skills/vibeshape-inspection/SKILL.md)
 for direct/transitive traversal, paging, partial coverage and exclusions.
 
+`model_variable_usage` also matches local MCP: it inspects saved variable formulas, typed feature
+parameters and sketch dimensions by stable variable ID and revision. Optional transitive traversal
+follows dependent variables; pages preserve exact expression paths and constraint IDs. Unreadable
+expressions report partial coverage. It does not inspect drafts or geometry-only downstream links.
+
 The remote adapter connects a standard HTTPS MCP client to the exact browser tab its owner approves.
 It reuses existing CAD, sketch, variable, topology and metadata tools. The editor owns geometry,
 documents, review, persistence and Undo. The local Bun/stdio workflow remains available separately.

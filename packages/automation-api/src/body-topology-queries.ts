@@ -11,6 +11,7 @@ import {
 import { z } from "zod"
 import type { DerivedQueryContext, QueryDiagnosticCode, QueryResult } from "./queries"
 import { serializedQueryBytes } from "./query-byte-budget"
+import { resolveQuerySnapshot } from "./query-snapshot"
 
 const topologyKindSchema = z.enum(["edge", "face"])
 const provenanceShape = {
@@ -125,14 +126,9 @@ export function queryModelBodyTopology(
 }
 
 function validateDocument(snapshot: DocumentSnapshot | null, query: ModelBodyTopologyQuery) {
-  if (!snapshot) return failure("document-not-found", "The requested document was not found.")
-  if (snapshot.id !== query.documentId)
-    return failure(
-      "document-id-mismatch",
-      "The query document does not match the supplied snapshot.",
-    )
-  if (snapshot.revision !== query.revision)
-    return failure("stale-query-revision", "The requested revision is no longer current.", true)
+  const context = resolveQuerySnapshot(snapshot, query)
+  if (!context.ok) return context
+  snapshot = context.snapshot
   const feature = snapshot.features.find(({ id }) => id === query.featureId)
   if (!feature) return failure("feature-not-found", "The requested feature does not exist.")
   if (feature.suppressed)

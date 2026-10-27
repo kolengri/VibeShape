@@ -5,6 +5,7 @@ import {
   localPollResponseSchema,
 } from "@vibeshape/automation-api/local-session"
 import { type LocalToolResult, localOperationSchema } from "@vibeshape/automation-api/local-tools"
+import { modelVariableUsageViewSchema } from "@vibeshape/automation-api/queries"
 import { lightweightingMaterialCatalogResult } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
 import {
   quickLightweightingOperation,
@@ -54,6 +55,57 @@ async function connect(broker: ReturnType<typeof createBrowserBroker>) {
 }
 
 describe("browser automation broker", () => {
+  it("binds variable usage response identity and paging to the paired saved document", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const variableId = "0195b5ac-b220-7a2c-8c33-000000000001"
+    const operation = localOperationSchema.parse({
+      tool: "model_variable_usage",
+      arguments: { revision: 4, variableId },
+    })
+    const pending = broker.invoke(operation)
+    const poll = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const { work } = localPollResponseSchema.parse(await poll.json())
+    if (!work) throw new Error("Expected variable usage inspection.")
+    const value = modelVariableUsageViewSchema.parse({
+      kind: "org.vibeshape.cad.variable-usage",
+      schemaVersion: 1,
+      documentId: document.id,
+      revision: 4,
+      variableId,
+      variableName: "root",
+      transitive: false,
+      classification: "semantic",
+      nextCursor: null,
+      data: { coverage: "complete", total: 0, items: [], diagnosticTotal: 0, diagnostics: [] },
+    })
+    const respond = (value: unknown) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: work.requestId,
+            tool: operation.tool,
+            result: { ok: true, value },
+          },
+          token,
+        ),
+      )
+    for (const change of [
+      { documentId: "0195b5ac-b220-7a2c-8c33-000000000099" },
+      { revision: 3 },
+      { variableId: "0195b5ac-b220-7a2c-8c33-000000000002" },
+      { transitive: true },
+      { nextCursor: "1" },
+    ])
+      expect((await respond({ ...value, ...change })).status).toBe(400)
+    expect((await respond(value)).status).toBe(200)
+    await expect(pending).resolves.toEqual({ ok: true, value })
+  })
+
   it("accepts a validated material catalog without requiring a draft or document receipt", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)

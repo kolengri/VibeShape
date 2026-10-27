@@ -15,13 +15,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vibeshape/ui/components/dialog"
-import { type RefObject, useMemo, useState } from "react"
+import { type RefObject, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { DocumentControllerState } from "../document/document-controller"
 
 type DialogProps = {
   entity: DocumentNodeRef
   label: string
   onClose: () => void
+  onReveal?: ((entity: DocumentNodeRef) => void) | undefined
   triggerRef: RefObject<HTMLButtonElement | null>
 }
 
@@ -33,11 +34,23 @@ export function HistoryDependenciesDialog({
     controller.status === "ready" && controller.saveStatus !== "saving"
       ? (controller.report?.snapshot ?? null)
       : null
+  const navigation = useRef({ snapshot, onReveal: props.onReveal })
+  useLayoutEffect(() => {
+    navigation.current = { snapshot, onReveal: props.onReveal }
+  }, [snapshot, props.onReveal])
   return (
     <HistoryDependenciesContent
       key={snapshot ? `${snapshot.id}:${snapshot.revision}` : "unavailable"}
       {...props}
       snapshot={snapshot}
+      onReveal={
+        props.onReveal
+          ? (target) => {
+              const current = navigation.current
+              if (current.snapshot === snapshot) current.onReveal?.(target)
+            }
+          : undefined
+      }
     />
   )
 }
@@ -47,9 +60,11 @@ function HistoryDependenciesContent({
   entity,
   label,
   onClose,
+  onReveal,
   triggerRef,
 }: DialogProps & { snapshot: DocumentSnapshot | null }) {
   const t = useTranslations("app.shell.modelTree.dependencies")
+  const navigationTarget = useRef<DocumentNodeRef | null>(null)
   const [direction, setDirection] = useState<ModelDependenciesQuery["direction"]>("dependents")
   const [transitive, setTransitive] = useState(false)
   const [cursor, setCursor] = useState<string | null>(null)
@@ -74,7 +89,8 @@ function HistoryDependenciesContent({
         className="max-w-lg"
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          triggerRef.current?.focus()
+          if (navigationTarget.current && onReveal) onReveal(navigationTarget.current)
+          else triggerRef.current?.focus()
         }}
       >
         <DialogHeader>
@@ -123,9 +139,27 @@ function HistoryDependenciesContent({
                 <ul className="space-y-2" aria-label={t(direction)}>
                   {result.view.data.items.map((item) => (
                     <li key={`${item.entity.kind}:${item.entity.id}`} className="text-sm">
-                      <p className="break-words font-medium">
-                        {item.label ?? t("unnamed", { kind: item.entity.kind })}
-                      </p>
+                      {onReveal ? (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto max-w-full whitespace-normal break-words p-0 text-left"
+                          aria-label={t("reveal", {
+                            item: item.label ?? t("unnamed", { kind: item.entity.kind }),
+                          })}
+                          onClick={() => {
+                            navigationTarget.current = item.entity
+                            onClose()
+                          }}
+                        >
+                          {item.label ?? t("unnamed", { kind: item.entity.kind })}
+                        </Button>
+                      ) : (
+                        <p className="break-words font-medium">
+                          {item.label ?? t("unnamed", { kind: item.entity.kind })}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         {t("entry", { kind: item.entity.kind, distance: item.distance })}
                         {item.suppressed && <span className="ml-2">{t("suppressed")}</span>}

@@ -2,6 +2,8 @@ import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-met
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  model_variable_usage:
+    "Inspect saved variable usage by stable variableId at the exact committed revision. Reports consumer variables, every typed feature quantity expression (including suppressed features), and sketch constraint quantities with structured parameterPath, authored expression and shortest hop distance. transitive=false reports direct #variable references; transitive=true follows dependent variable definitions. Scan uses exact lexical variable names, never arbitrary strings or labels. Coverage is limited to saved typed expressions, independent of geometry; downstream features without expressions are outside scope. Coverage=partial and bounded diagnostics disclose expressions the lexer could not inspect. Paginate up to 100 items with nextCursor while retaining revision/variableId/transitive. Read-only; no draft, preview or Apply required.",
   model_dependencies:
     "Inspect authored History dependencies or dependents of one stable feature/sketch entity at the committed revision. Direction defaults to dependents (change impact); transitive=true includes indirect relations with shortest hop distance. Includes suppressed features and sketch profile/support/external references, independent of geometry success. Paginate up to 100 items with nextCursor while keeping entity/direction/transitive/revision unchanged. Coverage=partial means some feature types have opaque dependency semantics. This is the History graph, not variable usage, assembly constraints, a geometric-validity guarantee or deletion permission. Read-only; no draft, preview or Apply required.",
   list_lightweighting_materials:
@@ -315,6 +317,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "model_tree",
       "model_entity",
       "model_dependencies",
+      "model_variable_usage",
       "model_variables",
       "model_edges",
       "model_body_measurements",
@@ -350,6 +353,7 @@ export function localToolAnnotations(name: LocalToolName) {
     ].includes(name),
     idempotentHint: [
       "model_dependencies",
+      "model_variable_usage",
       "list_lightweighting_materials",
       "analyze_lightweighting",
       "analyze_quick_lightweighting",

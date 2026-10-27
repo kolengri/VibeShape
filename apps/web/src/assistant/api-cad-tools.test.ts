@@ -51,6 +51,10 @@ describe("browser CAD gateway", () => {
       await gateway("discover_cad_tools", { query: "model_dependencies" }, signal),
     ).tools[0]
     expect(dependencies?.inputSchema).toMatchObject({ required: ["revision", "entity"] })
+    const usage = pageSchema.parse(
+      await gateway("discover_cad_tools", { query: "model_variable_usage" }, signal),
+    ).tools[0]
+    expect(usage?.inputSchema).toMatchObject({ required: ["revision", "variableId"] })
     expect(
       await gateway("call_cad_tool", { name: "read_agent_skill", arguments: {} }, signal),
     ).toMatchObject({ ok: true, value: { mimeType: "application/json" } })

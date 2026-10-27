@@ -1,5 +1,6 @@
 import { type ModelBodyTopologyView, queryModelBodyTopology } from "./body-topology-queries"
 import { type ModelDependenciesView, queryModelDependencies } from "./dependency-queries"
+import { type ModelVariableUsageView, queryVariableUsage } from "./variable-usage-queries"
 
 export type { ModelDependenciesQuery, ModelDependenciesView } from "./dependency-queries"
 export {
@@ -9,6 +10,14 @@ export {
   modelDependenciesViewSchema,
   queryModelDependencies,
 } from "./dependency-queries"
+export type { ModelVariableUsageQuery, ModelVariableUsageView } from "./variable-usage-queries"
+export {
+  modelVariableUsageArgumentsSchema,
+  modelVariableUsageQuerySchema,
+  modelVariableUsageViewSchema,
+  queryVariableUsage,
+  variableUsageResultContextMatches,
+} from "./variable-usage-queries"
 
 import { querySketchSolution, type SketchSolutionView } from "./sketch-solution-queries"
 
@@ -167,6 +176,7 @@ export type VariableListQuery = Readonly<z.infer<typeof variableListQuerySchema>
 export type VariableListView = Readonly<z.infer<typeof variableListViewSchema>>
 const VARIABLE_LIST_MAX_SERIALIZED_BYTES = 128 * 1024
 export type AutomationQueryView =
+  | ModelVariableUsageView
   | ModelDependenciesView
   | SketchSolutionView
   | ModelBodyTopologyView
@@ -184,6 +194,7 @@ export type QueryIssue = Readonly<{
 }>
 
 export type QueryDiagnosticCode =
+  | "variable-not-found"
   | "geometry-unavailable"
   | "stale-geometry"
   | "invalid-geometry-evidence"
@@ -596,6 +607,12 @@ export function createQueryDispatcher(
 }
 
 export const documentCoreQueryHandlers: readonly TrustedQueryHandler[] = [
+  {
+    kind: "org.vibeshape.cad.variable-usage",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: queryVariableUsage,
+  },
   {
     kind: "org.vibeshape.cad.dependencies",
     schemaVersion: 1,

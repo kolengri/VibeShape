@@ -10,6 +10,7 @@ import {
   modelDependenciesQuerySchema,
   modelEdgeQuerySchema,
   modelMeasurementQuerySchema,
+  modelVariableUsageQuerySchema,
   sketchSolutionQuerySchema,
   variableListQuerySchema,
 } from "@vibeshape/automation-api/queries"
@@ -21,6 +22,12 @@ export function createLocalInspectionQuery(
   const common = { schemaVersion: 1, documentId }
   const { draftId: _draftId, ...argumentsInput } = { draftId: undefined, ...operation.arguments }
   switch (operation.tool) {
+    case "model_variable_usage":
+      return modelVariableUsageQuerySchema.parse({
+        ...common,
+        ...argumentsInput,
+        kind: "org.vibeshape.cad.variable-usage",
+      })
     case "model_dependencies":
       return modelDependenciesQuerySchema.parse({
         ...common,

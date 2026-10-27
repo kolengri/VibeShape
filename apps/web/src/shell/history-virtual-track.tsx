@@ -13,6 +13,7 @@ import {
 import type { AuthoredMetadataCommit } from "./authored-item-rename"
 import type { FolderHistoryGroup } from "./authored-tree-state"
 import { HistoryFolderGroup } from "./history-folder-group"
+import type { HistoryRevealRequest } from "./history-reveal-request"
 import { HistoryTimelineCursor } from "./history-timeline-cursor"
 import {
   type HistoryTrackGroup,
@@ -42,7 +43,7 @@ export function HistoryVirtualTrack({
   disabled: boolean
   detailed: boolean
   dragSourceKey: string | null
-  revealRequest: Readonly<{ featureId: string; sequence: number }> | null | undefined
+  revealRequest: HistoryRevealRequest | null | undefined
   selectedId: string | null | undefined
   renderRow: (row: HistoryViewRow, index: number) => ReactNode
   empty: ReactNode

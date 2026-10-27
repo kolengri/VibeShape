@@ -356,6 +356,56 @@ describe("local automation tool executor", () => {
       })
     },
   )
+  it("routes saved variable usage through the committed CAD query without creating a draft", async () => {
+    const host = {
+      createDraft: vi.fn(),
+      inspectDraft: vi.fn(),
+      applyCommand: vi.fn(),
+      previewDraft: vi.fn(),
+      commitDraft: vi.fn(),
+      discardDraft: vi.fn(),
+    }
+    const readCad = vi.fn().mockReturnValue({
+      ok: false,
+      diagnostic: {
+        code: "variable-not-found",
+        message: "Missing variable.",
+        retryable: false,
+        issues: [],
+      },
+    })
+    const executor = createLocalToolExecutor(
+      {
+        documentId: id(2),
+        revision: 4,
+        host,
+        readCad,
+        readInfo: () => null,
+        exportRevisionBound: vi.fn(),
+      },
+      commandActorSchema.parse({ type: "mcp", clientId: "org.example.client", sessionId: id(1) }),
+    )
+    const operation = localOperationSchema.parse({
+      tool: "model_variable_usage",
+      arguments: { revision: 4, variableId: id(3), transitive: true, cursor: "10", limit: 5 },
+    })
+    await expect(executor.execute(operation)).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "variable-not-found" },
+    })
+    expect(readCad).toHaveBeenCalledWith({
+      kind: "org.vibeshape.cad.variable-usage",
+      schemaVersion: 1,
+      documentId: id(2),
+      revision: 4,
+      variableId: id(3),
+      transitive: true,
+      cursor: "10",
+      limit: 5,
+    })
+    for (const method of Object.values(host)) expect(method).not.toHaveBeenCalled()
+  })
+
   it("forwards named body measurement reads through the committed CAD port", async () => {
     const host = {
       createDraft: vi.fn(),

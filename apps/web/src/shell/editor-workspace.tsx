@@ -165,6 +165,7 @@ import {
   viewerSketchDisplay,
 } from "./geometry-viewport"
 import { historyInsertionContext } from "./history-insertion-context"
+import type { HistoryRevealRequest } from "./history-reveal-request"
 import type { ModelEdgeViewportSelection as ViewportEdgeSelection } from "./model-edge-viewport"
 import { ModelTree } from "./model-tree"
 import type { ModelTreeSelection } from "./model-tree-selection"
@@ -2182,17 +2183,15 @@ function EditorModelTree({
   surface,
   revealRequest,
   onRevealFeature,
+  onRevealHistoryItem,
   profilePreview,
   onProfilePreview,
 }: {
   props: EditorWorkspaceProps
   surface: "browser" | "timeline"
-  revealRequest: Readonly<{
-    featureId: FeatureId
-    sequence: number
-    destination?: "browser" | "timeline"
-  }> | null
+  revealRequest: HistoryRevealRequest | null
   onRevealFeature: (featureId: FeatureId) => void
+  onRevealHistoryItem: (item: HistoryItemRef) => void
   profilePreview: SketchProfileSelector | null
   onProfilePreview: ((profile: SketchProfileSelector | null) => void) | undefined
 }) {
@@ -2223,6 +2222,7 @@ function EditorModelTree({
       selectedResultFeatureId={props.selectedBody?.featureId ?? props.selection?.featureId ?? null}
       revealRequest={revealForSurface(revealRequest, surface)}
       onRevealFeature={onRevealFeature}
+      onRevealHistoryItem={onRevealHistoryItem}
       onHistoryReturnToEnd={actions.returnHistoryToEnd}
       onSourceProfilePreview={onProfilePreview}
       sourcePreviewSketchId={profilePreview?.sketchId}
@@ -2974,15 +2974,17 @@ function revealForSurface<T extends { destination?: "browser" | "timeline" }>(
 function EditorWorkspaceContent(
   fullProps: EditorWorkspaceProps & { commands: readonly ResolvedEditorCommand[] },
 ) {
-  const [revealRequest, setRevealRequest] = useState<Readonly<{
-    featureId: FeatureId
-    sequence: number
-    destination?: "browser" | "timeline"
-  }> | null>(null)
+  const [revealRequest, setRevealRequest] = useState<HistoryRevealRequest | null>(null)
   const revealFeature = (featureId: FeatureId, destination: "browser" | "timeline" = "browser") =>
     setRevealRequest((previous) => ({
       featureId,
       destination,
+      sequence: (previous?.sequence ?? 0) + 1,
+    }))
+  const revealHistoryItem = (historyItem: HistoryItemRef) =>
+    setRevealRequest((previous) => ({
+      historyItem,
+      destination: "timeline",
       sequence: (previous?.sequence ?? 0) + 1,
     }))
   const props = useHistoryInsertionWorkspaceProps(fullProps)
@@ -3042,6 +3044,7 @@ function EditorWorkspaceContent(
                 surface="browser"
                 revealRequest={revealRequest}
                 onRevealFeature={revealFeature}
+                onRevealHistoryItem={revealHistoryItem}
                 props={fullProps}
                 profilePreview={historySourcePreview.profile}
                 onProfilePreview={historySourcePreview.onPreview}
@@ -3052,6 +3055,7 @@ function EditorWorkspaceContent(
                 surface="timeline"
                 revealRequest={revealRequest}
                 onRevealFeature={revealFeature}
+                onRevealHistoryItem={revealHistoryItem}
                 props={fullProps}
                 profilePreview={historySourcePreview.profile}
                 onProfilePreview={historySourcePreview.onPreview}

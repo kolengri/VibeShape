@@ -1,4 +1,5 @@
 import type { FeatureRecord } from "@vibeshape/domain"
+import type { DocumentNodeRef } from "@vibeshape/domain/document-node"
 import { useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
@@ -36,6 +37,7 @@ import {
 import { HistoryDependenciesDialog } from "./history-dependencies-dialog"
 
 type HistoryFeatureActionsProps = {
+  onRevealDependency?: ((entity: DocumentNodeRef) => void) | undefined
   onFindInBrowser?: (() => void) | undefined
   controller: DocumentControllerState
   deleteDisabled: boolean
@@ -356,6 +358,7 @@ export function HistoryFeatureActions(props: HistoryFeatureActionsProps) {
           entity={{ kind: "feature", id: props.feature.id }}
           label={props.label}
           onClose={() => model.setDependenciesOpen(false)}
+          onReveal={props.onRevealDependency}
           triggerRef={props.triggerRef}
         />
       )}

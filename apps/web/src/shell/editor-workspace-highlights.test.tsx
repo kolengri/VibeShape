@@ -91,15 +91,15 @@ mock.module("@vibeshape/document-worker/session", () => ({
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import(
   "@testing-library/react"
 )
+const { default: userEvent } = await import("@testing-library/user-event")
 const { useState } = await import("react")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
 const { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } = await import(
   "@vibeshape/protocol"
 )
-const { boxFeatureParametersSchema, createEmptySketch, sketchIdSchema } = await import(
-  "@vibeshape/domain"
-)
+const { boxFeatureParametersSchema, createEmptySketch, sketchIdSchema, sketchRecordSchema } =
+  await import("@vibeshape/domain")
 const { i18n } = await import("../i18n")
 const { authoredTestBody, authoredTestId, authoredTreeFixture, requireAuthoredFixture } =
   await import("../test-support/authored-tree-fixture")
@@ -211,11 +211,16 @@ function WorkspaceHarness({
   treeSelection,
   toolTargets,
   hiddenFeatureIds = [],
+  sourceController = controller,
 }: {
   treeSelection: readonly ModelTreeSelection[]
   toolTargets?: WorkspaceProps["assistantToolTargets"]
   hiddenFeatureIds?: WorkspaceProps["hiddenFeatureIds"]
+  sourceController?: DocumentControllerState
 }) {
+  const [navigationSelection, setNavigationSelection] = useState<
+    readonly ModelTreeSelection[] | null
+  >(null)
   const [activeTool, setActiveTool] = useState<ActivePartDesignTool | null>(null)
   const [preselectedFeatureId, setPreselectedFeatureId] = useState<FeatureId | null>(null)
   const actions: WorkspaceProps["actions"] = {
@@ -246,6 +251,7 @@ function WorkspaceHarness({
     editSketch: noop,
     preselectFeature: setPreselectedFeatureId,
     select: noop,
+    selectModelTreeItems: setNavigationSelection,
     selectPart: noop,
     selectSavedSketchProfile: noop,
     selectOriginPlane: noop,
@@ -283,14 +289,14 @@ function WorkspaceHarness({
                 activeTool={activeTool}
                 activeSketchId={null}
                 activeSketchTool={null}
-                controller={controller}
+                controller={sourceController}
                 assistantToolTargets={toolTargets}
                 hiddenFeatureIds={hiddenFeatureIds}
                 hiddenSketchIds={[]}
                 originPlaneVisibility={{ xy: true, xz: true, yz: true }}
                 onSketchFinalContextChange={noop}
                 preselectedFeatureId={preselectedFeatureId}
-                modelTreeSelection={treeSelection}
+                modelTreeSelection={navigationSelection ?? treeSelection}
                 extrusionDistanceRequest={null}
                 primitivePlacementRequest={null}
                 revolveAngleRequest={null}
@@ -328,7 +334,162 @@ function historyRow() {
   })
 }
 
+function dependencySketch() {
+  return sketchRecordSchema.parse({
+    ...sketch,
+    entities: [
+      { schemaVersion: 0, id: authoredTestId(703), type: "point", construction: false, x: 0, y: 0 },
+    ],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: authoredTestId(701),
+        kind: "model-point",
+        projectedPointId: authoredTestId(702),
+        reference: {
+          schemaVersion: 0,
+          featureId: firstFeature.id,
+          kind: "vertex",
+          signature: {
+            kind: "vertex",
+            geometryClass: "POINT",
+            measure: 0,
+            centroid: [0, 0, 0],
+            bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+            boundaryCount: 0,
+            adjacentGeometryClasses: [],
+          },
+        },
+      },
+    ],
+  })
+}
+
 describe("workspace body highlight composition", () => {
+  it.each(["available", "suppressed", "missing", "unavailable"] as const)(
+    "navigates from dependencies to saved feature History without inventing %s outputs or opening edit",
+    async (availability) => {
+      const user = userEvent.setup()
+      const suppressed = availability === "suppressed"
+      const target = { ...firstFeature, suppressed }
+      const linkedSketch = dependencySketch()
+      const features = snapshot.features.map((feature) =>
+        feature.id === target.id ? { ...feature, suppressed } : feature,
+      )
+      const savedSnapshot = { ...snapshot, features, sketches: [linkedSketch] }
+      const response = rebuild(savedSnapshot)
+      const report = requireAuthoredFixture(controller.report ?? undefined)
+      const sourceController: DocumentControllerState = {
+        ...controller,
+        authoredSnapshot: {
+          ...authority,
+          features: authority.features.map((feature) =>
+            feature.id === target.id ? { ...feature, suppressed } : feature,
+          ),
+          sketches: [linkedSketch],
+        },
+        report: {
+          ...report,
+          snapshot: savedSnapshot,
+          rebuild:
+            availability === "unavailable"
+              ? {
+                  ok: false,
+                  diagnostic: {
+                    code: "rebuild-failed",
+                    message: "Rebuild unavailable for this fixture.",
+                    retryable: false,
+                    sourceCode: null,
+                  },
+                }
+              : {
+                  ok: true,
+                  response: {
+                    ...response,
+                    geometry: response.geometry.filter(
+                      (geometry) =>
+                        availability === "available" || geometry.featureId !== target.id,
+                    ),
+                  },
+                },
+        },
+      }
+      render(<WorkspaceHarness treeSelection={[]} sourceController={sourceController} />)
+      await user.click(screen.getByRole("button", { name: "Details" }))
+      const history = within(screen.getByRole("region", { name: "Feature history" }))
+      history.getByRole("button", { name: "Actions for Guide" }).focus()
+      await user.keyboard("{ArrowDown}")
+      await user.click(await screen.findByRole("menuitem", { name: "Inspect dependencies" }))
+      await user.click(screen.getByRole("button", { name: "Depends on" }))
+      await user.click(screen.getByRole("button", { name: "Show Box 1 in History" }))
+      await waitFor(() =>
+        expect(port.setFeatureSelection).toHaveBeenLastCalledWith(
+          availability === "available"
+            ? [expect.objectContaining({ featureId: target.id, outputRole: "result" })]
+            : [],
+        ),
+      )
+      await waitFor(() => expect(document.activeElement).toBe(historyRow()))
+      expect(screen.queryByRole("form", { name: "Create box" })).toBeNull()
+      expect(screen.queryByRole("combobox", { name: "Width" })).toBeNull()
+      expect(sourceController.report?.snapshot.revision).toBe(snapshot.revision)
+      expect(sourceController.report?.historyItems).toEqual(authority.history)
+    },
+  )
+
+  it("selects a related saved sketch in the viewport and History without entering the sketch editor", async () => {
+    const user = userEvent.setup()
+    const linkedSketch = dependencySketch()
+    const report = requireAuthoredFixture(controller.report ?? undefined)
+    const savedSnapshot = { ...snapshot, sketches: [linkedSketch] }
+    const response = rebuild(savedSnapshot)
+    const sourceController: DocumentControllerState = {
+      ...controller,
+      authoredSnapshot: { ...authority, sketches: [linkedSketch] },
+      report: {
+        ...report,
+        snapshot: savedSnapshot,
+        rebuild: {
+          ok: true,
+          response: {
+            ...response,
+            sketches: [
+              {
+                sketchId: sketch.id,
+                curvePositions: new Float32Array(),
+                constructionCurvePositions: new Float32Array(),
+                pointPositions: new Float32Array([0, 0, 0]),
+                constructionPointPositions: new Float32Array(),
+                frame: { origin: [0, 0, 0], xAxis: [1, 0, 0], yAxis: [0, 1, 0], normal: [0, 0, 1] },
+                profiles: [],
+              },
+            ],
+          },
+        },
+      },
+    }
+    render(<WorkspaceHarness treeSelection={[]} sourceController={sourceController} />)
+    await user.click(screen.getByRole("button", { name: "Details" }))
+    const history = within(screen.getByRole("region", { name: "Feature history" }))
+    history.getByRole("button", { name: "Actions for Box 1" }).focus()
+    await user.keyboard("{ArrowDown}")
+    await user.click(await screen.findByRole("menuitem", { name: "Inspect dependencies" }))
+    await user.click(screen.getByRole("button", { name: "Show Guide in History" }))
+    await waitFor(() =>
+      expect(port.setSketches).toHaveBeenLastCalledWith([
+        expect.objectContaining({ sketchId: sketch.id, selected: true }),
+      ]),
+    )
+    await waitFor(() =>
+      expect(document.activeElement).toBe(history.getByRole("treeitem", { name: "Edit Guide" })),
+    )
+    expect(port.setFeatureSelection).toHaveBeenLastCalledWith([])
+    expect(screen.queryByRole("combobox", { name: "Width" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Finish sketch" })).toBeNull()
+    expect(sourceController.report?.snapshot.revision).toBe(snapshot.revision)
+    expect(sourceController.report?.historyItems).toEqual(authority.history)
+  })
+
   it("links assistant targets to visible exact outputs and matching tree and History identities", async () => {
     const otherFeature = requireAuthoredFixture(snapshot.features[1])
     const toolTargets = {

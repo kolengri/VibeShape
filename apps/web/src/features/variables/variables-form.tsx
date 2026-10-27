@@ -122,6 +122,7 @@ function VariableRowActions({
   canRename,
   copy,
   disabled,
+  extraAction,
   onCancelRename,
   onConfirmRename,
   onRemove,
@@ -133,6 +134,7 @@ function VariableRowActions({
   canRename: boolean
   copy: VariablesFormCopy
   disabled: boolean
+  extraAction?: ReactNode
   onCancelRename: () => void
   onConfirmRename: () => Promise<void>
   onRemove: () => void
@@ -172,6 +174,7 @@ function VariableRowActions({
   return (
     <TooltipProvider>
       <div className="flex items-center justify-end gap-1">
+        {extraAction}
         {canRename ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -494,6 +497,7 @@ export function VariablesForm({
   protectedVariableNames = EMPTY_VARIABLE_NAMES,
   variables,
   dialogCloseAction,
+  inspection,
 }: {
   baseRevision: number
   copy: VariablesFormCopy
@@ -511,6 +515,10 @@ export function VariablesForm({
   protectedVariableNames?: ReadonlySet<string>
   variables: readonly VariableDefinition[]
   dialogCloseAction?: ReactNode
+  inspection?: Readonly<{
+    rowActions: ReadonlyMap<VariableId, ReactNode>
+    details: ReactNode
+  }>
 }) {
   const formatter = useFormatter()
   const displayUnits = useDocumentDisplayUnits()
@@ -710,6 +718,7 @@ export function VariablesForm({
                       ...errors,
                       actions: (
                         <VariableRowActions
+                          extraAction={inspection?.rowActions.get(row.id)}
                           canRename={row.persisted}
                           copy={copy}
                           disabled={disabled || rename.pending || rowLocked}
@@ -746,6 +755,7 @@ export function VariablesForm({
           </form.Subscribe>
         )}
       </form.AppField>
+      {inspection?.details}
     </>
   )
   return (
