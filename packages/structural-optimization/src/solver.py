@@ -300,7 +300,11 @@ class _TriangleIndex:
         self.bounds = np.r_[self.lo.min(axis=0), self.hi.max(axis=0)]
 
     def intersection(self, bounds):
-        return np.flatnonzero(np.all((self.lo <= bounds[3:]) & (self.hi >= bounds[:3]), axis=1))
+        # Axis vectors avoid an N-by-3 temporary and its costly row reduction in WASM.
+        lo, hi = self.lo, self.hi
+        return np.flatnonzero((lo[:, 0] <= bounds[3]) & (hi[:, 0] >= bounds[0])
+                              & (lo[:, 1] <= bounds[4]) & (hi[:, 1] >= bounds[1])
+                              & (lo[:, 2] <= bounds[5]) & (hi[:, 2] >= bounds[2]))
 
 
 class _RayIntersector:
@@ -465,7 +469,9 @@ def _source(request, cell_size, deadline=None):
 def _boundary_crosses_cell(mesh, index, cell):
     lo = cell.astype(float) + CELL_TOLERANCE
     hi = cell.astype(float) + 1 - CELL_TOLERANCE
-    candidate = np.flatnonzero(np.all((index.lo < hi) & (index.hi > lo), axis=1))
+    candidate = np.flatnonzero((index.lo[:, 0] < hi[0]) & (index.hi[:, 0] > lo[0])
+                              & (index.lo[:, 1] < hi[1]) & (index.hi[:, 1] > lo[1])
+                              & (index.lo[:, 2] < hi[2]) & (index.hi[:, 2] > lo[2]))
     if not len(candidate):
         return False
     vertices = mesh.triangles[candidate].reshape(-1, 3)

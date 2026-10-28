@@ -96,3 +96,87 @@ def verify_many_cavity_shells(solver):
     mesh = trimesh.util.concatenate(shells)
     solver._check_surface(mesh, "Many cavities", float("-inf"))
     assert np.isclose(mesh.volume, 8000 - 64, rtol=1e-12)
+
+
+def verify_triangle_query_bounds(solver):
+    triangles = np.array([[[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+                          [[2, 2, 2], [3, 2, 2], [2, 3, 2]]], dtype=float)
+    for offset in (0, -100, 99990):
+        index = solver._TriangleIndex(triangles + offset)
+        for bounds, expected in (([1, 1, 0, 2, 2, 2], [0, 1]),
+                                 ([0, 0, 0, 0, 0, 0], [0]),
+                                 ([1.01, 1.01, 0.01, 1.99, 1.99, 1.99], [])):
+            assert index.intersection(np.asarray(bounds) + offset).tolist() == expected
+    rng = np.random.default_rng(47)
+    triangles = rng.uniform(-20, 20, (600, 3, 3))
+    triangles = triangles[rng.permutation(len(triangles))]
+    index = solver._TriangleIndex(triangles)
+    for _ in range(512):
+        corners = rng.uniform(-30, 30, (2, 3))
+        lo, hi = corners.min(axis=0), corners.max(axis=0)
+        expected = np.flatnonzero(np.all((index.lo <= hi) & (index.hi >= lo), axis=1))
+        assert np.array_equal(index.intersection(np.r_[lo, hi]), expected)
+    tolerance = solver.CELL_TOLERANCE
+    for axis in range(3):
+        for x, expected in ((tolerance, False), (tolerance + 1e-5, True),
+                            (1 - tolerance, False), (1 - tolerance - 1e-5, True)):
+            vertices = np.roll([[x, 0.2, 0.2], [x, 0.8, 0.2], [x, 0.2, 0.8]], axis, axis=1)
+            mesh = trimesh.Trimesh(vertices, [[0, 1, 2]], process=False)
+            assert solver._boundary_crosses_cell(mesh, solver._TriangleIndex(mesh.triangles), np.zeros(3)) == expected
+
+
+def verify_voxel_filter_equivalence(solver):
+    class ReferenceIndex(solver._TriangleIndex):
+        def intersection(self, bounds):
+            return np.flatnonzero(np.all((self.lo <= bounds[3:]) & (self.hi >= bounds[:3]), axis=1))
+
+    def reference_boundary(mesh, index, cell):
+        lo = cell.astype(float) + solver.CELL_TOLERANCE
+        hi = cell.astype(float) + 1 - solver.CELL_TOLERANCE
+        candidate = np.flatnonzero(np.all((index.lo < hi) & (index.hi > lo), axis=1))
+        if not len(candidate):
+            return False
+        vertices = mesh.triangles[candidate].reshape(-1, 3)
+        faces = np.arange(len(vertices)).reshape(-1, 3)
+        for axis in range(3):
+            for sign, boundary in ((1, lo[axis]), (-1, hi[axis])):
+                normal, point = np.zeros(3), np.zeros(3)
+                normal[axis], point[axis] = sign, boundary
+                vertices, faces, _ = trimesh.intersections.slice_faces_plane(vertices, faces, normal, point)
+                if not len(faces):
+                    return False
+        return bool(np.any(trimesh.triangles.area(vertices[faces]) > 1e-14))
+
+    box = trimesh.creation.box(extents=[6, 4, 3])
+    rotated = trimesh.creation.box(extents=[8, 6, 4])
+    rotated.apply_transform(trimesh.transformations.rotation_matrix(0.2, [0, 0, 1]))
+    cavity = trimesh.creation.box(extents=[2, 2, 2])
+    cavity.invert()
+    nested = trimesh.util.concatenate([trimesh.creation.box(extents=[8, 8, 6]), cavity])
+    fixtures = [box, rotated, trimesh.creation.annulus(r_min=1.2, r_max=4.8, height=4, sections=24),
+                nested, trimesh.creation.icosphere(subdivisions=1, radius=4)]
+    namespace = solver._voxelize.__globals__
+    original_index, original_boundary = namespace['_TriangleIndex'], namespace['_boundary_crosses_cell']
+    counts = []
+    try:
+        for mesh in fixtures:
+            request = resource_request()
+            request['mesh'] = {'vertices': mesh.vertices.ravel().tolist(), 'indices': mesh.faces.ravel().tolist()}
+            source, _, _ = solver._source(request, 1)
+            namespace['_TriangleIndex'], namespace['_boundary_crosses_cell'] = ReferenceIndex, reference_boundary
+            expected = solver._voxelize(source, None)
+            namespace['_TriangleIndex'], namespace['_boundary_crosses_cell'] = original_index, original_boundary
+            actual = solver._voxelize(source, None)
+            assert np.array_equal(actual, expected)
+            counts.append(len(actual))
+        request = resource_request((8, 4, 3))
+        request['loadCases'].append({**request['loadCases'][0], 'name': 'bending', 'forceN': [0, 1, 0]})
+        namespace['_TriangleIndex'], namespace['_boundary_crosses_cell'] = ReferenceIndex, reference_boundary
+        expected = solver.solve(request)
+        namespace['_TriangleIndex'], namespace['_boundary_crosses_cell'] = original_index, original_boundary
+        actual = solver.solve(request)
+        assert actual == expected
+    finally:
+        namespace['_TriangleIndex'], namespace['_boundary_crosses_cell'] = original_index, original_boundary
+    assert counts[0] == 72 and all(count > 0 for count in counts)
+    return counts
