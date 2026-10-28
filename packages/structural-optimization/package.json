@@ -20,7 +20,8 @@
     "@vibeshape/formats": "workspace:*",
     "zod": "catalog:",
     "@vibeshape/domain": "workspace:*",
-    "three": "catalog:"
+    "three": "catalog:",
+    "three-mesh-bvh": "catalog:"
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*",

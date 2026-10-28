@@ -8,7 +8,7 @@ import { generateValidatedQuickLightweighting } from "../src/quick-generation"
 import { encodeQuickLightweightingStl } from "../src/quick-mesh"
 import { createQuickWasmHarness, input, timeout, volume } from "./quick-wasm-helpers"
 
-const wasm = createQuickWasmHarness()
+const wasm = createQuickWasmHarness(false)
 
 async function finish(candidate: unknown) {
   wasm.runtime.globals.set("_quick_candidate_json", JSON.stringify(candidate))
@@ -238,8 +238,8 @@ all(np.array_equal(np.sort(_index.intersection(bounds)),
       const coarse = await wasm.prepare(request)
       expect(coarse.ok).toBe(false)
       expect(coarse.error?.code).toBe("no-removable-material")
-      expect(coarse.error?.message).toContain("Maximum sampled interior clearance 3 mm")
-      expect(coarse.error?.message).toContain("preserved skin 2 mm plus sampling margin 1.73205 mm")
+      expect(coarse.error?.message).toContain("Source bounds limit interior clearance to 3.1 mm")
+      expect(coarse.error?.message).toContain("required skin and sampling margin of 3.73205 mm")
       const fine = await wasm.run({ ...request, cellSizeMm: 0.5 })
       if (!fine.ok) throw new Error(JSON.stringify(fine.error))
       expect(fine.result.skinThicknessMm).toBe(2)

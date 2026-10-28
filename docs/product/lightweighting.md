@@ -241,9 +241,15 @@ removal is strictly between 0 and 100 percent; measured positive removal has no 
 A preserved skin requires at least two sampling cells,
 plus conservative geometric margins. These margins and connected-material validation can limit
 actual removal. The envelope reserves one sampling-cell diagonal in addition to the preserved
-skin. A `no-removable-material` preparation error reports the maximum sampled interior clearance,
-skin and sampling margin. Finer detail can open internal space while keeping the same physical
+skin. Preparation first checks the source bounds for a proven upper limit on interior clearance;
+an insufficient bound fails before allocating or sampling the grid. An inconclusive bound continues
+normally. A `no-removable-material` preparation error reports either that bound or the maximum
+sampled interior clearance, skin and sampling margin. Finer detail can open internal space while keeping the same physical
 skin and lattice period; it does not guarantee the requested removal percentage.
+Sampling uses the existing `three-mesh-bvh` nearest-surface and ray queries in normalized float64
+coordinates. Ambiguous ray hits fall back to the pinned Trimesh calculation in adaptive scratch
+batches. The worker releases its sampling index after preparation; final containment, skin,
+connectivity and serialization validation remain independent of the accelerated sampling path.
 Quick validates cavity or organic-surface containment and retained skin against the rounded captured
 exterior using the actual float32 coordinates written to binary STL. It checks serialized shell
 winding, positive material volume and removal, collapsed triangles, nonmanifold edges and invalid

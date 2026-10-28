@@ -105,6 +105,7 @@ function runtimeFixture() {
         "quick-errors",
         "quick-generation",
         "quick-isosurface",
+        "quick-sampling",
         "runtime-diagnostics",
       ],
     ],
@@ -362,6 +363,7 @@ describe("native unit-test result inputs", () => {
       "packages/structural-optimization/tests/quick-wasm.test.ts",
       "packages/structural-optimization/tests/quick-wasm-curved.test.ts",
       "packages/structural-optimization/tests/quick-wasm-sampling.test.ts",
+      "packages/structural-optimization/tests/quick-bvh-sampling.test.ts",
       "packages/structural-optimization/tests/quick-wasm-helpers.ts",
       "packages/structural-optimization/tests/wasm-solver.test.ts",
     ]
@@ -586,7 +588,10 @@ describe("native unit-test result inputs", () => {
     const repo = runtimeFixture()
     const before = await repo.snapshot()
     expect(before.scopes.get("geometry")?.cacheable).toBe(true)
-    expect(before.scopes.get("structural")?.cacheable).toBe(true)
+    expect(
+      before.scopes.get("structural")?.cacheable,
+      JSON.stringify(before.scopes.get("structural")),
+    ).toBe(true)
     const cache = new UnitTestCache(repo.root)
     const receipt = cache.receipt(before, "geometry", "node", [
       "./packages/geometry-worker/src/occt-primitives-kernel.test.ts",
