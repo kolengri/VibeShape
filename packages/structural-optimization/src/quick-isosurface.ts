@@ -5,17 +5,20 @@ import type { QuickLightweightingInput } from "./quick-contract"
 import { QuickLightweightingError } from "./quick-errors"
 import { signedQuickMeshVolume } from "./quick-mesh"
 
-const sampleArray = z.array(z.number().finite())
-export const quickGridSchema = z
+const sampleArray = z.union([
+  z.array(z.number().finite()),
+  z.instanceof(Float64Array).refine((values) => values.every(Number.isFinite)),
+])
+export const quickGridMetadataSchema = z
   .object({
     resolution: z.number().int().min(4),
-    envelope: sampleArray,
-    lattice: sampleArray,
     sourceVolumeCells: z.number().finite().positive(),
     thresholdMin: z.number().finite().positive().max(3),
     thresholdMax: z.number().finite().positive().max(3),
   })
   .strict()
+export const quickGridSchema = quickGridMetadataSchema
+  .extend({ envelope: sampleArray, lattice: sampleArray })
   .refine(
     ({ resolution, envelope, lattice, thresholdMin, thresholdMax }) =>
       envelope.length === resolution ** 3 &&

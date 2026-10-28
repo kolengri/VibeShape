@@ -44,7 +44,7 @@ const python = new Map([
   ],
   [
     "packages/structural-optimization/src/quick-solver.py",
-    "9bf70fa1835a5876194a7ffccb4c19073f9b85fce341d77431bf88576e3cbfdc",
+    "97f1ae3a35da1a86cce7a8f0e4dcbf312ca6dcf53a2bca6a615554c02953d6a4",
   ],
   [
     "packages/structural-optimization/tests/surface_target_fixtures.py",
@@ -65,8 +65,12 @@ const python = new Map([
 ])
 const callers = new Map([
   [
+    "packages/structural-optimization/src/quick-preparation.ts",
+    "ff5b84f3afd7f3c28e4fe72bae5443da55e08acf4109400e984cf03a47ea2480",
+  ],
+  [
     "packages/structural-optimization/tests/quick-bvh-sampling.test.ts",
-    "a239fc4605963f12387861db0af8b283fb0d8fef56906caaa0c805936c8f1771",
+    "5cf2a307cf108276dc5f4b1471c7bafc92bc451362cc6bfe2d9d80a1ed381e7e",
   ],
   [
     "packages/structural-optimization/src/worker.ts",
@@ -74,7 +78,7 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/src/quick-worker.ts",
-    "ad6857d1deac69918a34ed32c77c593645013103e2bb6001281bd4795bc2bfad",
+    "53a54997a5a6ed3c358713ee20f2c6f95dd3787763a1b62a65e9ac23694b57a6",
   ],
   [
     "packages/structural-optimization/tests/quick-wasm.test.ts",
@@ -86,11 +90,11 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/quick-wasm-sampling.test.ts",
-    "679784a6eb0534d848990f4cb749b88600564424f28363c24bb4b2ac16177efd",
+    "2853f46d54bc61108fa12a131bf6ae67e4dd45ef69a8a1ad31a11b2fb95b1d33",
   ],
   [
     "packages/structural-optimization/tests/quick-wasm-helpers.ts",
-    "b2e3e2c37bb11845bc3859afd908e6cc45bc8df29d3a8845590042834cbc1c10",
+    "a1934bee50fa089a975da8788e8014b5076bfb98d7984e9374e04a9fd296ce80",
   ],
   [
     "packages/structural-optimization/tests/wasm-solver.test.ts",

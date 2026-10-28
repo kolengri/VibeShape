@@ -237,6 +237,7 @@ all(np.array_equal(np.sort(_index.intersection(bounds)),
       })
       const coarse = await wasm.prepare(request)
       expect(coarse.ok).toBe(false)
+      if (coarse.ok) throw new Error("The coarse source must fail its clearance bound.")
       expect(coarse.error?.code).toBe("no-removable-material")
       expect(coarse.error?.message).toContain("Source bounds limit interior clearance to 3.1 mm")
       expect(coarse.error?.message).toContain("required skin and sampling margin of 3.73205 mm")

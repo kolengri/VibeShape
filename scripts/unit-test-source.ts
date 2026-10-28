@@ -27,7 +27,7 @@ const reviewedLoaders = new Map([
   ],
   [
     "packages/structural-optimization/src/quick-worker.ts",
-    "ad6857d1deac69918a34ed32c77c593645013103e2bb6001281bd4795bc2bfad",
+    "53a54997a5a6ed3c358713ee20f2c6f95dd3787763a1b62a65e9ac23694b57a6",
   ],
 ])
 

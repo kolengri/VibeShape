@@ -8,7 +8,7 @@ import {
 } from "./quick-contract"
 import { QuickLightweightingError } from "./quick-errors"
 import { generateValidatedQuickLightweighting } from "./quick-generation"
-import { quickGridSchema } from "./quick-isosurface"
+import { parseQuickRuntimeJson, prepareQuickGrid } from "./quick-preparation"
 import { createQuickSampling } from "./quick-sampling"
 import solverSource from "./quick-solver.py?raw"
 import { type NumericalRuntimeStage, numericalRuntimeMessage } from "./runtime-diagnostics"
@@ -19,15 +19,6 @@ const requestSchema = z
 const runtimeModuleSchema = z.object({
   loadPyodide: z.custom<typeof LoadPyodide>((value) => typeof value === "function"),
 })
-const preparedSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), grid: quickGridSchema }).strict(),
-  z
-    .object({
-      ok: z.literal(false),
-      error: z.object({ code: z.string(), message: z.string() }).strict(),
-    })
-    .strict(),
-])
 let running = false
 self.onmessage = async (event: MessageEvent<unknown>) => {
   if (running) return
@@ -80,16 +71,14 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
         return sampling.sample(points)
       },
     )
-    let raw: unknown
+    let prepared: Awaited<ReturnType<typeof prepareQuickGrid>>
     try {
-      raw = await pyodide.runPythonAsync("prepare_quick_json(_quick_request_json)")
+      prepared = await prepareQuickGrid(pyodide)
     } finally {
       pyodide.runPython("_QUICK_SAMPLE = None")
       sampling?.dispose()
     }
     stage = "response validation"
-    if (typeof raw !== "string") throw new Error("The prepared grid must be JSON.")
-    const prepared = preparedSchema.parse(JSON.parse(raw))
     if (!prepared.ok) {
       self.postMessage({ type: "complete", response: prepared })
       return
@@ -105,8 +94,9 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
           "finish_quick_json(_quick_candidate_json)",
         )
         stage = "response validation"
-        if (typeof result !== "string") throw new Error("The generated mesh must be JSON.")
-        const response = quickLightweightingResponseSchema.parse(JSON.parse(result))
+        const response = quickLightweightingResponseSchema.parse(
+          parseQuickRuntimeJson(result, "generated mesh"),
+        )
         stage = "geometry generation"
         return response
       },

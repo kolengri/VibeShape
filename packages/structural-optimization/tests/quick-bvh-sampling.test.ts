@@ -1,12 +1,105 @@
 import { describe, expect, it } from "bun:test"
 import type { PyBuffer } from "pyodide/ffi"
 import { quickLightweightingInputSchema } from "../src/quick-contract"
+import { quickGridSchema } from "../src/quick-isosurface"
+import { parseQuickRuntimeJson, prepareQuickGrid } from "../src/quick-preparation"
 import { createQuickSampling } from "../src/quick-sampling"
 import { createQuickWasmHarness, input, timeout } from "./quick-wasm-helpers"
 
 const wasm = createQuickWasmHarness()
 
 describe("BVH Quick sampling in the numerical runtime", () => {
+  it("reports the response kind and length without including invalid JSON contents", () => {
+    expect(() => parseQuickRuntimeJson("", "prepared grid")).toThrow("0 UTF-16 code units")
+    expect(() => parseQuickRuntimeJson("{private-geometry", "generated mesh")).toThrow(
+      "17 UTF-16 code units",
+    )
+    try {
+      parseQuickRuntimeJson("{private-geometry", "generated mesh")
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error)
+      expect(String(error)).not.toContain("private-geometry")
+    }
+    expect(() => parseQuickRuntimeJson(undefined, "prepared grid")).toThrow("received undefined")
+  })
+
+  it(
+    "copies float64 grid buffers without serializing numerical fields or retaining Python views",
+    async () => {
+      await wasm.runtime.runPythonAsync(`
+_original_prepare = _prepare
+class _NoGridJson(np.ndarray):
+    def tolist(self):
+        raise AssertionError('Numerical fields must not enter JSON')
+def _guarded_prepare(request):
+    context = _original_prepare(request)
+    for key in ('envelope', 'lattice'):
+        context[key] = context[key].view(_NoGridJson)
+    return context
+_prepare = _guarded_prepare
+`)
+      try {
+        const prepared = await wasm.prepare(input())
+        if (!prepared.ok) throw new Error(JSON.stringify(prepared.error))
+        const grid = quickGridSchema.parse(prepared.grid)
+        expect(grid.envelope).toBeInstanceOf(Float64Array)
+        expect(grid.lattice).toBeInstanceOf(Float64Array)
+        expect(quickGridSchema.parse(grid).envelope).toBe(grid.envelope)
+        const expected = JSON.parse(
+          String(
+            wasm.runtime.runPython("json.dumps(np.asarray(_QUICK_CONTEXT['envelope']).tolist())"),
+          ),
+        )
+        expect(Array.from(grid.envelope)).toEqual(expected)
+        const before = grid.envelope[0]
+        wasm.runtime.runPython("_QUICK_CONTEXT['envelope'].fill(123)")
+        expect(grid.envelope[0]).toBe(before)
+        expect(
+          quickGridSchema.safeParse({ ...grid, lattice: new Float64Array([NaN]) }).success,
+        ).toBe(false)
+        expect(quickGridSchema.safeParse({ ...grid, lattice: new Float64Array(1) }).success).toBe(
+          false,
+        )
+        expect(
+          wasm.runtime.runPython(
+            "import weakref, gc; _grid_ref = weakref.ref(_QUICK_CONTEXT['envelope']); _QUICK_CONTEXT = None; gc.collect(); _grid_ref() is None",
+          ),
+        ).toBe(true)
+      } finally {
+        wasm.runtime.runPython("_prepare = _original_prepare")
+      }
+    },
+    timeout,
+  )
+
+  it.each(["np.zeros(1)", "np.zeros(8, dtype=np.float32)", "np.zeros((2, 4))"])(
+    "releases grid proxies for malformed %s and permits a later preparation",
+    async (replacement) => {
+      const prepared = await wasm.prepare(input())
+      if (!prepared.ok) throw new Error(JSON.stringify(prepared.error))
+      await wasm.runtime.runPythonAsync(`
+_metadata_prepare = prepare_quick_grid_json
+def _wrong_grid(request_json):
+    metadata = _metadata_prepare(request_json)
+    _QUICK_CONTEXT['lattice'] = ${replacement}
+    return metadata
+prepare_quick_grid_json = _wrong_grid
+`)
+      try {
+        await expect(prepareQuickGrid(wasm.runtime)).rejects.toThrow()
+        expect(
+          wasm.runtime.runPython(
+            "import weakref, gc; _grid_ref = weakref.ref(_QUICK_CONTEXT['envelope']); _QUICK_CONTEXT = None; gc.collect(); _grid_ref() is None",
+          ),
+        ).toBe(true)
+      } finally {
+        wasm.runtime.runPython("prepare_quick_grid_json = _metadata_prepare")
+      }
+      expect((await wasm.prepare(input())).ok).toBe(true)
+    },
+    timeout,
+  )
+
   it(
     "retains interior grid nodes when a fixed ray misses a vertex exit",
     async () => {
