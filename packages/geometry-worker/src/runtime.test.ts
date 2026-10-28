@@ -147,6 +147,7 @@ class FakeEngine implements GeometryKernelEngine {
   featureRunCount = 0
   disposalError: Error | null = null
   featureFailure: Extract<FeatureEvaluationResult, { ok: false }> | null = null
+  precisePositions: Float64Array<ArrayBuffer> | undefined
 
   async initialize() {
     this.initialized = true
@@ -172,6 +173,10 @@ class FakeEngine implements GeometryKernelEngine {
     reportProgress("feature-tessellation", 0.7)
     reportProgress("complete", 1)
     const result = createKernelResult()
+    if (this.precisePositions) {
+      result.mesh.precisePositions = this.precisePositions
+      result.mesh.positions = new Float32Array(this.precisePositions)
+    }
     return {
       ok: true,
       result: {
@@ -404,6 +409,28 @@ describe("GeometryWorkerRuntime", () => {
     })
     expect(transfers.at(-1)).toHaveLength(4)
     expect(new Set(transfers.at(-1)).size).toBe(4)
+  })
+
+  it("transfers precise buffers once alongside aliased body meshes", async () => {
+    const { engine, messages, runtime, transfers } = createHarness()
+    engine.precisePositions = new Float64Array([132.01, 0, 0])
+    await runtime.handle({ ...createEnvelope("initialize"), type: "initializeEngine" })
+    await runtime.handle(await createFeatureRunRequest("precise-feature"))
+    const response = messages.at(-1)
+    if (response?.type !== "featureEvaluated") throw new Error("Missing feature response")
+    const transfer = transfers.at(-1)
+    if (!transfer) throw new Error("Missing mesh transfers")
+    const precise = response.mesh.precisePositions
+    if (!precise) throw new Error("Missing precise coordinates")
+    expect(transfer).toHaveLength(5)
+    expect(new Set(transfer).size).toBe(5)
+    expect(transfer).toContain(precise.buffer)
+    const cloned = structuredClone(response, { transfer })
+    expect(cloned.mesh.precisePositions).toEqual(new Float64Array([132.01, 0, 0]))
+    expect(cloned.bodies?.[0]?.mesh.precisePositions?.buffer).toBe(
+      cloned.mesh.precisePositions?.buffer,
+    )
+    expect(response.mesh.precisePositions?.byteLength).toBe(0)
   })
 
   it("rejects mismatched feature environments and hashes before engine execution", async () => {

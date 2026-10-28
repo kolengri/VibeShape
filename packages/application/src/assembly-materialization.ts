@@ -471,6 +471,7 @@ function transformedBounds(bounds: ModelBodyGeometry["shape"]["bounds"], pose: A
 function meshBytes(mesh: ModelBodyGeometry["mesh"]) {
   return (
     mesh.positions.byteLength +
+    (mesh.precisePositions?.byteLength ?? 0) +
     mesh.normals.byteLength +
     mesh.indices.byteLength +
     mesh.triangleFaceIds.byteLength
@@ -486,7 +487,7 @@ function validMeshLayout(mesh: ModelBodyGeometry["mesh"]) {
     mesh.triangleFaceIds.length === mesh.indices.length / 3
   )
 }
-function vectorAt(buffer: Float32Array, offset: number): [number, number, number] {
+function vectorAt(buffer: Float32Array | Float64Array, offset: number): [number, number, number] {
   return [buffer[offset] ?? NaN, buffer[offset + 1] ?? NaN, buffer[offset + 2] ?? NaN]
 }
 function validateMeshValues(mesh: ModelBodyGeometry["mesh"]) {
@@ -500,7 +501,7 @@ function validateMeshValues(mesh: ModelBodyGeometry["mesh"]) {
       "The selected body has non-finite vertices or invalid triangle indices.",
     )
   for (let i = 0; i < mesh.positions.length; i += 3) {
-    bounded(vectorAt(mesh.positions, i))
+    bounded(vectorAt(mesh.precisePositions ?? mesh.positions, i))
     if (Math.abs(Math.hypot(...vectorAt(mesh.normals, i)) - 1) > 1e-5)
       fail("pinned-geometry-invalid", "The selected body requires finite unit normals.")
   }
@@ -542,6 +543,7 @@ function validateBody(body: ModelBodyGeometry) {
 function copyMesh(mesh: ModelBodyGeometry["mesh"]) {
   return {
     positions: mesh.positions.slice(),
+    ...(mesh.precisePositions ? { precisePositions: mesh.precisePositions.slice() } : {}),
     normals: mesh.normals.slice(),
     indices: mesh.indices.slice(),
     triangleFaceIds: mesh.triangleFaceIds.slice(),
@@ -579,13 +581,15 @@ function ownState(state: FeatureRebuildState): FeatureRebuildState {
 function transformMesh(mesh: ModelBodyGeometry["mesh"], pose: AssemblyRigidPose) {
   const positions = new Float32Array(mesh.positions.length),
     normals = new Float32Array(mesh.normals.length)
+  const sourcePositions = mesh.precisePositions ?? mesh.positions
+  const precisePositions = mesh.precisePositions
+    ? new Float64Array(sourcePositions.length)
+    : undefined
   for (let i = 0; i < mesh.positions.length; i += 3) {
-    const point = worldPoint(
-      [mesh.positions[i] ?? 0, mesh.positions[i + 1] ?? 0, mesh.positions[i + 2] ?? 0],
-      pose,
-    )
+    const point = worldPoint(vectorAt(sourcePositions, i), pose)
     bounded(point)
     positions.set(point, i)
+    precisePositions?.set(point, i)
     normals.set(
       rotate([mesh.normals[i] ?? 0, mesh.normals[i + 1] ?? 0, mesh.normals[i + 2] ?? 0], pose),
       i,
@@ -593,6 +597,7 @@ function transformMesh(mesh: ModelBodyGeometry["mesh"], pose: AssemblyRigidPose)
   }
   return {
     positions,
+    ...(precisePositions ? { precisePositions } : {}),
     normals,
     indices: mesh.indices.slice(),
     triangleFaceIds: mesh.triangleFaceIds.slice(),
@@ -605,12 +610,7 @@ function copyBody(body: ModelBodyGeometry): ModelBodyGeometry {
       ...body.shape,
       bounds: { min: [...body.shape.bounds.min], max: [...body.shape.bounds.max] },
     },
-    mesh: {
-      positions: body.mesh.positions.slice(),
-      normals: body.mesh.normals.slice(),
-      indices: body.mesh.indices.slice(),
-      triangleFaceIds: body.mesh.triangleFaceIds.slice(),
-    },
+    mesh: copyMesh(body.mesh),
     topologyCandidates: topologyCandidatesSchema.parse(body.topologyCandidates),
   }
 }

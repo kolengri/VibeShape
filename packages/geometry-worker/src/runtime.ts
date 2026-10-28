@@ -1,4 +1,5 @@
 import {
+  type FeatureEvaluationEngineResult,
   GEOMETRY_PROTOCOL_VERSION,
   type GeometryDiagnosticCode,
   type GeometryProgressStage,
@@ -54,20 +55,18 @@ function transferablesFor(response: GeometryWorkerResponse): Transferable[] {
     return []
   }
 
-  const buffers = new Set<ArrayBufferLike>([
-    response.mesh.positions.buffer,
-    response.mesh.normals.buffer,
-    response.mesh.indices.buffer,
-    response.mesh.triangleFaceIds.buffer,
-  ])
-  if (response.type === "featureEvaluated") {
-    for (const body of response.bodies ?? []) {
-      buffers.add(body.mesh.positions.buffer)
-      buffers.add(body.mesh.normals.buffer)
-      buffers.add(body.mesh.indices.buffer)
-      buffers.add(body.mesh.triangleFaceIds.buffer)
-    }
-  }
+  const meshes: FeatureEvaluationEngineResult["mesh"][] = [response.mesh]
+  if (response.type === "featureEvaluated")
+    meshes.push(...(response.bodies ?? []).map(({ mesh }) => mesh))
+  const buffers = new Set<ArrayBufferLike>(
+    meshes.flatMap((mesh) => [
+      mesh.positions.buffer,
+      ...(mesh.precisePositions ? [mesh.precisePositions.buffer] : []),
+      mesh.normals.buffer,
+      mesh.indices.buffer,
+      mesh.triangleFaceIds.buffer,
+    ]),
+  )
   if (response.type === "kernelSpikeCompleted") {
     buffers.add(response.exchange.stepFile.buffer)
   }

@@ -97,6 +97,30 @@ describe("captured Lightweighting surface targets", () => {
     expect(seamedSource.contentHash).toBe(source.contentHash)
   })
 
+  it("uses precise mesh coordinates without changing face-to-triangle boundary conditions", () => {
+    const precisePositions = Float64Array.from(body.mesh.positions, (value) => value + 0.123456789)
+    const preciseSource: LightweightingSource = {
+      ...source,
+      body: {
+        ...body,
+        mesh: { ...body.mesh, precisePositions, positions: Float32Array.from(precisePositions) },
+      },
+    }
+    const fields = initialLightweightingFields(preciseSource, "Load", true)
+    const surface = fields.surfaceSelection
+    if (!surface) throw new Error("Expected surface selection fields.")
+    surface.supportFaces = [17]
+    surface.loadFaces[0] = [42]
+    surface.preserveFaces = [99]
+    const input = lightweightingInput(preciseSource, fields)
+    expect(input.mesh.vertices).toEqual(Array.from(precisePositions))
+    expect(input.mesh.vertices[0]).toBe(0.123456789)
+    expect(input.mesh.indices).toEqual(Array.from(body.mesh.indices))
+    expect(input.supports).toMatchObject([{ kind: "surface", triangleIndices: [0, 2] }])
+    expect(input.loadCases[0]?.region).toMatchObject({ kind: "surface", triangleIndices: [1] })
+    expect(input.preserveRegions).toMatchObject([{ kind: "surface", triangleIndices: [3] }])
+  })
+
   it("maps display face identity to exact source triangle indices rather than face ordinals", () => {
     expect(faceTriangleIndices(source, [17])).toEqual([0, 2])
     expect(faceTriangleIndices(source, [42, 99])).toEqual([1, 3])

@@ -35,7 +35,7 @@ import {
   surfaceTextureQualitySchema,
 } from "./surface-texture"
 
-export const DOCUMENT_PROTOCOL_VERSION = 26 as const
+export const DOCUMENT_PROTOCOL_VERSION = 27 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256

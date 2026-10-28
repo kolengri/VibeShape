@@ -222,6 +222,7 @@ class FakeEngine implements GeometryKernelEngine {
   printMeshFeatureIdOverride: string | null = null
   printMeshOutputRoleOverride: string | null = null
   bodyRoles: string[] | null = null
+  precisePositions: Float64Array | undefined
 
   async initialize() {
     this.initialized = true
@@ -247,6 +248,10 @@ class FakeEngine implements GeometryKernelEngine {
     reportProgress("feature-tessellation", 0.7)
     reportProgress("complete", 1)
     const result = geometry()
+    if (this.precisePositions) {
+      result.mesh.precisePositions = this.precisePositions.slice()
+      result.mesh.positions = new Float32Array(this.precisePositions)
+    }
     if (this.bodyRoles) {
       result.bodies = this.bodyRoles.map((outputRole) => ({
         outputRole,
@@ -1543,6 +1548,7 @@ describe("document body catalogs", () => {
   it("transfers deduplicated body buffers without detaching retained rebuild state", async () => {
     const { engine, runtime, messages, transfers } = createHarness(null, true)
     engine.bodyRoles = ["result"]
+    engine.precisePositions = new Float64Array([132.01, 0, 0])
     await runtime.handle(request("catalog-initial"))
     await runtime.handle(request("catalog-reused"))
     const initial = rebuilt(messages, "catalog-initial")
@@ -1550,16 +1556,24 @@ describe("document body catalogs", () => {
     expect(reused.evaluation.evaluatedFeatureIds).toEqual([])
     expect(reused.evaluation.reusedFeatureIds).toHaveLength(3)
     expect(engine.evaluatedFeatureIds).toHaveLength(3)
-    expect(transfers.filter((entry) => entry.length).map((entry) => entry.length)).toEqual([12, 12])
+    expect(transfers.filter((entry) => entry.length).map((entry) => entry.length)).toEqual([15, 15])
     for (const response of [initial, reused]) {
       for (const { geometry: result } of response.geometry) {
         expect(result.mesh.positions.byteLength).toBe(12)
         expect(result.bodies?.[0]?.mesh.positions.buffer).toBe(result.mesh.positions.buffer)
+        expect(result.mesh.precisePositions).toEqual(new Float64Array([132.01, 0, 0]))
+        expect(result.bodies?.[0]?.mesh.precisePositions?.buffer).toBe(
+          result.mesh.precisePositions?.buffer,
+        )
       }
     }
     expect(initial.geometry[0]?.geometry.mesh.positions.buffer).not.toBe(
       reused.geometry[0]?.geometry.mesh.positions.buffer,
     )
+    expect(initial.geometry[0]?.geometry.mesh.precisePositions?.buffer).not.toBe(
+      reused.geometry[0]?.geometry.mesh.precisePositions?.buffer,
+    )
+    expect(engine.precisePositions.byteLength).toBe(24)
   })
 
   it.each(["step", "stl", "3mf"] as const)(

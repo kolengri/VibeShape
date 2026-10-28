@@ -27,7 +27,7 @@ mock.module("@vibeshape/structural-optimization/client", () => ({
 const structuralMeshModule = { ...(await import("@vibeshape/structural-optimization/mesh")) }
 mock.module("@vibeshape/structural-optimization/mesh", () => ({
   ...structuralMeshModule,
-  encodeStructuralStl: ports.encode,
+  encodeStructuralSnapshot: ports.encode,
 }))
 mock.module("../../document/document-controller", () => ({
   getProjectActiveWorkBlock: () => null,
@@ -259,7 +259,11 @@ beforeEach(() => {
   })
   ports.parts.mockReturnValue([{ part: firstPart, body, status: "available" }])
   ports.optimize.mockResolvedValue(result)
-  ports.encode.mockReturnValue(new Uint8Array([1, 2, 3]))
+  ports.encode.mockReturnValue({
+    bytes: new Uint8Array([1, 2, 3]),
+    format: "stl",
+    mediaType: "model/stl",
+  })
   ports.inspect.mockResolvedValue(meshInspection)
   ports.apply.mockResolvedValue({ ok: true })
 })

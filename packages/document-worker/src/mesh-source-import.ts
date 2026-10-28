@@ -63,6 +63,7 @@ function writeTriangle(
   index: number,
   payload: {
     positions: Float32Array
+    precisePositions: Float64Array
     normals: Float32Array
     indices: Uint32Array
     min: number[]
@@ -72,6 +73,7 @@ function writeTriangle(
   for (const [corner, point] of points.entries()) {
     const offset = index * 9 + corner * 3
     payload.positions.set(point, offset)
+    payload.precisePositions.set(point, offset)
     payload.normals.set(normal, offset)
     payload.indices[index * 3 + corner] = index * 3 + corner
     for (let axis = 0; axis < 3; axis++) {
@@ -88,6 +90,7 @@ function bodyPayload(
   const source = geometry.meshes.find(({ id }) => id === node.meshId)
   if (!source) throw new Error("An imported mesh occurrence has no source mesh.")
   const positions = new Float32Array(source.triangles.length * 9)
+  const precisePositions = new Float64Array(positions.length)
   const normals = new Float32Array(positions.length)
   const indices = new Uint32Array(source.triangles.length * 3)
   const triangleFaceIds = new Uint32Array(source.triangles.length)
@@ -110,6 +113,7 @@ function bodyPayload(
     area += normal.length / 2
     writeTriangle(points, normal.direction, triangleIndex, {
       positions,
+      precisePositions,
       normals,
       indices,
       min,
@@ -127,7 +131,7 @@ function bodyPayload(
       edgeCount: 0,
       solidCount: 0,
     },
-    mesh: { positions, normals, indices, triangleFaceIds },
+    mesh: { positions, precisePositions, normals, indices, triangleFaceIds },
   }
 }
 

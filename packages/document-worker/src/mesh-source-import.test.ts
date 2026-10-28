@@ -6,6 +6,8 @@ import {
 } from "@vibeshape/domain/part-design-mesh-import"
 import { parseGeometryImport } from "@vibeshape/formats/import"
 import { writeStlMeshes } from "@vibeshape/formats/stl-meshes"
+import { writeThreeMf } from "@vibeshape/formats/three-mf"
+import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import { type GeometryEngineMetadata, sourceAssetMaterializationSchema } from "@vibeshape/protocol"
 import { inspectMeshSource, rebuildImportedMesh } from "./mesh-source-import"
 import { validateRebuildSourceMaterialization } from "./source-materialization"
@@ -66,6 +68,85 @@ async function fixture() {
   return { bytes, inspected, outputs, source, material }
 }
 describe("authored triangle-mesh source materialization", () => {
+  it("preserves a translated 0.8 mm grid as doubles through 3MF import, rebuild and export", async () => {
+    const vertices: [number, number, number][] = [
+      [132, 0, 0],
+      [132.8, 0, 0],
+      [132, 0.8, 0],
+      [132, 0, 0.8],
+    ]
+    const triangles: [number, number, number][] = [
+      [0, 2, 1],
+      [0, 1, 3],
+      [0, 3, 2],
+      [1, 2, 3],
+    ]
+    const bytes = writeThreeMf({
+      schemaVersion: 1,
+      language: "en-US",
+      metadata: { title: "Precise grid" },
+      objects: [{ kind: "mesh", id: 1, mesh: { vertices, triangles } }],
+      build: [{ objectId: 1, transform: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0.01, 0.01, 0.01] }],
+    }).bytes
+    const inspected = await inspectMeshSource("3mf", bytes)
+    const expected = triangles.flatMap((triangle) =>
+      triangle.flatMap((index) => {
+        const point = vertices[index]
+        if (!point) throw new Error("Missing fixture vertex")
+        return point.map((value) => value + 0.01)
+      }),
+    )
+    const mesh = inspected.outputs[0]?.mesh
+    expect(mesh?.precisePositions).toEqual(new Float64Array(expected))
+    expect(mesh?.positions).toEqual(new Float32Array(expected))
+    expect(mesh?.positions[0]).not.toBe(expected[0])
+    const digest = Array.from(
+      new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+      (value) => value.toString(16).padStart(2, "0"),
+    ).join("")
+    const outputs = inspected.outputs.map(({ nodeKey }) => ({ outputId: id(20), nodeKey }))
+    const material = sourceAssetMaterializationSchema.parse({
+      asset: {
+        id: id(10),
+        digest,
+        byteLength: bytes.length,
+        filename: "Grid.3mf",
+        format: "3mf",
+        representation: "triangle-mesh",
+        normalization: inspected.normalization,
+        outputs: [id(20)],
+      },
+      bytes,
+    })
+    const rebuilt = await rebuildImportedMesh(
+      {
+        source: {
+          digest,
+          byteLength: bytes.length,
+          format: "3mf",
+          normalization: inspected.normalization,
+          parserPolicyVersion: 1,
+        },
+        outputs,
+      },
+      material,
+      engine,
+    )
+    expect(rebuilt.mesh.precisePositions).toEqual(new Float64Array(expected))
+    expect(rebuilt.bodies?.[0]?.mesh.precisePositions).toEqual(new Float64Array(expected))
+    if (!rebuilt.mesh.precisePositions) throw new Error("Missing precise mesh coordinates")
+    const exported = writeThreeMfMeshes({
+      title: "Round trip",
+      meshes: [
+        {
+          vertices: Array.from(rebuilt.mesh.precisePositions),
+          triangles: Array.from(rebuilt.mesh.indices),
+        },
+      ],
+    }).bytes
+    const roundTrip = await inspectMeshSource("3mf", exported)
+    expect(roundTrip.outputs[0]?.mesh.precisePositions).toEqual(new Float64Array(expected))
+  })
   it("retains explicit units, source keys and mesh identity without exact solid claims", async () => {
     const f = await fixture()
     const result = await rebuildImportedMesh(

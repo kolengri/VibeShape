@@ -1,5 +1,8 @@
 import { meshImportInspectionSchema } from "@vibeshape/protocol"
-import { encodeStructuralStl } from "@vibeshape/structural-optimization/mesh"
+import {
+  encodeStructuralSnapshot,
+  type StructuralSnapshot,
+} from "@vibeshape/structural-optimization/mesh"
 import { inspectTriangleMeshSource } from "../../document/document-controller"
 import { portableDocumentStem } from "../../document/document-export"
 import { readImportSource } from "../import/import-model"
@@ -15,15 +18,15 @@ export async function prepareLightweightingSnapshot(
   encode: (
     mesh: { vertices: number[]; indices: number[] },
     cellSizeMm: number,
-  ) => Uint8Array = encodeStructuralStl,
+  ) => StructuralSnapshot = encodeStructuralSnapshot,
 ) {
-  const bytes = encode(mesh, cellSizeMm)
+  const snapshot = encode(mesh, cellSizeMm)
   const file = new File(
-    [Uint8Array.from(bytes).buffer],
-    `${portableDocumentStem(source.partName)}-${suffix}.stl`,
-    { type: "model/stl" },
+    [snapshot.bytes],
+    `${portableDocumentStem(source.partName)}-${suffix}.${snapshot.format}`,
+    { type: snapshot.mediaType },
   )
-  const prepared = await readImportSource(file, "millimeter")
+  const prepared = await readImportSource(file, snapshot.format === "3mf" ? null : "millimeter")
   if (!current() || prepared.representation !== "triangle-mesh") return null
   const inspection = meshImportInspectionSchema.parse(
     await inspectTriangleMeshSource(prepared.input),

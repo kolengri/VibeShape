@@ -92,6 +92,7 @@ function runtimeFixture() {
     "packages/geometry-worker/src/occt-primitives-kernel.test.ts",
     "packages/structural-optimization/src/worker.ts",
     "packages/structural-optimization/src/quick-worker.ts",
+    "packages/structural-optimization/tests/wasm-large-elasticity.test.ts",
   ]
   for (const path of paths)
     repo.write(path, readFileSync(join(import.meta.dir, "..", path), "utf8"))
@@ -122,6 +123,7 @@ function runtimeFixture() {
     "packages/structural-optimization/tests/fdm_fixtures.py",
     "packages/structural-optimization/tests/implicit_fixtures.py",
     "packages/structural-optimization/tests/resource_fixtures.py",
+    "packages/structural-optimization/tests/iterative_fixtures.py",
   ]
   for (const path of producers)
     repo.write(path, readFileSync(join(import.meta.dir, "..", path), "utf8"))
@@ -132,7 +134,15 @@ function runtimeFixture() {
       join(repo.root, "node_modules", name),
     )
   }
-  return { ...repo, paths: [...paths, ...producers] }
+  symlinkSync(
+    join(import.meta.dir, "../packages/structural-optimization/node_modules/pyodide"),
+    join(repo.root, "node_modules/pyodide"),
+  )
+  return {
+    ...repo,
+    paths: [...paths, ...producers],
+    snapshot: () => repo.snapshot({ CI: "true", TZ: "UTC", PATH: process.env.PATH }),
+  }
 }
 
 describe("native unit-test result inputs", () => {
@@ -367,6 +377,7 @@ describe("native unit-test result inputs", () => {
       "packages/structural-optimization/tests/quick-bvh-sampling.test.ts",
       "packages/structural-optimization/tests/quick-wasm-helpers.ts",
       "packages/structural-optimization/tests/wasm-solver.test.ts",
+      "packages/structural-optimization/tests/wasm-large-elasticity.test.ts",
     ]
     const paths = [
       ...callers,
@@ -379,6 +390,7 @@ describe("native unit-test result inputs", () => {
       "packages/structural-optimization/tests/fdm_fixtures.py",
       "packages/structural-optimization/tests/implicit_fixtures.py",
       "packages/structural-optimization/tests/resource_fixtures.py",
+      "packages/structural-optimization/tests/iterative_fixtures.py",
     ]
     const inputs = paths.map((path) => {
       const contents = readFileSync(join(root, path), "utf8")

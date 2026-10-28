@@ -8,12 +8,11 @@ This heuristic supplies discretized numerical evidence, not a strength rating.
 import json
 import itertools
 import math
-import warnings
 
 import numpy as np
 import scipy.sparse as sparse
 from scipy.sparse.csgraph import connected_components
-from scipy.sparse.linalg import MatrixRankWarning
+from scipy.sparse.linalg import LinearOperator, cg
 from scipy.spatial import cKDTree
 from scipy.ndimage import distance_transform_cdt
 import trimesh
@@ -240,9 +239,6 @@ def _fdm_uncovered_face(face, lower_rectangles, expansion):
 
 def _fdm_metrics(cells, origin, cell_size, context, deadline):
     world_lo, world_hi = origin + cells * cell_size, origin + (cells + 1) * cell_size
-    for coordinates in (world_lo, world_hi):
-        _require(np.all(np.abs(coordinates.astype(np.float32).astype(float) - coordinates) <= cell_size * 1e-6),
-                 "serialization-precision", "FDM geometry exceeds the structural float32 displacement allowance.")
     axis = context["axis"]
     raw_thickness = world_hi[:, axis] - world_lo[:, axis]
     rounded_thickness = (world_hi[:, axis].astype(np.float32).astype(float) -
@@ -650,14 +646,32 @@ def _conditions(request, mesh, nodes, cells, cell_size, source, deadline):
     return fixed_keys, loads, protected
 
 
+def _solve_elasticity(matrix, force, **kwargs):
+    diagonal = matrix.diagonal()
+    _require(np.isfinite(matrix.data).all() and np.isfinite(force).all() and
+             np.isfinite(diagonal).all() and np.all(diagonal > 0),
+             "numerical-failure", "The elasticity system has non-finite entries or a nonpositive diagonal.")
+    # Avoid sparse LU fill-in in the WASM heap. Connected, fully constrained
+    # positive-modulus elasticity is SPD; retain the independent equilibrium check.
+    preconditioner = LinearOperator(matrix.shape, matvec=lambda values: values / diagonal)
+    displacement, info = cg(matrix, force, M=preconditioner, rtol=1e-10, atol=0)
+    _require(info == 0, "numerical-failure",
+             f"The iterative elasticity solve did not converge (status {info}; "
+             f"{matrix.shape[0]} unknowns, {matrix.nnz} nonzero entries).")
+    return displacement
+
+
 def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, deadline, relative_modulus=None, field="strain-energy", sum_cases=False):
     _require(_connected(cells), "disconnected-mesh", "Removal disconnects the analyzed solid.")
     mesh, nodes = _hex_mesh(cells, origin, cell_size)
     surface = _surface(mesh, deadline)
     _require(abs(surface.volume - len(cells) * cell_size ** 3) <= max(1e-8, len(cells) * cell_size ** 3 * 1e-8),
              "invalid-mesh", "Returned surface volume does not match the analyzed cells.")
-    basis = Basis(mesh, ElementVector(ElementHex1()), intorder=3)
-    corner_basis = Basis(mesh, basis.elem, quadrature=(HEX_CORNERS.T.astype(float), np.ones(8)))
+    # A local translation preserves the geometry while avoiding cancellation in
+    # scikit-fem's inverse facet mapping for fine cells far from the world origin.
+    analysis_mesh = MeshHex(mesh.p - mesh.p[:, :1], mesh.t)
+    basis = Basis(analysis_mesh, ElementVector(ElementHex1()), intorder=3)
+    corner_basis = Basis(analysis_mesh, basis.elem, quadrature=(HEX_CORNERS.T.astype(float), np.ones(8)))
     lam, mu = lame_parameters(material[0], material[1])
     scale = 1.0 if relative_modulus is None else relative_modulus[:, None]
     stiffness = asm(linear_elasticity(lam * scale, mu * scale), basis).tocsr()
@@ -672,7 +686,7 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
     for load in loads:
         _require(all(key in facet_lookup for key in load["facets"]), "boundary-condition-lost", "A candidate changes a loaded exterior facet.")
         load_facets = np.array([facet_lookup[key] for key in load["facets"]])
-        facet_basis = FacetBasis(mesh, basis.elem, facets=load_facets, intorder=3)
+        facet_basis = FacetBasis(analysis_mesh, basis.elem, facets=load_facets, intorder=3)
         area = float(facet_basis.dx.sum())
         traction = load["force"] / area
 
@@ -684,10 +698,10 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
         _require(np.allclose(force[basis.nodal_dofs].sum(axis=1), load["force"], rtol=1e-9, atol=1e-9),
                  "numerical-failure", "Integrated load does not match its specified resultant.")
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", MatrixRankWarning)
-                displacement = fem_solve(*condense(stiffness, force, D=fixed_dofs))
-        except (MatrixRankWarning, RuntimeError, ValueError) as error:
+            displacement = fem_solve(*condense(stiffness, force, D=fixed_dofs), solver=_solve_elasticity)
+        except (RuntimeError, ValueError) as error:
+            if isinstance(error, SolverError):
+                raise
             raise SolverError("numerical-failure", "The full-solid elasticity solve failed or is singular.") from error
         _require(np.isfinite(displacement).all(), "numerical-failure", "Elasticity returned a non-finite displacement.")
         free = np.setdiff1d(np.arange(basis.N), fixed_dofs)
@@ -1081,13 +1095,8 @@ def solve(request):
     # Never attach a previous candidate's metrics to a newly emitted surface.
     optimized, _, output = _evaluate(cells, origin, cell_size, parameters, fixed_keys, loads, density, deadline)
     evaluations += 1
-    rounded = output.vertices.astype(np.float32).astype(float)
-    _require(np.all(np.isfinite(rounded)) and np.all(np.abs(rounded - output.vertices) <= cell_size * 1e-6),
-             "serialization-precision", "Output float32 displacement exceeds one millionth of the analysis cell size.")
-    captured = trimesh.Trimesh(rounded, output.faces, process=False)
-    _check_surface(captured, "Float32 output surface", deadline)
-    _require(abs(captured.volume - optimized["volumeMm3"]) <= optimized["volumeMm3"] * 1e-5,
-             "serialization-precision", "Float32 output volume differs materially from the analyzed solid.")
+    # Snapshot encoding keeps the strict STL rounding gate and uses exact-coordinate
+    # 3MF when necessary. The validated raw surface remains the analyzed geometry.
     _require(feasible(optimized), "final-verification-failed", "Repeated final full-solid analysis violates a constraint.")
     _require(optimized["volumeMm3"] <= baseline["volumeMm3"] + 1e-8,
              "final-verification-failed", "The final volume exceeds the baseline.")

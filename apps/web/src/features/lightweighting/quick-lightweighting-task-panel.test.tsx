@@ -41,7 +41,7 @@ mock.module("@vibeshape/structural-optimization/quick-client", () => ({
 const structuralMeshModule = { ...(await import("@vibeshape/structural-optimization/mesh")) }
 mock.module("@vibeshape/structural-optimization/mesh", () => ({
   ...structuralMeshModule,
-  encodeStructuralStl: ports.structuralEncode,
+  encodeStructuralSnapshot: ports.structuralEncode,
 }))
 mock.module("../../document/document-controller", () => ({
   inspectTriangleMeshSource: ports.inspect,
@@ -200,7 +200,11 @@ beforeEach(() => {
     latticeCellSizeMm: input.latticeCellSizeMm ?? input.cellSizeMm * 6,
   }))
   ports.encode.mockReturnValue(new Uint8Array([1, 2, 3]))
-  ports.structuralEncode.mockReturnValue(new Uint8Array([1, 2, 3]))
+  ports.structuralEncode.mockReturnValue({
+    bytes: new Uint8Array([1, 2, 3]),
+    format: "stl",
+    mediaType: "model/stl",
+  })
   ports.inspect.mockResolvedValue(meshInspection)
   ports.apply.mockResolvedValue({ ok: true })
 })
@@ -411,6 +415,24 @@ describe("quick lightweighting task panel", () => {
     await advance(2_000)
     expect(ports.generate).toHaveBeenCalledTimes(1)
     expect(ports.apply).not.toHaveBeenCalled()
+  })
+
+  it("samples and captures precise source geometry while retaining Float32 display buffers", async () => {
+    const precisePositions = Float64Array.from(cube.mesh.positions, (value) =>
+      value === 6 ? 6.0000001 : value,
+    )
+    const preciseBody = { ...cube, mesh: { ...cube.mesh, precisePositions } }
+    ports.parts.mockReturnValue([{ part: firstPart, body: preciseBody, status: "available" }])
+    setup()
+    await advance(650)
+    const input = ports.generate.mock.calls[0]?.[0]
+    expect(input.mesh.vertices).toEqual(Array.from(precisePositions))
+    expect(input.mesh.vertices[5]).toBe(6.0000001)
+    expect(input.mesh.indices).toEqual(Array.from(cube.mesh.indices))
+    expect(input.cellSizeMm).toBe(6.0000001 / 32)
+    expect(preciseBody.mesh.positions).toBe(cube.mesh.positions)
+    expect(ports.encode).toHaveBeenCalledTimes(1)
+    expect(ports.structuralEncode).not.toHaveBeenCalled()
   })
 
   it("debounces sliders and both modes, cancels old work, and ignores its late completion", async () => {

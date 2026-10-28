@@ -79,7 +79,7 @@ export async function collectDocumentPrintMeshes(
     return {
       featureId: feature.featureId,
       ...(feature.outputRole ? { outputRole: feature.outputRole } : {}),
-      vertices: Array.from(body.mesh.positions),
+      vertices: Array.from(body.mesh.precisePositions ?? body.mesh.positions),
       triangles: Array.from(body.mesh.indices),
     }
   })

@@ -98,6 +98,7 @@ describe("createDisposableDocumentPreview", () => {
     const current = snapshotWithFeatures([featureId])
     const meshPayload = {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      precisePositions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
       indices: new Uint32Array([0, 1, 2]),
       triangleFaceIds: new Uint32Array([1]),
@@ -169,6 +170,7 @@ describe("createDisposableDocumentPreview", () => {
           async () => rebuilt as never,
           () => {
             meshPayload.positions.fill(-1)
+            meshPayload.precisePositions.fill(-1)
             meshPayload.normals.fill(-1)
             meshPayload.indices.fill(0)
             meshPayload.triangleFaceIds.fill(0)
@@ -182,6 +184,10 @@ describe("createDisposableDocumentPreview", () => {
     expect(geometry?.mesh.indices).toEqual(new Uint32Array([0, 1, 2]))
     expect(geometry?.bodies?.[0]?.mesh.triangleFaceIds).toEqual(new Uint32Array([1]))
     expect(geometry?.mesh.positions.buffer).not.toBe(meshPayload.positions.buffer)
+    expect(geometry?.mesh.precisePositions).toEqual(new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
+    expect(geometry?.bodies?.[0]?.mesh.precisePositions?.buffer).not.toBe(
+      meshPayload.precisePositions.buffer,
+    )
     const ordinary = createDisposableDocumentPreview({
       mesh,
       createRebuildPort: () =>

@@ -70,6 +70,7 @@ function retainedRebuild(response: RebuildResponse): RebuildResponse {
   function copyMesh(mesh: RebuildResponse["geometry"][number]["geometry"]["mesh"]) {
     return {
       positions: mesh.positions.slice(),
+      ...(mesh.precisePositions ? { precisePositions: mesh.precisePositions.slice() } : {}),
       normals: mesh.normals.slice(),
       indices: mesh.indices.slice(),
       triangleFaceIds: mesh.triangleFaceIds.slice(),

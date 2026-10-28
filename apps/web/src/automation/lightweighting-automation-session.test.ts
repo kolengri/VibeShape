@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
+import type { InspectMeshImportInput } from "@vibeshape/protocol"
 import type { StructuralOptimizationResult } from "@vibeshape/structural-optimization/contract"
+import { inspectMeshSource } from "../../../../packages/document-worker/src/mesh-source-import"
 import { denseBoxMesh } from "../../../../packages/structural-optimization/tests/dense-box-fixture"
 import { vi } from "../../../../tests/unit/support/bun-test"
 
@@ -147,6 +149,82 @@ describe("browser lightweighting snapshot authority", () => {
     expect(capturedMesh.positions).toBe(positions)
     expect(Array.from(capturedMesh.indices)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     expect(test.commit).not.toHaveBeenCalled()
+  })
+
+  it("captures precise source coordinates while preserving display seams and triangle IDs", async () => {
+    const precisePositions = Float64Array.from(
+      mesh.indices.flatMap((index) => mesh.vertices.slice(index * 3, index * 3 + 3)),
+      (value) => value + 0.123456789,
+    )
+    const positions = Float32Array.from(precisePositions)
+    const triangleFaceIds = new Uint32Array([17, 42, 17, 99])
+    const capturedMesh: LightweightingSource["body"]["mesh"] = {
+      positions,
+      precisePositions,
+      normals: new Float32Array(positions.length),
+      indices: Uint32Array.from({ length: positions.length / 3 }, (_, index) => index),
+      triangleFaceIds,
+    }
+    const test = setup(false, capturedMesh)
+    expect(await test.session.execute(actor, lightweightingOperation())).toMatchObject({ ok: true })
+    expect(mocks.optimize.mock.calls[0]?.[0].mesh).toEqual({
+      vertices: [
+        0.123456789, 0.123456789, 0.123456789, 0.123456789, 1.123456789, 0.123456789, 1.123456789,
+        0.123456789, 0.123456789, 0.123456789, 0.123456789, 1.123456789,
+      ],
+      indices: [0, 1, 2, 0, 2, 3, 0, 3, 1, 2, 1, 3],
+    })
+    expect(capturedMesh.positions).toBe(positions)
+    expect(capturedMesh.precisePositions).toBe(precisePositions)
+    expect(capturedMesh.triangleFaceIds).toBe(triangleFaceIds)
+    expect(test.commit).not.toHaveBeenCalled()
+  })
+
+  it("reviews and commits a precise 3MF fallback through the ordinary prepared import path", async () => {
+    const test = setup()
+    const preciseMesh = {
+      ...mesh,
+      vertices: mesh.vertices.map((value) => value + 1_000.123456789),
+    }
+    mocks.optimize.mockResolvedValueOnce({ ...lightweightingSummary(), mesh: preciseMesh })
+    mocks.inspect.mockImplementation(async (input: InspectMeshImportInput) => ({
+      inspection: await inspectMeshSource(input.format, input.bytes, input.units),
+    }))
+    const pending = test.session.execute(actor, lightweightingOperation(true))
+    const review = await reviewReady()
+    if (!isImportReview(review.input)) throw new Error("Expected the shared source review.")
+    expect(review.input.source.upload).toMatchObject({
+      filename: "lightweighted-snapshot.3mf",
+      format: "3mf",
+      sourceUnit: null,
+    })
+    expect(review.input.source.normalization).toEqual({
+      sourceUnit: "millimeter",
+      scaleToMillimeters: 1,
+      normalizedUnit: "millimeter",
+    })
+    const inspectedInput: InspectMeshImportInput = mocks.inspect.mock.calls[0]?.[0]
+    expect(inspectedInput).toMatchObject({ format: "3mf" })
+    expect(inspectedInput).not.toHaveProperty("units")
+    const inspectedBody = review.input.inspection.outputs[0]
+    if (!inspectedBody) throw new Error("Expected an inspected snapshot body.")
+    const inspectedMesh = inspectedBody.mesh
+    expect(inspectedMesh.precisePositions).toContain(1_000.123456789)
+    expect(inspectedMesh.positions[0]).toBe(Math.fround(1_000.123456789))
+    expect(test.commit).not.toHaveBeenCalled()
+    await automationReviews.decide(review.id, "approved")
+    expect(await pending).toMatchObject({ ok: true, value: { snapshot: { revision: 7 } } })
+    expect(test.commit).toHaveBeenCalledTimes(1)
+    const committed = test.commit.mock.calls[0]?.[0]
+    if (!committed) throw new Error("Expected a committed snapshot transaction.")
+    expect(committed.transaction.commands).toHaveLength(3)
+    expect(committed.transaction.commands[0]).toMatchObject({
+      kind: "org.vibeshape.document.add-source-assets",
+      payload: { assets: [{ filename: "lightweighted-snapshot.3mf", format: "3mf" }] },
+    })
+    const digest = review.input.source.upload.sha256
+    if (!digest) throw new Error("Expected a captured snapshot digest.")
+    expect(committed.assetBlobs).toEqual([{ digest, bytes: inspectedInput.bytes }])
   })
 
   it.each([

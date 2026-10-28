@@ -14,7 +14,7 @@ import {
   structuralSolverResponseSchema,
 } from "../src/contract"
 import { generateStructuralDesigns } from "../src/generative-design"
-import { encodeStructuralStl } from "../src/mesh"
+import { encodeStructuralSnapshot, encodeStructuralStl } from "../src/mesh"
 import { denseBoxMesh } from "./dense-box-fixture"
 
 const timeout = 120_000
@@ -168,6 +168,12 @@ beforeAll(async () => {
       "utf8",
     ),
   )
+  await runtime.runPythonAsync(
+    readFileSync(
+      resolve(root, "packages/structural-optimization/tests/iterative_fixtures.py"),
+      "utf8",
+    ),
+  )
   expect(runtime.version).toBe("314.0.7")
   const versions: unknown = await runtime.runPythonAsync(
     'import json, numpy, scipy, skfem, trimesh; json.dumps({"numpy": numpy.__version__, "scipy": scipy.__version__, "skfem": skfem.__version__, "trimesh": trimesh.__version__})',
@@ -182,6 +188,87 @@ beforeAll(async () => {
 }, timeout)
 
 describe("pinned Pyodide full-solid structural solver", () => {
+  it.each([
+    [132.8, 0.8],
+    [10_000, 0.01],
+  ])(
+    "completes decimal-grid analysis and exact snapshot encoding at offset %s and cell size %s",
+    async (offset, scale) => {
+      const input = axialBar(0)
+      const translated = ([x, y, z]: readonly [number, number, number]): [
+        number,
+        number,
+        number,
+      ] => [x * scale + offset, y * scale, z * scale]
+      input.mesh.vertices = input.mesh.vertices.map(
+        (value, axis) => value * scale + (axis % 3 === 0 ? offset : 0),
+      )
+      input.cellSizeMm = scale
+      input.supports = [{ min: translated([-5, -1, -1]), max: translated([-5, 1, 1]) }]
+      input.loadCases = [
+        {
+          name: "axial",
+          region: { min: translated([5, -1, -1]), max: translated([5, 1, 1]) },
+          forceN: [10 * scale ** 2, 0, 0],
+        },
+      ]
+      const response = await run(input)
+      if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
+      expect(response.result.initialCellCount).toBe(40)
+      expect(response.result.baseline.maxVonMisesMpa).toBeCloseTo(2.5, 6)
+      expect(response.result.baseline.maxDisplacementMm).toBeCloseTo(0.025 * scale, 8)
+      expect(response.result.optimized).toEqual(response.result.baseline)
+      expect(encodeStructuralSnapshot(response.result.mesh, scale).format).toBe("3mf")
+    },
+    timeout,
+  )
+
+  it.each([
+    [0.35, false],
+    [0.45, false],
+    [0.35, true],
+    [0.45, true],
+  ])(
+    "matches direct-reference 3D bending and torsion at Poisson ratio %s with varied modulus %s",
+    async (poisson, varied) => {
+      await runtime.runPythonAsync(
+        `verify_iterative_direct_reference(_surface_test_solver, ${poisson}, ${varied ? "True" : "False"})`,
+      )
+    },
+    timeout,
+  )
+
+  it.each(["iteration-limit", "breakdown", "nonfinite", "false-convergence"])(
+    "rejects iterative %s without publishing a numerical result",
+    async (failure) => {
+      await runtime.runPythonAsync(
+        `verify_iterative_failure(_surface_test_solver, ${JSON.stringify(failure)})`,
+      )
+    },
+    timeout,
+  )
+
+  it(
+    "rejects non-finite and nonpositive assembled stiffness",
+    async () => {
+      await runtime.runPythonAsync("verify_iterative_invalid_stiffness(_surface_test_solver)")
+    },
+    timeout,
+  )
+
+  it(
+    "solves a compact 3D analytical solid without direct sparse factorization",
+    async () => {
+      const raw = await runtime.runPythonAsync(
+        "json.dumps(verify_iterative_compact_analytical_solve(_surface_test_solver))",
+      )
+      const result = structuralOptimizationResultSchema.parse(JSON.parse(String(raw)))
+      expect(result.initialCellCount).toBe(1536)
+      expect(signedSurfaceVolume(result.mesh)).toBeCloseTo(1536, 6)
+    },
+    timeout,
+  )
+
   it(
     "preserves inclusive ray bounds and strict boundary-cell contact",
     async () => {

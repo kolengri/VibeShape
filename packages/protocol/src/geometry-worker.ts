@@ -7,7 +7,7 @@ import {
   surfaceTextureStatisticsSchema,
 } from "./surface-texture"
 
-export const GEOMETRY_PROTOCOL_VERSION = 17 as const
+export const GEOMETRY_PROTOCOL_VERSION = 18 as const
 export const MAX_ANALYTICAL_LOFT_SECTIONS = 24
 
 const finiteNumberSchema = z.number().finite()
@@ -2116,11 +2116,30 @@ const shapeMetricsSchema = z
 const meshPayloadSchema = z
   .object({
     positions: z.instanceof(Float32Array),
+    precisePositions: z.instanceof(Float64Array).optional(),
     normals: z.instanceof(Float32Array),
     indices: z.instanceof(Uint32Array),
     triangleFaceIds: z.instanceof(Uint32Array),
   })
   .strict()
+  .superRefine((mesh, context) => {
+    const precise = mesh.precisePositions
+    if (
+      precise &&
+      (precise.length !== mesh.positions.length ||
+        precise.some(
+          (value, index) =>
+            !Number.isFinite(value) ||
+            !Number.isFinite(mesh.positions[index]) ||
+            mesh.positions[index] !== Math.fround(value),
+        ))
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["precisePositions"],
+        message: "Precise mesh coordinates must be finite and match every display coordinate.",
+      })
+  })
 
 const featureEvaluationBodySchema = z
   .object({

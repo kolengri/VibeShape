@@ -115,6 +115,23 @@ beforeEach(() => {
 })
 
 describe("assembly export policy over verified world occurrences", () => {
+  it("preserves placed mesh doubles in 3MF export", async () => {
+    const source = occurrence(id(60), 132.01, true)
+    const precisePositions = new Float64Array(
+      vertices.map((value, index) => value * 0.04 + (index % 3 === 0 ? 132.01 : 0.01)),
+    )
+    materialization.occurrences = [
+      {
+        ...source,
+        mesh: { ...source.mesh, positions: new Float32Array(precisePositions), precisePositions },
+      },
+    ]
+    const result = await exportWith(new ReplicadGeometryEngine(), { format: "3mf" })
+    const parsed = await parseGeometryImport({ format: "3mf", bytes: result.file })
+    if (!parsed.ok || parsed.geometry.kind !== "triangle-mesh")
+      throw new Error("Missing 3MF round trip")
+    expect(parsed.geometry.meshes[0]?.vertices.flat()).toEqual(Array.from(precisePositions))
+  })
   it("rebuilds disposable assembly sources with explicit export quality and keeps omitted defaults", async () => {
     const engine = new ReplicadGeometryEngine()
     const meshQuality = { chordTolerance: 0.01, angularTolerance: 0.05 }
