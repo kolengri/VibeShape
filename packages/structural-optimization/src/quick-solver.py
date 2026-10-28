@@ -10,6 +10,7 @@ from scipy.spatial import cKDTree
 
 _QUICK_CONTEXT = None
 _QUICK_PROGRESS = None
+_QUICK_SAMPLE = None
 _MAX_BATCH_PAIRS = 262144
 
 
@@ -111,7 +112,8 @@ def _report_progress(phase, completed, total):
 
 def _distances(context, points, phase="validation"):
     pieces = []
-    batch_size = _query_batch_size(context["source"])
+    accelerated = phase == "sampling" and _QUICK_SAMPLE is not None
+    batch_size = 8192 if accelerated else _query_batch_size(context["source"])
     _report_progress(phase, 0, len(points))
     for start in range(0, len(points), batch_size):
         end = min(start + batch_size, len(points))
@@ -123,8 +125,20 @@ def _distances(context, points, phase="validation"):
             # at least one cell diagonal. Their negative magnitude is irrelevant.
             distance = np.full(len(samples), -1.0)
             if np.any(inside_bounds):
-                distance[inside_bounds] = trimesh.proximity.signed_distance(
-                    context["source"], samples[inside_bounds])
+                selected = samples[inside_bounds]
+                if accelerated:
+                    signed = np.asarray(_QUICK_SAMPLE(selected.ravel()).to_py(), dtype=np.float64)
+                    _ensure(signed.shape == (len(selected),), "invalid-result", "The sampling response has the wrong shape.")
+                    unresolved = ~np.isfinite(signed)
+                    if np.any(unresolved):
+                        pending = np.flatnonzero(unresolved)
+                        fallback_batch = _query_batch_size(context["source"])
+                        for offset in range(0, len(pending), fallback_batch):
+                            indices = pending[offset:offset + fallback_batch]
+                            signed[indices] = trimesh.proximity.signed_distance(context["source"], selected[indices])
+                    distance[inside_bounds] = signed
+                else:
+                    distance[inside_bounds] = trimesh.proximity.signed_distance(context["source"], selected)
         else:
             distance = trimesh.proximity.signed_distance(context["source"], samples)
         pieces.append(distance)
@@ -192,6 +206,14 @@ def _prepare(request):
     context["source"] = source
     source._cache["triangles_tree"] = _SpatialTriangleIndex(source.triangles)
     context["sourceVolume"] = float(source.volume * cell ** 3)
+    # Every interior ball fits inside the source AABB. This is an upper bound,
+    # never a sampled estimate or a reason to reject an inconclusive source.
+    inset = (skin / cell if mode == "preserve-exterior" else 0) + math.sqrt(3)
+    clearance_bound = float(np.min(source.extents) / 2)
+    _ensure(clearance_bound + 1e-8 > inset, "no-removable-material",
+            f"Source bounds limit interior clearance to {clearance_bound * cell:g} mm, "
+            f"below the required skin and sampling margin of {inset * cell:g} mm. "
+            "Use finer detail cells or reduce skin thickness.")
     z, y, x = np.indices((resolution,) * 3, dtype=np.float64) - 3
     points = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
     del x, y, z
@@ -217,7 +239,6 @@ def _prepare(request):
     np.abs(lattice, out=lattice)
     # One cell diagonal conservatively contains every reconstructed triangle,
     # including interpolation over a curved or concave captured source boundary.
-    inset = (skin / cell if mode == "preserve-exterior" else 0) + math.sqrt(3)
     envelope = distances - inset
     clearance_mm = float(distances.max() * cell)
     margin_mm = math.sqrt(3) * cell

@@ -377,6 +377,7 @@
         "@vibeshape/domain": "workspace:*",
         "@vibeshape/formats": "workspace:*",
         "three": "catalog:",
+        "three-mesh-bvh": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {

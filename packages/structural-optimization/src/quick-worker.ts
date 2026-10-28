@@ -9,6 +9,7 @@ import {
 import { QuickLightweightingError } from "./quick-errors"
 import { generateValidatedQuickLightweighting } from "./quick-generation"
 import { quickGridSchema } from "./quick-isosurface"
+import { createQuickSampling } from "./quick-sampling"
 import solverSource from "./quick-solver.py?raw"
 import { type NumericalRuntimeStage, numericalRuntimeMessage } from "./runtime-diagnostics"
 
@@ -71,7 +72,21 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
     })
     pyodide.globals.set("_quick_request_json", JSON.stringify(input))
     self.postMessage({ type: "progress", stage: "generating" })
-    const raw: unknown = await pyodide.runPythonAsync("prepare_quick_json(_quick_request_json)")
+    let sampling: ReturnType<typeof createQuickSampling> | undefined
+    pyodide.globals.set(
+      "_QUICK_SAMPLE",
+      (points: Parameters<ReturnType<typeof createQuickSampling>["sample"]>[0]) => {
+        sampling ??= createQuickSampling(input)
+        return sampling.sample(points)
+      },
+    )
+    let raw: unknown
+    try {
+      raw = await pyodide.runPythonAsync("prepare_quick_json(_quick_request_json)")
+    } finally {
+      pyodide.runPython("_QUICK_SAMPLE = None")
+      sampling?.dispose()
+    }
     stage = "response validation"
     if (typeof raw !== "string") throw new Error("The prepared grid must be JSON.")
     const prepared = preparedSchema.parse(JSON.parse(raw))

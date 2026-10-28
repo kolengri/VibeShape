@@ -10,11 +10,12 @@ import {
   quickLightweightingResponseSchema,
 } from "../src/quick-contract"
 import { generateValidatedQuickLightweighting } from "../src/quick-generation"
+import { createQuickSampling } from "../src/quick-sampling"
 
 export const timeout = 120_000
 export const root = fileURLToPath(new URL("../../../", import.meta.url))
 
-export function createQuickWasmHarness() {
+export function createQuickWasmHarness(accelerated = true) {
   let runtime: PyodideInterface
   beforeAll(async () => {
     execFileSync("bun", ["run", "scripts/prepare-structural-runtime.ts"], {
@@ -32,7 +33,22 @@ export function createQuickWasmHarness() {
 
   async function prepare(request: QuickLightweightingInput) {
     runtime.globals.set("_quick_request_json", JSON.stringify(request))
-    const raw: unknown = await runtime.runPythonAsync("prepare_quick_json(_quick_request_json)")
+    let sampling: ReturnType<typeof createQuickSampling> | undefined
+    if (accelerated)
+      runtime.globals.set(
+        "_QUICK_SAMPLE",
+        (points: Parameters<ReturnType<typeof createQuickSampling>["sample"]>[0]) => {
+          sampling ??= createQuickSampling(request)
+          return sampling.sample(points)
+        },
+      )
+    let raw: unknown
+    try {
+      raw = await runtime.runPythonAsync("prepare_quick_json(_quick_request_json)")
+    } finally {
+      runtime.runPython("_QUICK_SAMPLE = None")
+      sampling?.dispose()
+    }
     if (typeof raw !== "string") throw new Error("Preparation must return JSON.")
     const prepared: { ok: boolean; grid?: unknown; error?: { code: string; message: string } } =
       JSON.parse(raw)

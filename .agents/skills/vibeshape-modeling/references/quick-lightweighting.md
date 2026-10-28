@@ -60,6 +60,11 @@ by these MCP tools.
 `cellType`, `latticeCellSizeMm`, sampling detail and warnings. Removal is measured from the output geometry and may differ from the
 requested target. A candidate with no positive measured removal fails with
 `no-removable-material`; do not fabricate a success or weaken agreed geometry requirements.
+Preparation can reject proven insufficient interior clearance before sampling. Its diagnostic
+distinguishes an upper bound from the maximum sampled clearance and includes the required skin
+and sampling margin. An inconclusive bound proceeds with normal generation. Finer detail may
+resolve the sampling margin while keeping the agreed physical skin and lattice period; do not
+reduce the skin or promise the requested removal percentage without the user's authorization.
 
 When creating the result is authorized, call `request_quick_lightweighting` with the same complete
 inputs and an English `label`. It computes against the captured source and privately stages an

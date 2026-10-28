@@ -9,7 +9,10 @@ import { createQuickWasmHarness, input, timeout, volume } from "./quick-wasm-hel
 const wasm = createQuickWasmHarness()
 const { run } = wasm
 
-function expectCompletedBatches(progress: QuickLightweightingProgress[], maximumStep: number) {
+function expectCompletedBatches(
+  progress: QuickLightweightingProgress[],
+  maximumStep: Record<QuickLightweightingProgress["phase"], number>,
+) {
   for (const phase of ["sampling", "validation"] as const) {
     const updates = progress.filter((update) => update.phase === phase)
     expect(updates.length).toBeGreaterThan(1)
@@ -19,7 +22,7 @@ function expectCompletedBatches(progress: QuickLightweightingProgress[], maximum
     const steps = updates.map((update, index) =>
       update.completed === 0 ? 0 : update.completed - (updates[index - 1]?.completed ?? 0),
     )
-    expect(Math.max(...steps)).toBeLessThanOrEqual(maximumStep)
+    expect(Math.max(...steps)).toBeLessThanOrEqual(maximumStep[phase])
   }
 }
 
@@ -87,6 +90,15 @@ describe("load-free TPMS nodal geometry in the pinned WASM runtime", () => {
           progress.push({ phase, completed, total })
         },
       )
+      await wasm.runtime.runPythonAsync(`
+_original_signed_distance = trimesh.proximity.signed_distance
+_maximum_exact_batch = 0
+def _record_exact_batch(mesh, points):
+    global _maximum_exact_batch
+    _maximum_exact_batch = max(_maximum_exact_batch, len(points))
+    return _original_signed_distance(mesh, points)
+trimesh.proximity.signed_distance = _record_exact_batch
+`)
       try {
         const response = await run(request)
         if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
@@ -95,11 +107,16 @@ describe("load-free TPMS nodal geometry in the pinned WASM runtime", () => {
         expect(() =>
           encodeQuickLightweightingStl(response.result.mesh, response.result.cellSizeMm),
         ).not.toThrow()
-        // 5,120 triangles and both ray directions must fit the 262,144-pair
-        // scratch budget independently of total samples or elapsed time.
-        expectCompletedBatches(progress, 25)
+        // BVH queries visit one point at a time within the bridge batch. Exact
+        // Trimesh fallback and validation retain the dense pair scratch budget.
+        expectCompletedBatches(progress, { sampling: 8192, validation: 25 })
+        const exactBatch: unknown = await wasm.runtime.runPythonAsync("_maximum_exact_batch")
+        expect(exactBatch).toBeGreaterThan(0)
+        expect(exactBatch).toBeLessThanOrEqual(25)
       } finally {
-        await wasm.runtime.runPythonAsync("_QUICK_PROGRESS = None")
+        await wasm.runtime.runPythonAsync(
+          "_QUICK_PROGRESS = None; trimesh.proximity.signed_distance = _original_signed_distance",
+        )
       }
     },
     denseSourceTimeout,
