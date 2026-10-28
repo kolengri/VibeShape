@@ -882,6 +882,7 @@ describe("persistent document session", () => {
       diagnostic: {
         code: "persistence-failed",
         sourceCode: "quota-exceeded",
+        message: "The document revision was not saved. quota-exceeded: Storage quota was exceeded.",
         retryable: true,
       },
     })

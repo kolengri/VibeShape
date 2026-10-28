@@ -1409,6 +1409,51 @@ describe("source asset authority session writes", () => {
   })
 })
 
+it.each([
+  [
+    new DOMException("The candidate exceeds available storage.", "QuotaExceededError"),
+    "QuotaExceededError: The candidate exceeds available storage.",
+  ],
+  [new Error("x".repeat(1024)), `Error: ${"x".repeat(1024)}`],
+  [null, null],
+])(
+  "retains a bounded authored transaction exception without publishing: %p",
+  async (error, detail) => {
+    const f = fixture()
+    const before = f.current()
+    vi.spyOn(f.repository, "commitAuthorityDraft").mockRejectedValue(error)
+    const result = await f.adapter.authoredTransaction.apply({
+      sessionId,
+      lease,
+      baseSnapshot: f.runtime(),
+      command: {
+        transactionId: id(340),
+        commands: [
+          {
+            ...f.envelope(341),
+            schemaVersion: 1,
+            kind: "org.vibeshape.document.rename",
+            payload: { name: "Unsaved candidate" },
+          },
+        ],
+      },
+    })
+    expect(result).toEqual({
+      ok: false,
+      diagnostic: {
+        code: "persistence-failed",
+        message: (detail
+          ? `The authored transaction was not saved. ${detail}`
+          : "The authored transaction was not saved."
+        ).slice(0, 512),
+        retryable: false,
+      },
+    })
+    expect(f.current()).toBe(before)
+    expect(f.adapter.history.availability.canUndo).toBe(false)
+  },
+)
+
 it.each([3, 67_108_865])(
   "publishes %i source bytes through an authored session transaction with rollback and whole-authority undo",
   async (byteLength) => {
@@ -1512,7 +1557,15 @@ it.each([3, 67_108_865])(
       },
     })
     f.fail(true)
-    expect((await session.commitAuthoredTransaction(command)).ok).toBe(false)
+    expect(await session.commitAuthoredTransaction(command)).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "persistence-failed",
+        sourceCode: "quota",
+        message: "The authored transaction was not saved. quota: full",
+        retryable: true,
+      },
+    })
     expect(f.current()).toBe(seed)
     expect(f.adapter.history.availability.canUndo).toBe(false)
     f.fail(false)

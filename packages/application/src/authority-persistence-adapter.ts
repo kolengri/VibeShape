@@ -8,6 +8,7 @@ import {
 import type { DocumentAuthorityEvent } from "@vibeshape/domain/document-v2-command-schemas"
 import { promoteDocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
+import { z } from "zod"
 import {
   type AuthoredAuthoritySnapshot,
   authorityFailure,
@@ -290,8 +291,15 @@ export function createAuthorityPersistenceAdapter(
             transactionId: prepared.transactionId,
             storedAt: prepared.snapshot.updatedAt,
           })
-        } catch {
-          return authorityFailure("persistence-failed", "The authored transaction was not saved.")
+        } catch (error) {
+          const cause = z.object({ name: z.string(), message: z.string() }).safeParse(error)
+          const message = "The authored transaction was not saved."
+          return authorityFailure(
+            "persistence-failed",
+            cause.success
+              ? `${message} ${cause.data.name}: ${cause.data.message}`.slice(0, 512)
+              : message,
+          )
         }
         if (!saved.ok) return saved
         return acceptSavedAuthority(base, prepared.snapshot, () => {

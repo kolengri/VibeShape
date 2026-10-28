@@ -408,7 +408,11 @@ function portDiagnostic(
 ) {
   return diagnostic(
     code,
-    source.code === "checkpoint-budget-exceeded" ? source.message : message,
+    source.code === "checkpoint-budget-exceeded" || source.code === "persistence-failed"
+      ? source.message.slice(0, 512)
+      : code === "persistence-failed"
+        ? `${message} ${source.code}: ${source.message}`.slice(0, 512)
+        : message,
     source.retryable,
     source.code,
   )

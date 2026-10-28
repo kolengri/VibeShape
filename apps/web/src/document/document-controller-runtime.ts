@@ -1194,6 +1194,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
             revision: snapshot.revision,
             authorityVersion: snapshot.schemaVersion,
             historyAfter: state.report?.historyItems?.at(-1) ?? null,
+            hiddenPartIds: snapshot.parts.filter((part) => !part.visible).map(({ id }) => id),
           }
         : null
     }

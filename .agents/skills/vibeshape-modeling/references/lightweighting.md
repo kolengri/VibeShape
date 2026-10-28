@@ -55,6 +55,7 @@ Runtime errors omit traceback frames, captured inputs and sensitive URL componen
    and iteration budget determine actual work; browser memory remains finite. Keep long-running
    work pending or cancel explicitly. `infeasible-baseline` still means the original analyzed body
    fails the supplied loads/material/displacement constraints; do not fabricate a successful result.
+   `min`, `max`, and `forceN` are numeric `[x, y, z]` arrays, never serialized strings.
 
    Optional `obstacleRegions` accepts positive-size world-mm `{min,max}` boxes.
    Any closed FEM-cell box intersecting a keep-out box is excluded before baseline analysis,

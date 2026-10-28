@@ -10,6 +10,11 @@ Use three independent layers:
 
 OPFS is not a user document. Clearing site data can remove it. The application must explicitly offer `.vshape` export and show when a project exists only inside browser storage.
 
+Session persistence failures retain the storage diagnostic code and message in their bounded
+user/automation-facing message. Authored transactions also retain an unexpected repository
+exception's name and message when available, without exposing a stack or arbitrary exception
+payload. A failed write does not advance the committed revision or create an Undo entry.
+
 ## IndexedDB stores
 
 Proposed tables:

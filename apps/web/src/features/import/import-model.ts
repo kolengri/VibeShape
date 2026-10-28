@@ -116,6 +116,7 @@ export type ImportDocumentContext = Readonly<{
   revision: number
   authorityVersion: 2 | 3 | 4 | 5 | 6
   historyAfter: HistoryItemRef | null
+  hiddenPartIds?: readonly string[]
 }>
 export function importContextIsStale(
   current: ImportDocumentContext,
@@ -234,7 +235,7 @@ export function createImportTransaction(
       kind: "org.vibeshape.document.add-source-assets",
       payload: { assets: [asset] },
     }),
-    ...(hideSourcePartId
+    ...(hideSourcePartId && !context.hiddenPartIds?.includes(hideSourcePartId)
       ? [
           documentV2MetadataCommandSchema.parse({
             ...envelope(),
