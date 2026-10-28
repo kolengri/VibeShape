@@ -49,7 +49,13 @@ if (!selectedFiles.length) {
   console.error(`No unit test files matched the ${selectedGroup} group.`)
   process.exit(1)
 }
-const splitOutputs = groups.every((group) => group.files.length > 0)
+const splitOutputs =
+  groups.every((group) => group.files.length > 0) ||
+  groups.some(
+    (group) =>
+      group.files.some(isStructuralTest) && group.files.some((file) => !isStructuralTest(file)),
+  )
+const bail = forwarded.some((option) => option === "--bail" || option.startsWith("--bail="))
 const changed = forwarded.some(
   (argument) => argument === "--changed" || argument.startsWith("--changed="),
 )
@@ -102,8 +108,10 @@ function groupOptions(group: string) {
   if (!splitOutputs) return forwarded
   const options = forwarded.map((argument) => outputOption(argument, group))
   const explicitCoverage = options.some((option) => option.startsWith("--coverage-dir="))
-  if (options.includes("--coverage") && !explicitCoverage)
-    options.push(`--coverage-dir=coverage/${group}`)
+  const coverage = options.some(
+    (option) => option === "--coverage" || option.startsWith("--coverage-reporter="),
+  )
+  if (coverage && !explicitCoverage) options.push(`--coverage-dir=coverage/${group}`)
   return options
 }
 let exitCode = 0
@@ -166,7 +174,35 @@ async function runGroup(group: (typeof groups)[number]) {
     afterBatch(result, batch, scopes, groupName)
   }
 }
+function executionBatches(group: (typeof groups)[number], files: string[]) {
+  const structural = files.filter(isStructuralTest)
+  // Each Pyodide heap can grow to gigabytes. Never overlap these file workers,
+  // including with the ordinary test pool, inside the 8 GiB CI container.
+  if (!structural.length || forwarded.includes("--watch"))
+    return [{ group, files, serial: structural.length > 0 }]
+  return [
+    { group, files: files.filter((file) => !isStructuralTest(file)), serial: false },
+    { group: { ...group, name: `${group.name}-structural` }, files: structural, serial: true },
+  ].filter((batch) => batch.files.length > 0)
+}
 async function runBatch(group: (typeof groups)[number], files: string[], env: NodeJS.ProcessEnv) {
+  let result = 0
+  for (const batch of executionBatches(group, files)) {
+    const code = await runProcess(batch.group, batch.files, env, batch.serial)
+    result = Math.max(result, code)
+    if (result && bail) break
+  }
+  return result
+}
+function isStructuralTest(file: string) {
+  return file.startsWith("./packages/structural-optimization/tests/")
+}
+async function runProcess(
+  group: (typeof groups)[number],
+  files: string[],
+  env: NodeJS.ProcessEnv,
+  serial = false,
+) {
   const options = groupOptions(group.name)
   const child = Bun.spawn(
     [
@@ -181,6 +217,7 @@ async function runBatch(group: (typeof groups)[number], files: string[], env: No
       ...group.preload,
       ...(changed ? ["--pass-with-no-tests"] : []),
       ...options,
+      ...(serial ? ["--parallel=1"] : []),
       ...files.sort(),
     ],
     { cwd: root, stdin: "inherit", stdout: "inherit", stderr: "inherit", env },
@@ -206,7 +243,6 @@ function recordSuccess(scopes: Map<string, string[]>, pending: string[], group: 
 if (forwarded.includes("--watch")) {
   await Promise.all(groups.map(runGroup))
 } else {
-  const bail = forwarded.some((argument) => argument === "--bail" || argument.startsWith("--bail="))
   for (const group of groups) {
     await runGroup(group)
     if (bail && exitCode) break
