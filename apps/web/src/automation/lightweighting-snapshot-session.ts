@@ -1,7 +1,7 @@
 import { importUploadCommitSchema } from "@vibeshape/automation-api/imports"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import type { CommandActor } from "@vibeshape/domain/commands"
-import { readImportSource } from "../features/import/import-model"
+import { importFormat, readImportSource } from "../features/import/import-model"
 import {
   type LightweightingSource,
   sameLightweightingSource,
@@ -48,13 +48,14 @@ export function createBrowserLightweightingSnapshotSession(
       captured = source
       evidence = reviewEvidence
       try {
+        const sourceUnit = importFormat(filename) === "3mf" ? null : "millimeter"
         const prepared = await readImportSource(
           {
             name: filename,
             size: bytes.byteLength,
             arrayBuffer: async () => Uint8Array.from(bytes).buffer,
           },
-          "millimeter",
+          sourceUnit,
         )
         if (signal.aborted || generation !== epoch)
           return localFailure("import-cancelled", "The snapshot request was cancelled.")
@@ -63,7 +64,7 @@ export function createBrowserLightweightingSnapshotSession(
           {
             prepared,
             revision: source.context.revision,
-            sourceUnit: "millimeter",
+            sourceUnit,
             label,
           },
           signal,

@@ -35,12 +35,16 @@ const preparation = new Map([
 ])
 const python = new Map([
   [
+    "packages/structural-optimization/tests/iterative_fixtures.py",
+    "e2c4c62810251d3311e801b8d8bd8a10d91e418adcc61095dc3ad45815204253",
+  ],
+  [
     "packages/structural-optimization/tests/resource_fixtures.py",
     "7fbb2768e47a8a56668ae3180e91f96adc32a4d4dd1180ae98a4abba5218db54",
   ],
   [
     "packages/structural-optimization/src/solver.py",
-    "f16852650270f51656a4c492baedbbef141517c57b8e53bb9457f2b3537f8e8d",
+    "f190270f7469ed146d288c2fcc00c0ea00c59deb6c571ae14f4182d876845493",
   ],
   [
     "packages/structural-optimization/src/quick-solver.py",
@@ -64,6 +68,10 @@ const python = new Map([
   ],
 ])
 const callers = new Map([
+  [
+    "packages/structural-optimization/tests/wasm-large-elasticity.test.ts",
+    "4be1d991fc98f10295b04c7928c5468683a1f88a2126c601a1bb7e59e53596a7",
+  ],
   [
     "packages/structural-optimization/src/quick-preparation.ts",
     "ff5b84f3afd7f3c28e4fe72bae5443da55e08acf4109400e984cf03a47ea2480",
@@ -98,7 +106,7 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/wasm-solver.test.ts",
-    "24c326ba1b366934a16686d859a1a16ba67818ce950f5cec6b8c8783beb14503",
+    "6fd578e1e779fdee06f9470642bf5d0f899865072fca1d26a163c5af51772728",
   ],
 ])
 

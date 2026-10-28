@@ -7,7 +7,7 @@ import {
 } from "@vibeshape/structural-optimization/client"
 import {
   compactStructuralSourceMesh,
-  encodeStructuralStl,
+  encodeStructuralSnapshot,
 } from "@vibeshape/structural-optimization/mesh"
 import type { LightweightingSource } from "../features/lightweighting/lightweighting-model"
 import { automationReviews } from "./automation-review-controller"
@@ -59,7 +59,7 @@ export function createBrowserLightweightingAutomationSession(
         {
           schemaVersion: 1,
           mesh: compactStructuralSourceMesh({
-            vertices: Array.from(source.body.mesh.positions),
+            vertices: Array.from(source.body.mesh.precisePositions ?? source.body.mesh.positions),
             indices: Array.from(source.body.mesh.indices),
           }),
           ...settings,
@@ -70,12 +70,13 @@ export function createBrowserLightweightingAutomationSession(
       return { summary, payload: mesh }
     },
     async requestSnapshot(actor, source, settings, summary, mesh, label, signal) {
+      const snapshot = encodeStructuralSnapshot(mesh, settings.cellSizeMm)
       return snapshots.request(
         actor,
         source,
         label,
-        encodeStructuralStl(mesh, settings.cellSizeMm),
-        "lightweighted-snapshot.stl",
+        snapshot.bytes,
+        `lightweighted-snapshot.${snapshot.format}`,
         {
           lightweighting: {
             sourceName: source.partName,

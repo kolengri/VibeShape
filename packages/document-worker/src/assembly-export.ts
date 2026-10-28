@@ -37,7 +37,7 @@ function selectedOccurrences(
 function worldMeshes(occurrences: readonly AssemblyMaterializedOccurrence[]) {
   return occurrences.map((source) => ({
     name: `${source.instanceId}:${source.sourceIndex}`,
-    vertices: Array.from(source.mesh.positions),
+    vertices: Array.from(source.mesh.precisePositions ?? source.mesh.positions),
     triangles: Array.from(source.mesh.indices),
   }))
 }

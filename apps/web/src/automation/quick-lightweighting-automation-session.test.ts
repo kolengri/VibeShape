@@ -53,7 +53,7 @@ afterEach(() => {
   vi.resetAllMocks()
   vi.useRealTimers()
 })
-function setup() {
+function setup(capturedMesh?: LightweightingSource["body"]["mesh"]) {
   let sequence = 100
   const inspectedBody = meshInspection.outputs[0]
   if (!inspectedBody) throw new Error("Expected an inspection body fixture.")
@@ -72,7 +72,7 @@ function setup() {
       outputRole: "result",
       representation: "exact-solid",
       shape: { ...inspectedBody.shape, volume: 48, solidCount: 1 },
-      mesh: inspectedBody.mesh,
+      mesh: capturedMesh ?? inspectedBody.mesh,
       topologyCandidates: [],
     },
   }
@@ -120,6 +120,30 @@ describe("browser lightweighting snapshot authority", () => {
       ok: false,
       diagnostic: { code: "runtime-unavailable", message: message.slice(0, 512), retryable: true },
     })
+  })
+  it("captures precise source coordinates without changing captured triangle identity", async () => {
+    const precisePositions = Float64Array.from(mesh.vertices, (value) => value + 0.123456789)
+    const positions = Float32Array.from(precisePositions)
+    const indices = Uint32Array.from(mesh.indices)
+    const triangleFaceIds = new Uint32Array([17, 42, 17, 99])
+    const capturedMesh: LightweightingSource["body"]["mesh"] = {
+      positions,
+      precisePositions,
+      indices,
+      triangleFaceIds,
+      normals: new Float32Array(positions.length),
+    }
+    const test = setup(capturedMesh)
+    expect(await test.session.execute(actor, lightweightingOperation())).toMatchObject({ ok: true })
+    expect(mocks.optimize.mock.calls[0]?.[0].mesh).toEqual({
+      vertices: Array.from(precisePositions),
+      indices: mesh.indices,
+    })
+    expect(mocks.optimize.mock.calls[0]?.[0].mesh.vertices[0]).toBe(0.123456789)
+    expect(capturedMesh.positions).toBe(positions)
+    expect(capturedMesh.indices).toBe(indices)
+    expect(capturedMesh.triangleFaceIds).toBe(triangleFaceIds)
+    expect(test.commit).not.toHaveBeenCalled()
   })
   it.each([
     { code: "serialization-precision", message: "Move the source closer to the origin." },

@@ -146,9 +146,14 @@ some original material before optimization. Baseline-to-candidate saving is sepa
 discretization loss. A finer cell size can improve source approximation while increasing memory use and calculation time. Errors require correcting the physical inputs, regions or resolution; do not weaken
 the user's limits merely to obtain a successful result.
 
+Structural solves use diagonally preconditioned conjugate gradients to avoid sparse-LU
+factorization storage. A `numerical-failure` for non-convergence or equilibrium residual is not
+an `infeasible-baseline` result and supplies no accepted physical metrics. Browser memory is
+still finite; this method does not promise that every requested mesh fits.
+
 When the user authorized creating the result, call `request_lightweighting` with the same complete
 inputs and an English `label`. It computes again against the captured committed body. An improved
-candidate is encoded as a private immutable STL SourceAsset, inspected and shown in the ordinary
+candidate is encoded as a private immutable STL or 3MF SourceAsset, inspected and shown in the ordinary
 browser mesh preview together with the material, constraints, regions and analysis evidence.
 External clients require manual Apply/Reject, including CAD auto-apply sessions. The job remains
 pending while the user reviews it; no caller approval substitutes for browser Apply.
@@ -168,10 +173,13 @@ source identity and physical regions after a stale-source error.
 
 ## Acceptance limits
 
-Binary STL capture is gated before evidence publication: coordinate rounding must stay within one
-millionth of the analysis cell size and the rounded mesh must remain a valid manufacturing solid.
-For `serialization-precision`, move the source closer to the origin or choose coarser cells, then
-recapture its current revision/body/hash. Do not apply rounded geometry against earlier metrics.
+Binary STL capture requires coordinate rounding within one millionth of the analysis cell size,
+relative volume change at most `1e-5`, and a valid rounded manufacturing solid. Structural snapshots
+automatically use exact-coordinate 3MF when STL cannot preserve the analyzed detail. The ordinary
+review and import authority remains unchanged; do not coarsen the user's grid or move the source
+to work around STL precision. The 3MF declares millimeter units and retains precise coordinates
+through rebuild, numerical recapture, assemblies and 3MF export; Float32 coordinates remain for
+display. Explicit binary STL export still has that format's precision limitations.
 
 This is an independent unsmoothed FEM-cell mesh snapshot, not an exact CAD feature or live
 regenerating topology optimization. The bounded material-removal search does not establish a

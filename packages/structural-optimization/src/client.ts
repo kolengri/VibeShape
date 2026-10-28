@@ -11,7 +11,7 @@ import {
 } from "./contract"
 import { StructuralOptimizationError } from "./errors"
 import { invalidInputMessage } from "./input-diagnostics"
-import { encodeStructuralStl } from "./mesh"
+import { encodeStructuralSnapshot } from "./mesh"
 
 export { StructuralOptimizationError } from "./errors"
 
@@ -110,6 +110,24 @@ function modelMetricsMatch(
     (result.status === "improved") === result.finalCellCount < result.initialCellCount
   )
 }
+function meshWithinSourceBounds(
+  input: StructuralOptimizationInput,
+  result: StructuralOptimizationResult,
+) {
+  const minimum = [Infinity, Infinity, Infinity]
+  const maximum = [-Infinity, -Infinity, -Infinity]
+  input.mesh.vertices.forEach((value, index) => {
+    const axis = index % 3
+    minimum[axis] = Math.min(minimum[axis] ?? Infinity, value)
+    maximum[axis] = Math.max(maximum[axis] ?? -Infinity, value)
+  })
+  const tolerance = input.cellSizeMm * 1e-6
+  return result.mesh.vertices.every(
+    (value, index) =>
+      value >= (minimum[index % 3] ?? Infinity) - tolerance &&
+      value <= (maximum[index % 3] ?? -Infinity) + tolerance,
+  )
+}
 function resultMatchesRequest(
   input: StructuralOptimizationInput,
   result: StructuralOptimizationResult,
@@ -117,6 +135,7 @@ function resultMatchesRequest(
   return [
     modelMetricsMatch(input, result),
     cellMetricsMatch(input, result),
+    meshWithinSourceBounds(input, result),
     objectiveMatches(input, result),
     structuralFdmSummaryMatches(result.fdm, input.fdm, input.cellSizeMm),
     structuralAlgorithmSummaryMatches(
@@ -149,7 +168,7 @@ function validateFeasibility(
       "invalid-result",
       "The solver returned inconsistent model metrics.",
     )
-  encodeStructuralStl(result.mesh, input.cellSizeMm)
+  encodeStructuralSnapshot(result.mesh, input.cellSizeMm)
 }
 
 export function optimizeStructuralModel(

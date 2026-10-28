@@ -663,6 +663,46 @@ describe("immutable assembly materialization", () => {
     expect(again.occurrences[0]?.geometry.mesh.positions[0]).toBe(0)
     expect(again.occurrences[0]?.mesh.positions[0]).toBeCloseTo(10)
   })
+  it("owns precise imported mesh coordinates across cache reuse and placed copies", async () => {
+    const input = options(meshFixture())
+    input.document.assembly.instances = input.document.assembly.instances.map((instance) => ({
+      ...instance,
+      worldFrame: { ...pose, translation: [0.01, 0.01, 0.01] },
+    }))
+    const sourcePositions = new Float64Array([132, 0, 0, 132.8, 0, 0, 132, 0.8, 0])
+    let produced: FeatureRebuildState | undefined
+    input.rebuildPinnedModel.mockImplementation(async (snapshot) => {
+      produced = state(snapshot, meshImportOutputRole(id(81)), true)
+      for (const record of produced.geometry) {
+        for (const body of [record.geometry, ...(record.geometry.bodies ?? [])]) {
+          body.mesh = {
+            ...body.mesh,
+            positions: new Float32Array(sourcePositions),
+            precisePositions: sourcePositions.slice(),
+          }
+          body.shape.bounds = { min: [132, 0, 0], max: [132.8, 0.8, 0] }
+        }
+      }
+      return produced
+    })
+    const first = success(await materializeAssembly(input)).occurrences[0]
+    if (!first) throw new Error("Missing precise occurrence")
+    const expected = new Float64Array(Array.from(sourcePositions, (value) => value + 0.01))
+    expect(first.geometry.mesh.precisePositions).toEqual(sourcePositions)
+    expect(first.mesh.precisePositions).toEqual(expected)
+    expect(first.mesh.positions).toEqual(new Float32Array(expected))
+    expect(first.mesh.precisePositions?.[0]).not.toBe(first.mesh.positions[0])
+    expect(first.mesh.precisePositions?.buffer).not.toBe(
+      first.geometry.mesh.precisePositions?.buffer,
+    )
+    produced?.geometry[0]?.geometry.mesh.precisePositions?.fill(999)
+    first.geometry.mesh.precisePositions?.fill(888)
+    first.mesh.precisePositions?.fill(777)
+    const again = success(await materializeAssembly(input)).occurrences[0]
+    expect(again?.geometry.mesh.precisePositions).toEqual(sourcePositions)
+    expect(again?.mesh.precisePositions).toEqual(expected)
+    expect(input.rebuildPinnedModel).toHaveBeenCalledTimes(1)
+  })
   it("rejects stale producer parameters, revisions and hashes without a partial occurrence result", async () => {
     for (const failure of ["revision", "parameters", "hash"] as const) {
       const input = options()

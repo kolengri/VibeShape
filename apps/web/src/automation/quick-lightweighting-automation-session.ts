@@ -55,7 +55,7 @@ export function createBrowserQuickLightweightingAutomationSession(
         {
           schemaVersion: 1,
           mesh: {
-            vertices: Array.from(source.body.mesh.positions),
+            vertices: Array.from(source.body.mesh.precisePositions ?? source.body.mesh.positions),
             indices: Array.from(source.body.mesh.indices),
           },
           ...settings,

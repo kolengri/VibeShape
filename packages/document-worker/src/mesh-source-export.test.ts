@@ -100,6 +100,22 @@ function textureOptions(value: ModelBodyGeometry, enabled = true) {
 beforeEach(() => vi.mocked(terminalBodyGeometry).mockReturnValue([exact, mesh]))
 
 describe("mixed exact and imported mesh export", () => {
+  it("exports imported mesh doubles instead of their display-rounded coordinates", async () => {
+    const precisePositions = new Float64Array([132.01, 0, 0, 132.81, 0, 0, 132.01, 0.8, 0])
+    const precise = {
+      ...mesh,
+      mesh: { ...mesh.mesh, positions: new Float32Array(precisePositions), precisePositions },
+    }
+    vi.mocked(terminalBodyGeometry).mockReturnValue([precise])
+    const result = await collectDocumentPrintMeshes(
+      new ReplicadGeometryEngine(),
+      state.documentId,
+      state,
+      [selection(precise)],
+    )
+    expect(result.meshes[0]?.vertices).toEqual(Array.from(precisePositions))
+    expect(result.meshes[0]?.vertices[0]).not.toBe(precise.mesh.positions[0])
+  })
   it("forwards relief options only with exact native selections and retains authored selection order", async () => {
     const engine = new ReplicadGeometryEngine()
     const nativeMesh = {

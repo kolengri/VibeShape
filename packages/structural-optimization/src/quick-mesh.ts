@@ -1,5 +1,6 @@
 import { writeStlMeshes } from "@vibeshape/formats/stl-meshes"
 import { threeMfModelMeshSchema } from "@vibeshape/formats/three-mf"
+import { signedMeshVolume } from "./mesh-volume"
 import { quickLightweightingMeshSchema } from "./quick-contract"
 import { QuickLightweightingError } from "./quick-errors"
 
@@ -44,20 +45,7 @@ function snapshotTopology(mesh: Mesh, cellSizeMm: number) {
 
 /** Signed tetrahedral volume; translating to the first vertex avoids large-origin cancellation. */
 export function signedQuickMeshVolume(mesh: Mesh): number {
-  const origin = mesh.vertices.slice(0, 3)
-  const point = (vertex: number | undefined): [number, number, number] => {
-    const offset = (vertex ?? Number.NaN) * 3
-    const coordinate = (axis: number) =>
-      (mesh.vertices[offset + axis] ?? Number.NaN) - (origin[axis] ?? Number.NaN)
-    return [coordinate(0), coordinate(1), coordinate(2)]
-  }
-  let volume = 0
-  for (let index = 0; index < mesh.indices.length; index += 3) {
-    const [ax, ay, az] = point(mesh.indices[index])
-    const [bx, by, bz] = point(mesh.indices[index + 1])
-    const [cx, cy, cz] = point(mesh.indices[index + 2])
-    volume += (ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx)) / 6
-  }
+  const volume = signedMeshVolume(mesh)
   if (!Number.isFinite(volume))
     throw new QuickLightweightingError("invalid-result", "The generated mesh volume is not finite.")
   return volume

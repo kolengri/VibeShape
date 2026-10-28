@@ -148,6 +148,7 @@ See also [ADR-0135: CAD execution without default deadlines](0135-cad-execution-
 See also [ADR-0136: Native Codex project tool deadline](0136-native-codex-project-tool-deadline.md).
 See also [ADR-0137: Browser-owned numerical jobs](0137-browser-owned-numerical-jobs.md).
 See also [ADR-0138: Native numerical completion events](0138-native-numerical-completion-events.md).
+See also [ADR-0139: Precise imported mesh coordinates](0139-precise-imported-mesh-coordinates.md).
 
 Statuses:
 

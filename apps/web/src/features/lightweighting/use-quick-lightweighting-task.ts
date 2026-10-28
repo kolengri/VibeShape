@@ -42,7 +42,7 @@ type Copy = {
 
 function samplingSize(source: LightweightingSource, detail: number) {
   // Kernel bounds include tolerance padding; sample the captured mesh extent itself.
-  const positions = source.body.mesh.positions
+  const positions = source.body.mesh.precisePositions ?? source.body.mesh.positions
   const spans = [0, 1, 2].map((axis) => {
     let min = Number.POSITIVE_INFINITY
     let max = Number.NEGATIVE_INFINITY
@@ -68,7 +68,7 @@ function quickGenerationInput(source: LightweightingSource | null, settings: Set
   return {
     schemaVersion: 1 as const,
     mesh: {
-      vertices: Array.from(source.body.mesh.positions),
+      vertices: Array.from(source.body.mesh.precisePositions ?? source.body.mesh.positions),
       indices: Array.from(source.body.mesh.indices),
     },
     mode: settings.mode,
@@ -108,7 +108,11 @@ async function prepareQuickPreview(
     source,
     current,
     "organic",
-    encodeQuickLightweightingStl,
+    (mesh, cellSizeMm) => ({
+      bytes: encodeQuickLightweightingStl(mesh, cellSizeMm),
+      format: "stl",
+      mediaType: "model/stl",
+    }),
   )
   return prepared && current() ? { ...prepared, source, result } : null
 }

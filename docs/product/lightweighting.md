@@ -84,14 +84,21 @@ nearest surface. Empty or undersized mappings fail explicitly. Legacy box select
 original strict node/facet/cell semantics and never snap to a nearby surface.
 
 The solver certifies cubic cells inside the source, checks connected manifold boundaries, assembles
-full-solid linear isotropic Hex1 elasticity through scikit-fem, and solves with SciPy. Each candidate
+full-solid linear isotropic Hex1 elasticity through scikit-fem, and solves with SciPy's
+diagonally preconditioned conjugate-gradient method. This avoids the additional sparse-LU
+factorization storage; assembly, mesh and field arrays still consume finite browser memory.
+Non-convergence is a numerical failure, and the original assembled equilibrium residual must
+independently satisfy its relative tolerance of `1e-8` before metrics are accepted. Each candidate
 must satisfy every load case. Stress is unaveraged and evaluated at quadrature points and all eight
 element corners. The final candidate receives a repeated solve and exports the exact analyzed cell
-surface without smoothing. The schema and strict 3MF manufacturing validator independently gate
-the captured STL import. Before any result publication or capture, float32 STL coordinates must
-round by no more than one millionth of the analysis cell size, and the rounded solid passes the
-strict manufacturing validator. Excessive rounding fails with `serialization-precision`; move
-the source closer to the origin or choose coarser cells instead of importing a distorted solid.
+surface without smoothing. Snapshot encoding uses binary STL when coordinate rounding stays
+within one millionth of the analysis cell size, volume changes by at most `1e-5` relative, and
+the rounded solid passes the strict manufacturing validator. When STL cannot preserve the
+analyzed detail, the same import workflow captures a 3MF with the original double coordinates
+and declared millimeter units. It does not move the source or change the requested cell size.
+Imported precise coordinates survive numerical recapture, previews, assembly transforms, cache
+copies and 3MF export alongside the Float32 display mesh. See
+[ADR-0139](../adr/0139-precise-imported-mesh-coordinates.md).
 
 ## Output and lifecycle
 

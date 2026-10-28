@@ -497,7 +497,7 @@ describe("bounded structural worker client", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" })
     expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
   })
-  it.each(["stress", "case", "cells", "mesh", "precision"])(
+  it.each(["stress", "case", "cells", "mesh", "bounds"])(
     "rejects a forged %s result",
     async (kind) => {
       const pending = optimizeStructuralModel(input, options)
@@ -510,17 +510,37 @@ describe("bounded structural worker client", () => {
       }
       if (kind === "cells") invalid.finalCellCount = 41
       if (kind === "mesh") invalid.mesh.indices.splice(0, 3)
-      if (kind === "precision")
+      if (kind === "bounds")
         invalid.mesh.vertices = invalid.mesh.vertices.map(
           (value, index) => value + (index % 3 === 0 ? 10000.0004 : 0),
         )
       FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: invalid } })
       await expect(pending).rejects.toMatchObject({
-        code: kind === "precision" ? "serialization-precision" : "invalid-result",
+        code: "invalid-result",
       })
       expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
     },
   )
+  it("accepts a matching translated source through exact 3MF validation", async () => {
+    const translated = structuredClone(input)
+    const shift = 10000.0004
+    const coordinate = (value: number, index: number) => value + (index % 3 === 0 ? shift : 0)
+    translated.mesh.vertices = translated.mesh.vertices.map(coordinate)
+    translated.supports = [{ min: [-5 + shift, -1, -1], max: [-5 + shift, 1, 1] }]
+    translated.loadCases = [
+      {
+        name: "axial",
+        region: { min: [5 + shift, -1, -1], max: [5 + shift, 1, 1] },
+        forceN: [10, 0, 0],
+      },
+    ]
+    const output = result()
+    output.mesh.vertices = output.mesh.vertices.map(coordinate)
+    const pending = optimizeStructuralModel(translated, options)
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+    await expect(pending).resolves.toEqual(output)
+    expect(FakeWorker.instance.terminate).toHaveBeenCalledTimes(1)
+  })
   it.each([
     { code: "infeasible-baseline", message: "Baseline exceeds limits." },
     {

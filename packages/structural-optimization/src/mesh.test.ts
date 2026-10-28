@@ -1,7 +1,8 @@
 import { expect, it } from "bun:test"
+import { parseGeometryImport } from "@vibeshape/formats/import"
 import { denseBoxMesh } from "../tests/dense-box-fixture"
 import { type StructuralOptimizationInput, structuralOptimizationInputSchema } from "./contract"
-import { compactStructuralSourceMesh, encodeStructuralStl } from "./mesh"
+import { compactStructuralSourceMesh, encodeStructuralSnapshot, encodeStructuralStl } from "./mesh"
 
 function box(offset = 0, scale = 1) {
   return {
@@ -110,4 +111,49 @@ it("rejects an unknown cell resolution instead of inventing a serialization tole
   expect(() => encodeStructuralStl(box(), Number.NaN)).toThrow(
     expect.objectContaining({ code: "serialization-precision" }),
   )
+})
+
+it("retains STL when its existing coordinate and volume checks pass", () => {
+  const snapshot = encodeStructuralSnapshot(box(), 1)
+  expect(snapshot.format).toBe("stl")
+  expect(snapshot.mediaType).toBe("model/stl")
+  expect(snapshot.bytes).toEqual(encodeStructuralStl(box(), 1))
+})
+
+it.each([
+  [132.8, 0.8],
+  [10_000, 0.01],
+])(
+  "preserves exact analyzed coordinates through 3MF at offset %s and cell size %s",
+  async (offset, cellSize) => {
+    const mesh = box(offset, cellSize)
+    const before = structuredClone(mesh)
+    expect(() => encodeStructuralStl(mesh, cellSize)).toThrow(
+      expect.objectContaining({ code: "serialization-precision" }),
+    )
+    const snapshot = encodeStructuralSnapshot(mesh, cellSize)
+    expect(snapshot.format).toBe("3mf")
+    expect(snapshot.mediaType).toBe("model/3mf")
+    const imported = await parseGeometryImport({ format: "3mf", bytes: snapshot.bytes })
+    if (!imported.ok) throw new Error(imported.diagnostic.message)
+    if (imported.geometry.kind !== "triangle-mesh") throw new Error("Expected triangle geometry.")
+    expect(imported.geometry.meshes[0]?.vertices.flat()).toEqual(mesh.vertices)
+    expect(imported.geometry.meshes[0]?.triangles.flat()).toEqual(mesh.indices)
+    expect(mesh).toEqual(before)
+  },
+)
+
+it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1])(
+  "does not hide an invalid resolution %s behind the 3MF fallback",
+  (cellSize) => {
+    expect(() => encodeStructuralSnapshot(box(10_000, 0.01), cellSize)).toThrow(
+      expect.objectContaining({ code: "serialization-precision" }),
+    )
+  },
+)
+
+it("validates the exact fallback mesh instead of publishing malformed geometry", () => {
+  const mesh = box(10_000, 0.01)
+  mesh.indices.splice(0, 3)
+  expect(() => encodeStructuralSnapshot(mesh, 0.01)).toThrow()
 })

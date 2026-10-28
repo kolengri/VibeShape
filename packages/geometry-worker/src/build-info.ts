@@ -6,7 +6,7 @@ export const GEOMETRY_KERNEL_ID = "org.opencascade.occt"
 
 const isControlledBuild = import.meta.env.MODE === "controlled-occt"
 
-export const GEOMETRY_ADAPTER_VERSION = isControlledBuild ? "spike-controlled-1" : "spike-2"
+export const GEOMETRY_ADAPTER_VERSION = isControlledBuild ? "spike-controlled-2" : "spike-3"
 export const REPLICAD_VERSION = "0.23.1"
 export const REPLICAD_OPENCASCADE_VERSION = isControlledBuild
   ? `controlled-${CONTROLLED_OCCT_SOURCE_REVISION.slice(0, 12)}`

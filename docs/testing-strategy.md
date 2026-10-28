@@ -14,6 +14,27 @@ check that reported material matches the exported solid. Additional native pytes
 topology, conservative containment, preservation, resource bounds, and numerical failures; these
 are supplementary local evidence, not substitutes for the WASM suite. UI/worker/MCP tests cover
 cancel, stale source/revision, review rejection, and one append-only atomic import transaction.
+
+Iterative elasticity fixtures compare full displacement, unaveraged stress, compliance and
+cell fields against an independent sparse direct solve for 3D bending/torsion, two loads,
+Poisson ratios 0.35/0.45 and SIMP modulus contrast through `1e-6`. They reject non-convergence,
+non-finite output and a falsely converged answer that violates equilibrium. A compact analytical
+solid prohibits direct-factorization fallback. `wasm-large-elasticity.test.ts` uses a fresh pinned
+runtime for 44,100 generated full-solid cells (139,860 free unknowns), checking analytical stress,
+displacement, compliance, volume and energy through the production assembly/solve/field path.
+This covers the fine-grid system scale without embedding a private user model; captured-model
+replays remain additional local evidence.
+
+Decimal-grid fixtures exercise full FEM and snapshot encoding at 0.8 mm near x=132 mm and
+0.01 mm near x=10,000 mm. Exact 3MF coordinates must survive import, rebuilt payloads, disposable
+copies, worker transfers, assembly transforms and export; Float32 display values must agree with
+rounding of the retained doubles. Malformed sidecars and forged out-of-source numerical results
+remain rejected. Snapshot UI/MCP tests verify declared 3MF units and the ordinary reviewed import
+transaction instead of substituting encoded bytes into an STL-only test double.
+`tests/e2e/structural-precision.spec.ts` runs the real numerical browser worker and verifies
+exact computed coordinates through 3MF generation, UI import, Undo/Redo, reload, native backup
+reopen and repeated 3MF export.
+
 Generative Design adds bounded study settings, sequential worker disposal, material/target binding,
 Pareto and duplicate-geometry behavior, and candidate switching without reanalysis. Shared keep-out
 fixtures run inside the same pinned WASM corpus and assert protected-cell conflicts, conservative

@@ -9,6 +9,8 @@ from pathlib import Path
 
 from implicit_fixtures import (implicit_request, verify_simp_search, verify_penalized_fem_and_sensitivity,
                                verify_lattice_search, verify_implicit_failures, verify_implicit_constraints)
+from iterative_fixtures import (verify_iterative_compact_analytical_solve, verify_iterative_direct_reference,
+                                verify_iterative_failure, verify_iterative_invalid_stiffness)
 
 import numpy as np
 import pytest
@@ -54,6 +56,26 @@ def request_for_box(iterations=0):
 def output_mesh(result):
     return trimesh.Trimesh(np.array(result["mesh"]["vertices"]).reshape(-1, 3),
                            np.array(result["mesh"]["indices"]).reshape(-1, 3), process=False)
+
+
+@pytest.mark.parametrize("poisson", [0.35, 0.45])
+@pytest.mark.parametrize("varied", [False, True])
+def test_iterative_3d_bending_and_torsion_matches_direct_reference(poisson, varied):
+    verify_iterative_direct_reference(solver, poisson, varied)
+
+
+@pytest.mark.parametrize("failure", ["iteration-limit", "breakdown", "nonfinite", "false-convergence"])
+def test_iterative_failures_never_publish_a_numerical_result(failure):
+    verify_iterative_failure(solver, failure)
+
+
+def test_nonfinite_and_nonpositive_assembled_stiffness_is_rejected():
+    verify_iterative_invalid_stiffness(solver)
+
+
+def test_compact_3d_analytical_solid_avoids_direct_sparse_factorization():
+    result = verify_iterative_compact_analytical_solve(solver)
+    assert output_mesh(result).volume == pytest.approx(1536)
 
 
 @pytest.mark.parametrize("verify", [verify_closed_obstacle_contact, verify_invalid_obstacle_boxes,

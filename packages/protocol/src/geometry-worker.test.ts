@@ -1111,6 +1111,34 @@ describe("geometry worker protocol", () => {
     expect(response.exchange.stepFile).toBeInstanceOf(Uint8Array)
     expect(response.exchange.stepBytes).toBe(response.exchange.stepFile.byteLength)
 
+    const precisePositions = new Float64Array([132.01, 0, -0])
+    const mesh = {
+      ...response.mesh,
+      positions: new Float32Array(precisePositions),
+      precisePositions,
+    }
+    expect(geometryWorkerResponseSchema.safeParse({ ...response, mesh }).success).toBe(true)
+    for (const invalid of [
+      new Float32Array(precisePositions),
+      new Float64Array([132.01, 0]),
+      new Float64Array([132.02, 0, 0]),
+      new Float64Array([Number.NaN, 0, 0]),
+      new Float64Array([Number.POSITIVE_INFINITY, 0, 0]),
+      new Float64Array([Number.MAX_VALUE, 0, 0]),
+    ])
+      expect(
+        geometryWorkerResponseSchema.safeParse({
+          ...response,
+          mesh: { ...mesh, precisePositions: invalid },
+        }).success,
+      ).toBe(false)
+    expect(
+      geometryWorkerResponseSchema.safeParse({
+        ...response,
+        mesh: { ...mesh, precisePositions: new Float64Array([132.01, -0, 0]) },
+      }).success,
+    ).toBe(true)
+
     expect(
       geometryWorkerResponseSchema.safeParse({
         ...response,

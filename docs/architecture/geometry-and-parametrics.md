@@ -539,6 +539,13 @@ Document worker protocol v26 adds optional bounded mesh quality to geometry expo
 The separate numerical worker analyzes conservative full-solid hexahedral cells from a pristine
 source tessellation. Loads/supports are frozen to baseline geometry, candidate removal is gated by
 every supplied constraint, and the final exported surface is exactly the repeated analyzed solid.
+The constrained elasticity system uses SciPy conjugate gradients with diagonal preconditioning
+instead of sparse LU factorization. Convergence status, finite displacement and the independent
+original-system equilibrium residual gate acceptance for both relaxed SIMP and full-solid solves.
+FEM assembly translates its mesh to a local origin to keep inverse facet mapping accurate for
+small cells at large world coordinates; returned surfaces retain their original placement.
+The shared [precise mesh contract](../adr/0139-precise-imported-mesh-coordinates.md) preserves
+analyzed double coordinates through 3MF snapshots when binary STL rounding is unsuitable.
 It introduces no B-Rep feature or new computation authority. Numerical work has no fixed
 resource rejection ceiling; ordinary validated local mesh import owns result persistence under
 [ADR-0134](../adr/0134-local-geometry-resource-policy.md). See

@@ -178,6 +178,7 @@ function transferablesFor(response: DocumentWorkerResponse) {
       ...response.geometry.flatMap(({ geometry }) =>
         [geometry.mesh, ...(geometry.bodies ?? []).map(({ mesh }) => mesh)].flatMap((mesh) => [
           mesh.positions.buffer as ArrayBuffer,
+          ...(mesh.precisePositions ? [mesh.precisePositions.buffer as ArrayBuffer] : []),
           mesh.normals.buffer as ArrayBuffer,
           mesh.indices.buffer as ArrayBuffer,
           mesh.triangleFaceIds.buffer as ArrayBuffer,
