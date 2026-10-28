@@ -250,6 +250,11 @@ Sampling uses the existing `three-mesh-bvh` nearest-surface and ray queries in n
 coordinates. Ambiguous ray hits fall back to the pinned Trimesh calculation in adaptive scratch
 batches. The worker releases its sampling index after preparation; final containment, skin,
 connectivity and serialization validation remain independent of the accelerated sampling path.
+Dense envelope and lattice fields cross the Python/JavaScript boundary as owned float64 buffers;
+only grid metadata uses JSON. This avoids the JavaScript single-string ceiling without reducing
+sampling detail or precision. Buffer views and proxies are released after copying and validating
+finite samples and grid dimensions. Invalid JSON diagnostics identify the response kind and its
+UTF-16 length without including captured geometry.
 Quick validates cavity or organic-surface containment and retained skin against the rounded captured
 exterior using the actual float32 coordinates written to binary STL. It checks serialized shell
 winding, positive material volume and removal, collapsed triangles, nonmanifold edges and invalid

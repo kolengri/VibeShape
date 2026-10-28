@@ -65,6 +65,9 @@ distinguishes an upper bound from the maximum sampled clearance and includes the
 and sampling margin. An inconclusive bound proceeds with normal generation. Finer detail may
 resolve the sampling margin while keeping the agreed physical skin and lattice period; do not
 reduce the skin or promise the requested removal percentage without the user's authorization.
+The numerical grid uses float64 buffers rather than one large JSON response. If a remaining
+runtime response fails JSON validation, its diagnostic names the response and UTF-16 length;
+retain that evidence instead of changing the agreed sampling detail to bypass a transport failure.
 
 When creating the result is authorized, call `request_quick_lightweighting` with the same complete
 inputs and an English `label`. It computes against the captured source and privately stages an

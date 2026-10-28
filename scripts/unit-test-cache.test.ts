@@ -105,6 +105,7 @@ function runtimeFixture() {
         "quick-errors",
         "quick-generation",
         "quick-isosurface",
+        "quick-preparation",
         "quick-sampling",
         "runtime-diagnostics",
       ],

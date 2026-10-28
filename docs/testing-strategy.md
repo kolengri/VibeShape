@@ -46,6 +46,9 @@ the former result budgets. Isosurface extraction separately checks complete fini
 Quick sampling additionally compares BVH distances with pinned Trimesh on closed boxes and
 annular solids, including surface points, concavities and exterior samples. Ambiguous-sign
 fallback retains adaptive scratch batches; proven insufficient clearance rejects before sampling.
+Grid-transfer regressions prohibit JSON serialization of numerical fields, compare float64 values,
+retain owned arrays after Python mutation, and check view/proxy cleanup after malformed dimensions
+or dtypes. JSON diagnostics retain response kind and length without echoing geometry.
 `tests/desktop/numerical-runtime.spec.ts` additionally runs the built SIMP and Schwarz P workers
 through the desktop static HTTP host, including real module/WASM/wheel loading under production
 headers and a missing-module diagnostic regression. Build the editor before this suite; Vite-only

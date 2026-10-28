@@ -10,6 +10,7 @@ import {
   quickLightweightingResponseSchema,
 } from "../src/quick-contract"
 import { generateValidatedQuickLightweighting } from "../src/quick-generation"
+import { prepareQuickGrid } from "../src/quick-preparation"
 import { createQuickSampling } from "../src/quick-sampling"
 
 export const timeout = 120_000
@@ -42,17 +43,12 @@ export function createQuickWasmHarness(accelerated = true) {
           return sampling.sample(points)
         },
       )
-    let raw: unknown
     try {
-      raw = await runtime.runPythonAsync("prepare_quick_json(_quick_request_json)")
+      return await prepareQuickGrid(runtime)
     } finally {
       runtime.runPython("_QUICK_SAMPLE = None")
       sampling?.dispose()
     }
-    if (typeof raw !== "string") throw new Error("Preparation must return JSON.")
-    const prepared: { ok: boolean; grid?: unknown; error?: { code: string; message: string } } =
-      JSON.parse(raw)
-    return prepared
   }
 
   async function run(request: QuickLightweightingInput, inspectGrid?: (grid: unknown) => void) {

@@ -256,19 +256,28 @@ def _prepare(request):
     return context
 
 
-def prepare_quick_json(request_json):
+def prepare_quick_grid_json(request_json):
     global _QUICK_CONTEXT
+    _QUICK_CONTEXT = None
     try:
         _QUICK_CONTEXT = _prepare(json.loads(request_json))
         context = _QUICK_CONTEXT
         return json.dumps({"ok": True, "grid": {
-            "resolution": context["resolution"], "envelope": context["envelope"].tolist(),
-            "lattice": context["lattice"].tolist(), "sourceVolumeCells": context["source"].volume,
+            "resolution": context["resolution"], "sourceVolumeCells": context["source"].volume,
             "thresholdMin": context["thresholdMin"], "thresholdMax": context["thresholdMax"],
         }}, allow_nan=False)
     except QuickError as error:
         _QUICK_CONTEXT = None
         return json.dumps({"ok": False, "error": {"code": error.code, "message": str(error)}})
+
+
+def prepare_quick_json(request_json):
+    """Retain the JSON interchange helper for small standalone Python callers."""
+    prepared = json.loads(prepare_quick_grid_json(request_json))
+    if prepared["ok"]:
+        prepared["grid"].update({"envelope": _QUICK_CONTEXT["envelope"].tolist(),
+                                 "lattice": _QUICK_CONTEXT["lattice"].tolist()})
+    return json.dumps(prepared, allow_nan=False)
 
 
 def _finish(candidate):
