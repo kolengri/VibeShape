@@ -183,6 +183,25 @@ beforeAll(async () => {
 
 describe("pinned Pyodide full-solid structural solver", () => {
   it(
+    "preserves inclusive ray bounds and strict boundary-cell contact",
+    async () => {
+      await runtime.runPythonAsync("verify_triangle_query_bounds(_surface_test_solver)")
+    },
+    timeout,
+  )
+
+  it(
+    "retains the exact reference voxels for curved, rotated and cavity sources",
+    async () => {
+      const counts = await runtime.runPythonAsync(
+        "json.dumps(verify_voxel_filter_equivalence(_surface_test_solver))",
+      )
+      expect(JSON.parse(String(counts))).toHaveLength(5)
+    },
+    timeout,
+  )
+
+  it(
     "solves more than three thousand cells and five thousand nodes with analytical elasticity",
     async () => {
       const raw = await runtime.runPythonAsync(

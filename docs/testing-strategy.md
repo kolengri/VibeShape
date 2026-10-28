@@ -28,7 +28,11 @@ SIMP fixtures additionally check penalized stiffness, finite-difference complian
 filtered updates, protected cells, and unattainable binary targets. Adaptive fixtures cover all
 three TPMS families, both FEM fields, exterior skin, resolved occupied-cube bounds, and final
 full-solid feasibility. Cavity tests distinguish inward void shells from disconnected or nested
-material. These run natively and in the pinned WASM corpus. The browser smoke in
+material. AABB-filter regressions retain inclusive ray-query contact and strict boundary-cell
+contact on every axis, compare randomized triangle sets against the row-reduction reference,
+and require identical retained voxels for rotated, curved and cavity sources. A two-load baseline
+also retains identical physical metrics and output geometry. These run in the pinned WASM corpus.
+The other numerical fixtures run natively and in WASM. The browser smoke in
 `tests/e2e/structural-optimization.spec.ts` exercises real worker loading, both methods,
 cancellation/restart, task controls, and compact layout. Dense closed-source fixtures cross the
 former 10,000-vertex/20,000-triangle thresholds at fixed FEM and Quick sampling resolution, including
