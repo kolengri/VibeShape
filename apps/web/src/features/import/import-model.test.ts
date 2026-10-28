@@ -76,6 +76,25 @@ describe("captured exact source authoring", () => {
     expect(result.commands.map(({ baseRevision }) => baseRevision)).toEqual([7, 8, 9])
     expect(result.assetBlobs).toHaveLength(1)
   })
+  it("imports another candidate from an already hidden source without a rejected visibility no-op", async () => {
+    let ordinal = 100
+    const prepared = await readExactSource(sourceFile(), "millimeter")
+    const result = createImportTransaction(
+      { ...context, authorityVersion: 4, hiddenPartIds: [id(90)] },
+      prepared,
+      inspection,
+      "Second candidate",
+      () => id(ordinal++),
+      undefined,
+      id(90),
+    )
+    expect(result.commands.map(({ kind }) => kind)).toEqual([
+      "org.vibeshape.document.add-source-assets",
+      "org.vibeshape.history.insert-feature",
+    ])
+    expect(result.commands.map(({ baseRevision }) => baseRevision)).toEqual([7, 8])
+    expect(result.assetBlobs).toHaveLength(1)
+  })
   it.each(importSourceUnits.map((unit) => ({ unit })))(
     "hashes immutable bytes and records explicit %s metadata without a second STEP transform",
     async ({ unit }) => {

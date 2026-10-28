@@ -141,6 +141,7 @@ export function lightweightingSource(
       documentId: report.snapshot.id,
       revision: report.snapshot.revision,
       authorityVersion: authority.schemaVersion,
+      hiddenPartIds: authority.parts.filter((part) => !part.visible).map(({ id }) => id),
       historyAfter:
         scoped !== controller
           ? historyCreationAfter(scoped)

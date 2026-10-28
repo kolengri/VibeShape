@@ -84,6 +84,11 @@ changed revision/body/hash or rejected/expired review prevents mutation. Once at
 has accepted the transaction, cancellation must report its actual saved outcome. Do not retry an
 uncertain successful Apply blindly. Re-read source identity after a stale-source error.
 
+For `persistence-failed`, retain the complete bounded diagnostic: its message includes the
+underlying storage code/message or the thrown exception's name/message when available. Inspect
+the committed revision and Parts before retrying; unchanged generation settings cannot repair
+a storage failure. A generated candidate alone does not establish a saved result.
+
 ## Acceptance limits
 
 STL rounding is checked before evidence publication and import inspection validates the saved
@@ -96,4 +101,6 @@ Export or back up a committed result only when requested, through
 
 Apply keeps the editable source in the Parts tree and hides it in the same atomic transaction
 as the new mesh, preventing it from covering the result. One Undo removes the mesh and restores
-the source visibility. Show the source again through its normal visibility control when needed.
+the source's prior visibility. An already hidden exact source remains eligible for another
+candidate; saving skips the redundant visibility command. Show the source again through its
+normal visibility control when needed.
