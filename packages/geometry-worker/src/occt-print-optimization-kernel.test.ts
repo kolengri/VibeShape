@@ -3,7 +3,6 @@ import type { PrintOptimizationReconstructionInput } from "@vibeshape/protocol"
 import { measureArea, measureVolume, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
 import { vi } from "../../../tests/unit/support/bun-test"
-import { getWasmHeapBytes } from "./memory-profile"
 import { copyOcctAssemblySource } from "./occt-assembly-pose"
 import { inspectOcctBody } from "./occt-body-validation"
 import { adoptOcctShape, castOcctShape } from "./occt-cast"
@@ -490,18 +489,50 @@ describe("disposable exact print reconstruction over the pinned OCCT kernel", ()
     const source = createOcctBox(occt, [16, 8, 8], false, [8, -4, 0])
     const input = endPatchRequest()
     const statistics = Reflect.get(occt, "VibeShapeAllocatorStats")
-    const allocated = () =>
-      statistics
-        ? Number(Reflect.apply(statistics.AllocatedBytes, statistics, []))
-        : getWasmHeapBytes(occt)
+    const allocated = () => Number(Reflect.apply(statistics.AllocatedBytes, statistics, []))
+    const owned = new Set<object>()
+    const face = occt.TopoDS.Face_1
+    const load = occt.BRepExtrema_DistShapeShape.prototype.LoadS1
+    const perform = occt.BRepExtrema_DistShapeShape.prototype.Perform
+    let failDistance = false
+    const faceSpy = vi.spyOn(occt.TopoDS, "Face_1").mockImplementation((shape) => {
+      const result = face(shape)
+      owned.add(result)
+      return result
+    })
+    const loadSpy = vi
+      .spyOn(occt.BRepExtrema_DistShapeShape.prototype, "LoadS1")
+      .mockImplementation(function (this: object, shape: Parameters<typeof load>[0]) {
+        owned.add(this)
+        owned.add(shape)
+        return Reflect.apply(load, this, [shape])
+      })
+    const performSpy = vi
+      .spyOn(occt.BRepExtrema_DistShapeShape.prototype, "Perform")
+      .mockImplementation(function (this: object, progress: Parameters<typeof perform>[0]) {
+        owned.add(progress)
+        if (failDistance) throw new Error("Injected native boundary distance failure.")
+        return Reflect.apply(perform, this, [progress])
+      })
+    const expectReleased = () => {
+      expect(owned.size).toBeGreaterThan(0)
+      for (const handle of owned)
+        expect(Reflect.apply(Reflect.get(handle, "isDeleted"), handle, [])).toBe(true)
+      owned.clear()
+    }
     try {
+      if (controlledPackage) expect(statistics).toBeDefined()
       const first = reconstructOcctPrintOptimization(occt, source, input)
+      expectReleased()
       expect(first.sourceVolumeMm3 - first.volumeMm3).toBeCloseTo(8, 7)
-      for (let iteration = 0; iteration < 3; iteration++)
+      for (let iteration = 0; iteration < 3; iteration++) {
         reconstructOcctPrintOptimization(occt, source, input)
-      const before = allocated()
+        expectReleased()
+      }
+      const before = statistics ? allocated() : null
       for (let iteration = 0; iteration < 8; iteration++) {
         const next = reconstructOcctPrintOptimization(occt, source, input)
+        expectReleased()
         expect(next.volumeMm3).toBeCloseTo(first.volumeMm3, 8)
         expect(() =>
           reconstructOcctPrintOptimization(occt, source, {
@@ -509,23 +540,25 @@ describe("disposable exact print reconstruction over the pinned OCCT kernel", ()
             preserveFaceIds: [2_147_483_646],
           }),
         ).toThrow("stale")
-        const distance = vi
-          .spyOn(occt.BRepExtrema_DistShapeShape.prototype, "Perform")
-          .mockImplementationOnce(() => {
-            throw new Error("Injected native boundary distance failure.")
-          })
+        expectReleased()
+        failDistance = true
         try {
           expect(() => reconstructOcctPrintOptimization(occt, source, input)).toThrow(
             "Injected native boundary distance failure",
           )
+          expectReleased()
         } finally {
-          distance.mockRestore()
+          failDistance = false
         }
       }
-      if (controlledPackage) expect(statistics).toBeDefined()
-      expect(allocated() - before).toBeLessThanOrEqual(statistics ? 1_024 : 0)
+      // Stock bindings have no-op topology destructors; heap capacity cannot prove reclamation.
+      // The patched release kernel must still satisfy the live-allocation ownership gate.
+      if (before !== null) expect(allocated() - before).toBeLessThanOrEqual(1_024)
       expect(measureVolume(source)).toBeCloseTo(1024, 7)
     } finally {
+      performSpy.mockRestore()
+      loadSpy.mockRestore()
+      faceSpy.mockRestore()
       source.delete()
     }
   }, 60_000)

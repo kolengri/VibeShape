@@ -21,8 +21,10 @@ explicit baseline-energy projection evidence, and retain the original per-case a
 
 Exact reconstruction fixtures preserve native selected-face identity, retain a cylindrical hole's
 radius through STEP round-trip, restore inclined print frames and reject stale identities,
-disconnected solids and unchanged material. Repeated success/failure operations check native
-allocation ownership. Snapshot tests reanalyze the reconstructed mesh on the original lattice
+disconnected solids and unchanged material. Repeated success/failure operations check application
+handle disposal in both kernels and live native allocations in the patched, instrumented release
+kernel. Stock bindings have known no-op topology destructors; WASM heap capacity is not a native
+reclamation metric. Snapshot tests reanalyze the reconstructed mesh on the original lattice
 phase and compare every load case against the original source baseline before inspecting STEP.
 The automatic-print browser flow exercises real numerical and geometry workers, a preserved
 face, exact import and atomic Apply/Undo/Redo. These are computational and application checks;
