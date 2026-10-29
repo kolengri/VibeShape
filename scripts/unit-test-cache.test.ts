@@ -124,6 +124,8 @@ function runtimeFixture() {
     "packages/structural-optimization/tests/implicit_fixtures.py",
     "packages/structural-optimization/tests/resource_fixtures.py",
     "packages/structural-optimization/tests/iterative_fixtures.py",
+    "packages/structural-optimization/tests/compound_relative_fixtures.py",
+    "packages/structural-optimization/tests/boundary_reference_fixtures.py",
   ]
   for (const path of producers)
     repo.write(path, readFileSync(join(import.meta.dir, "..", path), "utf8"))
@@ -391,6 +393,8 @@ describe("native unit-test result inputs", () => {
       "packages/structural-optimization/tests/implicit_fixtures.py",
       "packages/structural-optimization/tests/resource_fixtures.py",
       "packages/structural-optimization/tests/iterative_fixtures.py",
+      "packages/structural-optimization/tests/compound_relative_fixtures.py",
+      "packages/structural-optimization/tests/boundary_reference_fixtures.py",
     ]
     const inputs = paths.map((path) => {
       const contents = readFileSync(join(root, path), "utf8")
