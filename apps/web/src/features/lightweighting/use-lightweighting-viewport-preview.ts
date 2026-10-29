@@ -7,14 +7,14 @@ import type { LightweightingSource } from "./lightweighting-model"
 export function useLightweightingViewportPreview(
   ready: {
     source: LightweightingSource
-    inspection: MeshImportInspection | SourceImportInspection
+    inspection?: MeshImportInspection | SourceImportInspection
   } | null,
   onPreviewChange?: (preview: WorkspaceTaskPreview | null) => void,
   onReady?: (ready: boolean) => void,
 ) {
   const preview = useMemo<WorkspaceTaskPreview | null>(
     () =>
-      ready
+      ready?.inspection
         ? {
             ...(onReady ? { onReady } : {}),
             meshes: ready.inspection.outputs.map(({ mesh }, index) => ({

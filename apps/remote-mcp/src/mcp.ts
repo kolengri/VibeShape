@@ -23,7 +23,7 @@ import {
   localFailureSchema,
   localToolNameSchema,
   localToolOutputs,
-  mcpToolInputSchema,
+  mcpToolInputJsonSchema,
   parseMcpToolCall,
 } from "@vibeshape/automation-api/local-tools"
 import {
@@ -148,19 +148,7 @@ export async function mcpRequest(request: Request, env: RemoteEnv, ctx: Executio
         ...tools.map((name) => ({
           name,
           description: localToolDescriptions[name],
-          inputSchema: {
-            ...z.toJSONSchema(mcpToolInputSchema(name), {
-              reused: "ref",
-              io:
-                isAssemblyLibraryToolName(name) ||
-                name === "list_projects" ||
-                name === "model_dependencies" ||
-                name === "model_variable_usage"
-                  ? "input"
-                  : "output",
-            }),
-            type: "object" as const,
-          },
+          inputSchema: mcpToolInputJsonSchema(name),
           outputSchema: z.toJSONSchema(
             z.object({
               result: name === "render_preview" ? renderedResultSchema : localToolOutputs[name],

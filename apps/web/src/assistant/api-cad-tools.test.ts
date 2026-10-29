@@ -1,10 +1,13 @@
 import { describe, expect, it } from "bun:test"
+import { ToolSchema } from "@modelcontextprotocol/sdk/types.js"
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { localFailure, localToolNameSchema } from "@vibeshape/automation-api/local-tools"
 import { z } from "zod"
 import {
   quickLightweightingOperation,
   quickLightweightingValue,
 } from "../../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
+import { toolInputDefaultFixtures } from "../../../../packages/automation-api/src/tool-input-schema.test-fixtures"
 import { apiProviderTools, apiQuestionInputSchema, createApiCadGateway } from "./api-cad-tools"
 
 const projectId = "0195b5ac-b250-7a2c-8c33-000000000101"
@@ -69,6 +72,32 @@ describe("browser CAD gateway", () => {
     expect(
       await gateway("call_cad_tool", { name: "read_agent_skill", arguments: {} }, signal),
     ).toMatchObject({ ok: true, value: { mimeType: "application/json" } })
+  })
+  it("discovers client-valid default omissions and canonical sketches through the browser catalog", async () => {
+    const gateway = createApiCadGateway({
+      projectId,
+      isActive: () => true,
+      execute: async () => {
+        throw new Error("Discovery must not execute CAD.")
+      },
+    })
+    const validator = new AjvJsonSchemaValidator()
+    const fixtures = toolInputDefaultFixtures.filter(({ name }) => name !== "list_projects")
+    for (const fixture of [...fixtures, { name: "read_agent_skill", arguments: {} }]) {
+      const page = pageSchema.parse(
+        await gateway("discover_cad_tools", { query: fixture.name, limit: 6 }, signal),
+      )
+      const tool = page.tools.find(({ name }) => name === fixture.name)
+      if (!tool) throw new Error(`Missing discovered ${fixture.name} tool.`)
+      const { inputSchema } = ToolSchema.parse(tool)
+      // SDK validation follows the same advertised JSON contract as external clients.
+      const validate = validator.getValidator({
+        ...inputSchema,
+        properties: inputSchema.properties ?? {},
+        required: inputSchema.required ?? [],
+      })
+      expect(validate(fixture.arguments).valid).toBe(true)
+    }
   })
   it("retains shared field bounds while rejecting secret requests and invalid question forms", () => {
     const input = {

@@ -30,7 +30,7 @@ import {
   localFailureSchema,
   localToolNameSchema,
   localToolOutputs,
-  mcpToolInputSchema,
+  mcpToolInputJsonSchema,
   parseMcpToolCall,
 } from "@vibeshape/automation-api/local-tools"
 import { numericalToolNameSchema } from "@vibeshape/automation-api/numerical-jobs"
@@ -145,19 +145,7 @@ export function createLocalMcpAdapter(
       ...localToolNameSchema.options.map((name) => ({
         name,
         description: toolDescription(name),
-        inputSchema: {
-          ...z.toJSONSchema(mcpToolInputSchema(name), {
-            reused: "ref",
-            io:
-              isAssemblyLibraryToolName(name) ||
-              name === "list_projects" ||
-              name === "model_dependencies" ||
-              name === "model_variable_usage"
-                ? "input"
-                : "output",
-          }),
-          type: "object" as const,
-        },
+        inputSchema: mcpToolInputJsonSchema(name),
         outputSchema: z.toJSONSchema(
           z.object({
             result:

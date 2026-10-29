@@ -104,7 +104,7 @@ export function PrintOptimizationControls({
         {numeric("cellSizeMm", 0.01)}
         {numeric("minFeatureSizeMm", 0.01)}
         {numeric("layerHeightMm", 0.001)}
-        {numeric("maxIterations", 1)}
+        {numeric("maxIterations", 0)}
         <SelectField
           id="print-optimization-supports"
           label={t("supportMode")}

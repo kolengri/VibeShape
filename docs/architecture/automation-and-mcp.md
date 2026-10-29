@@ -822,6 +822,12 @@ The ordinary adapter's cloned read-only checkpoint feeds disposable exact model 
 
 ## Exact automatic print optimization
 
+Local MCP, remote MCP and browser API discovery share canonical tool input JSON schemas.
+Defaulted input fields remain optional in the advertised contract, including pagination, numerical
+settings and the skill-catalog URI. Legacy sketch import preprocessing keeps its representable
+wire-schema projection; runtime validation remains authoritative. Tool output schemas and approval
+policies are independent of this input-schema projection.
+
 `analyze_print_optimization` and `request_print_optimization` share editor setup, exact reconstruction,
 original-boundary FEM verification and STEP inspection through the existing source-bound proposal
 and numerical-job owners. Existing topology reads supply body-scoped bed/preservation references;

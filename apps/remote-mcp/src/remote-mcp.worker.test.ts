@@ -8,6 +8,8 @@ import {
 import { env } from "cloudflare:workers"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import type { Tool } from "@modelcontextprotocol/sdk/types.js"
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { agentSkillResources } from "@vibeshape/automation-api/agent-skills"
 import { BINARY_EXPORT_CHUNK_MAX_BYTES } from "@vibeshape/automation-api/binary-exports"
 import { lightweightingOperationSchema } from "@vibeshape/automation-api/lightweighting-tools"
@@ -33,6 +35,7 @@ import {
   quickLightweightingOperation,
   quickLightweightingValue,
 } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
+import { toolInputDefaultFixtures } from "../../../packages/automation-api/src/tool-input-schema.test-fixtures"
 import { nativeImportInspection } from "../../../tests/support/native-import-inspection"
 import type { RemoteEnv } from "./environment"
 import worker from "./index"
@@ -86,6 +89,22 @@ async function pair() {
   socket.send(JSON.stringify({ type: "authenticate", token: credential.browserToken }))
   expect((await paired).type).toBe("paired")
   return { credential, socket }
+}
+function expectAdvertisedInputDefaults(tools: Tool[]) {
+  const validator = new AjvJsonSchemaValidator()
+  for (const fixture of [
+    ...toolInputDefaultFixtures,
+    { name: "read_agent_skill", arguments: {} },
+  ]) {
+    const tool = tools.find(({ name }) => name === fixture.name)
+    if (!tool) throw new Error(`Missing advertised ${fixture.name} tool.`)
+    const validate = validator.getValidator({
+      ...tool.inputSchema,
+      properties: tool.inputSchema.properties ?? {},
+      required: tool.inputSchema.required ?? [],
+    })
+    expect(validate(fixture.arguments).valid).toBe(true)
+  }
 }
 async function registeredClient(redirectUri = "https://client.example/callback") {
   const response = await call("/oauth/register", {
@@ -1272,6 +1291,7 @@ describe("remote MCP in workerd", () => {
     try {
       await client.connect(transport)
       const tools = (await client.listTools()).tools
+      expectAdvertisedInputDefaults(tools)
       const projectList = tools.find((tool) => tool.name === "list_projects")
       const dependencies = tools.find((tool) => tool.name === "model_dependencies")
       expect(dependencies?.annotations).toMatchObject({ readOnlyHint: true, idempotentHint: true })
@@ -1294,6 +1314,8 @@ describe("remote MCP in workerd", () => {
       expect(tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           "model_info",
+          "analyze_print_optimization",
+          "request_print_optimization",
           "create_body_revolve",
           "update_body_revolve",
           "create_body_subtract",

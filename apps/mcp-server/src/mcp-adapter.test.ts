@@ -9,8 +9,10 @@ import {
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
 import { localOperationSchema, localToolOutputs } from "@vibeshape/automation-api/local-tools"
+import { numericalToolNames } from "@vibeshape/automation-api/numerical-jobs"
 import { renderPreviewMetadataSchema } from "@vibeshape/automation-api/render-preview"
 import { quickLightweightingOperation } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
+import { toolInputDefaultFixtures } from "../../../packages/automation-api/src/tool-input-schema.test-fixtures"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
@@ -132,14 +134,9 @@ it.each(["manual", "native-project", "desktop-external"] as const)(
         expect(instructions).toContain("automatically delivers their final result")
         expect(instructions).toContain("do not poll get_numerical_job")
         const numerical = (await client.listTools()).tools.filter((tool) =>
-          [
-            "analyze_lightweighting",
-            "request_lightweighting",
-            "analyze_quick_lightweighting",
-            "request_quick_lightweighting",
-          ].includes(tool.name),
+          numericalToolNames.some((name) => name === tool.name),
         )
-        expect(numerical).toHaveLength(4)
+        expect(numerical).toHaveLength(6)
         for (const tool of numerical)
           expect(tool.description).toContain("End the turn after the receipt; do not poll")
       }
@@ -155,6 +152,35 @@ it.each(["manual", "native-project", "desktop-external"] as const)(
     }
   },
 )
+
+it("advertises accepted input defaults through the actual local SDK catalog", async () => {
+  const broker = createBrowserBroker({ origin: "http://127.0.0.1:43114" })
+  const adapter = createLocalMcpAdapter(broker, createExportResources())
+  const client = new Client({ name: "input-defaults", version: "1" })
+  try {
+    const [a, b] = InMemoryTransport.createLinkedPair()
+    await Promise.all([adapter.connect(b), client.connect(a)])
+    const tools = (await client.listTools()).tools
+    const validator = new AjvJsonSchemaValidator()
+    for (const fixture of [
+      ...toolInputDefaultFixtures,
+      { name: "read_agent_skill", arguments: {} },
+    ]) {
+      const tool = tools.find(({ name }) => name === fixture.name)
+      if (!tool) throw new Error(`Missing advertised ${fixture.name} tool.`)
+      const validate = validator.getValidator({
+        ...tool.inputSchema,
+        properties: tool.inputSchema.properties ?? {},
+        required: tool.inputSchema.required ?? [],
+      })
+      expect(validate(fixture.arguments).valid).toBe(true)
+    }
+  } finally {
+    await client.close()
+    await adapter.close()
+    broker.dispose()
+  }
+})
 
 function expectPreviewInputSchema(schema: Tool["inputSchema"]) {
   const validate = new AjvJsonSchemaValidator().getValidator({

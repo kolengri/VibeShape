@@ -4,7 +4,6 @@ import {
   assistantTaskContinuityInstructions,
   callAgentSkillTool,
 } from "@vibeshape/automation-api/agent-skills"
-import { isAssemblyLibraryToolName } from "@vibeshape/automation-api/assembly-result-context"
 import {
   type AssistantQuestionInput,
   assistantQuestionInputSchema,
@@ -14,7 +13,7 @@ import {
   type LocalOperation,
   localToolNameSchema,
   localToolOutputs,
-  mcpToolInputSchema,
+  mcpToolInputJsonSchema,
   parseMcpToolCall,
 } from "@vibeshape/automation-api/local-tools"
 import {
@@ -90,18 +89,7 @@ function discoverTools(input: unknown) {
       description: numericalToolNames.some((tool) => tool === name)
         ? `In this browser API connection, await the final numerical result directly in this call, including any required review; no job receipt is returned and no numerical-job polling tool is available. ${localToolDescriptions[name]}`
         : localToolDescriptions[name],
-      schema: () =>
-        z.toJSONSchema(mcpToolInputSchema(name), {
-          reused: "ref",
-          io:
-            isAssemblyLibraryToolName(name) ||
-            name === "model_dependencies" ||
-            name === "model_variable_usage" ||
-            name === "analyze_print_optimization" ||
-            name === "request_print_optimization"
-              ? "input"
-              : "output",
-        }),
+      schema: () => mcpToolInputJsonSchema(name),
     })),
   ].filter((tool) =>
     terms.every((term) => `${tool.name} ${tool.description}`.toLowerCase().includes(term)),

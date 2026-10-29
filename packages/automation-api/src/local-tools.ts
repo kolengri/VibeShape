@@ -806,6 +806,15 @@ export function mcpToolInputSchema(name: LocalToolName) {
     ? localToolInputs[name]
     : localToolInputs[name].extend({ projectId: documentIdSchema.optional() })
 }
+export function mcpToolInputJsonSchema(name: LocalToolName) {
+  // Sketch preprocessing accepts legacy values whose custom input types cannot be represented.
+  // Keep their canonical output shape; all other tools must advertise optional input defaults.
+  const io = name === "create_sketch" || name === "update_sketch" ? "output" : "input"
+  return {
+    ...z.toJSONSchema(mcpToolInputSchema(name), { reused: "ref", io }),
+    type: "object" as const,
+  }
+}
 export function parseMcpToolCall(name: string, input: unknown) {
   const tool = localToolNameSchema.safeParse(name)
   if (!tool.success) return localOperationSchema.safeParse({ tool: name, arguments: input })

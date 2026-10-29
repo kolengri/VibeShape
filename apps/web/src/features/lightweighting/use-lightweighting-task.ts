@@ -30,8 +30,8 @@ type ReadyResult = {
   source: LightweightingSource
   input: StructuralOptimizationInput
   result: StructuralOptimizationResult
-  prepared: PreparedImportSource
-  inspection: MeshImportInspection | SourceImportInspection
+  prepared?: PreparedImportSource
+  inspection?: MeshImportInspection | SourceImportInspection
   exact?: ExactPrintOptimizationEvidence
   analysisContext?: LightweightingInputPreparation["analysisContext"]
 }
@@ -128,6 +128,13 @@ async function runAnalysis(
     : { input, result: await optimizeStructuralModel(input, options) }
   const result = computed.result
   if (!current()) return null
+  const analysis = {
+    source,
+    input: computed.input,
+    result,
+    ...(preparation?.analysisContext ? { analysisContext: preparation.analysisContext } : {}),
+  }
+  if (result.status === "no-improvement") return analysis
   setStage("inspecting")
   const inspected = await inspectAnalysisSnapshot({
     result,
@@ -139,11 +146,8 @@ async function runAnalysis(
   })
   return inspected
     ? {
-        source,
-        input: computed.input,
-        result,
+        ...analysis,
         ...inspected,
-        ...(preparation?.analysisContext ? { analysisContext: preparation.analysisContext } : {}),
       }
     : null
 }
@@ -228,6 +232,8 @@ function applyEligible(
     !disabled &&
     activity === "idle" &&
     ready !== null &&
+    ready.prepared !== undefined &&
+    ready.inspection !== undefined &&
     (ready.exact
       ? ready.exact.volumeMm3 < ready.exact.sourceVolumeMm3
       : ready.result.status === "improved") &&
@@ -254,6 +260,8 @@ function finishAnalysis(
   if (lifecycle.mounted.current) lifecycle.setStage("idle")
 }
 async function commitResult(ready: ReadyResult, label: string) {
+  if (!ready.prepared || !ready.inspection)
+    throw new Error("The analysis has no inspected import candidate.")
   const transaction = createImportTransaction(
     ready.source.context,
     ready.prepared,

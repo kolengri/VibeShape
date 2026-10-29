@@ -19,6 +19,8 @@ const ports = (() => ({
   parts: vi.fn(),
   encode: vi.fn(),
   exact: vi.fn(),
+  reconstruct: vi.fn(),
+  inspectSource: vi.fn(),
 }))()
 mock.module("@vibeshape/application/authored-parts", () => ({ resolveAuthoredParts: ports.parts }))
 mock.module("@vibeshape/structural-optimization/client", () => ({
@@ -34,6 +36,8 @@ mock.module("@vibeshape/structural-optimization/mesh", () => ({
 mock.module("../../document/document-controller", () => ({
   getProjectActiveWorkBlock: () => null,
   inspectTriangleMeshSource: ports.inspect,
+  inspectGeometrySource: ports.inspectSource,
+  reconstructPrintOptimization: ports.reconstruct,
   commitAuthoredTransaction: ports.apply,
 }))
 const mockDependency1 = await import("react")
@@ -1307,6 +1311,44 @@ describe("Automatic print optimization", () => {
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Material preset" }), { key: "Enter" })
     await userEvent.click(screen.getByRole("option", { name: "PLA — Prusament" }))
   }
+  it.each([0, 24])(
+    "retains baseline evidence without reconstruction or Apply when no improvement is found with %i iterations",
+    async (iterations) => {
+      ports.optimize.mockResolvedValueOnce({
+        ...result,
+        status: "no-improvement",
+        optimized: result.baseline,
+        finalCellCount: result.initialCellCount,
+        iterations,
+      })
+      ports.exact.mockRejectedValueOnce(new Error("An unchanged result must not be reconstructed."))
+      setupPrint()
+      await readyPrint()
+      await userEvent.click(
+        screen.getByText("Advanced optimization settings", { selector: "summary" }),
+      )
+      change("Density and reconstruction search iterations", String(iterations))
+      await userEvent.click(screen.getByRole("button", { name: "Optimize for printing" }))
+      await waitFor(() =>
+        expect(screen.getByText(messages.app.lightweighting.noImprovement)).toBeTruthy(),
+      )
+      expect(ports.optimize.mock.calls[0]?.[0].maxIterations).toBe(iterations)
+      expect(ports.exact).not.toHaveBeenCalled()
+      expect(ports.encode).not.toHaveBeenCalled()
+      expect(ports.inspect).not.toHaveBeenCalled()
+      expect(screen.queryByRole("alert")).toBeNull()
+      expect(screen.queryByRole("img")).toBeNull()
+      expect(
+        screen.getByRole("button", { name: messages.app.lightweighting.downloadReport }),
+      ).toBeTruthy()
+      const apply = screen.getByRole("button", {
+        name: "Apply as new exact Part",
+      }) as HTMLButtonElement
+      expect(apply.disabled).toBe(true)
+      await userEvent.click(apply)
+      expect(ports.apply).not.toHaveBeenCalled()
+    },
+  )
   it("starts with a bed face and plastic, preserves only marked regions, and generates a compound torsion case", async () => {
     setupPrint()
     const run = screen.getByRole("button", { name: "Optimize for printing" }) as HTMLButtonElement

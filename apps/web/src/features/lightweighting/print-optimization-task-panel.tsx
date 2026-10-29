@@ -11,6 +11,7 @@ import type { WorkspaceTaskPreview } from "../../shell/workspace-task-context"
 import { ImportPreview } from "../import/import-preview"
 import { ExactPrintOptimizationResults } from "./exact-print-optimization-results"
 import type { LightweightingViewportInteraction } from "./lightweighting-dialog"
+import { LightweightingResults } from "./lightweighting-results"
 import { LightweightingSourceSelector } from "./lightweighting-source-selector"
 import { PrintOptimizationControls } from "./print-optimization-controls"
 import type { PrintOptimizationFields } from "./print-optimization-model"
@@ -48,24 +49,29 @@ function PrintOptimizationPreview({
 }) {
   const l = useTranslations("app.lightweighting")
   const t = useTranslations("app.printOptimization")
-  if (!state.ready?.exact) return null
+  if (!state.ready) return null
   return (
     <>
-      <ExactPrintOptimizationResults
-        evidence={state.ready.exact}
-        proposal={state.ready.result}
-        densityKgM3={state.ready.input.material.densityKgM3}
-      />
-      {mainViewport ? (
-        <p className="text-xs text-muted-foreground">{t("exactPreview")}</p>
-      ) : (
-        <ImportPreview
-          inspection={state.ready.inspection}
-          label={l("preview")}
-          failedMessage={l("previewFailed")}
-          onReady={state.setPreviewReady}
+      {state.ready.exact ? (
+        <ExactPrintOptimizationResults
+          evidence={state.ready.exact}
+          proposal={state.ready.result}
+          densityKgM3={state.ready.input.material.densityKgM3}
         />
+      ) : (
+        <LightweightingResults result={state.ready.result} />
       )}
+      {state.ready.inspection &&
+        (mainViewport ? (
+          <p className="text-xs text-muted-foreground">{t("exactPreview")}</p>
+        ) : (
+          <ImportPreview
+            inspection={state.ready.inspection}
+            label={l("preview")}
+            failedMessage={l("previewFailed")}
+            onReady={state.setPreviewReady}
+          />
+        ))}
       <Button type="button" size="sm" variant="outline" onClick={state.downloadReport}>
         {l("downloadReport")}
       </Button>

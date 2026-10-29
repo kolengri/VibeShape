@@ -109,6 +109,23 @@ test("preserves a selected face through exact reconstruction, real FEM reanalysi
   await panel.getByRole("button", { name: "Preserve faces (0)", exact: true }).click()
   await canvas.click({ position: { x: viewport.width * 0.49, y: viewport.height * 0.5 } })
   await panel.getByRole("button", { name: "Finish preserving faces (1)", exact: true }).click()
+  await panel.getByText("Advanced optimization settings", { exact: true }).click()
+  const iterations = panel.getByLabel("Density and reconstruction search iterations", {
+    exact: true,
+  })
+  await iterations.fill("0")
+  await panel.getByRole("button", { name: "Optimize for printing", exact: true }).click()
+  await expect(
+    panel.getByText("No feasible material reduction was found. Apply is unavailable.", {
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 180_000 })
+  await expect(panel.getByRole("alert")).toHaveCount(0)
+  await expect(
+    panel.getByRole("button", { name: "Apply as new exact Part", exact: true }),
+  ).toBeDisabled()
+  await iterations.fill("24")
+  await panel.getByText("Advanced optimization settings", { exact: true }).click()
   await panel.getByRole("button", { name: "Optimize for printing", exact: true }).click()
   const completed = panel.getByText(
     "A lighter exact CAD solid passed reconstructed-body analysis.",

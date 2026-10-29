@@ -14,6 +14,8 @@ Shared numerical fixtures check compound-force superposition, both interfaces' p
 baseline response gates and repeated final verification. Client and paired MCP tests reject forged
 relative-performance evidence. UI tests cover bed/plastic/preservation selection, custom properties,
 single-flight cancellation, source invalidation and switching to real service loads.
+Baseline-only and no-improvement results retain their metrics and report without reconstruction,
+import preview or Apply.
 Protected-budget fixtures also reject false density convergence at the free-density floor, require
 explicit baseline-energy projection evidence, and retain the original per-case acceptance gates.
 
@@ -789,3 +791,8 @@ exact preservation and original-baseline performance evidence on both transports
 fixtures reject changed, ambiguous and unbound faces while preserving editor defaults. The paired
 stdio browser flow discovers source faces through tools, analyzes the actual exact candidate without
 saving, then reviews and publishes the exact STEP Part with normal save, Undo and Redo.
+
+Catalog tests convert every advertised CAD input schema and compare local, remote and browser API
+discovery. Defaulted fields must remain optional in those schemas, including empty-argument skill
+catalog reads. Legacy sketch-import normalization retains a representable wire schema. Exact catalog
+snapshots, tool/skill counts and all numerical-tool guidance are checked alongside runtime routing.
