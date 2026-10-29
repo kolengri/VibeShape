@@ -658,6 +658,7 @@ export function createLocalAutomationConnection(
       "commit_planar_import_upload",
       "request_lightweighting",
       "request_quick_lightweighting",
+      "request_print_optimization",
       "change_metadata",
       "move_history_item",
       "commit_assembly_draft",

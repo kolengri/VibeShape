@@ -43,6 +43,7 @@
     "./surface-texture-tools": "./src/surface-texture-tools.ts",
     "./surface-texture-result-context": "./src/surface-texture-result-context.ts",
     "./lightweighting-tools": "./src/lightweighting-tools.ts",
+    "./print-optimization-tools": "./src/print-optimization-tools.ts",
     "./quick-lightweighting-tools": "./src/quick-lightweighting-tools.ts"
   },
   "scripts": {

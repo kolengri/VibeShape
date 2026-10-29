@@ -238,3 +238,9 @@ Revolve v7 Add/Remove/Intersect on a stable target role; `create_body_subtract`/
 author Subtract v2 with ordered exact target/tool roles, including distinct bodies of one producer.
 Legacy names preserve their contracts. See the [modeling contracts](../.agents/skills/vibeshape-modeling/references/modeling.md)
 for dependency ordering, tool retention, preview, and ordinary review/Apply.
+
+For the complete automatic FDM workflow, use `model_body_topology` to choose resolved bed/preservation
+faces, then `analyze_print_optimization` or `request_print_optimization`. Both paired transports
+support plastic presets/custom properties and verified exact CAD results. Follow the
+[operator workflow](../.agents/skills/vibeshape-modeling/references/print-optimization.md);
+numerical starts return job receipts rather than completed geometry.

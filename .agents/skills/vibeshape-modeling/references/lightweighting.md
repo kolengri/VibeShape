@@ -102,21 +102,12 @@ strength fraction. Baseline and candidate responses must be positive; tiny respo
 the ratios. The summary echoes both fractions and transport validation rejects missing, changed,
 or violated evidence. Existing absolute constraints remain required.
 
-The editor's default print workflow generates normalized longest-span end-clamped scenarios from
-a selected bed face and plastic, with 0.9 retention defaults. Its automatic setup helper and print
-frame transformation are not advertised MCP tools. With MCP, supply explicit source-bound regions,
-compound forces and settings in the model's coordinate frame; do not invent a print-face argument
-or silently substitute hypothetical loads for user-specified service loads. If the user authorizes
-normalized scenarios, label that assumption and distinguish the mechanical clamp from print-bed
-orientation. Isotropic material examples do not model layer adhesion or certify real service strength.
-
-The automatic editor task now reconstructs selected exact CAD faces and reanalyzes its resulting
-STEP solid before exact import, retaining the original FEM boundary interfaces through a private
-reference mesh. Native reconstruction and private lattice/reference options are not advertised
-through paired MCP. Existing `analyze_lightweighting` and
-`request_lightweighting` still return voxel mesh snapshots; their `preserveRegions` retain nearby
-material rather than exact analytical mating surfaces. Do not promise exact interface preservation
-through those tools or invent native face-hash arguments.
+For the automatic bed-face/plastic workflow with exact preserved surfaces, use
+[exact print optimization](print-optimization.md). Its dedicated analysis and request tools run
+reconstruction and original-boundary verification before exact STEP import. The manual
+`analyze_lightweighting` and `request_lightweighting` tools retain voxel snapshots;
+`preserveRegions` protects nearby cells rather than exact analytical mating surfaces.
+Private lattice/reference options and native face-hash arguments are not MCP settings.
 
 ### Algorithm settings
 

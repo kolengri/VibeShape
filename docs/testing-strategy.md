@@ -783,3 +783,9 @@ This is a correctness gate, not a cold-start, throughput or memory certification
 ### Complex planar support regressions
 
 `packages/application/src/planar-support.test.ts` covers oriented frames, anchor projection, small-normal-change continuity, dynamic Extrude caps, face-supported datums, cycles, and fail-closed topology. `packages/document-worker/src/complex-sketch-support-kernel.test.ts` exercises real Boolean, Fillet, Chamfer, and rotated Placement faces through sketch-driven extrusion, cold document rebuild, independent geometry invariants, and native disposal. `tests/e2e/complex-sketch-support.spec.ts` covers graphical face selection, native-file support identity, sketch reopen and extrusion, plus extrusion-side datum preview and persistence across Chromium, Firefox, and WebKit. Run it separately from the CAD workflow baseline in this document; both browser gates must run without competing build, typecheck, or test processes.
+
+Exact-print MCP contracts cover material/default correlation, body-scoped face ownership, forged
+exact preservation and original-baseline performance evidence on both transports. Browser preparation
+fixtures reject changed, ambiguous and unbound faces while preserving editor defaults. The paired
+stdio browser flow discovers source faces through tools, analyzes the actual exact candidate without
+saving, then reviews and publishes the exact STEP Part with normal save, Undo and Redo.

@@ -26,6 +26,10 @@ import {
   lightweightingSummary,
 } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
 import {
+  printOptimizationOperation,
+  printOptimizationValue,
+} from "../../../packages/automation-api/src/print-optimization.test-fixtures"
+import {
   quickLightweightingOperation,
   quickLightweightingValue,
 } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
@@ -969,6 +973,67 @@ describe("remote MCP in workerd", () => {
       ).toBe(false)
     },
   )
+  it.each([false, true])(
+    "routes exact print results and revokes forged original-baseline evidence (request=%s)",
+    async (request) => {
+      const tab = await pair()
+      const authenticated = await authorizeTab(tab)
+      const command = printOptimizationOperation(request)
+      const value = printOptimizationValue(request)
+      const send = async (id: number, output: unknown) => {
+        const work = nextMessage(tab.socket)
+        const pending = mcp(authenticated.token, id, "tools/call", {
+          name: command.tool,
+          arguments: command.arguments,
+        })
+        const operation = await work
+        if (operation.type !== "work") throw new Error("Expected exact print work.")
+        expect(operation.operation).toEqual(command)
+        tab.socket.send(
+          JSON.stringify({
+            type: "result",
+            protocolVersion: 1,
+            requestId: operation.requestId,
+            tool: command.tool,
+            result: { ok: true, value: output },
+          }),
+        )
+        return (await pending).json()
+      }
+      expect(await send(1, value)).toMatchObject({
+        result: { structuredContent: { result: { ok: true, value } } },
+      })
+      const exact = value.summary.exact
+      if (!exact) throw new Error("Expected exact fixture.")
+      const optimized = {
+        ...exact.verification.optimized,
+        cases: exact.verification.optimized.cases.map((item) => ({ ...item, complianceNmm: 1 })),
+      }
+      expect(
+        await send(2, {
+          ...value,
+          summary: {
+            ...value.summary,
+            exact: {
+              ...exact,
+              verification: { ...exact.verification, baseline: optimized, optimized },
+            },
+          },
+        }),
+      ).toMatchObject({
+        result: {
+          structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+        },
+      })
+      expect(
+        await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+          sessionId: tab.credential.sessionId,
+          clientId: authenticated.clientId,
+        }),
+      ).toBe(false)
+    },
+  )
+
   it("rejects oversized browser results after serving the larger static schema catalog", async () => {
     const tab = await pair()
     const authenticated = await authorizeTab(tab)

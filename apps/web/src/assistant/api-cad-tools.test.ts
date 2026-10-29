@@ -185,12 +185,18 @@ describe("browser CAD gateway", () => {
       "request_lightweighting",
       "analyze_quick_lightweighting",
       "request_quick_lightweighting",
+      "analyze_print_optimization",
+      "request_print_optimization",
     ]) {
       const tool = pageSchema
         .parse(await gateway("discover_cad_tools", { query: name }, signal))
         .tools.find((tool) => tool.name === name)
       expect(tool?.description).toContain("await the final numerical result directly in this call")
       expect(tool?.description).toContain("no job receipt is returned")
+      if (name.includes("print_optimization"))
+        expect(tool?.inputSchema).toMatchObject({
+          properties: { settings: { required: ["bedFace", "material"] } },
+        })
     }
   })
 })

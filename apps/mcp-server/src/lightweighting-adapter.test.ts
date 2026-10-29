@@ -3,6 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { lightweightingOperation } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
+import { printOptimizationOperation } from "../../../packages/automation-api/src/print-optimization.test-fixtures"
 import { quickLightweightingOperation } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
@@ -21,6 +22,8 @@ it("advertises client-valid lightweighting tools without granting unpaired mutat
       lightweightingOperation(true),
       quickLightweightingOperation(),
       quickLightweightingOperation(true),
+      printOptimizationOperation(),
+      printOptimizationOperation(true),
     ]) {
       const request = operation.tool.startsWith("request_")
       const tool = tools.find((entry) => entry.name === operation.tool)

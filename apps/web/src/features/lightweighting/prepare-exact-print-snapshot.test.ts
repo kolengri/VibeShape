@@ -28,11 +28,7 @@ const solve = mock(
   ) => verification(),
 )
 const commit = mock()
-mock.module("../../document/document-controller", () => ({
-  reconstructPrintOptimization: reconstruct,
-  inspectGeometrySource: inspect,
-  commitAuthoredTransaction: commit,
-}))
+mock.module("../../document/document-controller", () => ({ commitAuthoredTransaction: commit }))
 mock.module("@vibeshape/structural-optimization/client", () => ({
   optimizeStructuralModel: solve,
   StructuralOptimizationError,
@@ -175,6 +171,7 @@ function inspection(): SourceImportInspection {
 }
 function options(): PrepareExactPrintSnapshotOptions {
   return {
+    geometry: { reconstructPrintOptimization: reconstruct, inspectGeometrySource: inspect },
     source: structuredClone(source),
     input: structuredClone(input),
     result: result(),
@@ -201,6 +198,22 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe("exact print snapshot preparation", () => {
+  it("uses only the captured document's injected geometry port", async () => {
+    const settings = options()
+    const ownedReconstruct = mock(async () => reconstruction())
+    const ownedInspect = mock(async () => inspection())
+    settings.geometry = {
+      reconstructPrintOptimization: ownedReconstruct,
+      inspectGeometrySource: ownedInspect,
+    }
+    const ready = await prepareExactPrintSnapshot(settings)
+    expect(ready?.exact.preservedFaceCount).toBe(2)
+    expect(ownedReconstruct).toHaveBeenCalledTimes(1)
+    expect(ownedInspect).toHaveBeenCalledTimes(1)
+    expect(reconstruct).not.toHaveBeenCalled()
+    expect(inspect).not.toHaveBeenCalled()
+    expect(commit).not.toHaveBeenCalled()
+  })
   it("captures every structural interface and imports only the reconstructed STEP bytes", async () => {
     const settings = options()
     const grid = settings.result.voxelGrid

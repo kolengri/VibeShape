@@ -23,6 +23,7 @@ import {
   isLocalPlanarImport,
   planarImportResultMatches,
 } from "@vibeshape/automation-api/planar-imports"
+import { printOptimizationResultContextMatches } from "@vibeshape/automation-api/print-optimization-tools"
 import { projectResultContextMatches } from "@vibeshape/automation-api/project-result-context"
 import {
   dependenciesResultContextMatches,
@@ -82,18 +83,23 @@ function authoredResultContextMatches(
   result: { ok: boolean; value?: unknown },
   documentId?: string,
 ) {
-  const numericalJob = numericalJobResultContextMatches(operation, result, documentId)
-  if (numericalJob !== null) return numericalJob
-  return (
-    renderPreviewResultContextMatches(operation, result) !== false &&
-    historyResultContextMatches(operation, result) !== false &&
-    historyMoveResultContextMatches(operation, result) !== false &&
-    measurementResultContextMatches(operation, result) !== false &&
-    assemblyResultContextMatches(operation, result) !== false &&
-    surfaceTextureResultContextMatches(operation, result) !== false &&
-    lightweightingResultContextMatches(operation, result) !== false &&
-    quickLightweightingResultContextMatches(operation, result) !== false
-  )
+  const matchers = [
+    () => numericalJobResultContextMatches(operation, result, documentId),
+    () => renderPreviewResultContextMatches(operation, result),
+    () => historyResultContextMatches(operation, result),
+    () => historyMoveResultContextMatches(operation, result),
+    () => measurementResultContextMatches(operation, result),
+    () => assemblyResultContextMatches(operation, result),
+    () => surfaceTextureResultContextMatches(operation, result),
+    () => lightweightingResultContextMatches(operation, result),
+    () => quickLightweightingResultContextMatches(operation, result),
+    () => printOptimizationResultContextMatches(operation, result, documentId),
+  ]
+  for (const matches of matchers) {
+    const matched = matches()
+    if (matched !== null) return matched
+  }
+  return true
 }
 
 function draftInspectionResultMatches(

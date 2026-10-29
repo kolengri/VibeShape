@@ -3922,6 +3922,8 @@
         "structuralGeneration": "Structural generation",
         "quickAnalysis": "Quick analysis",
         "quickGeneration": "Quick generation",
+        "printAnalysis": "Exact print optimization analysis",
+        "printGeneration": "Exact print optimization generation",
         "status": "{tool} — {status, select, running {Running} cancelling {Cancel requested} cancelled {Cancelled} failed {Failed} other {Completed}}",
         "automaticNotification": "Computation is running in the background. The assistant will be notified automatically when it finishes."
       },

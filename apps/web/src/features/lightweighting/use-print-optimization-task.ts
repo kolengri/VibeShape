@@ -1,6 +1,10 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { useEffect, useState } from "react"
-import type { DocumentControllerState } from "../../document/document-controller"
+import {
+  type DocumentControllerState,
+  inspectGeometrySource,
+  reconstructPrintOptimization,
+} from "../../document/document-controller"
 import { lightweightingSource } from "./lightweighting-model"
 import { prepareExactPrintSnapshot } from "./prepare-exact-print-snapshot"
 import {
@@ -53,6 +57,7 @@ export function usePrintOptimizationTask({
         prepareSnapshot: (result, options) =>
           prepareExactPrintSnapshot({
             ...options,
+            geometry: { inspectGeometrySource, reconstructPrintOptimization },
             source,
             input,
             result,

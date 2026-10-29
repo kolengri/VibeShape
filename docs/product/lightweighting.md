@@ -62,6 +62,12 @@ Plastic presets and custom properties still use isotropic elasticity. Layer adhe
 fatigue, thermal distortion and real service strength are not modeled. Unprotected voxel boundaries
 are not automatically smoothed. See [ADR-0141](../adr/0141-exact-preserved-print-interfaces.md).
 
+Both paired MCP transports expose `analyze_print_optimization` and `request_print_optimization`
+for this complete exact workflow, including face discovery, plastic/custom properties, settings,
+background jobs and reviewed publication. See the [exact-print operator workflow](../../.agents/skills/vibeshape-modeling/references/print-optimization.md)
+and [ADR-0142](../adr/0142-exact-print-optimization-mcp.md). The analysis tool also reconstructs
+and verifies the exact candidate without saving it.
+
 ## Manual structural optimization
 
 The manual task reduces occupied material while satisfying supplied

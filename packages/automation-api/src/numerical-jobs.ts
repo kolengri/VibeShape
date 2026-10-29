@@ -10,6 +10,13 @@ import {
 } from "./lightweighting-tools"
 import { localFailureSchema } from "./local-failure"
 import {
+  printOptimizationAnalysisSchema,
+  printOptimizationOperations,
+  printOptimizationRequestSchema,
+  printOptimizationResultContextMatches,
+  printOptimizationToolNames,
+} from "./print-optimization-tools"
+import {
   quickLightweightingAnalysisSchema,
   quickLightweightingOperations,
   quickLightweightingRequestSchema,
@@ -20,12 +27,14 @@ import {
 export const numericalToolNames = [
   ...lightweightingToolNames,
   ...quickLightweightingToolNames,
+  ...printOptimizationToolNames,
 ] as const
 export const numericalToolNameSchema = z.enum(numericalToolNames)
 export type NumericalToolName = z.infer<typeof numericalToolNameSchema>
 export const numericalOperationSchema = z.discriminatedUnion("tool", [
   ...lightweightingOperations,
   ...quickLightweightingOperations,
+  ...printOptimizationOperations,
 ])
 export type NumericalOperation = z.infer<typeof numericalOperationSchema>
 
@@ -36,6 +45,8 @@ function resultOf<Schema extends z.ZodType>(schema: Schema) {
   ])
 }
 const numericalToolResults = {
+  analyze_print_optimization: resultOf(printOptimizationAnalysisSchema),
+  request_print_optimization: resultOf(printOptimizationRequestSchema),
   analyze_lightweighting: resultOf(lightweightingAnalysisSchema),
   request_lightweighting: resultOf(lightweightingRequestSchema),
   analyze_quick_lightweighting: resultOf(quickLightweightingAnalysisSchema),
@@ -47,6 +58,8 @@ export function numericalToolResultSchema<Tool extends NumericalToolName>(tool: 
   return numericalToolResults[tool]
 }
 export const numericalCompletedResultSchema = z.union([
+  numericalToolResults.analyze_print_optimization,
+  numericalToolResults.request_print_optimization,
   numericalToolResults.analyze_lightweighting,
   numericalToolResults.request_lightweighting,
   numericalToolResults.analyze_quick_lightweighting,
@@ -132,7 +145,8 @@ export function numericalCompletedResultContextMatches(
   if (!result.ok) return true
   return (
     (lightweightingResultContextMatches(parsed.data, result, documentId) ??
-      quickLightweightingResultContextMatches(parsed.data, result, documentId)) === true
+      quickLightweightingResultContextMatches(parsed.data, result, documentId) ??
+      printOptimizationResultContextMatches(parsed.data, result, documentId)) === true
   )
 }
 

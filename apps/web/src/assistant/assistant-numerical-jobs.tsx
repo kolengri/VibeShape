@@ -7,6 +7,8 @@ const toolLabels = {
   request_lightweighting: "structuralGeneration",
   analyze_quick_lightweighting: "quickAnalysis",
   request_quick_lightweighting: "quickGeneration",
+  analyze_print_optimization: "printAnalysis",
+  request_print_optimization: "printGeneration",
 } as const
 
 function completedStatus(job: Extract<NumericalJobStatus, { status: "completed" }>) {

@@ -124,6 +124,13 @@ import {
   planarUploadInspectionSchema,
 } from "./planar-imports"
 import {
+  printOptimizationAnalysisSchema,
+  printOptimizationOperations,
+  printOptimizationRequestSchema,
+  printOptimizationToolInputs,
+  printOptimizationToolNames,
+} from "./print-optimization-tools"
+import {
   projectListSchema,
   projectOperations,
   projectToolInputs,
@@ -214,6 +221,7 @@ export const localToolInputs = {
   ...lightweightingToolInputs,
   ...numericalJobToolInputs,
   ...quickLightweightingToolInputs,
+  ...printOptimizationToolInputs,
   render_preview: renderPreviewArgumentsSchema,
   ...historyToolInputs,
   ...historyMoveToolInputs,
@@ -342,6 +350,18 @@ export const localToolOutputs = {
     z.union([
       quickLightweightingRequestSchema,
       numericalJobReceiptSchema.extend({ tool: z.literal("request_quick_lightweighting") }),
+    ]),
+  ),
+  analyze_print_optimization: resultOf(
+    z.union([
+      printOptimizationAnalysisSchema,
+      numericalJobReceiptSchema.extend({ tool: z.literal("analyze_print_optimization") }),
+    ]),
+  ),
+  request_print_optimization: resultOf(
+    z.union([
+      printOptimizationRequestSchema,
+      numericalJobReceiptSchema.extend({ tool: z.literal("request_print_optimization") }),
     ]),
   ),
   list_projects: resultOf(projectListSchema),
@@ -514,6 +534,7 @@ export const localToolNameSchema = z.enum([
   ...lightweightingToolNames,
   ...numericalJobToolNames,
   ...quickLightweightingToolNames,
+  ...printOptimizationToolNames,
   "render_preview",
   "model_history_state",
   "undo_model",
@@ -648,6 +669,7 @@ const untargetedOperationSchema = z.discriminatedUnion("tool", [
   ...lightweightingOperations,
   ...numericalJobOperations,
   ...quickLightweightingOperations,
+  ...printOptimizationOperations,
   z.object({ tool: z.literal("render_preview"), arguments: renderPreviewArgumentsSchema }).strict(),
   ...localPlanarImportOperations,
   ...localBinaryExportOperations,

@@ -164,3 +164,4 @@ When a decision changes, do not rewrite its ADR retroactively. Create a new reco
 - [ADR-0082: Paged feature measurements and serialized local acknowledgements](0082-owned-draft-body-inspection-and-diagnostics.md)
 | [0140](0140-automatic-print-topology-optimization.md) | Accepted with reduced scope | Automatic print setup, compound traction patterns and per-case retained performance |
 | [0141](0141-exact-preserved-print-interfaces.md) | Accepted | Exact preserved print interfaces, active-cache reconstruction and aligned final reanalysis |
+| [0142](0142-exact-print-optimization-mcp.md) | Accepted | Exact automatic FDM optimization through paired MCP tools and existing publication authority |

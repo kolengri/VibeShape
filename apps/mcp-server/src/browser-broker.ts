@@ -59,6 +59,7 @@ import {
   type LocalPlanarImportOperation,
   planarImportResultMatches,
 } from "@vibeshape/automation-api/planar-imports"
+import { printOptimizationResultContextMatches } from "@vibeshape/automation-api/print-optimization-tools"
 import { projectResultContextMatches } from "@vibeshape/automation-api/project-result-context"
 import {
   cadInspectionDetailViewSchema,
@@ -368,6 +369,7 @@ function resultContextMatches(
     surfaceTextureResultContextMatches(operation, result, documentId),
     lightweightingResultContextMatches(operation, result, documentId),
     quickLightweightingResultContextMatches(operation, result, documentId),
+    printOptimizationResultContextMatches(operation, result, documentId),
   ].find((matched) => matched !== null)
   if (context !== undefined) return context
   if (!result.ok) return true

@@ -19,20 +19,32 @@ export type PrintOptimizationFields = {
 export function initialPrintOptimizationFields(
   source: LightweightingSource | null,
 ): PrintOptimizationFields {
-  const bounds = source?.body.shape.bounds ?? { min: [0, 0, 0], max: [16, 8, 8] }
-  const spans = bounds.max.map((value, axis) => value - (bounds.min[axis] ?? 0))
-  const cell = Math.max(0.01, Math.min(Math.max(...spans) / 16, Math.min(...spans) / 4))
+  const defaults = defaultPrintOptimizationParameters(source)
   return {
     captured: source,
     bedFace: null,
     preserveFaces: [],
-    cellSizeMm: String(Number(cell.toPrecision(4))),
-    minFeatureSizeMm: String(Number(Math.max(0.8, cell).toPrecision(4))),
-    layerHeightMm: String(Math.min(0.2, cell)),
+    cellSizeMm: String(defaults.cellSizeMm),
+    minFeatureSizeMm: String(defaults.minFeatureSizeMm),
+    layerHeightMm: String(defaults.layerHeightMm),
     stiffnessPercent: "90",
     strengthPercent: "90",
     maxIterations: "24",
     supportMode: "allowed",
+  }
+}
+
+/** The editor and paired automation resolve the same geometry-dependent defaults. */
+export function defaultPrintOptimizationParameters(source: LightweightingSource | null) {
+  const bounds = source?.body.shape.bounds ?? { min: [0, 0, 0], max: [16, 8, 8] }
+  const spans = bounds.max.map((value, axis) => value - (bounds.min[axis] ?? 0))
+  const cell = Number(
+    Math.max(0.01, Math.min(Math.max(...spans) / 16, Math.min(...spans) / 4)).toPrecision(4),
+  )
+  return {
+    cellSizeMm: cell,
+    minFeatureSizeMm: Math.max(0.8, cell),
+    layerHeightMm: Math.min(0.2, cell),
   }
 }
 

@@ -31,6 +31,8 @@ it.each([
   ["request_lightweighting", "Structural generation"],
   ["analyze_quick_lightweighting", "Quick analysis"],
   ["request_quick_lightweighting", "Quick generation"],
+  ["analyze_print_optimization", "Exact print optimization analysis"],
+  ["request_print_optimization", "Exact print optimization generation"],
 ] satisfies [NumericalToolName, string][])(
   "names the active %s computation and announces automatic notification",
   (tool, label) => {

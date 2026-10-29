@@ -12,6 +12,10 @@ import {
 } from "@vibeshape/automation-api/imports"
 import type { LightweightingSourceIdentity } from "@vibeshape/automation-api/lightweighting-tools"
 import { type LocalFailure, localFailure } from "@vibeshape/automation-api/local-tools"
+import type {
+  PrintOptimizationSettings,
+  PrintOptimizationSummary,
+} from "@vibeshape/automation-api/print-optimization-tools"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import {
   type CommandActor,
@@ -85,6 +89,12 @@ export type ImportReviewInput = Readonly<{
     settings: QuickLightweightingSettings
     summary: QuickLightweightingSummary
   }>
+  printOptimization?: Readonly<{
+    sourceName: string
+    source: LightweightingSourceIdentity
+    settings: PrintOptimizationSettings
+    summary: PrintOptimizationSummary
+  }>
   inspection: Inspection
   transaction: Pick<Transaction, "transactionId" | "commands">
 }>
@@ -98,7 +108,7 @@ export type ImportSessionConfiguration = Readonly<{
   review: (input: ImportReviewInput) => Promise<"approved" | "rejected" | "cancelled">
   commit: (input: ImportReviewedCommit) => Promise<Result<{ revision: number }>>
   reviewContext?: () =>
-    | Pick<ImportReviewInput, "lightweighting" | "quickLightweighting">
+    | Pick<ImportReviewInput, "lightweighting" | "quickLightweighting" | "printOptimization">
     | undefined
   now?: () => number
 }>
@@ -590,7 +600,10 @@ function inspectionOutputViews(inspection: Inspection, outputIds: readonly strin
 }
 
 function lightweightingSourcePartId(
-  context: Pick<ImportReviewInput, "lightweighting" | "quickLightweighting"> | undefined,
+  context:
+    | Pick<ImportReviewInput, "lightweighting" | "quickLightweighting" | "printOptimization">
+    | undefined,
 ) {
-  return (context?.lightweighting ?? context?.quickLightweighting)?.source.partId
+  return (context?.lightweighting ?? context?.quickLightweighting ?? context?.printOptimization)
+    ?.source.partId
 }

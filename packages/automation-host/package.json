@@ -16,6 +16,7 @@
     "./surface-texture-proposal": "./src/surface-texture-proposal.ts",
     "./surface-texture-proposal-contract": "./src/surface-texture-proposal-contract.ts",
     "./lightweighting-proposal": "./src/lightweighting-proposal.ts",
+    "./print-optimization-proposal": "./src/print-optimization-proposal.ts",
     "./quick-lightweighting-proposal": "./src/quick-lightweighting-proposal.ts"
   },
   "scripts": {

@@ -20,10 +20,6 @@ import type {
   StructuralOptimizationInput,
   StructuralOptimizationResult,
 } from "@vibeshape/structural-optimization/contract"
-import {
-  inspectGeometrySource,
-  reconstructPrintOptimization,
-} from "../../document/document-controller"
 import { portableDocumentStem } from "../../document/document-export"
 import { PRODUCT_MESH_POLICY } from "../../document/document-worker-settings"
 import { type PreparedImportSource, readImportSource } from "../import/import-model"
@@ -37,6 +33,7 @@ export type ExactPrintOptimizationEvidence = {
 }
 
 export type PrepareExactPrintSnapshotOptions = {
+  geometry: ExactPrintGeometryPort
   source: LightweightingSource
   input: StructuralOptimizationInput
   result: StructuralOptimizationResult
@@ -46,6 +43,11 @@ export type PrepareExactPrintSnapshotOptions = {
   signal: AbortSignal
   current: () => boolean
   onProgress: (stage: "reconstructing" | "verifying" | "inspecting") => void
+}
+
+export type ExactPrintGeometryPort = {
+  reconstructPrintOptimization: (input: PrintOptimizationReconstructionInput) => Promise<unknown>
+  inspectGeometrySource: (input: unknown) => Promise<unknown>
 }
 
 function sameVolume(first: number, second: number) {
@@ -111,7 +113,7 @@ async function reconstructExactSource(
   const request = capturedReconstructionRequest(options)
   options.onProgress("reconstructing")
   if (!active()) return null
-  const reconstructed = await reconstructPrintOptimization(request)
+  const reconstructed = await options.geometry.reconstructPrintOptimization(request)
   if (!active()) return null
   return {
     request,
@@ -170,7 +172,7 @@ async function verifyExactPrintSolid(
 }
 
 async function inspectExactPrintStep(
-  { source, onProgress }: PrepareExactPrintSnapshotOptions,
+  { source, onProgress, geometry }: PrepareExactPrintSnapshotOptions,
   exact: PrintOptimizationReconstruction,
   active: () => boolean,
 ) {
@@ -187,7 +189,7 @@ async function inspectExactPrintStep(
   if (!active()) return null
   if (prepared.representation !== "exact-solid")
     throw new Error("The exact reconstruction requires a STEP source.")
-  const inspected = await inspectGeometrySource({
+  const inspected = await geometry.inspectGeometrySource({
     source: prepared.source,
     bytes: prepared.bytes,
     mesh: PRODUCT_MESH_POLICY,
