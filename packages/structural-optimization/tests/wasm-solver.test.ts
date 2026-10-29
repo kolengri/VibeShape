@@ -1137,6 +1137,58 @@ json.dumps({"selectionCount": len(_dense_region["triangles"]), "outOfSourceRejec
   )
 })
 
+it(
+  "keeps nominal one-mm FDM coverage for an oblique source without relaxing its minimum",
+  async () => {
+    const mesh = denseBoxMesh({ subdivisions: 1, min: [0, 0, 0], max: [16, 8, 4] })
+    const angle = 0.37
+    for (let index = 0; index < mesh.vertices.length; index += 3) {
+      const x = mesh.vertices[index] ?? 0
+      const y = mesh.vertices[index + 1] ?? 0
+      mesh.vertices[index] = 132.3 + x * Math.cos(angle) - y * Math.sin(angle)
+      mesh.vertices[index + 1] = 4.1 + x * Math.sin(angle) + y * Math.cos(angle)
+      mesh.vertices[index + 2] = (mesh.vertices[index + 2] ?? 0) + 0.1
+    }
+    const prepared = preparePrintOptimization({
+      mesh,
+      bedTriangleIndices: [8, 9],
+      preserveTriangleIndices: [8, 9],
+      material: {
+        youngModulusMpa: 2300,
+        poissonRatio: 0.35,
+        yieldStrengthMpa: 51,
+        densityKgM3: 1240,
+      },
+      cellSizeMm: 1,
+      minFeatureSizeMm: 1,
+      layerHeightMm: 0.2,
+      maxIterations: 0,
+      minStiffnessFraction: 0.9,
+      minStrengthFraction: 0.9,
+      supportMode: "allowed",
+    })
+    prepared.input.includeVoxelGrid = true
+    const legacy = structuredClone(prepared.input)
+    delete legacy.voxelGridOriginMm
+    expect(await run(legacy)).toMatchObject({ ok: false, error: { code: "infeasible-baseline" } })
+    const response = await run(prepared.input)
+    expect(response.ok).toBe(true)
+    if (!response.ok) throw new Error(response.error.message)
+    expect(response.result.status).toBe("no-improvement")
+    expect(response.result.fdm?.minimumFeatureCubeCells).toBe(1)
+    expect(response.result.fdm?.baseline.minFeatureSizeBoundMm).toBeGreaterThanOrEqual(1)
+    expect(response.result.voxelGrid?.originMm.every(Number.isInteger)).toBe(true)
+    expect(prepared.input.relativePerformance).toEqual({
+      minStiffnessFraction: 0.9,
+      minStrengthFraction: 0.9,
+    })
+    expect(prepared.input.preserveRegions).toEqual([
+      { kind: "surface", triangleIndices: [8, 9], depthMm: 2 },
+    ])
+  },
+  timeout,
+)
+
 it.each([false, true])(
   "solves generated print scenarios with a real compound torque and verifies retained performance, preserved bed=%s",
   async (preserveBed) => {

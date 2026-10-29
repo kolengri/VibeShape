@@ -22,6 +22,7 @@ import {
   localAutomationRequest as visibleAutomationRequest,
 } from "./local-automation-http"
 import { createLocalToolExecutor } from "./local-tool-executor"
+import { createProjectChatPort } from "./project-chat-port"
 import { createProjectToolPort } from "./project-tool-port"
 
 type Handle = Extract<ReturnType<typeof createVisibleDocumentAutomationSession>, { ok: true }>
@@ -479,6 +480,11 @@ export function createLocalAutomationConnection(
         () => current.credential,
         () => pair === current && current.handle === capturedHandle && snapshot.connected,
       ),
+      createProjectChatPort({
+        isAllowed: () =>
+          pair === current && current.handle === capturedHandle && snapshot.connected,
+        readIdentity: () => capturedHandle.readIdentity(),
+      }),
     )
   }
   async function readStatus() {

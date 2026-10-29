@@ -32,7 +32,12 @@ Supply `baseRevision`, `source: {partId, featureId, outputRole, contentHash}`, a
 the captured `bedFace`, material, and optional `preserveFaces`. The request tool also requires `label`.
 Optional settings are `cellSizeMm`, `minFeatureSizeMm`, `layerHeightMm`, `maxIterations`,
 `minStiffnessFraction`, `minStrengthFraction` and `supportMode` (`allowed` or `forbidden`).
-Omitted settings use the editor's geometry-derived resolution, at least 0.8 mm minimum feature
+Omitted settings use the editor's envelope and mean-wall-scale estimate (volume/surface area) to
+seed resolution. Above the 0.01 mm lower bound, default cell widths are powers of two; the lattice
+is anchored at zero in the selected print frame rather than an arbitrary mesh-bound residue.
+This avoids nominal-width rounding failures without relaxing raw/float32 coverage checks.
+The estimate is not a proof of the thinnest wall: numerical validation remains authoritative.
+Explicit cell sizes remain unchanged. Defaults retain at least 0.8 mm minimum feature
 size, layer height at most 0.2 mm, 24 iterations, both retention fractions 0.9, and supports allowed.
 The resolved `summary.configuration` records the actual numeric settings and material properties.
 

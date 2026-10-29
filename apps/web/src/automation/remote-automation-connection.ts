@@ -16,6 +16,7 @@ import {
 } from "../document/document-controller"
 import { automationReviews } from "./automation-review-controller"
 import { createLocalToolExecutor } from "./local-tool-executor"
+import { createProjectChatPort } from "./project-chat-port"
 import { createProjectToolPort } from "./project-tool-port"
 
 type Handle = Extract<ReturnType<typeof createActiveDocumentAutomationSession>, { ok: true }>
@@ -134,6 +135,7 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
     if (!current.handle.readIdentity()) void disable()
   }
   function createExecutor(current: Pair, actor: CommandActor) {
+    const capturedHandle = current.handle
     return createLocalToolExecutor(
       current.handle,
       actor,
@@ -161,6 +163,12 @@ export function createRemoteAutomationConnection(endpoint: unknown) {
           publish({ autoApply: false })
           return true
         },
+      }),
+      undefined,
+      createProjectChatPort({
+        isAllowed: () =>
+          pair === current && current.handle === capturedHandle && snapshot.connected,
+        readIdentity: () => capturedHandle.readIdentity(),
       }),
     )
   }

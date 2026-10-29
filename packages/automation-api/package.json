@@ -10,6 +10,7 @@
     "./assistant-agents": "./src/assistant-agents.ts",
     "./assistant-jev": "./src/assistant-jev.ts",
     "./assistant-tool-targets": "./src/assistant-tool-targets.ts",
+    "./project-chat": "./src/project-chat.ts",
     "./project-tools": "./src/project-tools.ts",
     "./desktop-host": "./src/desktop-host.ts",
     "./project-result-context": "./src/project-result-context.ts",

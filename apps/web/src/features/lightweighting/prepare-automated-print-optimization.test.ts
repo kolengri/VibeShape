@@ -8,7 +8,10 @@ import {
 import { printOptimizationFace } from "../../../../../packages/automation-api/src/print-optimization.test-fixtures"
 import type { LightweightingSource } from "./lightweighting-model"
 import { prepareAutomatedPrintOptimization } from "./prepare-automated-print-optimization"
-import { initialPrintOptimizationFields } from "./print-optimization-model"
+import {
+  defaultPrintOptimizationParameters,
+  initialPrintOptimizationFields,
+} from "./print-optimization-model"
 
 function fixture() {
   const bottom = printOptimizationFace()
@@ -67,6 +70,40 @@ function fixture() {
 }
 
 describe("paired print optimization source preparation", () => {
+  it("resolves a hollow part's initial grid from its wall scale instead of only its envelope", () => {
+    const { source } = fixture()
+    source.body.shape.bounds = { min: [0, 0, 0], max: [200, 120, 80] }
+    source.body.shape.volume = 40_000
+    source.body.shape.surfaceArea = 40_000
+    expect(defaultPrintOptimizationParameters(source)).toEqual({
+      cellSizeMm: 0.5,
+      minFeatureSizeMm: 0.8,
+      layerHeightMm: 0.2,
+    })
+    source.body.shape.volume = 1_920_000
+    source.body.shape.surfaceArea = 99_200
+    expect(defaultPrintOptimizationParameters(source).cellSizeMm).toBe(8)
+  })
+
+  it("retains explicit numerical settings and the selected faces when deriving finer defaults", () => {
+    const { source, settings } = fixture()
+    const prepared = prepareAutomatedPrintOptimization(source, {
+      ...settings,
+      cellSizeMm: 1,
+      minFeatureSizeMm: 1,
+      minStiffnessFraction: 0.9,
+      minStrengthFraction: 0.9,
+    })
+    expect(prepared.configuration.cellSizeMm).toBe(1)
+    expect(prepared.configuration.minFeatureSizeMm).toBe(1)
+    expect(prepared.preserveFaceIds).toEqual([42])
+    expect(prepared.input.voxelGridOriginMm).toEqual([0, 0, 0])
+    expect(prepared.input.relativePerformance).toEqual({
+      minStiffnessFraction: 0.9,
+      minStrengthFraction: 0.9,
+    })
+  })
+
   it("resolves native face bindings and shares editor defaults and simultaneous scenarios", () => {
     const { source, settings } = fixture()
     const prepared = prepareAutomatedPrintOptimization(source, settings)

@@ -24,6 +24,7 @@ import {
   planarImportResultMatches,
 } from "@vibeshape/automation-api/planar-imports"
 import { printOptimizationResultContextMatches } from "@vibeshape/automation-api/print-optimization-tools"
+import { projectChatResultContextMatches } from "@vibeshape/automation-api/project-chat"
 import { projectResultContextMatches } from "@vibeshape/automation-api/project-result-context"
 import {
   dependenciesResultContextMatches,
@@ -400,6 +401,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
   ) {
     const { projectId: _projectId, ...command } = operation
     return (
+      projectChatResultContextMatches(command, result, operation.projectId) &&
       dependenciesResultContextMatches(command, result, operation.projectId) !== false &&
       variableUsageResultContextMatches(command, result, operation.projectId) !== false &&
       (!isProjectOperation(command) || projectResultContextMatches(command, result)) &&

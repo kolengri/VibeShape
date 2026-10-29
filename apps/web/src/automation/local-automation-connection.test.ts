@@ -1709,6 +1709,7 @@ describe("local AI project management consent", () => {
       credential.actor,
       expect.anything(),
       expect.objectContaining({ execute: expect.any(Function) }),
+      expect.objectContaining({ read: expect.any(Function) }),
     )
     const pollCount = mocks.request.mock.calls.filter(([path]) => path === "/poll").length
     await vi.advanceTimersByTimeAsync(2000)
@@ -1975,6 +1976,7 @@ describe("local AI project management consent", () => {
       credential.actor,
       expect.anything(),
       expect.objectContaining({ execute: expect.any(Function) }),
+      expect.objectContaining({ read: expect.any(Function) }),
     )
     expect(dispose).toHaveBeenCalledTimes(1)
     expect(replacement.dispose).not.toHaveBeenCalled()

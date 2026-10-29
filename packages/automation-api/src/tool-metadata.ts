@@ -2,6 +2,8 @@ import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-met
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  read_project_chat:
+    "Read the active paired project conversation from persisted display messages only. Requires expectedProjectId from model_info. Returns project/conversation identity, transcriptRevision and source=persisted. Follow nextCursor unchanged until null; pages contain at most 32 fragments and 16000 UTF-16 display units (including tool title/status), with textOffset and complete for oversized messages. Pages read one immutable snapshot per connection, pinned to the first page revision. Same-conversation appends/updates do not alter continuation. Changed conversation, replaced/missing snapshot or connection rejects continuation; restart without cursor. Includes user, assistant, thought and tool display text, plus tool title/status when saved. No provider context, agent session, credentials, raw tool inputs, archives or legacy migration. Does not start or connect an agent. Unsaved streaming output is excluded. Read-only, available on local and remote paired transports.",
   model_variable_usage:
     "Inspect saved variable usage by stable variableId at the exact committed revision. Reports consumer variables, every typed feature quantity expression (including suppressed features), and sketch constraint quantities with structured parameterPath, authored expression and shortest hop distance. transitive=false reports direct #variable references; transitive=true follows dependent variable definitions. Scan uses exact lexical variable names, never arbitrary strings or labels. Coverage is limited to saved typed expressions, independent of geometry; downstream features without expressions are outside scope. Coverage=partial and bounded diagnostics disclose expressions the lexer could not inspect. Paginate up to 100 items with nextCursor while retaining revision/variableId/transitive. Read-only; no draft, preview or Apply required.",
   model_dependencies:
@@ -298,6 +300,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "analyze_lightweighting",
       "analyze_quick_lightweighting",
       "analyze_print_optimization",
+      "read_project_chat",
       "list_projects",
       "render_preview",
       "begin_planar_import_upload",
@@ -368,6 +371,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "list_lightweighting_materials",
       "get_numerical_job",
       "cancel_numerical_job",
+      "read_project_chat",
       "list_projects",
       "open_project",
       "render_preview",

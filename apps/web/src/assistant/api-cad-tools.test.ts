@@ -52,6 +52,7 @@ describe("browser CAD gateway", () => {
             "create_project",
             "get_numerical_job",
             "cancel_numerical_job",
+            "read_project_chat",
           ].includes(name),
       ),
     ])
@@ -134,6 +135,7 @@ describe("browser CAD gateway", () => {
       "list_projects",
       "get_numerical_job",
       "cancel_numerical_job",
+      "read_project_chat",
     ])
       await expect(gateway("call_cad_tool", { name, arguments: {} }, signal)).rejects.toMatchObject(
         { code: "invalid-tool" },
