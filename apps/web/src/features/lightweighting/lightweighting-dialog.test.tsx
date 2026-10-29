@@ -1231,7 +1231,12 @@ describe("Automatic print optimization", () => {
   function printBody(): ModelBodyGeometry {
     return {
       ...body,
-      shape: { ...body.shape, volume: 1024, bounds: { min: [0, 0, 0], max: [16, 8, 8] } },
+      shape: {
+        ...body.shape,
+        volume: 1024,
+        surfaceArea: 640,
+        bounds: { min: [0, 0, 0], max: [16, 8, 8] },
+      },
       mesh: {
         positions: new Float32Array([
           0, 0, 0, 0, 0, 8, 0, 8, 0, 0, 8, 8, 16, 0, 0, 16, 0, 8, 16, 8, 0, 16, 8, 8,
@@ -1362,6 +1367,7 @@ describe("Automatic print optimization", () => {
     await userEvent.click(run)
     await waitFor(() => expect(ports.optimize).toHaveBeenCalledTimes(1))
     const input = ports.optimize.mock.calls[0]?.[0] as StructuralOptimizationInput
+    expect(input.cellSizeMm).toBe(1)
     expect(input.includeVoxelGrid).toBe(true)
     expect(input.relativePerformance).toEqual({
       minStiffnessFraction: 0.9,
