@@ -20,7 +20,23 @@ it("discovers client-valid planar import schemas without acquiring unpaired auth
     expect(tools.map((tool) => tool.name).sort()).toEqual(
       [...localToolNameSchema.options, agentSkillTool.name].sort(),
     )
-    expect(tools).toHaveLength(171)
+    expect(tools).toHaveLength(172)
+    const chat = tools.find((tool) => tool.name === "read_project_chat")
+    expect(chat?.annotations).toMatchObject({
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    })
+    expect(chat?.inputSchema.required).toEqual(["expectedProjectId"])
+    expect(
+      await client.callTool({
+        name: "read_project_chat",
+        arguments: { expectedProjectId: uploadId },
+      }),
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { result: { ok: false, diagnostic: { code: "not-paired" } } },
+    })
     const inputs = {
       begin_planar_import_upload: {
         revision: 4,

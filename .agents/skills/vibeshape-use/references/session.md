@@ -234,3 +234,26 @@ preview/review/commit path.
 - Local and remote CAD operations have no automatic broker execution deadline while the browser remains live and authorized. Document/geometry worker execution, startup, native project import/duplication and backup have no default deadline either. Separate proposals retain their advertised expiry. Disable the external MCP client's tools/call deadline where supported, otherwise allow at least ten minutes. The server cannot override it. Keep one request pending; do not start a second commit.
 - A client timeout must send MCP cancellation or close the transport to interrupt pending work. The native HTTP host also releases its attachment on an unfinished POST stream closing. If the client abandons the request without any observable signal, subsequent reads can remain `busy` while the original work continues. Stop AI cancels it. Reconnect and inspect the saved revision before retrying any unconfirmed write; never replay blindly.
 - Unknown outcomes require inspection before retrying; a fresh ID does not make a duplicate write safe.
+
+## Read the active project chat
+
+When `read_project_chat` is advertised, both paired local and remote MCP transports can read the
+current project's saved active conversation. Read `model_info`, then pass its project identity as
+`expectedProjectId`. This read does not require Allow project management. It requires the existing
+live project grant; Stop AI, an unpaired session, or a replaced project/session refuses access.
+
+The response identifies `projectId`, `conversationId`, `transcriptRevision` and `source: persisted`.
+Read all pages by passing `nextCursor` unchanged until it is null. Each page contains at most 32
+message fragments and 16,000 UTF-16 display units including saved tool title/status. Reassemble
+fragments by message identity and `textOffset`; `messageIndex` preserves display order and `complete`
+marks the final text fragment. Unicode surrogate pairs remain intact. One immutable display snapshot
+is retained per connection. Same-conversation appends/updates (including this tool's own messages)
+do not alter subsequent pages; they keep the first page's transcript revision. Starting another read
+without a cursor replaces that snapshot. A changed conversation, missing/replaced snapshot or changed
+connection rejects continuation; restart without a cursor to read the latest saved text.
+
+Only saved user, assistant, thought and tool display text is available. Streaming text not yet saved,
+provider context, credentials, agent session IDs, native raw tool arguments and archived conversations
+are excluded. Tool title/status are returned when saved; do not infer full arguments from them. An
+absent saved conversation returns an empty page. The read never creates, connects, restores or switches
+an agent/conversation, and never migrates legacy localStorage history or modifies CAD.

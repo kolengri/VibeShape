@@ -197,7 +197,13 @@ describe("remote AI project management consent", () => {
       autoApply: false,
       projectManagement: true,
     })
-    expect(mocks.createExecutor).toHaveBeenLastCalledWith(next, actor, expect.anything())
+    expect(mocks.createExecutor).toHaveBeenLastCalledWith(
+      next,
+      actor,
+      expect.anything(),
+      undefined,
+      expect.objectContaining({ read: expect.any(Function) }),
+    )
     expect(dispose).toHaveBeenCalledTimes(1)
     expect(socket.close).not.toHaveBeenCalled()
     expect(sockets).toHaveLength(1)
@@ -255,7 +261,13 @@ describe("remote AI project management consent", () => {
       autoApply: false,
       projectManagement: true,
     })
-    expect(mocks.createExecutor).toHaveBeenLastCalledWith(replacement, actor, expect.anything())
+    expect(mocks.createExecutor).toHaveBeenLastCalledWith(
+      replacement,
+      actor,
+      expect.anything(),
+      undefined,
+      expect.objectContaining({ read: expect.any(Function) }),
+    )
     expect(socket.close).not.toHaveBeenCalled()
     expect(dispose).toHaveBeenCalledTimes(1)
     expect(replacement.dispose).not.toHaveBeenCalled()

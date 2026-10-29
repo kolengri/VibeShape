@@ -38,9 +38,15 @@ export function initialPrintOptimizationFields(
 export function defaultPrintOptimizationParameters(source: LightweightingSource | null) {
   const bounds = source?.body.shape.bounds ?? { min: [0, 0, 0], max: [16, 8, 8] }
   const spans = bounds.max.map((value, axis) => value - (bounds.min[axis] ?? 0))
-  const cell = Number(
-    Math.max(0.01, Math.min(Math.max(...spans) / 16, Math.min(...spans) / 4)).toPrecision(4),
-  )
+  const envelopeCell = Math.max(0.01, Math.min(Math.max(...spans) / 16, Math.min(...spans) / 4))
+  const shape = source?.body.shape
+  // Mean wall scale seeds resolution for hollow parts; FDM validation still proves coverage.
+  const wallCell =
+    shape && shape.volume > 0 && shape.surfaceArea > 0
+      ? 2 ** Math.ceil(Math.log2(shape.volume / (2 * shape.surfaceArea)))
+      : envelopeCell
+  // Binary cell widths and a zero print-frame phase avoid nominal-width rounding artifacts.
+  const cell = Math.max(0.01, 2 ** Math.floor(Math.log2(Math.min(envelopeCell, wallCell))))
   return {
     cellSizeMm: cell,
     minFeatureSizeMm: Math.max(0.8, cell),

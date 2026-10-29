@@ -18,6 +18,14 @@ the active project and catalog. Project management permission is not restored af
 The editor retains document authority; there is no headless modeling mode.
 Use MCP tools/list as the current input/output schema authority. Only listed tools are callable.
 
+Read saved active project chat with read_project_chat and expectedProjectId from model_info.
+It works on paired local and remote transports without Allow project management. Follow nextCursor
+unchanged; pages retain one immutable snapshot across same-conversation appends/updates. A new
+conversation, replaced snapshot or connection requires restarting without a cursor. source=persisted
+excludes unsaved streaming text, provider state, credentials, agent session IDs, archives and native
+raw tool arguments. Text fragments carry messageIndex, textOffset and complete; reassemble them
+without dropping fragments. Reading never starts an agent or migrates legacy chat storage.
+
 ## Visual checks
 
 Call render_preview with source=model and the saved revision, or source=draft, draftId and the

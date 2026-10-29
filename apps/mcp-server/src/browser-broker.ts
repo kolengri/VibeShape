@@ -60,6 +60,7 @@ import {
   planarImportResultMatches,
 } from "@vibeshape/automation-api/planar-imports"
 import { printOptimizationResultContextMatches } from "@vibeshape/automation-api/print-optimization-tools"
+import { projectChatResultContextMatches } from "@vibeshape/automation-api/project-chat"
 import { projectResultContextMatches } from "@vibeshape/automation-api/project-result-context"
 import {
   cadInspectionDetailViewSchema,
@@ -394,6 +395,8 @@ function resultMatches(
   documentId: string,
 ) {
   if (!result.ok) return true
+  if (operation.tool === "read_project_chat")
+    return projectChatResultContextMatches(operation, result, documentId)
   if (isProjectOperation(operation))
     return projectResultContextMatches(operation, result, documentId)
   if (isLocalBinaryExport(operation))

@@ -116,6 +116,7 @@ it("keeps preserved triangle identities and leaves the captured source and setti
     penalty: 3,
   })
   expect(input.fdm?.buildDirection).toBe("+z")
+  expect(input.voxelGridOriginMm).toEqual([0, 0, 0])
   expect(input.objective).toEqual({ kind: "minimize-mass" })
   input.mesh.vertices[0] = 123
   input.mesh.indices[0] = 123

@@ -241,6 +241,59 @@ afterEach(async () => {
   await reset()
 })
 
+it("forwards saved chat pages and revokes a foreign-project receipt", async () => {
+  const tab = await pair()
+  const authenticated = await authorizeTab(tab)
+  const projectId = "0195b5ac-b220-7a2c-8c33-67a36a7f6101"
+  const result = {
+    ok: true,
+    value: {
+      projectId,
+      conversationId: projectId,
+      transcriptRevision: 0,
+      source: "persisted",
+      messages: [],
+      nextCursor: null,
+    },
+  }
+  const send = async (requestId: number, value: unknown) => {
+    const work = nextMessage(tab.socket)
+    const response = mcp(authenticated.token, requestId, "tools/call", {
+      name: "read_project_chat",
+      arguments: { expectedProjectId: projectId },
+    })
+    const operation = await work
+    if (operation.type !== "work") throw new Error("Expected chat read work.")
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: operation.requestId,
+        tool: "read_project_chat",
+        result: value,
+      }),
+    )
+    return (await response).json()
+  }
+  expect(await send(1, result)).toMatchObject({ result: { structuredContent: { result } } })
+  expect(
+    await send(2, {
+      ...result,
+      value: { ...result.value, projectId: "0195b5ac-b220-7a2c-8c33-67a36a7f6102" },
+    }),
+  ).toMatchObject({
+    result: {
+      structuredContent: { result: { ok: false, diagnostic: { code: "outcome-unknown" } } },
+    },
+  })
+  expect(
+    await bindings.TAB_SESSIONS.getByName(tab.credential.sessionId).isAuthorized({
+      sessionId: tab.credential.sessionId,
+      clientId: authenticated.clientId,
+    }),
+  ).toBe(false)
+})
+
 it.each(["direction", "documentId"] as const)(
   "forwards guarded dependency pages and rejects a different %s",
   async (field) => {
@@ -1314,6 +1367,7 @@ describe("remote MCP in workerd", () => {
       expect(tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           "model_info",
+          "read_project_chat",
           "analyze_print_optimization",
           "request_print_optimization",
           "create_body_revolve",

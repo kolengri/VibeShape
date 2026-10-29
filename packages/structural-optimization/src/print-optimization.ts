@@ -252,6 +252,8 @@ export function preparePrintOptimization(options: PrintOptimizationOptions): {
     safetyFactor: 1,
     maxDisplacementMm: 100_000,
     cellSizeMm: cell,
+    // A print-frame lattice avoids an arbitrary source-bound residue at nominal cell widths.
+    voxelGridOriginMm: [0, 0, 0],
     preserveRegions: options.preserveTriangleIndices.length
       ? [
           {

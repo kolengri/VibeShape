@@ -48,6 +48,57 @@ const edgeReference = (featureId: ReturnType<typeof featureIdSchema.parse>, role
 })
 
 describe("local automation tool executor", () => {
+  it("routes chat only to the explicit read port and preserves cancellation and project guards", async () => {
+    const host = {
+      createDraft: vi.fn(),
+      inspectDraft: vi.fn(),
+      applyCommand: vi.fn(),
+      previewDraft: vi.fn(),
+      commitDraft: vi.fn(),
+      discardDraft: vi.fn(),
+    }
+    const session = {
+      documentId: id(2),
+      revision: 4,
+      host,
+      readCad: vi.fn(),
+      readInfo: () => null,
+      exportRevisionBound: vi.fn(),
+    }
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.chat",
+      sessionId: id(1),
+    })
+    const operation = localOperationSchema.parse({
+      tool: "read_project_chat",
+      arguments: { expectedProjectId: id(2) },
+    })
+    const read = vi.fn(async () => ({ ok: true, value: "display receipt" }))
+    expect(await createLocalToolExecutor(session, actor).execute(operation)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "chat-unavailable" },
+    })
+    const executor = createLocalToolExecutor(session, actor, undefined, undefined, { read })
+    const controller = new AbortController()
+    expect(await executor.execute(operation, controller.signal)).toEqual({
+      ok: true,
+      value: "display receipt",
+    })
+    expect(read).toHaveBeenCalledWith(operation, controller.signal)
+    controller.abort()
+    expect(await executor.execute(operation, controller.signal)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "request-cancelled" },
+    })
+    expect(
+      await executor.execute({ ...operation, projectId: documentIdSchema.parse(id(3)) }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "project-target-mismatch" } })
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(host.createDraft).not.toHaveBeenCalled()
+    expect(session.readCad).not.toHaveBeenCalled()
+  })
+
   it("requires an explicit local recovery port and never grants recovery to a remote or unbound executor", async () => {
     const host = {
       createDraft: vi.fn(),

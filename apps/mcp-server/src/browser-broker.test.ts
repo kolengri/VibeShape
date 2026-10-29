@@ -66,6 +66,48 @@ async function connect(broker: ReturnType<typeof createBrowserBroker>) {
 }
 
 describe("browser automation broker", () => {
+  it("correlates saved chat pages with the paired project before forwarding", async () => {
+    const broker = makeBroker({ origin })
+    const { token } = await connect(broker)
+    const operation = localOperationSchema.parse({
+      tool: "read_project_chat",
+      arguments: { expectedProjectId: document.id },
+    })
+    const pending = broker.invoke(operation)
+    const poll = await broker.handle(
+      request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+    )
+    const { work } = localPollResponseSchema.parse(await poll.json())
+    if (!work) throw new Error("Expected chat read work.")
+    const value = {
+      projectId: document.id,
+      conversationId: document.id,
+      transcriptRevision: 0,
+      source: "persisted",
+      messages: [],
+      nextCursor: null,
+    }
+    const respond = (page: unknown) =>
+      broker.handle(
+        request(
+          "result",
+          {
+            protocolVersion: 1,
+            requestId: work.requestId,
+            tool: "read_project_chat",
+            result: { ok: true, value: page },
+          },
+          token,
+        ),
+      )
+    expect(
+      (await respond({ ...value, projectId: "0195b5ac-b220-7a2c-8c33-67a36a7f6102" })).status,
+    ).toBe(400)
+    expect((await respond({ ...value, agentSession: { sessionId: "private" } })).status).toBe(400)
+    expect((await respond(value)).status).toBe(200)
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value })
+  })
+
   it("accepts fast numerical receipts then correlates job controls and completed evidence", async () => {
     const broker = makeBroker({ origin })
     const { token } = await connect(broker)
@@ -208,7 +250,7 @@ describe("browser automation broker", () => {
     ])
       expect((await respond({ ...value, ...change })).status).toBe(400)
     expect((await respond(value)).status).toBe(200)
-    await expect(pending).resolves.toEqual({ ok: true, value })
+    await expect(pending).resolves.toEqual<unknown>({ ok: true, value })
   })
 
   it("accepts a validated material catalog without requiring a draft or document receipt", async () => {

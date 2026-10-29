@@ -16,6 +16,10 @@ relative-performance evidence. UI tests cover bed/plastic/preservation selection
 single-flight cancellation, source invalidation and switching to real service loads.
 Baseline-only and no-improvement results retain their metrics and report without reconstruction,
 import preview or Apply.
+An oblique print-source fixture reproduces nominal one-mm FDM failure with the old mesh-bound
+lattice and passes the same minimum, preserved bed and 90% retention settings on the zero-phase
+print-frame lattice. Setup tests distinguish a hollow part's wall scale from a solid part with
+the same envelope and retain explicit numerical overrides.
 Protected-budget fixtures also reject false density convergence at the free-density floor, require
 explicit baseline-energy projection evidence, and retain the original per-case acceptance gates.
 
@@ -793,6 +797,12 @@ exact preservation and original-baseline performance evidence on both transports
 fixtures reject changed, ambiguous and unbound faces while preserving editor defaults. The paired
 stdio browser flow discovers source faces through tools, analyzes the actual exact candidate without
 saving, then reviews and publishes the exact STEP Part with normal save, Undo and Redo.
+
+Project-chat contracts cover paired local/remote reads, project/grant revocation, forged response
+identity, Unicode-safe bounded pages, and immutable pagination while the active conversation grows.
+The paired Chromium flow reads real IndexedDB transcripts, rejects replaced conversations, excludes
+provider session data and verifies the CAD revision is unchanged. Direct browser API discovery
+excludes this paired-MCP-only tool.
 
 Catalog tests convert every advertised CAD input schema and compare local, remote and browser API
 discovery. Defaulted fields must remain optional in those schemas, including empty-argument skill

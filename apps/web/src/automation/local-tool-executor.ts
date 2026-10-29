@@ -87,6 +87,7 @@ import type { createMetadataAutomationSession } from "./metadata-automation-sess
 import type { createNumericalJobSession } from "./numerical-job-session"
 import type { createPlanarImportAutomationSession } from "./planar-import-automation-session"
 import type { createBrowserPrintOptimizationAutomationSession } from "./print-optimization-automation-session"
+import type { ProjectChatPort } from "./project-chat-port"
 import type { ProjectToolPort } from "./project-tool-port"
 import type { createBrowserQuickLightweightingAutomationSession } from "./quick-lightweighting-automation-session"
 import type { createBrowserSurfaceTextureAutomationSession } from "./surface-texture-automation-session"
@@ -360,7 +361,16 @@ export function createLocalToolExecutor(
   actor: CommandActor,
   projects?: ProjectToolPort,
   recovery?: DraftRecoveryPort,
+  chat?: ProjectChatPort,
 ): LocalToolExecutor {
+  function readChat(
+    operation: Extract<LocalOperation, { tool: "read_project_chat" }>,
+    signal?: AbortSignal,
+  ) {
+    return chat
+      ? chat.read(operation, signal)
+      : localFailure("chat-unavailable", "This connection cannot read project chat.")
+  }
   function transfer(
     operation: Extract<
       LocalOperation,
@@ -576,6 +586,7 @@ export function createLocalToolExecutor(
         )
       const { projectId: _projectId, ...command } = operation
       operation = command
+      if (operation.tool === "read_project_chat") return readChat(operation, signal)
       if (isProjectOperation(operation))
         return projects
           ? projects.execute(operation, signal)

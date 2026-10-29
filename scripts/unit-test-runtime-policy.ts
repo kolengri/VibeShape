@@ -114,7 +114,7 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/wasm-solver.test.ts",
-    "da11e7d0522a45e11bbfe8564c7a1e44320e1dbb7c87894ec79fc13d0845a6be",
+    "6aabed32f4e767669d4d442761524b5e0c8e9693e83508e04578f0fee4d84c12",
   ],
 ])
 

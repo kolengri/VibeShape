@@ -58,7 +58,6 @@ import {
   historyMoveOperationSchema,
   historyMoveToolInputs,
 } from "./history-move-tools"
-
 import {
   historyCommitViewSchema,
   historyOperations,
@@ -130,6 +129,7 @@ import {
   printOptimizationToolInputs,
   printOptimizationToolNames,
 } from "./print-optimization-tools"
+import { projectChatPageSchema, readProjectChatArgumentsSchema } from "./project-chat"
 import {
   projectListSchema,
   projectOperations,
@@ -216,6 +216,7 @@ const chamfer = z.union([
   z.object({ ...feature, parameters: chamferFeatureParametersV3Schema }).strict(),
 ])
 export const localToolInputs = {
+  read_project_chat: readProjectChatArgumentsSchema,
   list_lightweighting_materials: z.object({}).strict(),
   ...projectToolInputs,
   ...lightweightingToolInputs,
@@ -323,6 +324,7 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  read_project_chat: resultOf(projectChatPageSchema),
   list_recoverable_drafts: resultOf(recoverableDraftsViewSchema),
   restore_draft: resultOf(restoredDraftViewSchema),
   list_lightweighting_materials: resultOf(structuralMaterialCatalogSchema),
@@ -527,6 +529,7 @@ export const localToolOutputs = {
   export_model: resultOf(localExportSchema),
 } as const
 export const localToolNameSchema = z.enum([
+  "read_project_chat",
   "list_recoverable_drafts",
   "restore_draft",
   "list_lightweighting_materials",
@@ -665,6 +668,10 @@ const untargetedOperationSchema = z.discriminatedUnion("tool", [
       arguments: localToolInputs.list_lightweighting_materials,
     })
     .strict(),
+  z.strictObject({
+    tool: z.literal("read_project_chat"),
+    arguments: readProjectChatArgumentsSchema,
+  }),
   ...projectOperations,
   ...lightweightingOperations,
   ...numericalJobOperations,
