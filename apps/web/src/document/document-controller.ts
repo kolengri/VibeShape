@@ -614,6 +614,12 @@ export function inspectGeometrySource(
   return runtimes.active().inspectGeometrySource(...args)
 }
 
+export function reconstructPrintOptimization(
+  ...args: Parameters<DocumentControllerRuntime["reconstructPrintOptimization"]>
+): ReturnType<DocumentControllerRuntime["reconstructPrintOptimization"]> {
+  return runtimes.active().reconstructPrintOptimization(...args)
+}
+
 export function inspectTriangleMeshSource(
   ...args: Parameters<DocumentControllerRuntime["inspectTriangleMeshSource"]>
 ): ReturnType<DocumentControllerRuntime["inspectTriangleMeshSource"]> {

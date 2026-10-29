@@ -8,7 +8,9 @@ export function LightweightingSourceSelector({
   controller,
   state,
   disabled,
+  description,
 }: {
+  description?: string
   controller: DocumentControllerState
   state: { partId: string; source: LightweightingSource | null; choosePart: (id: string) => void }
   disabled: boolean
@@ -20,7 +22,7 @@ export function LightweightingSourceSelector({
       <SelectField
         id="lightweighting-part"
         label={t("part")}
-        description={t("partDescription")}
+        description={description ?? t("partDescription")}
         required
         value={state.partId || "unselected"}
         disabled={disabled}

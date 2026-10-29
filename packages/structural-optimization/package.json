@@ -10,6 +10,7 @@
     "./client": "./src/client.ts",
     "./generative-design": "./src/generative-design.ts",
     "./mesh": "./src/mesh.ts",
+    "./print-optimization": "./src/print-optimization.ts",
     "./quick-contract": "./src/quick-contract.ts",
     "./quick-client": "./src/quick-client.ts"
   },

@@ -59,7 +59,7 @@ export const agentSkillTool = {
   name: "read_agent_skill",
   description:
     "Read the bundled VibeShape operator skill index (no arguments) or a document at an exact uri from that index or its links. Covers modeling, inspection, organization, export and session recovery. Read-only server instructions; no browser command, document access or skill installation.",
-  inputSchema: z.toJSONSchema(input),
+  inputSchema: z.toJSONSchema(input, { io: "input" }),
   outputSchema: z.toJSONSchema(output),
   annotations: {
     readOnlyHint: true,

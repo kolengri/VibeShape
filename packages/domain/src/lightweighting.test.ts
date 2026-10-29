@@ -44,6 +44,37 @@ function fdmSummary(): StructuralFdmSummary {
   }
 }
 describe("structural FDM settings and response association", () => {
+  it("accepts one larger resolved cube only with stronger proof for both solids", () => {
+    const summary = fdmSummary()
+    summary.settings.minFeatureSizeMm = 1
+    expect(structuralFdmSummaryMatches(summary, summary.settings, 1)).toBe(true)
+    for (const mutate of [
+      (value: StructuralFdmSummary) => {
+        value.minimumFeatureCubeCells = 1
+      },
+      (value: StructuralFdmSummary) => {
+        value.minimumFeatureCubeCells = 3
+        value.baseline.minFeatureSizeBoundMm = 3
+        value.optimized.minFeatureSizeBoundMm = 3
+      },
+      (value: StructuralFdmSummary) => {
+        value.baseline.minFeatureSizeBoundMm = 1
+      },
+      (value: StructuralFdmSummary) => {
+        value.optimized.minFeatureSizeBoundMm = 1
+      },
+      (value: StructuralFdmSummary) => {
+        value.optimized.minFeatureSizeBoundMm = 0.9999999999999998
+      },
+      (value: StructuralFdmSummary) => {
+        value.optimized.buildHeightMm = 1
+      },
+    ]) {
+      const invalid = structuredClone(summary)
+      mutate(invalid)
+      expect(structuralFdmSummaryMatches(invalid, summary.settings, 1)).toBe(false)
+    }
+  })
   it("accepts all build axes and keeps legacy FDM omission unchanged", () => {
     for (const buildDirection of ["+x", "-x", "+y", "-y", "+z", "-z"] as const)
       expect(
@@ -333,6 +364,62 @@ function latticeEvidence(): StructuralAlgorithmSummary {
 }
 const simpExecution = { iterations: 8, evaluations: 15, maxIterations: 8 }
 const latticeExecution = { iterations: 2, evaluations: 4, maxIterations: 8 }
+
+describe("compound structural loads and relative performance", () => {
+  const relativePerformance = { minStiffnessFraction: 0.9, minStrengthFraction: 0.85 }
+  const term = { region: { min: [10, 0, 0], max: [10, 1, 2] }, forceN: [0, 0, 1] }
+  it("accepts opposite terms in one case and preserves legacy settings without defaults", () => {
+    const legacy = structuralOptimizationSettingsSchema.parse(algorithmInput(simpSettings))
+    expect(legacy).not.toHaveProperty("relativePerformance")
+    expect(legacy.loadCases[0]).not.toHaveProperty("additionalLoads")
+    const parsed = structuralOptimizationSettingsSchema.parse({
+      ...legacy,
+      relativePerformance,
+      loadCases: [{ ...term, name: "torque", additionalLoads: [{ ...term, forceN: [0, 0, -1] }] }],
+    })
+    expect(parsed.relativePerformance).toEqual(relativePerformance)
+    expect(parsed.loadCases).toHaveLength(1)
+    expect(parsed.loadCases[0]?.additionalLoads).toHaveLength(1)
+    expect(
+      structuralOptimizationSummarySchema.shape.relativePerformance.parse(relativePerformance),
+    ).toEqual(relativePerformance)
+  })
+  it.each([
+    null,
+    {},
+    { minStiffnessFraction: 0, minStrengthFraction: 0.9 },
+    { minStiffnessFraction: 1.01, minStrengthFraction: 0.9 },
+    { minStiffnessFraction: NaN, minStrengthFraction: 0.9 },
+    { minStiffnessFraction: 0.9, minStrengthFraction: Infinity },
+    { minStiffnessFraction: 0.9, minStrengthFraction: -1 },
+    { ...relativePerformance, extra: true },
+  ])("rejects malformed relative limits %j", (relativePerformance) => {
+    expect(
+      structuralOptimizationSettingsSchema.safeParse({
+        ...algorithmInput(simpSettings),
+        relativePerformance,
+      }).success,
+    ).toBe(false)
+  })
+  it.each(
+    [
+      [],
+      null,
+      [null],
+      [{ ...term, forceN: [0, 0, 0] }],
+      [{ ...term, forceN: [0, 0, Infinity] }],
+      [{ ...term, name: "independent-case" }],
+      [{ forceN: [0, 0, 1] }],
+      [{ ...term, region: { kind: "surface", triangleIndices: [], depthMm: 1 } }],
+    ].map((additionalLoads) => ({ additionalLoads })),
+  )("rejects malformed additional terms %j", ({ additionalLoads }) => {
+    expect(
+      structuralOptimizationSettingsSchema.shape.loadCases.safeParse([
+        { ...term, name: "torque", additionalLoads },
+      ]).success,
+    ).toBe(false)
+  })
+})
 describe("structural algorithm settings and solid evidence", () => {
   it("preserves omission and rejects evidence without an algorithm request", () => {
     expect(structuralOptimizationSettingsSchema.shape.algorithm.parse(undefined)).toBeUndefined()

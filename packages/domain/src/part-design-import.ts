@@ -16,8 +16,8 @@ export const importedSolidSignatureSchema = z
     area: z.number().finite().positive().max(1e17),
     centroid: vector,
     bounds: z.object({ min: vector, max: vector }).strict(),
-    faceCount: z.number().int().positive().max(500_000),
-    edgeCount: z.number().int().positive().max(500_000),
+    faceCount: z.number().int().positive(),
+    edgeCount: z.number().int().positive(),
   })
   .strict()
   .superRefine((signature, context) => {

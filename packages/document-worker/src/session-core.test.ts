@@ -176,6 +176,67 @@ function createHarness(
 }
 
 describe("DocumentWorkerSession", () => {
+  it("keeps exact reconstruction on the active native session and never recovers transient face identities", async () => {
+    const input = {
+      source: {
+        documentId,
+        featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+        contentHash: "a".repeat(64),
+        outputRole: "result",
+      },
+      preserveFaceIds: [27],
+      voxelGrid: {
+        originMm: [0, 0, 0] as [number, number, number],
+        cellSizeMm: 1,
+        cells: [[0, 0, 0] as [number, number, number]],
+      },
+      sourceToPrintFrame: {
+        originMm: [0, 0, 0] as [number, number, number],
+        rotation: [0, 0, 0, 1] as [number, number, number, number],
+      },
+      protectedBoxes: [],
+      preserveDepthMm: 2,
+    }
+    let fail = false
+    const { clients, session } = createHarness([
+      (request) => {
+        if (request.type !== "reconstructPrintOptimization") return successfulResponse(request)
+        if (fail)
+          throw new DocumentWorkerRequestError("Native worker was replaced.", "worker-error")
+        return {
+          ...envelope(request),
+          type: "printOptimizationReconstructed",
+          reconstruction: {
+            source: input.source,
+            stepBytes: new Uint8Array([1]),
+            verificationMesh: { positions: new Float64Array(12), indices: new Uint32Array(12) },
+            sourceVolumeMm3: 2,
+            volumeMm3: 1,
+            preservedFaceCount: 1,
+          },
+        }
+      },
+    ])
+    await session.rebuild({ document: document(3), mesh })
+    const response = await session.reconstructPrintOptimization(input)
+    expect(response.reconstruction.volumeMm3).toBe(1)
+    expect(clients[0]?.requests.at(-1)).toMatchObject({
+      type: "reconstructPrintOptimization",
+      revision: 3,
+      generation: 1,
+      input,
+    })
+    fail = true
+    await expect(session.reconstructPrintOptimization(input)).rejects.toThrow(
+      "Native worker was replaced",
+    )
+    expect(clients.length).toBe(1)
+    expect(clients[0]?.terminated).toBe(false)
+    expect(
+      clients[0]?.requests.filter((request) => request.type === "rebuildDocument").length,
+    ).toBe(1)
+  })
+
   it("accepts a complete domain snapshot with project display units", async () => {
     const { clients, session } = createHarness()
     const snapshot = documentSnapshotSchema.parse({

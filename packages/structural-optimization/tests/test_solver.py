@@ -15,9 +15,24 @@ from iterative_fixtures import (verify_iterative_compact_analytical_solve, verif
 import numpy as np
 import pytest
 import trimesh
+from compound_relative_fixtures import (verify_compound_superposition_and_protection,
+                                       verify_invalid_compound_loads,
+                                       verify_invalid_relative_settings,
+                                       verify_relative_candidate_gates,
+                                       verify_relative_final_gate,
+                                       verify_relative_full_solid_search,
+                                       verify_relaxed_failure_contract,
+                                       verify_protected_density_floor_fallback,
+                                       verify_final_voxel_grid_evidence,
+                                       verify_reconstructed_grid_phase,
+                                       verify_invalid_voxel_grid_inputs)
 from fdm_fixtures import (verify_fdm_axes_and_cubes, verify_fdm_constraints_change_removal,
                           verify_fdm_float32_bound, verify_fdm_footprints_and_support_modes,
-                          verify_fdm_rounded_slice_height, verify_invalid_fdm_settings)
+                          verify_fdm_rounded_slice_height, verify_invalid_fdm_settings,
+                          verify_fdm_representable_cube_selection, verify_fdm_overlapping_nominal_cubes)
+from boundary_reference_fixtures import (verify_fixed_boundary_reference,
+                                         verify_missing_reference_interface,
+                                         verify_invalid_boundary_reference)
 from obstacle_fixtures import (verify_closed_obstacle_contact,
                                verify_invalid_obstacle_boxes,
                                verify_obstacle_baseline_accounting,
@@ -35,6 +50,19 @@ from resource_fixtures import (verify_large_analytical_beam, verify_large_filter
 spec = importlib.util.spec_from_file_location("structural_solver", Path(__file__).parents[1] / "src" / "solver.py")
 solver = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(solver)
+
+
+@pytest.mark.parametrize("shifted", [False, True])
+def test_fixed_boundary_reference(shifted):
+    verify_fixed_boundary_reference(solver, shifted)
+
+
+def test_missing_reference_interface():
+    verify_missing_reference_interface(solver)
+
+
+def test_invalid_boundary_reference():
+    verify_invalid_boundary_reference(solver)
 
 
 def request_for_box(iterations=0):
@@ -56,6 +84,46 @@ def request_for_box(iterations=0):
 def output_mesh(result):
     return trimesh.Trimesh(np.array(result["mesh"]["vertices"]).reshape(-1, 3),
                            np.array(result["mesh"]["indices"]).reshape(-1, 3), process=False)
+
+
+@pytest.mark.parametrize("verify", [verify_compound_superposition_and_protection,
+                                  verify_invalid_compound_loads, verify_invalid_relative_settings])
+def test_compound_and_relative_contracts(verify):
+    verify(solver)
+
+
+@pytest.mark.parametrize("metric", ["complianceNmm", "maxVonMisesMpa"])
+@pytest.mark.parametrize("algorithm", [False, True])
+def test_relative_per_case_candidate_gates(metric, algorithm):
+    verify_relative_candidate_gates(solver, metric, algorithm)
+
+
+@pytest.mark.parametrize("algorithm", [False, True])
+def test_relative_full_solid_search_preserves_the_actual_fem_baseline(algorithm):
+    verify_relative_full_solid_search(solver, algorithm)
+
+
+@pytest.mark.parametrize("successful_iterations,code", [(0, "numerical-failure"),
+                                                       (1, "numerical-failure"),
+                                                       (0, "boundary-condition-lost")])
+def test_relaxed_failures_preserve_verified_full_solid_acceptance(successful_iterations, code):
+    verify_relaxed_failure_contract(solver, successful_iterations, code)
+
+
+def test_protected_density_floor_uses_verified_energy_without_relaxed_solves():
+    verify_protected_density_floor_fallback(solver)
+
+
+@pytest.mark.parametrize("verify", [verify_final_voxel_grid_evidence, verify_reconstructed_grid_phase,
+                                  verify_invalid_voxel_grid_inputs])
+def test_private_verified_voxel_grid_contract(verify):
+    verify(solver)
+
+
+@pytest.mark.parametrize("metric", ["complianceNmm", "maxVonMisesMpa"])
+@pytest.mark.parametrize("baseline_value", [0, 1e-100, 0.01])
+def test_relative_final_gates_do_not_exempt_small_cases(metric, baseline_value):
+    verify_relative_final_gate(solver, metric, baseline_value)
 
 
 @pytest.mark.parametrize("poisson", [0.35, 0.45])
@@ -87,7 +155,8 @@ def test_keep_out_invariants(verify):
 
 @pytest.mark.parametrize("verify", [verify_fdm_axes_and_cubes, verify_fdm_constraints_change_removal,
                                   verify_fdm_float32_bound, verify_fdm_footprints_and_support_modes,
-                                  verify_fdm_rounded_slice_height, verify_invalid_fdm_settings])
+                                  verify_fdm_rounded_slice_height, verify_invalid_fdm_settings,
+                                  verify_fdm_representable_cube_selection, verify_fdm_overlapping_nominal_cubes])
 def test_fdm_invariants(verify):
     verify(solver)
 

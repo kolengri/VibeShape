@@ -30,6 +30,22 @@ const structuralObstacleRegionSchema = structuralBoxRegionSchema.refine(
 )
 export type StructuralRegion = z.infer<typeof structuralRegionSchema>
 export type StructuralSurfaceRegion = z.infer<typeof structuralSurfaceRegionSchema>
+const structuralLoadForceSchema = z
+  .tuple([
+    z.number().finite().min(-1_000_000).max(1_000_000),
+    z.number().finite().min(-1_000_000).max(1_000_000),
+    z.number().finite().min(-1_000_000).max(1_000_000),
+  ])
+  .refine((force) => force.some((component) => component !== 0), "Force must be nonzero.")
+const structuralLoadTermSchema = z
+  .object({ region: structuralRegionSchema, forceN: structuralLoadForceSchema })
+  .strict()
+const structuralRelativePerformanceSchema = z
+  .object({
+    minStiffnessFraction: z.number().finite().positive().max(1),
+    minStrengthFraction: z.number().finite().positive().max(1),
+  })
+  .strict()
 const minimumMassObjectiveSchema = z.object({ kind: z.literal("minimize-mass") }).strict()
 const stiffnessObjectiveSchema = z
   .object({
@@ -123,6 +139,7 @@ export const structuralOptimizationSettingsSchema = z
     objective: structuralObjectiveSchema.optional(),
     algorithm: structuralAlgorithmSettingsSchema.optional(),
     fdm: structuralFdmSettingsSchema.optional(),
+    relativePerformance: structuralRelativePerformanceSchema.optional(),
     material: z
       .object({
         youngModulusMpa: z.number().finite().min(0.001).max(1_000_000),
@@ -141,16 +158,8 @@ export const structuralOptimizationSettingsSchema = z
           .object({
             name: z.string().trim().min(1).max(80),
             region: structuralRegionSchema,
-            forceN: z
-              .tuple([
-                z.number().finite().min(-1_000_000).max(1_000_000),
-                z.number().finite().min(-1_000_000).max(1_000_000),
-                z.number().finite().min(-1_000_000).max(1_000_000),
-              ])
-              .refine(
-                (force) => force.some((component) => component !== 0),
-                "Force must be nonzero.",
-              ),
+            forceN: structuralLoadForceSchema,
+            additionalLoads: z.array(structuralLoadTermSchema).min(1).optional(),
           })
           .strict(),
       )
@@ -252,11 +261,20 @@ export function structuralFdmSummaryMatches(
     "layerHeightMm",
     "maxOverhangAngleDeg",
   ] as const
-  const cubeCells = Math.ceil(settings.minFeatureSizeMm / cellSizeMm)
+  const nominalCubeCells = Math.ceil(settings.minFeatureSizeMm / cellSizeMm)
+  const cubeCells = summary.minimumFeatureCubeCells
+  const cubeCountMatches = cubeCells === nominalCubeCells || cubeCells === nominalCubeCells + 1
+  // An extra cell must establish strictly more resolved width than the nominal cube.
+  const largerCubeProven =
+    cubeCells === nominalCubeCells ||
+    [summary.baseline, summary.optimized].every(
+      (metrics) => metrics.minFeatureSizeBoundMm > nominalCubeCells * cellSizeMm,
+    )
   const reach = settings.layerHeightMm * Math.tan((settings.maxOverhangAngleDeg * Math.PI) / 180)
   return (
     keys.every((key) => summary.settings[key] === settings[key]) &&
-    summary.minimumFeatureCubeCells === cubeCells &&
+    cubeCountMatches &&
+    largerCubeProven &&
     Math.abs(summary.horizontalReachMm - reach) <= Math.max(1e-12, reach * 1e-10) &&
     summary.optimized.buildHeightMm <= summary.baseline.buildHeightMm &&
     [summary.baseline, summary.optimized].every((metrics) =>
@@ -392,6 +410,7 @@ export const structuralOptimizationSummarySchema = z
     status: z.enum(["improved", "no-improvement"]),
     fdm: structuralFdmSummarySchema.optional(),
     algorithm: structuralAlgorithmSummarySchema.optional(),
+    relativePerformance: structuralRelativePerformanceSchema.optional(),
     baseline: metrics,
     optimized: metrics,
     sourceVolumeMm3: positive,
@@ -423,3 +442,30 @@ export const structuralOptimizationSummarySchema = z
   .strict()
 export type StructuralOptimizationSettings = z.infer<typeof structuralOptimizationSettingsSchema>
 export type StructuralOptimizationSummary = z.infer<typeof structuralOptimizationSummarySchema>
+
+export function structuralRelativePerformanceMatches(
+  result: StructuralOptimizationSummary,
+  input: StructuralOptimizationSettings,
+) {
+  const requested = input.relativePerformance
+  const reported = result.relativePerformance
+  if (!requested) return reported === undefined
+  if (
+    reported?.minStiffnessFraction !== requested.minStiffnessFraction ||
+    reported.minStrengthFraction !== requested.minStrengthFraction
+  )
+    return false
+  return result.optimized.cases.every((candidate, index) => {
+    const baseline = result.baseline.cases[index]
+    if (!baseline || baseline.name !== candidate.name) return false
+    // A loaded case keeps its relative budget even when its response is tiny.
+    return (
+      baseline.complianceNmm > 0 &&
+      baseline.maxVonMisesMpa > 0 &&
+      candidate.complianceNmm > 0 &&
+      candidate.maxVonMisesMpa > 0 &&
+      candidate.complianceNmm <= baseline.complianceNmm / requested.minStiffnessFraction &&
+      candidate.maxVonMisesMpa <= baseline.maxVonMisesMpa / requested.minStrengthFraction
+    )
+  })
+}

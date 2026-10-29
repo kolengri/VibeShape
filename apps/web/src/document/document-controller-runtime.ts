@@ -178,6 +178,7 @@ import type {
   PlanarImportReviewedCommit,
   PlanarImportReviewInput,
 } from "../automation/planar-import-upload-session"
+import { createBrowserPrintOptimizationAutomationSession } from "../automation/print-optimization-automation-session"
 import { createBrowserQuickLightweightingAutomationSession } from "../automation/quick-lightweighting-automation-session"
 import {
   previewOwnedSurfaceTextures,
@@ -1238,6 +1239,13 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       lightweightingConfiguration,
       reviews,
     )
+    const printOptimization = createBrowserPrintOptimizationAutomationSession(
+      {
+        ...lightweightingConfiguration,
+        geometry: { inspectGeometrySource, reconstructPrintOptimization },
+      },
+      reviews,
+    )
     const numericalJobs = createNumericalJobSession({
       documentId: capturedDocumentId,
       createId: browserUuidV7,
@@ -1245,7 +1253,10 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       execute: (actor, operation, signal) =>
         operation.tool === "analyze_lightweighting" || operation.tool === "request_lightweighting"
           ? lightweighting.execute(actor, operation, signal)
-          : quickLightweighting.execute(actor, operation, signal),
+          : operation.tool === "analyze_print_optimization" ||
+              operation.tool === "request_print_optimization"
+            ? printOptimization.execute(actor, operation, signal)
+            : quickLightweighting.execute(actor, operation, signal),
     })
     const planarImports = createPlanarImportAutomationSession(
       {
@@ -1501,6 +1512,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         numericalJobs.cancel()
         lightweighting.cancel()
         quickLightweighting.cancel()
+        printOptimization.cancel()
       }
     })
     function dispose() {
@@ -1521,6 +1533,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         () => numericalJobs.dispose(),
         () => lightweighting.dispose(),
         () => quickLightweighting.dispose(),
+        () => printOptimization.dispose(),
         () => exports.dispose(),
       ]) {
         try {
@@ -1556,6 +1569,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       surfaceTextures,
       lightweighting,
       quickLightweighting,
+      printOptimization,
       numericalJobs,
       exports,
       enableAutoApply: (actor: unknown) =>
@@ -1579,6 +1593,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         numericalJobs.cancel()
         lightweighting.cancel()
         quickLightweighting.cancel()
+        printOptimization.cancel()
         exports.cancel()
       },
       dispose,
@@ -2027,6 +2042,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       label: input.label,
       lightweighting: input.lightweighting ?? null,
       quickLightweighting: input.quickLightweighting ?? null,
+      printOptimization: input.printOptimization ?? null,
       transaction: input.transaction,
     })
   }
@@ -2148,6 +2164,16 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     const active = session
     if (!active) throw new Error("The document session is unavailable.")
     const result = await active.inspectSourceImport(input)
+    if (!result.ok) throw new Error(result.diagnostic.message)
+    return result.value
+  }
+
+  async function reconstructPrintOptimization(input: unknown) {
+    const active = session
+    const revision = active?.authoredSnapshot?.revision
+    if (!active || revision === undefined) throw new Error("The document session is unavailable.")
+    const result = await active.reconstructPrintOptimization(input)
+    assertAuthorityCurrent(active, revision)
     if (!result.ok) throw new Error(result.diagnostic.message)
     return result.value
   }
@@ -3625,6 +3651,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     undoDocument,
     redoDocument,
     inspectGeometrySource,
+    reconstructPrintOptimization,
     inspectTriangleMeshSource,
     inspectActiveAssembly,
     previewAssemblyChanges,

@@ -40,8 +40,8 @@ export const importedSolidSignatureSchema = z
     area: z.number().finite().positive().max(1e17),
     centroid: vector,
     bounds: z.object({ min: vector, max: vector }).strict(),
-    faceCount: z.number().int().positive().max(500_000),
-    edgeCount: z.number().int().positive().max(500_000),
+    faceCount: z.number().int().positive(),
+    edgeCount: z.number().int().positive(),
   })
   .strict()
   .superRefine((signature, context) => {
@@ -54,11 +54,7 @@ export const importedSolidSignatureSchema = z
 export const importedSourceContentSchema = z
   .object({
     digest: z.string().regex(/^[a-f0-9]{64}$/),
-    byteLength: z
-      .number()
-      .int()
-      .positive()
-      .max(32 * 1024 * 1024),
+    byteLength: z.number().int().positive().safe(),
     format: z.enum(["step", "brep"]),
     normalization,
     unitPolicy: z.enum(["step-system-mm", "brep-source-normalized"]),
@@ -125,9 +121,7 @@ export const importedSourceMaterializationSchema = z
     sourceAssetId: uuid,
     content: importedFeatureContentParametersSchema,
     asset: exactSourceAssetDescriptorSchema,
-    bytes: z
-      .instanceof(Uint8Array)
-      .refine((bytes) => bytes.byteLength > 0 && bytes.byteLength <= 32 * 1024 * 1024),
+    bytes: z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength > 0),
   })
   .strict()
   .superRefine(({ sourceAssetId, content, asset, bytes }, context) => {

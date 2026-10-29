@@ -306,6 +306,67 @@ async function createSession(
 }
 
 describe("persistent document session", () => {
+  it("contains disposable exact reconstruction without document writes and preserves worker failures", async () => {
+    const state = harness(),
+      { session } = await createSession(state.dependencies)
+    const input = {
+      source: {
+        documentId,
+        featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+        contentHash: "a".repeat(64),
+        outputRole: "result",
+      },
+      preserveFaceIds: [27],
+      voxelGrid: { originMm: [0, 0, 0], cellSizeMm: 1, cells: [[0, 0, 0]] },
+      sourceToPrintFrame: { originMm: [0, 0, 0], rotation: [0, 0, 0, 1] },
+      protectedBoxes: [],
+      preserveDepthMm: 2,
+    }
+    const operation = vi.fn(async () => ({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "exact-print",
+      documentId,
+      revision: 1,
+      generation: 1,
+      type: "printOptimizationReconstructed" as const,
+      reconstruction: {
+        source: input.source,
+        stepBytes: new Uint8Array([1]),
+        verificationMesh: { positions: new Float64Array(12), indices: new Uint32Array(12) },
+        sourceVolumeMm3: 2,
+        volumeMm3: 1,
+        preservedFaceCount: 1,
+      },
+    }))
+    Object.assign(state.rebuildPorts[0] ?? {}, { reconstructPrintOptimization: operation })
+    const snapshot = session.snapshot,
+      commits = state.repository.commitCount
+    expect(await session.reconstructPrintOptimization(input)).toMatchObject({
+      ok: true,
+      value: { volumeMm3: 1, preservedFaceCount: 1 },
+    })
+    expect(operation).toHaveBeenCalledWith(input)
+    expect(session.snapshot).toBe(snapshot)
+    expect(state.repository.commitCount).toBe(commits)
+    expect(
+      await session.reconstructPrintOptimization({
+        ...input,
+        source: { ...input.source, documentId: sessionB },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "command-rejected" } })
+    expect(operation).toHaveBeenCalledTimes(1)
+    operation.mockRejectedValueOnce(new Error("The active native face is stale."))
+    expect(await session.reconstructPrintOptimization(input)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "command-rejected", message: "The active native face is stale." },
+    })
+    await session.close()
+    expect(await session.reconstructPrintOptimization(input)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "session-closed" },
+    })
+  })
+
   it("reports a checkpoint-budget rejection as an unsaved typed failure without advancing the session", async () => {
     const state = harness(),
       { session } = await createSession(state.dependencies)

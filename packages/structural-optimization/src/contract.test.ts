@@ -1,7 +1,12 @@
 import { describe, expect, it } from "bun:test"
 import { structuralOptimizationSettingsSchema } from "@vibeshape/domain/lightweighting"
 import { denseBoxMesh } from "../tests/dense-box-fixture"
-import { structuralMeshSchema, structuralOptimizationInputSchema } from "./contract"
+import {
+  type StructuralVoxelGrid,
+  structuralMeshSchema,
+  structuralOptimizationInputSchema,
+  structuralOptimizationResultSchema,
+} from "./contract"
 import {
   quickLightweightingInputSchema,
   quickLightweightingMeshSchema,
@@ -33,6 +38,104 @@ function input() {
 }
 
 describe("captured structural surface contract", () => {
+  it("binds fixed-design interfaces to a strict worker-only boundary reference mesh", () => {
+    const request = { ...input(), preserveRegions: [], boundaryReferenceMesh: denseBoxMesh() }
+    request.supports = [{ kind: "surface", triangleIndices: [10], depthMm: 1 }]
+    request.loadCases = request.loadCases.map((load) => ({
+      ...load,
+      region: { ...load.region, triangleIndices: [11] },
+    }))
+    expect(structuralOptimizationInputSchema.parse(request).boundaryReferenceMesh).toEqual(
+      request.boundaryReferenceMesh,
+    )
+    expect(
+      structuralOptimizationInputSchema.safeParse({
+        ...request,
+        boundaryReferenceMesh: input().mesh,
+      }).success,
+    ).toBe(false)
+    const { mesh: _mesh, schemaVersion: _version, ...settings } = request
+    expect(structuralOptimizationSettingsSchema.safeParse(settings).success).toBe(false)
+    for (const patch of [
+      { boundaryReferenceMesh: null },
+      { boundaryReferenceMesh: { ...request.boundaryReferenceMesh, extra: true } },
+      { boundaryReferenceMesh: { vertices: [NaN, 0, 0], indices: [] } },
+      { maxIterations: 1 },
+      { algorithm: { kind: "simp", volumeFraction: 0.8, filterRadiusMm: 1.5, penalty: 3 } },
+      { objective: { kind: "minimize-mass" } },
+      { relativePerformance: { minStiffnessFraction: 0.9, minStrengthFraction: 0.9 } },
+      { preserveRegions: input().preserveRegions },
+    ])
+      expect(structuralOptimizationInputSchema.safeParse({ ...request, ...patch }).success).toBe(
+        false,
+      )
+  })
+  it("keeps grid evidence and lattice phase worker-only and preserves omission", () => {
+    const request = input()
+    expect(structuralOptimizationInputSchema.parse(request)).not.toHaveProperty("includeVoxelGrid")
+    expect(
+      structuralOptimizationInputSchema.parse({
+        ...request,
+        includeVoxelGrid: true,
+        voxelGridOriginMm: [0.25, 0, -0.5],
+      }),
+    ).toMatchObject({ includeVoxelGrid: true, voxelGridOriginMm: [0.25, 0, -0.5] })
+    expect(
+      structuralOptimizationInputSchema.parse({ ...request, voxelGridOriginMm: [0, -100000.5, 0] })
+        .voxelGridOriginMm,
+    ).toEqual([0, -100000.5, 0])
+    const { mesh: _mesh, schemaVersion: _version, ...settings } = request
+    expect(
+      structuralOptimizationSettingsSchema.safeParse({ ...settings, includeVoxelGrid: true })
+        .success,
+    ).toBe(false)
+    expect(
+      structuralOptimizationSettingsSchema.safeParse({ ...settings, voxelGridOriginMm: [0, 0, 0] })
+        .success,
+    ).toBe(false)
+    for (const patch of [
+      { includeVoxelGrid: 1 },
+      { includeVoxelGrid: null },
+      { voxelGridOriginMm: [0, 0] },
+      { voxelGridOriginMm: [0, 0, Infinity] },
+      { voxelGridOriginMm: [0, 0, 200_001] },
+      { voxelGridOriginMm: null },
+    ])
+      expect(structuralOptimizationInputSchema.safeParse({ ...request, ...patch }).success).toBe(
+        false,
+      )
+  })
+  it("requires a strict unique finite integer voxel grid", () => {
+    const grid: StructuralVoxelGrid = {
+      originMm: [-5, -1, -1],
+      cellSizeMm: 1,
+      cells: [
+        [0, 0, 0],
+        [1, 0, 0],
+      ],
+    }
+    const schema = structuralOptimizationResultSchema.shape.voxelGrid
+    expect(schema.parse(grid)).toEqual(grid)
+    for (const invalid of [
+      { ...grid, extra: true },
+      { ...grid, cells: [] },
+      {
+        ...grid,
+        cells: [
+          [0, 0, 0],
+          [0, 0, 0],
+        ],
+      },
+      { ...grid, cells: [[0.1, 0, 0]] },
+      { ...grid, cells: [[-1, 0, 0]] },
+      { ...grid, cells: [[Number.MAX_SAFE_INTEGER, 0, 0]] },
+      { ...grid, originMm: [0, 0, NaN] },
+      { ...grid, originMm: [0, 0, 200_001] },
+      { ...grid, cellSizeMm: 0 },
+      { ...grid, cellSizeMm: Infinity },
+    ])
+      expect(schema.safeParse(invalid).success).toBe(false)
+  })
   it("accepts geometry validation progress beyond one million checks with ordered finite counts", () => {
     const progress = { phase: "validation", completed: 1_000_001, total: 2_000_000 }
     expect(quickLightweightingProgressSchema.parse(progress)).toEqual<unknown>(progress)

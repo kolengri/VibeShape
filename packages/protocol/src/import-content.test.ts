@@ -89,13 +89,43 @@ describe("exact source import wire contract", () => {
       )
   })
 
+  it("accepts safe topology counts above former geometry admission limits", () => {
+    const content = fixture().content
+    expect(
+      importedFeatureContentParametersSchema.safeParse({
+        ...content,
+        outputs: [
+          {
+            outputId: id(2),
+            signature: { ...signature, faceCount: 500_001, edgeCount: 1_000_002 },
+          },
+        ],
+      }).success,
+    ).toBe(true)
+  })
+
+  it("materializes exact source bytes above the former local byte ceiling", () => {
+    const input = fixture()
+    const bytes = new Uint8Array(32 * 1024 * 1024 + 1)
+    const source = { ...input.content.source, byteLength: bytes.byteLength }
+    const asset = { ...input.asset, byteLength: bytes.byteLength }
+    expect(
+      importedSourceMaterializationSchema.safeParse({
+        ...input,
+        content: { ...input.content, source },
+        asset,
+        bytes,
+      }).success,
+    ).toBe(true)
+  })
+
   it("rejects hostile metrics and unsupported policies before materialization", () => {
     const content = fixture().content
     for (const changed of [
       { volume: 0 },
       { area: Number.NaN },
       { faceCount: 0 },
-      { edgeCount: 500_001 },
+      { edgeCount: Number.MAX_SAFE_INTEGER + 1 },
       { centroid: [Number.POSITIVE_INFINITY, 0, 0] },
       { bounds: { min: [0, 0, 0], max: [0, 1, 1] } },
       { bounds: { min: [0, 0, 0], max: [100_001, 1, 1] } },
@@ -112,7 +142,7 @@ describe("exact source import wire contract", () => {
     expect(
       importedFeatureContentParametersSchema.safeParse({
         ...content,
-        source: { ...content.source, byteLength: 32 * 1024 * 1024 + 1 },
+        source: { ...content.source, byteLength: Number.MAX_SAFE_INTEGER + 1 },
       }).success,
     ).toBe(false)
     expect(importedFeatureContentParametersSchema.safeParse(null).success).toBe(false)

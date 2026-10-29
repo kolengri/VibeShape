@@ -115,6 +115,10 @@ describe("manual import review", () => {
     const input = importReviewFixture(true)
     const settings = structuralOptimizationSettingsSchema.parse({
       ...lightweightingSettings,
+      loadCases: lightweightingSettings.loadCases.map((load) => ({
+        ...load,
+        additionalLoads: [{ region: load.region, forceN: [0, 0, 1] }],
+      })),
       objective: { kind: "maximize-stiffness", retainedMassFraction: 0.8 },
       obstacleRegions: [{ min: [1, 2, 3], max: [4, 5, 6] }],
       fdm: {
@@ -154,6 +158,8 @@ describe("manual import review", () => {
     expect(screen.getByText("Without supports")).toBeTruthy()
     expect(screen.getByText("Build toward -X")).toBeTruthy()
     expect(screen.getByText("Minimum feature size (mm)")).toBeTruthy()
+    expect(screen.getByText("Simultaneous load term 1")).toBeTruthy()
+    expect(screen.getByText("Simultaneous load term 2")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Apply" }).hasAttribute("disabled")).toBe(true)
   })
   it("renders source surface scope and inward depth without assuming box bounds", () => {

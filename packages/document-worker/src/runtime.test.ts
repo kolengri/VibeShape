@@ -206,6 +206,18 @@ function geometry() {
 }
 
 class FakeEngine implements GeometryKernelEngine {
+  reconstructPrintOptimization: NonNullable<GeometryKernelEngine["reconstructPrintOptimization"]> =
+    vi.fn(async (input) => ({
+      source: input.source,
+      stepBytes: new Uint8Array([1, 2, 3]),
+      verificationMesh: {
+        positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]),
+        indices: new Uint32Array([0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]),
+      },
+      sourceVolumeMm3: 1,
+      volumeMm3: 0.5,
+      preservedFaceCount: input.preserveFaceIds.length,
+    }))
   sectionPlanarFace: NonNullable<GeometryKernelEngine["sectionPlanarFace"]> = async () => {
     throw new Error("Section is not configured for this fixture.")
   }
@@ -360,6 +372,56 @@ function createHarness(solveSketch: SketchSolvePort | null = null, transferBuffe
     runtime: new DocumentWorkerRuntime(engine, endpoint, undefined, solveSketch),
   }
 }
+
+it("routes exact reconstruction only to the active source revision and transfers its owned buffers", async () => {
+  const { runtime, engine, messages, transfers } = createHarness(null, true)
+  await runtime.handle(request("exact-source"))
+  const sourceHash = rebuilt(messages, "exact-source").geometry.find(
+    (item) => item.featureId === featureIds.box,
+  )?.contentHash
+  if (!sourceHash) throw new Error("Missing source fixture hash.")
+  const input = {
+    source: {
+      documentId: documentIds.primary,
+      featureId: featureIds.box,
+      contentHash: sourceHash,
+      outputRole: "result",
+    },
+    preserveFaceIds: [27],
+    voxelGrid: { originMm: [0, 0, 0], cellSizeMm: 1, cells: [[0, 0, 0]] },
+    sourceToPrintFrame: { originMm: [0, 0, 0], rotation: [0, 0, 0, 1] },
+    protectedBoxes: [],
+    preserveDepthMm: 2,
+  }
+  const operation = {
+    protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+    requestId: "exact-cut",
+    documentId: documentIds.primary,
+    revision: 1,
+    generation: 1,
+    type: "reconstructPrintOptimization",
+    input,
+  }
+  await runtime.handle(operation)
+  const response = messages.at(-1)
+  expect(response?.type).toBe("printOptimizationReconstructed")
+  if (response?.type !== "printOptimizationReconstructed")
+    throw new Error("Missing exact reconstruction response.")
+  expect(response.reconstruction.verificationMesh.positions).toBeInstanceOf(Float64Array)
+  expect(response.reconstruction.verificationMesh.positions.length).toBe(12)
+  expect(transfers.at(-1)?.length).toBe(3)
+  expect(engine.reconstructPrintOptimization).toHaveBeenCalledTimes(1)
+  expect(engine.reconstructPrintOptimization).toHaveBeenCalledWith(input)
+  await runtime.handle({ ...operation, requestId: "stale-revision", revision: 0 })
+  expect(messages.at(-1)).toMatchObject({
+    type: "failure",
+    diagnostic: { message: expect.stringContaining("revision is stale") },
+  })
+  await runtime.handle({ ...operation, requestId: "stale-generation", generation: 2 })
+  expect(messages.at(-1)?.type).toBe("failure")
+  expect(engine.reconstructPrintOptimization).toHaveBeenCalledTimes(1)
+  expect(engine.disposedDocuments).toEqual([])
+})
 
 function sketchSolverModule(): NativeSketchSolverModule {
   return {

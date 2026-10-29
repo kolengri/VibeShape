@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises"
 import { resolve } from "node:path"
+import type { Page } from "@playwright/test"
 import type {
   StructuralOptimizationInput,
   StructuralOptimizationResult,
@@ -11,6 +12,14 @@ import type {
 import { denseBoxMesh } from "../../packages/structural-optimization/tests/dense-box-fixture"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
+
+async function openExplicitOptimization(page: Page, mode: "Lightweighting" | "Generative Design") {
+  await invokeModelCommand(page, "Modify", mode)
+  if (mode === "Lightweighting")
+    await page
+      .getByRole("button", { name: "Set real supports and loads manually", exact: true })
+      .click()
+}
 
 function specimen(lattice = false): StructuralOptimizationInput {
   const width = lattice ? 8 : 2
@@ -78,7 +87,7 @@ for (const mode of ["Lightweighting", "Generative Design"] as const) {
       .getByRole("button", { name: "Create box", exact: true })
       .click()
     await expect(page.getByRole("treeitem", { name: "Part Box 1", exact: true })).toBeVisible()
-    await invokeModelCommand(page, "Modify", mode)
+    await openExplicitOptimization(page, mode)
     const panel = page.getByRole("region", { name: mode, exact: true })
     await panel.getByRole("combobox", { name: "Optimization method", exact: true }).click()
     await page.getByRole("option", { name: "Topology optimization (SIMP)", exact: true }).click()

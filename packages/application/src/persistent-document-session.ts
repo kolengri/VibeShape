@@ -35,6 +35,9 @@ import {
   inspectMeshImportInputSchema,
   inspectSourceImportInputSchema,
   type MeshImportInspection,
+  type PrintOptimizationReconstruction,
+  type PrintOptimizationReconstructionInput,
+  printOptimizationReconstructionInputSchema,
   type SourceImportInspection,
 } from "@vibeshape/protocol"
 import { z } from "zod"
@@ -276,6 +279,9 @@ export type DocumentRebuildPort = Readonly<{
   inspectSourceImport?: (
     input: InspectSourceImportInput,
   ) => Promise<Extract<DocumentWorkerTerminalResponse, { type: "sourceImportInspected" }>>
+  reconstructPrintOptimization?: (
+    input: PrintOptimizationReconstructionInput,
+  ) => Promise<Extract<DocumentWorkerTerminalResponse, { type: "printOptimizationReconstructed" }>>
   solveSketch: (input: DocumentSketchSolveInput) => Promise<SketchSolveResponse>
   dispose: (revision?: number) => Promise<unknown>
   terminate: () => void
@@ -964,6 +970,45 @@ export class PersistentDocumentSession {
           diagnostic: diagnostic(
             "command-rejected",
             error instanceof Error ? error.message : "The source could not be inspected.",
+          ),
+        }
+      }
+    })
+  }
+
+  reconstructPrintOptimization(
+    input: unknown,
+  ): Promise<SessionPortResult<PrintOptimizationReconstruction>> {
+    return this.#enqueue(async () => {
+      if (this.#closed)
+        return {
+          ok: false,
+          diagnostic: diagnostic("session-closed", "The document session is closed."),
+        }
+      const parsed = printOptimizationReconstructionInputSchema.safeParse(input)
+      if (
+        !parsed.success ||
+        parsed.data.source.documentId !== this.#documentId ||
+        !this.#rebuildPort.reconstructPrintOptimization
+      )
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "command-rejected",
+            "The exact reconstruction request is invalid or unavailable.",
+          ),
+        }
+      try {
+        const response = await this.#rebuildPort.reconstructPrintOptimization(parsed.data)
+        return { ok: true, value: response.reconstruction }
+      } catch (error) {
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "command-rejected",
+            error instanceof Error
+              ? error.message
+              : "The exact print source could not be reconstructed.",
           ),
         }
       }

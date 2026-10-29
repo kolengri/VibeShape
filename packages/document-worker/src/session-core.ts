@@ -11,6 +11,7 @@ import {
   type InspectAssemblyInput,
   type InspectMeshImportInput,
   type InspectSourceImportInput,
+  type PrintOptimizationReconstructionInput,
   type PrintPreparationSettings,
   type SourceAssetMaterialization,
 } from "@vibeshape/protocol"
@@ -178,6 +179,28 @@ export class DocumentWorkerSession {
       if (response.type !== "sourceImportInspected")
         throw new DocumentWorkerRequestError(
           "Source inspection returned an unexpected response.",
+          "mismatched-response-type",
+        )
+      return response
+    })
+  }
+
+  reconstructPrintOptimization(
+    input: PrintOptimizationReconstructionInput,
+    options: DocumentWorkerRequestOptions = {},
+  ) {
+    return this.#enqueue(async () => {
+      this.#assertOpen()
+      const request = documentWorkerRequestSchema.parse({
+        ...this.#envelope(this.#lastSuccessfulSnapshot?.document.revision ?? 0),
+        type: "reconstructPrintOptimization",
+        input,
+      })
+      // Native face hashes belong to this live cache; recovery must never rebuild them silently.
+      const response = await this.#client.request(request, options)
+      if (response.type !== "printOptimizationReconstructed")
+        throw new DocumentWorkerRequestError(
+          "Exact print reconstruction returned an unexpected response.",
           "mismatched-response-type",
         )
       return response

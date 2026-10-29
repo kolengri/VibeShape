@@ -29,6 +29,7 @@ import {
   isLocalPlanarImport,
   type LocalPlanarImportOperation,
 } from "@vibeshape/automation-api/planar-imports"
+import { printOptimizationOperationSchema } from "@vibeshape/automation-api/print-optimization-tools"
 import type {
   CadInspectionDetailQuery,
   CadInspectionListQuery,
@@ -85,6 +86,7 @@ import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
 import type { createNumericalJobSession } from "./numerical-job-session"
 import type { createPlanarImportAutomationSession } from "./planar-import-automation-session"
+import type { createBrowserPrintOptimizationAutomationSession } from "./print-optimization-automation-session"
 import type { ProjectToolPort } from "./project-tool-port"
 import type { createBrowserQuickLightweightingAutomationSession } from "./quick-lightweighting-automation-session"
 import type { createBrowserSurfaceTextureAutomationSession } from "./surface-texture-automation-session"
@@ -112,6 +114,7 @@ type LocalSessionPort = Readonly<{
   surfaceTextures?: ReturnType<typeof createBrowserSurfaceTextureAutomationSession>
   lightweighting?: ReturnType<typeof createBrowserLightweightingAutomationSession>
   quickLightweighting?: ReturnType<typeof createBrowserQuickLightweightingAutomationSession>
+  printOptimization?: ReturnType<typeof createBrowserPrintOptimizationAutomationSession>
   numericalJobs?: ReturnType<typeof createNumericalJobSession>
   exports?: ReturnType<typeof createBinaryExportSession>
   imports?: ReturnType<typeof createImportAutomationSession>
@@ -442,7 +445,25 @@ export function createLocalToolExecutor(
   function reviewedProposal(operation: LocalOperation, signal?: AbortSignal) {
     if (operation.tool === "move_history_item") return moveHistoryItem(operation, signal)
     const { projectId: _projectId, ...untargeted } = operation
-    const quickLightweighting = quickLightweightingOperationSchema.safeParse(untargeted)
+    const numerical = numericalProposal(untargeted, signal)
+    if (numerical) return numerical
+    const history = historyOperationSchema.safeParse(untargeted)
+    if (history.success)
+      return session.history
+        ? session.history.execute(actor, history.data, signal)
+        : localFailure("history-unavailable", "The paired session cannot navigate saved changes.")
+    return null
+  }
+  function numericalProposal(operation: unknown, signal?: AbortSignal) {
+    const printOptimization = printOptimizationOperationSchema.safeParse(operation)
+    if (printOptimization.success)
+      return session.printOptimization
+        ? session.printOptimization.execute(actor, printOptimization.data, signal)
+        : localFailure(
+            "print-optimization-unavailable",
+            "The paired session cannot optimize an exact print solid.",
+          )
+    const quickLightweighting = quickLightweightingOperationSchema.safeParse(operation)
     if (quickLightweighting.success)
       return session.quickLightweighting
         ? session.quickLightweighting.execute(actor, quickLightweighting.data, signal)
@@ -450,7 +471,7 @@ export function createLocalToolExecutor(
             "lightweighting-unavailable",
             "The paired session cannot generate quick lightweighting.",
           )
-    const lightweighting = lightweightingOperationSchema.safeParse(untargeted)
+    const lightweighting = lightweightingOperationSchema.safeParse(operation)
     if (lightweighting.success)
       return session.lightweighting
         ? session.lightweighting.execute(actor, lightweighting.data, signal)
@@ -458,11 +479,6 @@ export function createLocalToolExecutor(
             "lightweighting-unavailable",
             "The paired session cannot analyze structural lightweighting.",
           )
-    const history = historyOperationSchema.safeParse(untargeted)
-    if (history.success)
-      return session.history
-        ? session.history.execute(actor, history.data, signal)
-        : localFailure("history-unavailable", "The paired session cannot navigate saved changes.")
     return null
   }
   function measureModel(

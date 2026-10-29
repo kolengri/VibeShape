@@ -169,6 +169,12 @@ function cloneGeometry(record: FeatureGeometryRecord): FeatureGeometryRecord {
 }
 
 function transferablesFor(response: DocumentWorkerResponse) {
+  if (response.type === "printOptimizationReconstructed")
+    return [
+      response.reconstruction.stepBytes.buffer as ArrayBuffer,
+      response.reconstruction.verificationMesh.positions.buffer as ArrayBuffer,
+      response.reconstruction.verificationMesh.indices.buffer as ArrayBuffer,
+    ]
   if (response.type === "documentExported" || response.type === "assemblyExported") {
     return [response.file.buffer as ArrayBuffer]
   }
@@ -376,36 +382,39 @@ export class DocumentWorkerRuntime {
         await this.#inspectAssembly(request)
         return
       }
-      if (request.type === "inspectMeshImport") {
-        const inspection = await inspectMeshSource(
-          request.input.format,
-          request.input.bytes,
-          request.input.units,
-        )
-        this.#post({ ...requestEnvelope(request), type: "meshImportInspected", inspection })
-        return
-      }
-      if (request.type === "inspectSourceImport") {
-        await this.#inspectSource(request)
-        return
-      }
-      if (request.type === "exportDocument") {
-        await this.#exportDocument(request)
-        return
-      }
-      if (request.type === "solveSketch") {
-        await this.#solveSketch(request)
-        return
-      }
-      const ownedShapeCount = this.engine.disposeDocument(request.documentId)
-      this.#assemblyCache.clear()
-      this.#assemblyCacheKey = null
-      this.#states.delete(request.documentId)
-      this.#documents.delete(request.documentId)
-      this.#post({ ...requestEnvelope(request), type: "documentDisposed", ownedShapeCount })
+      await this.#dispatchDocumentOperation(request)
     } catch (error) {
       this.#postOperationError(request, error)
     }
+  }
+
+  async #dispatchDocumentOperation(
+    request: Exclude<
+      DocumentWorkerRequest,
+      { type: "rebuildDocument" | "exportAssembly" | "inspectAssembly" }
+    >,
+  ) {
+    if (request.type === "inspectMeshImport") return this.#inspectMesh(request)
+    if (request.type === "inspectSourceImport") return this.#inspectSource(request)
+    if (request.type === "reconstructPrintOptimization")
+      return this.#reconstructPrintOptimization(request)
+    if (request.type === "exportDocument") return this.#exportDocument(request)
+    if (request.type === "solveSketch") return this.#solveSketch(request)
+    const ownedShapeCount = this.engine.disposeDocument(request.documentId)
+    this.#assemblyCache.clear()
+    this.#assemblyCacheKey = null
+    this.#states.delete(request.documentId)
+    this.#documents.delete(request.documentId)
+    this.#post({ ...requestEnvelope(request), type: "documentDisposed", ownedShapeCount })
+  }
+
+  async #inspectMesh(request: Extract<DocumentWorkerRequest, { type: "inspectMeshImport" }>) {
+    const inspection = await inspectMeshSource(
+      request.input.format,
+      request.input.bytes,
+      request.input.units,
+    )
+    this.#post({ ...requestEnvelope(request), type: "meshImportInspected", inspection })
   }
 
   async #inspectAssembly(request: Extract<DocumentWorkerRequest, { type: "inspectAssembly" }>) {
@@ -439,6 +448,22 @@ export class DocumentWorkerRuntime {
         },
       })
     } else this.#postFailure(request, "internal-error", errorMessage(error), false)
+  }
+
+  async #reconstructPrintOptimization(
+    request: Extract<DocumentWorkerRequest, { type: "reconstructPrintOptimization" }>,
+  ) {
+    const state = this.#states.get(request.documentId)
+    if (!state || state.revision !== request.revision || state.generation !== request.generation)
+      throw new Error("The active exact print source revision is stale or unavailable.")
+    if (!this.engine.reconstructPrintOptimization)
+      throw new Error("Exact print reconstruction is unavailable.")
+    const reconstruction = await this.engine.reconstructPrintOptimization(request.input)
+    this.#post({
+      ...requestEnvelope(request),
+      type: "printOptimizationReconstructed",
+      reconstruction,
+    })
   }
 
   async #inspectSource(request: Extract<DocumentWorkerRequest, { type: "inspectSourceImport" }>) {

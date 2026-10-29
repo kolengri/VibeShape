@@ -3,7 +3,11 @@ import type { StructuralFdmSummary } from "@vibeshape/domain/lightweighting"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { denseBoxMesh } from "../tests/dense-box-fixture"
 import { optimizeStructuralModel } from "./client"
-import type { StructuralOptimizationInput, StructuralOptimizationResult } from "./contract"
+import type {
+  StructuralOptimizationInput,
+  StructuralOptimizationResult,
+  StructuralVoxelGrid,
+} from "./contract"
 
 const mesh = {
   vertices: [-5, -1, -1, -5, -1, 1, -5, 1, -1, -5, 1, 1, 5, -1, -1, 5, -1, 1, 5, 1, -1, 5, 1, 1],
@@ -87,6 +91,170 @@ describe("bounded structural worker client", () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
+  it("forwards an immutable original boundary reference for fixed-design verification", async () => {
+    const source = { ...structuredClone(input), boundaryReferenceMesh: structuredClone(mesh) }
+    const pending = optimizeStructuralModel(source, options)
+    expect(FakeWorker.instance.postMessage.mock.calls[0]?.[0]).toMatchObject({
+      input: { boundaryReferenceMesh: mesh, maxIterations: 0, preserveRegions: [] },
+    })
+    source.boundaryReferenceMesh.vertices[0] = 123
+    expect(FakeWorker.instance.postMessage.mock.calls[0]?.[0]).toMatchObject({
+      input: { boundaryReferenceMesh: mesh },
+    })
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: result() } })
+    await expect(pending).resolves.toMatchObject({ status: "no-improvement" })
+  })
+  it("rejects boundary reference search settings before constructing a worker", async () => {
+    const source = { ...input, boundaryReferenceMesh: mesh, maxIterations: 1 }
+    const construct = vi.fn()
+    vi.stubGlobal("Worker", construct)
+    await expect(optimizeStructuralModel(source, options)).rejects.toMatchObject({
+      code: "invalid-input",
+    })
+    expect(construct).not.toHaveBeenCalled()
+  })
+  function gridFixture() {
+    const source = { ...structuredClone(input), includeVoxelGrid: true }
+    const output = result()
+    output.status = "improved"
+    output.finalCellCount = 1
+    output.optimized.volumeMm3 = 1
+    output.optimized.massKg = 1e-6
+    output.mesh.vertices = output.mesh.vertices.map((value, index) =>
+      index % 3 === 0 ? (value === -5 ? -5 : -4) : value === -1 ? -1 : 0,
+    )
+    const grid: StructuralVoxelGrid = { originMm: [-5, -1, -1], cellSizeMm: 1, cells: [[0, 0, 0]] }
+    output.voxelGrid = grid
+    return { source, output, grid }
+  }
+  it("accepts request-bound grid evidence matching the full oriented cube surface", async () => {
+    const { source, output } = gridFixture()
+    const pending = optimizeStructuralModel(source, options)
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+    await expect(pending).resolves.toMatchObject({ voxelGrid: output.voxelGrid })
+  })
+  const gridForgeries: Record<string, (fixture: ReturnType<typeof gridFixture>) => void> = {
+    missing: ({ output }) => {
+      delete output.voxelGrid
+    },
+    unsolicited: ({ source }) => {
+      source.includeVoxelGrid = false
+    },
+    count: ({ grid }) => {
+      grid.cells.push([1, 0, 0])
+    },
+    spacing: ({ grid }) => {
+      grid.cellSizeMm = 0.5
+    },
+    origin: ({ grid }) => {
+      grid.originMm[0] = -4.5
+    },
+    phase: ({ source }) => {
+      source.voxelGridOriginMm = [-4.75, -1, -1]
+    },
+    "out-of-source": ({ grid }) => {
+      grid.cells[0] = [100, 0, 0]
+    },
+    "different-cell": ({ grid }) => {
+      grid.cells[0] = [1, 0, 0]
+    },
+    "duplicate-cell": ({ grid }) => {
+      grid.cells.push([0, 0, 0])
+    },
+    "reversed-face": ({ output }) => {
+      output.mesh.indices.splice(0, 3, 1, 0, 3)
+    },
+    "missing-face": ({ output }) => {
+      output.mesh.indices.splice(0, 6)
+    },
+    "duplicate-triangle": ({ output }) => {
+      output.mesh.indices.push(...output.mesh.indices.slice(0, 3))
+    },
+    "overlapping-triangles": ({ output }) => {
+      output.mesh.indices.splice(6, 3, 1, 3, 2)
+    },
+  }
+  it.each(Object.entries(gridForgeries))("rejects %s voxel evidence", async (_forgery, mutate) => {
+    const fixture = gridFixture()
+    mutate(fixture)
+    const { source, output } = fixture
+    const pending = optimizeStructuralModel(source, options)
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+    await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
+  })
+  const relativePerformance = { minStiffnessFraction: 0.5, minStrengthFraction: 0.5 }
+  function relativeFixture() {
+    const source = structuredClone(input)
+    source.relativePerformance = { ...relativePerformance }
+    const primary = source.loadCases[0]
+    if (!primary) throw new Error("The fixture requires one primary load.")
+    source.loadCases.push({ ...primary, name: "small-case", forceN: [1e-8, 0, 0] })
+    const output = result()
+    output.relativePerformance = { ...relativePerformance }
+    for (const metrics of [output.baseline, output.optimized])
+      metrics.cases.push({
+        name: "small-case",
+        maxVonMisesMpa: 1e-100,
+        maxDisplacementMm: 1e-100,
+        safetyFactor: 1e100,
+        complianceNmm: 1e-100,
+      })
+    return { source, output }
+  }
+  it("forwards a torque couple as one case and accepts a matching relative result", async () => {
+    const { source, output } = relativeFixture()
+    const primary = source.loadCases[0]
+    if (!primary) throw new Error("The fixture requires one primary load.")
+    primary.additionalLoads = [
+      { region: { min: [5, -1, -1], max: [5, 0, 1] }, forceN: [-10, 0, 0] },
+    ]
+    const pending = optimizeStructuralModel(source, options)
+    expect(FakeWorker.instance.postMessage).toHaveBeenCalledWith({
+      input: source,
+      runtimeBaseUrl: options.runtimeBaseUrl,
+    })
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+    await expect(pending).resolves.toMatchObject({ relativePerformance })
+  })
+  it.each(["complianceNmm", "maxVonMisesMpa"] as const)(
+    "rejects a per-case relative %s violation even below aggregate response and absolute limits",
+    async (metric) => {
+      const { source, output } = relativeFixture()
+      const small = output.optimized.cases[1]
+      if (!small) throw new Error("The fixture requires the smaller loaded case.")
+      small[metric] = 2.01e-100
+      const pending = optimizeStructuralModel(source, options)
+      FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+      await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
+    },
+  )
+  it("accepts the exact per-case relative boundary without an absolute tolerance floor", async () => {
+    const { source, output } = relativeFixture()
+    const small = output.optimized.cases[1]
+    if (!small) throw new Error("The fixture requires the smaller loaded case.")
+    small.complianceNmm = 2e-100
+    small.maxVonMisesMpa = 2e-100
+    const pending = optimizeStructuralModel(source, options)
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+    await expect(pending).resolves.toMatchObject({ relativePerformance })
+  })
+  it.each(["missing", "mismatch", "zero-baseline", "zero-candidate", "unrequested"])(
+    "rejects %s relative evidence",
+    async (forgery) => {
+      const { source, output } = relativeFixture()
+      if (forgery === "missing") delete output.relativePerformance
+      if (forgery === "mismatch")
+        output.relativePerformance = { ...relativePerformance, minStrengthFraction: 0.4 }
+      if (forgery === "unrequested") delete source.relativePerformance
+      const metrics = forgery === "zero-baseline" ? output.baseline : output.optimized
+      const small = metrics.cases[1]
+      if (!small) throw new Error("The fixture requires the smaller loaded case.")
+      if (forgery.startsWith("zero")) small.complianceNmm = 0
+      const pending = optimizeStructuralModel(source, options)
+      FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+      await expect(pending).rejects.toMatchObject({ code: "invalid-result" })
+    },
+  )
   it("starts analysis for a closed source above the former vertex and triangle counts", async () => {
     const source = { ...input, mesh: denseBoxMesh() }
     const pending = optimizeStructuralModel(source, options)
@@ -116,6 +284,24 @@ describe("bounded structural worker client", () => {
       expect(worker).not.toHaveBeenCalled()
     },
   )
+  it("rejects an invalid captured triangle on an additional load before starting a worker", async () => {
+    const worker = vi.fn()
+    vi.stubGlobal("Worker", worker)
+    const source = structuredClone(input)
+    const load = source.loadCases[0]
+    if (!load) throw new Error("The fixture requires one primary load.")
+    load.additionalLoads = [
+      {
+        region: { kind: "surface", triangleIndices: [12], depthMm: 1 },
+        forceN: [0, 0, 1],
+      },
+    ]
+    await expect(optimizeStructuralModel(source, options)).rejects.toMatchObject({
+      code: "invalid-input",
+      message: expect.stringContaining("loadCases.0.additionalLoads.0.region.triangleIndices:"),
+    })
+    expect(worker).not.toHaveBeenCalled()
+  })
   it("bounds input diagnostics for browser automation without discarding the first issue path", async () => {
     const source = {
       ...input,
@@ -296,6 +482,16 @@ describe("bounded structural worker client", () => {
     FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
     await expect(pending).resolves.toEqual(output)
   })
+  it("accepts one additional FDM proof cell with stronger measured bounds", async () => {
+    const fdm = fdmOutput()
+    fdm.minimumFeatureCubeCells = 2
+    fdm.baseline.minFeatureSizeBoundMm = 2
+    fdm.optimized.minFeatureSizeBoundMm = 2
+    const output = { ...result(), fdm }
+    const pending = optimizeStructuralModel({ ...input, fdm: fdm.settings }, options)
+    FakeWorker.instance.emit({ type: "complete", response: { ok: true, result: output } })
+    await expect(pending).resolves.toEqual(output)
+  })
   it.each<[string, (fdm: StructuralFdmSummary) => void]>([
     [
       "settings",
@@ -313,6 +509,14 @@ describe("bounded structural worker client", () => {
       "cube",
       (fdm) => {
         fdm.minimumFeatureCubeCells = 2
+      },
+    ],
+    [
+      "excessive cube",
+      (fdm) => {
+        fdm.minimumFeatureCubeCells = 3
+        fdm.baseline.minFeatureSizeBoundMm = 3
+        fdm.optimized.minFeatureSizeBoundMm = 3
       },
     ],
     [

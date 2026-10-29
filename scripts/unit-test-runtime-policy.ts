@@ -3,7 +3,7 @@ import type { treeInputs } from "./unit-test-files"
 
 type Input = Awaited<ReturnType<typeof treeInputs>>[number]
 const engine = "packages/geometry-worker/src/engine.ts"
-const engineHash = "4e99a633ebd79740f0598195fa9b3fa900cf3893e1bce9a1b43954901ef7be19"
+const engineHash = "1c928534b20212b3852c5fe984edafc4b975cfb3b6cd26b46c53b8fa37aec0ed"
 const reflectedGlobals = new Map([
   ["tests/unit/support/dom.ts", "6ea7655949bb970b91af80fa86b8961f920bffe3e21c6fc848327223aecd26f7"],
   [
@@ -35,6 +35,14 @@ const preparation = new Map([
 ])
 const python = new Map([
   [
+    "packages/structural-optimization/tests/compound_relative_fixtures.py",
+    "e60d2d6e0011da132327038f518c6bcaee4c4c0cdbbcc5282777d4ffc9cd08da",
+  ],
+  [
+    "packages/structural-optimization/tests/boundary_reference_fixtures.py",
+    "d75f0ff0f667346f79549dccebe2002c3ed907a6274b3e151288b9f7aff1cd45",
+  ],
+  [
     "packages/structural-optimization/tests/iterative_fixtures.py",
     "e2c4c62810251d3311e801b8d8bd8a10d91e418adcc61095dc3ad45815204253",
   ],
@@ -44,7 +52,7 @@ const python = new Map([
   ],
   [
     "packages/structural-optimization/src/solver.py",
-    "f190270f7469ed146d288c2fcc00c0ea00c59deb6c571ae14f4182d876845493",
+    "4ff6da6550e4624a94bf4198b7a89768b480938546a4b0249cc9d9f4c51b8331",
   ],
   [
     "packages/structural-optimization/src/quick-solver.py",
@@ -64,7 +72,7 @@ const python = new Map([
   ],
   [
     "packages/structural-optimization/tests/fdm_fixtures.py",
-    "6ccc9458e67a6dcfbcdfe9b0da02ecdc86e2f06adbd4d5c1b0ae1c7722bbaece",
+    "9f5b940055415cc9aebd610244d392579b51a278c110f6fa3459bff0428db06f",
   ],
 ])
 const callers = new Map([
@@ -106,7 +114,7 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/wasm-solver.test.ts",
-    "6fd578e1e779fdee06f9470642bf5d0f899865072fca1d26a163c5af51772728",
+    "da11e7d0522a45e11bbfe8564c7a1e44320e1dbb7c87894ec79fc13d0845a6be",
   ],
 ])
 

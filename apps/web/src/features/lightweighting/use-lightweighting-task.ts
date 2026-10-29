@@ -1,4 +1,4 @@
-import type { meshImportInspectionSchema } from "@vibeshape/protocol"
+import type { MeshImportInspection, SourceImportInspection } from "@vibeshape/protocol"
 import {
   optimizeStructuralModel,
   StructuralOptimizationError,
@@ -23,14 +23,17 @@ import {
   lightweightingSource,
   sameLightweightingSource,
 } from "./lightweighting-model"
+import type { ExactPrintOptimizationEvidence } from "./prepare-exact-print-snapshot"
 import { prepareLightweightingSnapshot } from "./prepare-lightweighting-snapshot"
 
 type ReadyResult = {
   source: LightweightingSource
   input: StructuralOptimizationInput
   result: StructuralOptimizationResult
-  prepared: PreparedImportSource
-  inspection: ReturnType<typeof meshImportInspectionSchema.parse>
+  prepared?: PreparedImportSource
+  inspection?: MeshImportInspection | SourceImportInspection
+  exact?: ExactPrintOptimizationEvidence
+  analysisContext?: LightweightingInputPreparation["analysisContext"]
 }
 type TaskCopy = {
   initialCaseName: string
@@ -40,7 +43,14 @@ type TaskCopy = {
   solverFailed: (code: string) => string
   featureLabel: (part: string) => string
 }
-type Activity = "idle" | "loading" | "solving" | "inspecting" | "applying"
+type Activity =
+  | "idle"
+  | "loading"
+  | "solving"
+  | "inspecting"
+  | "reconstructing"
+  | "verifying"
+  | "applying"
 export type LightweightingAnalysisRunner = (
   input: StructuralOptimizationInput,
   options: {
@@ -49,6 +59,34 @@ export type LightweightingAnalysisRunner = (
     onProgress: (stage: "loading" | "solving") => void
   },
 ) => Promise<{ input: StructuralOptimizationInput; result: StructuralOptimizationResult }>
+export type LightweightingInputPreparation = {
+  input: StructuralOptimizationInput
+  prepareSnapshot?: (
+    result: StructuralOptimizationResult,
+    options: {
+      signal: AbortSignal
+      current: () => boolean
+      onProgress: (stage: "reconstructing" | "verifying" | "inspecting") => void
+    },
+  ) => Promise<{
+    prepared: PreparedImportSource
+    inspection: MeshImportInspection | SourceImportInspection
+    exact?: ExactPrintOptimizationEvidence
+  } | null>
+  analysisContext?: {
+    scenarioBasis: "normalized-longest-span-end-clamped"
+    sourceToPrintFrame: {
+      originMm: [number, number, number]
+      rotation: [number, number, number, number]
+    }
+    bedTriangleIndices: number[]
+    materialModel: "isotropic-without-layer-adhesion"
+  }
+}
+export type LightweightingInputBuilder = (
+  source: LightweightingSource,
+  fields: LightweightingFields,
+) => LightweightingInputPreparation | null
 function analysisIsCurrent(
   mounted: boolean,
   generation: number,
@@ -75,6 +113,7 @@ async function runAnalysis(
   current: () => boolean,
   setStage: (stage: Activity) => void,
   runner?: LightweightingAnalysisRunner,
+  preparation?: LightweightingInputPreparation,
 ): Promise<ReadyResult | null> {
   const options = {
     signal,
@@ -87,24 +126,68 @@ async function runAnalysis(
   const computed = runner
     ? await runner(input, { ...options, current })
     : { input, result: await optimizeStructuralModel(input, options) }
-  const { result } = computed
+  const result = computed.result
   if (!current()) return null
-  setStage("inspecting")
-  const inspected = await prepareLightweightingSnapshot(
-    result.mesh,
-    result.cellSizeMm,
+  const analysis = {
     source,
+    input: computed.input,
+    result,
+    ...(preparation?.analysisContext ? { analysisContext: preparation.analysisContext } : {}),
+  }
+  if (result.status === "no-improvement") return analysis
+  setStage("inspecting")
+  const inspected = await inspectAnalysisSnapshot({
+    result,
+    source,
+    signal,
     current,
-  )
-  return inspected ? { source, input: computed.input, result, ...inspected } : null
+    setStage,
+    preparation,
+  })
+  return inspected
+    ? {
+        ...analysis,
+        ...inspected,
+      }
+    : null
+}
+async function inspectAnalysisSnapshot({
+  result,
+  source,
+  signal,
+  current,
+  setStage,
+  preparation,
+}: {
+  result: StructuralOptimizationResult
+  source: LightweightingSource
+  signal: AbortSignal
+  current: () => boolean
+  setStage: (stage: Activity) => void
+  preparation: LightweightingInputPreparation | undefined
+}) {
+  if (!preparation?.prepareSnapshot)
+    return prepareLightweightingSnapshot(result.mesh, result.cellSizeMm, source, current)
+  return preparation.prepareSnapshot(result, {
+    signal,
+    current,
+    onProgress: (stage) => {
+      if (current()) setStage(stage)
+    },
+  })
 }
 type CurrentSource = { source: LightweightingSource | null; disabled: boolean }
 function sourceIdentity(source: LightweightingSource | null) {
   if (!source) return null
   return `${source.context.documentId}:${source.context.revision}:${source.partId}:${source.featureId}:${source.outputRole}:${source.contentHash}`
 }
-function analysisCandidate(source: LightweightingSource | null, fields: LightweightingFields) {
+function analysisCandidate(
+  source: LightweightingSource | null,
+  fields: LightweightingFields,
+  builder?: LightweightingInputBuilder,
+) {
   if (!source) return null
+  if (builder) return preparedCandidate(source, fields, builder)
   const surface = fields.surfaceSelection
   if (
     surface &&
@@ -117,6 +200,16 @@ function analysisCandidate(source: LightweightingSource | null, fields: Lightwei
     return null
   const parsed = structuralOptimizationInputSchema.safeParse(lightweightingInput(source, fields))
   return parsed.success ? { source, input: parsed.data } : null
+}
+function preparedCandidate(
+  source: LightweightingSource,
+  fields: LightweightingFields,
+  builder: LightweightingInputBuilder,
+) {
+  const prepared = builder(source, fields)
+  if (!prepared) return null
+  const parsed = structuralOptimizationInputSchema.safeParse(prepared.input)
+  return parsed.success ? { source, ...prepared, input: parsed.data } : null
 }
 function currentResult(source: LightweightingSource | null, ready: ReadyResult | null) {
   if (!ready) return null
@@ -139,7 +232,11 @@ function applyEligible(
     !disabled &&
     activity === "idle" &&
     ready !== null &&
-    ready.result.status === "improved" &&
+    ready.prepared !== undefined &&
+    ready.inspection !== undefined &&
+    (ready.exact
+      ? ready.exact.volumeMm3 < ready.exact.sourceVolumeMm3
+      : ready.result.status === "improved") &&
     previewReady
   )
 }
@@ -163,6 +260,8 @@ function finishAnalysis(
   if (lifecycle.mounted.current) lifecycle.setStage("idle")
 }
 async function commitResult(ready: ReadyResult, label: string) {
+  if (!ready.prepared || !ready.inspection)
+    throw new Error("The analysis has no inspected import candidate.")
   const transaction = createImportTransaction(
     ready.source.context,
     ready.prepared,
@@ -189,10 +288,10 @@ function publishCommitResult(
 function downloadResultReport(ready: ReadyResult | null) {
   if (!ready) return
   const { source: captured, input, result } = ready
-  const { mesh: _mesh, ...metrics } = result
+  const { mesh: _mesh, voxelGrid: _grid, ...metrics } = result
   const { mesh: _sourceMesh, ...settings } = input
   const report = {
-    schemaVersion: 1,
+    schemaVersion: ready.exact ? 2 : 1,
     analysis: "preliminary-isotropic-linear-elastic-voxel-fem",
     source: {
       documentId: captured.context.documentId,
@@ -204,7 +303,8 @@ function downloadResultReport(ready: ReadyResult | null) {
       contentHash: captured.contentHash,
     },
     settings,
-    result: metrics,
+    ...(ready.analysisContext ? { analysisContext: ready.analysisContext } : {}),
+    ...(ready.exact ? { optimizationProposal: metrics, result: ready.exact } : { result: metrics }),
   }
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
@@ -277,7 +377,9 @@ export function useLightweightingTask({
   onApplyingChange,
   graphical = false,
   analysisRunner,
+  inputBuilder,
 }: {
+  inputBuilder?: LightweightingInputBuilder
   analysisRunner?: LightweightingAnalysisRunner
   graphical?: boolean
   controller: DocumentControllerState
@@ -327,7 +429,13 @@ export function useLightweightingTask({
   }
   const currentReady = currentResult(source, ready)
   const stale = ready !== null && currentReady === null
-  const candidate = analysisCandidate(source, fields)
+  let candidate: ReturnType<typeof analysisCandidate> = null
+  let inputError: unknown = null
+  try {
+    candidate = analysisCandidate(source, fields, inputBuilder)
+  } catch (error) {
+    inputError = error
+  }
   const canAnalyze = analysisEligible(disabled, activity, candidate)
   const performAnalysis = async (runner?: LightweightingAnalysisRunner) => {
     if (!candidate || !actionCanBegin(analysis.current, applying.current, canAnalyze)) return
@@ -356,6 +464,7 @@ export function useLightweightingTask({
         current,
         setActivity,
         runner,
+        candidate,
       )
       if (completed && current()) setReady(completed)
     } catch (error) {
@@ -401,6 +510,7 @@ export function useLightweightingTask({
     canAnalyze,
     canApply,
     invalid: source !== null && candidate === null,
+    inputError,
     previewReady,
     setPreviewReady,
     choosePart,

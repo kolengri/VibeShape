@@ -43,7 +43,7 @@ adapter otherwise reconstructs injected servers without timeout fields. Generic 
 their original ACP server list. No global Codex configuration or installed adapter is changed.
 See [ADR-0136](../adr/0136-native-codex-project-tool-deadline.md).
 
-Structural and Quick numerical tools return browser-owned job receipts immediately, independently
+Structural, Quick and exact-print numerical tools return browser-owned job receipts immediately, independently
 of any client's request deadline. `get_numerical_job` retrieves running/completed state and the
 original final result; `cancel_numerical_job` explicitly interrupts work. Computation does not hold
 the broker's operation slot, so model reads remain available. Source identity, review and atomic
@@ -819,3 +819,20 @@ The ordinary adapter's cloned read-only checkpoint feeds disposable exact model 
 `treat_sketch_corner` reads exact solved owned-draft points and stages the existing domain fillet/chamfer sketch update while retaining supported constraints and the virtual construction corner. `create_face_aligned_placement` uniquely resolves two oriented planar faces from one exact owned-draft rebuild and stages the existing numeric Placement. It retains the source body role and has no associative target dependency. Both use normal CAD preview/commit policy and introduce no independent document authority.
 
 `move_history_item` reuses the reviewed authored-proposal lifecycle and the existing semantic History command. Full authored preview and exact command/target grant precede ordinary session queue, lease and revision-CAS publication. Dependency and folder invariants reject invalid order and no-ops. External MCP clients retain manual review even with CAD auto-apply; built-in connected assistants use connected model authority. One accepted move creates one saved revision and one Undo entry. Operator contracts live in the [inspection](../../.agents/skills/vibeshape-inspection/SKILL.md), [modeling](../../.agents/skills/vibeshape-modeling/SKILL.md), and [organization](../../.agents/skills/vibeshape-organization/SKILL.md) workflows.
+
+## Exact automatic print optimization
+
+Local MCP, remote MCP and browser API discovery share canonical tool input JSON schemas.
+Defaulted input fields remain optional in the advertised contract, including pagination, numerical
+settings and the skill-catalog URI. Legacy sketch import preprocessing keeps its representable
+wire-schema projection; runtime validation remains authoritative. Tool output schemas and approval
+policies are independent of this input-schema projection.
+
+`analyze_print_optimization` and `request_print_optimization` share editor setup, exact reconstruction,
+original-boundary FEM verification and STEP inspection through the existing source-bound proposal
+and numerical-job owners. Existing topology reads supply body-scoped bed/preservation references;
+the browser resolves active native bindings and rejects changed or ambiguous surfaces. Private
+geometry stays in the browser. Resolved settings and exact/proposal evidence are validated by both
+transports. Request publication uses ordinary import review, source hiding and one atomic Undo entry.
+See [ADR-0142](../adr/0142-exact-print-optimization-mcp.md) and the
+[operator workflow](../../.agents/skills/vibeshape-modeling/references/print-optimization.md).

@@ -35,6 +35,7 @@ const terminalResponseTypeByRequest = {
   rebuildDocument: "documentRebuilt",
   solveSketch: "sketchSolved",
   inspectSourceImport: "sourceImportInspected",
+  reconstructPrintOptimization: "printOptimizationReconstructed",
   inspectMeshImport: "meshImportInspected",
   inspectAssembly: "assemblyInspected",
   exportAssembly: "assemblyExported",

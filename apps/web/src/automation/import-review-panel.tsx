@@ -7,6 +7,7 @@ import { ReviewActions } from "./automation-review-actions"
 import type { AutomationReviewState } from "./automation-review-state"
 import type { ImportReviewInput } from "./import-upload-session"
 import { LightweightingReviewDetails } from "./lightweighting-review-details"
+import { PrintOptimizationReviewDetails } from "./print-optimization-review-details"
 import { QuickLightweightingReviewDetails } from "./quick-lightweighting-review-details"
 
 export function ImportReviewPanel({
@@ -32,6 +33,9 @@ export function ImportReviewPanel({
         <div className="grid min-w-0 content-start gap-3">
           <p className="text-sm">{t("description")}</p>
           {input.lightweighting && <LightweightingReviewDetails evidence={input.lightweighting} />}
+          {input.printOptimization && (
+            <PrintOptimizationReviewDetails evidence={input.printOptimization} />
+          )}
           {input.quickLightweighting && (
             <QuickLightweightingReviewDetails evidence={input.quickLightweighting} />
           )}

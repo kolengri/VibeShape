@@ -14,19 +14,19 @@ def fdm_settings(direction="+z", mode="allowed", minimum=1.2):
             "layerHeightMm": 0.2, "maxOverhangAngleDeg": 45}
 
 
-def fdm_request(solver, cells, fdm=None, iterations=0, translation=None):
+def fdm_request(solver, cells, fdm=None, iterations=0, translation=None, cell_size=1):
     origin = np.zeros(3) if translation is None else np.array(translation)
     cells = np.array(cells, dtype=int)
-    mesh, _ = solver._hex_mesh(cells, origin, 1)
+    mesh, _ = solver._hex_mesh(cells, origin, cell_size)
     source = solver._surface(mesh)
     lo, hi = source.bounds
     request = {
         "schemaVersion": 1,
         "mesh": {"vertices": source.vertices.ravel().tolist(), "indices": source.faces.ravel().tolist()},
         "material": {"youngModulusMpa": 1000, "poissonRatio": 0, "yieldStrengthMpa": 100, "densityKgM3": 1000},
-        "safetyFactor": 2, "maxDisplacementMm": 1, "cellSizeMm": 1,
+        "safetyFactor": 2, "maxDisplacementMm": 1, "cellSizeMm": cell_size,
         "supports": [{"min": lo.tolist(), "max": [float(lo[0]), float(hi[1]), float(hi[2])]}],
-        "loadCases": [{"name": "axial", "region": {"min": [float(hi[0]), float(lo[1]), float(lo[2])], "max": hi.tolist()}, "forceN": [1, 0, 0]}],
+        "loadCases": [{"name": "axial", "region": {"min": [float(hi[0]), float(lo[1]), float(lo[2])], "max": hi.tolist()}, "forceN": [cell_size ** 2, 0, 0]}],
         "preserveRegions": [], "maxIterations": iterations,
     }
     if fdm is not None:
@@ -114,7 +114,8 @@ def assert_fdm_output(solver, request, result):
     for anchor in occupied:
         cube = {tuple(np.array(anchor) + offset) for offset in itertools.product(range(k), repeat=3)}
         if cube <= occupied:
-            p0, p1 = lo + np.array(anchor), lo + np.array(anchor) + k
+            p0 = lo + np.array(anchor) * request["cellSizeMm"]
+            p1 = lo + (np.array(anchor) + k) * request["cellSizeMm"]
             bound = min((p1 - p0).min(), (p1.astype(np.float32).astype(float) - p0.astype(np.float32).astype(float)).min())
             if bound >= request["fdm"]["minFeatureSizeMm"]:
                 covered |= cube
@@ -178,13 +179,76 @@ def verify_fdm_float32_bound(solver):
     # For example, f32(2.1)-f32(1.1) is strictly less than 1 mm while the
     # endpoint errors remain within the existing one-millionth-cell allowance.
     assert float(np.float32(2.1)) - float(np.float32(1.1)) < 1
-    fdm_expect_code(solver, request, "infeasible-baseline")
+    larger = solver.solve(request)
+    assert larger["fdm"]["minimumFeatureCubeCells"] == 2
+    assert larger["fdm"]["optimized"]["minFeatureSizeBoundMm"] >= 1
+    assert_fdm_output(solver, request, larger)
+    thin = fdm_request(solver, list(itertools.product(range(10), range(1), range(2))),
+                       fdm_settings(minimum=1), translation=[0.1, 0.1, 0.1])
+    fdm_expect_code(solver, thin, "infeasible-baseline")
     request["fdm"]["minFeatureSizeMm"] = 0.999999
     result = solver.solve(request)
     bound = result["fdm"]["optimized"]["minFeatureSizeBoundMm"]
     assert 0.999999 <= bound < 1
     assert_fdm_output(solver, request, result)
     return request
+
+
+def verify_fdm_representable_cube_selection(solver):
+    cells = list(itertools.product(range(16), range(8), range(8)))
+    exact = solver.solve(fdm_request(solver, cells, fdm_settings(minimum=1)))
+    assert exact["fdm"]["minimumFeatureCubeCells"] == 1
+    for residue in (1e-15, -1e-15):
+        origin = [residue, -residue, residue]
+        planes = np.array(origin) + np.arange(17)[:, None]
+        assert np.any(np.diff(planes, axis=0) < 1)
+        request = fdm_request(solver, cells, fdm_settings(minimum=1), translation=origin)
+        result = solver.solve(request)
+        assert result["fdm"]["minimumFeatureCubeCells"] == 2
+        assert result["fdm"]["optimized"]["minFeatureSizeBoundMm"] > 1
+        assert_fdm_output(solver, request, result)
+        thin = fdm_request(solver, list(itertools.product(range(16), range(1), range(8))),
+                           fdm_settings(minimum=1), translation=origin)
+        fdm_expect_code(solver, thin, "infeasible-baseline")
+    settings = fdm_settings(minimum=0.01)
+    settings["layerHeightMm"] = 0.002
+    request = fdm_request(solver, list(itertools.product(range(10), range(2), range(2))), settings,
+                          translation=[10000.001, 0.001, 0.001], cell_size=0.01)
+    result = solver.solve(request)
+    assert result["fdm"]["minimumFeatureCubeCells"] == 2
+    assert result["fdm"]["optimized"]["minFeatureSizeBoundMm"] > 0.01
+    assert_fdm_output(solver, request, result)
+    thin = fdm_request(solver, list(itertools.product(range(10), range(1), range(2))), settings,
+                       translation=[10000.001, 0.001, 0.001], cell_size=0.01)
+    fdm_expect_code(solver, thin, "infeasible-baseline")
+    return request
+
+
+def verify_fdm_overlapping_nominal_cubes(solver):
+    spacing, minimum = 0.01, 0.01999998
+    origin = np.array([99999.001, 0, 0])
+    cells = list(itertools.product(range(5), range(2), range(2)))
+    occupied, covered, eligible = set(cells), set(), []
+    for x in range(4):
+        p0 = origin + np.array([x, 0, 0]) * spacing
+        p1 = origin + np.array([x + 2, 2, 2]) * spacing
+        raw = p1 - p0
+        captured = p1.astype(np.float32).astype(float) - p0.astype(np.float32).astype(float)
+        if min(raw.min(), captured.min()) >= minimum:
+            eligible.append(x)
+            covered |= set(itertools.product(range(x, x + 2), range(2), range(2)))
+    assert eligible == [0, 1, 3]
+    assert covered == occupied
+    settings = fdm_settings(minimum=minimum)
+    settings["layerHeightMm"] = 0.002
+    request = fdm_request(solver, cells, settings, translation=origin, cell_size=spacing)
+    result = solver.solve(request)
+    assert result["fdm"]["minimumFeatureCubeCells"] == 2
+    assert result["fdm"]["optimized"]["minFeatureSizeBoundMm"] >= minimum
+    assert_fdm_output(solver, request, result)
+    thin = fdm_request(solver, list(itertools.product(range(5), range(1), range(2))), settings,
+                       translation=origin, cell_size=spacing)
+    fdm_expect_code(solver, thin, "infeasible-baseline")
 
 
 def verify_fdm_rounded_slice_height(solver):

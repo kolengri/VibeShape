@@ -1,6 +1,6 @@
 # Numerical jobs
 
-The four structural and Quick `analyze_*lightweighting` / `request_*lightweighting` tools start
+The structural, Quick and exact-print analysis/request tools start
 browser-owned jobs on both local and paired remote MCP. They return immediately with `jobId`,
 `tool`, `documentId`, `baseRevision` and `status: "running"`; this receipt is not an analysis or a
 saved result. Computation has no execution deadline and does not occupy the transport operation

@@ -13,8 +13,8 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
 Structural source capture removes unreferenced vertices and welds exactly equal XYZ coordinates.
 It preserves triangle positions, order, winding, surface-selection indices and the source
 body/hash/revision without approximating the surface. Structural and Quick source/result meshes
-have no fixed vertex or triangle count cutoff in computation. Ordinary format export/import budgets
-still apply before publication. Quick preserved-exterior output retains the original
+have no fixed vertex or triangle count cutoff in computation. Ordinary format validity, digest and
+source-identity checks still apply before publication. Quick preserved-exterior output retains the original
 captured vertices and triangles. Invalid or non-finite sources still fail explicitly; selected triangle
 indices must exist in the actual captured source. Input diagnostics include bounded validation paths and
 messages; inspect that cause before changing a study or retrying. Passing input validation alone
@@ -85,6 +85,32 @@ Runtime errors omit traceback frames, captured inputs and sensitive URL componen
 
 ## Select an optimization algorithm
 
+### Compound loads and relative performance
+
+Both paired transports accept optional `additionalLoads` on each load case. Each term has its own
+`region` and nonzero numeric `forceN`; the primary term and all additional terms act simultaneously
+in one solve. Every term must select valid baseline facets independently, avoid fixed supports, and
+retain its load interface. A torsion couple needs opposite forces on separated patches in the same
+case. Two separate opposite-force cases do not establish torsion; irregular patch placement may
+also introduce bending.
+
+Optional `settings.relativePerformance` supplies `minStiffnessFraction` and `minStrengthFraction`,
+each greater than zero and at most one. Every accepted candidate and the repeated final solid must
+meet both bounds in every case: candidate compliance is at most baseline compliance divided by the
+stiffness fraction; candidate peak von Mises stress is at most baseline stress divided by the
+strength fraction. Baseline and candidate responses must be positive; tiny responses do not bypass
+the ratios. The summary echoes both fractions and transport validation rejects missing, changed,
+or violated evidence. Existing absolute constraints remain required.
+
+For the automatic bed-face/plastic workflow with exact preserved surfaces, use
+[exact print optimization](print-optimization.md). Its dedicated analysis and request tools run
+reconstruction and original-boundary verification before exact STEP import. The manual
+`analyze_lightweighting` and `request_lightweighting` tools retain voxel snapshots;
+`preserveRegions` protects nearby cells rather than exact analytical mating surfaces.
+Private lattice/reference options and native face-hash arguments are not MCP settings.
+
+### Algorithm settings
+
 Both paired transports accept optional `settings.algorithm`. Omission keeps feasible cell removal.
 
 - SIMP: `{kind: "simp", volumeFraction, filterRadiusMm, penalty}`. Fraction is 0.1–1 of the
@@ -132,8 +158,15 @@ maximum stiffness.
 For requested FDM constraints, inspect `summary.fdm`: its echoed `settings` must match the request,
 and `baseline`/`optimized` report `unsupportedAreaMm2`, `requiresSupports`,
 `minFeatureSizeBoundMm`, and `buildHeightMm`. The minimum-feature bound must satisfy the request;
-support-free evidence must report zero unsupported area. Area is not support volume, support
+`minimumFeatureCubeCells` is the nominal rounded-up cube size or one extra cell when eligible
+nominal cubes cannot cover the baseline at the requested raw and float32 span. This does not relax
+the requested minimum, and geometry without complete filled proof cubes still fails.
+Support-free evidence must report zero unsupported area. Area is not support volume, support
 accessibility, or a physical printability certificate. Manual review shows the complete FDM settings.
+
+An unattainable SIMP density target below the protected-material floor skips the relaxed solve with
+an explicit warning; projections use verified baseline FEM energy and still require every solid
+constraint. Zero density iterations in that case do not establish density convergence.
 
 For a stiffness-guided objective, inspect `summary.objective`: requested `retainedMassFraction`,
 `targetMassKg`, `targetCellCount`, `achievedRetainedMassFraction` and `targetStatus`. The target

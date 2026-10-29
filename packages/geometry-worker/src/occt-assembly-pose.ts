@@ -23,19 +23,11 @@ function validatePlacedBounds(occt: OpenCascadeInstance, shape: TopoDS_Shape) {
     box.delete()
   }
 }
-/** Returns one owned copy. The source wrapper and its triangulation remain untouched. */
-export function copyOcctAssemblySource(
+/** Returns one owned rigid copy, including independent native triangulation ownership. */
+export function copyOcctRigidShape(
   occt: OpenCascadeInstance,
   source: AssemblyPoseSource,
 ): TopoDS_Shape {
-  const metrics = inspectOcctBody(occt, source.shape)
-  if (
-    !metrics.valid ||
-    metrics.solidCount !== 1 ||
-    !Number.isFinite(metrics.volume) ||
-    metrics.volume <= 0
-  )
-    throw new Error("Assembly operations require valid exact single-solid sources.")
   const pose = assemblyRigidPoseWireSchema.parse(source.pose)
   const [x, y, z, w] = pose.quaternion
   const [tx, ty, tz] = pose.translation
@@ -58,18 +50,34 @@ export function copyOcctAssemblySource(
     const builder = new occt.BRepBuilderAPI_Transform_2(source.shape.wrapped, transform, true)
     try {
       if (!builder.IsDone()) throw new Error("Assembly source placement did not complete.")
-      const copied = builder.Shape()
-      try {
-        validatePlacedBounds(occt, copied)
-        return copied
-      } catch (error) {
-        copied.delete()
-        throw error
-      }
+      return builder.Shape()
     } finally {
       builder.delete()
     }
   } finally {
     transform.delete()
+  }
+}
+
+/** Assembly admission also requires one valid solid inside the modeling world. */
+export function copyOcctAssemblySource(
+  occt: OpenCascadeInstance,
+  source: AssemblyPoseSource,
+): TopoDS_Shape {
+  const metrics = inspectOcctBody(occt, source.shape)
+  if (
+    !metrics.valid ||
+    metrics.solidCount !== 1 ||
+    !Number.isFinite(metrics.volume) ||
+    metrics.volume <= 0
+  )
+    throw new Error("Assembly operations require valid exact single-solid sources.")
+  const copied = copyOcctRigidShape(occt, source)
+  try {
+    validatePlacedBounds(occt, copied)
+    return copied
+  } catch (error) {
+    copied.delete()
+    throw error
   }
 }

@@ -17,7 +17,6 @@ export type InspectedSourceImport = Readonly<{
   unitEvidence: "explicit-source-metadata"
 }>
 const MAX_SOLIDS = 128
-const MAX_TOPOLOGY_ENTITIES = 500_000
 const MATCH_LINEAR_ABSOLUTE = 1e-6
 const MATCH_METRIC_RELATIVE = 1e-7
 const MATCH_LINEAR_RELATIVE = 1e-10
@@ -55,7 +54,7 @@ function transferNativeShape(
 
 async function verifiedBytes(source: ImportedSourceContent, input: unknown) {
   if (!(input instanceof Uint8Array) || input.byteLength !== source.byteLength)
-    invalid("Exact source bytes must match the captured bounded byte length.")
+    invalid("Exact source bytes must match the captured byte length.")
   const bytes = Uint8Array.from(input)
   const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
     .map((value) => value.toString(16).padStart(2, "0"))
@@ -180,7 +179,6 @@ function explore(
   try {
     while (explorer.More()) {
       count += 1
-      if (count > MAX_TOPOLOGY_ENTITIES) invalid("Exact source topology exceeds its entity budget.")
       const item = explorer.Current()
       try {
         visit(item)

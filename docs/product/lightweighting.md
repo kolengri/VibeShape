@@ -1,6 +1,76 @@
 # Structural lightweighting
 
-The **Lightweighting** button in the main modeling toolbar reduces occupied material while satisfying supplied
+The **Lightweighting** button opens **Optimize for 3D printing** by default. Select a flat exterior
+bed face, a plastic example or custom material properties, and any faces to preserve; then choose
+**Optimize for printing**. The remaining exterior may change within the original design envelope.
+**Set real supports and loads manually** opens the existing structural task described below.
+
+## Automatic print optimization
+
+The automatic task generates four normalized comparison scenarios: axial tension, bending in two
+directions, and one opposing-force couple for torsion. One end of the longest print-frame span is
+assumed clamped; the bed face only determines print orientation. The couple acts simultaneously in
+one FEM solve. Irregular traction patches can also introduce bending. These scenarios do not infer
+actual service supports or loads.
+
+By default, every accepted solid retains at least 90% of baseline stiffness and 90% of normalized
+load capacity in each scenario. Advanced settings expose both targets, resolution, minimum feature
+size, layer height, iterations and support policy. Retained stiffness is baseline compliance divided
+by candidate compliance; normalized load capacity is baseline peak stress divided by candidate peak
+stress under the same normalized forces. The solver seeks a lighter feasible binary projection of
+a SIMP density field; it does not prove a global mass/strength optimum. If no improved feasible solid
+is found, Apply stays disabled. Generated support/load interfaces are retained automatically in
+addition to user-preserved regions.
+
+When the density target is below protected material plus the minimum free density, SIMP skips the
+unattainable relaxed solve with an explicit warning and ranks using verified baseline FEM energy.
+A failed relaxed density solve also stops iteration explicitly. Reconstruction then
+uses the last verified density ranking (baseline FEM energy if no density solve succeeded), with
+budgeted trials that include small removals near the full baseline. This can yield modest savings;
+it never relaxes equilibrium or per-case performance checks, and does not imply density convergence.
+
+Print settings default to supports allowed, 45 degrees from vertical, a layer height at most
+0.2 mm, and a minimum feature size at least 0.8 mm (or one analysis cell when larger). Both FDM
+policies verify the baseline and final solid. Finer resolution may be needed for thin or curved
+features; infeasible baselines fail without relaxing constraints. Support-free mode cannot repair
+an initially unsupported baseline. Support area is estimated; no supports or toolpaths are generated.
+Minimum-feature coverage first uses filled cubes of `ceil(minimum / cellSize)` cells. If eligible
+cubes cannot cover the baseline because captured spans undershoot in raw or Float32 geometry,
+the proof tries one additional cell. The requested thickness remains unchanged; thin geometry without a complete
+larger cube still fails.
+
+The selected bed face must be planar and support the whole source without geometry below its
+plane. Computation rotates a captured copy into print coordinates and restores the exact CAD result
+to the original placement. Reports include the transform and normalized scenario assumptions;
+print preparation must reproduce that orientation. Selected regions bind to the captured revision
+and body hash; changing the source invalidates them and any result.
+
+Selected original CAD faces and their dimensions remain exact, including curved holes and mating
+surfaces. After voxel optimization, the native kernel removes material outside the retained cells
+and protected interface skins, proves each selected face is unchanged, and exports a new exact
+solid to STEP. It rejects lost faces, disconnected solids, invalid geometry and no actual material
+reduction. Conservative protected skins can prevent useful savings; preserving a full curved face
+does not freeze its entire bounding box.
+
+The reconstructed body is analyzed again on the original FEM lattice planes, against every original
+scenario and retention target. Its STEP bytes are independently inspected before preview and Apply.
+Apply adds a separate exact CAD Part through ordinary import and one Undo entry; the original stays
+editable. Reports distinguish the voxel proposal from reconstructed-body verification and use exact
+CAD volume for material savings. A source/display face-catalog change invalidates face selections.
+
+Plastic presets and custom properties still use isotropic elasticity. Layer adhesion, infill,
+fatigue, thermal distortion and real service strength are not modeled. Unprotected voxel boundaries
+are not automatically smoothed. See [ADR-0141](../adr/0141-exact-preserved-print-interfaces.md).
+
+Both paired MCP transports expose `analyze_print_optimization` and `request_print_optimization`
+for this complete exact workflow, including face discovery, plastic/custom properties, settings,
+background jobs and reviewed publication. See the [exact-print operator workflow](../../.agents/skills/vibeshape-modeling/references/print-optimization.md)
+and [ADR-0142](../adr/0142-exact-print-optimization-mcp.md). The analysis tool also reconstructs
+and verifies the exact candidate without saving it.
+
+## Manual structural optimization
+
+The manual task reduces occupied material while satisfying supplied
 von Mises stress, safety-factor, and displacement limits in every load case. Choose feasible cell removal, filtered SIMP topology optimization, or an FEM-graded lattice.
 All modes verify the final occupied solid; none proves a global optimum or certifies physical strength.
 `analyze_lightweighting` and `request_lightweighting` expose the same browser calculation through

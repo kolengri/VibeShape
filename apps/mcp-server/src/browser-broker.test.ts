@@ -15,6 +15,10 @@ import {
   lightweightingOperation,
 } from "../../../packages/automation-api/src/lightweighting.test-fixtures"
 import {
+  printOptimizationOperation,
+  printOptimizationValue,
+} from "../../../packages/automation-api/src/print-optimization.test-fixtures"
+import {
   quickLightweightingOperation,
   quickLightweightingValue,
 } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
@@ -243,6 +247,52 @@ describe("browser automation broker", () => {
     )
     expect(next.status).toBe(200)
   })
+
+  it.each([false, true])(
+    "binds exact print results and rejects forged verification (request=%s)",
+    async (snapshot) => {
+      const broker = makeBroker({ origin })
+      const { token } = await connect(broker)
+      const operation = printOptimizationOperation(snapshot)
+      const base = printOptimizationValue(snapshot)
+      const value = {
+        ...base,
+        documentId: document.id,
+        ...(snapshot ? { snapshot: { ...base.snapshot, documentId: document.id } } : {}),
+      }
+      const pending = broker.invoke(operation)
+      const poll = await broker.handle(
+        request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+      )
+      const { work } = localPollResponseSchema.parse(await poll.json())
+      if (!work) throw new Error("Expected exact print work.")
+      const respond = (output: unknown) =>
+        broker.handle(
+          request(
+            "result",
+            {
+              protocolVersion: 1,
+              requestId: work.requestId,
+              tool: operation.tool,
+              result: { ok: true, value: output },
+            },
+            token,
+          ),
+        )
+      const exact = value.summary.exact
+      if (!exact) throw new Error("Expected exact evidence.")
+      expect(
+        (
+          await respond({
+            ...value,
+            summary: { ...value.summary, exact: { ...exact, preservedFaceCount: 0 } },
+          })
+        ).status,
+      ).toBe(400)
+      expect((await respond(value)).status).toBe(200)
+      expect(await pending).toMatchObject({ ok: true, value })
+    },
+  )
 
   it.each([false, true])(
     "accepts quick evidence only for captured source/settings/snapshot (request=%s)",
@@ -1192,6 +1242,8 @@ describe("browser automation broker", () => {
     lightweightingOperation(true),
     quickLightweightingOperation(false),
     quickLightweightingOperation(true),
+    printOptimizationOperation(),
+    printOptimizationOperation(true),
   ])(
     "completes live $tool after ten minutes and honors subsequent revocation",
     async (operation) => {

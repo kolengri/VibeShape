@@ -124,6 +124,13 @@ import {
   planarUploadInspectionSchema,
 } from "./planar-imports"
 import {
+  printOptimizationAnalysisSchema,
+  printOptimizationOperations,
+  printOptimizationRequestSchema,
+  printOptimizationToolInputs,
+  printOptimizationToolNames,
+} from "./print-optimization-tools"
+import {
   projectListSchema,
   projectOperations,
   projectToolInputs,
@@ -214,6 +221,7 @@ export const localToolInputs = {
   ...lightweightingToolInputs,
   ...numericalJobToolInputs,
   ...quickLightweightingToolInputs,
+  ...printOptimizationToolInputs,
   render_preview: renderPreviewArgumentsSchema,
   ...historyToolInputs,
   ...historyMoveToolInputs,
@@ -342,6 +350,18 @@ export const localToolOutputs = {
     z.union([
       quickLightweightingRequestSchema,
       numericalJobReceiptSchema.extend({ tool: z.literal("request_quick_lightweighting") }),
+    ]),
+  ),
+  analyze_print_optimization: resultOf(
+    z.union([
+      printOptimizationAnalysisSchema,
+      numericalJobReceiptSchema.extend({ tool: z.literal("analyze_print_optimization") }),
+    ]),
+  ),
+  request_print_optimization: resultOf(
+    z.union([
+      printOptimizationRequestSchema,
+      numericalJobReceiptSchema.extend({ tool: z.literal("request_print_optimization") }),
     ]),
   ),
   list_projects: resultOf(projectListSchema),
@@ -514,6 +534,7 @@ export const localToolNameSchema = z.enum([
   ...lightweightingToolNames,
   ...numericalJobToolNames,
   ...quickLightweightingToolNames,
+  ...printOptimizationToolNames,
   "render_preview",
   "model_history_state",
   "undo_model",
@@ -648,6 +669,7 @@ const untargetedOperationSchema = z.discriminatedUnion("tool", [
   ...lightweightingOperations,
   ...numericalJobOperations,
   ...quickLightweightingOperations,
+  ...printOptimizationOperations,
   z.object({ tool: z.literal("render_preview"), arguments: renderPreviewArgumentsSchema }).strict(),
   ...localPlanarImportOperations,
   ...localBinaryExportOperations,
@@ -783,6 +805,15 @@ export function mcpToolInputSchema(name: LocalToolName) {
   return projectToolNames.some((projectTool) => projectTool === name)
     ? localToolInputs[name]
     : localToolInputs[name].extend({ projectId: documentIdSchema.optional() })
+}
+export function mcpToolInputJsonSchema(name: LocalToolName) {
+  // Sketch preprocessing accepts legacy values whose custom input types cannot be represented.
+  // Keep their canonical output shape; all other tools must advertise optional input defaults.
+  const io = name === "create_sketch" || name === "update_sketch" ? "output" : "input"
+  return {
+    ...z.toJSONSchema(mcpToolInputSchema(name), { reused: "ref", io }),
+    type: "object" as const,
+  }
 }
 export function parseMcpToolCall(name: string, input: unknown) {
   const tool = localToolNameSchema.safeParse(name)

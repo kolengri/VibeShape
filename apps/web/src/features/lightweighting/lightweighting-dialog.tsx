@@ -53,7 +53,13 @@ export type LightweightingViewportInteraction = Readonly<{
 function TaskStatus({ state }: { state: TaskState }) {
   const t = useTranslations("app.lightweighting")
   useReportActivity(state.activity !== "idle")
-  const stages = { loading: "loading", solving: "solving", inspecting: "inspecting" } as const
+  const stages = {
+    loading: "loading",
+    solving: "solving",
+    inspecting: "inspecting",
+    reconstructing: "reconstructing",
+    verifying: "verifying",
+  } as const
   const stage =
     state.activity === "idle" || state.activity === "applying" ? null : stages[state.activity]
   return (
@@ -74,16 +80,17 @@ function ResultPreview({ state, mainViewport }: { state: TaskState; mainViewport
   return (
     <>
       <LightweightingResults result={state.ready.result} />
-      {mainViewport ? (
-        <p className="text-xs text-muted-foreground">{t("mainPreview")}</p>
-      ) : (
-        <ImportPreview
-          inspection={state.ready.inspection}
-          label={t("preview")}
-          failedMessage={t("previewFailed")}
-          onReady={state.setPreviewReady}
-        />
-      )}
+      {state.ready.inspection &&
+        (mainViewport ? (
+          <p className="text-xs text-muted-foreground">{t("mainPreview")}</p>
+        ) : (
+          <ImportPreview
+            inspection={state.ready.inspection}
+            label={t("preview")}
+            failedMessage={t("previewFailed")}
+            onReady={state.setPreviewReady}
+          />
+        ))}
       <Button type="button" variant="outline" size="sm" onClick={state.downloadReport}>
         {t("downloadReport")}
       </Button>
