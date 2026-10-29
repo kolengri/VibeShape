@@ -13,7 +13,9 @@ export function LightweightingMaterialSelector({
   onChange,
   compact = false,
   children,
+  plasticsOnly = false,
 }: {
+  plasticsOnly?: boolean
   compact?: boolean
   children?: ReactNode
   fields: LightweightingFields
@@ -68,11 +70,13 @@ export function LightweightingMaterialSelector({
         }
       >
         <SelectOption value="custom">{t("customMaterial")}</SelectOption>
-        {structuralMaterialCatalog.presets.map((item) => (
-          <SelectOption key={item.id} value={item.id}>
-            {t(`presets.${item.id}`)}
-          </SelectOption>
-        ))}
+        {structuralMaterialCatalog.presets
+          .filter((item) => !plasticsOnly || item.category === "printed-plastic")
+          .map((item) => (
+            <SelectOption key={item.id} value={item.id}>
+              {t(`presets.${item.id}`)}
+            </SelectOption>
+          ))}
       </SelectField>
       {compact ? (
         <>

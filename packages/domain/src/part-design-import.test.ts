@@ -170,6 +170,32 @@ function registry() {
 }
 
 describe("captured exact source body features", () => {
+  it("retains safe topology counts above the former geometry admission limits", () => {
+    const parameters = feature().parameters
+    expect(
+      importedFeatureParametersSchema.safeParse({
+        ...parameters,
+        outputs: [
+          {
+            outputId: id(11),
+            signature: { ...signature, faceCount: 500_001, edgeCount: 1_000_002 },
+          },
+        ],
+      }).success,
+    ).toBe(true)
+    expect(
+      importedFeatureParametersSchema.safeParse({
+        ...parameters,
+        outputs: [
+          {
+            outputId: id(11),
+            signature: { ...signature, edgeCount: Number.MAX_SAFE_INTEGER + 1 },
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
   it("removes a captured lightweighting mesh and replays deletion, Undo and Redo without losing its source", () => {
     const f = fixture()
     const meshAsset = sourceAssetSchema.parse({

@@ -6,6 +6,33 @@ CAD cannot be validated with UI screenshots or byte-for-byte B-Rep comparison al
 
 ## Test pyramid
 
+Automatic print setup tests cover arbitrary planar bed orientation, source-coordinate restoration,
+invalid/intersecting bed planes, preserved triangle identity and a simultaneous zero-resultant
+torsion couple. A generated four-case print setup also runs against the pinned WASM solver, checking
+actual mass reduction, per-case stiffness/stress retention and final minimum-feature evidence.
+Shared numerical fixtures check compound-force superposition, both interfaces' protection, tiny
+baseline response gates and repeated final verification. Client and paired MCP tests reject forged
+relative-performance evidence. UI tests cover bed/plastic/preservation selection, custom properties,
+single-flight cancellation, source invalidation and switching to real service loads.
+Protected-budget fixtures also reject false density convergence at the free-density floor, require
+explicit baseline-energy projection evidence, and retain the original per-case acceptance gates.
+
+Exact reconstruction fixtures preserve native selected-face identity, retain a cylindrical hole's
+radius through STEP round-trip, restore inclined print frames and reject stale identities,
+disconnected solids and unchanged material. Repeated success/failure operations check native
+allocation ownership. Snapshot tests reanalyze the reconstructed mesh on the original lattice
+phase and compare every load case against the original source baseline before inspecting STEP.
+The automatic-print browser flow exercises real numerical and geometry workers, a preserved
+face, exact import and atomic Apply/Undo/Redo. These are computational and application checks;
+they do not establish physical print strength or independent STEP-reader interoperability.
+Patch-selector regressions distinguish protected exterior support/load surfaces from removable
+interior material behind them, including inclined print frames and closed selector boundaries.
+Fixed-verification fixtures retain original FEM boundary keys through interior cavities and lattice
+origin shifts, reject lost interfaces and prevent newly exposed surfaces from acquiring supports
+or loads. Snapshot tests bind that private boundary reference to the original captured print mesh.
+Exact-source contract regressions also cross the former local byte/topology admission thresholds
+while preserving unsafe-number, source association and native validity failures.
+
 Structural lightweighting runs analytical elasticity, constrained removal, multi-case scaling,
 infeasible baseline, and missing-support fixtures against the exact browser Pyodide runtime in
 `packages/structural-optimization/tests/wasm-solver.test.ts`. The test prepares pinned assets before
@@ -42,7 +69,9 @@ closed-box exclusion, feasible-baseline semantics, target rounding, and emitted-
 FDM fixtures cover both support policies, signed build directions, thin-feature rejection,
 unsupported geometry, conservative feature bounds, and repeated final constraints in that same
 pinned runtime. Client and MCP tests bind settings to manufacturing evidence and reject missing
-or mismatched results. UI checks cover policy changes, invalid parameters, study invalidation,
+or mismatched results. Floating-origin fixtures verify the additional proof cell, independent cube
+coverage and strict thin-feature rejection without tolerances on the requested minimum. UI checks
+cover policy changes, invalid parameters, study invalidation,
 and support-demand comparison. These establish geometric contracts, not physical print success.
 
 SIMP fixtures additionally check penalized stiffness, finite-difference compliance sensitivities,

@@ -162,3 +162,5 @@ Statuses:
 When a decision changes, do not rewrite its ADR retroactively. Create a new record and add a `Superseded by` link to the old record.
 
 - [ADR-0082: Paged feature measurements and serialized local acknowledgements](0082-owned-draft-body-inspection-and-diagnostics.md)
+| [0140](0140-automatic-print-topology-optimization.md) | Accepted with reduced scope | Automatic print setup, compound traction patterns and per-case retained performance |
+| [0141](0141-exact-preserved-print-interfaces.md) | Accepted | Exact preserved print interfaces, active-cache reconstruction and aligned final reanalysis |

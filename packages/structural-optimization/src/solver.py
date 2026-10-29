@@ -68,6 +68,38 @@ def _objective(request):
             _number(objective["retainedMassFraction"], "retainedMassFraction", 0.1, 1)}
 
 
+def _relative_performance(request):
+    if "relativePerformance" not in request:
+        return None
+    value = request["relativePerformance"]
+    keys = {"minStiffnessFraction", "minStrengthFraction"}
+    _require(isinstance(value, dict) and set(value) == keys,
+             "invalid-input", "relativePerformance requires exactly minimum stiffness and strength fractions.")
+    result = {key: _number(value[key], key, 0, 1) for key in keys}
+    _require(all(fraction > 0 for fraction in result.values()),
+             "invalid-input", "Relative performance fractions must be positive.")
+    return result
+
+
+def _relative_feasible(metrics, baseline, settings):
+    if settings is None:
+        return True
+    if len(metrics["cases"]) != len(baseline["cases"]):
+        return False
+    for case, reference in zip(metrics["cases"], baseline["cases"]):
+        if case["name"] != reference["name"]:
+            return False
+        for metric, fraction in (("complianceNmm", "minStiffnessFraction"),
+                                 ("maxVonMisesMpa", "minStrengthFraction")):
+            # No absolute tolerance floor: a small but loaded case still owns
+            # its complete relative budget. Zero-energy cases are invalid.
+            if not (math.isfinite(reference[metric]) and reference[metric] > 0 and
+                    math.isfinite(case[metric]) and case[metric] > 0 and
+                    case[metric] <= reference[metric] / settings[fraction]):
+                return False
+    return True
+
+
 def _algorithm(request, cell_size, objective):
     if "algorithm" not in request:
         return None
@@ -168,11 +200,16 @@ def _fdm_context(settings, cells, origin, cell_size):
     axis = "xyz".index(settings["buildDirection"][1])
     sign = 1 if settings["buildDirection"][0] == "+" else -1
     bed = int((sign * cells[:, axis] - (sign < 0)).min())
-    return {"settings": settings, "axis": axis, "sign": sign, "bed": bed,
-            "xy": [i for i in range(3) if i != axis],
-            "k": math.ceil(settings["minFeatureSizeMm"] / cell_size),
-            "plate": float(sign * (sign * origin[axis] + bed * cell_size)),
-            "reach": settings["layerHeightMm"] * math.tan(math.radians(settings["maxOverhangAngleDeg"]))}
+    context = {"settings": settings, "axis": axis, "sign": sign, "bed": bed,
+               "xy": [i for i in range(3) if i != axis],
+               "k": math.ceil(settings["minFeatureSizeMm"] / cell_size),
+               "plate": float(sign * (sign * origin[axis] + bed * cell_size)),
+               "reach": settings["layerHeightMm"] * math.tan(math.radians(settings["maxOverhangAngleDeg"]))}
+    # Eligible overlapping cubes can cover a short-span anchor. Retain that
+    # complete union proof before trying a genuinely larger resolved cube.
+    if _fdm_feature_bound(cells, origin, cell_size, context) < settings["minFeatureSizeMm"]:
+        context["k"] += 1
+    return context
 
 
 def _fdm_feature_bound(cells, origin, cell_size, context):
@@ -452,6 +489,12 @@ def _source(request, cell_size, deadline=None):
     _require(all(isinstance(x, int) and not isinstance(x, bool) and 0 <= x < len(vertices) for x in raw_indices),
              "invalid-input", "Mesh indices must reference source vertices.")
     origin = vertices.min(axis=0)
+    if "voxelGridOriginMm" in request:
+        phase = _vector(request["voxelGridOriginMm"], "voxelGridOriginMm", 200000)
+        offset = (origin - phase) / cell_size
+        nearest = np.rint(offset)
+        offset = np.where(np.abs(offset - nearest) <= CELL_TOLERANCE, nearest, np.floor(offset))
+        origin = phase + offset * cell_size
     # Cell-scale coordinates keep trimesh's geometric tolerance independent of
     # document scale.  Welding changes adjacency only within 1e-10 cell.
     normalized = trimesh.Trimesh((vertices - origin) / cell_size, np.array(raw_indices).reshape(-1, 3), process=False)
@@ -566,12 +609,19 @@ def _conditions(request, mesh, nodes, cells, cell_size, source, deadline):
     _require(isinstance(cases, list) and len(cases) > 0, "invalid-input", "Load cases are required.")
     case_regions = []
     for case in cases:
-        _require(isinstance(case, dict) and set(case) == {"name", "region", "forceN"}, "invalid-input", "Each load case requires exactly name, region, forceN.")
-        case_regions.append(_region(case.get("region"), len(source.faces)))
+        required = {"name", "region", "forceN"}
+        _require(isinstance(case, dict) and required <= case.keys() <= required | {"additionalLoads"},
+                 "invalid-input", "Each load case requires name, region, forceN and optional additionalLoads.")
+        additional = case.get("additionalLoads", [])
+        _require(isinstance(additional, list) and ("additionalLoads" not in case or len(additional) > 0),
+                 "invalid-input", "additionalLoads must be a nonempty list when supplied.")
+        _require(all(isinstance(term, dict) and set(term) == {"region", "forceN"} for term in additional),
+                 "invalid-input", "Additional loads require exactly region and forceN.")
+        case_regions.append([_region(term.get("region"), len(source.faces)) for term in [case] + additional])
     regions = request.get("preserveRegions", [])
     _require(isinstance(regions, list), "invalid-input", "Preserve regions must be a list.")
     preserve = [_region(region, len(source.faces)) for region in regions]
-    surfaces = [region for region in supports + case_regions + preserve if isinstance(region, dict)]
+    surfaces = [region for region in supports + list(itertools.chain.from_iterable(case_regions)) + preserve if isinstance(region, dict)]
     facets = mesh.boundary_facets()
     facet_nodes = mesh.facets[:, facets].T
     facet_matches = []
@@ -607,23 +657,26 @@ def _conditions(request, mesh, nodes, cells, cell_size, source, deadline):
     loads = []
     protected_keys = set(fixed_keys)
     names = set()
-    for case, region in zip(cases, case_regions):
+    for case, regions in zip(cases, case_regions):
         name = case.get("name")
         _require(isinstance(name, str) and 0 < len(name.strip()) <= 80 and name not in names,
                  "invalid-input", "Load cases require unique nonempty names up to 80 characters.")
         names.add(name)
-        force = _vector(case.get("forceN"), "forceN", 1e6)
-        _require(np.linalg.norm(force) > 0, "invalid-input", "Each load case requires a nonzero resultant force.")
-        if isinstance(region, dict):
-            mask = _surface_mask(facet_matches, region, surface_band)
-        else:
-            mask = _within(mesh.p.T[facet_nodes], region, tolerance).all(axis=1)
-        _require(np.any(mask), "no-load-facets", "A load region selects no complete exterior FEM facet; adjust its surface selection, bounds, or resolution.")
-        selected_nodes = facet_nodes[mask]
-        _require(not set(np.unique(selected_nodes)).intersection(fixed.tolist()), "load-support-overlap", "Load facets must not touch clamped support nodes.")
-        keys = [frozenset(tuple(p) for p in nodes[quad]) for quad in selected_nodes]
-        protected_keys.update(p for key in keys for p in key)
-        loads.append({"name": name, "force": force, "facets": keys})
+        terms = []
+        for term, region in zip([case] + case.get("additionalLoads", []), regions):
+            force = _vector(term.get("forceN"), "forceN", 1e6)
+            _require(np.any(force != 0), "invalid-input", "Each load term requires a nonzero resultant force.")
+            if isinstance(region, dict):
+                mask = _surface_mask(facet_matches, region, surface_band)
+            else:
+                mask = _within(mesh.p.T[facet_nodes], region, tolerance).all(axis=1)
+            _require(np.any(mask), "no-load-facets", "A load region selects no complete exterior FEM facet; adjust its surface selection, bounds, or resolution.")
+            selected_nodes = facet_nodes[mask]
+            _require(not set(np.unique(selected_nodes)).intersection(fixed.tolist()), "load-support-overlap", "Load facets must not touch clamped support nodes.")
+            keys = [frozenset(tuple(p) for p in nodes[quad]) for quad in selected_nodes]
+            protected_keys.update(p for key in keys for p in key)
+            terms.append({"force": force, "facets": keys})
+        loads.append({"name": name, **terms[0], **({"additionalLoads": terms[1:]} if len(terms) > 1 else {})})
     protected = set()
     surface_protected = np.zeros(len(cells), dtype=bool)
     for region in surfaces:
@@ -644,6 +697,41 @@ def _conditions(request, mesh, nodes, cells, cell_size, source, deadline):
         if surface_protected[index] or any(np.all((lo <= rhi + tolerance) & (hi >= rlo - tolerance)) for rlo, rhi in boxes):
             protected.add(tuple(cell))
     return fixed_keys, loads, protected
+
+
+def _boundary_conditions(request, source, cells, origin, cell_size, deadline):
+    reference = request.get("boundaryReferenceMesh")
+    condition_request, boundary_source, boundary_cells, boundary_origin = request, source, cells, origin
+    if reference is not None:
+        # Resolve only original interfaces; new cavity surfaces must never
+        # acquire clamps or tractions from the same volumetric selectors.
+        condition_request = {**request, "mesh": reference, "preserveRegions": []}
+        boundary_source, boundary_origin, _ = _source(condition_request, cell_size, deadline)
+        boundary_cells = _voxelize(boundary_source, deadline)
+    mesh, nodes = _hex_mesh(boundary_cells, boundary_origin, cell_size)
+    fixed, loads, protected = _conditions(condition_request, mesh, nodes, boundary_cells,
+                                          cell_size, boundary_source, deadline)
+    if reference is None:
+        return fixed, loads, protected
+    offset = (boundary_origin - origin) / cell_size
+    rounded = np.rint(offset)
+    _require(np.isfinite(offset).all() and np.all(np.abs(offset - rounded) <= CELL_TOLERANCE),
+             "invalid-input", "Boundary reference and analyzed mesh must share the voxel lattice phase.")
+    shift = rounded.astype(np.int64)
+
+    def key(point):
+        return tuple(np.asarray(point) + shift)
+
+    def term(value):
+        return {**value, "facets": [frozenset(key(point) for point in facet) for facet in value["facets"]]}
+
+    mapped_loads = []
+    for load in loads:
+        mapped = term(load)
+        if "additionalLoads" in load:
+            mapped["additionalLoads"] = [term(value) for value in load["additionalLoads"]]
+        mapped_loads.append(mapped)
+    return {key(point) for point in fixed}, mapped_loads, {key(cell) for cell in protected}
 
 
 def _solve_elasticity(matrix, force, **kwargs):
@@ -684,19 +772,22 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
     energy = np.zeros(len(cells))
     metrics = []
     for load in loads:
-        _require(all(key in facet_lookup for key in load["facets"]), "boundary-condition-lost", "A candidate changes a loaded exterior facet.")
-        load_facets = np.array([facet_lookup[key] for key in load["facets"]])
-        facet_basis = FacetBasis(analysis_mesh, basis.elem, facets=load_facets, intorder=3)
-        area = float(facet_basis.dx.sum())
-        traction = load["force"] / area
+        force = np.zeros(basis.N)
+        for term in [load] + load.get("additionalLoads", []):
+            _require(all(key in facet_lookup for key in term["facets"]), "boundary-condition-lost", "A candidate changes a loaded exterior facet.")
+            load_facets = np.array([facet_lookup[key] for key in term["facets"]])
+            facet_basis = FacetBasis(analysis_mesh, basis.elem, facets=load_facets, intorder=3)
+            area = float(facet_basis.dx.sum())
+            traction = term["force"] / area
 
-        @LinearForm
-        def distributed_load(v, _):
-            return dot(traction[:, None, None], v)
+            @LinearForm
+            def distributed_load(v, _):
+                return dot(traction[:, None, None], v)
 
-        force = asm(distributed_load, facet_basis)
-        _require(np.allclose(force[basis.nodal_dofs].sum(axis=1), load["force"], rtol=1e-9, atol=1e-9),
-                 "numerical-failure", "Integrated load does not match its specified resultant.")
+            term_force = asm(distributed_load, facet_basis)
+            _require(np.allclose(term_force[basis.nodal_dofs].sum(axis=1), term["force"], rtol=1e-9, atol=1e-9),
+                     "numerical-failure", "Integrated load does not match its specified resultant.")
+            force += term_force
         try:
             displacement = fem_solve(*condense(stiffness, force, D=fixed_dofs), solver=_solve_elasticity)
         except (RuntimeError, ValueError) as error:
@@ -805,32 +896,53 @@ def _oc_update(rho, derivative, frozen, budget):
     return result
 
 
-def _simp_density(cells, frozen, algorithm, max_iterations, evaluate, deadline):
+def _simp_density(cells, frozen, algorithm, max_iterations, evaluate, deadline, baseline_field):
     n = len(cells)
     target = math.ceil(n * algorithm["volumeFraction"])
     free = int((~frozen).sum())
-    # Protected cells make some volume budgets infeasible. Retain them, expose
-    # binary target failure, and solve the smallest admissible relaxed budget.
-    budget = max(float(target), float(frozen.sum()) + 0.001 * free)
+    evidence = {"kind": "simp", "settings": algorithm, "densityIterations": 0,
+                "converged": False, "maxDensityChange": 1.0,
+                "targetCellCount": target, "achievedCellCount": n, "targetStatus": "not-reached",
+                "projectionEvaluations": 0}
+    warnings = []
+    minimum_budget = float(frozen.sum()) + 0.001 * free
+    if target <= minimum_budget:
+        # A constant minimum-density field has no design freedom or useful
+        # density ranking. Retain the verified baseline field without a solve.
+        if target < n:
+            warnings.append("The requested SIMP target leaves no adjustable density budget above protected cells and minimum free densities. Density search was skipped; binary projections use verified baseline FEM energy and may retain more material than requested. Full-solid constraints and repeated final verification still apply.")
+        return baseline_field, evidence, warnings
+    budget = float(target)
     rho = np.full(n, max(0.001, (budget - frozen.sum()) / max(1, free)))
     rho[frozen] = 1
     iterations, change = 0, 1.0
+    verified_ranking = baseline_field
     matrix, sums = _sensitivity_filter(cells, algorithm["filterRadiusMm"] / evaluate.cell_size, deadline)
     for i in range(max_iterations):
         modulus = 1e-6 + (1 - 1e-6) * rho ** algorithm["penalty"]
-        _, energy, _ = evaluate(cells, relative_modulus=modulus, sum_cases=True)
+        # Evaluation evidence counts an attempted density iterate even on failure.
+        iterations = i + 1
+        try:
+            _, energy, _ = evaluate(cells, relative_modulus=modulus, sum_cases=True)
+        except SolverError as error:
+            if error.code != "numerical-failure":
+                raise
+            # A failed relaxed solve contributes no ranking or feasibility
+            # evidence. Retain verified ranking and still analyze every solid.
+            rho = verified_ranking
+            warnings.append("SIMP density search stopped after a numerical failure in a relaxed solve. Binary projections use the last verified density ranking, or baseline FEM energy when no density solve succeeded; every accepted solid still passes full-solid constraints and repeated final verification.")
+            break
+        verified_ranking = rho.copy()
         derivative = -algorithm["penalty"] * (1 - 1e-6) * rho ** (algorithm["penalty"] - 1) * energy / modulus
         derivative = np.asarray(matrix @ (rho * derivative)).ravel() / (sums * np.maximum(rho, 0.001))
         updated = _oc_update(rho, derivative, frozen, budget)
         change = float(np.max(np.abs(updated - rho)))
         rho = updated
-        iterations = i + 1
         if change <= 0.01:
             break
-    return rho, {"kind": "simp", "settings": algorithm, "densityIterations": iterations,
-                 "converged": iterations > 0 and change <= 0.01, "maxDensityChange": change,
-                 "targetCellCount": target, "achievedCellCount": n, "targetStatus": "not-reached",
-                 "projectionEvaluations": 0}
+    evidence.update(densityIterations=iterations, converged=iterations > 0 and change <= 0.01,
+                    maxDensityChange=change)
+    return rho, evidence, warnings
 
 
 def _coverage_opening(mask, cells, cube_cells):
@@ -909,8 +1021,9 @@ def _algorithm_search(cells, protected, origin, cell_size, algorithm, max_iterat
     projections = 0
     iterations = 0
     lattice_context = None
+    warnings = []
     if algorithm["kind"] == "simp":
-        rho, evidence = _simp_density(original, frozen, algorithm, max_iterations, evaluate, deadline)
+        rho, evidence, warnings = _simp_density(original, frozen, algorithm, max_iterations, evaluate, deadline, baseline_field)
         iterations = evidence["densityIterations"]
         target = evidence["targetCellCount"]
         rank = np.flatnonzero(~frozen)
@@ -918,7 +1031,13 @@ def _algorithm_search(cells, protected, origin, cell_size, algorithm, max_iterat
         # Projection restores in density order when a lower-volume binary solid
         # fails. No relaxed stress/displacement metric is used for acceptance.
         minimum = max(target, int(frozen.sum()))
-        counts = np.unique(np.ceil(np.linspace(minimum, len(original), max_iterations + 1)).astype(int))
+        if warnings and max_iterations and minimum < len(original):
+            # An unavailable relaxed search still gets budgeted high-density trials,
+            # including one-cell removal, rather than jumping to the full solid.
+            removals = np.ceil(np.geomspace(len(original) - minimum, 1, max_iterations)).astype(int)
+            counts = np.unique(np.r_[len(original) - removals, len(original)])
+        else:
+            counts = np.unique(np.ceil(np.linspace(minimum, len(original), max_iterations + 1)).astype(int))
         candidates = []
         for count in counts:
             mask = frozen.copy()
@@ -980,7 +1099,7 @@ def _algorithm_search(cells, protected, origin, cell_size, algorithm, max_iterat
         bound = _fdm_feature_bound(cells, origin, cell_size, lattice_context)
         _require(bound >= algorithm["minWallThicknessMm"], "infeasible-baseline", "TPMS minimum thickness cannot be represented by filled voxel cubes at this resolution.")
         evidence["minimumFeatureSizeBoundMm"] = bound
-    return cells, evidence, iterations, termination, frozen, original
+    return cells, evidence, iterations, termination, frozen, original, warnings
 
 
 def solve(request):
@@ -988,11 +1107,14 @@ def solve(request):
     _require(isinstance(request, dict) and request.get("schemaVersion") == 1,
              "invalid-input", "Only structural request schemaVersion 1 is supported.")
     required = {"schemaVersion", "mesh", "material", "safetyFactor", "maxDisplacementMm", "cellSizeMm", "supports", "loadCases", "preserveRegions", "maxIterations"}
-    _require(required <= request.keys() and request.keys() <= required | {"objective", "fdm", "obstacleRegions", "algorithm"},
+    _require(required <= request.keys() and request.keys() <= required | {"objective", "fdm", "obstacleRegions", "algorithm", "relativePerformance", "includeVoxelGrid", "voxelGridOriginMm", "boundaryReferenceMesh"},
              "invalid-input", "Structural requests require exactly the supported settings.")
     _require(type(request["schemaVersion"]) is int, "invalid-input", "schemaVersion must be the integer 1.")
+    _require("includeVoxelGrid" not in request or type(request["includeVoxelGrid"]) is bool,
+             "invalid-input", "includeVoxelGrid must be a boolean when supplied.")
     deadline = None
     objective = _objective(request)
+    relative_performance = _relative_performance(request)
     fdm_settings = _fdm_settings(request)
     cell_size = _number(request.get("cellSizeMm"), "cellSizeMm", 0.01, 100000)
     algorithm = _algorithm(request, cell_size, objective)
@@ -1003,6 +1125,11 @@ def solve(request):
     max_iterations = request.get("maxIterations")
     _require(isinstance(max_iterations, int) and not isinstance(max_iterations, bool) and max_iterations >= 0,
              "invalid-input", "maxIterations must be a nonnegative integer.")
+    if "boundaryReferenceMesh" in request:
+        _require(isinstance(request["boundaryReferenceMesh"], dict) and max_iterations == 0
+                 and not any(key in request for key in ("algorithm", "objective", "relativePerformance"))
+                 and isinstance(request["preserveRegions"], list) and not request["preserveRegions"],
+                 "invalid-input", "A boundary reference requires fixed-design analysis without search settings or preserved design regions.")
     material = request.get("material")
     _require(isinstance(material, dict) and set(material) == {"youngModulusMpa", "poissonRatio", "yieldStrengthMpa", "densityKgM3"}, "invalid-input", "material requires exactly the supported isotropic properties.")
     parameters = (_number(material.get("youngModulusMpa"), "youngModulusMpa", 1e-3, 1e6),
@@ -1012,10 +1139,9 @@ def solve(request):
     obstacles = _obstacle_regions(request)
     source, origin, source_volume = _source(request, cell_size, deadline)
     cells = _voxelize(source, deadline)
-    initial_mesh, nodes = _hex_mesh(cells, origin, cell_size)
     # Resolve authored boundaries against the original captured-source baseline;
     # exclusion must never remap a load or support onto a newly exposed cavity.
-    fixed_keys, loads, protected = _conditions(request, initial_mesh, nodes, cells, cell_size, source, deadline)
+    fixed_keys, loads, protected = _boundary_conditions(request, source, cells, origin, cell_size, deadline)
     excluded = _obstacle_mask(cells, origin, cell_size, obstacles)
     _require(not any(tuple(cell) in protected for cell in cells[excluded]),
              "invalid-input", "Obstacle boxes intersect protected, support, or load cells on the original baseline.")
@@ -1030,25 +1156,31 @@ def solve(request):
         baseline_fdm = _fdm_metrics(cells, origin, cell_size, fdm_context, deadline)
         _require_fdm(baseline_fdm, fdm_context, "infeasible-baseline")
 
-    def feasible(metrics):
+    def absolute_feasible(metrics):
         return metrics["safetyFactor"] >= safety_factor and metrics["maxDisplacementMm"] <= max_displacement
 
     baseline, energy, _ = _evaluate(cells, origin, cell_size, parameters, fixed_keys, loads, density, deadline,
                                     field=algorithm["field"] if algorithm and algorithm["kind"] == "adaptive-lattice" else "strain-energy")
-    if not feasible(baseline):
+    if not absolute_feasible(baseline):
         raise SolverError("infeasible-baseline", _baseline_failure_message(baseline, parameters[2], safety_factor, max_displacement))
+
+    def feasible(metrics):
+        return absolute_feasible(metrics) and _relative_feasible(metrics, baseline, relative_performance)
+
+    _require(feasible(baseline), "numerical-failure", "Baseline cases require positive finite stiffness and stress for relative performance.")
     evaluations, iterations = 1, 0
     termination = "iteration-limit"
     algorithm_evidence = None
     algorithm_frozen = None
     algorithm_original = None
+    algorithm_warnings = []
     if algorithm is not None:
         def evaluate(candidate, **options):
             nonlocal evaluations
             evaluations += 1
             return _evaluate(candidate, origin, cell_size, parameters, fixed_keys, loads, density, deadline, **options)
         evaluate.cell_size = cell_size
-        cells, algorithm_evidence, iterations, termination, algorithm_frozen, algorithm_original = _algorithm_search(
+        cells, algorithm_evidence, iterations, termination, algorithm_frozen, algorithm_original, algorithm_warnings = _algorithm_search(
             cells, protected, origin, cell_size, algorithm, max_iterations, target_count, energy,
             evaluate, feasible, fdm_context, deadline)
     for iteration in range(max_iterations if algorithm is None else 0):
@@ -1130,7 +1262,12 @@ def solve(request):
                         (["Keep-outs exclude entire cells on closed-box contact. Baseline metrics and retained-mass targets use the obstacle-excluded baseline; sourceVolumeLossFraction includes obstacle exclusion and conservative voxelization, before optimization."]
                          if obstacles else []) +
                         (["Surface selections use nearest captured-source triangles and aligned voxel exterior facets within one cell diagonal; ambiguous edges are excluded. Preservation depth is rounded by half a cell diagonal and stops at another nearest source surface."]
-                         if any(region.get("kind") == "surface" for region in request["supports"] + [case["region"] for case in request["loadCases"]] + request.get("preserveRegions", [])) else [])}
+                         if any(region.get("kind") == "surface" for region in request["supports"] +
+                                [term["region"] for case in request["loadCases"] for term in [case] + case.get("additionalLoads", [])] +
+                                request.get("preserveRegions", [])) else [])}
+    if relative_performance is not None:
+        result["relativePerformance"] = relative_performance
+    result["warnings"].extend(algorithm_warnings)
     if algorithm_evidence is not None:
         result["algorithm"] = algorithm_evidence
         result["warnings"][1] = ("SIMP uses E(rho)=E0*(1e-6+(1-1e-6)*rho^penalty), sensitivity filtering, summed load-case compliance, and bounded optimality-criteria updates. Binary projection can miss its volume target; density convergence does not establish solid optimality."
@@ -1142,7 +1279,7 @@ def solve(request):
                          "buildPlateCoordinateMm": fdm_context["plate"],
                          "baseline": baseline_fdm, "optimized": optimized_fdm}
         result["warnings"].extend([
-            "FDM feature coverage requires filled axis-aligned k-cubed voxel blocks with k=ceil(minFeatureSizeMm/cellSizeMm). The bound covers raw and float32 coordinates; no sub-target feature is accepted by rounding tolerance.",
+            "FDM feature coverage first proves the union of full cubes with nominal k=ceil(minFeatureSizeMm/cellSizeMm). It tries one larger cube size only if nominal coverage fails. Every occupied voxel must belong to a full selected-size cube meeting the exact requested minimum in raw and float32 coordinates.",
             "FDM support need uses exposed downward voxel footprints, a fixed baseline build plate, and inscribed-square coverage within layerHeightMm*tan(angle from vertical) per print layer. Layer height cannot exceed voxel cell size. Unsupported area is a conservative upper estimate, not support volume or cost. No bridging, anisotropy, slicer equivalence, or printer certification is implied."])
     if objective is not None:
         result["objective"] = objective
@@ -1154,6 +1291,8 @@ def solve(request):
                              targetStatus="reached" if len(cells) == target_count else "not-reached")
             if objective["targetStatus"] == "not-reached":
                 result["warnings"].append("Retained-mass target not reached: constraints, protected cells, topology, or the iteration limit prevented further feasible removal.")
+    if request.get("includeVoxelGrid") is True:
+        result["voxelGrid"] = {"originMm": origin.tolist(), "cellSizeMm": cell_size, "cells": cells.tolist()}
     return result
 
 

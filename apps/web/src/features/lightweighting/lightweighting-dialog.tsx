@@ -53,7 +53,13 @@ export type LightweightingViewportInteraction = Readonly<{
 function TaskStatus({ state }: { state: TaskState }) {
   const t = useTranslations("app.lightweighting")
   useReportActivity(state.activity !== "idle")
-  const stages = { loading: "loading", solving: "solving", inspecting: "inspecting" } as const
+  const stages = {
+    loading: "loading",
+    solving: "solving",
+    inspecting: "inspecting",
+    reconstructing: "reconstructing",
+    verifying: "verifying",
+  } as const
   const stage =
     state.activity === "idle" || state.activity === "applying" ? null : stages[state.activity]
   return (

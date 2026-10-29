@@ -554,3 +554,19 @@ resource rejection ceiling; ordinary validated local mesh import owns result per
 [ADR-0122](../adr/0122-density-topology-and-adaptive-lattices.md) extends the same numerical owner
 with filtered SIMP and baseline-FEM-graded TPMS lattices. Relaxed densities guide reconstruction only;
 accepted metrics describe the repeated full-solid solve of the exported occupied-cell surface.
+
+[ADR-0140](../adr/0140-automatic-print-topology-optimization.md) adds optional compound traction
+patterns and per-case baseline-relative stiffness/stress gates to that same worker/client contract.
+Automatic print setup captures a rigid analysis frame, generates normalized end-clamped scenarios
+independently of the print bed, and restores the validated surface to source coordinates before
+import. The editor's automatic setup is separate from paired MCP's explicit settings; both share
+the numerical compound-load and relative-performance validation. Isotropic elasticity remains the
+material model; print direction affects conservative manufacturing checks, not layer adhesion.
+
+[ADR-0141](../adr/0141-exact-preserved-print-interfaces.md) adds exact preserved-face reconstruction
+for the automatic editor task through document protocol 28. The active native cache resolves captured
+face hashes, protects their exact distance skins, and proves unchanged faces after a non-destructive
+batch cut. It returns STEP and double-precision verification geometry without document mutation.
+Aligned fixed-design FEM checks the reconstructed body against original-case retention; ordinary
+STEP inspection/import owns final preview, atomic publication and Undo. Private numerical lattice
+options and this native operation do not establish paired MCP support for exact reconstruction.

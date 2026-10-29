@@ -12,6 +12,7 @@ import {
   structuralFdmSummaryMatches,
   structuralOptimizationSettingsSchema,
   structuralOptimizationSummarySchema,
+  structuralRelativePerformanceMatches,
 } from "@vibeshape/domain/lightweighting"
 import { z } from "zod"
 import { importUploadCommitSchema } from "./imports"
@@ -124,6 +125,7 @@ function summaryMatchesSettings(
       },
     ),
     constraintsMatch(summary, settings),
+    structuralRelativePerformanceMatches(summary, settings),
     objectiveMatches(summary, settings),
     structuralFdmSummaryMatches(summary.fdm, settings.fdm, settings.cellSizeMm),
   ].every(Boolean)

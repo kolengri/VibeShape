@@ -74,15 +74,7 @@ export function LightweightingReviewDetails({
         {evidence.settings.loadCases.map((load) => (
           <div key={load.name} className="grid gap-1 border-b py-2">
             <h3 className="font-medium">{load.name}</h3>
-            <ReviewRegion region={load.region} />
-            <dl>
-              {(["X", "Y", "Z"] as const).map((axis, index) => (
-                <div key={axis}>
-                  <dt>{t("force", { axis })}</dt>
-                  <dd>{t("number", { value: load.forceN[index] ?? 0 })}</dd>
-                </div>
-              ))}
-            </dl>
+            <ReviewLoadPattern load={load} />
           </div>
         ))}
       </details>
@@ -106,6 +98,31 @@ export function LightweightingReviewDetails({
       )}
     </section>
   )
+}
+
+function ReviewLoadPattern({
+  load,
+}: {
+  load: StructuralOptimizationSettings["loadCases"][number]
+}) {
+  const t = useTranslations("app.lightweighting")
+  return [load, ...(load.additionalLoads ?? [])].map((term, index) => {
+    const identity = `${load.name}:term:${index}`
+    return (
+      <div key={identity} className="grid gap-1">
+        <p>{t("loadTerm", { index: index + 1 })}</p>
+        <ReviewRegion region={term.region} />
+        <dl>
+          {(["X", "Y", "Z"] as const).map((axis, axisIndex) => (
+            <div key={axis}>
+              <dt>{t("force", { axis })}</dt>
+              <dd>{t("number", { value: term.forceN[axisIndex] ?? 0 })}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    )
+  })
 }
 
 function ReviewRegion({ region }: { region: StructuralOptimizationSettings["supports"][number] }) {

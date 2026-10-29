@@ -13,8 +13,8 @@ paired remote transports. They accept no mesh arrays, file paths, scripts, actor
 Structural source capture removes unreferenced vertices and welds exactly equal XYZ coordinates.
 It preserves triangle positions, order, winding, surface-selection indices and the source
 body/hash/revision without approximating the surface. Structural and Quick source/result meshes
-have no fixed vertex or triangle count cutoff in computation. Ordinary format export/import budgets
-still apply before publication. Quick preserved-exterior output retains the original
+have no fixed vertex or triangle count cutoff in computation. Ordinary format validity, digest and
+source-identity checks still apply before publication. Quick preserved-exterior output retains the original
 captured vertices and triangles. Invalid or non-finite sources still fail explicitly; selected triangle
 indices must exist in the actual captured source. Input diagnostics include bounded validation paths and
 messages; inspect that cause before changing a study or retrying. Passing input validation alone
@@ -85,6 +85,41 @@ Runtime errors omit traceback frames, captured inputs and sensitive URL componen
 
 ## Select an optimization algorithm
 
+### Compound loads and relative performance
+
+Both paired transports accept optional `additionalLoads` on each load case. Each term has its own
+`region` and nonzero numeric `forceN`; the primary term and all additional terms act simultaneously
+in one solve. Every term must select valid baseline facets independently, avoid fixed supports, and
+retain its load interface. A torsion couple needs opposite forces on separated patches in the same
+case. Two separate opposite-force cases do not establish torsion; irregular patch placement may
+also introduce bending.
+
+Optional `settings.relativePerformance` supplies `minStiffnessFraction` and `minStrengthFraction`,
+each greater than zero and at most one. Every accepted candidate and the repeated final solid must
+meet both bounds in every case: candidate compliance is at most baseline compliance divided by the
+stiffness fraction; candidate peak von Mises stress is at most baseline stress divided by the
+strength fraction. Baseline and candidate responses must be positive; tiny responses do not bypass
+the ratios. The summary echoes both fractions and transport validation rejects missing, changed,
+or violated evidence. Existing absolute constraints remain required.
+
+The editor's default print workflow generates normalized longest-span end-clamped scenarios from
+a selected bed face and plastic, with 0.9 retention defaults. Its automatic setup helper and print
+frame transformation are not advertised MCP tools. With MCP, supply explicit source-bound regions,
+compound forces and settings in the model's coordinate frame; do not invent a print-face argument
+or silently substitute hypothetical loads for user-specified service loads. If the user authorizes
+normalized scenarios, label that assumption and distinguish the mechanical clamp from print-bed
+orientation. Isotropic material examples do not model layer adhesion or certify real service strength.
+
+The automatic editor task now reconstructs selected exact CAD faces and reanalyzes its resulting
+STEP solid before exact import, retaining the original FEM boundary interfaces through a private
+reference mesh. Native reconstruction and private lattice/reference options are not advertised
+through paired MCP. Existing `analyze_lightweighting` and
+`request_lightweighting` still return voxel mesh snapshots; their `preserveRegions` retain nearby
+material rather than exact analytical mating surfaces. Do not promise exact interface preservation
+through those tools or invent native face-hash arguments.
+
+### Algorithm settings
+
 Both paired transports accept optional `settings.algorithm`. Omission keeps feasible cell removal.
 
 - SIMP: `{kind: "simp", volumeFraction, filterRadiusMm, penalty}`. Fraction is 0.1–1 of the
@@ -132,8 +167,15 @@ maximum stiffness.
 For requested FDM constraints, inspect `summary.fdm`: its echoed `settings` must match the request,
 and `baseline`/`optimized` report `unsupportedAreaMm2`, `requiresSupports`,
 `minFeatureSizeBoundMm`, and `buildHeightMm`. The minimum-feature bound must satisfy the request;
-support-free evidence must report zero unsupported area. Area is not support volume, support
+`minimumFeatureCubeCells` is the nominal rounded-up cube size or one extra cell when eligible
+nominal cubes cannot cover the baseline at the requested raw and float32 span. This does not relax
+the requested minimum, and geometry without complete filled proof cubes still fails.
+Support-free evidence must report zero unsupported area. Area is not support volume, support
 accessibility, or a physical printability certificate. Manual review shows the complete FDM settings.
+
+An unattainable SIMP density target below the protected-material floor skips the relaxed solve with
+an explicit warning; projections use verified baseline FEM energy and still require every solid
+constraint. Zero density iterations in that case do not establish density convergence.
 
 For a stiffness-guided objective, inspect `summary.objective`: requested `retainedMassFraction`,
 `targetMassKg`, `targetCellCount`, `achievedRetainedMassFraction` and `targetStatus`. The target

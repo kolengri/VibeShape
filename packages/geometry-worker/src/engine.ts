@@ -58,11 +58,14 @@ import {
   type PatternFeatureContentParametersV2,
   type PlacementFeatureContentParameters,
   type PressPullFeatureContentParameters,
+  type PrintOptimizationReconstruction,
+  type PrintOptimizationReconstructionInput,
   patternContentOutputRoles,
   patternFeatureContentParametersSchema,
   patternFeatureContentParametersV2Schema,
   placementFeatureContentParametersSchema,
   pressPullFeatureContentParametersSchema,
+  printOptimizationReconstructionInputSchema,
   pyramidFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
@@ -173,6 +176,7 @@ import { patternOcctShape } from "./occt-pattern"
 import { placeOcctShape } from "./occt-placement"
 import { splitOcctShape } from "./occt-plane-split"
 import { pressPullOcctShape } from "./occt-press-pull"
+import { reconstructOcctPrintOptimization } from "./occt-print-optimization"
 import { splitOcctShapeByReferencePlane } from "./occt-reference-plane"
 import {
   createOcctBox,
@@ -4392,6 +4396,9 @@ export interface GeometryKernelEngine {
   ): Promise<FeatureEvaluationResult>
   sectionPlanarFace?(input: PlanarFaceSectionInput): Promise<PlanarFaceSectionResult>
   inspectSourceImport?: (input: InspectSourceImportInput) => Promise<SourceImportInspection>
+  reconstructPrintOptimization?: (
+    input: PrintOptimizationReconstructionInput,
+  ) => Promise<PrintOptimizationReconstruction>
   inspectAssemblyInterference?: (
     left: readonly AssemblyNativeBody[],
     right: readonly AssemblyNativeBody[],
@@ -5084,6 +5091,18 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       )
     if (!outcome.ok) throw outcome.error
     return outcome.value
+  }
+
+  async reconstructPrintOptimization(
+    input: PrintOptimizationReconstructionInput,
+  ): Promise<PrintOptimizationReconstruction> {
+    const parsed = printOptimizationReconstructionInputSchema.parse(input)
+    const occt = this.#opencascade
+    if (!occt) throw new Error("The active exact geometry session is unavailable.")
+    const { documentId, featureId, contentHash, outputRole } = parsed.source
+    const source = this.#featureShapes.getOutput(documentId, featureId, contentHash, outputRole)
+    if (!source) throw new Error("The active exact print source is stale or unavailable.")
+    return reconstructOcctPrintOptimization(occt, source, parsed)
   }
 
   async inspectAssemblyInterference(

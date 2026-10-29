@@ -15,6 +15,7 @@ import {
 } from "../src/contract"
 import { generateStructuralDesigns } from "../src/generative-design"
 import { encodeStructuralSnapshot, encodeStructuralStl } from "../src/mesh"
+import { preparePrintOptimization } from "../src/print-optimization"
 import { denseBoxMesh } from "./dense-box-fixture"
 
 const timeout = 120_000
@@ -174,6 +175,18 @@ beforeAll(async () => {
       "utf8",
     ),
   )
+  await runtime.runPythonAsync(
+    readFileSync(
+      resolve(root, "packages/structural-optimization/tests/compound_relative_fixtures.py"),
+      "utf8",
+    ),
+  )
+  await runtime.runPythonAsync(
+    readFileSync(
+      resolve(root, "packages/structural-optimization/tests/boundary_reference_fixtures.py"),
+      "utf8",
+    ),
+  )
   expect(runtime.version).toBe("314.0.7")
   const versions: unknown = await runtime.runPythonAsync(
     'import json, numpy, scipy, skfem, trimesh; json.dumps({"numpy": numpy.__version__, "scipy": scipy.__version__, "skfem": skfem.__version__, "trimesh": trimesh.__version__})',
@@ -188,6 +201,173 @@ beforeAll(async () => {
 }, timeout)
 
 describe("pinned Pyodide full-solid structural solver", () => {
+  it.each([false, true])(
+    "preserves original boundary reference keys across cavities and shifted lattice origins, shifted=%s",
+    async (shifted) => {
+      await runtime.runPythonAsync(
+        `verify_fixed_boundary_reference(_surface_test_solver, ${shifted ? "True" : "False"})`,
+      )
+    },
+    timeout,
+  )
+  it(
+    "rejects lost original loaded facets in boundary reference verification",
+    async () => {
+      await runtime.runPythonAsync("verify_missing_reference_interface(_surface_test_solver)")
+    },
+    timeout,
+  )
+  it(
+    "rejects malformed or non-fixed boundary reference requests and unaligned phases",
+    async () => {
+      await runtime.runPythonAsync("verify_invalid_boundary_reference(_surface_test_solver)")
+    },
+    timeout,
+  )
+  it(
+    "uses verified baseline ranking when protected cells exhaust the SIMP density budget",
+    async () => {
+      await runtime.runPythonAsync("verify_protected_density_floor_fallback(_surface_test_solver)")
+    },
+    timeout,
+  )
+  it.each([
+    [132.8, 0.8],
+    [10_000, 0.01],
+  ])(
+    "validates decimal voxel grid placement at offset%s and spacing%s through the client",
+    async (offset, spacing) => {
+      const input = axialBar(0)
+      input.includeVoxelGrid = true
+      input.cellSizeMm = spacing
+      const origin: [number, number, number] = [offset - 5 * spacing, -spacing, -spacing]
+      input.voxelGridOriginMm = origin
+      input.mesh.vertices = input.mesh.vertices.map(
+        (value, index) => value * spacing + (index % 3 === 0 ? offset : 0),
+      )
+      input.supports = [{ min: origin, max: [origin[0], spacing, spacing] }]
+      input.loadCases = [
+        {
+          name: "axial",
+          region: {
+            min: [offset + 5 * spacing, -spacing, -spacing],
+            max: [offset + 5 * spacing, spacing, spacing],
+          },
+          forceN: [10 * spacing ** 2, 0, 0],
+        },
+      ]
+      vi.stubGlobal("Worker", NumericalWorker)
+      try {
+        const output = await optimizeStructuralModel(input, {
+          runtimeBaseUrl: "http://localhost/structural-runtime/",
+        })
+        expect(output.voxelGrid?.originMm).toEqual(origin)
+        expect(output.voxelGrid?.cells).toHaveLength(40)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    },
+    timeout,
+  )
+  it.each([
+    "verify_final_voxel_grid_evidence",
+    "verify_reconstructed_grid_phase",
+    "verify_invalid_voxel_grid_inputs",
+  ])(
+    "verifies private final voxel grid evidence: %s",
+    async (verify) => {
+      await runtime.runPythonAsync(`${verify}(_surface_test_solver)`)
+    },
+    timeout,
+  )
+  it.each([false, true])(
+    "validates actual final voxel surfaces and aligned phase through the client, phase=%s",
+    async (phase) => {
+      const input = axialBar(2)
+      input.includeVoxelGrid = true
+      if (phase) {
+        input.voxelGridOriginMm = [-5, -1, -1]
+        input.mesh.vertices = input.mesh.vertices.map((value, index) =>
+          index % 3 === 1 && value === -1 ? -0.75 : value,
+        )
+      }
+      vi.stubGlobal("Worker", NumericalWorker)
+      try {
+        const output = await optimizeStructuralModel(input, {
+          runtimeBaseUrl: "http://localhost/structural-runtime/",
+        })
+        expect(output.voxelGrid?.originMm).toEqual([-5, -1, -1])
+        expect(output.voxelGrid?.cells).toHaveLength(output.finalCellCount)
+        if (phase) expect(output.voxelGrid?.cells.every((cell) => cell[1] >= 1)).toBe(true)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    },
+    timeout,
+  )
+  it.each([
+    [0, "numerical-failure"],
+    [1, "numerical-failure"],
+    [0, "boundary-condition-lost"],
+  ] as const)(
+    "preserves full-solid acceptance after %s successful density iterations and %s",
+    async (successful, code) => {
+      await runtime.runPythonAsync(
+        `verify_relaxed_failure_contract(_surface_test_solver, ${successful}, ${JSON.stringify(code)})`,
+      )
+    },
+    timeout,
+  )
+  it.each([false, true])(
+    "enforces actual full-solid relative limits with SIMP %s",
+    async (algorithm) => {
+      await runtime.runPythonAsync(
+        `verify_relative_full_solid_search(_surface_test_solver, ${algorithm ? "True" : "False"})`,
+      )
+    },
+    timeout,
+  )
+  it.each([
+    "verify_compound_superposition_and_protection",
+    "verify_invalid_compound_loads",
+    "verify_invalid_relative_settings",
+  ])(
+    "enforces compound and relative contracts: %s",
+    async (verify) => {
+      await runtime.runPythonAsync(`${verify}(_surface_test_solver)`)
+    },
+    timeout,
+  )
+  it.each([
+    ["complianceNmm", false],
+    ["maxVonMisesMpa", false],
+    ["complianceNmm", true],
+    ["maxVonMisesMpa", true],
+  ] as const)(
+    "enforces relative per-case %s for binary candidates with SIMP %s",
+    async (metric, algorithm) => {
+      await runtime.runPythonAsync(
+        `verify_relative_candidate_gates(_surface_test_solver, ${JSON.stringify(metric)}, ${algorithm ? "True" : "False"})`,
+      )
+    },
+    timeout,
+  )
+  it.each([
+    ["complianceNmm", 0],
+    ["maxVonMisesMpa", 0],
+    ["complianceNmm", 1e-100],
+    ["maxVonMisesMpa", 1e-100],
+    ["complianceNmm", 0.01],
+    ["maxVonMisesMpa", 0.01],
+  ] as const)(
+    "repeats relative %s final gates at baseline %s",
+    async (metric, baseline) => {
+      await runtime.runPythonAsync(
+        `verify_relative_final_gate(_surface_test_solver, ${JSON.stringify(metric)}, ${baseline})`,
+      )
+    },
+    timeout,
+  )
   it.each([
     [132.8, 0.8],
     [10_000, 0.01],
@@ -480,6 +660,14 @@ json.dumps({"selectionCount": len(_dense_region["triangles"]), "outOfSourceRejec
       "verify_fdm_constraints_change_removal",
     ],
     ["FDM exact nominal minimum versus float32 shrink", "verify_fdm_float32_bound"],
+    [
+      "FDM strict feature coverage at transformed and decimal origins",
+      "verify_fdm_representable_cube_selection",
+    ],
+    [
+      "FDM overlapping nominal cubes cover ineligible anchors",
+      "verify_fdm_overlapping_nominal_cubes",
+    ],
     ["FDM printed layers cannot skip rounded build-axis slices", "verify_fdm_rounded_slice_height"],
     ["strict finite FDM settings", "verify_invalid_fdm_settings"],
   ])(
@@ -612,6 +800,27 @@ json.dumps({"selectionCount": len(_dense_region["triangles"]), "outOfSourceRejec
       expect(minimumSpan).toBeGreaterThanOrEqual(0.999999)
       expect(minimumSpan).toBeLessThan(1)
       expect(fdm.optimized.minFeatureSizeBoundMm).toBeLessThanOrEqual(minimumSpan)
+    },
+    timeout,
+  )
+  it(
+    "accepts a larger representable FDM cube proof through production client validation",
+    async () => {
+      const raw = await runtime.runPythonAsync(
+        "json.dumps(verify_fdm_representable_cube_selection(_surface_test_solver))",
+      )
+      const input = structuralOptimizationInputSchema.parse(JSON.parse(String(raw)))
+      vi.stubGlobal("Worker", NumericalWorker)
+      try {
+        const result = await optimizeStructuralModel(input, {
+          runtimeBaseUrl: "http://localhost/structural-runtime/",
+        })
+        expect(result.fdm?.minimumFeatureCubeCells).toBe(2)
+        expect(result.fdm?.baseline.minFeatureSizeBoundMm).toBeGreaterThan(0.01)
+        expect(result.fdm?.optimized.minFeatureSizeBoundMm).toBeGreaterThan(0.01)
+      } finally {
+        vi.unstubAllGlobals()
+      }
     },
     timeout,
   )
@@ -927,3 +1136,81 @@ json.dumps({"selectionCount": len(_dense_region["triangles"]), "outOfSourceRejec
     timeout,
   )
 })
+
+it.each([false, true])(
+  "solves generated print scenarios with a real compound torque and verifies retained performance, preserved bed=%s",
+  async (preserveBed) => {
+    const mesh = denseBoxMesh({ subdivisions: 1, min: [0, 0, 0], max: [16, 8, 8] })
+    const prepared = preparePrintOptimization({
+      mesh,
+      bedTriangleIndices: [8, 9],
+      preserveTriangleIndices: preserveBed ? [8, 9] : [],
+      material: {
+        youngModulusMpa: 2300,
+        poissonRatio: 0.35,
+        yieldStrengthMpa: 51,
+        densityKgM3: 1240,
+      },
+      cellSizeMm: 1,
+      minFeatureSizeMm: 1,
+      layerHeightMm: 0.2,
+      maxIterations: 24,
+      minStiffnessFraction: 0.9,
+      minStrengthFraction: 0.9,
+      supportMode: "allowed",
+    })
+    prepared.input.includeVoxelGrid = true
+    vi.stubGlobal("Worker", NumericalWorker)
+    try {
+      const result = await optimizeStructuralModel(prepared.input, {
+        runtimeBaseUrl: "http://localhost/structural-runtime/",
+      })
+      const grid = result.voxelGrid
+      if (!grid) throw new Error("Generated print analysis must include its verified voxel grid.")
+      const retained = new Set(grid.cells.map((cell) => cell.join(",")))
+      const removedCells = Array.from({ length: 16 * 8 * 8 }, (_, index) => [
+        Math.floor(index / 64),
+        Math.floor(index / 8) % 8,
+        index % 8,
+      ]).filter((cell) => !retained.has(cell.join(",")))
+      console.info(
+        "GENERATED_PRINT_PROPOSAL",
+        JSON.stringify({
+          preserveBed,
+          status: result.status,
+          initialCellCount: result.initialCellCount,
+          finalCellCount: result.finalCellCount,
+          originMm: grid.originMm,
+          cubeCells: result.fdm?.minimumFeatureCubeCells,
+          removedCells,
+        }),
+      )
+      expect(grid.cells).toHaveLength(result.finalCellCount)
+      expect(result.optimized.massKg).toBeLessThanOrEqual(result.baseline.massKg)
+      expect(result.status).toBe("improved")
+      expect(result.optimized.massKg).toBeLessThan(result.baseline.massKg)
+      expect(result.iterations).toBe(0)
+      expect(result.algorithm).toMatchObject({
+        kind: "simp",
+        densityIterations: 0,
+        converged: false,
+        targetStatus: "not-reached",
+      })
+      expect(
+        result.warnings.some((warning) => warning.includes("no adjustable density budget")),
+      ).toBe(true)
+      expect(result.fdm?.optimized.minFeatureSizeBoundMm).toBeGreaterThanOrEqual(1)
+      for (const [index, candidate] of result.optimized.cases.entries()) {
+        const baseline = result.baseline.cases[index]
+        if (!baseline) throw new Error("Every generated scenario needs baseline evidence.")
+        expect(candidate.complianceNmm).toBeLessThanOrEqual(baseline.complianceNmm / 0.9)
+        expect(candidate.maxVonMisesMpa).toBeLessThanOrEqual(baseline.maxVonMisesMpa / 0.9)
+      }
+      const restored = prepared.restoreMesh(result.mesh)
+      expect(signedSurfaceVolume(restored)).toBeCloseTo(result.optimized.volumeMm3, 6)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  },
+  timeout,
+)

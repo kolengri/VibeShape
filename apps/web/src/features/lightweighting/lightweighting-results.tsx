@@ -110,6 +110,47 @@ export function LightweightingResults({ result }: { result: StructuralOptimizati
         </p>
       ))}
       <p className="text-xs text-muted-foreground">{t("resultLimitations")}</p>
+      <RelativePerformanceResults
+        baseline={result.baseline}
+        optimized={result.optimized}
+        settings={result.relativePerformance}
+      />
     </section>
+  )
+}
+
+export function RelativePerformanceResults({
+  baseline,
+  optimized,
+  settings,
+}: {
+  baseline: StructuralOptimizationSummary["baseline"]
+  optimized: StructuralOptimizationSummary["optimized"]
+  settings: StructuralOptimizationSummary["relativePerformance"]
+}) {
+  const t = useTranslations("app.lightweighting")
+  if (!settings) return null
+  return (
+    <div className="grid gap-1 text-xs">
+      <p>
+        {t("relativePerformanceTarget", {
+          stiffness: settings.minStiffnessFraction * 100,
+          strength: settings.minStrengthFraction * 100,
+        })}
+      </p>
+      {optimized.cases.map((candidate, index) => {
+        const original = baseline.cases[index]
+        if (!original || candidate.complianceNmm <= 0 || candidate.maxVonMisesMpa <= 0) return null
+        return (
+          <p key={candidate.name}>
+            {t("relativePerformanceCase", {
+              name: candidate.name,
+              stiffness: (100 * original.complianceNmm) / candidate.complianceNmm,
+              strength: (100 * original.maxVonMisesMpa) / candidate.maxVonMisesMpa,
+            })}
+          </p>
+        )
+      })}
+    </div>
   )
 }

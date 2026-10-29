@@ -8,6 +8,33 @@ import { LightweightingResults } from "./lightweighting-results"
 
 afterEach(cleanup)
 
+it("reports retained stiffness and normalized capacity independently for each scenario", () => {
+  const result = lightweightingSummary()
+  result.relativePerformance = { minStiffnessFraction: 0.9, minStrengthFraction: 0.8 }
+  const baseline = result.baseline.cases[0]
+  const optimized = result.optimized.cases[0]
+  if (!baseline || !optimized) throw new Error("Missing scenario fixture.")
+  baseline.complianceNmm = 9
+  optimized.complianceNmm = 10
+  baseline.maxVonMisesMpa = 8
+  optimized.maxVonMisesMpa = 10
+  render(
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <LightweightingResults result={result} />
+    </I18nProvider>,
+  )
+  expect(
+    screen.getByText(
+      "Required in every scenario: 90% retained stiffness and 80% normalized load capacity.",
+    ),
+  ).toBeTruthy()
+  expect(
+    screen.getByText(
+      `${optimized.name}: 90.0% retained stiffness; 80.0% normalized load capacity.`,
+    ),
+  ).toBeTruthy()
+})
+
 it("reports pre-optimization keep-out loss together with voxelization loss", () => {
   const result = lightweightingSummary()
   result.sourceVolumeMm3 = 160

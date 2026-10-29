@@ -772,6 +772,19 @@ Choose **FDM tools** in Model, select a kind, and supply its exact target or ind
 
 ## Lightweighting tasks
 
+The registered **Lightweighting** command defaults to **Optimize for 3D printing**. The user picks
+a planar exterior bed face, chooses a printed-plastic preset or custom properties, optionally marks
+faces to preserve, and runs the automatic normalized comparison scenarios. The remaining exterior
+may change. The bed face controls print orientation and is distinct from the assumed mechanical
+clamp. Advanced settings disclose retention targets (90% stiffness and normalized capacity by
+default), FDM/resolution settings and scenario/material assumptions. **Set real supports and loads
+manually** opens the existing structural form. Print, manual and generative tasks share cancellation,
+source-bound preview, readiness, atomic Apply and Undo; none mutates the source during analysis.
+Selected print-task interfaces retain their original exact CAD surfaces and dimensions. Reconstructing
+and verifying states precede the native STEP preview. **Apply as new exact Part** imports that verified
+solid and hides the editable source; Undo restores it. Manual and generative tasks retain mesh output.
+See [the automatic print contract](lightweighting.md#automatic-print-optimization).
+
 The registered **Generative Design** toolbar/palette command opens the same source-bound task
 workflow with a bounded alternative search instead of a single objective. The default form guides
 source/material selection and graphical fixed/load faces with an explicit force, then starts one

@@ -8,6 +8,7 @@ import {
   LightweightingTaskPanel,
   type LightweightingViewportInteraction,
 } from "./lightweighting-dialog"
+import { PrintOptimizationTaskPanel } from "./print-optimization-task-panel"
 import { QuickLightweightingTaskPanel } from "./quick-lightweighting-task-panel"
 import type { useLightweightingCommand } from "./use-lightweighting-command"
 
@@ -39,7 +40,13 @@ export function LightweightingWorkspace({
     onApplied: () => workflow.setOpen(false),
   }
   const panel =
-    workflow.mode === "quick" ? (
+    workflow.mode === "print" ? (
+      <PrintOptimizationTaskPanel
+        {...props}
+        onInteractionChange={setInteraction}
+        onManual={() => workflow.show("structural")}
+      />
+    ) : workflow.mode === "quick" ? (
       <QuickLightweightingTaskPanel {...props} />
     ) : (
       <LightweightingTaskPanel
@@ -84,7 +91,7 @@ function useTaskDismissal(open: boolean, active: boolean, close: () => void) {
 }
 
 function workspaceInteraction(
-  mode: "quick" | "structural" | "generative",
+  mode: "print" | "quick" | "structural" | "generative",
   interaction: LightweightingViewportInteraction | null,
 ) {
   if (mode === "quick" || !interaction) return null

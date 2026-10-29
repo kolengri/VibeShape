@@ -91,6 +91,58 @@ function algorithmResponse(
 }
 
 describe("bounded paired-browser lightweighting contracts", () => {
+  it("binds relative performance and compound load patterns on both paired transports", () => {
+    for (const request of [false, true]) {
+      const operation = lightweightingOperation(request)
+      const fractions = { minStiffnessFraction: 0.9, minStrengthFraction: 0.9 }
+      operation.arguments.settings.relativePerformance = fractions
+      const first = operation.arguments.settings.loadCases[0]
+      if (!first) throw new Error("The fixture needs one load case.")
+      first.additionalLoads = [{ region: first.region, forceN: [0, 0, 1] }]
+      expect(localOperationSchema.safeParse(operation).success).toBe(true)
+      expect(remoteOperationSchema.safeParse(operation).success).toBe(true)
+      const value = {
+        documentId: lightweightingId(3),
+        baseRevision: 4,
+        source: operation.arguments.source,
+        summary: { ...lightweightingSummary(), relativePerformance: fractions },
+        ...(request ? { snapshot: lightweightingSnapshot() } : {}),
+      }
+      const baseline = value.summary.baseline.cases[0]
+      const optimized = value.summary.optimized.cases[0]
+      if (!baseline || !optimized) throw new Error("The fixture needs case metrics.")
+      optimized.complianceNmm = baseline.complianceNmm
+      optimized.maxVonMisesMpa = baseline.maxVonMisesMpa
+      expect(
+        lightweightingResultContextMatches(operation, { ok: true, value }, lightweightingId(3)),
+      ).toBe(true)
+      for (const summary of [
+        { ...value.summary, relativePerformance: undefined },
+        { ...value.summary, relativePerformance: { ...fractions, minStrengthFraction: 0.5 } },
+        {
+          ...value.summary,
+          optimized: {
+            ...value.summary.optimized,
+            cases: [{ ...optimized, complianceNmm: baseline.complianceNmm / 0.89 }],
+          },
+        },
+        {
+          ...value.summary,
+          optimized: {
+            ...value.summary.optimized,
+            cases: [{ ...optimized, maxVonMisesMpa: baseline.maxVonMisesMpa / 0.89 }],
+          },
+        },
+      ])
+        expect(
+          lightweightingResultContextMatches(
+            operation,
+            { ok: true, value: { ...value, summary } },
+            lightweightingId(3),
+          ),
+        ).toBe(false)
+    }
+  })
   it("advertises tessellation-independent computation and caller-selected search budgets", () => {
     const description = localToolDescriptions.analyze_lightweighting
     expect(description).toContain("no fixed vertex or triangle count cutoff for computation")
@@ -316,11 +368,25 @@ describe("bounded paired-browser lightweighting contracts", () => {
         ...(request ? { snapshot: lightweightingSnapshot() } : {}),
       }
       expect(lightweightingResultContextMatches(withFdm, { ok: true, value })).toBe(true)
+      const resolvedFdm = {
+        ...fdm,
+        minimumFeatureCubeCells: 2,
+        baseline: { ...metrics, minFeatureSizeBoundMm: 2 },
+        optimized: { ...metrics, minFeatureSizeBoundMm: 2 },
+      }
+      expect(
+        lightweightingResultContextMatches(withFdm, {
+          ok: true,
+          value: { ...value, summary: { ...value.summary, fdm: resolvedFdm } },
+        }),
+      ).toBe(true)
       expect(lightweightingResultContextMatches(operation, { ok: true, value })).toBe(false)
       for (const patch of [
         { fdm: undefined },
         { fdm: { ...fdm, settings: { ...settings, buildDirection: "-z" } } },
         { fdm: { ...fdm, optimized: { ...metrics, minFeatureSizeBoundMm: 0.4 } } },
+        { fdm: { ...fdm, minimumFeatureCubeCells: 2 } },
+        { fdm: { ...resolvedFdm, minimumFeatureCubeCells: 3 } },
         {
           fdm: { ...fdm, optimized: { ...metrics, unsupportedAreaMm2: 1, requiresSupports: true } },
         },

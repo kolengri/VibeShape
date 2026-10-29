@@ -20,6 +20,10 @@ import {
 } from "./import-content"
 import { type MeshExportQuality, meshExportQualitySchema } from "./mesh-export-quality"
 import { inspectMeshImportInputSchema, meshImportInspectionSchema } from "./mesh-import"
+import {
+  printOptimizationReconstructionInputSchema,
+  printOptimizationReconstructionSchema,
+} from "./print-optimization"
 import { printPreparationResultSchema, printPreparationSettingsSchema } from "./print-preparation"
 import {
   sketchDragTargetWireSchema,
@@ -35,7 +39,7 @@ import {
   surfaceTextureQualitySchema,
 } from "./surface-texture"
 
-export const DOCUMENT_PROTOCOL_VERSION = 27 as const
+export const DOCUMENT_PROTOCOL_VERSION = 28 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -248,6 +252,14 @@ export type InspectSourceImportInput = z.infer<typeof inspectSourceImportInputSc
 export const documentWorkerRequestSchema = z.discriminatedUnion("type", [
   rebuildDocumentRequestSchema,
   inspectSourceImportRequestSchema,
+  requestEnvelopeSchema
+    .extend({
+      type: z.literal("reconstructPrintOptimization"),
+      input: printOptimizationReconstructionInputSchema,
+    })
+    .refine(({ documentId, input }) => documentId === input.source.documentId, {
+      message: "Exact reconstruction must use the active document source.",
+    }),
   requestEnvelopeSchema.extend({
     type: z.literal("inspectMeshImport"),
     input: inspectMeshImportInputSchema,
@@ -793,6 +805,10 @@ export const documentWorkerResponseSchema = z.discriminatedUnion("type", [
   progressResponseSchema,
   documentRebuiltResponseSchema,
   sourceImportInspectedResponseSchema,
+  responseEnvelopeSchema.extend({
+    type: z.literal("printOptimizationReconstructed"),
+    reconstruction: printOptimizationReconstructionSchema,
+  }),
   responseEnvelopeSchema.extend({
     type: z.literal("meshImportInspected"),
     inspection: meshImportInspectionSchema,

@@ -2152,6 +2152,16 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     return result.value
   }
 
+  async function reconstructPrintOptimization(input: unknown) {
+    const active = session
+    const revision = active?.authoredSnapshot?.revision
+    if (!active || revision === undefined) throw new Error("The document session is unavailable.")
+    const result = await active.reconstructPrintOptimization(input)
+    assertAuthorityCurrent(active, revision)
+    if (!result.ok) throw new Error(result.diagnostic.message)
+    return result.value
+  }
+
   async function inspectTriangleMeshSource(input: unknown) {
     const active = session
     if (!active) throw new Error("The document session is unavailable.")
@@ -3625,6 +3635,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     undoDocument,
     redoDocument,
     inspectGeometrySource,
+    reconstructPrintOptimization,
     inspectTriangleMeshSource,
     inspectActiveAssembly,
     previewAssemblyChanges,

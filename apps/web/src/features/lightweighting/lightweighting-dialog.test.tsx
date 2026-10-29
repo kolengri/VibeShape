@@ -18,12 +18,14 @@ const ports = (() => ({
   apply: vi.fn(),
   parts: vi.fn(),
   encode: vi.fn(),
+  exact: vi.fn(),
 }))()
 mock.module("@vibeshape/application/authored-parts", () => ({ resolveAuthoredParts: ports.parts }))
 mock.module("@vibeshape/structural-optimization/client", () => ({
   optimizeStructuralModel: ports.optimize,
   StructuralOptimizationError,
 }))
+mock.module("./prepare-exact-print-snapshot", () => ({ prepareExactPrintSnapshot: ports.exact }))
 const structuralMeshModule = { ...(await import("@vibeshape/structural-optimization/mesh")) }
 mock.module("@vibeshape/structural-optimization/mesh", () => ({
   ...structuralMeshModule,
@@ -58,8 +60,13 @@ const { useCallback, useState } = await import("react")
 const { i18n } = await import("../../i18n")
 const { default: messages } = await import("../../i18n/messages/en.json")
 const { authoredTreeFixture } = await import("../../test-support/authored-tree-fixture")
-const { meshInspection } = await import("../import/import-test-fixtures")
+const { meshInspection, inspection: exactInspection } = await import(
+  "../import/import-test-fixtures"
+)
 const { LightweightingTaskPanel } = await import("./lightweighting-dialog")
+const { PrintOptimizationTaskPanel } = await import("./print-optimization-task-panel")
+const { LightweightingWorkspace } = await import("./lightweighting-workspace")
+const { useWorkspaceTask } = await import("../../shell/workspace-task-context")
 const { useLightweightingCommand } = await import("./use-lightweighting-command")
 const fixture = authoredTreeFixture()
 const firstPartCandidate = fixture.authority.parts[0]
@@ -1213,5 +1220,273 @@ describe("Lightweighting workflow", () => {
     expect(
       (screen.getByRole("combobox", { name: "Source Part" }) as HTMLButtonElement).disabled,
     ).toBe(true)
+  })
+})
+
+describe("Automatic print optimization", () => {
+  function printBody(): ModelBodyGeometry {
+    return {
+      ...body,
+      shape: { ...body.shape, volume: 1024, bounds: { min: [0, 0, 0], max: [16, 8, 8] } },
+      mesh: {
+        positions: new Float32Array([
+          0, 0, 0, 0, 0, 8, 0, 8, 0, 0, 8, 8, 16, 0, 0, 16, 0, 8, 16, 8, 0, 16, 8, 8,
+        ]),
+        normals: new Float32Array(24),
+        indices: new Uint32Array([
+          0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, 0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6, 0, 2, 6, 0, 6, 4,
+          1, 5, 7, 1, 7, 3,
+        ]),
+        triangleFaceIds: new Uint32Array([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]),
+      },
+    }
+  }
+  function setupPrint() {
+    const sourceBody = printBody()
+    ports.exact.mockImplementation(async ({ preserveFaceIds }: { preserveFaceIds: number[] }) => {
+      const { mesh: _mesh, ...verification } = result
+      const digest = "c".repeat(64)
+      return {
+        prepared: {
+          representation: "exact-solid",
+          filename: "optimized.step",
+          bytes: new Uint8Array([1, 2, 3]),
+          digest,
+          source: {
+            digest,
+            byteLength: 3,
+            format: "step",
+            normalization: {
+              sourceUnit: "millimeter",
+              scaleToMillimeters: 1,
+              normalizedUnit: "millimeter",
+            },
+            unitPolicy: "step-system-mm",
+            readerPolicyVersion: 1,
+          },
+        },
+        inspection: exactInspection,
+        exact: {
+          sourceVolumeMm3: 1024,
+          volumeMm3: 800,
+          preservedFaceCount: preserveFaceIds.length,
+          verification,
+        },
+      }
+    })
+    ports.parts.mockReturnValue([{ part: firstPart, body: sourceBody, status: "available" }])
+    const onManual = vi.fn()
+    const onClose = vi.fn()
+    const view = render(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <PrintOptimizationTaskPanel
+          controller={controller}
+          initialPartId={firstPart.id}
+          blocked={false}
+          onClose={onClose}
+          onManual={onManual}
+          onInteractionChange={receiveInteraction}
+        />
+      </I18nProvider>,
+    )
+    return { ...view, sourceBody, onManual, onClose }
+  }
+  function pick(faceId: number) {
+    act(() =>
+      viewportInteraction?.onFacePick({
+        featureId: body.featureId,
+        outputRole: "result",
+        faceId,
+        faceOrdinal: faceId,
+      }),
+    )
+  }
+  async function readyPrint() {
+    await userEvent.click(screen.getByRole("button", { name: "Choose print-bed face" }))
+    pick(5)
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Material preset" }), { key: "Enter" })
+    await userEvent.click(screen.getByRole("option", { name: "PLA — Prusament" }))
+  }
+  it("starts with a bed face and plastic, preserves only marked regions, and generates a compound torsion case", async () => {
+    setupPrint()
+    const run = screen.getByRole("button", { name: "Optimize for printing" }) as HTMLButtonElement
+    expect(run.disabled).toBe(true)
+    await readyPrint()
+    expect(run.disabled).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: "Preserve faces (0)" }))
+    pick(3)
+    expect(viewportInteraction?.picking).toBe(true)
+    await userEvent.click(screen.getByRole("button", { name: "Finish preserving faces (1)" }))
+    await userEvent.click(run)
+    await waitFor(() => expect(ports.optimize).toHaveBeenCalledTimes(1))
+    const input = ports.optimize.mock.calls[0]?.[0] as StructuralOptimizationInput
+    expect(input.includeVoxelGrid).toBe(true)
+    expect(input.relativePerformance).toEqual({
+      minStiffnessFraction: 0.9,
+      minStrengthFraction: 0.9,
+    })
+    expect(input.loadCases.map(({ name }) => name)).toEqual([
+      "Axial tension",
+      "Bending 1",
+      "Bending 2",
+      "Torsion",
+    ])
+    expect(input.loadCases[3]?.additionalLoads).toHaveLength(1)
+    expect(input.preserveRegions).toEqual([
+      { kind: "surface", triangleIndices: [4, 5], depthMm: 2 },
+    ])
+    expect(input.fdm?.buildDirection).toBe("+z")
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Apply as new exact Part" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    )
+    expect(ports.apply).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "Change print-bed face" }))
+    pick(1)
+    expect(
+      (screen.getByRole("button", { name: "Apply as new exact Part" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+  })
+  it("filters metal presets and keeps custom properties and real-load setup accessible", async () => {
+    const { onManual } = setupPrint()
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Material preset" }), { key: "Enter" })
+    expect(screen.queryByRole("option", { name: /6061|304/ })).toBeNull()
+    await userEvent.click(screen.getByRole("option", { name: "Custom material" }))
+    change("Young’s modulus (MPa)", "2000")
+    change("Poisson’s ratio", "0.3")
+    change("Yield strength (MPa)", "40")
+    change("Density (kg/m³)", "1200")
+    await userEvent.click(screen.getByRole("button", { name: "Choose print-bed face" }))
+    pick(5)
+    expect(
+      (screen.getByRole("button", { name: "Optimize for printing" }) as HTMLButtonElement).disabled,
+    ).toBe(false)
+    await userEvent.click(
+      screen.getByText("Advanced optimization settings", { selector: "summary" }),
+    )
+    change("Minimum retained stiffness (%)", "101")
+    expect(
+      (screen.getByRole("button", { name: "Optimize for printing" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    await userEvent.click(
+      screen.getByRole("button", { name: "Set real supports and loads manually" }),
+    )
+    expect(onManual).toHaveBeenCalledTimes(1)
+  })
+  it("rejects foreign faces and cancels face picking before dismissing the task", async () => {
+    const { onClose } = setupPrint()
+    await userEvent.click(screen.getByRole("button", { name: "Choose print-bed face" }))
+    act(() => viewportInteraction?.onFacePick({ featureId: "foreign", faceId: 5, faceOrdinal: 5 }))
+    expect(screen.getByRole("alert").textContent).toContain("chosen source Part")
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(viewportInteraction?.picking).toBe(false)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+  it("cancels stale work on parameter edits and suppresses duplicate activation", async () => {
+    const work = deferred<StructuralOptimizationResult>()
+    ports.optimize.mockReturnValueOnce(work.promise)
+    setupPrint()
+    await readyPrint()
+    const run = screen.getByRole("button", { name: "Optimize for printing" })
+    await userEvent.dblClick(run)
+    expect(ports.optimize).toHaveBeenCalledTimes(1)
+    const signal = ports.optimize.mock.calls[0]?.[1].signal as AbortSignal
+    await userEvent.click(screen.getByRole("button", { name: "Cancel analysis" }))
+    expect(signal.aborted).toBe(true)
+    work.resolve(result)
+    await act(async () => {
+      await work.promise
+    })
+    expect(ports.inspect).not.toHaveBeenCalled()
+    await userEvent.click(
+      screen.getByText("Advanced optimization settings", { selector: "summary" }),
+    )
+    change("Analysis cell size (mm)", "0")
+    expect(
+      (screen.getByRole("button", { name: "Optimize for printing" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    expect(screen.getByText(messages.app.printOptimization.errors["invalid-settings"])).toBeTruthy()
+  })
+  it("applies the inspected exact source once through the ordinary atomic import", async () => {
+    setupPrint()
+    await readyPrint()
+    await userEvent.click(screen.getByRole("button", { name: "Optimize for printing" }))
+    const apply = screen.getByRole("button", {
+      name: "Apply as new exact Part",
+    }) as HTMLButtonElement
+    await waitFor(() => expect(apply.disabled).toBe(false))
+    await userEvent.dblClick(apply)
+    expect(ports.apply).toHaveBeenCalledTimes(1)
+    const [revision, transaction] = ports.apply.mock.calls[0] ?? []
+    expect(revision).toBe(fixture.snapshot.revision)
+    expect(transaction.commands.at(-1).payload.feature.type.typeId).toBe(
+      "org.vibeshape.feature.part-design.imported",
+    )
+    expect(ports.exact).toHaveBeenCalledTimes(1)
+  })
+  it("invalidates disposable face identities when the native face catalog changes at the same body hash", async () => {
+    const { rerender, sourceBody, onClose, onManual } = setupPrint()
+    await readyPrint()
+    const rebuilt = {
+      ...sourceBody,
+      mesh: {
+        ...sourceBody.mesh,
+        triangleFaceIds: new Uint32Array(
+          Array.from(sourceBody.mesh.triangleFaceIds, (face) => face + 100),
+        ),
+      },
+    }
+    ports.parts.mockReturnValue([{ part: firstPart, body: rebuilt, status: "available" }])
+    rerender(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <PrintOptimizationTaskPanel
+          controller={controller}
+          initialPartId={firstPart.id}
+          blocked={false}
+          onClose={onClose}
+          onManual={onManual}
+          onInteractionChange={receiveInteraction}
+        />
+      </I18nProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Choose print-bed face" })).toBeTruthy(),
+    )
+    expect(
+      (screen.getByRole("button", { name: "Optimize for printing" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    expect(ports.exact).not.toHaveBeenCalled()
+  })
+  it("uses print optimization for the registered default command and allows manual setup", async () => {
+    const { result: workflow } = renderHook(() =>
+      useLightweightingCommand({ controller, selectedPartId: firstPart.id, selectedBody: null }),
+    )
+    act(() => workflow.current.show())
+    expect(workflow.current.mode).toBe("print")
+    const sourceBody = printBody()
+    ports.parts.mockReturnValue([{ part: firstPart, body: sourceBody, status: "available" }])
+    const show = vi.fn()
+    function PanelHost() {
+      return useWorkspaceTask()?.panel
+    }
+    render(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <LightweightingWorkspace
+          controller={controller}
+          workflow={{ ...workflow.current, show }}
+          active
+        >
+          <PanelHost />
+        </LightweightingWorkspace>
+      </I18nProvider>,
+    )
+    expect(screen.getByRole("region", { name: "Optimize for 3D printing" })).toBeTruthy()
+    await userEvent.click(
+      screen.getByRole("button", { name: "Set real supports and loads manually" }),
+    )
+    expect(show).toHaveBeenCalledWith("structural")
   })
 })
