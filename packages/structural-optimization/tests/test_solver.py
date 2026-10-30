@@ -10,7 +10,8 @@ from pathlib import Path
 from implicit_fixtures import (implicit_request, verify_simp_search, verify_penalized_fem_and_sensitivity,
                                verify_lattice_search, verify_implicit_failures, verify_implicit_constraints)
 from iterative_fixtures import (verify_iterative_compact_analytical_solve, verify_iterative_direct_reference,
-                                verify_iterative_failure, verify_iterative_invalid_stiffness)
+                                verify_iterative_failure, verify_iterative_invalid_stiffness,
+                                verify_iterative_residual_correction_failure, verify_iterative_true_residual)
 
 import numpy as np
 import pytest
@@ -139,6 +140,15 @@ def test_iterative_failures_never_publish_a_numerical_result(failure):
 
 def test_nonfinite_and_nonpositive_assembled_stiffness_is_rejected():
     verify_iterative_invalid_stiffness(solver)
+
+
+@pytest.mark.parametrize("failure", ["iteration-limit", "nonfinite", "stagnation"])
+def test_residual_correction_failures_never_publish_displacements(failure):
+    verify_iterative_residual_correction_failure(solver, failure)
+
+
+def test_slender_cantilever_satisfies_true_equilibrium_without_factorization():
+    assert verify_iterative_true_residual(solver)["volumeMm3"] == pytest.approx(192)
 
 
 def test_compact_3d_analytical_solid_avoids_direct_sparse_factorization():

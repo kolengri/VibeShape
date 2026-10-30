@@ -734,7 +734,30 @@ def _boundary_conditions(request, source, cells, origin, cell_size, deadline):
     return {key(point) for point in fixed}, mapped_loads, {key(cell) for cell in protected}
 
 
-def _solve_elasticity(matrix, force, **kwargs):
+def _elasticity_backward_error(matrix, force, displacement, residual):
+    # Reduce bounded CSR chunks instead of duplicating the complete sparse matrix.
+    norm = 0.
+    for start in range(0, matrix.shape[0], 1024):
+        stop = min(start + 1024, matrix.shape[0])
+        offset, end = matrix.indptr[start], matrix.indptr[stop]
+        rows = np.add.reduceat(np.abs(matrix.data[offset:end]), matrix.indptr[start:stop] - offset)
+        norm = max(norm, float(rows.max()))
+    denominator = norm * float(np.linalg.norm(displacement, np.inf)) + float(np.linalg.norm(force, np.inf))
+    return float(np.linalg.norm(residual, np.inf)) / max(denominator, np.finfo(float).tiny)
+
+
+def _elasticity_diagnostic(message, trace):
+    fields = []
+    for key in ("phase", "case", "dofs", "nnz", "status", "iterations", "rhs", "residual", "limit", "backward", "corrections"):
+        if key in trace:
+            value = trace[key]
+            fields.append(f"{key}={value:.5g}" if isinstance(value, float) else f"{key}={value}")
+    return SolverError("numerical-failure", f"{message} ({'; '.join(fields)})")
+
+
+def _solve_elasticity(matrix, force, solve_trace=None, **kwargs):
+    trace = {} if solve_trace is None else solve_trace
+    trace.update(dofs=matrix.shape[0], nnz=matrix.nnz, iterations=0, corrections=[])
     diagonal = matrix.diagonal()
     _require(np.isfinite(matrix.data).all() and np.isfinite(force).all() and
              np.isfinite(diagonal).all() and np.all(diagonal > 0),
@@ -742,14 +765,46 @@ def _solve_elasticity(matrix, force, **kwargs):
     # Avoid sparse LU fill-in in the WASM heap. Connected, fully constrained
     # positive-modulus elasticity is SPD; retain the independent equilibrium check.
     preconditioner = LinearOperator(matrix.shape, matvec=lambda values: values / diagonal)
-    displacement, info = cg(matrix, force, M=preconditioner, rtol=1e-10, atol=0)
-    _require(info == 0, "numerical-failure",
-             f"The iterative elasticity solve did not converge (status {info}; "
-             f"{matrix.shape[0]} unknowns, {matrix.nnz} nonzero entries).")
-    return displacement
+    norm = float(np.linalg.norm(force))
+    threshold = 1e-8 * max(norm, 1e-12)
+    trace.update(rhs=norm, limit=threshold)
+
+    def iteration(_):
+        trace["iterations"] += 1
+
+    displacement, info = cg(matrix, force, M=preconditioner, rtol=1e-10, atol=0, callback=iteration)
+    trace["status"] = int(info)
+    if info != 0 or not np.isfinite(displacement).all():
+        raise _elasticity_diagnostic("The iterative elasticity solve did not converge to a finite solution.", trace)
+    residual = force - matrix @ displacement
+    trace["residual"] = float(np.linalg.norm(residual))
+    if trace["residual"] <= threshold:
+        return displacement
+    trace["backward"] = _elasticity_backward_error(matrix, force, displacement, residual)
+    # Recursive CG convergence can drift at cancellation scale. This gate permits
+    # correction only; the unchanged actual-residual threshold still accepts it.
+    if not math.isfinite(trace["backward"]) or trace["backward"] > 64 * np.finfo(float).eps:
+        raise _elasticity_diagnostic("The elasticity equilibrium residual exceeds its tolerance.", trace)
+    for _ in range(3):
+        # A separate small correction avoids warm-restart cancellation in large u.
+        correction, info = cg(matrix, residual, M=preconditioner, rtol=0,
+                              atol=1e-10 * max(norm, 1e-12), callback=iteration)
+        trace["status"] = int(info)
+        if info != 0 or not np.isfinite(correction).all():
+            raise _elasticity_diagnostic("The elasticity residual correction did not converge to a finite solution.", trace)
+        displacement += correction
+        if not np.isfinite(displacement).all():
+            raise _elasticity_diagnostic("The elasticity residual correction returned a non-finite solution.", trace)
+        residual = force - matrix @ displacement
+        trace["residual"] = float(np.linalg.norm(residual))
+        trace["corrections"].append(f"{trace['residual']:.5g}")
+        if trace["residual"] <= threshold:
+            return displacement
+    trace["backward"] = _elasticity_backward_error(matrix, force, displacement, residual)
+    raise _elasticity_diagnostic("The elasticity equilibrium residual exceeds its tolerance after correction.", trace)
 
 
-def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, deadline, relative_modulus=None, field="strain-energy", sum_cases=False):
+def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, deadline, relative_modulus=None, field="strain-energy", sum_cases=False, phase="full-solid"):
     _require(_connected(cells), "disconnected-mesh", "Removal disconnects the analyzed solid.")
     mesh, nodes = _hex_mesh(cells, origin, cell_size)
     surface = _surface(mesh, deadline)
@@ -772,6 +827,7 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
     energy = np.zeros(len(cells))
     metrics = []
     for load in loads:
+        trace = {"phase": phase, "case": str(load["name"]).replace("\n", " ")[:40]}
         force = np.zeros(basis.N)
         for term in [load] + load.get("additionalLoads", []):
             _require(all(key in facet_lookup for key in term["facets"]), "boundary-condition-lost", "A candidate changes a loaded exterior facet.")
@@ -789,7 +845,8 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
                      "numerical-failure", "Integrated load does not match its specified resultant.")
             force += term_force
         try:
-            displacement = fem_solve(*condense(stiffness, force, D=fixed_dofs), solver=_solve_elasticity)
+            displacement = fem_solve(*condense(stiffness, force, D=fixed_dofs), solver=_solve_elasticity,
+                                     solve_trace=trace)
         except (RuntimeError, ValueError) as error:
             if isinstance(error, SolverError):
                 raise
@@ -797,8 +854,10 @@ def _evaluate(cells, origin, cell_size, material, fixed_keys, loads, density, de
         _require(np.isfinite(displacement).all(), "numerical-failure", "Elasticity returned a non-finite displacement.")
         free = np.setdiff1d(np.arange(basis.N), fixed_dofs)
         residual = (stiffness @ displacement - force)[free]
-        _require(np.linalg.norm(residual) <= 1e-8 * max(np.linalg.norm(force[free]), 1e-12),
-                 "numerical-failure", "The elasticity equilibrium residual exceeds its tolerance.")
+        trace.update(residual=float(np.linalg.norm(residual)),
+                     limit=1e-8 * max(float(np.linalg.norm(force[free])), 1e-12))
+        if not trace["residual"] <= trace["limit"]:
+            raise _elasticity_diagnostic("The elasticity equilibrium residual exceeds its tolerance.", trace)
         strain = sym_grad(basis.interpolate(displacement))
         corner_strain = sym_grad(corner_basis.interpolate(displacement))
         _require(relative_modulus is not None or max(float(np.sqrt(np.sum(values ** 2, axis=(0, 1))).max())
@@ -1160,7 +1219,8 @@ def solve(request):
         return metrics["safetyFactor"] >= safety_factor and metrics["maxDisplacementMm"] <= max_displacement
 
     baseline, energy, _ = _evaluate(cells, origin, cell_size, parameters, fixed_keys, loads, density, deadline,
-                                    field=algorithm["field"] if algorithm and algorithm["kind"] == "adaptive-lattice" else "strain-energy")
+                                    field=algorithm["field"] if algorithm and algorithm["kind"] == "adaptive-lattice" else "strain-energy",
+                                    phase="baseline")
     if not absolute_feasible(baseline):
         raise SolverError("infeasible-baseline", _baseline_failure_message(baseline, parameters[2], safety_factor, max_displacement))
 
@@ -1178,7 +1238,8 @@ def solve(request):
         def evaluate(candidate, **options):
             nonlocal evaluations
             evaluations += 1
-            return _evaluate(candidate, origin, cell_size, parameters, fixed_keys, loads, density, deadline, **options)
+            phase = "density" if options.get("relative_modulus") is not None else "candidate"
+            return _evaluate(candidate, origin, cell_size, parameters, fixed_keys, loads, density, deadline, phase=phase, **options)
         evaluate.cell_size = cell_size
         cells, algorithm_evidence, iterations, termination, algorithm_frozen, algorithm_original, algorithm_warnings = _algorithm_search(
             cells, protected, origin, cell_size, algorithm, max_iterations, target_count, energy,
@@ -1210,7 +1271,7 @@ def solve(request):
                     continue
             try:
                 evaluations += 1
-                metrics, candidate_energy, _ = _evaluate(candidate, origin, cell_size, parameters, fixed_keys, loads, density, deadline)
+                metrics, candidate_energy, _ = _evaluate(candidate, origin, cell_size, parameters, fixed_keys, loads, density, deadline, phase="candidate")
                 if feasible(metrics):
                     cells, energy = candidate, candidate_energy
                     accepted = True
@@ -1225,7 +1286,7 @@ def solve(request):
     if target_count is not None and len(cells) == target_count:
         termination = "target-mass-reached"
     # Never attach a previous candidate's metrics to a newly emitted surface.
-    optimized, _, output = _evaluate(cells, origin, cell_size, parameters, fixed_keys, loads, density, deadline)
+    optimized, _, output = _evaluate(cells, origin, cell_size, parameters, fixed_keys, loads, density, deadline, phase="final")
     evaluations += 1
     # Snapshot encoding keeps the strict STL rounding gate and uses exact-coordinate
     # 3MF when necessary. The validated raw surface remains the analyzed geometry.

@@ -4,6 +4,7 @@ import itertools
 import json
 
 import numpy as np
+import scipy.sparse as sparse
 import scipy.sparse.linalg as sparse_linalg
 import trimesh
 
@@ -128,6 +129,97 @@ def verify_iterative_failure(solver, failure):
     assert calls == [True]
     assert response["ok"] is False and response["error"]["code"] == "numerical-failure"
     assert "result" not in response
+    if failure == "false-convergence":
+        message = response["error"]["message"]
+        for field in ("phase=baseline", "case=offset-bending-torsion", "dofs=", "nnz=", "status=0",
+                      "iterations=", "rhs=", "residual=", "limit=", "backward=", "corrections=[]"):
+            assert field in message
+        assert len(message) <= 512
+
+
+def verify_iterative_residual_correction_failure(solver, failure):
+    namespace = solver._solve_elasticity.__globals__
+    original_cg = namespace["cg"]
+    matrix = sparse.diags([1e12, 1.], format="csr")
+    force = np.ones(2)
+    calls = []
+
+    def injected_cg(_matrix, rhs, **options):
+        calls.append(options)
+        if len(calls) == 1:
+            return np.array([1e-12 + 1e-19, 1.]), 0
+        assert options["rtol"] == 0 and options["atol"] == 1e-10 * np.linalg.norm(force)
+        if failure == "iteration-limit":
+            return np.zeros(2), 7
+        if failure == "nonfinite":
+            return np.full(2, np.nan), 0
+        assert failure == "stagnation"
+        return np.zeros(2), 0
+
+    try:
+        namespace["cg"] = injected_cg
+        try:
+            solver._solve_elasticity(matrix, force)
+        except solver.SolverError as error:
+            assert error.code == "numerical-failure"
+            assert "residual" in str(error) and "limit=" in str(error)
+            assert len(calls) == (4 if failure == "stagnation" else 2)
+        else:
+            raise AssertionError("A failed residual correction must not publish displacements")
+    finally:
+        namespace["cg"] = original_cg
+
+
+def verify_iterative_true_residual(solver):
+    cells = np.array(list(itertools.product(range(96), range(2), range(1))), dtype=np.int64)
+    mesh, nodes = solver._hex_mesh(cells, np.zeros(3), 1)
+    fixed = {tuple(node) for node in nodes if node[0] == 0}
+    facets = [frozenset(tuple(node) for node in nodes[mesh.facets[:, facet]])
+              for facet in mesh.boundary_facets() if np.all(nodes[mesh.facets[:, facet], 0] == 96)]
+    loads = [{"name": "slender-bending", "facets": facets, "force": np.array([0., 0., -.001])}]
+    namespace = solver._evaluate.__globals__
+    original_solve = namespace["_solve_elasticity"]
+    direct_names = ("spsolve", "splu", "factorized")
+    original_direct = {name: getattr(sparse_linalg, name) for name in direct_names}
+    reports = []
+    answers = []
+
+    def observed(matrix, force, **options):
+        answer = original_solve(matrix, force, **options)
+        residual = np.linalg.norm(matrix @ answer - force)
+        assert residual <= 1e-8 * np.linalg.norm(force)
+        assert len(options["solve_trace"]["corrections"]) <= 3
+        reports.append(float(residual / np.linalg.norm(force)))
+        answers.append(answer.copy())
+        return answer
+
+    def forbidden(*_args, **_options):
+        raise AssertionError("Residual correction must not allocate a direct sparse factorization")
+
+    def direct(matrix, force, **_options):
+        answer = original_direct["spsolve"](matrix, force)
+        assert np.linalg.norm(answer - answers[0]) <= 1e-6 * np.linalg.norm(answer)
+        return answer
+
+    def evaluate():
+        return solver._evaluate(cells, np.zeros(3), 1, (1000, .35, 100), fixed, loads, 1000, None)
+
+    try:
+        namespace["_solve_elasticity"] = observed
+        for name in direct_names:
+            setattr(sparse_linalg, name, forbidden)
+        actual, energy, _ = evaluate()
+        namespace["_solve_elasticity"] = direct
+        expected, reference_energy, _ = evaluate()
+    finally:
+        namespace["_solve_elasticity"] = original_solve
+        for name, original in original_direct.items():
+            setattr(sparse_linalg, name, original)
+    for metric in ("maxDisplacementMm", "maxVonMisesMpa", "safetyFactor"):
+        assert np.isclose(actual[metric], expected[metric], rtol=1e-6, atol=0)
+    assert np.allclose(energy, reference_energy, rtol=1e-6, atol=0)
+    assert np.isfinite(energy).all() and np.all(energy > 0)
+    return {"relativeResidual": reports[0], "volumeMm3": actual["volumeMm3"]}
 
 
 def verify_iterative_invalid_stiffness(solver):
