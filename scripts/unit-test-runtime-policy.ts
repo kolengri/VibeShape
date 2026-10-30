@@ -44,7 +44,7 @@ const python = new Map([
   ],
   [
     "packages/structural-optimization/tests/iterative_fixtures.py",
-    "e2c4c62810251d3311e801b8d8bd8a10d91e418adcc61095dc3ad45815204253",
+    "9d47d85fd373d2db27e2759fad63be3b072fb5032106e214392d524ad7276541",
   ],
   [
     "packages/structural-optimization/tests/resource_fixtures.py",
@@ -52,7 +52,7 @@ const python = new Map([
   ],
   [
     "packages/structural-optimization/src/solver.py",
-    "4ff6da6550e4624a94bf4198b7a89768b480938546a4b0249cc9d9f4c51b8331",
+    "9a3e973e15be589fd04486fba30de079811676aaa815d4f298d6ea1d1b115167",
   ],
   [
     "packages/structural-optimization/src/quick-solver.py",
@@ -114,7 +114,7 @@ const callers = new Map([
   ],
   [
     "packages/structural-optimization/tests/wasm-solver.test.ts",
-    "6aabed32f4e767669d4d442761524b5e0c8e9693e83508e04578f0fee4d84c12",
+    "c53830ad66ad1b420f8b79ffb83e997302e3ec6b0c05370d9d27d096eaaeca01",
   ],
 ])
 

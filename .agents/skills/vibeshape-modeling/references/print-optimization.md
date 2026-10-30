@@ -62,6 +62,12 @@ Actual savings use exact CAD volumes. A no-improvement proposal has `exact: null
 Only a completed successful request with `snapshot` identifies a saved result; verify that revision
 and the new exact Part before reporting completion. Export STEP/STL/3MF separately only when requested.
 
+An elasticity `numerical-failure` is a rejected calculation, not strength evidence. Its diagnostic
+can identify the phase/load case, system size, CG status/iterations, actual residual and threshold,
+backward error and bounded correction history. The solver can correct roundoff-scale recursive
+CG drift without relaxing its independent equilibrium gate. Retain that diagnostic when reporting
+failure; do not lower performance requirements or claim a saved result to work around it.
+
 Source/revision or active native face-catalog changes invalidate pending work. Lost selected surfaces,
 unprintable or disconnected geometry, failed performance gates and absent material reduction fail
 closed. Native Boolean cancellation suppresses stale publication but cannot interrupt a synchronous

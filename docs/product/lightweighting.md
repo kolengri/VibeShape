@@ -158,7 +158,13 @@ full-solid linear isotropic Hex1 elasticity through scikit-fem, and solves with 
 diagonally preconditioned conjugate-gradient method. This avoids the additional sparse-LU
 factorization storage; assembly, mesh and field arrays still consume finite browser memory.
 Non-convergence is a numerical failure, and the original assembled equilibrium residual must
-independently satisfy its relative tolerance of `1e-8` before metrics are accepted. Each candidate
+independently satisfy its relative tolerance of `1e-8` before metrics are accepted. Each solve
+can use at most three separate residual-equation corrections when CG's recursively updated
+residual has drifted and the recomputed backward error is consistent with floating-point roundoff.
+The correction target is tied to the original force norm; the final equilibrium tolerance is
+unchanged. Gross false convergence, failed corrections and exhausted refinement fail explicitly.
+Failure messages include the phase, load case, system size, CG status/iteration count, force and
+residual norms, threshold, backward error and attempted corrections when available. Each candidate
 must satisfy every load case. Stress is unaveraged and evaluated at quadrature points and all eight
 element corners. The final candidate receives a repeated solve and exports the exact analyzed cell
 surface without smoothing. Snapshot encoding uses binary STL when coordinate rounding stays

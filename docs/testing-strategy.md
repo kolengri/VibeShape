@@ -52,8 +52,12 @@ cancel, stale source/revision, review rejection, and one append-only atomic impo
 
 Iterative elasticity fixtures compare full displacement, unaveraged stress, compliance and
 cell fields against an independent sparse direct solve for 3D bending/torsion, two loads,
-Poisson ratios 0.35/0.45 and SIMP modulus contrast through `1e-6`. They reject non-convergence,
-non-finite output and a falsely converged answer that violates equilibrium. A compact analytical
+Poisson ratios 0.35/0.45 and SIMP modulus contrast through `1e-6`. A generated slender cantilever
+whose recursive CG residual can drift must satisfy the original true-equilibrium tolerance and
+direct-reference fields without sparse factorization. Correction failure, non-finite output and
+stagnation remain rejected; gross false convergence must fail before any correction. Failure
+diagnostics retain the phase, case and actual threshold within the existing message-size contract.
+A compact analytical
 solid prohibits direct-factorization fallback. `wasm-large-elasticity.test.ts` uses a fresh pinned
 runtime for 44,100 generated full-solid cells (139,860 free unknowns), checking analytical stress,
 displacement, compliance, volume and energy through the production assembly/solve/field path.

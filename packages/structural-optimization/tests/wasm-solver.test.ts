@@ -436,6 +436,27 @@ describe("pinned Pyodide full-solid structural solver", () => {
     timeout,
   )
 
+  it.each(["iteration-limit", "nonfinite", "stagnation"])(
+    "rejects residual-correction %s without publishing displacements",
+    async (failure) => {
+      await runtime.runPythonAsync(
+        `verify_iterative_residual_correction_failure(_surface_test_solver, ${JSON.stringify(failure)})`,
+      )
+    },
+    timeout,
+  )
+
+  it(
+    "corrects recursive CG drift against true equilibrium on a slender cantilever without factorization",
+    async () => {
+      const residual = await runtime.runPythonAsync(
+        "verify_iterative_true_residual(_surface_test_solver)['relativeResidual']",
+      )
+      expect(residual).toBeLessThanOrEqual(1e-8)
+    },
+    timeout,
+  )
+
   it(
     "solves a compact 3D analytical solid without direct sparse factorization",
     async () => {
