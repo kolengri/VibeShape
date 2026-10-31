@@ -1,5 +1,9 @@
 # Generative Design
 
+To create a starting solid from mounting points without an existing source Part, use
+[Connect Mounts](connect-mounts.md). It constructs geometric connections without inferring loads
+or claiming structural optimization.
+
 The registered **Generative Design** toolbar and command-palette action explores a bounded set of
 structural alternatives inside one exact single-solid Part. It reuses the graphical support, load,
 preservation, material, resolution, preview, and Apply workflow described in

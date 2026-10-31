@@ -23,6 +23,7 @@ import {
   readUnionFeatureParameters,
 } from "./part-design-body-combination"
 import { readChamferFeatureParametersV3 } from "./part-design-chamfer"
+import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import { readFdmFeatureParameters } from "./part-design-fdm"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { importedBodyOutputRole, readImportedFeatureParameters } from "./part-design-import"
@@ -80,6 +81,7 @@ const newTypes = new Set(
     loftFeatureTypeV3,
     sweepFeatureType,
     sphereFeatureType,
+    connectMountsFeatureType,
     coneFeatureType,
     torusFeatureType,
     pyramidFeatureType,

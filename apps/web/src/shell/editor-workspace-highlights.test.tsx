@@ -229,6 +229,7 @@ function WorkspaceHarness({
     beginSketchSupportReplacement: noop,
     closeTool: () => setActiveTool(null),
     completeTool: noop,
+    createConnectMounts: noop,
     createHole: noop,
     createFillet: noop,
     createChamfer: noop,

@@ -15,6 +15,11 @@ supports-allowed policies, with unsupported-area evidence in comparison.
 It remains a bounded heuristic mesh search; manufacturing-method search and CAD reconstruction
 are not implemented. Paired MCP continues to expose individual structural analyses.
 
+[Connect Mounts](connect-mounts.md) separately creates an editable exact solid from captured mounting
+points and numeric radii, using a minimum spanning tree or all-pairs connections. It is available in
+the editor and through local/paired remote MCP create/update tools; it does not infer loads,
+preserve existing mounting interfaces, or route around obstacles.
+
 - **P0 / alpha:** required to prove the core workflow.
 - **P1 / v1:** required for regular practical use.
 - **P2 / later:** expansion after the core is stable.

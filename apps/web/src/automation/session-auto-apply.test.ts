@@ -4,6 +4,7 @@ import type { DraftReviewInput } from "@vibeshape/automation-host/host"
 import { commandActorSchema, documentCommandSchema } from "@vibeshape/domain/commands"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { boxFeatureType, extrusionFeatureTypeV5 } from "@vibeshape/domain/part-design"
+import { connectMountsFeatureType } from "@vibeshape/domain/part-design-connect-mounts"
 import { mayAutoApplyCadReview } from "./session-auto-apply"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -77,6 +78,38 @@ function input(): DraftReviewInput {
 }
 
 describe("session CAD auto-apply scope", () => {
+  it("keeps Connect Mounts inside the existing actor-bound CAD grant", () => {
+    const review = input()
+    const original = review.commands[0]
+    if (original?.kind !== "org.vibeshape.feature.add") throw new Error("Missing feature.")
+    const command = documentCommandSchema.parse({
+      ...original,
+      payload: {
+        feature: {
+          ...original.payload.feature,
+          type: connectMountsFeatureType.type,
+          parameters: {
+            points: [
+              [0, 0, 0],
+              [20, 0, 0],
+            ],
+            nodeRadius: 4,
+            strutRadius: 2,
+            connectionMode: "tree",
+          },
+        },
+      },
+    })
+    const connectorReview = { ...review, commands: [command] }
+    expect(mayAutoApplyCadReview(connectorReview, actor)).toBe(true)
+    expect(mayAutoApplyCadReview(connectorReview, null)).toBe(false)
+    expect(
+      mayAutoApplyCadReview(
+        connectorReview,
+        commandActorSchema.parse({ ...actor, sessionId: id(99) }),
+      ),
+    ).toBe(false)
+  })
   it.each([
     ["org.vibeshape.feature.remove", { featureId: id(4) }],
     ["org.vibeshape.sketch.remove", { sketchId: id(4) }],

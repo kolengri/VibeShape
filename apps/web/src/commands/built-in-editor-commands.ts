@@ -43,6 +43,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     patternPart?: ((partId: PartId) => void) | undefined
     threadPart?: ((partId: PartId) => void) | undefined
     combineParts?: ((operation: "compound" | "union") => void) | undefined
+    createConnectMounts: () => void
     createFdm?: (() => void) | undefined
     createHole: () => void
     createFillet: () => void
@@ -191,6 +192,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.lightweighting,
     labelKey: "lightweighting",
     ownerModuleId: editorOwner,
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "union",
+    id: editorCommandIds.createConnectMounts,
+    labelKey: "createConnectMounts",
+    ownerModuleId: partDesignOwner,
     toolbarGroup: "model-primary",
   },
   {
@@ -1135,6 +1144,14 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: canCreateSavedSketchFeature,
     id: editorCommandIds.createSweep,
     isActive: ({ state }) => state.activePartDesignCommand === "sweep",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createConnectMounts(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createConnectMounts,
+    isActive: ({ state }) => state.activePartDesignCommand === "connect-mounts",
     isToolbarVisible: ({ state }) => state.activeSketchTool === null,
     ownerModuleId: partDesignOwner,
   },

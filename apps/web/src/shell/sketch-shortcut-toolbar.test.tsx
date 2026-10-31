@@ -14,6 +14,7 @@ const actions = {
   cancelActive: vi.fn(),
   createFillet: vi.fn(),
   createChamfer: vi.fn(),
+  createConnectMounts: vi.fn(),
   createHole: vi.fn(),
   createBox: vi.fn(),
   createCylinder: vi.fn(),

@@ -42,6 +42,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
+import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import { fdmFeatureType } from "./part-design-fdm"
 import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
@@ -500,6 +501,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     boxFeatureType,
     cylinderFeatureType,
     sphereFeatureType,
+    connectMountsFeatureType,
     coneFeatureType,
     pyramidFeatureType,
     torusFeatureType,

@@ -3,10 +3,12 @@ import {
   boxFeatureContentParametersSchema,
   type ChamferFeatureContentParametersV3,
   type CompoundFeatureContentParameters,
+  type ConnectMountsFeatureContentParameters,
   chamferFeatureContentParametersSchema,
   chamferFeatureContentParametersV3Schema,
   compoundFeatureContentParametersSchema,
   coneFeatureContentParametersSchema,
+  connectMountsFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   DEFAULT_SURFACE_TEXTURE_QUALITY,
   datumPlaneFeatureContentParametersSchema,
@@ -155,6 +157,7 @@ import {
 import { type BodyFaceResolver, takeResolvedBodyFace } from "./occt-body-face"
 import { ChamferV3Error, chamferOcctShapeV3, type ResolvedChamferTarget } from "./occt-chamfer-v3"
 import { createOcctCompound } from "./occt-compound"
+import { createOcctConnectMounts } from "./occt-connect-mounts"
 import { makeOcctCubicBezierEdge } from "./occt-cubic-bezier"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
 import { treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
@@ -345,6 +348,8 @@ const CYLINDER_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cylinder#1"
 const SPHERE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.sphere#1"
+const CONNECT_MOUNTS_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.connect-mounts#1"
 const CONE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cone#1"
 const PYRAMID_FEATURE_TYPE_KEY =
@@ -1278,6 +1283,7 @@ type ParsedFeature =
   | { kind: "box"; parameters: BoxContentParameters }
   | { kind: "cylinder"; parameters: CylinderContentParameters }
   | { kind: "sphere"; parameters: SphereContentParameters }
+  | { kind: "connect-mounts"; parameters: ConnectMountsFeatureContentParameters }
   | { kind: "cone"; parameters: ConeContentParameters }
   | { kind: "pyramid"; parameters: PyramidContentParameters }
   | { kind: "torus"; parameters: TorusContentParameters }
@@ -1352,6 +1358,23 @@ type FeatureParseResult =
 
 function invalidInputCardinality(message: string) {
   return featureFailure("invalid-feature-parameters", message)
+}
+
+function parseConnectMountsFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (
+    feature.inputs.length !== 0 ||
+    feature.references.length !== 0 ||
+    input.dependencies.length !== 0
+  )
+    return invalidInputCardinality("Connect Mounts cannot declare dependency inputs or references.")
+  const parsed = connectMountsFeatureContentParametersSchema.safeParse(feature.parameters)
+  return parsed.success
+    ? { ok: true, feature: { kind: "connect-mounts", parameters: parsed.data } }
+    : featureFailure(
+        "invalid-feature-parameters",
+        parsed.error.issues[0]?.message ?? "Invalid mount connector parameters.",
+      )
 }
 
 function parseRadialPrimitiveParameters(
@@ -2517,6 +2540,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [CHAMFER_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "chamfer")],
   [FILLET_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "fillet")],
   [CHAMFER_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "chamfer")],
+  [CONNECT_MOUNTS_FEATURE_TYPE_KEY, parseConnectMountsFeature],
   [BOX_FEATURE_TYPE_KEY, parseBoxFeature],
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [SPHERE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "sphere")],
@@ -3080,6 +3104,8 @@ function createFeatureShape(
 ) {
   if (isPrimitiveFeature(feature)) return createPrimitiveFeatureShape(opencascade, feature)
   switch (feature.kind) {
+    case "connect-mounts":
+      return createOcctConnectMounts(opencascade, feature.parameters)
     case "fdm":
       return createOcctFdmFeature(opencascade, feature.parameters, dependencyShapes[0])
     case "datum-plane":

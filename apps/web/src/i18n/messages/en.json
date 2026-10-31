@@ -754,6 +754,10 @@
         "pressPull": {
           "label": "Press Pull",
           "keywords": "offset face|push|pull|extend|cut|planar face"
+        },
+        "createConnectMounts": {
+          "label": "Connect Mounts",
+          "keywords": "mounting points|connector|struts|nodes|bracket|tree"
         }
       }
     },
@@ -4233,6 +4237,39 @@
         "nylon-natural": "Nylon — Natural"
       },
       "close": "Close"
+    },
+    "connectMounts": {
+      "title": "Connect Mounts",
+      "editTitle": "Edit Connect Mounts",
+      "description": "Connect 2–16 mounting points with sphere nodes and straight struts. Add holes and clearance cuts afterward.",
+      "featureLabel": "Connect Mounts {number}",
+      "cancel": "Cancel",
+      "create": "Create connector",
+      "update": "Update connector",
+      "parameters": "Connector parameters",
+      "pointLabel": "Point {number}",
+      "coordinateLabel": "Point {number} {axis}",
+      "addPoint": "Add point",
+      "removePoint": "Remove point {number}",
+      "nodeRadius": "Node radius",
+      "strutRadius": "Strut radius",
+      "connectionMode": "Connections",
+      "tree": "Shortest tree",
+      "treeDescription": "Connect all points with a minimum-length tree.",
+      "complete": "All pairs",
+      "completeDescription": "Connect every pair of points.",
+      "lengthDescription": "Use the project length unit, a unit literal, or a committed #variable. Coordinates resolve to model millimeters.",
+      "radiusDescription": "Use a radius from 0.001 to 100000 mm. Strut radius must not exceed node radius.",
+      "coordinateSnapshot": "Point coordinates are snapshots. All values, including radii, save as evaluated millimeters. Later face or #variable edits do not update them.",
+      "modelPointLabel": "Copy model center to point {number}",
+      "modelPointPlaceholder": "Choose a face center",
+      "faceCenter": "{body} · Face {number} center",
+      "invalidExpression": "Enter a valid length expression.",
+      "invalidDimension": "Use a length value.",
+      "invalidRange": "Keep coordinates within ±100000 mm and radii from 0.001 to 100000 mm. Strut radius must not exceed node radius.",
+      "validationSummary": "Use 2–16 points at least 0.001 mm apart. Keep nodes inside ±100000 mm and use a strut radius no larger than the node radius.",
+      "staleRevision": "The project changed. Reopen Connect Mounts and try again.",
+      "saveFailed": "The connector could not be saved. Your parameters are preserved."
     }
   }
 }

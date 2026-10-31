@@ -1,5 +1,6 @@
 export * from "./assembly-export"
 export * from "./assembly-inspection"
+export * from "./connect-mounts"
 export * from "./document-worker"
 export * from "./fdm"
 export * from "./geometry-worker"

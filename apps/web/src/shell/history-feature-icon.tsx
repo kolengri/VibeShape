@@ -28,6 +28,7 @@ const featureIcons: Readonly<Record<string, EditorCommandIcon>> = {
   "org.vibeshape.feature.part-design.shell": "shell",
   "org.vibeshape.feature.part-design.thread": "thread",
   "org.vibeshape.feature.part-design.fdm": "fdm-tools",
+  "org.vibeshape.feature.part-design.connect-mounts": "union",
 }
 
 export function HistoryFeatureIcon({ feature }: { feature: FeatureRecord }) {

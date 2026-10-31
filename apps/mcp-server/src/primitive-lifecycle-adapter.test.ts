@@ -32,6 +32,24 @@ it("advertises all registered primitives and review-bound lifecycle tools with c
       })),
     )
   cases.push(
+    ...["create_connect_mounts", "update_connect_mounts"].map((name) => ({
+      name,
+      arguments: {
+        ...base,
+        featureId: id(3),
+        suppressed: false,
+        parameters: {
+          points: [
+            [0, 0, 0],
+            [30, 0, 0],
+          ],
+          nodeRadius: 5,
+          strutRadius: 2,
+          connectionMode: "tree",
+        },
+      },
+      destructive: false,
+    })),
     { name: "remove_feature", arguments: { ...base, featureId: id(3) }, destructive: true },
     { name: "remove_sketch", arguments: { ...base, sketchId: id(3) }, destructive: true },
     {

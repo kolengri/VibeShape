@@ -9,8 +9,11 @@ import {
   sphereFeatureType,
   torusFeatureType,
 } from "@vibeshape/domain/part-design"
+import { connectMountsFeatureType } from "@vibeshape/domain/part-design-connect-mounts"
 
 const featureTypes = {
+  create_connect_mounts: connectMountsFeatureType.type,
+  update_connect_mounts: connectMountsFeatureType.type,
   update_box: boxFeatureType.type,
   create_cylinder: cylinderFeatureType.type,
   update_cylinder: cylinderFeatureType.type,
