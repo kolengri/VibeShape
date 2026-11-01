@@ -34,12 +34,46 @@ export const variableExpressionSchema = z
   .max(256)
   .refine((expression) => expression.trim() === expression, "Expressions must be normalized.")
 
+export const variableCustomizerSchema = z
+  .object({
+    dimension: z.enum(["length", "angle", "scalar"]),
+    group: z.string().trim().max(80).default(""),
+    min: z.number().finite(),
+    max: z.number().finite(),
+    step: z.number().finite().positive(),
+    configurations: z.record(z.string().trim().min(1).max(80), z.number().finite()).default({}),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.min >= value.max)
+      context.addIssue({
+        code: "custom",
+        path: ["max"],
+        message: "The maximum must exceed the minimum.",
+      })
+    if (Object.keys(value.configurations).length > 64)
+      context.addIssue({
+        code: "custom",
+        path: ["configurations"],
+        message: "At most 64 configurations are supported.",
+      })
+    for (const [name, number] of Object.entries(value.configurations)) {
+      if (number < value.min || number > value.max)
+        context.addIssue({
+          code: "custom",
+          path: ["configurations", name],
+          message: "The configuration is outside the slider range.",
+        })
+    }
+  })
+
 export const variableDefinitionSchema = z
   .object({
     schemaVersion: z.literal(0),
     id: variableIdSchema,
     name: variableNameSchema,
     expression: variableExpressionSchema,
+    customizer: variableCustomizerSchema.optional(),
   })
   .strict()
 
@@ -769,9 +803,42 @@ export function evaluateVariableDefinitions(input: unknown): VariableEvaluationR
     : failure("invalid-expression-syntax", "The variable definitions are invalid.")
 }
 
+function validateCustomizerDefinition(
+  definition: VariableDefinition,
+  value: ExpressionValue | undefined,
+  index: number,
+  context: z.RefinementCtx,
+) {
+  if (!definition.customizer || !value) return
+  if (value.value < definition.customizer.min || value.value > definition.customizer.max) {
+    context.addIssue({
+      code: "custom",
+      path: [index, "customizer"],
+      message: "The current variable value is outside its customizer range.",
+    })
+  }
+  if (value.dimension !== definition.customizer.dimension) {
+    context.addIssue({
+      code: "custom",
+      path: [index, "customizer"],
+      message: "The customizer dimension must match the variable.",
+    })
+  }
+}
+
 export const variableDefinitionsSchema = structuralVariableDefinitionsSchema.superRefine(
   (definitions, context) => {
     const result = evaluateParsedVariableDefinitions(definitions)
+    if (result.ok) {
+      for (const [index, definition] of definitions.entries()) {
+        validateCustomizerDefinition(
+          definition,
+          result.valuesById.get(definition.id)?.value,
+          index,
+          context,
+        )
+      }
+    }
     if (!result.ok) {
       const index = result.diagnostic.variableName
         ? definitions.findIndex(({ name }) => name === result.diagnostic.variableName)

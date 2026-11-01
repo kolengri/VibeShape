@@ -40,6 +40,7 @@ import {
   sourceImportInspectionSchema,
 } from "@vibeshape/protocol"
 import { z } from "zod"
+import { f3dCylinderMatches } from "../features/import/f3d-authoring"
 import {
   createImportTransaction,
   type ImportDocumentContext,
@@ -453,19 +454,17 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
       let record: Upload | null = null
       try {
         const prepared = structuredClone(request.prepared)
+        const source = preparedUploadSource(prepared)
         const descriptor = preparedImportDescriptorSchema.parse({
           uploadId: configuration.createId(),
           documentId: configuration.documentId,
           baseRevision: context.revision,
           uploadVersion: 0,
           filename: prepared.filename,
-          byteLength: prepared.bytes.byteLength,
+          byteLength: source.bytes.byteLength,
           sourceUnit: request.sourceUnit,
-          format:
-            prepared.representation === "exact-solid"
-              ? prepared.source.format
-              : prepared.input.format,
-          receivedBytes: prepared.bytes.byteLength,
+          format: source.format,
+          receivedBytes: source.bytes.byteLength,
           sha256: null,
           status: "uploading",
           expiresAt: new Date(now() + IMPORT_UPLOAD_TTL_MS).toISOString(),
@@ -475,7 +474,7 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
         record = {
           actor: authorized.value,
           descriptor,
-          bytes: prepared.bytes,
+          bytes: source.bytes,
           label: request.label,
           captured: null,
           prepared,
@@ -522,13 +521,22 @@ export function createImportUploadSession(configuration: ImportSessionConfigurat
   }
 }
 
+function preparedUploadSource(prepared: PreparedImportSource) {
+  if (prepared.representation === "triangle-mesh")
+    return { format: prepared.input.format, bytes: prepared.bytes }
+  if (prepared.f3d && prepared.originalBytes)
+    return { format: "f3d" as const, bytes: prepared.originalBytes }
+  return { format: prepared.source.format, bytes: prepared.bytes }
+}
+
 function readyUploadDescriptor(record: Upload, prepared: PreparedImportSource) {
   const digest =
     prepared.representation === "exact-solid" ? prepared.source.digest : prepared.digest
   const schema = record.prepared ? preparedImportDescriptorSchema : importUploadDescriptorSchema
   return schema.parse({
     ...record.descriptor,
-    sha256: digest,
+    sha256:
+      prepared.representation === "exact-solid" && prepared.f3d ? prepared.originalDigest : digest,
     status: "ready",
     uploadVersion: record.descriptor.uploadVersion + 1,
   })
@@ -559,7 +567,14 @@ function capturedImportManifest(transaction: Transaction) {
     throw new Error("The captured import asset is unavailable.")
   const outputs = asset.payload.assets[0]?.outputs
   if (!outputs) throw new Error("Captured import outputs are unavailable.")
-  return { featureId: feature.payload.feature.id, outputs }
+  return {
+    featureId: feature.payload.feature.id,
+    outputs,
+    outputRoles:
+      feature.payload.feature.type.typeId === "org.vibeshape.feature.part-design.extrusion"
+        ? ["result"]
+        : null,
+  }
 }
 
 function inspectionView(
@@ -569,7 +584,7 @@ function inspectionView(
   transaction: Transaction,
   preparedLocally = false,
 ) {
-  const { featureId, outputs } = capturedImportManifest(transaction)
+  const { featureId, outputs, outputRoles } = capturedImportManifest(transaction)
   return (preparedLocally ? preparedImportInspectionSchema : importUploadInspectionSchema).parse({
     upload,
     featureId,
@@ -579,18 +594,35 @@ function inspectionView(
         ? prepared.source.normalization
         : meshImportInspectionSchema.parse(inspection).normalization,
     warnings: "warnings" in inspection ? inspection.warnings : [],
-    outputs: inspectionOutputViews(inspection, outputs),
+    outputs: inspectionOutputViews(inspection, outputs, outputRoles),
+    ...(prepared.representation === "exact-solid" && prepared.f3d
+      ? {
+          f3d: {
+            report: prepared.f3d.report,
+            editableExtrusion: f3dCylinderMatches(
+              prepared.f3d,
+              sourceImportInspectionSchema.parse(inspection),
+            ),
+          },
+        }
+      : {}),
   })
 }
 
-function inspectionOutputViews(inspection: Inspection, outputIds: readonly string[]) {
+function inspectionOutputViews(
+  inspection: Inspection,
+  outputIds: readonly string[],
+  outputRoles: string[] | null,
+) {
   const exact = "unitEvidence" in inspection
   return inspection.outputs.map((output, index) => {
     const outputId = outputIds[index]
     if (!outputId) throw new Error("The captured output manifest is incomplete.")
     const shape = "signature" in output ? output.signature : output.shape
     return {
-      outputRole: exact ? importedBodyOutputRole(outputId) : meshImportOutputRole(outputId),
+      outputRole:
+        outputRoles?.[index] ??
+        (exact ? importedBodyOutputRole(outputId) : meshImportOutputRole(outputId)),
       bounds: shape.bounds,
       volumeMm3: exact ? shape.volume : null,
       surfaceAreaMm2: "area" in shape ? shape.area : shape.surfaceArea,

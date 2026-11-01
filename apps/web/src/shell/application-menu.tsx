@@ -37,6 +37,7 @@ import {
 } from "../document/document-controller"
 import { DocumentRenameDialog, projectRenameAvailable } from "../document/document-rename-dialog"
 import { useProjectBackup } from "../document/use-project-backup"
+import { DesignRecipeDialog } from "../features/design-recipes/design-recipe-dialog"
 import { useReportApplicationError } from "./application-notices"
 import { ApplicationWordmark } from "./application-wordmark"
 import { FaqDialog } from "./faq-dialog"
@@ -52,6 +53,7 @@ type MenuDialog =
   | "planar-import"
   | "library"
   | "extensions"
+  | "recipes"
 
 export type ApplicationMenuDialogProps = {
   dialog: MenuDialog | null
@@ -105,6 +107,26 @@ function useProjectNavigation(failureMessage: string, loadingMessage: string) {
     }
   }
   return { navigateProjects, navigating, error: centralized ? null : message }
+}
+
+function ScriptsMenuItem({
+  controller,
+  onSelect,
+}: {
+  controller: DocumentControllerState
+  onSelect: () => void
+}) {
+  const t = useTranslations("app.shell.applicationMenu")
+  return (
+    <DropdownMenuItem
+      aria-haspopup="dialog"
+      disabled={controller.status !== "ready" || controller.report === null}
+      onSelect={onSelect}
+    >
+      <CommandIcon aria-hidden="true" />
+      {t("scriptsAndMacros")}
+    </DropdownMenuItem>
+  )
 }
 
 function ApplicationProjectMenu({
@@ -201,6 +223,7 @@ function ApplicationProjectMenu({
           {t("export")}
         </DropdownMenuItem>
       )}
+      <ScriptsMenuItem controller={controller} onSelect={() => launchDialog("recipes")} />
     </DropdownMenuGroup>
   )
 }
@@ -288,6 +311,14 @@ function ApplicationMenuDialogs({
 }) {
   return (
     <>
+      {editor && (
+        <DesignRecipeDialog
+          controller={controller}
+          open={dialog === "recipes"}
+          onOpenChange={onOpenChange}
+          onCloseAutoFocus={onCloseAutoFocus}
+        />
+      )}
       {dialog === "rename" && (
         <DocumentRenameDialog
           controller={controller}

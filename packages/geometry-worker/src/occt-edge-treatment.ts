@@ -1,6 +1,23 @@
+import { filletFeatureContentParametersSchema } from "@vibeshape/protocol"
 import type { Edge, Shape3D } from "replicad"
 import type { ChFi3d_FilletShape, OpenCascadeInstance } from "replicad-opencascadejs"
+import { inspectOcctBody } from "./occt-body-validation"
 import { adoptOcctShape, castOcctShape } from "./occt-cast"
+
+export class FilletBuildError extends Error {
+  constructor(
+    message: string,
+    readonly suggestedRadius?: number,
+  ) {
+    super(message)
+  }
+}
+
+class FilletKernelFailure extends Error {
+  constructor(readonly noContours = false) {
+    super("OCCT could not complete the requested fillet.")
+  }
+}
 
 export function treatAllOcctEdges(
   opencascade: OpenCascadeInstance,
@@ -12,6 +29,79 @@ export function treatAllOcctEdges(
 }
 
 function treatOcctEdges(
+  opencascade: OpenCascadeInstance,
+  source: Shape3D,
+  operation: "fillet" | "chamfer",
+  size: number,
+  selectedEdgeKeys?: readonly number[],
+): Shape3D {
+  if (operation === "chamfer")
+    return buildOcctEdgeTreatment(opencascade, source, operation, size, selectedEdgeKeys)
+  const build = (radius: number) => {
+    const result = buildOcctEdgeTreatment(opencascade, source, operation, radius, selectedEdgeKeys)
+    try {
+      const metrics = inspectOcctBody(opencascade, result)
+      if (
+        !metrics.valid ||
+        metrics.solidCount !== 1 ||
+        !Number.isFinite(metrics.volume) ||
+        metrics.volume <= 0
+      )
+        throw new FilletKernelFailure()
+      return result
+    } catch (error) {
+      result.delete()
+      throw error
+    }
+  }
+  try {
+    return build(size)
+  } catch (error) {
+    if (!(error instanceof FilletKernelFailure)) throw error
+    return diagnoseFilletFailure(error, size, build)
+  }
+}
+
+function diagnoseFilletFailure(
+  error: FilletKernelFailure,
+  size: number,
+  build: (radius: number) => Shape3D,
+): never {
+  if (error.noContours)
+    throw new FilletBuildError(
+      "Fillet has no eligible sharp edge contours. Select sharp edges between adjacent faces; seam, smooth, or degenerate edges may not support a fillet.",
+    )
+  const radius = findWorkingFilletRadius(size, build)
+  if (radius !== undefined)
+    throw new FilletBuildError(
+      `Fillet could not be built at radius ${size} mm: the edge contours or their intersections could not be completed. Radius ${radius} mm built a valid single solid for the same edge scope. Try that radius explicitly, or select fewer edges. This tested radius is not a maximum.`,
+      radius,
+    )
+  throw new FilletBuildError(
+    `Fillet could not be built at radius ${size} mm: the edge contours or their intersections could not be completed. Bounded smaller-radius checks found no valid single solid. Inspect adjacent faces, choose fewer sharp edges, or try another radius.`,
+  )
+}
+
+function findWorkingFilletRadius(size: number, build: (radius: number) => Shape3D) {
+  // Disposable diagnostics never substitute geometry for the requested radius.
+  // The worker's existing termination path can still interrupt a native build.
+  for (const factor of [0.5, 0.25, 0.125, 0.0625]) {
+    const radius = size * factor
+    if (!filletFeatureContentParametersSchema.safeParse({ radius }).success) break
+    let probe: Shape3D
+    try {
+      probe = build(radius)
+    } catch (error) {
+      if (!(error instanceof FilletKernelFailure)) break
+      continue
+    }
+    probe.delete()
+    return radius
+  }
+  return undefined
+}
+
+function buildOcctEdgeTreatment(
   opencascade: OpenCascadeInstance,
   source: Shape3D,
   operation: "fillet" | "chamfer",
@@ -33,8 +123,17 @@ function treatOcctEdges(
       }
       const progress = new opencascade.Message_ProgressRange_1()
       try {
-        builder.Build(progress)
-        if (!builder.IsDone()) throw new Error("OCCT could not build the requested edge treatment.")
+        try {
+          if (operation === "fillet" && builder.NbContours() === 0)
+            throw new FilletKernelFailure(true)
+          builder.Build(progress)
+          if (!builder.IsDone())
+            throw new Error("OCCT could not build the requested edge treatment.")
+        } catch (error) {
+          if (error instanceof FilletKernelFailure) throw error
+          if (operation === "fillet") throw new FilletKernelFailure()
+          throw error
+        }
         return adoptOcctShape(builder.Shape(), castOcctShape)
       } finally {
         progress.delete()

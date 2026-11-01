@@ -10,6 +10,7 @@ import { bounds, meshNormals, meshPoints, type Point, rotate, sub } from "./mesh
 
 export * from "./build-volume"
 export * from "./lay-flat"
+export * from "./readiness"
 
 /** Derive a bounded print copy. Never changes design coordinates or semantic history. */
 export function preparePrintMeshes(raw: PrintPreparationInput): PrintPreparationResult {

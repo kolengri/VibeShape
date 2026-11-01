@@ -142,6 +142,8 @@
 | [0130](0130-default-desktop-external-mcp-access.md) | Accepted | Default authenticated desktop external project access with manual Apply and persistent Stop |
 | [0131](0131-exact-face-signature-resolution.md) | Accepted | Identical face signatures resolve within authoritative scope before approximate ranking |
 
+| [0146](0146-isolated-design-recipes-and-macros.md) | Accepted | Isolated TypeScript recipe execution, identity-based macros, atomic replay and bounded read-only export |
+
 See also [ADR-0132: Current planar face sketch support](0132-current-planar-face-sketch-support.md).
 See also [ADR-0133: Tessellation-independent lightweighting inputs](0133-lightweighting-mesh-density.md).
 See also [ADR-0135: CAD execution without default deadlines](0135-cad-execution-without-default-deadlines.md).
@@ -165,3 +167,9 @@ When a decision changes, do not rewrite its ADR retroactively. Create a new reco
 | [0140](0140-automatic-print-topology-optimization.md) | Accepted with reduced scope | Automatic print setup, compound traction patterns and per-case retained performance |
 | [0141](0141-exact-preserved-print-interfaces.md) | Accepted | Exact preserved print interfaces, active-cache reconstruction and aligned final reanalysis |
 | [0142](0142-exact-print-optimization-mcp.md) | Accepted | Exact automatic FDM optimization through paired MCP tools and existing publication authority |
+
+
+| [0143](0143-exact-mount-connection-feature.md) | Accepted | Exact editable mounting-point connections through CAD and MCP |
+| [0144](0144-variable-customizer.md) | Accepted | Portable variable customizers and configurations |
+| [0145](0145-bounded-f3d-source-import.md) | Accepted with reduced scope | Bounded F3D import with conservative editable mapping and exact fallback review |
+| [0146](0146-isolated-design-recipes-and-macros.md) | Accepted | Isolated TypeScript recipes and identity-based macros |

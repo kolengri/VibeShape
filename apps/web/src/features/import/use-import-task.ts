@@ -115,7 +115,7 @@ export function useImportTask({
     }
   }
   const format = file ? importFormat(file.name) : null
-  const requiresUnits = format !== "3mf"
+  const requiresUnits = format !== "3mf" && format !== "f3d"
   const actionEnabled = !disabled && activity === "idle"
   const canInspect = actionEnabled && hasImportSourceUnitIntent(file, unit)
   const inspect = async () => {

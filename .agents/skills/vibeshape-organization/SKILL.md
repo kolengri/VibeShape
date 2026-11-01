@@ -69,3 +69,13 @@ These navigation tools share the same review and correlation contract over local
 In the visible editor, objects live in the left browser and ordered features live in the bottom History timeline. Enable **Details** to expose source links, visibility, and dependency summaries; hover or focus a feature source link to preview its sketch profile. Clicking it locates and opens the linked sketch through the ordinary History action, including its edit-point rollback and draft guards. Use Finish sketch or Cancel to leave that editor before unrelated work. This UI navigation does not add an MCP source-link tool.
 
 **Find in browser** in an available terminal feature's actions menu selects and reveals its resulting part/body, expanding a collapsed browser or object group. It does not enter the feature editor. Compact History preserves repair badges and the edit-point marker; use its context menu for existing insertion actions. These presentation changes add no MCP tools or rollback authority. Use the named `move_history_item` contract above for supported semantic reordering.
+
+## Parameter customizers
+
+Use the ordinary variable-table tools to preserve or edit optional `customizer` metadata: `dimension`
+(`length`, `angle`, `scalar`), `group`, ordered finite `min`/`max`, positive `step`, and up to 64
+`configurations` mapping names to canonical numeric values (mm, radians, scalar). Exposing variables
+and applying named configurations uses the same owned draft, revision, preview, review and commit
+path as `replace_variable_table`. Keep stable IDs, unexposed expressions and unrelated metadata. A
+configuration must cover every exposed variable; applying it replaces exposed expressions with
+literals while dependent expressions stay connected. See [Customizer](https://github.com/kolengri/VibeShape/blob/main/docs/product/customizer.md).

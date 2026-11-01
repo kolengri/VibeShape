@@ -111,7 +111,7 @@ function failedPreview(candidate: FeatureRecord, error: unknown): FeaturePreview
     ...(error instanceof FeaturePreviewFailure && error.diagnostics.length > 0
       ? { diagnostics: error.diagnostics }
       : {}),
-    ...(readLoftFeatureParametersV3(candidate) && isError(error)
+    ...((readLoftFeatureParametersV3(candidate) || isFilletFeature(candidate)) && isError(error)
       ? { diagnostic: error.message }
       : {}),
   }
@@ -202,7 +202,8 @@ function assertCandidatePreviewSucceeded(
   const evaluation = response.evaluation.records.find(({ featureId }) => featureId === candidate.id)
   if (evaluation?.status === "succeeded") return
   const diagnostic =
-    evaluation?.status === "failed" && readLoftFeatureParametersV3(candidate)
+    evaluation?.status === "failed" &&
+    (readLoftFeatureParametersV3(candidate) || isFilletFeature(candidate))
       ? evaluation.diagnostics.find(({ values }) => typeof values.message === "string")?.values
           .message
       : null

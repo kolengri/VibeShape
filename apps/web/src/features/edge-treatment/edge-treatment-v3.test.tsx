@@ -37,6 +37,21 @@ async function pick(label = "Body A · Edge 1") {
   if (!summary.closest("details")?.open) await userEvent.click(summary)
   await userEvent.click(screen.getByRole("button", { name: label }))
 }
+
+it("shows the failed fillet's tested-radius suggestion and keeps Apply disabled", () => {
+  const message =
+    "Fillet failed at radius 40 mm. Radius 5 mm built a valid single solid; this is not a maximum."
+  const { onSave } = setup({
+    operation: "fillet",
+    previewStatus: "error",
+    previewDiagnostic: message,
+  })
+  expect(screen.getByText(message)).toBeTruthy()
+  expect((screen.getByRole("button", { name: copy.submit }) as HTMLButtonElement).disabled).toBe(
+    true,
+  )
+  expect(onSave).not.toHaveBeenCalled()
+})
 async function mode(value: "two-distances" | "distance-angle" | "equal-distance") {
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Chamfer mode" }), value)
 }

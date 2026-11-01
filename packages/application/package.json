@@ -33,7 +33,8 @@
     "./shell-opening-resolution": "./src/shell-opening-resolution.ts",
     "./model-topology-measurements": "./src/model-topology-measurements.ts",
     "./reference-frame": "./src/reference-frame.ts",
-    "./disposable-sketch-inspection": "./src/disposable-sketch-inspection.ts"
+    "./disposable-sketch-inspection": "./src/disposable-sketch-inspection.ts",
+    "./design-recipes": "./src/design-recipes.ts"
   },
   "scripts": {
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json"

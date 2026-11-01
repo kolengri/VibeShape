@@ -18,6 +18,8 @@ import { useState } from "react"
 import { type DialogOpenProps, useDialogOpen } from "../../components/use-dialog-open"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { historyCreationAfter } from "../../document/history-insertion"
+import { f3dCylinderMatches } from "./f3d-authoring"
+import { F3dImportReport } from "./f3d-import-report"
 import {
   type ImportDocumentContext,
   importSourceUnitSchema,
@@ -53,7 +55,7 @@ function ImportSourceFields({ state }: { state: ImportTaskState }) {
           id="import-source-file"
           aria-describedby="import-file-description"
           type="file"
-          accept=".step,.stp,.brep,.stl,.3mf"
+          accept=".step,.stp,.brep,.stl,.3mf,.f3d"
           onChange={(event) => state.chooseFile(event.currentTarget.files?.[0] ?? null)}
         />
       </Field>
@@ -80,14 +82,31 @@ function ImportSourceFields({ state }: { state: ImportTaskState }) {
         {t(
           state.format === "stl"
             ? "stlUnitDescription"
-            : state.format === "3mf"
-              ? "threeMfUnitDescription"
-              : "unitDescription",
+            : state.format === "f3d"
+              ? "f3dUnitDescription"
+              : state.format === "3mf"
+                ? "threeMfUnitDescription"
+                : "unitDescription",
         )}
       </p>
     </>
   )
 }
+function ImportUnitEvidence({ ready }: { ready: ReadyImport }) {
+  const t = useTranslations("app.import")
+  let message: string
+  if (ready.prepared.representation === "exact-solid" && ready.prepared.f3d)
+    message = t("f3dUnitEvidence")
+  else if ("unitEvidence" in ready.inspection) message = t("explicitUnitEvidence")
+  else if (
+    ready.prepared.representation === "triangle-mesh" &&
+    ready.prepared.input.format === "stl"
+  )
+    message = t("explicitUnitEvidence")
+  else message = t("declaredUnitEvidence", { unit: t(ready.inspection.normalization.sourceUnit) })
+  return <p className="text-xs text-muted-foreground">{message}</p>
+}
+
 function ImportInspection({
   ready,
   onReady,
@@ -103,14 +122,7 @@ function ImportInspection({
           count: ready.inspection.outputs.length,
         })}
       </p>
-      <p className="text-xs text-muted-foreground">
-        {"unitEvidence" in ready.inspection ||
-        (ready.prepared.representation === "triangle-mesh" && ready.prepared.input.format === "stl")
-          ? t("explicitUnitEvidence")
-          : t("declaredUnitEvidence", {
-              unit: t(ready.inspection.normalization.sourceUnit),
-            })}
-      </p>
+      <ImportUnitEvidence ready={ready} />
       {"warnings" in ready.inspection && (
         <>
           <p className="text-xs text-muted-foreground">{t("meshRepresentation")}</p>
@@ -120,6 +132,15 @@ function ImportInspection({
             </p>
           ))}
         </>
+      )}
+      {ready.prepared.representation === "exact-solid" && ready.prepared.f3d && (
+        <F3dImportReport
+          report={ready.prepared.f3d.report}
+          editableExtrusion={
+            "unitEvidence" in ready.inspection &&
+            f3dCylinderMatches(ready.prepared.f3d, ready.inspection)
+          }
+        />
       )}
       <ImportPreview
         inspection={ready.inspection}

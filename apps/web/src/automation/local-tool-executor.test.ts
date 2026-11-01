@@ -868,6 +868,7 @@ it("routes metadata to its typed paired port and forwards request cancellation",
     discardDraft: vi.fn(),
   }
   const metadata = {
+    exportRecipe: vi.fn().mockResolvedValue({ ok: true }),
     read: vi.fn().mockResolvedValue({ ok: true }),
     change: vi.fn().mockResolvedValue({ ok: true }),
     cancel: vi.fn(),
@@ -888,6 +889,12 @@ it("routes metadata to its typed paired port and forwards request cancellation",
   const listing = localOperationSchema.parse({ tool: "model_parts", arguments: { revision: 4 } })
   await executor.execute(listing)
   expect(metadata.read).toHaveBeenCalledWith("parts", listing.arguments)
+  const recipeExport = localOperationSchema.parse({
+    tool: "export_design_recipe",
+    arguments: { revision: 4 },
+  })
+  await executor.execute(recipeExport)
+  expect(metadata.exportRecipe).toHaveBeenCalledWith({ revision: 4 })
   const operation = localOperationSchema.parse({
     tool: "change_metadata",
     arguments: {

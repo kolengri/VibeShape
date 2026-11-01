@@ -1,6 +1,8 @@
-import type { FeatureRecord } from "@vibeshape/domain"
+import { type FeatureRecord, printFitClearance } from "@vibeshape/domain"
 import { metricThreadPresets } from "@vibeshape/domain/part-design-thread"
 import { referenceAxisSchema } from "@vibeshape/domain/reference-frame"
+import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
 import { LocalizedSearchableSelectField } from "../../components/localized-searchable-select-field"
@@ -123,6 +125,7 @@ export function ThreadForm({
   previewStatus,
   variables,
 }: Props) {
+  const fitT = useTranslations("app.printFit")
   const [advancedExpanded, setAdvancedExpanded] = useState(false)
   const [metricSize, setMetricSize] = useState("custom")
   const state = useParameterFormState(variables)
@@ -223,6 +226,8 @@ export function ThreadForm({
                       state.clearSubmissionErrors()
                       form.setFieldValue("nominalDiameter", `${preset.nominalDiameter} mm`)
                       form.setFieldValue("pitch", `${preset.pitch} mm`)
+                      if (printFitClearance(variables) !== null)
+                        form.setFieldValue("clearance", "#tolerance")
                     }}
                     options={[
                       { value: "custom", label: copy.customSize },
@@ -247,6 +252,21 @@ export function ThreadForm({
                     )}
                   </form.AppField>
                   {threadCoreFields.map(expressionField)}
+                  {printFitClearance(variables) !== null ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        state.clearSubmissionErrors()
+                        form.setFieldValue("clearance", "#tolerance")
+                      }}
+                    >
+                      {fitT("threadLink")}
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{fitT("enableHint")}</p>
+                  )}
                   <details
                     className="grid gap-2"
                     open={advancedExpanded || advancedInvalid}

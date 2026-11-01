@@ -26,3 +26,8 @@ Native OCCT/OpenCascade.js and SolveSpace licensing, source, changes, recipes an
 instructions remain in their verified corresponding-source archives. This notice inventory is
 technical distribution evidence; it does not certify completion of the separate legal-review gate
 in `docs/licensing.md`.
+
+The design-script worker uses Sucrase 3.35.1 (MIT), quickjs-emscripten-core 0.31.0 (MIT), and
+`@jitl/quickjs-wasmfile-release-sync` 0.31.0 (MIT). The latter's published `LICENSE` includes both
+quickjs-emscripten and its embedded QuickJS engine notices. The ordinary worker module inventory
+retains those texts; no debug or async QuickJS variants are required by this runtime.

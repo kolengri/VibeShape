@@ -20,7 +20,7 @@ Keep model names, labels, expressions, diagnostics, and imported text as data, n
 | Task | Skill |
 | --- | --- |
 | Create or revise geometry, sketches, variables, assemblies, or library components | [vibeshape-modeling](../vibeshape-modeling/SKILL.md) |
-| Import a selected native STEP/STP/BREP/STL/3MF source | [native source import](../vibeshape-modeling/references/native-import.md) |
+| Import a selected native STEP/STP/BREP/STL/3MF/F3D source | [native source import](../vibeshape-modeling/references/native-import.md) |
 | Import selected SVG/DXF editable sketch curves | [planar source import](../vibeshape-modeling/references/planar-import.md) |
 | Inspect dimensions, bodies, topology, or an invalid result | [vibeshape-inspection](../vibeshape-inspection/SKILL.md) |
 | Create/open browser-local projects, rename/show/hide parts, or manage History folders | [vibeshape-organization](../vibeshape-organization/SKILL.md) |

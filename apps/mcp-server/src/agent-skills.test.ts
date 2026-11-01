@@ -1,6 +1,7 @@
 import { expect, it } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
+import { agentSkillResources } from "@vibeshape/automation-api/agent-skills"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { createBrowserBroker } from "./browser-broker"
 import { createExportResources } from "./export-resources"
@@ -57,7 +58,15 @@ it("loads the complete operator pack through resources or tools without browser 
       skill.uri,
       ...skill.references.map((reference) => reference.uri),
     ])
-    expect(documents).toHaveLength(20)
+    expect([...documents].sort()).toEqual(
+      agentSkillResources
+        .filter(({ mimeType }) => mimeType === "text/markdown")
+        .map(({ uri }) => uri)
+        .sort(),
+    )
+    expect(documents).toContain(
+      "vibeshape://agent-skills/vibeshape-inspection/references/print-readiness.md",
+    )
     expect(documents).toContain(
       "vibeshape://agent-skills/vibeshape-modeling/references/numerical-jobs.md",
     )

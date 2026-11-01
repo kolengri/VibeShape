@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event"
 import {
   createLengthQuantity,
+  type FeatureRecord,
   featureIdSchema,
   featureRecordSchema,
   holeFeatureType,
@@ -12,6 +13,7 @@ import {
   sketchIdSchema,
   sketchRecordSchema,
   topoRefSchema,
+  variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import type React from "react"
@@ -165,6 +167,32 @@ async function fillValidForm() {
 }
 
 describe("HoleForm", () => {
+  it("keeps a fit diameter linked to twice the shared radial allowance", async () => {
+    const onSave = vi.fn(async (_revision: number, _feature: FeatureRecord) => ({
+      ok: true as const,
+    }))
+    renderForm({
+      onSave,
+      variables: [
+        {
+          schemaVersion: 0,
+          id: variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4899"),
+          name: "tolerance",
+          expression: "0.2 mm",
+        },
+      ],
+    })
+    const diameter = screen.getByRole<HTMLInputElement>("combobox", { name: copy.diameter })
+    expect(diameter.value).toBe("5 mm")
+    await userEvent.click(screen.getByRole("checkbox", { name: /Point 1/ }))
+    await userEvent.click(screen.getByRole("button", { name: "Fit Ø4" }))
+    expect(diameter.value).toBe("4 mm + 2 * #tolerance")
+    await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+    expect(onSave.mock.calls[0]?.[1].parameters).toMatchObject({
+      diameter: { value: 4.4, source: { expression: "4 mm + 2 * #tolerance" } },
+    })
+  })
   it("replaces preview feedback while preserving hole selections and expressions until recovery", async () => {
     const view = renderForm({ previewStatus: "loading" })
     await fillValidForm()
