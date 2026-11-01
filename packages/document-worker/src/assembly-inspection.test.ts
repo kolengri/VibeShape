@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import type { AssemblyMaterializedOccurrence } from "@vibeshape/application/assembly-materialization"
+import { featureIdSchema } from "@vibeshape/domain"
+import { assemblyDefinitionIdSchema, assemblyInstanceIdSchema } from "@vibeshape/domain/assembly"
+import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import type { GeometryEngineMetadata } from "@vibeshape/protocol"
 import { vi } from "../../../tests/unit/support/bun-test"
 
@@ -23,7 +27,9 @@ const {
 } = await import("@vibeshape/domain")
 const { ReplicadGeometryEngine } = await import("@vibeshape/geometry-worker/engine")
 const { inspectAssemblyInputSchema } = await import("@vibeshape/protocol")
-const { withMaterializedAssemblyRuntime } = await import("./assembly-inspection")
+const { withMaterializedAssemblyRuntime, inspectAssemblyRuntime } = await import(
+  "./assembly-inspection"
+)
 
 const document = documentSnapshotV4Schema.parse({
   schemaVersion: 4,
@@ -266,5 +272,125 @@ describe("disposable assembly runtime ownership", () => {
     })
     expect(action).not.toHaveBeenCalled()
     expect(disposed).toHaveBeenCalledTimes(1)
+  })
+})
+
+function clearanceOccurrence(
+  instanceId: string,
+  x: number,
+  featureId: string,
+  meshOnly = false,
+): AssemblyMaterializedOccurrence {
+  const mesh = {
+    positions: new Float32Array([x, 0, 0, x + 2, 0, 0, x, 2, 0]),
+    normals: new Float32Array(9),
+    indices: new Uint32Array([0, 1, 2]),
+    triangleFaceIds: new Uint32Array([1]),
+  }
+  const bounds: AssemblyMaterializedOccurrence["bounds"] = { min: [x, 0, 0], max: [x + 2, 2, 2] }
+  return {
+    instanceId: assemblyInstanceIdSchema.parse(instanceId),
+    definitionId: assemblyDefinitionIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000000050"),
+    pinRevision: 1,
+    sourceIndex: 0,
+    selectedBody: bodyReferenceSchema.parse({ schemaVersion: 0, featureId, outputRole: "result" }),
+    representation: meshOnly ? "triangle-mesh" : "exact-solid",
+    geometryFrame: { translation: [x, 0, 0], quaternion: [0, 0, 0, 1] },
+    mesh,
+    bounds,
+    geometry: {
+      featureId: featureIdSchema.parse(featureId),
+      contentHash: "a".repeat(64),
+      outputRole: "result",
+      mesh,
+      shape: {
+        valid: true,
+        volume: 8,
+        surfaceArea: 24,
+        bounds,
+        faceCount: 6,
+        edgeCount: 12,
+        solidCount: 1,
+      },
+      topologyCandidates: [],
+    },
+  }
+}
+describe("exact clearance across document worker materialization", () => {
+  it("bypasses broad-phase separation only for requested exact distances and propagates transformed native poses", async () => {
+    const { engine, registry } = fixture()
+    const feature = "0195b5ac-b220-7a2c-8c33-000000000002"
+    const leftId = "0195b5ac-b220-7a2c-8c33-000000000060",
+      rightId = "0195b5ac-b220-7a2c-8c33-000000000061"
+    const occurrences = [
+      clearanceOccurrence(leftId, 0, feature),
+      clearanceOccurrence(rightId, 10, feature),
+    ]
+    vi.mocked(rebuildDocumentFeatures).mockImplementation(
+      async ({ document: value, generation }) => ({
+        ok: true,
+        documentId: documentSnapshotSchema.parse(value).id,
+        revision: 4,
+        generation,
+        features: [],
+        geometry: occurrences.slice(0, 1).map(({ geometry }) => ({
+          featureId: geometry.featureId,
+          contentHash: geometry.contentHash,
+          meshPolicy: input.mesh,
+          geometry: {
+            ...geometry,
+            engine: metadata,
+            cache: { brepHit: false },
+            timings: { evaluationMs: 0, tessellationMs: 0, totalMs: 0 },
+          },
+        })),
+        environment: metadata.featureContentEnvironment,
+        mesh: input.mesh,
+        evaluation: {
+          records: [],
+          dirtyFeatureIds: [],
+          evaluatedFeatureIds: [],
+          reusedFeatureIds: [],
+        },
+      }),
+    )
+    vi.mocked(materializeAssembly).mockImplementation(async (options) => {
+      await options.rebuildPinnedModel(snapshot, [])
+      return { ok: true, documentId: document.id, revision: document.revision, occurrences }
+    })
+    const measure = vi
+      .spyOn(engine, "inspectAssemblyInterference")
+      .mockResolvedValue({ volume: 0, solidCount: 0, distance: 8 })
+    const request = {
+      ...input,
+      interferencePairs: [{ leftInstanceId: leftId, rightInstanceId: rightId }],
+    }
+    expect(
+      (await inspectAssemblyRuntime(engine, registry, null, request, identity)).interference[0],
+    ).not.toHaveProperty("distance")
+    expect(measure).not.toHaveBeenCalled()
+    const result = await inspectAssemblyRuntime(
+      engine,
+      registry,
+      null,
+      { ...request, measureDistance: true },
+      identity,
+    )
+    expect(result.interference[0]).toMatchObject({ distance: 8, volume: 0, status: "clear" })
+    expect(measure.mock.calls[0]?.[1][0]?.pose.translation).toEqual([10, 0, 0])
+    expect(measure.mock.calls[0]?.[2]).toBe(true)
+    occurrences[1] = clearanceOccurrence(rightId, 10, feature, true)
+    expect(
+      (
+        await inspectAssemblyRuntime(
+          engine,
+          registry,
+          null,
+          { ...request, measureDistance: true },
+          identity,
+        )
+      ).interference[0],
+    ).toMatchObject({ status: "unsupported-mesh" })
+    expect(measure).toHaveBeenCalledTimes(1)
   })
 })

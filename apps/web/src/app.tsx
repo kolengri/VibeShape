@@ -76,6 +76,7 @@ import {
   modifyingSolidTargetFeatures,
 } from "./features/part-design/part-design-tool"
 import { initialProfileFeatureSelection } from "./features/part-design/profile-feature-selection"
+import { PictureRenderDialog } from "./features/picture-render/picture-render-dialog"
 import { pressPullToolFromSelection } from "./features/press-pull/press-pull-selection"
 import {
   compatibleSketchConstraintToolsForSelection,
@@ -768,6 +769,7 @@ function resolveEditorApplicationCommands(
   dialogs: {
     openShortcutHelp: () => void
     openSketchText: () => void
+    renderPicture: () => void
     lightweighting: () => void
     quickLightweighting: () => void
     generativeDesign: () => void
@@ -1090,6 +1092,39 @@ function assemblySwitchDisabled(
   )
 }
 
+function usePictureDialog(
+  paletteOpen: boolean,
+  paletteReturnFocus: { current: HTMLElement | null },
+  modelAvailable: boolean,
+) {
+  const [pictureOpen, setPictureOpen] = useState(false)
+  const pictureReturnFocus = useRef<HTMLElement | null>(null)
+  const showPicture = () => {
+    pictureReturnFocus.current = paletteOpen
+      ? paletteReturnFocus.current
+      : document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+    setPictureOpen(true)
+  }
+  return {
+    open: pictureOpen && modelAvailable,
+    setOpen: setPictureOpen,
+    show: showPicture,
+    restoreFocus: (event: Event) => {
+      event.preventDefault()
+      pictureReturnFocus.current?.focus()
+    },
+  }
+}
+
+function pictureRenderMenuAction(commands: readonly ResolvedEditorCommand[], show: () => void) {
+  return commands.find(({ descriptor }) => descriptor.id === editorCommandIds.renderPicture)
+    ?.eligibility.enabled
+    ? show
+    : undefined
+}
+
 function EditorApplication({
   controller,
 }: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
@@ -1107,6 +1142,11 @@ function EditorApplication({
     assemblyActive: assemblyMode.active,
   })
   const commandPaletteFocus = useCommandPaletteFocus(sessionActions.setCommandPaletteOpen)
+  const picture = usePictureDialog(
+    session.commandPaletteOpen,
+    commandPaletteFocus.returnFocusRef,
+    !assemblyMode.active,
+  )
   const shortcutHelp = useShortcutHelp()
   const sketchShortcutToolbarAvailable = isActiveSketchEditorTool(session.sketch.activeSketchTool)
   const {
@@ -1121,6 +1161,7 @@ function EditorApplication({
     sessionActions,
     workspaceActions,
     {
+      renderPicture: picture.show,
       openShortcutHelp: shortcutHelp.show,
       openSketchText: textDialog.actions.create,
       lightweighting: () => {
@@ -1177,6 +1218,7 @@ function EditorApplication({
           controller={controller}
           projectNavigation={<LocalizedProjectTabs controller={controller} />}
           hideModelExport={assemblyMode.active}
+          onRenderPicture={pictureRenderMenuAction(modelCommands, picture.show)}
           onOpenShortcutHelp={shortcutHelp.show}
           onOpenCommandPalette={(returnFocusTarget) =>
             commandPaletteFocus.setOpen(true, returnFocusTarget)
@@ -1189,6 +1231,11 @@ function EditorApplication({
             onChange={assemblyMode.onChange}
           />
         </ApplicationBar>
+        <PictureRenderDialog
+          open={picture.open}
+          onOpenChange={picture.setOpen}
+          onCloseAutoFocus={picture.restoreFocus}
+        />
         <ShortcutHelpDialog
           commands={commands}
           open={shortcutHelp.open}

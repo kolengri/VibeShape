@@ -45,7 +45,8 @@
     "./surface-texture-result-context": "./src/surface-texture-result-context.ts",
     "./lightweighting-tools": "./src/lightweighting-tools.ts",
     "./print-optimization-tools": "./src/print-optimization-tools.ts",
-    "./quick-lightweighting-tools": "./src/quick-lightweighting-tools.ts"
+    "./quick-lightweighting-tools": "./src/quick-lightweighting-tools.ts",
+    "./derived-reads": "./src/derived-reads.ts"
   },
   "scripts": {
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json"

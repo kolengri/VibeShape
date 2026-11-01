@@ -69,12 +69,30 @@ function materialMetrics(occt: OpenCascadeInstance, shape: TopoDS_Shape) {
   }
 }
 
+function nearestDistance(occt: OpenCascadeInstance, left: TopoDS_Shape, right: TopoDS_Shape) {
+  const distance = new occt.BRepExtrema_DistShapeShape_1()
+  const progress = new occt.Message_ProgressRange_1()
+  try {
+    distance.SetDeflection(1e-9)
+    distance.LoadS1(left)
+    distance.LoadS2(right)
+    distance.Perform(progress)
+    if (!distance.IsDone() || !Number.isFinite(distance.Value()) || distance.Value() < 0)
+      throw new Error("Exact assembly distance did not complete.")
+    return distance.Value()
+  } finally {
+    progress.delete()
+    distance.delete()
+  }
+}
+
 /** Unions each occurrence before Common, avoiding duplicate material counts for overlapping pins. */
 export function measureOcctInterference(
   occt: OpenCascadeInstance,
   left: readonly NativeInterferenceSource[],
   right: readonly NativeInterferenceSource[],
-): Pick<AssemblyInspection["interference"][number], "volume" | "solidCount"> {
+  measureDistance = false,
+): Pick<AssemblyInspection["interference"][number], "volume" | "solidCount" | "distance"> {
   if (!left.length || !right.length || left.length > 16 || right.length > 16)
     throw new Error(
       "Exact interference supports between one and sixteen source solids per instance.",
@@ -94,10 +112,15 @@ export function measureOcctInterference(
     return result
   }
   try {
-    return materialMetrics(
+    const leftShape = occurrence(left)
+    const rightShape = occurrence(right)
+    const metrics = materialMetrics(
       occt,
-      own(booleanResult(occt, [occurrence(left)], [occurrence(right)], "common")),
+      own(booleanResult(occt, [leftShape], [rightShape], "common")),
     )
+    return measureDistance
+      ? { ...metrics, distance: nearestDistance(occt, leftShape, rightShape) }
+      : metrics
   } finally {
     for (const shape of owned.reverse()) shape.delete()
   }

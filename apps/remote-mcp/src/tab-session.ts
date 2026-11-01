@@ -4,6 +4,7 @@ import {
   binaryExportResultMatches,
   isLocalBinaryExport,
 } from "@vibeshape/automation-api/binary-exports"
+import { derivedReadResultContextMatches } from "@vibeshape/automation-api/derived-reads"
 import { automationDraftInspectionViewSchema } from "@vibeshape/automation-api/draft-inspection"
 import { draftInspectionMatches } from "@vibeshape/automation-api/draft-inspection-result"
 import { historyMoveResultContextMatches } from "@vibeshape/automation-api/history-move-tools"
@@ -85,8 +86,10 @@ function authoredResultContextMatches(
   operation: LocalOperation,
   result: { ok: boolean; value?: unknown },
   documentId?: string,
+  actor?: unknown,
 ) {
   const matchers = [
+    () => derivedReadResultContextMatches(operation, result, documentId, actor),
     () => numericalJobResultContextMatches(operation, result, documentId),
     () => renderPreviewResultContextMatches(operation, result),
     () => historyResultContextMatches(operation, result),
@@ -409,7 +412,7 @@ export class TabSession extends DurableObject<RemoteEnv> {
       dependenciesResultContextMatches(command, result, operation.projectId) !== false &&
       variableUsageResultContextMatches(command, result, operation.projectId) !== false &&
       (!isProjectOperation(command) || projectResultContextMatches(command, result)) &&
-      authoredResultContextMatches(command, result, operation.projectId) &&
+      authoredResultContextMatches(command, result, operation.projectId, this.metadata?.actor) &&
       this.transferResultMatches(result) &&
       draftInspectionResultMatches(command, result)
     )
@@ -419,7 +422,10 @@ export class TabSession extends DurableObject<RemoteEnv> {
     if (!operation || !result.ok) return true
     if (isLocalImport(operation)) return importResultMatches(operation, result.value)
     if (isLocalPlanarImport(operation)) return planarImportResultMatches(operation, result.value)
-    return !isLocalBinaryExport(operation) || binaryExportResultMatches(operation, result.value)
+    return (
+      !isLocalBinaryExport(operation) ||
+      binaryExportResultMatches(operation, result.value, operation.projectId)
+    )
   }
   private async confirmResult(pending: Pending, result: unknown) {
     await this.save()

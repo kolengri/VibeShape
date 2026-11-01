@@ -10,6 +10,7 @@ import {
   binaryExportResultMatches,
   isLocalBinaryExport,
 } from "@vibeshape/automation-api/binary-exports"
+import { derivedReadResultContextMatches } from "@vibeshape/automation-api/derived-reads"
 import { recoveryResultContextMatches } from "@vibeshape/automation-api/draft-recovery"
 import {
   automationDraftCommitViewSchema,
@@ -361,6 +362,7 @@ function resultContextMatches(
   const numericalJob = numericalJobResultContextMatches(operation, result, documentId)
   if (numericalJob !== null) return numericalJob
   const context = [
+    derivedReadResultContextMatches(operation, result, documentId, actor),
     dependenciesResultContextMatches(operation, result, documentId),
     variableUsageResultContextMatches(operation, result, documentId),
     recoveryResultContextMatches(operation, result, documentId, actor),

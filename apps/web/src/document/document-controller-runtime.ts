@@ -73,6 +73,7 @@ import {
   type HistoryItemRef,
   partDesignFeatureTypeHandlers,
   partDesignModule,
+  printFitClearance,
   referenceGeometryFeatureTypeHandlers,
   referenceGeometryModule,
   type SketchConstraintId,
@@ -172,7 +173,9 @@ import { createImportAutomationSession } from "../automation/import-automation-s
 import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
 import { createBrowserLightweightingAutomationSession } from "../automation/lightweighting-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
+import { createMotionClearanceAutomationSession } from "../automation/motion-clearance-automation-session"
 import { createNumericalJobSession } from "../automation/numerical-job-session"
+import { createPictureRenderSession } from "../automation/picture-render-session"
 import { createPlanarImportAutomationSession } from "../automation/planar-import-automation-session"
 import type {
   PlanarImportReviewedCommit,
@@ -1450,7 +1453,32 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       },
       reviews,
     )
+    const motionClearance = createMotionClearanceAutomationSession({
+      documentId: capturedDocumentId,
+      isActive: sourceSessionAvailable,
+      capture: () => {
+        const snapshot = sourceSessionAvailable() ? active.authoredSnapshot : null
+        if (!snapshot || snapshot.schemaVersion < 4 || !("assembly" in snapshot)) return null
+        return {
+          documentId: snapshot.id,
+          revision: snapshot.revision,
+          assembly: snapshot.assembly,
+          defaultMinimumGap: printFitClearance(snapshot.variables) ?? 0.2,
+        }
+      },
+      preview: (changes, revision, pairs, signal) =>
+        previewAssemblyChanges(changes, revision, [], signal, { interferencePairs: pairs }),
+    })
+    const pictureRender = createPictureRenderSession({
+      documentId: capturedDocumentId,
+      capture: () =>
+        sourceSessionAvailable() && active.authoredSnapshot && state.report
+          ? { snapshot: active.snapshot, authority: active.authoredSnapshot, report: state.report }
+          : null,
+      materializeSourceAssets: materializeAutomationSourceAssets,
+    })
     const exports = createBinaryExportSession({
+      preparePicture: pictureRender.prepare,
       documentId: capturedDocumentId,
       currentRevision: () => active.snapshot.revision,
       isActive: () => currentReport() !== null,
@@ -1507,6 +1535,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         imports.cancel("stale-revision")
         planarImports.cancel("stale-revision")
         assembly.cancel("stale-revision")
+        motionClearance.cancel()
+        pictureRender.cancel()
         history.cancel("stale-revision")
         surfaceTextures.cancel("stale-revision")
         numericalJobs.cancel()
@@ -1535,6 +1565,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         () => quickLightweighting.dispose(),
         () => printOptimization.dispose(),
         () => exports.dispose(),
+        () => pictureRender.dispose(),
+        () => motionClearance.dispose(),
       ]) {
         try {
           release()
@@ -1571,6 +1603,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       quickLightweighting,
       printOptimization,
       numericalJobs,
+      motionClearance,
       exports,
       enableAutoApply: (actor: unknown) =>
         currentReport() !== null && factory.enableAutoApply(actor),
@@ -1595,6 +1628,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         quickLightweighting.cancel()
         printOptimization.cancel()
         exports.cancel()
+        pictureRender.cancel()
+        motionClearance.cancel()
       },
       dispose,
     }
@@ -2243,6 +2278,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     revision: number,
     ownedBlobs: readonly SourceAssetBlob[] = [],
     signal?: AbortSignal,
+    clearance?: {
+      interferencePairs: readonly { leftInstanceId: string; rightInstanceId: string }[]
+    },
   ) {
     try {
       if (signal?.aborted) throw new Error("Assembly preview was cancelled.")
@@ -2264,10 +2302,11 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       })
       return await inspectCapturedAssembly(
         { ...context, authority },
-        [],
+        clearance?.interferencePairs ?? [],
         ownedBlobs,
         revision,
         signal,
+        clearance !== undefined,
       )
     } catch (error) {
       return assemblyFailure(error, "Assembly preview")
@@ -2280,6 +2319,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     ownedBlobs: readonly SourceAssetBlob[] = [],
     baseRevision = context.authority.revision,
     signal?: AbortSignal,
+    measureDistance = false,
   ) {
     const { active, repository, authority } = context
     if (signal?.aborted) throw new Error("Assembly inspection was cancelled.")
@@ -2294,6 +2334,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         sourceAssets: [...sourceAssets],
         mesh: PRODUCT_MESH_POLICY,
         interferencePairs: [...pairs],
+        ...(measureDistance ? { measureDistance: true } : {}),
       },
       signal,
     )

@@ -184,7 +184,7 @@ export function useAssemblyMotion({
     reset()
     setState({ ...idle(key), error: { kind: "invalid" } })
   }
-  const preview = (value: number) => {
+  const preview = (value: number, expectedPoseDigest?: string) => {
     const active = target()
     if (!active) return
     try {
@@ -193,7 +193,7 @@ export function useAssemblyMotion({
       invalid()
       return
     }
-    return run([value], false, active)
+    return run([value], false, expectedPoseDigest ? { ...active, expectedPoseDigest } : active)
   }
   const play = (start: number, end: number, options: AssemblyPlaybackOptions = {}) => {
     const active = target()

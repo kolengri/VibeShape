@@ -1,6 +1,7 @@
 import { documentIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
 import type { LocalOperation } from "./local-tools"
+import { preparePictureRenderArgumentsSchema } from "./picture-render-arguments"
 
 export const BINARY_EXPORT_MAX_BYTES = 6 * 1024 * 1024
 export const BINARY_EXPORT_CHUNK_MAX_BYTES = 90 * 1024
@@ -11,14 +12,20 @@ const meshExportQualitySchema = z.strictObject({
   chordTolerance: z.number().finite().min(0.005).max(1),
   angularTolerance: z.number().finite().min(0.01).max(0.5),
 })
-export const binaryExportFormatSchema = z.enum(["step", "stl", "3mf", "vshape"])
+export const binaryExportFormatSchema = z.enum(["step", "stl", "3mf", "vshape", "png"])
 const descriptorFields = {
   exportId,
   documentId: documentIdSchema,
   revision: revisionSchema,
   format: binaryExportFormatSchema,
-  filename: z.string().regex(/^model\.(step|stl|3mf|vshape)$/),
-  mimeType: z.enum(["model/step", "model/stl", "model/3mf", "application/octet-stream"]),
+  filename: z.string().regex(/^model\.(step|stl|3mf|vshape|png)$/),
+  mimeType: z.enum([
+    "model/step",
+    "model/stl",
+    "model/3mf",
+    "application/octet-stream",
+    "image/png",
+  ]),
   byteLength: z.number().int().positive().max(BINARY_EXPORT_MAX_BYTES),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   expiresAt: z.iso.datetime(),
@@ -52,10 +59,11 @@ export const binaryExportChunkSchema = z
   .refine(chunkIsConsistent, "Export chunk length and next offset must match its bytes.")
 export const binaryExportDiscardSchema = z.object({ exportId, discarded: z.literal(true) }).strict()
 export const localBinaryExportInputs = {
+  prepare_picture_render: preparePictureRenderArgumentsSchema,
   prepare_model_export: z
     .object({
       revision: revisionSchema,
-      format: binaryExportFormatSchema.exclude(["vshape"]),
+      format: binaryExportFormatSchema.exclude(["vshape", "png"]),
       meshQuality: meshExportQualitySchema.optional(),
     })
     .strict()
@@ -78,6 +86,10 @@ export const localBinaryExportInputs = {
   discard_export: z.object({ exportId }).strict(),
 }
 export const localBinaryExportOperations = [
+  z.strictObject({
+    tool: z.literal("prepare_picture_render"),
+    arguments: preparePictureRenderArgumentsSchema,
+  }),
   z
     .object({
       tool: z.literal("prepare_model_export"),
@@ -111,6 +123,7 @@ export function isLocalBinaryExport(
   operation: LocalOperation,
 ): operation is LocalBinaryExportOperation {
   return (
+    operation.tool === "prepare_picture_render" ||
     operation.tool === "prepare_model_export" ||
     operation.tool === "prepare_project_backup" ||
     operation.tool === "read_export_chunk" ||
@@ -122,6 +135,14 @@ export function binaryExportResultMatches(
   value: unknown,
   documentId?: string,
 ) {
+  if (operation.tool === "prepare_picture_render") {
+    const receipt = z.object({ file: binaryExportDescriptorSchema }).parse(value)
+    return (
+      receipt.file.format === "png" &&
+      receipt.file.revision === operation.arguments.revision &&
+      (documentId === undefined || receipt.file.documentId === documentId)
+    )
+  }
   if (operation.tool === "discard_export")
     return binaryExportDiscardSchema.parse(value).exportId === operation.arguments.exportId
   if (operation.tool === "read_export_chunk") {
@@ -143,6 +164,7 @@ export function binaryExportResultMatches(
 }
 export function binaryExportMimeType(format: z.infer<typeof binaryExportFormatSchema>) {
   const types = {
+    png: "image/png",
     step: "model/step",
     stl: "model/stl",
     "3mf": "model/3mf",

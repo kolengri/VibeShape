@@ -9,6 +9,7 @@ import { useViewerPreferences } from "./viewer-preferences"
 
 type EditorApplicationMenuProps = {
   controller: DocumentControllerState
+  onRenderPicture?: (() => void) | undefined
   hideModelExport?: boolean
   blockedReason: string | null
   unitChangesBlocked: boolean

@@ -14,6 +14,7 @@ import {
   assemblyMotionCoordinates,
   assemblyMotionUnits,
 } from "./assembly-motion"
+import { AssemblyMotionClearancePanel } from "./assembly-motion-clearance-panel"
 import { assemblyMotionFailureKey } from "./assembly-motion-runner"
 import {
   AssemblyPlaybackSettings,
@@ -21,6 +22,7 @@ import {
   playbackOptions,
 } from "./assembly-motion-study-panel"
 import type { AssemblyMotionView } from "./use-assembly-motion"
+import { useMotionClearance } from "./use-motion-clearance"
 
 type MotionPanelProps = {
   joint: AssemblyJointRecord
@@ -30,6 +32,7 @@ type MotionPanelProps = {
   error: string | null
   onCoordinate: (kind: AssemblyMotionCoordinate["kind"]) => void
   onClose: () => void
+  clearanceConfig: { scope: string; instanceNames: Readonly<Record<string, string>> }
 }
 function useMotionInputs(
   coordinate: AssemblyMotionCoordinate,
@@ -84,6 +87,10 @@ function useMotionInputs(
     edit,
     reset,
     play: () => form.handleSubmit({ action: "play" }),
+    range: () => ({
+      start: parse(form.getFieldValue("start")),
+      end: parse(form.getFieldValue("end")),
+    }),
   }
 }
 type MotionInputs = ReturnType<typeof useMotionInputs>
@@ -230,6 +237,15 @@ function MotionPlayback({
     </div>
   )
 }
+function MotionFailure({ motion, error }: Pick<MotionPanelProps, "motion" | "error">) {
+  const t = useTranslations("app.assembly")
+  const clearanceT = useTranslations("motionClearance")
+  if (error) return <Alert>{t("motionStudySaveFailed")}</Alert>
+  if (motion.error?.kind === "solver" && motion.error.code === "sample-mismatch")
+    return <Alert>{clearanceT("poseMismatch")}</Alert>
+  const key = assemblyMotionFailureKey(motion.error)
+  return key ? <Alert>{t(key)}</Alert> : null
+}
 function MotionStatus({
   motion,
   error,
@@ -237,8 +253,6 @@ function MotionStatus({
   input,
 }: Pick<MotionPanelProps, "motion" | "error" | "coordinate"> & { input: MotionInputs }) {
   const t = useTranslations("app.assembly")
-  const failureKey = error ? "motionStudySaveFailed" : assemblyMotionFailureKey(motion.error)
-  const failure = failureKey ? t(failureKey) : null
   return (
     <>
       <div
@@ -257,7 +271,7 @@ function MotionStatus({
       {!coordinate.driven && (
         <p className="text-xs text-muted-foreground">{t("motionDriveNotice")}</p>
       )}
-      {failure && <Alert>{failure}</Alert>}
+      <MotionFailure motion={motion} error={error} />
     </>
   )
 }
@@ -269,11 +283,17 @@ export function AssemblyMotionPanel({
   error,
   onCoordinate,
   onClose,
+  clearanceConfig,
 }: MotionPanelProps) {
   const t = useTranslations("app.assembly")
-  const input = useMotionInputs(coordinate, motion, disabled)
+  const clearance = useMotionClearance(`${clearanceConfig.scope}:${joint.id}:${coordinate.kind}`)
+  const input = useMotionInputs(coordinate, motion, disabled || clearance.pending)
   const busy = disabled || motion.applying
+  const pending = motion.pending || motion.playing
+  const locked = busy || clearance.pending
+  const previewLocked = locked || pending
   const close = () => {
+    clearance.cancel()
     motion.reset()
     onClose()
   }
@@ -295,7 +315,7 @@ export function AssemblyMotionPanel({
           <TaskPanelLifecycleActions
             ariaLabel={t("motionTitle")}
             acceptLabel={t("apply")}
-            acceptDisabled={busy || motion.pending || motion.playing || !motion.inspection}
+            acceptDisabled={previewLocked || !motion.inspection}
             acceptLoading={motion.applying}
             onAccept={motion.apply}
             cancelLabel={t("cancel")}
@@ -309,16 +329,32 @@ export function AssemblyMotionPanel({
           coordinate={coordinate}
           input={input}
           onCoordinate={onCoordinate}
-          disabled={busy || motion.playing || motion.pending}
+          disabled={previewLocked}
         />
-        <MotionPlayback motion={motion} coordinate={coordinate} input={input} disabled={busy} />
+        <MotionPlayback motion={motion} coordinate={coordinate} input={input} disabled={locked} />
         <AssemblyPlaybackSettings
           form={input.form}
           fields="playback"
-          disabled={busy}
-          locked={motion.playing || motion.pending}
+          disabled={locked}
+          locked={pending}
         />
         <MotionStatus motion={motion} coordinate={coordinate} input={input} error={error} />
+        <AssemblyMotionClearancePanel
+          input={{
+            jointId: joint.id,
+            coordinate,
+            range: input.range,
+            display: input.display,
+            unit: input.unit.unit,
+            names: clearanceConfig.instanceNames,
+          }}
+          clearance={clearance}
+          disabled={busy || pending}
+          onStart={motion.reset}
+          onShow={(value, poseDigest) => {
+            void motion.preview(value, poseDigest)
+          }}
+        />
       </TaskPanelLayout>
     </Form>
   )

@@ -346,6 +346,19 @@ The implemented export dialog downloads successful terminal bodies as determinis
 
 Named studies retain simultaneous joint-coordinate keyframes in the ordinary project authority. The editor supports scrubbing, reverse playback, looping, relative speed, solved pose application and JSON/CSV/point-trace export. PNG sequences use a fixed camera and download as a ZIP. The first loop solves a bounded set of poses; subsequent loops reuse those exact results. MCP exposes study authoring and sampling through the existing reviewed assembly drafts. Gear/cam links, contact response, additional mate kinds and GIF encoding remain separate capabilities. See [ADR-0113](../adr/0113-assembly-motion-studies.md).
 
+## Model pictures and sampled motion clearance
+
+Render Picture provides procedural scenes, per-body finishes, current/auto-framed cameras and PNG
+output from visible committed bodies. Draft is rasterized; Standard and High use progressive
+path tracing. Settings are temporary and rendering does not edit the design. Paired automation
+prepares the same output as an actor-owned PNG artifact for chunked transfer. See
+[ADR-0147](../adr/0147-derived-model-picture-rendering.md).
+
+Joint Drive inspects exact distances and positive-volume intersections at bounded solved positions.
+Reports show the smallest sampled gap, problematic pairs, sample spacing and incomplete states.
+Show is disposable; only explicit Apply changes the saved pose. Continuous collision detection
+and contact physics remain outside scope. See [ADR-0148](../adr/0148-sampled-motion-clearance.md).
+
 ## Modules, extensions, and automation
 
 The microkernel, extension, and automation boundaries are designed during Phase 0. [Local declarative UI plugins](ui-plugins.md) now provide explicitly installed commands and isolated calculator panels under [ADR-0109](../adr/0109-local-declarative-ui-plugins.md), without document or executable package access. SPK-006 accepts only a reduced extension sandbox boundary; executable third-party support remains post-alpha until the production modeling, memory, document, and recovery gates pass. The first local MCP slice passes its pairing and real-client draft/preview/commit gate under [ADR-0043](../adr/0043-local-stdio-mcp-browser-session.md). Its original nine tools cover model information, drafts, box and all-edge fillet authoring/correction, preview, review/commit, discard, and export. [ADR-0044](../adr/0044-local-mcp-cad-authoring-and-inspection.md) adds sketch/Extrude/Revolve creation and editing plus bounded feature/sketch inspection, bringing discovery to seventeen tools. [ADR-0045](../adr/0045-local-mcp-variables-and-chamfer.md) adds variable inspection and mutation, all-edge Chamfer creation/editing, and variable expressions for treatment sizes, bringing discovery to twenty-five tools. [ADR-0046](../adr/0046-local-mcp-selected-edge-inspection.md) adds rebuild-bound edge inspection and selected Fillet/Chamfer authoring/repair, bringing discovery to twenty-six tools. [ADR-0047](../adr/0047-local-mcp-draft-inspection.md) adds owned draft tree/entity/variable/edge inspection, bringing discovery to thirty tools and enabling source creation plus selected treatment repair before one approval. Full CAD tool coverage and packaged release gates remain open.

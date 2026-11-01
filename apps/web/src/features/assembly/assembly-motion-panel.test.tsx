@@ -60,6 +60,7 @@ function Harness({ resetOnPreview = false }: { resetOnPreview?: boolean }) {
       <DocumentDisplayUnitsProvider displayUnits={{ length: "in", angle: "rad" }}>
         <AssemblyMotionPanel
           key={kind}
+          clearanceConfig={{ scope: "fixture:4", instanceNames: {} }}
           joint={joint}
           coordinate={coordinate}
           motion={motion}

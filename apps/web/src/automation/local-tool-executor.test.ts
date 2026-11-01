@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  localFailure,
   localModelInfoSchema,
   localOperationSchema,
   localToolOutputs,
@@ -1065,3 +1066,72 @@ it.each(["create_chamfer", "update_chamfer"] as const)(
     })
   },
 )
+
+it("routes both derived reads through actor-bound ports and rejects a different target project", async () => {
+  const actor = commandActorSchema.parse({
+    type: "mcp",
+    clientId: "org.example.derived",
+    sessionId: id(1),
+  })
+  const exports = {
+    execute: vi.fn(async () => localFailure("test-receipt", "Test receipt")),
+    cancel: vi.fn(),
+    dispose: vi.fn(),
+  }
+  const motionClearance = {
+    execute: vi.fn(async () => localFailure("test-receipt", "Test receipt")),
+    cancel: vi.fn(),
+    dispose: vi.fn(),
+  }
+  const host = {
+    createDraft: vi.fn(),
+    inspectDraft: vi.fn(),
+    applyCommand: vi.fn(),
+    previewDraft: vi.fn(),
+    commitDraft: vi.fn(),
+    discardDraft: vi.fn(),
+  }
+  const session = {
+    documentId: id(2),
+    revision: 4,
+    host,
+    exports,
+    motionClearance,
+    readCad: vi.fn(),
+    readInfo: () => null,
+    exportRevisionBound: vi.fn(),
+  }
+  const executor = createLocalToolExecutor(session, actor)
+  const signal = new AbortController().signal
+  const operations = [
+    localOperationSchema.parse({
+      tool: "prepare_picture_render",
+      arguments: { revision: 4 },
+      projectId: id(2),
+    }),
+    localOperationSchema.parse({
+      tool: "inspect_motion_clearance",
+      arguments: { revision: 4, jointId: id(3), coordinate: "translation", start: 0, end: 1 },
+      projectId: id(2),
+    }),
+  ]
+  for (const operation of operations) await executor.execute(operation, signal)
+  expect(exports.execute).toHaveBeenCalledWith(
+    actor,
+    { tool: operations[0]?.tool, arguments: operations[0]?.arguments },
+    signal,
+  )
+  expect(motionClearance.execute).toHaveBeenCalledWith(
+    actor,
+    { tool: operations[1]?.tool, arguments: operations[1]?.arguments },
+    signal,
+  )
+  for (const operation of operations)
+    expect(
+      await executor.execute({ ...operation, projectId: documentIdSchema.parse(id(99)) }, signal),
+    ).toMatchObject({ ok: false })
+  expect(exports.execute).toHaveBeenCalledTimes(1)
+  expect(motionClearance.execute).toHaveBeenCalledTimes(1)
+  expect(host.applyCommand).not.toHaveBeenCalled()
+  expect(host.commitDraft).not.toHaveBeenCalled()
+})

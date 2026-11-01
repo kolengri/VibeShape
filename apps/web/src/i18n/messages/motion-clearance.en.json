@@ -1,0 +1,32 @@
+{
+  "motionClearance": {
+    "title": "Sampled motion clearance",
+    "minimumGap": "Minimum gap (mm)",
+    "samples": "Clearance sample count",
+    "scope": "Checks exact solids at evenly spaced positions in the sweep range, including both endpoints. Positions between samples remain unchecked. This is not continuous collision detection or a physical simulation. Default gap uses the project's explicit print tolerance, or 0.2 mm. Limits: 64 samples, 8 instances for all pairs, 1,024 pair checks and 120 seconds.",
+    "check": "Check clearance",
+    "cancel": "Cancel clearance check",
+    "preparing": "Preparing exact clearance inspection\u2026",
+    "progress": "Solving and measuring exact solids: {completed} of {total} sampled positions complete\u2026",
+    "coverage": "{completed}/{total} sampled positions; range {start} to {end} {unit}; spacing {resolution} {unit}; required gap {minimumGap} mm.",
+    "complete": "Requested sampled positions checked. Unsampled gaps remain unchecked; no continuous minimum or collision-free claim is made.",
+    "incomplete": "Incomplete clearance inspection: {reason} Completed positions are partial evidence only.",
+    "smallest": "Smallest sampled gap: {gap} mm at {value} {unit}; {pair}.",
+    "showSmallest": "Show smallest sampled gap",
+    "position": "Sampled position: {value} {unit}",
+    "collision": "{pair}: positive-volume interference {volume} mm\u00b3; gap {gap} mm.",
+    "violation": "{pair}: gap {gap} mm is below the required minimum.",
+    "showPosition": "Show sampled position {value} {unit}",
+    "invalid-input": "Choose distinct endpoints within joint limits, 2\u201364 samples and a nonnegative minimum gap.",
+    "busy": "Another clearance check is still running.",
+    "unavailable": "Current assembly authority is unavailable.",
+    "missing-joint": "The selected joint or coordinate is unavailable.",
+    "stale": "The project, revision or frozen sources changed. Run the check again.",
+    "cancelled": "The check was cancelled.",
+    "budget": "The sample, pair or time budget was exceeded.",
+    "unsupported-mesh": "Triangle meshes do not support exact clearance inspection.",
+    "solve-failed": "A pose could not be solved or its exact sources could not be resolved.",
+    "missing-evidence": "The exact solver did not return complete distance and material evidence.",
+    "poseMismatch": "The solved preview differs from the sampled exact pose. No preview was displayed. Run the clearance check again."
+  }
+}

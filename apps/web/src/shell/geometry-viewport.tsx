@@ -69,6 +69,7 @@ import type { PartVisibilityOverrides } from "../editor-session/part-visibility"
 import { effectiveHiddenSketchIds } from "../editor-session/sketch-visibility"
 import { type ModelBodySelection, terminalModelBodies } from "../features/part-design/model-bodies"
 import type { PrimitivePlacement } from "../features/part-design/primitive-placement"
+import { pictureRepresentationIssue } from "../features/picture-render/picture-render-eligibility"
 import type {
   FeaturePreviewKind,
   FeaturePreviewState,
@@ -1831,7 +1832,17 @@ function useViewportMeshPresentation({
     () => presentedMeshes.filter((mesh) => !hiddenBodies.has(authoredBodyKey(mesh))),
     [presentedMeshes, hiddenBodies],
   )
-  return { allCommittedMeshes, allHiddenFeatureIds, hiddenBodies, meshes: visibleMeshes }
+  const pictureMeshes = useMemo(
+    () => committedMeshes.filter((mesh) => mesh.appearance !== "datum"),
+    [committedMeshes],
+  )
+  return {
+    allCommittedMeshes,
+    allHiddenFeatureIds,
+    hiddenBodies,
+    meshes: visibleMeshes,
+    pictureMeshes,
+  }
 }
 
 function useTaskMeshes(meshes: readonly ViewerMesh[], referencePicking = false) {
@@ -1926,6 +1937,7 @@ function useGeometryViewportScene(props: GeometryViewportProps) {
     allHiddenFeatureIds,
     hiddenBodies,
     meshes: sourceMeshes,
+    pictureMeshes,
   } = useViewportMeshPresentation(props)
   // Shading follows geometry/texture work so changing this preference never recomputes geometry.
   const meshes = useMemo(
@@ -2003,6 +2015,7 @@ function useGeometryViewportScene(props: GeometryViewportProps) {
   )
   return {
     allCommittedMeshes,
+    pictureMeshes,
     featurePreselections,
     featureSelections,
     featurePreselection: preselectedBody ? bodyPreselection : featurePreselection,
@@ -2204,6 +2217,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     canvasRef: interaction.canvasRef,
     modelEdges: interaction.modelEdges,
     meshes: scene.meshes,
+    pictureMeshes: scene.pictureMeshes,
     sketches: scene.sketches,
     message,
     originPlanePreselection: interaction.originPlanePreselection,
@@ -3663,6 +3677,71 @@ function useGeometryViewportHost(props: GeometryViewportProps) {
   }
 }
 
+function visibleCaptureRegion(region: HTMLElement | null) {
+  return Boolean(
+    region && region.getAttribute("aria-hidden") !== "true" && region.getClientRects().length > 0,
+  )
+}
+function pictureCaptureSnapshot(
+  controller: GeometryViewportProps["controller"],
+  region: HTMLElement | null,
+) {
+  const snapshot = controller.authoredSnapshot ?? controller.report?.snapshot
+  if (
+    !snapshot ||
+    controller.report?.snapshot.id !== snapshot.id ||
+    controller.report.snapshot.revision !== snapshot.revision ||
+    controller.status !== "ready" ||
+    !visibleCaptureRegion(region)
+  )
+    return null
+  return snapshot
+}
+function useGeometryViewportCapture(
+  props: GeometryViewportProps,
+  model: ReturnType<typeof useGeometryViewportHost>["model"],
+  sketchReferenceRegionRef: ReturnType<typeof useGeometryViewportHost>["sketchReferenceRegionRef"],
+) {
+  const { viewportRef } = model
+  const capturePort = useViewportCapture()
+  useEffect(
+    () =>
+      capturePort?.registerPicture(() => {
+        const region = sketchReferenceRegionRef.current
+        const snapshot = pictureCaptureSnapshot(props.controller, region)
+        if (!snapshot) return null
+        const unsupported = pictureRepresentationIssue(snapshot)
+        return {
+          documentId: snapshot.id,
+          revision: snapshot.revision,
+          meshes: model.pictureMeshes,
+          ...(unsupported ? { unsupported } : {}),
+          ...(viewportRef.current?.pictureCamera
+            ? { camera: viewportRef.current.pictureCamera() }
+            : {}),
+        }
+      }),
+    [
+      capturePort,
+      props.controller.status,
+      props.controller.authoredSnapshot,
+      props.controller.report?.snapshot,
+      model.pictureMeshes,
+      sketchReferenceRegionRef,
+      viewportRef,
+    ],
+  )
+  useEffect(
+    () =>
+      capturePort?.register(async () => {
+        const region = sketchReferenceRegionRef.current
+        if (!visibleCaptureRegion(region)) return null
+        return (await viewportRef.current?.captureImage?.()) ?? null
+      }),
+    [capturePort, sketchReferenceRegionRef, viewportRef],
+  )
+}
+
 function GeometryViewport(props: GeometryViewportProps) {
   const { featurePreview, idleOriginPlaneSelection, originPlaneSelection, sketchContext } = props
   const t = useTranslations("app.shell.viewport")
@@ -3683,21 +3762,7 @@ function GeometryViewport(props: GeometryViewportProps) {
     regionClassNames,
   } = useGeometryViewportHost(props)
   const { canvasRef, viewportRef } = model
-  const capturePort = useViewportCapture()
-  useEffect(
-    () =>
-      capturePort?.register(async () => {
-        const region = sketchReferenceRegionRef.current
-        if (
-          !region ||
-          region.getAttribute("aria-hidden") === "true" ||
-          region.getClientRects().length === 0
-        )
-          return null
-        return (await viewportRef.current?.captureImage?.()) ?? null
-      }),
-    [capturePort, sketchReferenceRegionRef, viewportRef],
-  )
+  useGeometryViewportCapture(props, model, sketchReferenceRegionRef)
   return (
     <section
       ref={sketchReferenceRegionRef}

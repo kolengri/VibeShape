@@ -12,6 +12,7 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for session setup. Establish the 
 | Need | Artifact |
 | --- | --- |
 | Editable VibeShape project with authored history | Native `.vshape` through `prepare_project_backup` or the editor's project-file controls |
+| Presentation image of visible committed bodies | `prepare_picture_render`; see [picture rendering](references/picture-render.md) |
 | Exact geometry for another CAD application | STEP |
 | Unit-aware mesh interchange for slicing | 3MF |
 | Mesh compatibility with an STL-only consumer | STL; explicitly state coordinates are mm |
@@ -51,8 +52,8 @@ conversation; do not save base64 text under a CAD extension. Finish with `discar
 
 Files are limited to 6 MiB and expire after five minutes without renewal. Only one prepared file
 exists per paired actor; preparing another evicts it. Disconnect or project replacement removes
-access. A later model edit does not alter detached bytes; the descriptor identifies the exported
-revision. Pace remote reads under its ordinary operation rate limit and remaining session budget.
+access. A later model edit does not alter detached geometry/backup bytes; the descriptor identifies the exported
+revision. Derived PNGs are revoked after revision or authored appearance/visibility changes. Pace remote reads under its ordinary operation rate limit and remaining session budget.
 Use the browser workflow for larger files or explicit part selection. A descriptor alone is not
 a delivered file.
 

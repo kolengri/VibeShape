@@ -1,0 +1,67 @@
+{
+  "pictureRender": {
+    "title": "Render Picture",
+    "menu": "Render Picture\u2026",
+    "description": "Create a PNG from the visible committed model. Picture settings are temporary and do not change your project.",
+    "scene": "Scene",
+    "scenes": {
+      "studio": "Studio",
+      "wooden-table": "Wooden table",
+      "workbench": "Workbench",
+      "outdoor": "Outdoor"
+    },
+    "size": "Image size",
+    "dimensions": "{width} \u00d7 {height} px",
+    "quality": "Quality",
+    "qualities": {
+      "draft": "Draft",
+      "standard": "Standard",
+      "high": "High"
+    },
+    "qualityHint": "Draft uses fast raster rendering. Standard and High progressively trace 24 and 64 samples. Larger pictures can take up to two minutes; try Draft if your GPU cannot finish.",
+    "camera": "Camera",
+    "autoCamera": "Auto-frame model",
+    "currentCamera": "Current view",
+    "finishes": "Body finishes",
+    "finishesHint": "Keep the model appearance or choose a finish for this picture. Body colours are preserved; wood adds procedural grain.",
+    "body": "Body {index}",
+    "original": "Model appearance",
+    "materials": {
+      "matte": "Matte",
+      "glossy": "Glossy",
+      "translucent": "Translucent",
+      "resin": "Resin",
+      "metal": "Metal",
+      "wood": "Wood"
+    },
+    "render": "Render picture",
+    "cancel": "Cancel render",
+    "close": "Close",
+    "back": "Return to settings",
+    "download": "Download PNG",
+    "imageAlt": "Rendered picture of the visible model",
+    "sampleProgress": "Path tracing samples",
+    "samples": "{done} of {total} samples",
+    "stages": {
+      "preparing": "Preparing copied model\u2026",
+      "compiling": "Preparing path tracing shaders\u2026",
+      "rendering": "Rendering picture\u2026",
+      "encoding": "Encoding PNG\u2026"
+    },
+    "errors": {
+      "unsupported-relief": "Picture rendering does not support authored surface relief. Disable the Surface texture layers before rendering.",
+      "unsupported-assembly": "Picture rendering does not support assembly occurrence placement. Render a model without assembly instances.",
+      "empty": "Show at least one rebuilt model body to render a picture.",
+      "stale": "The project, revision or visible bodies changed. Render again to use the current model.",
+      "limit": "This picture exceeds the rendering limits: 128 bodies, 200,000 triangles, 32 MiB of mesh data or 12 MiB of PNG data. Reduce the model or image size.",
+      "busy": "Another picture is rendering. Wait for it or cancel it before trying again.",
+      "timeout": "Rendering exceeded two minutes. Choose Draft or a smaller image and try again.",
+      "unavailable": "Your browser could not start picture rendering. Enable graphics acceleration or try Draft at a smaller size.",
+      "context-lost": "The GPU stopped picture rendering. Try Draft or a smaller image.",
+      "encoding": "The browser could not encode the PNG. Try again with a smaller image.",
+      "invalid-input": "The model or camera cannot be rendered with these settings. Rebuild the model or choose auto-frame and retry.",
+      "failed": "Picture rendering failed. Try Draft or a smaller image."
+    },
+    "keywords": "render|picture|photo|png|studio|finish|material"
+  }
+}

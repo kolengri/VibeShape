@@ -151,6 +151,10 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Stage body Pattern v2 using exact targetBody and axis: origin-axis X/Y/Z, datum-axis featureId with x/y/normal, linear-edge stable BodyTopoRef with authored unit direction, or explicit-axis origin in mm and unit direction. Supply typed scalar count 2–256 including seed and signed linear spacing or circular angle up to one revolution; circular center comes from the axis. Dependencies are target first, then a distinct support owner; references are empty. Obtain stable LINE refs from body topology inspection, never native edge indices or caller hashes. Preview before commit_draft; legacy create_body_pattern retains XYZ/center v1 behavior.",
   update_reference_body_pattern:
     "Update body Pattern as v2 preserving feature identity and instance roles. Resubmit exact targetBody, reference axis, typed count and signed spacing or circular angle, ordered target/distinct-support dependencies and empty references. Explicit edits may upgrade legacy Pattern; reference axes replace its circular center. Preview before commit_draft.",
+  prepare_picture_render:
+    "Render a derived PNG of visible committed bodies at the explicit revision in the bound project. Supports studio/wooden-table/workbench/outdoor, per-body finishes, draft/standard/high and bounded dimensions. Auto framing is default; current framing requires an explicit camera pose and never borrows another viewport. Returns actual settings, source digest and a model.png/image/png descriptor, at most 6 MiB, with SHA-256 and expiry. Transfer using read_export_chunk/discard_export. No filesystem write, browser download, document edit, pose application or Undo entry. Assembly placement and surface relief are unsupported.",
+  inspect_motion_clearance:
+    "Read-only exact motion clearance at bounded sampled poses including both range endpoints, using the bound committed project/revision, frozen source authority and disposable previews. Angles are radians; translation and minimumGap are mm (omission uses bound authored print-fit tolerance, falling back to 0.2 mm). Returns resolution, minimum sampled gap/pair/pose receipt, positive-volume collision counts and incomplete reasons. At most 64 samples, 32 pairs and 1024 pair-poses. Unsupported meshes or failed evidence never pass. This is sampled evidence only, never a collision-free-throughout-range guarantee; it never applies a pose.",
   prepare_model_export:
     "Prepare an immutable STEP/STL/3MF file for the exact committed revision, up to 6 MiB. Optional meshQuality controls exact-solid STL/3MF tessellation using chordTolerance in mm and angularTolerance in radians; omit to retain defaults. Imported meshes retain source resolution. Returns an owner-bound export ID, SHA-256 and five-minute expiry. Read bounded chunks and verify the complete byte length/hash. A new preparation evicts the previous file; no filesystem paths or model edits.",
   prepare_project_backup:
@@ -319,6 +323,8 @@ export function localToolAnnotations(name: LocalToolName) {
       "append_import_chunk",
       "inspect_import_upload",
       "discard_import_upload",
+      "prepare_picture_render",
+      "inspect_motion_clearance",
       "prepare_model_export",
       "prepare_project_backup",
       "read_export_chunk",
@@ -376,6 +382,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "remove_sketch",
     ].includes(name),
     idempotentHint: [
+      "inspect_motion_clearance",
       "model_dependencies",
       "model_variable_usage",
       "list_lightweighting_materials",

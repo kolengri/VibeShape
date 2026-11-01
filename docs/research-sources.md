@@ -301,6 +301,18 @@ Registry metadata does not replace the license files in the exact lockfile and d
 - [react-resizable-panels upstream](https://github.com/bvaughn/react-resizable-panels) and the installed 4.13.2 declarations establish the current `Group` / `Panel` / `Separator` API, pixel sizes, panel handles, and final-interaction `onLayoutChanged` callback. The exact MIT package version is pinned in the Bun catalog; React 19 satisfies its peer requirements.
 - Context7 was unavailable in this session; official upstream documentation and the installed versioned source were used instead. The integration does not change the existing Tailwind/Radix configuration or CAD/worker contracts.
 
+## Derived rendering and motion clearance (2026-11-02)
+
+- [Pinned WebGL pathtracer metadata](https://registry.npmjs.org/three-gpu-pathtracer/0.0.24)
+  establishes the exact MIT release and compatibility ranges. Installed source and the pinned
+  Three.js 0.185.1 renderer establish compilation and disposal behaviour. Current upstream main
+  is not the source contract for this older WebGL integration.
+- [Extrudo rendering](https://github.com/zoltanf/extrudo/blob/c05d910395f514f4810d3fc76504ce6bb1c73da8/docs/guide/rendering.md)
+  and [joint clearance](https://github.com/zoltanf/extrudo/blob/c05d910395f514f4810d3fc76504ce6bb1c73da8/docs/guide/components.md)
+  informed interaction patterns. These capabilities are independently implemented on VibeShape's
+  viewer, frozen-source assembly inspection and command authority; no reference source or artwork
+  is copied. Sampling evidence is not continuous collision detection or manufactured-fit proof.
+
 ## Excluded or Rejected Conclusions
 
 - Context7 results for Next.js and PostHog returned by an OpenCascade.js query were treated as irrelevant.

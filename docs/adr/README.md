@@ -173,3 +173,5 @@ When a decision changes, do not rewrite its ADR retroactively. Create a new reco
 | [0144](0144-variable-customizer.md) | Accepted | Portable variable customizers and configurations |
 | [0145](0145-bounded-f3d-source-import.md) | Accepted with reduced scope | Bounded F3D import with conservative editable mapping and exact fallback review |
 | [0146](0146-isolated-design-recipes-and-macros.md) | Accepted | Isolated TypeScript recipes and identity-based macros |
+| [0147](0147-derived-model-picture-rendering.md) | Accepted | Disposable model picture rendering and actor-bound PNG artifacts |
+| [0148](0148-sampled-motion-clearance.md) | Accepted | Exact clearance evidence at bounded solved motion samples |

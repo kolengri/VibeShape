@@ -53,8 +53,9 @@ async function inspectPair(
   left: readonly AssemblyMaterializedOccurrence[],
   right: readonly AssemblyMaterializedOccurrence[],
   nativeContexts: ReadonlyMap<string, string>,
+  measureDistance: boolean,
 ): Promise<AssemblyInspection["interference"][number]> {
-  if (!left.some((a) => right.some((b) => overlap(a, b))))
+  if (!measureDistance && !left.some((a) => right.some((b) => overlap(a, b))))
     return { ...pair, status: "clear", volume: 0, solidCount: 0 }
   if ([...left, ...right].some((source) => source.representation === "triangle-mesh"))
     return { ...pair, status: "unsupported-mesh", volume: 0, solidCount: 0 }
@@ -63,6 +64,7 @@ async function inspectPair(
   const metrics = await engine.inspectAssemblyInterference(
     assemblyNativeBodies(left, nativeContexts),
     assemblyNativeBodies(right, nativeContexts),
+    measureDistance,
   )
   return { ...pair, ...metrics, status: metrics.volume > 0 ? "interference" : "clear" }
 }
@@ -86,7 +88,9 @@ async function inspectPairs(
       right = instances.get(pair.rightInstanceId)
     if (!left || !right)
       throw new Error("Interference selections must reference current assembly instances.")
-    result.push(await inspectPair(engine, pair, left, right, nativeContexts))
+    result.push(
+      await inspectPair(engine, pair, left, right, nativeContexts, input.measureDistance ?? false),
+    )
   }
   return result
 }

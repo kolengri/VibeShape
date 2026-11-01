@@ -8,7 +8,11 @@ import {
 } from "@modelcontextprotocol/sdk/types.js"
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv"
 import { LOCAL_AUTOMATION_PATH } from "@vibeshape/automation-api/local-session"
-import { localOperationSchema, localToolOutputs } from "@vibeshape/automation-api/local-tools"
+import {
+  localOperationSchema,
+  localToolNameSchema,
+  localToolOutputs,
+} from "@vibeshape/automation-api/local-tools"
 import { numericalToolNames } from "@vibeshape/automation-api/numerical-jobs"
 import { renderPreviewMetadataSchema } from "@vibeshape/automation-api/render-preview"
 import { quickLightweightingOperation } from "../../../packages/automation-api/src/quick-lightweighting.test-fixtures"
@@ -161,6 +165,9 @@ it("advertises accepted input defaults through the actual local SDK catalog", as
     const [a, b] = InMemoryTransport.createLinkedPair()
     await Promise.all([adapter.connect(b), client.connect(a)])
     const tools = (await client.listTools()).tools
+    expect(tools.map((tool) => tool.name).sort()).toEqual(
+      [...localToolNameSchema.options, "read_agent_skill"].sort(),
+    )
     const validator = new AjvJsonSchemaValidator()
     for (const fixture of [
       ...toolInputDefaultFixtures,

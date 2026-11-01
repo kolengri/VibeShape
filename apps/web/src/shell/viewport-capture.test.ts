@@ -32,3 +32,21 @@ it("drops a capture if its owning viewport disappears before encoding completes"
   expect(await image).toBeNull()
   expect(await port.capture()).toBeNull()
 })
+
+it("reads the visible committed picture source and invalidates consumers when its owner changes", () => {
+  const port = createViewportCapturePort()
+  const events: string[] = []
+  const unsubscribe = port.subscribePicture(() => events.push("changed"))
+  const source = { documentId: "first", revision: 2, meshes: [] }
+  const remove = port.registerPicture(() => source)
+  port.registerPicture(() => null)
+  expect(port.pictureSource()).toBe(source)
+  expect(events).toHaveLength(2)
+  remove()
+  expect(port.pictureSource()).toBeNull()
+  expect(events).toHaveLength(3)
+  unsubscribe()
+  port.registerPicture(() => ({ documentId: "second", revision: 0, meshes: [] }))
+  expect(port.pictureSource()?.documentId).toBe("second")
+  expect(events).toHaveLength(3)
+})
