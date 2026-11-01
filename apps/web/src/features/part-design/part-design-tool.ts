@@ -42,6 +42,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
+import { readConnectMountsFeatureParameters } from "@vibeshape/domain/part-design-connect-mounts"
 import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
@@ -64,6 +65,8 @@ import type { ModelEdgeSelection } from "./model-edge-selection"
 
 export type ActivePartDesignTool =
   | Readonly<{ kind: "inspect-imported"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-connect-mounts" }>
+  | Readonly<{ kind: "edit-connect-mounts"; featureId: FeatureId }>
   | Readonly<{ kind: "create-fdm" }>
   | Readonly<{ kind: "edit-fdm"; featureId: FeatureId }>
   | Readonly<{ kind: "surface-texture"; featureId?: FeatureId; outputRole?: string }>
@@ -329,6 +332,7 @@ function isUnionFeature(feature: FeatureRecord) {
 }
 
 function isPartDesignSolidFeature(feature: FeatureRecord) {
+  if (readConnectMountsFeatureParameters(feature)) return true
   if (readFdmFeatureParameters(feature)) return true
   return [
     isBoxFeature,
@@ -541,6 +545,8 @@ export function editPartDesignTool(
   feature: FeatureRecord | undefined,
 ): ActivePartDesignTool | null {
   if (!feature) return null
+  if (readConnectMountsFeatureParameters(feature))
+    return { kind: "edit-connect-mounts", featureId: feature.id }
   if (isPressPullFeature(feature)) return { kind: "edit-press-pull", featureId: feature.id }
   const kind = editableFeatureTools.find(([matches]) => matches(feature))?.[1]
   return kind ? { kind, featureId: feature.id } : null
@@ -548,6 +554,8 @@ export function editPartDesignTool(
 
 const commandByToolKind = {
   "inspect-imported": "inspect-imported",
+  "create-connect-mounts": "connect-mounts",
+  "edit-connect-mounts": "connect-mounts",
   "create-fdm": "fdm",
   "edit-fdm": "fdm",
   "surface-texture": "surface-texture",

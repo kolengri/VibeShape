@@ -384,6 +384,8 @@ export const localToolOutputs = {
   inspect_planar_import_upload: resultOf(planarUploadInspectionSchema),
   commit_planar_import_upload: resultOf(planarUploadCommitSchema),
   discard_planar_import_upload: resultOf(importUploadDiscardSchema),
+  create_connect_mounts: resultOf(automationDraftStateSchema),
+  update_connect_mounts: resultOf(automationDraftStateSchema),
   update_box: resultOf(automationDraftStateSchema),
   create_cylinder: resultOf(automationDraftStateSchema),
   update_cylinder: resultOf(automationDraftStateSchema),

@@ -10,6 +10,7 @@ import {
   sketchIdSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
+import { connectMountsFeatureType } from "@vibeshape/domain/part-design-connect-mounts"
 import { selectModelTreeHistory } from "./model-tree-history"
 import { proposeHistoryMove, proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
 
@@ -152,6 +153,42 @@ function modelReferenceChain() {
 }
 
 describe("selectModelTreeHistory", () => {
+  it("keeps compatibility History reorder available after saving Connect Mounts", () => {
+    const connector = featureRecordSchema.parse({
+      ...feature,
+      id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2604"),
+      type: connectMountsFeatureType.type,
+      parameters: {
+        points: [
+          [0, 0, 0],
+          [20, 0, 0],
+        ],
+        nodeRadius: 3,
+        strutRadius: 1.5,
+        connectionMode: "tree",
+      },
+      label: "Connect Mounts 1",
+    })
+    const snapshot = { sketches: [], features: [feature, connector] }
+    const view = selectModelTreeHistory(snapshot)
+    expect(view.graphFailed).toBe(false)
+    expect(view.reorderUnavailable).toBe(false)
+    expect(view.rows.find(({ ref }) => ref.id === connector.id)?.dependencies).toEqual([])
+    const proposal = proposeHistoryMoveToIndex(
+      view.rows,
+      `feature:${connector.id}`,
+      0,
+      !view.reorderUnavailable,
+    )
+    expect(proposal?.rows.map(({ ref }) => ref.id)).toEqual([connector.id, feature.id])
+    expect(snapshot.features.map(({ id }) => id)).toEqual([feature.id, connector.id])
+
+    const unsupported = { ...connector, type: { ...connector.type, schemaVersion: 2 } }
+    const futureView = selectModelTreeHistory({ sketches: [], features: [feature, unsupported] })
+    expect(futureView.graphFailed).toBe(false)
+    expect(futureView.reorderUnavailable).toBe(true)
+  })
+
   it("interleaves graph history without inventing bodies before rebuild", () => {
     const snapshot = { sketches: [sketch], features: [feature] }
     const before = JSON.stringify(snapshot)

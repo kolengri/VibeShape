@@ -41,6 +41,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
+import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import { fdmFeatureType, readFdmFeatureParameters } from "./part-design-fdm"
 import {
   holeFeatureType,
@@ -98,6 +99,7 @@ const emptySemanticInputTypeKeys = new Set(
     unionFeatureTypeV2,
     cylinderFeatureType,
     sphereFeatureType,
+    connectMountsFeatureType,
     coneFeatureType,
     pyramidFeatureType,
     torusFeatureType,

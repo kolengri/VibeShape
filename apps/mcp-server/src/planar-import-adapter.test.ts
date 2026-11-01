@@ -20,7 +20,6 @@ it("discovers client-valid planar import schemas without acquiring unpaired auth
     expect(tools.map((tool) => tool.name).sort()).toEqual(
       [...localToolNameSchema.options, agentSkillTool.name].sort(),
     )
-    expect(tools).toHaveLength(172)
     const chat = tools.find((tool) => tool.name === "read_project_chat")
     expect(chat?.annotations).toMatchObject({
       readOnlyHint: true,

@@ -30,6 +30,7 @@ const actions = {
   lightweighting: vi.fn(),
   quickLightweighting: vi.fn(),
   generativeDesign: vi.fn(),
+  createConnectMounts: vi.fn(),
   createFdm: vi.fn(),
   surfaceTexture: vi.fn(),
   measure: vi.fn(),

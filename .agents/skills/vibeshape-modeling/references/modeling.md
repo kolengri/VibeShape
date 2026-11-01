@@ -38,6 +38,27 @@ preserve V6 part appearance by authored PartId, and native backups retain it. Ap
 visual metadata, not structural material or density assignments. Inspect the live schemas before
 claiming a new transport capability.
 
+## Connect mounting points
+
+Use `create_connect_mounts` to build a geometric starting solid between 2–16 distinct mounting
+locations, or `update_connect_mounts` to edit the same feature ID. These named tools are available
+on local and paired remote transports when present in live discovery. Supply ordinary owned-draft
+IDs/revision, a fresh command ID, feature ID, label and explicit `suppressed`, plus `parameters`:
+`points` as `[x,y,z]` tuples in model millimeters, positive `nodeRadius` and `strutRadius` in
+millimeters with `strutRadius <= nodeRadius`, and `connectionMode` of `tree` or `complete`.
+
+Tree mode constructs a deterministic minimum spanning tree; complete mode joins every pair.
+Both fuse spherical nodes and straight cylindrical struts into one exact solid. This is geometric
+construction, not load-aware topology optimization, strength certification, smooth surface blending,
+or obstacle routing. Coordinates are snapshots, not associative mounting-face references. Existing
+mounting bodies and interfaces are not automatically preserved or fused. Inspect real source geometry
+before choosing points; use ordinary holes, Boolean cuts/unions and fillets afterward for the actual
+interfaces and clearances. Do not describe centerline length as optimized solid mass or stiffness.
+
+Preview the owned draft, inspect exact solid count, bounds and volume, then `commit_draft` under the
+connection's existing approval policy. Save corrections through `update_connect_mounts` with the
+complete parameter record and the original feature ID. Verify the saved feature after commit.
+
 ## Registered primitives
 
 Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete

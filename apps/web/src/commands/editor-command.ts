@@ -2,6 +2,7 @@ export const editorCommandIds = {
   lightweighting: "org.vibeshape.editor.lightweighting",
   quickLightweighting: "org.vibeshape.editor.quick-lightweighting",
   generativeDesign: "org.vibeshape.editor.generative-design",
+  createConnectMounts: "org.vibeshape.editor.part-design.create-connect-mounts",
   createFdm: "org.vibeshape.editor.part-design.create-fdm",
   placePart: "org.vibeshape.editor.part-design.place-part",
   mirrorPart: "org.vibeshape.editor.part-design.mirror-part",
@@ -232,6 +233,7 @@ export type EditorCommandLabelKey =
   | "quickLightweighting"
   | "generativeDesign"
   | "lightweighting"
+  | "createConnectMounts"
   | "createFdm"
   | "placePart"
   | "mirrorPart"

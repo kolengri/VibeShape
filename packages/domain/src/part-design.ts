@@ -31,6 +31,7 @@ import {
   unionFeatureTypeHandler,
   unionFeatureTypeV2Handler,
 } from "./part-design-body-combination"
+import { connectMountsFeatureTypeHandler } from "./part-design-connect-mounts"
 import { fdmFeatureTypeHandler } from "./part-design-fdm"
 import {
   holeFeatureTypeHandler,
@@ -2043,4 +2044,5 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   compoundFeatureTypeV2Handler,
   unionFeatureTypeHandler,
   unionFeatureTypeV2Handler,
+  connectMountsFeatureTypeHandler,
 ]

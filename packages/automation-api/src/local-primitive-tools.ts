@@ -13,6 +13,7 @@ import {
   sphereFeatureParametersSchema,
   torusFeatureParametersSchema,
 } from "@vibeshape/domain/part-design"
+import { connectMountsFeatureParametersSchema } from "@vibeshape/domain/part-design-connect-mounts"
 import { z } from "zod"
 
 const feature = {
@@ -27,6 +28,8 @@ function primitive<Schema extends z.ZodType>(parameters: Schema) {
   return z.object({ ...feature, parameters }).strict()
 }
 export const localPrimitiveInputs = {
+  create_connect_mounts: primitive(connectMountsFeatureParametersSchema),
+  update_connect_mounts: primitive(connectMountsFeatureParametersSchema),
   update_box: primitive(boxFeatureParametersSchema),
   create_cylinder: primitive(cylinderFeatureParametersSchema),
   update_cylinder: primitive(cylinderFeatureParametersSchema),
@@ -40,6 +43,8 @@ export const localPrimitiveInputs = {
   update_pyramid: primitive(pyramidFeatureParametersSchema),
 } as const
 export const primitiveToolNames = [
+  "create_connect_mounts",
+  "update_connect_mounts",
   "update_box",
   "create_cylinder",
   "update_cylinder",
@@ -56,6 +61,8 @@ function operation<Name extends keyof typeof localPrimitiveInputs>(tool: Name) {
   return z.object({ tool: z.literal(tool), arguments: localPrimitiveInputs[tool] }).strict()
 }
 export const localPrimitiveOperations = [
+  operation("create_connect_mounts"),
+  operation("update_connect_mounts"),
   operation("update_box"),
   operation("create_cylinder"),
   operation("update_cylinder"),

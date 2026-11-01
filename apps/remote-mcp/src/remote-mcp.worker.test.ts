@@ -1389,6 +1389,8 @@ describe("remote MCP in workerd", () => {
           "update_cylinder",
           "create_cone",
           "update_cone",
+          "create_connect_mounts",
+          "update_connect_mounts",
           "create_sphere",
           "update_sphere",
           "create_torus",

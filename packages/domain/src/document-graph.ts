@@ -53,6 +53,7 @@ import {
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
 import { chamferFeatureTypeV3, readChamferFeatureParametersV3 } from "./part-design-chamfer"
+import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import {
   expectedHoleDependencyIds,
   holeFeatureType,
@@ -226,6 +227,7 @@ function key(ref: DocumentNodeRef) {
 }
 
 const dependencyCompleteFeatureTypeKeys = new Set([
+  featureTypeKey(connectMountsFeatureType.type),
   featureTypeKey(boxFeatureType.type),
   featureTypeKey(importedFeatureType.type),
   featureTypeKey(meshImportFeatureType.type),

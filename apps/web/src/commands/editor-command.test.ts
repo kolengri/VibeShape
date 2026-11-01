@@ -135,6 +135,7 @@ function commandContext(
       documentUndo: vi.fn(),
       createFillet: vi.fn(),
       createChamfer: vi.fn(),
+      createConnectMounts: vi.fn(),
       createHole: vi.fn(),
       createBox: vi.fn(),
       createCylinder: vi.fn(),
@@ -175,6 +176,30 @@ function commandContext(
     },
   }
 }
+
+it("routes Connect Mounts through the shared writable-document command", () => {
+  const context = commandContext()
+  const command = resolveBuiltInEditorCommands(context).find(
+    ({ descriptor }) => descriptor.id === editorCommandIds.createConnectMounts,
+  )
+  expect(command?.descriptor.labelKey).toBe("createConnectMounts")
+  expect(command?.eligibility.enabled).toBe(true)
+  expect(command?.active).toBe(false)
+  const active = resolveBuiltInEditorCommands({
+    ...context,
+    state: { ...context.state, activePartDesignCommand: "connect-mounts" },
+  }).find(({ descriptor }) => descriptor.id === editorCommandIds.createConnectMounts)
+  expect(active?.active).toBe(true)
+  command?.invoke()
+  expect(context.actions.createConnectMounts).toHaveBeenCalledTimes(1)
+  const loading = resolveBuiltInEditorCommands({
+    ...context,
+    state: { ...context.state, controller: { ...readyController(), status: "loading" } },
+  }).find(({ descriptor }) => descriptor.id === editorCommandIds.createConnectMounts)
+  expect(loading?.eligibility.enabled).toBe(false)
+  loading?.invoke()
+  expect(context.actions.createConnectMounts).toHaveBeenCalledTimes(1)
+})
 
 describe("editor command registry", () => {
   it("keeps built-in descriptors serializable for future extension and automation adapters", () => {

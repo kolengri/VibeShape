@@ -521,6 +521,8 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         },
         completeTool: () => sessionActions.completeActiveTool(partDesignToolGeneration),
         beginSketchSupportReplacement: sessionActions.beginSketchSupportReplacement,
+        createConnectMounts: () =>
+          sessionActions.startPartDesignTool({ kind: "create-connect-mounts" }),
         createFdm: () => sessionActions.startPartDesignTool({ kind: "create-fdm" }),
         createHole: () => sessionActions.startPartDesignTool({ kind: "create-hole" }),
         createFillet: () => createEdgeTreatment("create-fillet"),
@@ -817,6 +819,7 @@ function resolveEditorApplicationCommands(
       patternPart: workspaceActions.patternPart,
       threadPart: workspaceActions.threadPart,
       combineParts: workspaceActions.combineParts,
+      createConnectMounts: workspaceActions.createConnectMounts,
       createFdm: workspaceActions.createFdm,
       createHole: workspaceActions.createHole,
       createFillet: workspaceActions.createFillet,

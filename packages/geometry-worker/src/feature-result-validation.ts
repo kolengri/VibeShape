@@ -6,6 +6,7 @@ export type GeometryFeatureKind =
   | "box"
   | "cylinder"
   | "sphere"
+  | "connect-mounts"
   | "cone"
   | "pyramid"
   | "torus"

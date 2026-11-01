@@ -19,6 +19,8 @@ directly to a user-provided compatible model API without a VibeShape model serve
 stdio editor retains its own stable origin and browser-local projects. Bare URLs open the project
 chooser before pairing.
 
+Named tools include `create_connect_mounts` and `update_connect_mounts` for exact geometric
+connections between captured mounting points; see [Connect Mounts](product/connect-mounts.md).
 Named tools cover all registered Box, Cylinder, Cone, Sphere, Torus and Pyramid authoring, plus
 owned-draft feature/sketch removal, explicit suppression and project rename. Lifecycle changes
 always require browser review and retain dependency-blocked diagnostics; see the
