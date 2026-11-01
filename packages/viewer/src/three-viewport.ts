@@ -544,6 +544,7 @@ export type GeometryViewport = Readonly<{
   ) => readonly ViewerSelection[]
   selectFace?: (selection: ViewerSelection | null) => void
   cancelInteractions: () => void
+  pictureCamera?: () => ViewerCameraPose & Readonly<{ viewHeightMm: number }>
   captureImage?: () => Promise<Blob>
   setSurfaceTextureBrush: (brush: ViewerSurfaceTextureBrush | null, active?: boolean) => void
   clearSketchProjection: () => void
@@ -1790,6 +1791,16 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setSelection(selection)
     if (unchanged) this.#onSelectionChange(selection)
     this.#render()
+  }
+
+  pictureCamera() {
+    if (this.#disposed) throw new Error("The viewport is unavailable.")
+    return {
+      position: this.#camera.position.toArray() as [number, number, number],
+      target: this.#controls.target.toArray() as [number, number, number],
+      up: this.#camera.up.toArray() as [number, number, number],
+      viewHeightMm: (this.#camera.top - this.#camera.bottom) / this.#camera.zoom,
+    }
   }
 
   captureImage() {

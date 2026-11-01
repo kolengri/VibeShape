@@ -11,7 +11,8 @@
     "./origin-planes": "./src/origin-planes.ts",
     "./project-thumbnail": "./src/project-thumbnail.ts",
     "./sketch-reference-identity": "./src/sketch-reference-identity.ts",
-    "./three-viewport": "./src/three-viewport.ts"
+    "./three-viewport": "./src/three-viewport.ts",
+    "./picture-render": "./src/picture-render.ts"
   },
   "scripts": {
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.worker.json tsconfig.test.json"
@@ -19,6 +20,7 @@
   "dependencies": {
     "@vibeshape/domain": "workspace:*",
     "three": "catalog:",
+    "three-gpu-pathtracer": "0.0.24",
     "three-mesh-bvh": "catalog:",
     "zod": "catalog:"
   },

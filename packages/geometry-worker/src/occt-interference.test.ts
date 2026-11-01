@@ -52,6 +52,52 @@ describe("exact assembly material intersections", () => {
     }
   })
 
+  it("measures exact separation, touch, containment and overlap after actual rigid placement", () => {
+    const shape = makeBox([0, 0, 0], [2, 3, 4])
+    const small = makeBox([0, 0, 0], [1, 1, 1])
+    try {
+      for (const [offset, gap, volume] of [
+        [2.25, 0.25, 0],
+        [2, 0, 0],
+        [1, 0, 12],
+      ]) {
+        const result = measureOcctInterference(
+          occt,
+          [{ shape, pose: pose() }],
+          [{ shape, pose: pose(offset) }],
+          true,
+        )
+        expect(result.distance).toBeCloseTo(gap ?? -1, 8)
+        expect(result.volume).toBeCloseTo(volume ?? -1, 8)
+      }
+      const contained = measureOcctInterference(
+        occt,
+        [{ shape, pose: pose() }],
+        [{ shape: small, pose: pose(0.5, 0.5) }],
+        true,
+      )
+      expect(contained.distance).toBeCloseTo(0, 8)
+      expect(contained.volume).toBeCloseTo(1, 8)
+      const rotated = measureOcctInterference(
+        occt,
+        [{ shape, pose: pose() }],
+        [{ shape, pose: pose(8, 0, Math.PI / 2) }],
+        true,
+      )
+      expect(rotated.distance).toBeCloseTo(3, 8)
+      expect(rotated.volume).toBe(0)
+      for (let index = 0; index < 20; index++)
+        expect(
+          measureOcctInterference(occt, [{ shape, pose: pose() }], [{ shape, pose: pose(4) }], true)
+            .distance,
+        ).toBeCloseTo(2, 8)
+      expect(measureVolume(shape)).toBeCloseTo(24, 10)
+    } finally {
+      small.delete()
+      shape.delete()
+    }
+  })
+
   it("unions overlapping definition pins before counting material and retains disconnected intersections", () => {
     const shape = makeBox([0, 0, 0], [2, 3, 4])
     const spanning = makeBox([0, 0, 0], [12, 3, 4])

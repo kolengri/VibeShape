@@ -5,11 +5,13 @@ import {
 } from "@vibeshape/domain/assembly-authority"
 import type { AssemblyInspection } from "@vibeshape/protocol"
 import { previewAssemblyChanges } from "../../document/document-controller"
+import { assemblyClearancePoseDigest } from "./assembly-clearance-pose"
 import { type AssemblyMotionCoordinate, assemblyMotionSamples } from "./assembly-motion"
 import type { AssemblyPlaybackOptions } from "./use-assembly-motion"
 
 export type AssemblyMotionTarget = {
   revision: number
+  expectedPoseDigest?: string
   sampleUnit: "seconds" | "joint-coordinate"
   changes: (value: number) => readonly AssemblyMutation[]
 }
@@ -61,6 +63,13 @@ function sampleBytes(inspection: AssemblyInspection) {
 }
 
 type MotionCache = { poses: Map<number, SolvedPose>; bytes: number }
+async function verifySampledPose(inspection: AssemblyInspection, expectedDigest: string) {
+  if ((await assemblyClearancePoseDigest(inspection)) !== expectedDigest)
+    throw new AssemblyMotionPreviewFailure(
+      "sample-mismatch",
+      "The solved pose no longer matches the sampled clearance evidence.",
+    )
+}
 async function solveCachedPose(
   cache: MotionCache,
   target: AssemblyMotionTarget,
@@ -79,6 +88,9 @@ async function solveCachedPose(
       result.diagnostic.assembly?.code ?? "unavailable",
       result.diagnostic.message,
     )
+  if (target.expectedPoseDigest)
+    await verifySampledPose(result.inspection, target.expectedPoseDigest)
+  if (signal.aborted) return null
   cache.bytes += sampleBytes(result.inspection)
   if (cache.bytes > 64 * 1024 * 1024)
     throw new AssemblyMotionPreviewFailure(

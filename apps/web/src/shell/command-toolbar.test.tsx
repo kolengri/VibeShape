@@ -621,8 +621,8 @@ describe("CommandToolbar", () => {
     for (const label of ["Create", "Modify", "Primitives"]) {
       expect(screen.getByRole("button", { name: label }).textContent).toBe("")
     }
-    expect(screen.queryByRole("button", { name: "Inspect" })).toBeNull()
-    expect(screen.getByRole("button", { name: "Measure" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Inspect" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Measure" })).toBeNull()
     expect(
       within(history)
         .getAllByRole("button")
@@ -638,7 +638,9 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Modify" }))
     expect(screen.getByRole("option", { name: "Subtract" })).toBeTruthy()
     await user.keyboard("{Escape}")
-    await user.click(screen.getByRole("button", { name: "Measure" }))
+    await user.click(screen.getByRole("button", { name: "Inspect" }))
+    expect(screen.getByRole("menuitem", { name: "Render Picture" })).toBeTruthy()
+    await user.click(screen.getByRole("menuitem", { name: "Measure" }))
     expect(actions.measure).toHaveBeenCalledTimes(1)
   })
 

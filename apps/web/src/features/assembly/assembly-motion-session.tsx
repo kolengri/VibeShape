@@ -46,6 +46,12 @@ export function AssemblyMotionTask({
     <AssemblyMotionPanel
       key={`${view.motion.id}:${view.motion.coordinate}:${view.documentKey}`}
       joint={motion.joint}
+      clearanceConfig={{
+        scope: view.documentKey,
+        instanceNames: Object.fromEntries(
+          view.assembly.instances.map(({ id, name }) => [id, name]),
+        ),
+      }}
       coordinate={motion.coordinate}
       motion={motion.state}
       disabled={view.disabled}

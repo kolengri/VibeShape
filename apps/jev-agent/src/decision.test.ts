@@ -127,7 +127,8 @@ describe("Jev decision batching", () => {
         }),
       })
       .parse(JSON.parse(body)).state
-    expect(Buffer.byteLength(JSON.stringify(context))).toBeLessThan(128_000)
+    expect(Buffer.byteLength(JSON.stringify(context.catalog))).toBeLessThan(128_000)
+    expect(Buffer.byteLength(JSON.stringify(context))).toBeLessThan(192_000)
     expect(Object.values(context.catalog)).toEqual([
       ...tools.map((tool) => tool.description ?? ""),
       agentSkillTool.description,

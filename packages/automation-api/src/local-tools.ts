@@ -12,6 +12,12 @@ import { chamferFeatureParametersV3Schema } from "@vibeshape/domain/part-design"
 import { edgeTopoRefSchema } from "@vibeshape/domain/topology"
 import { variableExpressionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
+import {
+  derivedReadOperations,
+  derivedReadToolInputs,
+  motionClearanceReportSchema,
+  pictureRenderReceiptSchema,
+} from "./derived-reads"
 import { utf8StringBytes } from "./query-byte-budget"
 
 export const designRecipeExportArgumentsSchema = z.object({ revision: revisionSchema }).strict()
@@ -346,6 +352,7 @@ const chamfer = z.union([
   z.object({ ...feature, parameters: chamferFeatureParametersV3Schema }).strict(),
 ])
 export const localToolInputs = {
+  ...derivedReadToolInputs,
   export_design_recipe: designRecipeExportArgumentsSchema,
   analyze_print_readiness: printReadinessArgumentsSchema,
   read_project_chat: readProjectChatArgumentsSchema,
@@ -549,6 +556,8 @@ export const localToolOutputs = {
   discard_import_upload: resultOf(importUploadDiscardSchema),
   model_sketch_solution: resultOf(sketchSolutionViewSchema),
   draft_sketch_solution: resultOf(automationDraftInspectionViewSchema),
+  inspect_motion_clearance: resultOf(motionClearanceReportSchema),
+  prepare_picture_render: resultOf(pictureRenderReceiptSchema),
   prepare_model_export: resultOf(binaryExportDescriptorSchema),
   prepare_project_backup: resultOf(binaryExportDescriptorSchema),
   read_export_chunk: resultOf(binaryExportChunkSchema),
@@ -703,6 +712,8 @@ export const localToolNameSchema = z.enum([
   "discard_import_upload",
   "model_sketch_solution",
   "draft_sketch_solution",
+  "prepare_picture_render",
+  "inspect_motion_clearance",
   "prepare_model_export",
   "prepare_project_backup",
   "read_export_chunk",
@@ -800,6 +811,7 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 const untargetedOperationSchema = z.discriminatedUnion("tool", [
+  ...derivedReadOperations,
   z
     .object({
       tool: z.literal("export_design_recipe"),
@@ -945,6 +957,8 @@ export function mcpToolInputSchema(name: LocalToolName) {
       chamfer.options[0].extend({ projectId: documentIdSchema.optional() }),
       chamfer.options[1].extend({ projectId: documentIdSchema.optional() }),
     ])
+  if (name === "prepare_picture_render" || name === "inspect_motion_clearance")
+    return localToolInputs[name].safeExtend({ projectId: documentIdSchema.optional() })
   if (name === "create_face_aligned_placement")
     return localToolInputs.create_face_aligned_placement.safeExtend({
       projectId: documentIdSchema.optional(),

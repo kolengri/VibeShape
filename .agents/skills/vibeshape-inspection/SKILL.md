@@ -25,6 +25,7 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 | Which edge references can a treatment select? | `model_edges` or `draft_edges` |
 | What unsaved intent is in the draft? | `draft_tree`, `draft_entity` at the current draft revision |
 | Which assembly instances/mates, frozen frames, local DOF or exact interference? | `model_assembly`, `inspect_assembly`; explicit pairs and occurrence/source topology page |
+| What exact clearance/collisions occur at sampled joint poses? | `inspect_motion_clearance`; see [sampled motion clearance](references/motion-clearance.md) |
 | Which immutable local component version is available? | `library_items`, `library_version` |
 | Does the entire draft rebuild correctly? | `preview_draft`, followed by relevant draft reads |
 | Does the visible CAD shape match the requested form and spatial relationships? | `render_preview` at the exact model or owned draft revision |

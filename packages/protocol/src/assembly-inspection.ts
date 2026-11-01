@@ -32,9 +32,15 @@ export const inspectAssemblyInputSchema = z
     sourceAssets: sourceAssetMaterializationsSchema,
     mesh: featureMeshPolicySchema,
     interferencePairs: z.array(pair).max(1024),
+    measureDistance: z.boolean().optional(),
   })
   .strict()
-  .superRefine(({ interferencePairs }, context) => {
+  .superRefine(({ interferencePairs, measureDistance }, context) => {
+    if (measureDistance && interferencePairs.length > 32)
+      context.addIssue({
+        code: "custom",
+        message: "Exact distance inspection supports at most 32 pairs per pose.",
+      })
     const identities = interferencePairs.map(({ leftInstanceId, rightInstanceId }) =>
       [leftInstanceId, rightInstanceId].sort().join(":"),
     )
@@ -109,6 +115,7 @@ export const assemblyInspectionSchema = z
           status: z.enum(["clear", "interference", "unsupported-mesh"]),
           volume: z.number().finite().nonnegative(),
           solidCount: z.number().int().nonnegative(),
+          distance: z.number().finite().nonnegative().optional(),
         }),
       )
       .max(1024),

@@ -8,11 +8,33 @@ import {
   binaryExportMimeType,
   type LocalBinaryExportOperation,
 } from "@vibeshape/automation-api/binary-exports"
+import {
+  pictureRenderReceiptSchema,
+  type preparePictureRenderArgumentsSchema,
+} from "@vibeshape/automation-api/derived-reads"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import type { MeshExportQuality } from "@vibeshape/protocol"
+import type { z } from "zod"
 
-type Format = BinaryExportDescriptor["format"]
+export class BinaryExportPreparationError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+type Format = Exclude<BinaryExportDescriptor["format"], "png">
+export type PreparedPictureFile = {
+  ok: true
+  documentId: string
+  revision: number
+  format: "png"
+  file: Uint8Array
+  metadata: Omit<z.infer<typeof pictureRenderReceiptSchema>, "file">
+  isCurrent: () => boolean
+}
 type PreparedFile =
   | { ok: true; documentId: string; revision: number; format: Format; file: Uint8Array }
   | { ok: false }
@@ -20,6 +42,10 @@ export type BinaryExportSourcePort = Readonly<{
   documentId: string
   currentRevision: () => number
   isActive: () => boolean
+  preparePicture?: (
+    request: z.infer<typeof preparePictureRenderArgumentsSchema>,
+    signal: AbortSignal,
+  ) => Promise<PreparedPictureFile | { ok: false }>
   prepare: (
     format: Format,
     revision: number,
@@ -28,9 +54,20 @@ export type BinaryExportSourcePort = Readonly<{
 }>
 type PrepareOperation = Extract<
   LocalBinaryExportOperation,
-  { tool: "prepare_model_export" | "prepare_project_backup" }
+  { tool: "prepare_model_export" | "prepare_project_backup" | "prepare_picture_render" }
 >
-async function prepareExportSource(source: BinaryExportSourcePort, operation: PrepareOperation) {
+async function prepareExportSource(
+  source: BinaryExportSourcePort,
+  operation: PrepareOperation,
+  signal: AbortSignal,
+) {
+  if (operation.tool === "prepare_picture_render")
+    return {
+      format: "png" as const,
+      prepared: (await source.preparePicture?.(operation.arguments, signal)) ?? {
+        ok: false as const,
+      },
+    }
   if (operation.tool === "prepare_project_backup")
     return {
       format: "vshape" as const,
@@ -59,7 +96,12 @@ export function createBinaryExportSession(
     closed = false,
     busy = false,
     epoch = 0
-  let retained: { descriptor: BinaryExportDescriptor; bytes: Uint8Array } | null = null
+  let pending: AbortController | null = null
+  let retained: {
+    descriptor: BinaryExportDescriptor
+    bytes: Uint8Array
+    isCurrent?: () => boolean
+  } | null = null
   function actorMatches(input: unknown) {
     const actor = commandActorSchema.safeParse(input)
     if (!actor.success || actor.data.type !== "mcp") return false
@@ -71,7 +113,14 @@ export function createBinaryExportSession(
     return !closed && options.isActive()
   }
   function expire() {
-    if (retained && Date.parse(retained.descriptor.expiresAt) <= now()) retained = null
+    if (
+      retained &&
+      (Date.parse(retained.descriptor.expiresAt) <= now() ||
+        (retained.descriptor.format === "png" &&
+          retained.descriptor.revision !== options.currentRevision()) ||
+        retained.isCurrent?.() === false)
+    )
+      retained = null
   }
   async function prepare(operation: PrepareOperation, signal?: AbortSignal) {
     if (busy) return localFailure("export-busy", "Another export is being prepared.", true)
@@ -81,13 +130,16 @@ export function createBinaryExportSession(
     busy = true
     retained = null
     const operationEpoch = ++epoch
+    const abort = new AbortController()
+    pending = abort
     const onAbort = () => {
+      abort.abort()
       epoch++
       retained = null
     }
     signal?.addEventListener("abort", onAbort, { once: true })
     try {
-      const { format, prepared } = await prepareExportSource(options, operation)
+      const { format, prepared } = await prepareExportSource(options, operation, abort.signal)
       if (!stillCurrent(operationEpoch, revision, signal)) return cancelled()
       const sourceFailure = validateSource(prepared, format, revision)
       if (sourceFailure) return sourceFailure
@@ -107,14 +159,33 @@ export function createBinaryExportSession(
         expiresAt: new Date(now() + BINARY_EXPORT_TTL_MS).toISOString(),
         chunkMaxBytes: BINARY_EXPORT_CHUNK_MAX_BYTES,
       })
-      retained = { descriptor, bytes }
-      return { ok: true as const, value: descriptor }
-    } catch {
-      return localFailure("export-failed", "The file could not be prepared.", true)
+      return retainPrepared(descriptor, bytes, prepared)
+    } catch (error) {
+      return preparationFailure(error)
     } finally {
+      if (pending === abort) pending = null
       busy = false
       signal?.removeEventListener("abort", onAbort)
     }
+  }
+  function retainPrepared(
+    descriptor: BinaryExportDescriptor,
+    bytes: Uint8Array,
+    prepared: Extract<PreparedFile, { ok: true }> | PreparedPictureFile,
+  ) {
+    if (prepared.format === "png") {
+      if (!prepared.isCurrent()) return cancelled()
+      const value = pictureRenderReceiptSchema.parse({ file: descriptor, ...prepared.metadata })
+      retained = { descriptor, bytes, isCurrent: prepared.isCurrent }
+      return { ok: true as const, value }
+    }
+    retained = { descriptor, bytes }
+    return { ok: true as const, value: descriptor }
+  }
+  function preparationFailure(error: unknown) {
+    if (error instanceof BinaryExportPreparationError)
+      return localFailure(error.code, error.message)
+    return localFailure("export-failed", "The file could not be prepared.", true)
   }
   function stillCurrent(operationEpoch: number, revision: number, signal?: AbortSignal) {
     return (
@@ -124,7 +195,11 @@ export function createBinaryExportSession(
       options.currentRevision() === revision
     )
   }
-  function validateSource(source: PreparedFile, format: Format, revision: number) {
+  function validateSource(
+    source: PreparedFile | PreparedPictureFile,
+    format: BinaryExportDescriptor["format"],
+    revision: number,
+  ) {
     if (!source.ok) return localFailure("export-failed", "The file could not be prepared.", true)
     if (
       source.documentId !== options.documentId ||
@@ -138,6 +213,11 @@ export function createBinaryExportSession(
       )
     if (source.file.byteLength === 0 || source.file.byteLength > BINARY_EXPORT_MAX_BYTES)
       return localFailure("export-too-large", "Prepared files must contain at most 6 MiB.")
+    if (
+      format === "png" &&
+      ![137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => source.file[index] === value)
+    )
+      return localFailure("export-invalid-type", "The picture renderer did not return PNG bytes.")
     return null
   }
   function read(operation: Extract<LocalBinaryExportOperation, { tool: "read_export_chunk" }>) {
@@ -203,10 +283,12 @@ export function createBinaryExportSession(
       return prepare(operation, signal)
     },
     cancel() {
+      pending?.abort()
       epoch++
       retained = null
     },
     dispose() {
+      pending?.abort()
       closed = true
       epoch++
       retained = null

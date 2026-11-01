@@ -13,7 +13,7 @@ import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv
 import { agentSkillResources } from "@vibeshape/automation-api/agent-skills"
 import { BINARY_EXPORT_CHUNK_MAX_BYTES } from "@vibeshape/automation-api/binary-exports"
 import { lightweightingOperationSchema } from "@vibeshape/automation-api/lightweighting-tools"
-import { localFailure } from "@vibeshape/automation-api/local-tools"
+import { localFailure, localToolNameSchema } from "@vibeshape/automation-api/local-tools"
 import { quickLightweightingOperationSchema } from "@vibeshape/automation-api/quick-lightweighting-tools"
 import {
   remotePairResponseSchema,
@@ -1344,6 +1344,12 @@ describe("remote MCP in workerd", () => {
     try {
       await client.connect(transport)
       const tools = (await client.listTools()).tools
+      expect(tools.map((tool) => tool.name).sort()).toEqual(
+        [
+          ...localToolNameSchema.options.filter((name) => name !== "export_model"),
+          "read_agent_skill",
+        ].sort(),
+      )
       expectAdvertisedInputDefaults(tools)
       const projectList = tools.find((tool) => tool.name === "list_projects")
       const dependencies = tools.find((tool) => tool.name === "model_dependencies")
@@ -1401,6 +1407,8 @@ describe("remote MCP in workerd", () => {
           "remove_sketch",
           "set_feature_suppressed",
           "rename_project",
+          "prepare_picture_render",
+          "inspect_motion_clearance",
           "prepare_model_export",
           "prepare_project_backup",
           "read_export_chunk",
@@ -2008,3 +2016,54 @@ describe("remote MCP in workerd", () => {
     expect(await tabB.isAuthorized(grantB)).toBe(true)
   })
 })
+
+it.each(["project", "revision", "settings"] as const)(
+  "revokes a forged %s PNG receipt",
+  async (mismatch) => {
+    const tab = await pair(),
+      authenticated = await authorizeTab(tab)
+    const projectId = "01950000-0000-7000-8000-000000000001"
+    const work = nextMessage(tab.socket)
+    const pending = mcp(authenticated.token, 1, "tools/call", {
+      name: "prepare_picture_render",
+      arguments: { projectId, revision: 4 },
+    })
+    const command = await work
+    if (command.type !== "work" || command.operation.tool !== "prepare_picture_render")
+      throw new Error("Expected render work")
+    const file = {
+      exportId: "01950000-0000-7000-8000-000000000010",
+      documentId: projectId,
+      revision: 4,
+      format: "png",
+      filename: "model.png",
+      mimeType: "image/png",
+      byteLength: 8,
+      sha256: "a".repeat(64),
+      expiresAt: "2026-11-02T12:00:00Z",
+      chunkMaxBytes: 90 * 1024,
+    }
+    const value = {
+      file,
+      settings: command.operation.arguments.settings,
+      sourceDigest: "b".repeat(64),
+    }
+    if (mismatch === "project") value.file.documentId = file.exportId
+    if (mismatch === "revision") value.file.revision = 3
+    if (mismatch === "settings") value.settings = { ...value.settings, quality: "high" }
+    const revoked = nextMessage(tab.socket)
+    tab.socket.send(
+      JSON.stringify({
+        type: "result",
+        protocolVersion: 1,
+        requestId: command.requestId,
+        tool: command.operation.tool,
+        result: { ok: true, value },
+      }),
+    )
+    expect(await (await pending).json()).toMatchObject({
+      result: { structuredContent: { result: { ok: false } } },
+    })
+    expect((await revoked).type).toBe("revoked")
+  },
+)

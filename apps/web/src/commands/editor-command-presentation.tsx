@@ -38,6 +38,7 @@ import {
   FinalResultIcon,
   GenerativeDesignIcon,
   HoleIcon,
+  ImageIcon,
   InscribedPolygonIcon,
   Keyboard,
   LightweightingIcon,
@@ -98,6 +99,7 @@ import type {
 } from "./editor-command"
 
 const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGElement>>>> = {
+  "render-picture": ImageIcon,
   "generative-design": GenerativeDesignIcon,
   "fdm-tools": FdmToolsIcon,
   "sketch-fillet": SketchFilletIcon,
@@ -208,10 +210,15 @@ export function editorCommandShortcutLabel(shortcut: EditorCommandShortcut) {
 
 export function useEditorCommandCopy() {
   const t = useTranslations("app.commands")
+  const pictureT = useTranslations("pictureRender")
   return {
     disabledReason: (reason: EditorCommandDisabledReason) => t(`disabledReasons.${reason}`),
     group: (group: EditorCommandGroup) => t(`groups.${group}`),
-    keywords: (key: EditorCommandLabelKey) => t(`items.${key}.keywords`).split("|"),
-    label: (descriptor: EditorCommandDescriptor) => t(`items.${descriptor.labelKey}.label`),
+    keywords: (key: EditorCommandLabelKey) =>
+      (key === "renderPicture" ? pictureT("keywords") : t(`items.${key}.keywords`)).split("|"),
+    label: (descriptor: EditorCommandDescriptor) =>
+      descriptor.labelKey === "renderPicture"
+        ? pictureT("title")
+        : t(`items.${descriptor.labelKey}.label`),
   }
 }

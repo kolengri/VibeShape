@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { AssemblyInspection } from "@vibeshape/protocol"
 import { vi } from "../../../../../tests/unit/support/bun-test"
+import { asBuiltUiFixture } from "./assembly-as-built-test-fixture"
+import { assemblyClearancePoseDigest } from "./assembly-clearance-pose"
 import type { AssemblyMotionTarget } from "./assembly-motion-runner"
 import type { AssemblyPlaybackOptions } from "./use-assembly-motion"
 
@@ -54,6 +56,47 @@ function run({
 }
 
 describe("assembly motion playback cadence", () => {
+  it("shows only a re-solved pose with the sampled exact frame and source identity", async () => {
+    const sampled = asBuiltUiFixture().inspection
+    const expectedPoseDigest = await assemblyClearancePoseDigest(sampled)
+    expect(
+      await assemblyClearancePoseDigest({
+        ...sampled,
+        occurrences: [...sampled.occurrences].reverse(),
+      }),
+    ).toBe(expectedPoseDigest)
+    const publish = vi.fn()
+    const solve = () =>
+      solveAssemblyMotionSweep({
+        target: {
+          revision: 7,
+          sampleUnit: "joint-coordinate",
+          changes: () => [],
+          expectedPoseDigest,
+        },
+        values: [0.5],
+        signal: new AbortController().signal,
+        playing: false,
+        options: {},
+        pending: () => {},
+        publish,
+      })
+    for (const kind of ["frame", "source"] as const) {
+      const changed = structuredClone(sampled)
+      const occurrence = changed.occurrences[0]
+      if (!occurrence) throw new Error("A solved occurrence is required.")
+      if (kind === "frame") occurrence.geometryFrame.translation[0] += 1
+      else occurrence.contentHash = "b".repeat(64)
+      preview.mockResolvedValue({ ok: true, inspection: changed })
+      await expect(solve()).rejects.toMatchObject({ code: "sample-mismatch" })
+      expect(publish).not.toHaveBeenCalled()
+    }
+    preview.mockResolvedValue({ ok: true, inspection: sampled })
+    await solve()
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(publish.mock.calls[0]?.[0]).toMatchObject({ value: 0.5, inspection: sampled })
+  })
+
   it.each([
     { name: "one-second uneven intervals", values: [0, 0.25, 1], speed: 1, times: [0, 250, 1000] },
     { name: "sixty-second study", values: [0, 30, 60], speed: 1, times: [0, 30_000, 60_000] },

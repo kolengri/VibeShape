@@ -1007,3 +1007,31 @@ it("shares precise Boolean eligibility across command surfaces and refreshes rep
     reason: "saving",
   })
 })
+
+it("opens Render Picture as a read-only Model inspection command and respects active editing guards", () => {
+  const renderPicture = vi.fn()
+  const context = commandContext()
+  const controller = readyController()
+  if (!controller.report) throw new Error("Missing report fixture.")
+  const state = {
+    ...context.state,
+    controller: { ...controller, report: { ...controller.report, mode: "read-only" as const } },
+  }
+  const resolve = (nextState = state) =>
+    resolveBuiltInEditorCommands({
+      ...context,
+      state: nextState,
+      actions: { ...context.actions, renderPicture },
+    }).find((command) => command.descriptor.id === editorCommandIds.renderPicture)
+  const command = resolve()
+  expect(command?.descriptor.toolbarGroup).toBe("model-inspection")
+  expect(command?.eligibility).toEqual({ enabled: true })
+  expect(command?.toolbarVisible).toBe(true)
+  command?.invoke()
+  expect(renderPicture).toHaveBeenCalledTimes(1)
+  expect(context.actions.createBox).not.toHaveBeenCalled()
+  const blocked = resolve({ ...state, activePartDesignCommand: "shell" })
+  expect(blocked?.eligibility).toEqual({ enabled: false, reason: "activeFeature" })
+  blocked?.invoke()
+  expect(renderPicture).toHaveBeenCalledTimes(1)
+})

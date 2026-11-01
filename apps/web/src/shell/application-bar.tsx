@@ -45,11 +45,13 @@ export function ApplicationBar({
   controller,
   onOpenCommandPalette,
   onOpenShortcutHelp,
+  onRenderPicture,
   hideModelExport = false,
 }: {
   children?: ReactNode
   projectNavigation?: ReactNode
   controller: DocumentControllerState
+  onRenderPicture?: (() => void) | undefined
   hideModelExport?: boolean
   onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
   onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
@@ -83,6 +85,7 @@ export function ApplicationBar({
         remoteEndpoint={remote.available ? import.meta.env.VITE_REMOTE_MCP_URL : undefined}
         onOpenCommandPalette={onOpenCommandPalette}
         onOpenShortcutHelp={onOpenShortcutHelp}
+        onRenderPicture={onRenderPicture}
       />
       <div className="flex min-w-0 flex-1 items-center gap-1">
         {projectNavigation ?? (

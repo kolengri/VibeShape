@@ -4430,7 +4430,8 @@ export interface GeometryKernelEngine {
   inspectAssemblyInterference?: (
     left: readonly AssemblyNativeBody[],
     right: readonly AssemblyNativeBody[],
-  ) => Promise<{ volume: number; solidCount: number }>
+    measureDistance?: boolean,
+  ) => Promise<{ volume: number; solidCount: number; distance?: number | undefined }>
   exportAssemblyStep?: (sources: readonly AssemblyNativeBody[]) => Promise<Uint8Array>
   exportDocument(input: DocumentGeometryExportInput): Promise<DocumentGeometryExportResult>
   exportPrintMeshes(input: DocumentPrintMeshExportInput): Promise<DocumentPrintMeshExportResult>
@@ -5136,10 +5137,16 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
   async inspectAssemblyInterference(
     left: readonly AssemblyNativeBody[],
     right: readonly AssemblyNativeBody[],
+    measureDistance = false,
   ) {
     const occt = this.#opencascade
     if (!occt) throw new Error("OpenCascade did not initialize.")
-    return measureOcctInterference(occt, this.#assemblySources(left), this.#assemblySources(right))
+    return measureOcctInterference(
+      occt,
+      this.#assemblySources(left),
+      this.#assemblySources(right),
+      measureDistance,
+    )
   }
 
   #assemblySources(sources: readonly AssemblyNativeBody[]) {

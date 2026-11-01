@@ -806,6 +806,20 @@ Use Stop AI to cancel the pending operation before reconnecting and inspecting t
 never replay an unconfirmed write. The pairing
 expires after one hour or loss of browser polling.
 
+Both transports also expose read-only \`prepare_picture_render\` and \`inspect_motion_clearance\`.
+Picture rendering captures the bound committed project, authored visibility/colours and actual
+settings, uses private geometry, and returns a derived model.png/image/png descriptor under
+\`file\`; retrieve it with read_export_chunk and discard_export. Actual PNGs are limited to 6 MiB.
+Use auto framing or an explicit camera pose with settings.camera=current; no ambient viewport
+camera is borrowed. Revision/source changes, Stop and disconnect revoke pending and retained PNGs.
+PNG is not a prepare_model_export geometry format. Assembly placements and relief are unsupported.
+Motion clearance uses the bound runtime's shared exact inspector and disposable solved previews,
+never a global active-project controller or pose application. Supply jointId, coordinate, range,
+revision and optional sampleCount/minimumGap/pairs. Reports cover sampled poses including endpoints,
+with resolution, minimum sampled distance/pair, pose receipts and positive-volume collision counts.
+Incomplete/unsupported/failed evidence is not a pass and samples never prove clearance throughout
+the continuous range. See the bundled export/inspection operator references for limits and workflow.
+
 Both transports support \`prepare_model_export\` with exact committed \`revision\` and geometry
 \`format\`, or \`prepare_project_backup\` for an editable \`.vshape\`. Follow \`read_export_chunk\`
 byte offsets, reconstruct base64 chunks with ordinary client file tools, verify descriptor byte

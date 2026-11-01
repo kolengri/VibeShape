@@ -297,3 +297,17 @@ Exact automatic FDM optimization is available through `analyze_print_optimizatio
 or custom properties, and the same exact reconstruction and reviewed publication as the editor.
 Use the [operator workflow](../.agents/skills/vibeshape-modeling/references/print-optimization.md)
 and existing numerical-job controls; geometry/STEP bytes remain private to the browser.
+
+## Derived picture and sampled clearance reads
+
+Local and paired remote MCP share `prepare_picture_render` and `inspect_motion_clearance` with
+explicit project targeting and committed revision checks. These reads use bound project authority
+and disposable geometry; they do not apply poses or create document edits. Picture rendering returns
+an actor-bound `model.png` descriptor under `file` (6 MiB maximum) for the existing chunk/discard
+workflow. It supports auto framing or a caller-supplied explicit pose, never an ambient viewport
+from another project. Source changes, Stop and disconnect revoke pending and retained PNGs.
+Motion reports cover endpoint-inclusive sampled poses, minimum sampled gap/pair, positive-volume
+collision counts and explicit incomplete reasons; they never prove continuous-range clearance.
+See the [picture operator reference](../.agents/skills/vibeshape-export/references/picture-render.md)
+and [clearance operator reference](../.agents/skills/vibeshape-inspection/references/motion-clearance.md)
+for canonical settings, budgets and result interpretation.

@@ -62,7 +62,7 @@ function request(path: string, body: unknown, token?: string, requestOrigin = or
 async function connect(broker: ReturnType<typeof createBrowserBroker>) {
   broker.setClient({ name: "test-client", version: "1.0" })
   const response = await broker.handle(request("connect", { protocolVersion: 1, document }))
-  return (await response.json()) as { token: string }
+  return localConnectResponseSchema.parse(await response.json())
 }
 
 describe("browser automation broker", () => {
@@ -2102,4 +2102,139 @@ it("replaces suspended authority with a fresh pairing without displacing an acti
     (await broker.handle(request("resume", { protocolVersion: 1, document }, token))).status,
   ).toBe(401)
   expect((await broker.handle(request("suspend", {}, fresh.token))).status).toBe(200)
+})
+
+it("rejects foreign PNG receipts and preserves the exact requested render settings", async () => {
+  const broker = makeBroker({ origin }),
+    { token } = await connect(broker)
+  const operation = localOperationSchema.parse({
+    tool: "prepare_picture_render",
+    arguments: { revision: 4 },
+    projectId: document.id,
+  })
+  if (operation.tool !== "prepare_picture_render") throw new Error("Expected picture operation")
+  const pending = broker.invoke(operation)
+  const { work } = localPollResponseSchema.parse(
+    await (
+      await broker.handle(
+        request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+      )
+    ).json(),
+  )
+  if (!work) throw new Error("Expected render work")
+  const file = {
+    exportId: "01950000-0000-7000-8000-000000000010",
+    documentId: document.id,
+    revision: 4,
+    format: "png",
+    filename: "model.png",
+    mimeType: "image/png",
+    byteLength: 8,
+    sha256: "a".repeat(64),
+    expiresAt: "2026-11-02T12:00:00Z",
+    chunkMaxBytes: 90 * 1024,
+  }
+  const receipt = { file, settings: operation.arguments.settings, sourceDigest: "b".repeat(64) }
+  const send = (value: unknown) =>
+    broker.handle(
+      request(
+        "result",
+        {
+          protocolVersion: 1,
+          requestId: work.requestId,
+          tool: operation.tool,
+          result: { ok: true, value },
+        },
+        token,
+      ),
+    )
+  for (const value of [
+    { ...receipt, file: { ...file, documentId: file.exportId } },
+    { ...receipt, file: { ...file, revision: 3 } },
+    { ...receipt, settings: { ...receipt.settings, quality: "high" } },
+  ])
+    expect((await send(value)).status).toBe(400)
+  expect((await send(receipt)).status).toBe(200)
+  await expect(pending).resolves.toEqual<unknown>({ ok: true, value: receipt })
+})
+
+it("correlates sampled clearance with the authenticated actor, joint, range and threshold", async () => {
+  const broker = makeBroker({ origin }),
+    { token, actor } = await connect(broker)
+  const jointId = "01950000-0000-7000-8000-000000000004",
+    leftInstanceId = "01950000-0000-7000-8000-000000000005",
+    rightInstanceId = "01950000-0000-7000-8000-000000000006"
+  const operation = localOperationSchema.parse({
+    tool: "inspect_motion_clearance",
+    arguments: {
+      revision: 4,
+      jointId,
+      coordinate: "translation",
+      start: 0,
+      end: 1,
+      sampleCount: 2,
+      minimumGap: 0.4,
+    },
+  })
+  const pending = broker.invoke(operation)
+  const { work } = localPollResponseSchema.parse(
+    await (
+      await broker.handle(
+        request("poll", { protocolVersion: 1, sequence: 1, document, progress: null }, token),
+      )
+    ).json(),
+  )
+  if (!work) throw new Error("Expected clearance work")
+  const pair = {
+    leftInstanceId,
+    rightInstanceId,
+    distance: 0.5,
+    volume: 0,
+    solidCount: 0,
+    violatesMinimumGap: false,
+  }
+  const value = {
+    status: "complete",
+    scope: { documentId: document.id, revision: 4, actor, sourceDigest: "a".repeat(64) },
+    jointId,
+    coordinate: "translation",
+    start: 0,
+    end: 1,
+    requestedSamples: 2,
+    minimumGap: 0.4,
+    resolution: 1,
+    pairs: [{ leftInstanceId, rightInstanceId }],
+    samples: [0, 1].map((value) => ({
+      value,
+      poseDigest: "b".repeat(64),
+      smallest: pair,
+      collisionCount: 0,
+      belowGapCount: 0,
+    })),
+    smallest: { value: 0, ...pair },
+    coverage: "sampled-poses-only",
+  }
+  const send = (value: unknown) =>
+    broker.handle(
+      request(
+        "result",
+        {
+          protocolVersion: 1,
+          requestId: work.requestId,
+          tool: operation.tool,
+          result: { ok: true, value },
+        },
+        token,
+      ),
+    )
+  for (const mismatch of [
+    { scope: { ...value.scope, actor: { ...actor, sessionId: jointId } } },
+    { jointId: leftInstanceId },
+    { minimumGap: 0.3 },
+    { start: -1 },
+    { requestedSamples: 3 },
+  ])
+    expect((await send({ ...value, ...mismatch })).status).toBe(400)
+  expect((await send(value)).status).toBe(200)
+  await expect(pending).resolves.toEqual<unknown>({ ok: true, value })
 })

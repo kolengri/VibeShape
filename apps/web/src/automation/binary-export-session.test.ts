@@ -241,3 +241,145 @@ describe("paired binary export session", () => {
     })
   })
 })
+
+describe("derived PNG retention", () => {
+  function pictureFixture() {
+    let revision = 4,
+      current = true
+    const bytes = new Uint8Array(BINARY_EXPORT_CHUNK_MAX_BYTES + 8)
+    bytes.set([137, 80, 78, 71, 13, 10, 26, 10])
+    const settings = {
+      scene: "studio",
+      quality: "draft",
+      width: 1080,
+      height: 1080,
+      camera: "auto",
+      finishes: {},
+    } as const
+    const preparePicture = vi.fn(async () => ({
+      ok: true as const,
+      documentId: id(1),
+      revision: 4,
+      format: "png" as const,
+      file: bytes,
+      metadata: { settings, sourceDigest: "b".repeat(64) },
+      isCurrent: () => current,
+    }))
+    const session = createBinaryExportSession({
+      documentId: id(1),
+      isActive: () => true,
+      currentRevision: () => revision,
+      prepare: vi.fn(async () => ({ ok: false as const })),
+      preparePicture,
+      createExportId: () => id(10),
+    })
+    const operation = {
+      tool: "prepare_picture_render",
+      arguments: { revision: 4, settings },
+    } as const
+    return {
+      session,
+      preparePicture,
+      operation,
+      bytes,
+      setRevision: (r: number) => {
+        revision = r
+      },
+      stale: () => {
+        current = false
+      },
+    }
+  }
+  it("retains real PNG chunks under 128 KiB and binds descriptor, document and actor", async () => {
+    const f = pictureFixture()
+    const receipt = success<{ file: BinaryExportDescriptor }>(
+      await f.session.execute(actor, f.operation),
+    )
+    expect(receipt.file).toMatchObject({
+      documentId: id(1),
+      revision: 4,
+      format: "png",
+      filename: "model.png",
+      mimeType: "image/png",
+      byteLength: f.bytes.length,
+    })
+    const chunk = success<BinaryExportChunk>(
+      await f.session.execute(actor, read(receipt.file.exportId)),
+    )
+    expect(chunk.byteLength).toBe(BINARY_EXPORT_CHUNK_MAX_BYTES)
+    expect(new Uint8Array(Buffer.from(chunk.base64, "base64"))).toEqual(
+      f.bytes.slice(0, BINARY_EXPORT_CHUNK_MAX_BYTES),
+    )
+    expect(
+      new TextEncoder().encode(JSON.stringify({ ok: true, value: chunk })).length,
+    ).toBeLessThan(128 * 1024)
+    expect(
+      await f.session.execute({ ...actor, sessionId: id(99) }, read(receipt.file.exportId)),
+    ).toMatchObject({ ok: false, diagnostic: { code: "export-owner-mismatch" } })
+    f.session.cancel()
+    expect(await f.session.execute(actor, read(receipt.file.exportId))).toMatchObject({
+      ok: false,
+      diagnostic: { code: "export-unavailable" },
+    })
+  })
+  it.each(["revision", "metadata", "dispose"] as const)(
+    "revokes PNG after %s changes",
+    async (mode) => {
+      const f = pictureFixture(),
+        receipt = success<{ file: BinaryExportDescriptor }>(
+          await f.session.execute(actor, f.operation),
+        )
+      if (mode === "revision") f.setRevision(5)
+      if (mode === "metadata") f.stale()
+      if (mode === "dispose") f.session.dispose()
+      expect((await f.session.execute(actor, read(receipt.file.exportId))).ok).toBe(false)
+    },
+  )
+  it("rejects non-PNG bytes and the actual 6 MiB artifact limit", async () => {
+    const f = pictureFixture()
+    f.bytes.fill(0)
+    expect(await f.session.execute(actor, f.operation)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "export-invalid-type" },
+    })
+    f.preparePicture.mockResolvedValueOnce({
+      ok: true,
+      documentId: id(1),
+      revision: 4,
+      format: "png",
+      file: new Uint8Array(BINARY_EXPORT_MAX_BYTES + 1),
+      metadata: { settings: f.operation.arguments.settings, sourceDigest: "b".repeat(64) },
+      isCurrent: () => true,
+    })
+    expect(await f.session.execute(actor, f.operation)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "export-too-large" },
+    })
+  })
+  it.each(["stop", "abort", "disconnect", "stale"] as const)(
+    "retains no PNG when %s occurs before preparation completes",
+    async (mode) => {
+      const f = pictureFixture()
+      let release!: () => void
+      const deferred = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const original = f.preparePicture.getMockImplementation()
+      if (!original) throw new Error("Missing picture source")
+      f.preparePicture.mockImplementationOnce(async () => {
+        await deferred
+        return original()
+      })
+      const abort = new AbortController(),
+        pending = f.session.execute(actor, f.operation, abort.signal)
+      await Promise.resolve()
+      if (mode === "stop") f.session.cancel()
+      if (mode === "abort") abort.abort()
+      if (mode === "disconnect") f.session.dispose()
+      if (mode === "stale") f.stale()
+      release()
+      expect((await pending).ok).toBe(false)
+      expect((await f.session.execute(actor, read(id(10)))).ok).toBe(false)
+    },
+  )
+})

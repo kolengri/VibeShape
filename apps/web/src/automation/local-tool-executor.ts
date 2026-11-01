@@ -85,6 +85,7 @@ import { executeSketchCornerCommand } from "./local-sketch-corner-command"
 import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
+import type { createMotionClearanceAutomationSession } from "./motion-clearance-automation-session"
 import type { createNumericalJobSession } from "./numerical-job-session"
 import type { createPlanarImportAutomationSession } from "./planar-import-automation-session"
 import type { createBrowserPrintOptimizationAutomationSession } from "./print-optimization-automation-session"
@@ -118,6 +119,7 @@ type LocalSessionPort = Readonly<{
   quickLightweighting?: ReturnType<typeof createBrowserQuickLightweightingAutomationSession>
   printOptimization?: ReturnType<typeof createBrowserPrintOptimizationAutomationSession>
   numericalJobs?: ReturnType<typeof createNumericalJobSession>
+  motionClearance?: ReturnType<typeof createMotionClearanceAutomationSession>
   exports?: ReturnType<typeof createBinaryExportSession>
   imports?: ReturnType<typeof createImportAutomationSession>
   planarImports?: ReturnType<typeof createPlanarImportAutomationSession>
@@ -377,6 +379,7 @@ export function createLocalToolExecutor(
       LocalOperation,
       {
         tool:
+          | "prepare_picture_render"
           | "prepare_model_export"
           | "prepare_project_backup"
           | "read_export_chunk"
@@ -515,6 +518,12 @@ export function createLocalToolExecutor(
       : localFailure("history-unavailable", "The paired session cannot reorder History items.")
   }
   function committedReadOperation(operation: LocalOperation, signal?: AbortSignal) {
+    if (operation.tool === "inspect_motion_clearance")
+      return (
+        session.motionClearance?.execute(actor, operation, signal) ??
+        localFailure("clearance-unavailable", "The paired session cannot inspect motion clearance.")
+      )
+
     if (operation.tool === "export_design_recipe")
       return session.metadata
         ? session.metadata.exportRecipe(operation.arguments)

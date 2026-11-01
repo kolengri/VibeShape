@@ -17,6 +17,7 @@ import {
   ExtensionsIcon,
   FilesIcon,
   HelpIcon,
+  ImageIcon,
   ImportGeometryIcon,
   ImportSketchIcon,
   Keyboard,
@@ -69,6 +70,7 @@ type ApplicationMenuProps = {
   | { scope: "library" }
   | {
       scope?: "editor"
+      onRenderPicture?: (() => void) | undefined
       hideModelExport?: boolean
       unitChangesBlocked: boolean
       onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
@@ -129,10 +131,44 @@ function ScriptsMenuItem({
   )
 }
 
+function ProjectOutputMenu({
+  controller,
+  onRenderPicture,
+  launchDialog,
+}: {
+  controller: DocumentControllerState
+  onRenderPicture: (() => void) | undefined
+  launchDialog: (next: MenuDialog) => void
+}) {
+  const t = useTranslations("app.shell.applicationMenu")
+  const pictureT = useTranslations("pictureRender")
+  return (
+    <>
+      <DropdownMenuItem
+        aria-haspopup="dialog"
+        disabled={controller.status !== "ready" || controller.report === null}
+        onSelect={() => launchDialog("export")}
+      >
+        <Download aria-hidden="true" />
+        {t("export")}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        aria-haspopup="dialog"
+        disabled={controller.status !== "ready" || controller.report === null || !onRenderPicture}
+        onSelect={() => onRenderPicture?.()}
+      >
+        <ImageIcon aria-hidden="true" />
+        {pictureT("menu")}
+      </DropdownMenuItem>
+    </>
+  )
+}
+
 function ApplicationProjectMenu({
   controller,
   unitChangesBlocked,
   hideModelExport,
+  onRenderPicture,
   backup,
   navigation,
   launchDialog,
@@ -140,6 +176,7 @@ function ApplicationProjectMenu({
   controller: DocumentControllerState
   unitChangesBlocked: boolean
   hideModelExport: boolean
+  onRenderPicture: (() => void) | undefined
   backup: ReturnType<typeof useProjectBackup>
   navigation: ReturnType<typeof useProjectNavigation>
   launchDialog: (next: MenuDialog) => void
@@ -214,14 +251,11 @@ function ApplicationProjectMenu({
         {t("library")}
       </DropdownMenuItem>
       {!hideModelExport && (
-        <DropdownMenuItem
-          aria-haspopup="dialog"
-          disabled={controller.status !== "ready" || controller.report === null}
-          onSelect={() => launchDialog("export")}
-        >
-          <Download aria-hidden="true" />
-          {t("export")}
-        </DropdownMenuItem>
+        <ProjectOutputMenu
+          controller={controller}
+          onRenderPicture={onRenderPicture}
+          launchDialog={launchDialog}
+        />
       )}
       <ScriptsMenuItem controller={controller} onSelect={() => launchDialog("recipes")} />
     </DropdownMenuGroup>
@@ -460,6 +494,15 @@ export function ApplicationMenu(props: ApplicationMenuProps) {
                 controller={controller}
                 unitChangesBlocked={unitChangesBlocked}
                 hideModelExport={hideModelExport}
+                onRenderPicture={
+                  editor?.onRenderPicture
+                    ? () => {
+                        openingCommandDialog.current = true
+                        trigger.current?.focus()
+                        editor.onRenderPicture?.()
+                      }
+                    : undefined
+                }
                 backup={backup}
                 navigation={navigation}
                 launchDialog={launchDialog}

@@ -56,6 +56,14 @@ failure contract.
 
 ## Joint motion
 
+**Check clearance** in Drive samples the requested joint range, including both endpoints, and
+measures exact transformed-solid distances and positive-volume intersections. The report identifies
+the smallest sampled gap, pair, pose and minimum-gap violations. Its sample count and spacing do not
+establish clearance between samples. Unsupported mesh sources, solve failures, cancellation, stale
+sources and exhausted budgets produce incomplete reports. **Show** revalidates the source and pose
+before displaying a disposable preview; only explicit **Apply** changes the saved assembly. See
+[ADR-0148](../adr/0148-sampled-motion-clearance.md).
+
 Choose Drive for a revolute, prismatic or cylindrical joint. Select rotation or translation where the
 joint supports both, enter a coordinate in project display units, and choose **Preview coordinate**.
 The ordinary frozen-source worker solves the actual constraints, including general closed loops.
