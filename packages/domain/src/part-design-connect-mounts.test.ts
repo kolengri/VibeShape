@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { documentSnapshotSchema } from "./document"
+import { createDocumentDependencyGraphFromSnapshot } from "./document-graph"
 import {
   createFeatureContentIdentity,
   type FeatureContentEnvironment,
@@ -81,6 +82,11 @@ describe("Connect Mounts domain contract", () => {
 
   it("registers an independent exact body with no model dependencies", () => {
     const authored = feature()
+    const graph = createDocumentDependencyGraphFromSnapshot({ sketches: [], features: [authored] })
+    expect(graph.ok).toBe(true)
+    if (!graph.ok) throw new Error(graph.diagnostic.message)
+    expect(graph.graph.dependencyModelIssues).toEqual([])
+    expect(graph.graph.edges).toEqual([])
     expect(registry().validateFeature(authored)).toMatchObject({
       ok: true,
       contentParameters: { connectionMode: "tree" },
