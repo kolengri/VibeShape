@@ -42,6 +42,7 @@ import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
+import { FitHolePresets } from "../variables/fit-hole-presets"
 import { type HoleTargetBodyOption, holeTargetBodyKey } from "./hole-target-body"
 
 export type HoleFormCopy = ParameterPanelCopy &
@@ -760,6 +761,14 @@ export function HoleForm(props: HoleFormProps) {
                   />
                 )}
               </form.AppField>
+              <FitHolePresets
+                variables={variables}
+                disabled={disabled}
+                onChoose={(expression) => {
+                  clearSubmissionErrors()
+                  form.setFieldValue("diameter", expression)
+                }}
+              />
               <form.AppField name="treatment">
                 {(field) => (
                   <field.NativeSelectField

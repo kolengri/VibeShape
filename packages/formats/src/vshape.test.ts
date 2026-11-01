@@ -75,6 +75,14 @@ function configurableProject() {
           id: widthVariableId,
           name: "width",
           expression: "10 * #wall",
+          customizer: {
+            dimension: "length",
+            group: "Size",
+            min: 10,
+            max: 100,
+            step: 1,
+            configurations: { Small: 20, Large: 80 },
+          },
         },
       ],
     },
@@ -292,7 +300,7 @@ const metadata = {
 } as const
 
 describe(".vshape v0", () => {
-  it("writes deterministic archives and preserves configurable variable sources", async () => {
+  it("writes deterministic archives and preserves variable sources and customizer configurations", async () => {
     const project = configurableProject()
     const first = await writeVShape({ ...project, ...metadata })
     const second = await writeVShape({ ...project, ...metadata })
@@ -310,7 +318,19 @@ describe(".vshape v0", () => {
           displayUnits: { length: "in", angle: "deg" },
           variables: [
             { id: wallVariableId, name: "wall", expression: "2 mm" },
-            { id: widthVariableId, name: "width", expression: "10 * #wall" },
+            {
+              id: widthVariableId,
+              name: "width",
+              expression: "10 * #wall",
+              customizer: {
+                dimension: "length",
+                group: "Size",
+                min: 10,
+                max: 100,
+                step: 1,
+                configurations: { Small: 20, Large: 80 },
+              },
+            },
           ],
           sketches: [
             {

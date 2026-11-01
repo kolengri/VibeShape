@@ -689,9 +689,10 @@ export class DocumentWorkerRuntime {
         : {
             ok: false,
             diagnosticCode: evaluated.diagnostic.code,
-            ...(evaluation.content.feature.type.typeId ===
+            ...((evaluation.content.feature.type.typeId ===
               "org.vibeshape.feature.part-design.loft" &&
-            evaluation.content.feature.type.schemaVersion === 3
+              evaluation.content.feature.type.schemaVersion === 3) ||
+            evaluation.content.feature.type.typeId === "org.vibeshape.feature.part-design.fillet"
               ? { diagnosticMessage: evaluated.diagnostic.message.slice(0, 1024) }
               : {}),
           }

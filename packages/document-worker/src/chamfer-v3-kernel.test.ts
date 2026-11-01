@@ -523,7 +523,12 @@ it.each(["fillet", "chamfer"] as const)(
       ok: false,
       diagnostic: {
         code: "invalid-feature-geometry",
-        message: expect.stringContaining(`Reduce the ${dimension} or choose another edge`),
+        message:
+          operation === "fillet"
+            ? expect.stringMatching(
+                /Radius [0-9.]+ mm built a valid single solid for the same edge scope[\s\S]*This tested radius is not a maximum\.$/,
+              )
+            : expect.stringContaining(`Reduce the ${dimension} or choose another edge`),
       },
     })
     const missing = await engine.evaluateFeature(
@@ -566,7 +571,12 @@ it.each(["fillet", "chamfer"] as const)(
       ok: false,
       diagnostic: {
         code: "invalid-feature-geometry",
-        message: expect.stringContaining(`Reduce the ${dimension} or choose another edge`),
+        message:
+          operation === "fillet"
+            ? expect.stringMatching(
+                /Radius [0-9.]+ mm built a valid single solid for the same edge scope[\s\S]*This tested radius is not a maximum\.$/,
+              )
+            : expect.stringContaining(`Reduce the ${dimension} or choose another edge`),
       },
     })
     expect((await evaluate(boxSource.input)).shape.volume).toBeCloseTo(2400, 8)

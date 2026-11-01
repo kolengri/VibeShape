@@ -105,6 +105,7 @@ export type EdgeTreatmentFormProps = Readonly<{
   pickingRequest?: EdgeTreatmentPickRequest | null
   onPickingContextChange?: ((context: EdgeTreatmentPickingContext | null) => void) | undefined
   previewStatus?: FeaturePreviewState["status"] | undefined
+  previewDiagnostic?: string | undefined
   variables: readonly VariableDefinition[]
 }>
 
@@ -422,7 +423,9 @@ export function EdgeTreatmentForm(props: EdgeTreatmentFormProps) {
           legend={props.copy.scopeLabel}
           message={
             state.message ??
-            (props.previewStatus === "error" ? t(`${props.operation}.previewFailed`) : null)
+            (props.previewStatus === "error"
+              ? (props.previewDiagnostic ?? t(`${props.operation}.previewFailed`))
+              : null)
           }
           actions={
             <TaskPanelFormActions

@@ -29,6 +29,8 @@ import {
   sourceImportInspectionSchema,
 } from "@vibeshape/protocol"
 import { browserAuthoredUuid } from "../../document/authored-document-session"
+import { authorF3dRecords } from "./f3d-authoring"
+import { prepareF3dSource } from "./f3d-parser-client"
 import { sourceAuthorityUpgradeCommands } from "./source-authority-upgrade"
 
 export const importSourceUnits = [
@@ -57,13 +59,15 @@ export class ImportFileError extends Error {
 }
 export type ImportFile = Pick<File, "name" | "size" | "arrayBuffer">
 export type PreparedImportSource = Awaited<ReturnType<typeof readImportSource>>
-export function importFormat(filename: string) {
+export function importFormat(filename: string): "step" | "brep" | "stl" | "3mf" | "f3d" | null {
   const extension = filename.toLowerCase().split(".").at(-1)
   if (extension === "step" || extension === "stp") return "step"
-  return extension === "brep" || extension === "stl" || extension === "3mf" ? extension : null
+  return extension === "brep" || extension === "stl" || extension === "3mf" || extension === "f3d"
+    ? extension
+    : null
 }
 export function hasImportSourceUnitIntent(file: ImportFile | null, unit: ImportSourceUnit | null) {
-  return file !== null && (importFormat(file.name) === "3mf" || unit !== null)
+  return file !== null && (["3mf", "f3d"].includes(importFormat(file.name) ?? "") || unit !== null)
 }
 const meshUnits: Record<ImportSourceUnit, "mm" | "cm" | "m" | "in" | "ft" | "um"> = {
   micrometer: "um",
@@ -73,18 +77,48 @@ const meshUnits: Record<ImportSourceUnit, "mm" | "cm" | "m" | "in" | "ft" | "um"
   inch: "in",
   foot: "ft",
 }
-export async function readImportSource(file: ImportFile, unit: ImportSourceUnit | null) {
+function requireImportFile(file: ImportFile, unit: ImportSourceUnit | null) {
   const format = importFormat(file.name)
   if (!format) throw new ImportFileError("format")
-  if ((format === "3mf") !== (unit === null)) throw new ImportFileError("units")
+  if ((format === "3mf" || format === "f3d") !== (unit === null)) throw new ImportFileError("units")
   if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new ImportFileError("budget")
+  if (format === "f3d" && file.size > 64 * 1024 * 1024) throw new ImportFileError("budget")
   const filename = sourceAssetSchema.shape.filename.safeParse(file.name)
   if (!filename.success) throw new ImportFileError("filename")
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  if (bytes.byteLength !== file.size) throw new ImportFileError("budget")
-  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))
-  const digest = Array.from(hash, (byte) => byte.toString(16).padStart(2, "0")).join("")
-  const common = { bytes, filename: filename.data }
+  return { format, filename: filename.data }
+}
+async function sha256(bytes: Uint8Array) {
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes)))
+  return Array.from(hash, (byte) => byte.toString(16).padStart(2, "0")).join("")
+}
+function exactSourceMetadata(
+  format: "step" | "brep" | "f3d",
+  bytes: Uint8Array,
+  digest: string,
+  unit: ImportSourceUnit | null,
+) {
+  return importedSourceContentSchema.parse({
+    digest,
+    byteLength: bytes.byteLength,
+    format: format === "f3d" ? "step" : format,
+    normalization: {
+      sourceUnit: unit ?? "millimeter",
+      scaleToMillimeters: unit ? scales[unit] : 1,
+      normalizedUnit: "millimeter",
+    },
+    unitPolicy: format === "brep" ? "brep-source-normalized" : "step-system-mm",
+    readerPolicyVersion: 1,
+  })
+}
+export async function readImportSource(file: ImportFile, unit: ImportSourceUnit | null) {
+  const { format, filename } = requireImportFile(file, unit)
+  const selectedBytes = new Uint8Array(await file.arrayBuffer())
+  if (selectedBytes.byteLength !== file.size) throw new ImportFileError("budget")
+  const originalDigest = await sha256(selectedBytes)
+  const f3d = format === "f3d" ? await prepareF3dSource(selectedBytes) : undefined
+  const bytes = f3d ? new TextEncoder().encode(f3d.step) : selectedBytes
+  const digest = f3d ? await sha256(bytes) : originalDigest
+  const common = { bytes, filename }
   if (format === "stl" || format === "3mf")
     return {
       ...common,
@@ -96,20 +130,15 @@ export async function readImportSource(file: ImportFile, unit: ImportSourceUnit 
         ...(unit === null ? {} : { units: meshUnits[unit] }),
       }),
     }
-  if (unit === null) throw new ImportFileError("units")
-  const source = importedSourceContentSchema.parse({
-    digest,
-    byteLength: bytes.byteLength,
-    format,
-    normalization: {
-      sourceUnit: unit,
-      scaleToMillimeters: scales[unit],
-      normalizedUnit: "millimeter",
-    },
-    unitPolicy: format === "step" ? "step-system-mm" : "brep-source-normalized",
-    readerPolicyVersion: 1,
-  })
-  return { ...common, representation: "exact-solid" as const, source }
+  return {
+    ...common,
+    representation: "exact-solid" as const,
+    source: exactSourceMetadata(format, bytes, digest, unit),
+    f3d,
+    originalBytes: format === "f3d" ? selectedBytes : undefined,
+    originalByteLength: selectedBytes.byteLength,
+    originalDigest,
+  }
 }
 export type ImportDocumentContext = Readonly<{
   documentId: string
@@ -227,8 +256,21 @@ export function createImportTransaction(
     issuedAt,
     actor: authoredActor,
   })
+  const upgrades = sourceAuthorityUpgradeCommands(context.authorityVersion, envelope)
+  const mapped =
+    prepared.representation === "exact-solid" && prepared.f3d
+      ? authorF3dRecords(
+          prepared.f3d,
+          context,
+          sourceImportInspectionSchema.parse(inspection),
+          envelope,
+          uuid,
+        )
+      : null
+  const committedFeature = mapped?.editableFeature ?? feature
   const commands = [
-    ...sourceAuthorityUpgradeCommands(context.authorityVersion, envelope),
+    ...upgrades,
+    ...(mapped?.commands ?? []),
     documentV4CommandSchema.parse({
       ...envelope(),
       schemaVersion: 4,
@@ -249,7 +291,10 @@ export function createImportTransaction(
       ...envelope(),
       schemaVersion: 1,
       kind: "org.vibeshape.history.insert-feature",
-      payload: { feature, historyAfter: context.historyAfter },
+      payload: {
+        feature: committedFeature,
+        historyAfter: mapped?.historyAfter ?? context.historyAfter,
+      },
     }),
   ]
   return {

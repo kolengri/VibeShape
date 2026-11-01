@@ -19,11 +19,14 @@ apply. STEP preserves exact geometry and does not accept tessellation quality.
 
 The Thread panel includes coarse metric nominal diameter/pitch presets from M2 to M24, based on
 [published fastener diameter/pitch data](https://www.advancedynamicsolution.com/resources/metric-thread-data.html).
-Selecting a preset sets only nominal diameter and pitch. Groove depth, radial clearance, length,
+Selecting a preset sets nominal diameter and pitch; when a valid shared `#tolerance` length exists,
+it also links radial clearance to that variable. Groove depth, independent radial clearance, length,
 starts, axis, handedness and allowances remain authored values and keep ordinary validation.
 Editing either dimension returns the selector to **Custom dimensions** without altering the
 other fields. The existing 60-degree V-groove geometry is a custom thread; a preset does not
 establish an ISO profile, gauge tolerance class or certified standard fit.
+
+The prepared print preview includes [sampled readiness analysis and explicit shared fit clearance](product/print-readiness.md).
 
 ## Printer profile
 

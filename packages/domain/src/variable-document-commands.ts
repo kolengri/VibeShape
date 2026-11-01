@@ -1,4 +1,5 @@
 import type { z } from "zod"
+import { canonicalJson } from "./canonical-json"
 import {
   domainDiagnostic,
   requireExistingDocumentRevision,
@@ -349,7 +350,8 @@ function variablesEqual(left: VariableDefinition, right: VariableDefinition) {
     left.schemaVersion === right.schemaVersion &&
     left.id === right.id &&
     left.name === right.name &&
-    left.expression === right.expression
+    left.expression === right.expression &&
+    canonicalJson(left.customizer ?? null) === canonicalJson(right.customizer ?? null)
   )
 }
 

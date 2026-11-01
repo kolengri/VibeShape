@@ -1,30 +1,22 @@
 import { useTranslations } from "@vibeshape/i18n"
-import { checkPrintVolume } from "@vibeshape/print-analysis"
+import { checkPrintVolume, type PrintReadinessResult } from "@vibeshape/print-analysis"
 import type { PrinterProfile, PrintPreparationResult } from "@vibeshape/protocol"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
-import type { GeometryViewport, ViewerMesh } from "@vibeshape/viewer/three-viewport"
+import type { GeometryViewport, ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { printReadinessPreviewMeshes } from "./print-readiness-preview-meshes"
 
-function previewMeshes(result: PrintPreparationResult): ViewerMesh[] {
-  return result.meshes.map((mesh, index) => {
-    const positions = new Float32Array(mesh.vertices)
-    const indices = new Uint32Array(mesh.triangles)
-    const sourceNormals = result.normals[index]
-    if (!sourceNormals) throw new Error("Prepared print normals are missing.")
-    const normals = new Float32Array(sourceNormals)
-    return {
-      featureId: `print-${index}`,
-      appearance: index < result.report.bodyCount ? "model" : "preview",
-      positions,
-      normals,
-      indices,
-      triangleFaceIds: Uint32Array.from(
-        { length: indices.length / 3 },
-        (_, triangle) => triangle + 1,
-      ),
-    }
-  })
+function selectedPrintFacet(selection: ViewerSelection | null, bodyCount: number) {
+  if (!selection) return null
+  const meshIndex = Number(selection.featureId.slice("print-".length))
+  const triangleIndex = selection.faceId - 1
+  return Number.isInteger(meshIndex) &&
+    meshIndex >= 0 &&
+    meshIndex < bodyCount &&
+    triangleIndex >= 0
+    ? { meshIndex, triangleIndex }
+    : null
 }
 
 export function PrintPreparationPreview({
@@ -32,9 +24,11 @@ export function PrintPreparationPreview({
   profile = null,
   onLayFace,
   disabled = false,
+  readiness = null,
 }: {
   result: PrintPreparationResult
   disabled?: boolean
+  readiness?: PrintReadinessResult | null
   profile?: PrinterProfile | null
   onLayFace?: (meshIndex: number, triangleIndex: number) => Promise<void>
 }) {
@@ -49,6 +43,8 @@ export function PrintPreparationPreview({
     [profile, result],
   )
   const bedRef = useRef(bed)
+  const readinessRef = useRef(readiness)
+  readinessRef.current = readiness
   bedRef.current = bed
   useEffect(() => {
     let disposed = false
@@ -61,21 +57,12 @@ export function PrintPreparationPreview({
         if (disposed) return
         const viewport = createGeometryViewport(canvas, {
           onSelectionChange: (selection) => {
-            const meshIndex = selection ? Number(selection.featureId.slice("print-".length)) : -1
-            const triangleIndex = selection ? selection.faceId - 1 : -1
-            setFacet(
-              Number.isInteger(meshIndex) &&
-                meshIndex >= 0 &&
-                meshIndex < result.report.bodyCount &&
-                triangleIndex >= 0
-                ? { meshIndex, triangleIndex }
-                : null,
-            )
+            setFacet(selectedPrintFacet(selection, result.report.bodyCount))
           },
         })
         viewportRef.current = viewport
         viewport.setOriginPlaneVisibility({ xy: false, xz: false, yz: false })
-        viewport.setMeshes(previewMeshes(result))
+        viewport.setMeshes(printReadinessPreviewMeshes(result, readinessRef.current))
         viewport.setPrintBed(bedRef.current)
         viewport.fit()
       })
@@ -89,8 +76,11 @@ export function PrintPreparationPreview({
     }
   }, [result])
   useEffect(() => {
-    viewportRef.current?.setPrintBed(bed)
-  }, [bed])
+    const viewport = viewportRef.current
+    if (!viewport) return
+    viewport.setPrintBed(bed)
+    viewport.setMeshes(printReadinessPreviewMeshes(result, readiness))
+  }, [bed, result, readiness])
   return (
     <div className="grid gap-2">
       <div className="relative h-72 min-w-0 overflow-hidden rounded-md border bg-background">

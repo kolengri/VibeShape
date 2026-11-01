@@ -15,6 +15,14 @@ Windows archives are unsigned; public signing and platform acceptance remain rel
 The manual [Desktop release workflow](docs/desktop-release.md) builds both platforms, runs native
 packaged acceptance and publishes the validated downloads to GitHub Releases and the website.
 
+
+Parameter templates use [Customizer](docs/product/customizer.md) for grouped sliders and named
+configurations. [Print readiness](docs/product/print-readiness.md) provides orientation-aware
+wall/overhang inspection and explicit radial fit helpers before export.
+[Scripts and macros](docs/product/scripts-and-macros.md) provide isolated TypeScript recipes and
+record/replay; [F3D import](docs/adr/0145-bounded-f3d-source-import.md) reports recovered and
+unsupported content before applying it.
+
 ## Status
 
 Fillet and Chamfer are persistent Part Design features over all or selected edges of one explicit solid target.

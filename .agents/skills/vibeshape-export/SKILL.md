@@ -15,8 +15,19 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for session setup. Establish the 
 | Exact geometry for another CAD application | STEP |
 | Unit-aware mesh interchange for slicing | 3MF |
 | Mesh compatibility with an STL-only consumer | STL; explicitly state coordinates are mm |
+| Editable TypeScript recipe of supported modeling History | `export_design_recipe` at the exact committed revision, or **Scripts and macros… → Export design as script** |
 
 Native backups of projects with disconnected History inputs use `.vshape` V6 and retain the original repair recipes, downstream items, and suspended Part identities. Open them in a V6-capable editor; older readers reject this authority rather than silently dropping repair state. Geometry exports require a successfully rebuilt model.
+
+TypeScript recipe export is read-only on local and paired remote MCP, returning at most 128 KiB
+source with document/revision context. Save the returned `source` as `.ts`; the editor supports larger
+downloads. Unsupported assets/imports, topology-bound references, assemblies, textures, custom part
+metadata and retained repair History refuse export; deliver native `.vshape` for complete preservation.
+The editor can run TypeScript loops/Math in an isolated interpreter, preview and replay one atomic
+Undo transaction, and record new History identities plus their dependency closure. Existing-item
+edits are not recorded. Script source is downloadable/session-only; applied results are ordinary
+features without associative source reruns. MCP exports source but does not run or apply it. See the
+[Scripts and macros workflow](https://github.com/kolengri/VibeShape/blob/main/docs/product/scripts-and-macros.md).
 
 STEP/STL/3MF are geometry exports, not native editable backups. Browser autosave remains tied to that browser origin/profile. Native **Open project (.vshape)** imports a separate copy; use it for restoring/transferring authored intent, and inspect the resulting copy before editing. Do not substitute a mesh export for a requested editable project.
 

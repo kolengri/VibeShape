@@ -160,7 +160,7 @@ import { createOcctCompound } from "./occt-compound"
 import { createOcctConnectMounts } from "./occt-connect-mounts"
 import { makeOcctCubicBezierEdge } from "./occt-cubic-bezier"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
-import { treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
+import { FilletBuildError, treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
 import { exportOcctStep, importOcctStep } from "./occt-exchange"
 import {
   draftExtrusionTool,
@@ -2770,7 +2770,9 @@ class LegacyEdgeTreatmentError extends Error {
 function buildLegacyEdgeTreatment(operation: "fillet" | "chamfer", build: () => Shape3D) {
   try {
     return build()
-  } catch {
+  } catch (error) {
+    if (error instanceof FilletBuildError)
+      throw new LegacyEdgeTreatmentError("invalid-feature-geometry", error.message)
     const label = operation === "fillet" ? "Fillet" : "Chamfer"
     const dimension = operation === "fillet" ? "radius" : "distance"
     throw new LegacyEdgeTreatmentError(

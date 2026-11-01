@@ -180,3 +180,17 @@ in the generated worker notice. Source: [upstream v6.0.0 LICENSE](https://github
 ## MCP SDK security update
 
 The shared Bun catalog pins MCP TypeScript SDK 1.31.0, the minimum patched release for [GHSA-6qxp-vccf-f47h](https://github.com/modelcontextprotocol/typescript-sdk/security/advisories/GHSA-6qxp-vccf-f47h). The advisory affects the SDK OAuth client when connecting to an untrusted server with existing credentials. VibeShape's current server transports and private local desktop relay do not configure that OAuth client. The update keeps the MIT license and existing dependency ranges; corresponding-source and desktop notice generation read the resolved package. Audit evidence must state its severity threshold: the standard project command currently checks critical findings only.
+
+## Design scripts and F3D import
+
+The isolated design-script worker bundles Sucrase 3.35.1 and QuickJS core plus the synchronous
+release WASM variant 0.31.0. Their MIT notices, including the embedded QuickJS engine copyright,
+are retained in `sources/worker-licenses.txt`. Worker inventories are accumulated across every
+worker bundle before publication, rather than replaced by the last worker's dependency set.
+
+The F3D reader includes adapted GPL-3.0-or-later Extrudo sources and `fzstd` 0.1.1 under MIT.
+The retained format documentation credits the cadmpeg contributors' CC BY 4.0 specification.
+The public build includes `sources/Extrudo-F3D-NOTICE.md` and `sources/F3D-FORMAT.md`; the exact
+modified reader sources are part of the accompanying VibeShape source archive. See the canonical
+[reader provenance notice](../packages/formats/src/f3d/NOTICE.md). Synthetic fixtures do not contain
+third-party CAD designs. These inventory facts do not claim a separate legal compliance review.

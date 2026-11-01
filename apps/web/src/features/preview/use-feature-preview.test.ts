@@ -20,6 +20,7 @@ const {
   documentSnapshotSchema,
   featureIdSchema,
   featureRecordSchema,
+  filletFeatureType,
   holeFeatureTypeV2,
   pyramidFeatureType,
   sphereFeatureType,
@@ -356,6 +357,45 @@ describe("feature preview worker lifetime", () => {
     await act(async () => {})
     expect(result.current.status).toBe("error")
     expect(result.current.diagnostics).toBeUndefined()
+  })
+
+  it("forwards the exact fillet diagnostic without changing the requested radius", async () => {
+    const message =
+      "Fillet failed at radius 40 mm. Radius 5 mm built a valid single solid; this is not a maximum."
+    const candidate = featureRecordSchema.parse({
+      ...feature(candidateId, [baseId]),
+      type: filletFeatureType.type,
+      parameters: { radius: createLengthQuantity(40) },
+    })
+    createSession.mockReturnValue({
+      rebuild: vi.fn(async ({ document }: { document: typeof snapshot }) => ({
+        ...rebuiltResponse([]),
+        documentId: document.id,
+        revision: document.revision,
+        evaluation: {
+          records: document.features.map(({ id }) => ({
+            featureId: id,
+            status: "failed" as const,
+            diagnostics: [
+              {
+                code: "org.vibeshape.feature.geometry-failed",
+                values: { reason: "invalid-feature-geometry", message },
+              },
+            ],
+          })),
+          dirtyFeatureIds: [],
+          evaluatedFeatureIds: [],
+          reusedFeatureIds: [],
+        },
+      })),
+      terminate: vi.fn(),
+    })
+    const committedGeometry = [] as const
+    const { result } = renderHook(() => useFeaturePreview(snapshot, candidate, committedGeometry))
+    await act(async () => {})
+    expect(result.current.status).toBe("error")
+    expect(result.current.diagnostic).toBe(message)
+    expect(candidate.parameters.radius).toEqual(createLengthQuantity(40))
   })
 
   it("keeps only the latest pending rebuild while the kernel evaluates a previous candidate", async () => {

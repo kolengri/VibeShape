@@ -44,7 +44,10 @@
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
     "zod": "catalog:",
-    "zustand": "catalog:"
+    "zustand": "catalog:",
+    "sucrase": "3.35.1",
+    "quickjs-emscripten-core": "0.31.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.31.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "catalog:",

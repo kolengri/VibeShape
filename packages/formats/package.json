@@ -14,7 +14,8 @@
     "./import": "./src/import/index.ts",
     "./text-outline": "./src/text-outline/index.ts",
     "./noto-sans-regular.ttf": "./src/text-outline/fonts/NotoSans-Regular.ttf",
-    "./stl-meshes": "./src/stl-meshes.ts"
+    "./stl-meshes": "./src/stl-meshes.ts",
+    "./f3d": "./src/f3d/index.ts"
   },
   "scripts": {
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json"
@@ -28,7 +29,8 @@
     "svgpath": "2.6.0",
     "three": "catalog:",
     "three-mesh-bvh": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "fzstd": "0.1.1"
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*",

@@ -89,6 +89,30 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("VariablesForm", () => {
+  it("preserves slider metadata when applying ordinary expression edits", async () => {
+    const user = userEvent.setup()
+    const customizer = {
+      dimension: "length" as const,
+      group: "Size",
+      min: 1,
+      max: 100,
+      step: 1,
+      configurations: { Small: 20 },
+    }
+    const { onApply } = renderForm({
+      variables: [
+        { schemaVersion: 0, id: secondVariableId, name: "width", expression: "20 mm", customizer },
+      ],
+    })
+    const input = screen.getByRole("combobox", { name: copy.expressionInput })
+    await user.clear(input)
+    await user.type(input, "30 mm")
+    await user.click(screen.getByRole("button", { name: copy.apply }))
+    expect(onApply).toHaveBeenCalledWith(1, [
+      { schemaVersion: 0, id: secondVariableId, name: "width", expression: "30 mm", customizer },
+    ])
+  })
+
   it("searches names and expressions without mutating, and clears an unmatched search", async () => {
     const user = userEvent.setup()
     const { onApply, onRename } = renderForm({

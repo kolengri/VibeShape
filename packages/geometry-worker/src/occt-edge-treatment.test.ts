@@ -9,13 +9,25 @@ mock.module("./occt-cast", () => ({
   castOcctShape: castShape,
 }))
 
-const { treatAllOcctEdges, treatSelectedOcctEdges } = await import("./occt-edge-treatment")
+const { FilletBuildError, treatAllOcctEdges, treatSelectedOcctEdges } = await import(
+  "./occt-edge-treatment"
+)
 
 function deletable() {
   return { delete: vi.fn() }
 }
 
-function fixture(options: { addError?: Error; buildError?: Error; done?: boolean } = {}) {
+function fixture(
+  options: {
+    addError?: Error
+    buildError?: Error
+    done?: boolean
+    workingRadius?: number
+    contours?: number
+    validResult?: boolean
+  } = {},
+) {
+  let radius = 0
   const source = { wrapped: deletable(), clone: vi.fn() }
   const clone = {
     wrapped: deletable(),
@@ -28,13 +40,15 @@ function fixture(options: { addError?: Error; buildError?: Error; done?: boolean
   const rawResult = deletable()
   const progress = deletable()
   const builder = {
-    Add_2: vi.fn(() => {
+    Add_2: vi.fn((size: number, _edge: unknown) => {
+      radius = size
       if (options.addError) throw options.addError
     }),
     Build: vi.fn(() => {
       if (options.buildError) throw options.buildError
     }),
-    IsDone: vi.fn(() => options.done ?? true),
+    IsDone: vi.fn(() => options.done ?? radius <= (options.workingRadius ?? Infinity)),
+    NbContours: vi.fn(() => options.contours ?? 1),
     Shape: vi.fn(() => rawResult),
     delete: vi.fn(),
   }
@@ -48,6 +62,24 @@ function fixture(options: { addError?: Error; buildError?: Error; done?: boolean
     ChFi3d_FilletShape: { ChFi3d_Rational: {} },
     Message_ProgressRange_1: vi.fn(function Progress() {
       return progress
+    }),
+    BRepCheck_Analyzer: vi.fn(function Analyzer() {
+      return { ...deletable(), IsValid_2: () => options.validResult ?? true }
+    }),
+    GProp_GProps_1: vi.fn(function Properties() {
+      return { ...deletable(), Mass: () => 100 }
+    }),
+    BRepGProp: { VolumeProperties_1: vi.fn() },
+    TopAbs_ShapeEnum: { TopAbs_SOLID: {}, TopAbs_SHAPE: {} },
+    TopExp_Explorer_2: vi.fn(function Explorer() {
+      let visited = false
+      return {
+        ...deletable(),
+        More: () => !visited,
+        Next: () => {
+          visited = true
+        },
+      }
     }),
   } as unknown as OpenCascadeInstance
   const result = deletable()
@@ -99,6 +131,76 @@ describe("treatAllOcctEdges ownership", () => {
     expect(value.progress.delete).toHaveBeenCalledTimes(1)
     expect(value.clone.delete).toHaveBeenCalledTimes(1)
     expect(value.builder.delete).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("bounded fillet failure diagnostics", () => {
+  it("suggests only the first validated smaller radius and disposes its geometry", () => {
+    const value = fixture({ workingRadius: 2 })
+    let error: unknown
+    try {
+      treatSelectedOcctEdges(value.opencascade, value.source as never, "fillet", 16, [7])
+    } catch (caught) {
+      error = caught
+    }
+    expect(error).toBeInstanceOf(FilletBuildError)
+    expect(error).toMatchObject({ suggestedRadius: 2 })
+    expect((error as Error).message).toContain("not a maximum")
+    expect(value.builder.Add_2.mock.calls.map(([radius]) => radius)).toEqual([16, 8, 4, 2])
+    for (const [, edge] of value.builder.Add_2.mock.calls) expect(edge).toBe(value.edge.wrapped)
+    expect(value.result.delete).toHaveBeenCalledTimes(1)
+    expect(value.clone.delete).toHaveBeenCalledTimes(4)
+    expect(value.builder.delete).toHaveBeenCalledTimes(4)
+    expect(value.progress.delete).toHaveBeenCalledTimes(4)
+    expect(value.source.wrapped.delete).not.toHaveBeenCalled()
+  })
+
+  it("bounds a complex kernel failure to four diagnostic retries", () => {
+    const value = fixture({ buildError: new Error("intersection failed") })
+    expect(() => treatAllOcctEdges(value.opencascade, value.source as never, "fillet", 16)).toThrow(
+      "Inspect adjacent faces",
+    )
+    expect(value.builder.Build).toHaveBeenCalledTimes(5)
+    expect(value.builder.delete).toHaveBeenCalledTimes(5)
+    expect(value.progress.delete).toHaveBeenCalledTimes(5)
+    expect(value.clone.delete).toHaveBeenCalledTimes(5)
+    expect(value.result.delete).not.toHaveBeenCalled()
+  })
+
+  it("does not suggest a radius for an invalid result", () => {
+    const value = fixture({ validResult: false })
+    expect(() => treatAllOcctEdges(value.opencascade, value.source as never, "fillet", 16)).toThrow(
+      "found no valid single solid",
+    )
+    expect(value.result.delete).toHaveBeenCalledTimes(5)
+    expect(value.clone.delete).toHaveBeenCalledTimes(5)
+  })
+
+  it("rejects an ineligible contour without probing unrelated radii", () => {
+    const value = fixture({ contours: 0 })
+    expect(() => treatAllOcctEdges(value.opencascade, value.source as never, "fillet", 1)).toThrow(
+      "no eligible sharp edge contours",
+    )
+    expect(value.builder.Build).not.toHaveBeenCalled()
+    expect(value.clone.delete).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not retry invalid native selection intent", () => {
+    const value = fixture()
+    expect(() =>
+      treatSelectedOcctEdges(value.opencascade, value.source as never, "fillet", 1, [99]),
+    ).toThrow("unavailable")
+    expect(value.builder.Build).not.toHaveBeenCalled()
+    expect(value.clone.delete).toHaveBeenCalledTimes(1)
+  })
+
+  it("never suggests a radius below the public fillet parameter boundary", () => {
+    const value = fixture({ workingRadius: 0.0005 })
+    expect(() =>
+      treatAllOcctEdges(value.opencascade, value.source as never, "fillet", 0.001),
+    ).toThrow("found no valid single solid")
+    expect(value.builder.Build).toHaveBeenCalledTimes(1)
+    expect(value.clone.delete).toHaveBeenCalledTimes(1)
   })
 })
 

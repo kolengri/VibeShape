@@ -80,6 +80,7 @@ import {
   type MeasurementPreparationPort,
 } from "./local-measurement-query"
 import { createLocalPrimitiveCommand } from "./local-primitive-command"
+import { executePrintReadinessQuery } from "./local-print-readiness-query"
 import { executeSketchCornerCommand } from "./local-sketch-corner-command"
 import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
@@ -513,6 +514,19 @@ export function createLocalToolExecutor(
       ? session.historyMoves.change(actor, operation.arguments, signal)
       : localFailure("history-unavailable", "The paired session cannot reorder History items.")
   }
+  function committedReadOperation(operation: LocalOperation, signal?: AbortSignal) {
+    if (operation.tool === "export_design_recipe")
+      return session.metadata
+        ? session.metadata.exportRecipe(operation.arguments)
+        : localFailure("authored-metadata-unavailable", "The paired design cannot export recipes.")
+    if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
+    if (operation.tool === "measure_model") return measureModel(operation, signal)
+    if (operation.tool === "analyze_print_readiness")
+      return session.measurements
+        ? executePrintReadinessQuery(session.measurements, session.documentId, operation, signal)
+        : localFailure("geometry-unavailable", "The paired session cannot analyze print meshes.")
+    return null
+  }
   function ownedOperation(operation: LocalOperation, signal?: AbortSignal) {
     const proposal = reviewedProposal(operation, signal)
     if (proposal !== null) return proposal
@@ -520,8 +534,8 @@ export function createLocalToolExecutor(
     if (isAssemblyLibraryToolName(operation.tool)) return assemblyLibrary(operation, signal)
     if (isSurfaceTextureToolName(operation.tool)) return surfaceTexture(operation, signal)
     if (isLocalBinaryExport(operation)) return transfer(operation, signal)
-    if (isLocalMetadataRead(operation)) return readMetadata(session, operation)
-    if (operation.tool === "measure_model") return measureModel(operation, signal)
+    const read = committedReadOperation(operation, signal)
+    if (read !== null) return read
     if (operation.tool === "change_metadata")
       return changeMetadata(session, actor, operation, signal)
     return null

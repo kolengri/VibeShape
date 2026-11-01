@@ -12,10 +12,12 @@ import { importResultMatches, isLocalImport } from "@vibeshape/automation-api/im
 import { lightweightingResultContextMatches } from "@vibeshape/automation-api/lightweighting-tools"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
 import {
+  designRecipeExportResultContextMatches,
   isLocalDraftInspection,
   isProjectOperation,
   localFailure,
   localToolOutputs,
+  printReadinessResultContextMatches,
 } from "@vibeshape/automation-api/local-tools"
 import { measurementResultContextMatches } from "@vibeshape/automation-api/measurement-tools"
 import { numericalJobResultContextMatches } from "@vibeshape/automation-api/numerical-jobs"
@@ -90,6 +92,8 @@ function authoredResultContextMatches(
     () => historyResultContextMatches(operation, result),
     () => historyMoveResultContextMatches(operation, result),
     () => measurementResultContextMatches(operation, result),
+    () => printReadinessResultContextMatches(operation, result, documentId),
+    () => designRecipeExportResultContextMatches(operation, result, documentId),
     () => assemblyResultContextMatches(operation, result),
     () => surfaceTextureResultContextMatches(operation, result),
     () => lightweightingResultContextMatches(operation, result),

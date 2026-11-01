@@ -449,3 +449,30 @@ dependencies are outside its expression scope; this does not establish deletion 
 ## Editable FDM features
 
 The Model FDM tools panel and local/paired remote `create_fdm`/`update_fdm` draft commands implement twelve editable exact-geometry kinds, including Web/Rib, reliefs, teardrop holes, fit and fastener pockets, enclosure joints, sacrificial supports, and calibration coupons. See [Editable FDM features](fdm-tools.md) for targeting, units, bounded wall extension/plane termination, ownership, and process limitations. Metric thread size presets select diameter/pitch while retaining custom groove parameters; STL/3MF quality controls affect export tessellation only.
+
+## Parameter templates and print readiness
+
+[Customizer](customizer.md) exposes selected variables as grouped sliders with bounded canonical
+ranges and named numeric configurations. Metadata and presets travel with native projects; each
+apply uses the existing variable-table transaction and one Undo step.
+
+[Print readiness](print-readiness.md) adds orientation-aware overhang shading and approximate
+ray-measured wall thickness before export. Unknown, open, invalid or incompletely sampled meshes
+are reported explicitly. Opt-in radial print clearance uses the ordinary `#tolerance` variable and
+explicit Hole/Thread preset actions; it does not rewrite existing features automatically.
+
+Fillet failures may report a smaller radius that was actually rebuilt and validated for the same
+edge scope. The requested feature still fails until the user explicitly changes it. The suggestion
+is not a maximum-radius claim and is shared by the editor and automation diagnostics.
+
+[Scripts and macros](scripts-and-macros.md) export supported modeling History as TypeScript recipes,
+execute explicitly requested TypeScript in an isolated QuickJS worker, and record new History
+identities for replay. Apply expands validated results into ordinary editable features in one saved
+transaction; source is downloadable and is not an associative procedural feature. The exact-revision
+read-only `export_design_recipe` is available through local and paired remote MCP. Unsupported assets,
+topology and preservation-sensitive metadata refuse recipe export explicitly.
+
+F3D source import uses bounded archive/record decoding and the ordinary source review transaction.
+Faithfully supported constants/sketches/operations become editable records; validated recovered
+solids become exact fallback imports. Unsupported or omitted semantics are reported before Apply.
+See [ADR-0145](../adr/0145-bounded-f3d-source-import.md) for the conservative mapping boundary.

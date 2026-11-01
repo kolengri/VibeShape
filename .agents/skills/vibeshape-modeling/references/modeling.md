@@ -190,6 +190,14 @@ Legacy Fillet/Chamfer V1/V2 obtain durable resolved selections from `model_edges
 use positive mm and preserve authoritative expressions. Do not migrate an existing feature merely
 because a new version exists.
 
+Failed constant-radius Fillet previews can report an eligible-edge problem or a tested smaller
+radius through the same evaluation diagnostics in the editor and paired MCP. The worker tries at
+most four smaller radii on the same complete edge scope and releases every diagnostic result.
+A reported radius built one valid positive-volume solid; it is not a maximum or a promise that
+every smaller radius works. Change the authored radius explicitly and preview again before commit.
+No suggestion means the bounded checks found no working candidate, not that no possible radius exists.
+Missing, ambiguous, or invalid selections require explicit reselection rather than radius changes.
+
 `create_chamfer` and `update_chamfer` also accept a strict V3 alternative with `draftId`,
 `baseRevision`, `commandId`, `featureId`, optional `label`, and `parameters`. Read the live schema.
 V3 parameters retain an exact `targetBody`, mode (`equal-distance`, `two-distances`, or
@@ -265,7 +273,7 @@ Missing, ambiguous or changed support faces require explicit repair. Guides and 
 
 Thread creates custom 60-degree V-groove geometry, without ISO/DIN fit certification. Specify external/internal, nominal diameter, pitch, length, depth, clearance, handedness, one to four starts, phase and unthreaded run-in/run-out allowances. Legacy XYZ `axis` with quantity `origin` retains v1 and sixteen total turns. V2 uses a shared `origin-axis`, `datum-axis` (x/y/normal), stable `linear-edge`, or `explicit-axis` object; explicit origin is a mm tuple and direction is a normalized signed tuple. The exact target is first, any distinct axis producer is second, and generic references remain empty because body-bound topology stays in `parameters.axis`. Single-start v2 permits twenty total turns; multi-start retains sixteen. Depth stays at most 0.75 times pitch. Preserve complete axis and quantity intent on update. Preview and measure the intended cylindrical band before commit; kernel failures must not silently fall back to an unthreaded body.
 
-Native STEP/STP/BREP/STL/3MF imports use the advertised bounded upload and manual review tools described in [native source import](native-import.md). Planar SVG/DXF import uses the distinct [planar source import](planar-import.md) tools. Assembly and local-library authoring use [owned assembly drafts](assembly-and-library.md); printable relief uses [surface texture proposals](surface-textures.md). Placement and editable text use the named tools described below. Discovery remains authoritative for each transport. Local stdio and paired remote MCP share the named schemas and ordinary review/commit authority.
+Native STEP/STP/BREP/STL/3MF/F3D imports use the advertised bounded upload and manual review tools described in [native source import](native-import.md). Planar SVG/DXF import uses the distinct [planar source import](planar-import.md) tools. Assembly and local-library authoring use [owned assembly drafts](assembly-and-library.md); printable relief uses [surface texture proposals](surface-textures.md). Placement and editable text use the named tools described below. Discovery remains authoritative for each transport. Local stdio and paired remote MCP share the named schemas and ordinary review/commit authority.
 
 Sketch fillet/chamfer are sketch edits, separate from solid Fillet/Chamfer features. In the editor, select two authored non-construction lines sharing a corner, enter the radius or two setbacks, review the disposable preview and Apply once. Construction guides preserve the original virtual-corner dimensions; the added radius/tangent or distance constraints remain editable. Branched, collinear and oversized corners fail closed. Use `treat_sketch_corner` as described in [sketch corner treatment](#sketch-corner-treatment); do not emulate it with a 3D edge treatment.
 

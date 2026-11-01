@@ -12,6 +12,136 @@ import { chamferFeatureParametersV3Schema } from "@vibeshape/domain/part-design"
 import { edgeTopoRefSchema } from "@vibeshape/domain/topology"
 import { variableExpressionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
+import { utf8StringBytes } from "./query-byte-budget"
+
+export const designRecipeExportArgumentsSchema = z.object({ revision: revisionSchema }).strict()
+export const designRecipeExportViewSchema = z
+  .object({
+    documentId: documentIdSchema,
+    revision: revisionSchema,
+    format: z.literal("vibeshape.recipe"),
+    version: z.literal(1),
+    source: z
+      .string()
+      .max(128 * 1024)
+      .refine(
+        (source) => utf8StringBytes(source, 128 * 1024) <= 128 * 1024,
+        "Recipe source exceeds 128 KiB.",
+      ),
+  })
+  .strict()
+export function designRecipeExportResultContextMatches(
+  operation: unknown,
+  result: { ok: boolean; value?: unknown },
+  documentId?: string,
+): boolean | null {
+  const parsed = z
+    .object({
+      tool: z.literal("export_design_recipe"),
+      arguments: designRecipeExportArgumentsSchema,
+    })
+    .strict()
+    .safeParse(operation)
+  if (!parsed.success) return null
+  if (!result.ok) return true
+  const view = designRecipeExportViewSchema.safeParse(result.value)
+  return (
+    view.success &&
+    view.data.revision === parsed.data.arguments.revision &&
+    (documentId === undefined || view.data.documentId === documentId)
+  )
+}
+
+export const printReadinessArgumentsSchema = z
+  .object({
+    revision: revisionSchema,
+    minimumWallMm: z.number().finite().positive().max(1000).default(0.8),
+    overhangAngleDeg: z.number().finite().min(0).max(90).default(45),
+    rotationX: z.number().finite().min(-180).max(180),
+    rotationY: z.number().finite().min(-180).max(180),
+    rotationZ: z.number().finite().min(-180).max(180),
+  })
+  .strict()
+export const printReadinessViewSchema = z
+  .object({
+    documentId: documentIdSchema,
+    ...printReadinessArgumentsSchema.shape,
+    status: z.enum(["no-findings", "warnings", "unknown"]),
+    bodies: z
+      .array(
+        z
+          .object({
+            name: z.string().max(512),
+            triangleCount: z.number().int().nonnegative(),
+            topology: z.enum(["closed", "open-or-invalid", "complexity-limit"]),
+            thinTriangles: z.number().int().nonnegative(),
+            overhangTriangles: z.number().int().nonnegative(),
+            unknownTriangles: z.number().int().nonnegative(),
+            minimumThicknessMm: z.number().finite().nonnegative().nullable(),
+            thinAreaMm2: z.number().finite().nonnegative(),
+            overhangAreaMm2: z.number().finite().nonnegative(),
+          })
+          .strict(),
+      )
+      .max(8),
+  })
+  .strict()
+  .superRefine((view, context) => {
+    const expected =
+      view.bodies.length === 0 ||
+      view.bodies.some(
+        (body) =>
+          body.topology !== "closed" ||
+          body.unknownTriangles > 0 ||
+          body.triangleCount === 0 ||
+          body.minimumThicknessMm === null,
+      )
+        ? "unknown"
+        : view.bodies.some((body) => body.thinTriangles > 0 || body.overhangTriangles > 0)
+          ? "warnings"
+          : "no-findings"
+    if (
+      view.status !== expected ||
+      view.bodies.some(
+        (body) =>
+          Math.max(body.thinTriangles, body.overhangTriangles, body.unknownTriangles) >
+          body.triangleCount,
+      )
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Print readiness status and coverage must agree with body evidence.",
+      })
+  })
+
+/** Both transports check echoed source/thresholds; triangle data remains in the browser. */
+export function printReadinessResultContextMatches(
+  operation: unknown,
+  result: { ok: boolean; value?: unknown },
+  documentId?: string,
+): boolean | null {
+  const parsed = z
+    .object({
+      tool: z.literal("analyze_print_readiness"),
+      arguments: printReadinessArgumentsSchema,
+      projectId: documentIdSchema.optional(),
+    })
+    .strict()
+    .safeParse(operation)
+  if (!parsed.success) return null
+  if (!result.ok) return true
+  const view = printReadinessViewSchema.safeParse(result.value)
+  if (
+    !view.success ||
+    (documentId !== undefined && view.data.documentId !== documentId) ||
+    (parsed.data.projectId !== undefined && view.data.documentId !== parsed.data.projectId)
+  )
+    return false
+  return (
+    Object.keys(parsed.data.arguments) as (keyof z.infer<typeof printReadinessArgumentsSchema>)[]
+  ).every((key) => view.data[key] === parsed.data.arguments[key])
+}
+
 import {
   assemblyCommitViewSchema,
   assemblyDiscardViewSchema,
@@ -216,6 +346,8 @@ const chamfer = z.union([
   z.object({ ...feature, parameters: chamferFeatureParametersV3Schema }).strict(),
 ])
 export const localToolInputs = {
+  export_design_recipe: designRecipeExportArgumentsSchema,
+  analyze_print_readiness: printReadinessArgumentsSchema,
   read_project_chat: readProjectChatArgumentsSchema,
   list_lightweighting_materials: z.object({}).strict(),
   ...projectToolInputs,
@@ -324,6 +456,8 @@ export const localExportSchema = z
   })
   .strict()
 export const localToolOutputs = {
+  export_design_recipe: resultOf(designRecipeExportViewSchema),
+  analyze_print_readiness: resultOf(printReadinessViewSchema),
   read_project_chat: resultOf(projectChatPageSchema),
   list_recoverable_drafts: resultOf(recoverableDraftsViewSchema),
   restore_draft: resultOf(restoredDraftViewSchema),
@@ -546,6 +680,8 @@ export const localToolNameSchema = z.enum([
   "redo_model",
   "move_history_item",
   "measure_model",
+  "analyze_print_readiness",
+  "export_design_recipe",
   "begin_planar_import_upload",
   "append_planar_import_chunk",
   "inspect_planar_import_upload",
@@ -664,6 +800,18 @@ export const localToolNameSchema = z.enum([
 ])
 export type LocalToolName = z.infer<typeof localToolNameSchema>
 const untargetedOperationSchema = z.discriminatedUnion("tool", [
+  z
+    .object({
+      tool: z.literal("export_design_recipe"),
+      arguments: designRecipeExportArgumentsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      tool: z.literal("analyze_print_readiness"),
+      arguments: printReadinessArgumentsSchema,
+    })
+    .strict(),
   z
     .object({
       tool: z.literal("list_lightweighting_materials"),

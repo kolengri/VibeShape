@@ -536,11 +536,12 @@ export function VariablesForm({
     validators: {
       onDynamic: ({ value }) => {
         const parsed = variableDefinitionsSchema.safeParse(
-          value.variables.map(({ id, name, expression }) => ({
+          value.variables.map(({ id, name, expression, customizer }) => ({
             schemaVersion: 0 as const,
             id,
             name,
             expression,
+            ...(customizer ? { customizer } : {}),
           })),
         )
         return parsed.success
@@ -551,11 +552,12 @@ export function VariablesForm({
     onSubmitInvalid: () => setSearchQuery(""),
     onSubmit: async ({ value }) => {
       const parsed = variableDefinitionsSchema.safeParse(
-        value.variables.map(({ id, name, expression }) => ({
+        value.variables.map(({ id, name, expression, customizer }) => ({
           schemaVersion: 0 as const,
           id,
           name,
           expression,
+          ...(customizer ? { customizer } : {}),
         })),
       )
       if (!parsed.success) return

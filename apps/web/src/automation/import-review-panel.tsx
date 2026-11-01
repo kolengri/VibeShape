@@ -2,6 +2,7 @@ import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { useState } from "react"
 import { TaskPanelLayout } from "../components/task-panel-layout"
+import { F3dImportReport } from "../features/import/f3d-import-report"
 import { ImportPreview } from "../features/import/import-preview"
 import { ReviewActions } from "./automation-review-actions"
 import type { AutomationReviewState } from "./automation-review-state"
@@ -67,6 +68,12 @@ export function ImportReviewPanel({
           <p className="text-xs text-muted-foreground">
             {t(input.source.upload.format === "3mf" ? "declaredUnits" : "explicitUnits")}
           </p>
+          {input.source.f3d && (
+            <F3dImportReport
+              report={input.source.f3d.report}
+              editableExtrusion={input.source.f3d.editableExtrusion}
+            />
+          )}
           <ImportPreview
             inspection={input.inspection}
             label={t("preview")}

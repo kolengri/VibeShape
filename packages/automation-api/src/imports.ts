@@ -26,11 +26,13 @@ const fileFields = {
 export function importUploadFormat(filename: string) {
   const extension = filename.toLowerCase().split(".").at(-1)
   if (extension === "step" || extension === "stp") return "step"
-  return extension === "brep" || extension === "stl" || extension === "3mf" ? extension : null
+  return extension === "brep" || extension === "stl" || extension === "3mf" || extension === "f3d"
+    ? extension
+    : null
 }
 function fileIntentIsValid(input: { filename: string; sourceUnit: string | null }) {
   const format = importUploadFormat(input.filename)
-  return format !== null && (format === "3mf") === (input.sourceUnit === null)
+  return format !== null && (format === "3mf" || format === "f3d") === (input.sourceUnit === null)
 }
 export const importUploadDescriptorSchema = z
   .object({
@@ -39,7 +41,7 @@ export const importUploadDescriptorSchema = z
     baseRevision: revisionSchema,
     uploadVersion: version,
     ...fileFields,
-    format: z.enum(["step", "brep", "stl", "3mf"]),
+    format: z.enum(["step", "brep", "stl", "3mf", "f3d"]),
     receivedBytes: offset,
     sha256: sourceAssetSchema.shape.digest.nullable(),
     status: z.enum(["uploading", "ready"]),
@@ -79,6 +81,23 @@ export const importUploadInspectionSchema = z
       )
       .min(1)
       .max(128),
+    f3d: z
+      .object({
+        report: z
+          .object({
+            sourceFeatures: z.number().int().nonnegative(),
+            recoveredBodies: z.number().int().nonnegative().max(128),
+            editableSketches: z.number().int().nonnegative().max(128),
+            numericParameters: z.number().int().nonnegative().max(100),
+            unsupported: z
+              .array(z.object({ name: z.string().max(256), reason: z.string().max(4096) }).strict())
+              .max(4096),
+          })
+          .strict(),
+        editableExtrusion: z.boolean(),
+      })
+      .strict()
+      .optional(),
     warnings: z
       .array(z.object({ code: z.literal("degenerate-triangles"), count: version }).strict())
       .max(1),
@@ -87,10 +106,10 @@ export const importUploadInspectionSchema = z
   .refine(
     (value) =>
       value.upload.status === "ready" &&
+      Boolean(value.f3d) === (value.upload.format === "f3d") &&
+      (!value.f3d || value.f3d.report.recoveredBodies === value.outputs.length) &&
       value.representation ===
-        (value.upload.format === "step" || value.upload.format === "brep"
-          ? "exact-solid"
-          : "triangle-mesh") &&
+        (["step", "brep", "f3d"].includes(value.upload.format) ? "exact-solid" : "triangle-mesh") &&
       new Set(value.outputs.map(({ outputRole }) => outputRole)).size === value.outputs.length &&
       value.outputs.every(({ volumeMm3 }) =>
         value.representation === "exact-solid" ? volumeMm3 !== null : volumeMm3 === null,

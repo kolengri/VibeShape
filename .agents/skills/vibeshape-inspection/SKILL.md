@@ -21,6 +21,7 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 | Which exact body is available, with which output role? | `model_body_measurements` or `draft_body_measurements` |
 | Which exact body faces/edges can be measured or selected by supported features? | `model_body_topology` or `draft_body_topology` |
 | What are exact edge lengths, face areas, circular diameters or selected-point distances/angles? | `measure_model` using one or two current body-bound topology references |
+| Which oriented print samples are thin, unsupported or unknown? | `analyze_print_readiness` with saved revision and explicit print rotation; see [print readiness](references/print-readiness.md) |
 | Which edge references can a treatment select? | `model_edges` or `draft_edges` |
 | What unsaved intent is in the draft? | `draft_tree`, `draft_entity` at the current draft revision |
 | Which assembly instances/mates, frozen frames, local DOF or exact interference? | `model_assembly`, `inspect_assembly`; explicit pairs and occurrence/source topology page |

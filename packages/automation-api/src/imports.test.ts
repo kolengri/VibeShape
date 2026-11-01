@@ -203,3 +203,41 @@ describe("bounded native import wire contract", () => {
     ).toBe(false)
   })
 })
+
+it("requires F3D file units and a complete correlated conversion report on both transports", () => {
+  const begin = {
+    tool: "begin_import_upload",
+    arguments: { revision: 4, filename: "source.f3d", byteLength: 3, sourceUnit: null },
+  }
+  expect(localOperationSchema.safeParse(begin).success).toBe(true)
+  expect(remoteOperationSchema.safeParse(begin).success).toBe(true)
+  expect(
+    localImportInputs.begin_import_upload.safeParse({
+      ...begin.arguments,
+      sourceUnit: "millimeter",
+    }).success,
+  ).toBe(false)
+  const step = nativeImportInspection("step")
+  const value = {
+    ...step,
+    upload: { ...step.upload, filename: "source.f3d", format: "f3d", sourceUnit: null },
+    f3d: {
+      editableExtrusion: false,
+      report: {
+        sourceFeatures: 2,
+        recoveredBodies: step.outputs.length,
+        editableSketches: 1,
+        numericParameters: 1,
+        unsupported: [{ name: "Fillet1", reason: "Feature history is unsupported." }],
+      },
+    },
+  }
+  expect(importUploadInspectionSchema.safeParse(value).success).toBe(true)
+  expect(importUploadInspectionSchema.safeParse({ ...value, f3d: undefined }).success).toBe(false)
+  expect(
+    importUploadInspectionSchema.safeParse({
+      ...value,
+      f3d: { ...value.f3d, report: { ...value.f3d.report, recoveredBodies: 2 } },
+    }).success,
+  ).toBe(false)
+})

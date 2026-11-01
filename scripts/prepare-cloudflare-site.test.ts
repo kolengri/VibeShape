@@ -45,6 +45,8 @@ function fixture(overrides: Record<string, string | Uint8Array> = {}) {
     "apps/web/dist/sources/OCCT-NOTICES.txt": "notices",
     "apps/web/dist/sources/browser-licenses.txt": "browser dependency license texts",
     "apps/web/dist/sources/worker-licenses.txt": "worker dependency license texts",
+    "apps/web/dist/sources/Extrudo-F3D-NOTICE.md": "F3D code attribution",
+    "apps/web/dist/sources/F3D-FORMAT.md": "F3D format provenance",
     "apps/web/dist/sources/shadcn-LICENSE.txt": "copied UI component license text",
     "apps/web/dist/sources/OCCT-REPLACEMENT.txt": "replacement",
     "sources/vibeshape-source.tar": "application-source",

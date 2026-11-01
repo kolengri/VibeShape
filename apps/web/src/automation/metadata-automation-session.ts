@@ -1,6 +1,15 @@
+import {
+  emitDesignRecipeTypeScript,
+  exportDesignRecipe,
+} from "@vibeshape/application/design-recipes"
 import { createDisposableDocumentPreview } from "@vibeshape/application/disposable-document-preview"
 import { readAuthoredMetadata } from "@vibeshape/automation-api/authored-metadata"
-import { localFailure } from "@vibeshape/automation-api/local-tools"
+import {
+  designRecipeExportArgumentsSchema,
+  designRecipeExportViewSchema,
+  localFailure,
+} from "@vibeshape/automation-api/local-tools"
+import { utf8StringBytes } from "@vibeshape/automation-api/query-byte-budget"
 import type { AutomationHostDiagnosticCode } from "@vibeshape/automation-host/host"
 import {
   createMetadataProposalCoordinator,
@@ -36,6 +45,43 @@ export function createMetadataAutomationSession(
   )
   return {
     ...session,
+    async exportRecipe(input: unknown) {
+      const request = designRecipeExportArgumentsSchema.safeParse(input)
+      if (!request.success)
+        return localFailure("invalid-request", "The recipe export request is invalid.")
+      if (!isActive())
+        return localFailure("session-revoked", "The metadata session is unavailable.")
+      const snapshot = authoredDocumentSnapshotSchema.safeParse(await configuration.readSnapshot())
+      if (
+        !isActive() ||
+        !snapshot.success ||
+        snapshot.data.id !== configuration.documentId ||
+        snapshot.data.revision !== request.data.revision
+      )
+        return localFailure(
+          "stale-revision",
+          "Recipe export requires the current paired saved design revision.",
+          true,
+        )
+      const recipe = exportDesignRecipe(snapshot.data)
+      if (!recipe.ok) return localFailure("recipe-export-unsupported", recipe.message)
+      const source = emitDesignRecipeTypeScript(recipe.recipe)
+      if (utf8StringBytes(source, 128 * 1024) > 128 * 1024)
+        return localFailure(
+          "recipe-export-limit",
+          "Export this script from the editor: the MCP source limit is 128 KiB.",
+        )
+      return {
+        ok: true as const,
+        value: designRecipeExportViewSchema.parse({
+          documentId: snapshot.data.id,
+          revision: snapshot.data.revision,
+          format: "vibeshape.recipe",
+          version: 1,
+          source,
+        }),
+      }
+    },
     async read(kind: "parts" | "folders" | "history", input: unknown) {
       if (!isActive())
         return localFailure("session-revoked", "The metadata session is unavailable.")

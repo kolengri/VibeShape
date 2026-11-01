@@ -27,6 +27,8 @@ const sourceArchives = [
 const requiredNotices = [
   "browser-licenses.txt",
   "worker-licenses.txt",
+  "Extrudo-F3D-NOTICE.md",
+  "F3D-FORMAT.md",
   "shadcn-LICENSE.txt",
 ] as const
 
@@ -84,7 +86,7 @@ function prepareSources(site: string, sourcePackage: string, manifest: Distribut
     join(directory, "index.html"),
     `<!doctype html><html lang="en"><meta charset="utf-8"><title>VibeShape sources</title>
 <h1>Corresponding source and licenses</h1><p>Large archives are split into ordered parts to fit the static host. Download every part and follow <a href="RECONSTRUCT.txt">reconstruction and SHA-256 instructions</a>. No source bytes are omitted.</p>
-<ul>${links.join("")}<li><a href="LICENSE.txt">VibeShape license</a></li><li><a href="browser-licenses.txt">Browser dependency licenses</a></li><li><a href="worker-licenses.txt">Worker dependency licenses</a></li><li><a href="shadcn-LICENSE.txt">Copied UI component license</a></li><li><a href="OCCT-NOTICES.txt">OCCT and binding notices</a></li><li><a href="OCCT-REPLACEMENT.txt">Kernel replacement instructions</a></li></ul></html>\n`,
+<ul>${links.join("")}<li><a href="LICENSE.txt">VibeShape license</a></li><li><a href="browser-licenses.txt">Browser dependency licenses</a></li><li><a href="worker-licenses.txt">Worker dependency licenses</a></li><li><a href="Extrudo-F3D-NOTICE.md">Extrudo F3D attribution</a></li><li><a href="F3D-FORMAT.md">F3D format provenance</a></li><li><a href="shadcn-LICENSE.txt">Copied UI component license</a></li><li><a href="OCCT-NOTICES.txt">OCCT and binding notices</a></li><li><a href="OCCT-REPLACEMENT.txt">Kernel replacement instructions</a></li></ul></html>\n`,
   )
   return archives
 }

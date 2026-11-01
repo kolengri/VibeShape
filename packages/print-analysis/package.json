@@ -12,9 +12,12 @@
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json"
   },
   "devDependencies": {
+    "@types/three": "catalog:",
     "@vibeshape/typescript-config": "workspace:*"
   },
   "dependencies": {
-    "@vibeshape/protocol": "workspace:*"
+    "@vibeshape/protocol": "workspace:*",
+    "three": "catalog:",
+    "three-mesh-bvh": "catalog:"
   }
 }

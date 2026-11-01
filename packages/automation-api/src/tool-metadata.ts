@@ -2,6 +2,10 @@ import { assemblyReadTools, assemblyToolDescriptions } from "./assembly-tool-met
 import type { LocalToolName } from "./local-tools"
 
 export const localToolDescriptions: Record<LocalToolName, string> = {
+  export_design_recipe:
+    "Export the paired saved design's supported modeling history and parameters as editable TypeScript recipe source at an exact revision. Read-only; does not execute source or alter geometry. Source is limited to 128 KiB; larger recipes require the editor's Scripts and macros export. Unsupported source assets, topology-bound references, assemblies, textures, custom part metadata or retained repair History fail explicitly; use native .vshape for complete preservation. Scripts and macro record/replay run in the editor with isolated execution, geometry preview, revision checking and one atomic Undo. Script source is session-only and saved features do not rerun it.",
+  analyze_print_readiness:
+    "Analyze the paired committed display meshes at an exact saved revision in an explicitly supplied print orientation (rotationX/Y/Z degrees, applied X then Y then Z). Optional minimumWallMm defaults to 0.8; overhangAngleDeg from vertical defaults to 45. Returns compact body counts, sampled inward-ray wall minimum in mm, thin/unsupported area in mm2, topology/unknown coverage and echoed orientation/thresholds. Bed-contact triangles are excluded from overhang counts. Open, reversed, invalid or over-budget meshes never report no-findings. At most 100,000 triangles per body; chunked and cancelable. No-findings covers centroid samples only, never certifies physical printability, global wall minimum, or absence of self-intersections. Does not save or move the user's model.",
   read_project_chat:
     "Read the active paired project conversation from persisted display messages only. Requires expectedProjectId from model_info. Returns project/conversation identity, transcriptRevision and source=persisted. Follow nextCursor unchanged until null; pages contain at most 32 fragments and 16000 UTF-16 display units (including tool title/status), with textOffset and complete for oversized messages. Pages read one immutable snapshot per connection, pinned to the first page revision. Same-conversation appends/updates do not alter continuation. Changed conversation, replaced/missing snapshot or connection rejects continuation; restart without cursor. Includes user, assistant, thought and tool display text, plus tool title/status when saved. No provider context, agent session, credentials, raw tool inputs, archives or legacy migration. Does not start or connect an agent. Unsaved streaming output is excluded. Read-only, available on local and remote paired transports.",
   model_variable_usage:
@@ -113,11 +117,11 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
   discard_planar_import_upload:
     "Release an owned temporary planar upload without editing the document. Idempotent for an absent upload ID; captured source bytes are not published.",
   begin_import_upload:
-    "Begin one owner-bound native source upload for the exact committed revision, up to 6 MiB. Supply a safe leaf filename, total byteLength and explicit sourceUnit for STEP/STP/BREP/STL; 3MF requires null and uses declared units. Returns an opaque upload ID and 90 KiB decoded chunk budget. This only retains temporary bytes; it does not author or save a feature. A new upload replaces the previous one.",
+    "Begin one owner-bound native source upload for the exact committed revision, up to 6 MiB. Supply a safe leaf filename, total byteLength and explicit sourceUnit for STEP/STP/BREP/STL; 3MF and F3D require null and use file units. F3D exposes supported editable records plus exact-body recovery with an explicit unsupported report. Returns an opaque upload ID and 90 KiB decoded chunk budget. This only retains temporary bytes; it does not author or save a feature. A new upload replaces the previous one.",
   append_import_chunk:
     "Append canonical base64 bytes to an owned source upload at its receivedBytes offset. Use exactly chunkMaxBytes decoded bytes except for the final chunk. An exact duplicate chunk is idempotent; conflicting or out-of-order bytes fail. Do not send paths, hashes or provenance. Successful new chunks renew the five-minute idle expiry; duplicates do not.",
   inspect_import_upload:
-    "Explicitly inspect a complete owned upload through the existing native STEP/BREP or triangle-mesh STL/3MF reader. The browser computes SHA-256, captures stable output roles and returns representation, normalization, bounds and exact volume only for solids. It does not reconstruct meshes as solids or save intent. Retain uploadVersion for commit; malformed sources remain failures.",
+    "Explicitly inspect a complete owned upload through the existing native STEP/BREP, triangle-mesh STL/3MF or bounded F3D reader. F3D returns a conversion report; unsupported records remain explicit and original archive hashes differ from persisted recovered STEP hashes. The browser computes SHA-256, captures stable output roles and returns representation, normalization, bounds and exact volume only for solids. It does not reconstruct meshes as solids or save intent. Retain uploadVersion for commit; malformed sources remain failures.",
   commit_import_upload:
     "Commit an inspected upload at its exact uploadVersion and base revision. Source inspection and preview are repeated before approval. Built-in connected assistants apply validated current-project changes without a second human Apply; external MCP clients require manual browser Apply even with CAD auto-apply enabled. Approval applies one atomic transaction containing verified bytes, captured import intent and Parts. No tool approves the proposal or grants auto-apply. Stale, cancelled or unauthorized imports never publish source assets.",
   discard_import_upload:
@@ -247,7 +251,7 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
   remove_variable:
     "Remove a draft variable by stable ID. Ordinary CAD dependency rules reject variables still in use. Use a fresh commandId and current draft revision.",
   replace_variable_table:
-    "Replace the entire draft variable table atomically. Read draft_variables first, preserve IDs and unaffected definitions. Cycles, invalid units and dangling references are rejected. Use a fresh commandId and current draft revision.",
+    "Replace the entire draft variable table atomically. Read draft_variables first, preserve IDs, unaffected definitions and optional customizer metadata. Customizer dimension matches the variable; ranges and configuration values use canonical mm/radians/scalars. Applying a named configuration replaces every exposed expression with its saved literal in one table change. Cycles, invalid units and dangling references are rejected. Use a fresh commandId and current draft revision.",
   create_chamfer:
     "Add a chamfer to a draft. Legacy targetFeatureId and distanceMm retain V1/V2 behavior. Alternatively supply complete typed parameters for V3: exact targetBody, edge/face targets, adjacent sideFace for directional edges, quantities, mode, measurement, flip, tangentPropagation and directionOverrides. V3 Offset/Tangent currently require planar adjacent faces; curved measurement and partial/conflicting native tangent contours fail explicitly. Optional edges selects 1–256 durable references from model_edges or draft_edges; omission means all edges. Optional distanceExpression is authoritative and evaluated against draft variables. Preview checks feasibility; use fresh UUIDv7 commandId and current draft revision.",
   update_chamfer:
@@ -321,6 +325,8 @@ export function localToolAnnotations(name: LocalToolName) {
       "discard_export",
       "model_measurements",
       "measure_model",
+      "analyze_print_readiness",
+      "export_design_recipe",
       "draft_measurements",
       "model_sketch_solution",
       "model_surface_textures",
@@ -389,6 +395,8 @@ export function localToolAnnotations(name: LocalToolName) {
       "discard_export",
       "model_measurements",
       "measure_model",
+      "analyze_print_readiness",
+      "export_design_recipe",
       "draft_measurements",
       "model_sketch_solution",
       "model_surface_textures",

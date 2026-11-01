@@ -383,3 +383,9 @@ The spike must compare at least two restricted compute approaches and prove the 
 The recorded result is **Proceed with reduced scope**. The package, lock, capability, restricted-mode, opaque iframe, termination, and no-import WebAssembly candidates pass in Chromium, Firefox, and WebKit. Arbitrary workspace JavaScript is rejected because the dedicated worker retains ambient authority. The memory-growth fixture is contained through termination after its message budget, but no browser-independent hard memory quota is proven.
 
 This result does not authorize a public `extension-api` package or product claim of executable third-party support. Those remain gated on a deterministic modeling ABI, production document and transaction integration, portable memory policy, update/rollback persistence, uninstall preservation, localization and accessibility conformance, hostile iframe navigation coverage, package governance, and an end-to-end recovery rebuild.
+
+The first-party [Scripts and macros workflow](../product/scripts-and-macros.md) uses a separate
+QuickJS interpreter with no host callbacks to produce validated declarative recipes, then ordinary
+geometry preview and authored transactions. [ADR-0146](../adr/0146-isolated-design-recipes-and-macros.md)
+defines its limits. It does not enable the public extension SDK, execute source in the worker's
+ambient JavaScript realm, or autoexecute code when a saved model opens.

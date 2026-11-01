@@ -37,6 +37,7 @@ import {
 } from "@vibeshape/automation-api/local-session"
 import type { LocalOperation, LocalToolResult } from "@vibeshape/automation-api/local-tools"
 import {
+  designRecipeExportResultContextMatches,
   isLocalDraftCommand,
   isLocalDraftInspection,
   isLocalInspection,
@@ -51,6 +52,7 @@ import {
   localModelInfoSchema,
   localOperationSchema,
   localToolOutputs,
+  printReadinessResultContextMatches,
 } from "@vibeshape/automation-api/local-tools"
 import { measurementResultContextMatches } from "@vibeshape/automation-api/measurement-tools"
 import { numericalJobResultContextMatches } from "@vibeshape/automation-api/numerical-jobs"
@@ -366,6 +368,8 @@ function resultContextMatches(
     historyResultContextMatches(operation, result, documentId),
     historyMoveResultContextMatches(operation, result, documentId),
     measurementResultContextMatches(operation, result, documentId),
+    printReadinessResultContextMatches(operation, result, documentId),
+    designRecipeExportResultContextMatches(operation, result, documentId),
     assemblyResultContextMatches(operation, result, documentId),
     surfaceTextureResultContextMatches(operation, result, documentId),
     lightweightingResultContextMatches(operation, result, documentId),

@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Adapted from Extrudo c05d910395f514f4810d3fc76504ce6bb1c73da8; see NOTICE.md.
+/** Known feature-family type GUIDs. */
+import { COMBINE, MOVE } from "./combine"
+
+/** Feature record types (parameter scopes), with the kind they store. */
+export const FEATURE_TYPES: Record<string, string> = {
+  "8DA771B7-52ED-42FC-94E2-2353FE141373": "Sketch",
+  "DD405BC2-D673-44F0-8833-5CB2A1C186C7": "Extrude",
+  "A07D5F17-68CB-464D-9935-BF68E98A865F": "Fillet",
+  "F757D611-217B-4B72-9C41-B617BDCE43DA": "Chamfer",
+  "D869265F-F339-4751-A066-91D30F81FF08": "WorkPlane",
+  "E3849A15-2FC6-42A0-AF3A-2F1D7273B406": "Revolve",
+  "1C037A07-4A15-43F6-ABFC-BBF61B9038D4": "Hole",
+  "11F1A5CE-2B57-4476-8480-6994621493C9": "CircularPattern",
+  "D087EFE5-2D28-42E6-BB45-61739E7D0204": "OffsetFaces",
+  "29EF07D3-7BAF-4FA1-A28A-43A36279EA6D": "DeleteFaces",
+  "D1728651-3640-4CCF-8083-AF7703013978": "Mirror",
+  "AE12AD3F-BB81-4B59-9D34-A599E58E4BF6": "RectangularPattern",
+  "FCBB1707-4450-46B3-9E65-0F61682EA8CA": "Sweep",
+  "65CA3206-E33A-471E-8E40-2C72B57C6181": "Split",
+  "584D9526-EF22-4F6F-9FE1-5FCF1F3CE575": "Thread",
+  "B0B3D9E5-1C25-47BC-ABCD-E723F193DF1B": "PathPattern",
+  "13BE0EF0-467B-4F5A-BFFB-E0976171B678": "TorusPrimitive",
+  [COMBINE]: "Combine",
+  [MOVE]: "Move",
+}

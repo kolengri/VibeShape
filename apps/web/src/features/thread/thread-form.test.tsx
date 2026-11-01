@@ -2,7 +2,7 @@ import "../../../../../tests/unit/support/dom"
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { FeatureRecord } from "@vibeshape/domain"
+import { type FeatureRecord, variableIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
@@ -27,6 +27,7 @@ function setup(
     status?: "ready" | "loading" | "error"
     unavailable?: boolean
     axisOptions?: boolean
+    tolerance?: boolean
   } = {},
 ) {
   const onSave = options.onSave ?? save(),
@@ -58,7 +59,19 @@ function setup(
               }
             : undefined
         }
-        variables={[pitchVariable]}
+        variables={[
+          pitchVariable,
+          ...(options.tolerance
+            ? [
+                {
+                  ...pitchVariable,
+                  id: variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f8004"),
+                  name: "tolerance",
+                  expression: "0.2 mm",
+                },
+              ]
+            : []),
+        ]}
         onCancel={onCancel}
         onSave={onSave}
         onSaved={onSaved}
@@ -84,6 +97,27 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("Modeled Thread form", () => {
+  it("links shared radial clearance only on activation and keeps the variable expression in a metric preset", async () => {
+    const f = setup({ tolerance: true })
+    const clearance = screen.getByRole<HTMLInputElement>("combobox", { name: copy.clearance })
+    expect(clearance.value).toBe("0.1 mm")
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Use #tolerance for radial thread clearance",
+      }),
+    )
+    expect(clearance.value).toBe("#tolerance")
+    fireEvent.change(clearance, { target: { value: "0.15 mm" } })
+    await userEvent.click(screen.getByRole("combobox", { name: copy.metricSize }))
+    await userEvent.type(screen.getByRole("combobox", { name: "Search options…" }), "M8")
+    await userEvent.click(screen.getByRole("option", { name: "M8 × 1.25" }))
+    expect(clearance.value).toBe("#tolerance")
+    await userEvent.click(screen.getByRole("button", { name: "Apply feature" }))
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledTimes(1))
+    expect(f.onSave.mock.calls[0]?.[1].parameters).toMatchObject({
+      clearance: { value: 0.2, source: { expression: "#tolerance" } },
+    })
+  })
   it("applies a metric diameter/pitch preset while preserving custom parameters and edits", async () => {
     const f = setup()
     const depth = screen.getByRole("combobox", { name: "Groove depth" })

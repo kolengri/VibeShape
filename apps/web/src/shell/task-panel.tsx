@@ -1761,6 +1761,7 @@ function ResolvedEdgeTreatmentTaskPanel({
       <EdgeTreatmentForm
         key={`${operation}:${task.key}`}
         baseRevision={report.snapshot.revision}
+        previewDiagnostic={props.featurePreviewDiagnostic}
         copy={copy}
         disabled={report.mode === "read-only"}
         mode={mode}

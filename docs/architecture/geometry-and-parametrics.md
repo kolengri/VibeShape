@@ -528,6 +528,15 @@ Body-bound Chamfer V3 uses per-output native topology snapshots and explicit fea
 Fillet retains its legacy single-solid whole-result contract. Sketch supports, persistent repair, and a real native multi-copy producer remain
 open gates; synthetic coincident-body tests are isolation evidence, not native pattern delivery.
 
+Constant-radius Fillet failures retain actionable diagnostics through document evaluation, editor
+preview and paired MCP. A failed native build can run up to four disposable retries at half,
+quarter, eighth and sixteenth of the requested radius on the unchanged edge scope. A suggestion is
+reported only after exact validation proves one valid positive-volume solid; no substitute result
+is published and the authored radius remains unchanged. This bounded search does not establish a
+maximum radius or monotonic feasibility. Invalid topology selections and ineligible sharp-edge
+contours do not trigger radius retries. The normal worker termination and native ownership paths
+remain authoritative for cancellation and cleanup.
+
 ## FDM feature family and export mesh quality
 
 Part Design owns FDM feature v1 validation, dependencies, semantic inputs, and quantity resolution. The document worker resolves saved sketch lines/support and reference planes into bounded content; the geometry worker owns exact OCCT construction and disposal. All kinds return one exact connected solid or a diagnostic, copying borrowed target geometry before Boolean operations. See [Editable FDM features](../product/fdm-tools.md) for the supported constructions and explicit limitations.
