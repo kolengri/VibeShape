@@ -106,3 +106,10 @@ Restarting loses uncommitted drafts and transient Undo/Redo navigation; saved pr
 the browser. If a commit response was lost, inspect the actual model revision before retrying.
 Rollback selects earlier application files. It does not reverse document-schema migrations or
 guarantee that future migrated documents are readable by an older application; keep native backups.
+
+The controlled build report contains one OCCT WASM and one SolveSpace WASM. A third artifact is
+accepted only for the exact pinned `@jitl/quickjs-wasmfile-release-sync` 0.31.0 release binary used by
+the isolated script worker. Packaging still checks recorded hashes, unique runtime roles, required
+sources and the complete `assets/` WASM inventory. The numerical runtime keeps its separate pinned
+inventory and provenance checks. Unknown, undeclared or duplicate runtimes fail closed;
+a QuickJS upgrade requires reviewing the packaging digest pin as well as its lockfile and notices.
