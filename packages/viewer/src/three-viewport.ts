@@ -3588,8 +3588,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #updateIdleSelectionPreselection(event: PointerEvent) {
-    this.#clearSelectionCandidateStack()
     const target = this.#pickIdleSelectionTarget(event)
+    this.#setSelectionCandidateStack(target.kind === "model" ? [target.selection] : [])
     const profiles = target.kind === "profile" ? target.profiles : []
     this.#setSketchProfileCandidateStack(profiles)
     const plane =

@@ -35,6 +35,8 @@ function ElementSelection({
   onChange: (selection: Selection) => void
 }) {
   const t = useTranslations("app.topologyMeasurements")
+  const formatter = useFormatter()
+  const { length } = useDocumentDisplayUnits()
   return (
     <div className="grid gap-2">
       <LocalizedSearchableSelectField
@@ -48,10 +50,19 @@ function ElementSelection({
         }}
         options={elements.map((element, index) => ({
           value: element.id,
-          label: t(element.kind === "edge" ? "edgeElement" : "faceElement", {
-            number: index + 1,
-            geometry: element.geometryClass,
-          }),
+          label:
+            element.radius !== undefined
+              ? t("radialElement", {
+                  number: index + 1,
+                  geometry: element.geometryClass,
+                  radius: formatDisplayLength(element.radius, length, (value) =>
+                    formatter.number(value, { maximumFractionDigits: 4 }),
+                  ),
+                })
+              : t(element.kind === "edge" ? "edgeElement" : "faceElement", {
+                  number: index + 1,
+                  geometry: element.geometryClass,
+                }),
           keywords: [element.kind, element.geometryClass],
         }))}
       />
@@ -97,7 +108,10 @@ function elementRows(
     },
     ...(element.radius === undefined
       ? []
-      : [{ label: t("diameter"), value: length(2 * element.radius) }]),
+      : [
+          { label: t("radius"), value: length(element.radius) },
+          { label: t("diameter"), value: length(2 * element.radius) },
+        ]),
   ]
 }
 

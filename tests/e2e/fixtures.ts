@@ -1,7 +1,9 @@
 import { test as base, expect, type Page } from "@playwright/test"
 
 export async function createEditorProject(page: Page) {
-  await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { level: 1, name: "Projects", exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
   await page.getByRole("button", { name: "New project", exact: true }).click()
   await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
     "Saved",

@@ -9,6 +9,7 @@ import {
   type SketchId,
   type SketchProfileSelector,
   type SketchRecord,
+  sketchProfileSelectorSchema,
 } from "@vibeshape/domain"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { useTranslations } from "@vibeshape/i18n"
@@ -26,6 +27,7 @@ import {
   addSketch,
   createBrowserFeatureId,
   type DocumentControllerState,
+  getDocumentControllerState,
   resolveDocumentFeatureParameters,
   saveFeatureEdits,
   saveSketchEdits,
@@ -2155,6 +2157,31 @@ function sketchSaveFailureMessage(
   return activeSketchTool.kind === "edit-sketch" ? copy.updateFailed : copy.createFailed
 }
 
+function finishedSketchPresentation(
+  documentId: string,
+  sketchId: SketchId,
+  selectedProfile: SketchProfileSelector | null,
+) {
+  const report = getDocumentControllerState().report
+  // Finish may complete before the live sketch solver publishes its final profiles.
+  const profiles =
+    report?.snapshot.id === documentId &&
+    report.rebuild.ok &&
+    report.rebuild.response.documentId === documentId &&
+    report.rebuild.response.revision === report.snapshot.revision
+      ? (report.rebuild.response.sketches
+          .find((sketch) => sketch.sketchId === sketchId)
+          ?.profiles.map(({ selector }) => sketchProfileSelectorSchema.parse(selector)) ?? [])
+      : []
+  return {
+    profiles,
+    selectedProfile:
+      profiles.find((profile) => profileSelectorsEqual(profile, selectedProfile)) ??
+      profiles[0] ??
+      null,
+  }
+}
+
 function ActiveSketchTaskPanel({
   actions,
   report,
@@ -2168,7 +2195,6 @@ function ActiveSketchTaskPanel({
     activeSketchTool,
     draft,
     failedConstraintIds,
-    profiles,
     referenceDimensionLabels,
     repairReferenceId,
     selectedConstraintId,
@@ -2294,7 +2320,7 @@ function ActiveSketchTaskPanel({
       )
       return
     }
-    onSketchSaved(draft, { profiles, selectedProfile })
+    onSketchSaved(draft, finishedSketchPresentation(report.snapshot.id, draft.id, selectedProfile))
   }
   useRegisterTaskSubmission(async () => {
     if (report.mode !== "read-only") await finish()

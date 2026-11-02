@@ -57,7 +57,11 @@ Read the relevant complete features, sketches, and variables before editing. Pre
 Plan the final independent parts before creating construction solids. A container and its removable lid
 normally remain two independent terminal solids; do not fuse them together to reduce a browser count.
 Fuse attached details into their intended part and subtract cutters with the appropriate tool-retention
-setting. Prefer one associative pattern over manually copying the same detail. Inspect `model_parts`
+setting. Use applicable native parametric operations instead of manual construction: Linear/Circular
+Pattern for repetition, Mirror for symmetry, and feature Remove/Add modes or Boolean/Subtract/Union
+for material operations. Do not replace an available pattern with per-instance Placement or coordinate
+copies. For repeated cuts, pattern one cutter, inspect its body roles and subtract the patterned
+cutters; moving a cutter alone is not a cut. Follow [native-operation selection and fallbacks](references/modeling.md#use-native-operations-before-manual-construction), including axis/count/span checks and specific reasons for a necessary fallback. Inspect `model_parts`
 and exact body measurements after committing a stage: consumed construction parts and History entries
 are not additional printable components. Report the terminal part/body count separately from the
 number of authored operations.

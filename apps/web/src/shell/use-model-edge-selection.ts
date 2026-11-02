@@ -14,6 +14,7 @@ import { useReportApplicationError } from "./application-notices"
 import { currentAuthoredParts } from "./authored-tree-state"
 import { type GeometryViewportSketchContext, viewerMeshes } from "./geometry-viewport"
 import type { ModelEdgeViewportSelection as ViewportEdgeSelection } from "./model-edge-viewport"
+import { quickMeasurement } from "./quick-topology-measurement"
 
 type Options = {
   controller: DocumentControllerState
@@ -88,6 +89,36 @@ export function useModelEdgeSelection({
     (GeometryViewportSketchContext & { edgeSelection: ViewportEdgeSelection }) | undefined
   >(() => {
     if (!enabled || !onToggle) return undefined
+    const measurements = new Map(
+      report?.rebuild.ok
+        ? report.rebuild.response.geometry.map((entry) => [
+            entry.featureId,
+            new Map([
+              [
+                undefined,
+                new Map(
+                  entry.geometry.topologyCandidates.map((candidate) => [
+                    candidate.candidateId,
+                    quickMeasurement(candidate),
+                  ]),
+                ),
+              ],
+              ...(entry.geometry.bodies ?? []).map(
+                (body) =>
+                  [
+                    body.outputRole,
+                    new Map(
+                      body.topologyCandidates.map((candidate) => [
+                        candidate.candidateId,
+                        quickMeasurement(candidate),
+                      ]),
+                    ),
+                  ] as const,
+              ),
+            ]),
+          ])
+        : [],
+    )
     const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]))
     const selectedIds = new Set(
       selected?.edges.flatMap((edge) => {
@@ -131,10 +162,22 @@ export function useModelEdgeSelection({
           ]
         : [],
     )
+    const edgeMeasurements = new Map(
+      candidates.map((candidate) => [
+        candidate.id,
+        measurements
+          .get(candidate.reference.featureId)
+          ?.get(
+            candidate.reference.schemaVersion === 1 ? candidate.reference.outputRole : undefined,
+          )
+          ?.get(candidate.candidateId) ?? quickMeasurement(candidate.candidate),
+      ]),
+    )
     return {
       frame: null,
       mode: "orbit",
       edgeSelection: {
+        measurements: edgeMeasurements,
         candidates: candidates.flatMap((candidate) =>
           candidate.edgePolyline
             ? [
@@ -167,6 +210,7 @@ export function useModelEdgeSelection({
         },
       },
       referenceSelection: {
+        measurements: edgeMeasurements,
         purpose: "edge-treatment",
         candidates: display,
         onSelect(picked) {

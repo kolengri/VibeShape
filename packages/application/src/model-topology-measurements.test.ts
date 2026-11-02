@@ -1,9 +1,9 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, spyOn } from "bun:test"
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
 import { type FeatureId, featureIdSchema } from "@vibeshape/domain/identifiers"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
-import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
+import { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } from "@vibeshape/protocol"
 import {
   distanceBetweenMeasurementPoints,
   inspectTopologyMeasurements,
@@ -209,6 +209,21 @@ function measuredRebuild(overrides: Record<string, unknown> = {}) {
 }
 
 describe("revision-bound topology measurements", () => {
+  it("validates the full mesh-bearing rebuild once for both measurement kinds", () => {
+    const parse = spyOn(documentWorkerResponseSchema, "safeParse")
+    try {
+      expect(
+        inspectTopologyMeasurements(snapshot(), measuredRebuild(), {
+          schemaVersion: 0,
+          featureId: featureIds[0],
+          outputRole: "result",
+        }),
+      ).toHaveLength(8)
+      expect(parse).toHaveBeenCalledTimes(1)
+    } finally {
+      parse.mockRestore()
+    }
+  })
   it("preserves analytical edge length, radius and points rather than using display polylines", () => {
     const elements = inspectTopologyMeasurements(snapshot(), measuredRebuild(), {
       schemaVersion: 0,
@@ -229,6 +244,35 @@ describe("revision-bound topology measurements", () => {
     expect(elements?.[1]).toMatchObject({ radius: 5, measure: 10 * Math.PI })
     expect(elements?.[2]).toMatchObject({ kind: "face", measure: 88 / 6 })
   })
+  it("exposes the analytical radius of cylindrical faces without inferring one from their bounds", () => {
+    const candidates = measuredCandidates().map((value) =>
+      value.candidateId === "face-0"
+        ? {
+            ...value,
+            signature: { ...value.signature, geometryClass: "CYLINDRE" },
+            referenceGeometry: {
+              kind: "cylinder-face",
+              origin: [0, 0, 0],
+              axis: [0, 0, 1],
+              radius: 7.5,
+            },
+          }
+        : value,
+    )
+    const elements = inspectTopologyMeasurements(
+      snapshot(),
+      {
+        ok: true,
+        response: response(featureIds.map((id) => geometry(id, [body("result", candidates)]))),
+      },
+      { schemaVersion: 0, featureId: featureIds[0], outputRole: "result" },
+    )
+    expect(elements?.find(({ id }) => id === "face-0")).toMatchObject({
+      kind: "face",
+      radius: 7.5,
+    })
+    expect(elements?.find(({ id }) => id === "face-1")?.radius).toBeUndefined()
+  })
   it("rejects stale or missing exact body evidence", () => {
     const target = { schemaVersion: 0 as const, featureId: featureIds[0], outputRole: "result" }
     expect(
@@ -241,6 +285,80 @@ describe("revision-bound topology measurements", () => {
       }),
     ).toBeNull()
     expect(inspectTopologyMeasurements(snapshot(), { ok: false }, target)).toBeNull()
+  })
+  it("retains coverage, content, suppression and complete body topology validation", () => {
+    const target = { schemaVersion: 0 as const, featureId: featureIds[0], outputRole: "result" }
+    const candidates = measuredCandidates()
+    const invalidResponses = [
+      measuredRebuild({
+        evaluation: {
+          records: [],
+          dirtyFeatureIds: [],
+          evaluatedFeatureIds: [],
+          reusedFeatureIds: [],
+        },
+      }).response,
+      response([geometry(featureIds[0], [body("result", candidates)])]),
+      response(
+        featureIds.map((id) => ({
+          ...geometry(id, [body("result", candidates)]),
+          contentHash: "b".repeat(64),
+        })),
+      ),
+      response(
+        featureIds.map((id) =>
+          geometry(id, [
+            body(
+              "result",
+              candidates.filter(({ candidateId }) => candidateId !== "edge"),
+            ),
+          ]),
+        ),
+      ),
+      response(
+        featureIds.map((id) =>
+          geometry(id, [
+            body(
+              "result",
+              candidates.filter(({ candidateId }) => candidateId !== "face-0"),
+            ),
+          ]),
+        ),
+      ),
+      response(
+        featureIds.map((id) =>
+          geometry(id, [body("result", [...candidates.slice(0, -1), candidates[2]])]),
+        ),
+      ),
+      response(featureIds.map((id) => geometry(id, [body("result", candidates)], 2))),
+      response(
+        featureIds.map((id) => ({
+          ...geometry(id, [body("result", candidates)]),
+          geometry: {
+            ...engineGeometry([body("result", candidates)]),
+            shape: { ...shape, volume: 0 },
+          },
+        })),
+      ),
+    ]
+    for (const invalid of invalidResponses) {
+      expect(
+        inspectTopologyMeasurements(snapshot(), { ok: true, response: invalid }, target),
+      ).toBeNull()
+    }
+    const suppressed = snapshot()
+    const feature = suppressed.features[0]
+    if (!feature) throw new Error("Missing feature fixture.")
+    expect(
+      inspectTopologyMeasurements(
+        {
+          ...suppressed,
+          features: [{ ...feature, suppressed: true }, ...suppressed.features.slice(1)],
+        },
+        measuredRebuild(),
+        target,
+      ),
+    ).toBeNull()
   })
 })
 

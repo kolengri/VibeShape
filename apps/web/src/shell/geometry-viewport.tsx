@@ -101,6 +101,11 @@ import {
 import { partForModelBody } from "./model-tree-selection"
 import { ProjectLoadingProgress } from "./project-loading-progress"
 import { ViewportLoadingSkeleton } from "./project-loading-skeleton"
+import {
+  type QuickMeasurement,
+  QuickTopologyMeasurement,
+  quickMeasurement,
+} from "./quick-topology-measurement"
 import { SectionViewControls } from "./section-view-controls"
 import {
   useSectionViewportFactory,
@@ -139,6 +144,7 @@ export type GeometryViewportSketchContext = Readonly<{
   projectionStore?: SketchProjectionStoreApi
   referenceSelection?: Readonly<{
     candidates: readonly ViewerSketchReferenceCandidate[]
+    measurements?: ReadonlyMap<string, QuickMeasurement | undefined>
     onSelect: (candidate: ViewerSketchReferenceCandidate) => void
     purpose?: "pierce" | "revolve-axis" | "edge-treatment" | "hole-point" | "use"
   }>
@@ -2075,16 +2081,18 @@ function hasActiveModelingTool(props: GeometryViewportProps) {
   )
 }
 
-function ordinaryModelEdgeViewportSelection(props: GeometryViewportProps, taskPicking: boolean) {
-  if (
-    props.readOnlyPresentation ||
-    props.sketchContext ||
-    props.originPlaneSelection ||
-    taskPicking ||
-    hasActiveModelingTool(props)
+function ordinaryModelPickingEnabled(props: GeometryViewportProps, taskPicking: boolean) {
+  return (
+    !props.readOnlyPresentation &&
+    !props.sketchContext &&
+    !props.originPlaneSelection &&
+    !taskPicking &&
+    !hasActiveModelingTool(props)
   )
-    return undefined
-  return props.edgeSelection
+}
+
+function ordinaryModelEdgeViewportSelection(props: GeometryViewportProps, taskPicking: boolean) {
+  return ordinaryModelPickingEnabled(props, taskPicking) ? props.edgeSelection : undefined
 }
 
 function useGeometryViewportInteraction(
@@ -2164,6 +2172,7 @@ function useGeometryViewportInteraction(
     printReport: printPresentation.report,
     canvasRef,
     modelEdges,
+    facePreselection: selectionCandidateStack[0] ?? null,
     dismissSketchProfileSelectionRequest,
     originPlaneInteraction,
     originPlanePreselection,
@@ -2216,6 +2225,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     printReport: interaction.printReport,
     canvasRef: interaction.canvasRef,
     modelEdges: interaction.modelEdges,
+    facePreselection: interaction.facePreselection,
     meshes: scene.meshes,
     pictureMeshes: scene.pictureMeshes,
     sketches: scene.sketches,
@@ -3181,6 +3191,25 @@ function FaceIntersectionSelectionStatus({
   )
 }
 
+function ReferencePreselectionChrome({
+  preselection,
+  selection,
+  purpose,
+}: {
+  preselection: ViewerSketchReferenceCandidate | null
+  selection: GeometryViewportSketchContext["referenceSelection"]
+  purpose: SketchReferencePurpose
+}) {
+  if (!preselection) return null
+  if (selection?.measurements && "candidateId" in preselection)
+    return (
+      <QuickTopologyMeasurement
+        measurement={selection.measurements.get(preselection.candidateId)}
+      />
+    )
+  return <SketchReferencePreselectionStatus preselection={preselection} purpose={purpose} />
+}
+
 function SketchContextChrome({
   viewControls,
   context,
@@ -3223,9 +3252,11 @@ function SketchContextChrome({
       {context.faceIntersectionSelection ? (
         <FaceIntersectionSelectionStatus selection={context.faceIntersectionSelection} />
       ) : null}
-      {preselection ? (
-        <SketchReferencePreselectionStatus preselection={preselection} purpose={referencePurpose} />
-      ) : null}
+      <ReferencePreselectionChrome
+        preselection={preselection}
+        selection={referenceSelection}
+        purpose={referencePurpose}
+      />
       {referenceSelection ? <SketchReferenceKeyboardPicker selection={referenceSelection} /> : null}
     </>
   )
@@ -3742,6 +3773,55 @@ function useGeometryViewportCapture(
   )
 }
 
+function FaceMeasurementChrome({
+  props,
+  model,
+  passive,
+  selectOtherActive,
+}: {
+  props: GeometryViewportProps
+  model: ReturnType<typeof useGeometryViewportModel>
+  passive: boolean
+  selectOtherActive: boolean
+}) {
+  const task = useWorkspaceTask()
+  if (
+    passive ||
+    !ordinaryModelPickingEnabled(props, Boolean(task?.interaction?.picking)) ||
+    model.modelEdges.preselection ||
+    !model.facePreselection ||
+    selectOtherActive
+  )
+    return null
+  return (
+    <QuickTopologyMeasurement
+      measurement={hoveredFaceMeasurement(props.controller, model.facePreselection)}
+    />
+  )
+}
+
+function hoveredFaceMeasurement(controller: DocumentControllerState, selection: ViewerSelection) {
+  const report = controller.report
+  if (
+    controller.status !== "ready" ||
+    !report?.rebuild.ok ||
+    report.snapshot.revision !== report.rebuild.response.revision
+  )
+    return undefined
+  const geometry = report.rebuild.response.geometry.find(
+    (entry) => entry.featureId === selection.featureId,
+  )?.geometry
+  const candidates =
+    selection.outputRole === undefined
+      ? geometry?.topologyCandidates
+      : geometry?.bodies?.find((body) => body.outputRole === selection.outputRole)
+          ?.topologyCandidates
+  const candidate = candidates?.find(
+    (entry) => entry.kind === "face" && entry.meshFaceId === selection.faceId,
+  )
+  return candidate ? quickMeasurement(candidate) : undefined
+}
+
 function GeometryViewport(props: GeometryViewportProps) {
   const { featurePreview, idleOriginPlaneSelection, originPlaneSelection, sketchContext } = props
   const t = useTranslations("app.shell.viewport")
@@ -3829,6 +3909,12 @@ function GeometryViewport(props: GeometryViewportProps) {
           supportFaceSelectOther={supportFaceSelectOther}
         />
         <ViewportAxialControls props={props} axial={axial} />
+        <FaceMeasurementChrome
+          props={props}
+          model={model}
+          passive={passive}
+          selectOtherActive={supportFaceSelectOther.activeIndex !== null}
+        />
         <ModelEdgeViewportChrome edges={model.modelEdges} selectOther={modelEdgeSelectOther} />
       </div>
       {model.rendererPending && <ViewportLoadingSkeleton />}

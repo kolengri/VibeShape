@@ -7,7 +7,7 @@ export async function pickSourceEdge(page: Page) {
   if (!bounds) throw new Error("Expected the source-edge picking canvas.")
   const status = viewport
     .getByRole("status")
-    .filter({ hasText: /^Source edge: (?:.* · )?Edge \d+$/ })
+    .filter({ hasText: /^Source edge: (?:.* · )?Edge \d+$|Edge length/ })
   const limit = Math.min(360, Math.floor(Math.min(bounds.width, bounds.height) / 2))
   for (let radius = 4; radius < limit; radius += 4) {
     for (const [dx, dy] of [
