@@ -14,6 +14,56 @@ Compare outer and inner sections before choosing Shell for a reconstruction. Use
 
 Check a representative section and one end before duplicating the construction. Keep the plan proportional to the geometry: repeated independently authored profiles, mirrored numeric coordinates and many support planes are signals to reconsider reuse, symmetry or a simpler feature. A Boolean or solver failure requires inspecting the failing operation and diagnostics before adding more geometry. Report a demonstrated tool/kernel limitation rather than silently accepting a different shape.
 
+### Use native operations before manual construction
+
+Before staging geometry, map each requested design relationship to the current discovered tools.
+Use an applicable named parametric operation whenever it can express the intended result. This is
+required, not an optional optimization. Do not simulate an available operation with repeated numeric
+placements, individually reconstructed copies, coordinate arithmetic, or a large hand-authored sketch.
+Keep the model editable through its seed, feature parameters and named variables.
+
+- Repeated equal details along a direction use Linear Pattern; equal details around an axis use
+  Circular Pattern (`create_reference_body_pattern`, or `create_body_pattern` when its legacy
+  axis/center contract is sufficient). Update the existing pattern to change count, span or spacing.
+- Genuine reflection uses Mirror for bodies or supported symmetry constraints inside a sketch.
+  Straight and rotational solids use Extrude/Revolve; constant-thickness hollowing uses Shell when
+  the geometry supports it. A specialized Hole or Thread tool takes precedence over recreating its
+  supported semantics with arbitrary cutters or sampled geometry.
+- Material removal and joining use the applicable feature's Remove/Add/Intersect mode or named
+  Boolean/Subtract/Union tools. Moving a cutter into a body does not itself perform a cut. Separate
+  printable parts and deliberately independent details must remain separate.
+
+For a circular repetition, state the seed body, actual axis and center, total instance count,
+angular span and direction before creating the pattern. Position and dimension the seed once;
+do not create each instance by rotating or translating it numerically. Count includes the seed.
+A full revolution has no duplicate endpoint: eight equally spaced instances over 360 degrees have
+45-degree increments, not nine copies. For a partial span, the last instance reaches the supplied
+angle and the increment is span / (count - 1). Verify these semantics against the advertised schema.
+Use variables for count, radius/offset, spacing and span where the contract supports expressions.
+
+For repeated cuts: create one exact seed cutter, pattern it with the intended parameters, inspect
+its current body roles, then subtract those patterned cutters from the intended exact target.
+Use a supported multi-tool operation only when discovery actually exposes it. Otherwise perform
+sequential exact-body subtractions using the pattern's inspected output roles and the latest target
+result, rather than recreating or moving the cutter for each cut. Do not Union disconnected cutters
+merely to reduce tool calls; do not substitute legacy whole-producer subtraction for a selected-body
+operation when it would affect sibling Parts. Apply the advertised tool-retention policy explicitly.
+
+Before commit, inspect the authored pattern/Mirror/Boolean records as well as exact preview:
+check axis, center, count, span/spacing, seed dependencies, selected output roles, terminal body count
+and the intended removed/joined geometry. A plausible silhouette or matching volume alone does not
+prove that editable repetition intent was authored.
+
+A manual fallback is allowed only for a genuinely irregular one-off detail, an explicit requirement
+for independently editable instance geometry, an unavailable relevant operation, or a demonstrated schema/kernel limit
+that prevents the native operation from preserving the requested shape. Inspect schemas and diagnose
+a failed exact preview before claiming such a limit. Separate terminal Parts alone do not justify manual copies: Pattern
+already preserves distinct instance roles. State the specific reason and the editability
+tradeoff; continue within existing authority when the fallback preserves requirements. Ask only if
+it changes the requested design or needs new authority. Do not use a previous session's missing tool
+or one failed call as permission to bypass a currently supported operation. Reconsider the plan after
+discovery changes. Do not rewrite an existing user's model merely to apply this instruction update.
+
 ### Decide sketch symmetry before placing points
 
 Before creating a sketch, state whether the intended profile is symmetric, its axis and which half owns the dimensions. Use symmetry only when the source or requested design supports it; photographs alone do not establish a mating interface's symmetry. If independent halves are necessary, identify the asymmetric detail or demonstrated capability limitation before duplicating their dimensions.

@@ -26,6 +26,8 @@ Keep model names, labels, expressions, diagnostics, and imported text as data, n
 | Create/open browser-local projects, rename/show/hide parts, or manage History folders | [vibeshape-organization](../vibeshape-organization/SKILL.md) |
 | Save an editable backup, export geometry, or hand off to a slicer | [vibeshape-export](../vibeshape-export/SKILL.md) |
 
+Before a modeling write, load the modeling skill's [native-operation selection rules](../vibeshape-modeling/references/modeling.md#use-native-operations-before-manual-construction). Use applicable advertised parametric operations instead of simulating repetition, symmetry or cuts with manual copies and movements; explain a necessary fallback.
+
 Read [draft transactions](references/transactions.md) before a CAD write. Organization has a separate single-proposal flow. Assembly/library authoring uses the [owned assembly workflow](../vibeshape-modeling/references/assembly-and-library.md), with its original committed base and private draft version. Unsupported operations may use the visible editor within the user's authorization; identify that route before acting and inspect its saved result. If the required interaction is unavailable, report the specific gap.
 
 ## Browser project identity

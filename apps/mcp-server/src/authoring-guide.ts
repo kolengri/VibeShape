@@ -97,6 +97,16 @@ reuse Split. Fit and print orientation remain explicit design decisions.
 
 Before writing, read the modeling skill's construction strategy. Prefer dimensioned analytical
 profiles, Extrude/Revolve for straight/rotational regions, and symmetry where the source supports it.
+Use applicable native parametric tools before manual construction: Linear/Circular Pattern for
+repetition, Mirror for reflection, and feature Remove/Add modes or Boolean/Subtract/Union for
+material operations. Do not simulate available operations with repeated Placement or coordinate
+copies. For radial cuts, dimension one seed cutter, pattern it around the correct axis/center with
+explicit count and span, inspect the pattern body roles, and subtract those cutters from the exact
+target; moving a cutter is not a cut. Count includes the seed; a full circle excludes its duplicate
+endpoint. Follow the modeling skill's native-operation recipe for sequential exact-body subtraction
+when no multi-tool operation is exposed. Verify authored intent and exact geometry before commit.
+A manual fallback requires a specific irregular/independent-instance requirement, missing operation,
+or demonstrated schema/kernel limitation; diagnose first and state the editability tradeoff.
 Before creating sketch points, decide the symmetry axis and which half owns the dimensions.
 For a symmetric sketch, use a construction line and \`symmetric\` point-pair constraints, including
 Bezier control points; do not duplicate independent X/Y dimensions on the reflected half.
