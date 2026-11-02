@@ -7,6 +7,8 @@ import { bodyCatalogueFixture } from "../features/part-design/exact-body-catalog
 
 const ports = (() => ({
   registerSubmission: vi.fn(),
+  addSketch: vi.fn(async () => ({ ok: true as const })),
+  readController: vi.fn<() => DocumentControllerState>(),
   removeFeature: vi.fn(async () => ({ ok: true })),
 }))()
 const originalModule1 = { ...(await import("../editor-session/editor-session-provider")) }
@@ -19,6 +21,8 @@ const originalModule2 = { ...(await import("../document/document-controller")) }
 mock.module("../document/document-controller", () => ({
   ...originalModule2,
   removeFeature: ports.removeFeature,
+  addSketch: ports.addSketch,
+  getDocumentControllerState: ports.readController,
 }))
 
 const { act, cleanup, render, screen, within } = await import("@testing-library/react")
@@ -33,6 +37,7 @@ const {
   documentSnapshotSchema,
   featureRecordSchema,
   sketchIdSchema,
+  sketchProfileSelectorSchema,
 } = await import("@vibeshape/domain")
 const { placementFeatureType } = await import("@vibeshape/domain/part-design-placement")
 const { meshImportFeatureType } = await import("@vibeshape/domain/part-design-mesh-import")
@@ -43,6 +48,8 @@ const { createHistoryNavigation } = await import("../editor-session/history-navi
 const { editPartDesignTool } = await import("../features/part-design/part-design-tool")
 const { i18n } = await import("../i18n")
 const { TaskPanel } = await import("./task-panel")
+const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
+const { SketchToolbarPortalsProvider } = await import("../features/sketch/sketch-toolbar-portals")
 
 const id = "0195b5ac-b220-7a2c-8c33-67a36a7f2701"
 const feature = featureRecordSchema.parse({
@@ -84,6 +91,7 @@ function renderFeatureTask(
   close = () => {},
   selectedFeature = feature,
   overrides: Partial<ComponentProps<typeof TaskPanel>> = {},
+  withSketchProviders = false,
 ) {
   const controller: DocumentControllerState = {
     status: "ready",
@@ -152,7 +160,15 @@ function renderFeatureTask(
   }
   const view = render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <TaskPanel {...props} />
+      {withSketchProviders ? (
+        <TooltipProvider>
+          <SketchToolbarPortalsProvider>
+            <TaskPanel {...props} />
+          </SketchToolbarPortalsProvider>
+        </TooltipProvider>
+      ) : (
+        <TaskPanel {...props} />
+      )}
     </I18nProvider>,
   )
   return { ...view, props, onCompleteTool, onCloseTool }
@@ -382,4 +398,78 @@ it("retains Boolean body choices without rebuilding the catalogue for preview an
   expect(screen.getByRole("combobox", { name: "Target solid" }).textContent).toContain(
     "Changed producer · pattern.instance.0",
   )
+})
+
+it("uses committed profiles when Finish begins before live profile publication", async () => {
+  const sketch = createEmptySketch({
+    id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2790"),
+    label: "Sketch 1",
+    plane: "xy",
+  })
+  const profile = sketchProfileSelectorSchema.parse({
+    schemaVersion: 0,
+    sketchId: sketch.id,
+    outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f2791"],
+    holeBoundaryEntityIds: [],
+  })
+  let resolveSave!: () => void
+  ports.addSketch.mockImplementationOnce(async () => {
+    await new Promise<void>((resolve) => {
+      resolveSave = resolve
+    })
+    return { ok: true }
+  })
+  const task = renderFeatureTask(
+    "read-write",
+    () => {},
+    feature,
+    {
+      workspace: "sketch",
+      activeTool: null,
+      activeSketchId: sketch.id,
+      activeSketchTool: { kind: "create-sketch" },
+      sketchDraft: sketch,
+      sketchProfiles: [],
+      sketchSelectedProfile: null,
+    },
+    true,
+  )
+  const report = task.props.controller.report
+  if (!report) throw new Error("Expected the document fixture")
+  const { rebuild } = bodyCatalogueFixture(1, 1)
+  ports.readController.mockReturnValue({
+    ...task.props.controller,
+    report: {
+      ...report,
+      snapshot: { ...report.snapshot, revision: report.snapshot.revision + 1, sketches: [sketch] },
+      rebuild: {
+        ok: true,
+        response: {
+          ...rebuild.response,
+          documentId: report.snapshot.id,
+          revision: report.snapshot.revision + 1,
+          sketches: [
+            {
+              sketchId: sketch.id,
+              frame: { origin: [0, 0, 0], xAxis: [1, 0, 0], yAxis: [0, 1, 0], normal: [0, 0, 1] },
+              curvePositions: new Float32Array(),
+              constructionCurvePositions: new Float32Array(),
+              pointPositions: new Float32Array(),
+              constructionPointPositions: new Float32Array(),
+              profiles: [{ selector: profile, outerLoop: { segments: [] }, holeLoops: [] }],
+            },
+          ],
+        },
+      },
+    },
+  })
+  await userEvent.click(screen.getByRole("button", { name: /^Finish sketch$/ }))
+  expect(ports.addSketch).toHaveBeenCalled()
+  await act(async () => {
+    resolveSave()
+  })
+  expect(task.props.onSketchSaved).toHaveBeenCalledWith(sketch, {
+    profiles: [profile],
+    selectedProfile: profile,
+  })
 })
