@@ -425,8 +425,22 @@ describe("asmFaces on shared records", () => {
         ),
       )
     const records = readAsm(stream(...out))
-    const t = performance.now()
+    let recordReads = 0
+    // Bound traversal work independently of scheduler contention in the parallel CI shard.
+    const quadraticReads = (n * n) / 2
+    for (const record of records) {
+      const values = record.values
+      Object.defineProperty(record, "values", {
+        get() {
+          if (++recordReads >= quadraticReads)
+            throw new Error(
+              "ASM traversal reached quadratic record reads before its budget rejected it.",
+            )
+          return values
+        },
+      })
+    }
     expect(() => asmFaces(records)).toThrow(/share more loops/)
-    expect(performance.now() - t).toBeLessThan(1000)
+    expect(recordReads).toBeLessThan(quadraticReads)
   })
 })
