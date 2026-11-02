@@ -882,3 +882,12 @@ Orbit captures the visible model or sketch bounds center for each gesture. Curso
 keep their framing while subsequent rotation retains that stable pivot. Free sketch orbit starts
 with a fresh pointer anchor. Recovery links for invalid project URLs open the Projects page,
 preserving the other URL state; choosing a saved card opens its explicit project identity.
+
+### Quick topology measurements
+
+Idle model-edge hover displays exact edge length and analytical radius/diameter when available;
+face hover displays exact area and cylindrical radius/diameter. Values use project display units.
+The transient readout reserves space above the world axes and respects measured workbench insets.
+Keyboard and Select Other pickers retain feature/subshape names for identification. Measure's
+searchable element picker includes the radius in circular and cylindrical element labels and shows
+both radius and diameter. Ellipses and splines do not receive an invented circular radius.

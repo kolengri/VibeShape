@@ -2702,6 +2702,8 @@
       "element": "Element",
       "secondElement": "Second element",
       "point": "Measurement point",
+      "radius": "Radius",
+      "radialElement": "{geometry} {number} · R {radius}",
       "edgeElement": "Edge {number} · {geometry}",
       "faceElement": "Face {number} · {geometry}",
       "length": "Edge length",

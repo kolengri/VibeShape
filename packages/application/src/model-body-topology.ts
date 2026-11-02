@@ -54,7 +54,7 @@ type SourceEvidence =
       bodies: ReadonlyMap<string, RebuiltBody>
     }
 
-const invalidEvidence = (): SourceEvidence => ({
+const invalidEvidence = (): Extract<SourceEvidence, { ok: false }> => ({
   ok: false,
   result: { ok: false, code: "invalid-geometry-evidence" },
 })
@@ -101,6 +101,10 @@ function validateFeatureSource(
 type BodySelection =
   | { ok: false; result: ModelBodyTopologyEvidenceResult }
   | { ok: true; body: RebuiltBody }
+
+type BodyEvidenceSelection =
+  | { ok: false; result: ModelBodyTopologyEvidenceResult }
+  | { ok: true; source: Extract<SourceEvidence, { ok: true }>; body: RebuiltBody }
 
 function selectBody(
   source: Extract<SourceEvidence, { ok: true }>,
@@ -149,20 +153,19 @@ function projectEvidence(
     : { ok: false, code: "invalid-geometry-evidence" }
 }
 
-/** Own one resolver per synchronous catalogue invocation; retain no cross-rebuild cache. */
-export function createModelBodyTopologyEvidenceResolver(
+function createBodyEvidenceResolver(
   snapshot: DocumentSnapshot,
   rebuild: { ok: false } | { ok: true; response: unknown },
-): ModelBodyTopologyEvidenceResolver {
-  if (!rebuild.ok) return () => ({ ok: false, code: "geometry-unavailable" })
+): (target: Pick<TopologyTarget, "featureId" | "outputRole">) => BodyEvidenceSelection {
+  if (!rebuild.ok) return () => ({ ok: false, result: { ok: false, code: "geometry-unavailable" } })
 
   const parsed = documentWorkerResponseSchema.safeParse(rebuild.response)
   if (!parsed.success || parsed.data.type !== "documentRebuilt") {
-    return invalidResult
+    return invalidEvidence
   }
   const response = parsed.data
   const responseError = validateResponse(snapshot, response)
-  if (responseError) return () => responseError
+  if (responseError) return () => ({ ok: false, result: responseError })
   const evaluations = new Map(
     response.evaluation.records.map((record) => [record.featureId, record]),
   )
@@ -182,11 +185,40 @@ export function createModelBodyTopologyEvidenceResolver(
   }
   return (target) => {
     const source = sources.get(target.featureId)
-    if (!source) return { ok: false, code: "body-not-found" }
-    if (!source.ok) return source.result
+    if (!source) return { ok: false, result: { ok: false, code: "body-not-found" } }
+    if (!source.ok) return source
     const body = selectBody(source, target.outputRole)
-    return body.ok ? projectEvidence(snapshot, source, target, body.body) : body.result
+    return body.ok ? { ok: true, source, body: body.body } : body
   }
+}
+
+/** Own one resolver per synchronous catalogue invocation; retain no cross-rebuild cache. */
+export function createModelBodyTopologyEvidenceResolver(
+  snapshot: DocumentSnapshot,
+  rebuild: { ok: false } | { ok: true; response: unknown },
+): ModelBodyTopologyEvidenceResolver {
+  const resolveBody = createBodyEvidenceResolver(snapshot, rebuild)
+  return (target) => {
+    const selection = resolveBody(target)
+    return selection.ok
+      ? projectEvidence(snapshot, selection.source, target, selection.body)
+      : selection.result
+  }
+}
+
+/** Read analytical recipes only after validating both complete body topology sets. */
+export function inspectModelBodyTopologyCandidates(
+  snapshot: DocumentSnapshot,
+  rebuild: { ok: false } | { ok: true; response: unknown },
+  target: Pick<TopologyTarget, "featureId" | "outputRole">,
+): RebuiltBody["topologyCandidates"] | null {
+  const selection = createBodyEvidenceResolver(snapshot, rebuild)(target)
+  if (!selection.ok) return null
+  for (const kind of ["edge", "face"] as const) {
+    if (!projectEvidence(snapshot, selection.source, { ...target, kind }, selection.body).ok)
+      return null
+  }
+  return selection.body.topologyCandidates
 }
 
 export function createModelBodyTopologyEvidence(

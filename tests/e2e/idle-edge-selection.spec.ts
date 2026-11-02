@@ -57,3 +57,31 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await page.screenshot({ path: test.info().outputPath(`${operation}-circular-section.png`) })
   })
 }
+
+test("shows contextual circular measurements above the world axes", async ({ page }) => {
+  await page.goto("/")
+  await invokeModelCommand(page, "Primitives", "Cylinder")
+  const form = page.getByRole("form", { name: "Create cylinder", exact: true })
+  await form.getByRole("button", { name: "Create cylinder", exact: true }).click()
+  const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
+  await expect(
+    viewport.getByRole("combobox", { name: "Model edge", exact: true }).locator("option").nth(1),
+  ).toBeAttached()
+  await page.getByRole("button", { name: "Standard views", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Top", exact: true }).click()
+  await page.getByRole("button", { name: "Fit view", exact: true }).click()
+  await pickSourceEdge(page)
+  const readout = viewport.getByRole("status").filter({ hasText: "Edge length" })
+  await expect(readout.getByText("Radius", { exact: true })).toBeVisible()
+  const readoutBounds = await readout.boundingBox()
+  const axesBounds = await viewport.getByRole("img", { name: "World axes" }).boundingBox()
+  if (!readoutBounds || !axesBounds) throw new Error("Expected measurement and axes bounds.")
+  expect(readoutBounds.y + readoutBounds.height).toBeLessThanOrEqual(axesBounds.y)
+  const canvasBounds = await viewport.locator("canvas").boundingBox()
+  if (!canvasBounds) throw new Error("Expected viewport bounds.")
+  await page.mouse.move(
+    canvasBounds.x + canvasBounds.width / 2,
+    canvasBounds.y + canvasBounds.height / 2,
+  )
+  await expect(viewport.getByRole("status").filter({ hasText: "Face area" })).toBeVisible()
+})

@@ -17,10 +17,12 @@ import {
   useRef,
   useState,
 } from "react"
+import { type QuickMeasurement, QuickTopologyMeasurement } from "./quick-topology-measurement"
 import { SAFE_VIEWPORT_CENTER, SAFE_VIEWPORT_LEFT } from "./viewport-chrome-styles"
 
 export type ModelEdgeViewportSelection = Readonly<{
   candidates: readonly ViewerEdgeCandidate[]
+  measurements?: ReadonlyMap<string, QuickMeasurement | undefined>
   onSelect: (candidate: ViewerEdgeCandidate | null) => void
 }>
 
@@ -147,6 +149,7 @@ export function useModelEdgeViewport(
     preview(null)
   }
   return {
+    measurements: selection?.measurements,
     active: selection !== undefined && candidates.length > 0,
     hasSelection: candidates.some((candidate) => candidate.selected),
     candidates,
@@ -339,15 +342,9 @@ export function ModelEdgeViewportChrome({
         </NativeSelect>
       </div>
       {edges.preselection && selectOther.activeIndex < 0 ? (
-        <p
-          className={cn(
-            "pointer-events-none absolute bottom-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm",
-            SAFE_VIEWPORT_LEFT,
-          )}
-          role="status"
-        >
-          {candidateLabel(edges.preselection)}
-        </p>
+        <QuickTopologyMeasurement
+          measurement={edges.measurements?.get(edges.preselection.candidateId)}
+        />
       ) : null}
       {selectOther.activeIndex >= 0 && selectOther.candidates.length >= 2 ? (
         <div

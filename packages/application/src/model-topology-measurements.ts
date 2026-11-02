@@ -1,7 +1,7 @@
 import type { BodyReference } from "@vibeshape/domain/body-reference"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
-import { documentWorkerResponseSchema, type TopologyCandidate } from "@vibeshape/protocol"
-import { createModelBodyTopologyEvidence } from "./model-body-topology"
+import type { TopologyCandidate } from "@vibeshape/protocol"
+import { inspectModelBodyTopologyCandidates } from "./model-body-topology"
 
 type Point3 = readonly [number, number, number]
 export type MeasurementPoint = Readonly<{
@@ -50,7 +50,9 @@ function analyticalDirection(candidate: TopologyCandidate) {
 function circularRadius(candidate: TopologyCandidate) {
   const geometry = candidate.referenceGeometry
   if (!geometry) return undefined
-  return geometry.kind === "circle-edge" || geometry.kind === "arc-edge"
+  return geometry.kind === "circle-edge" ||
+    geometry.kind === "arc-edge" ||
+    geometry.kind === "cylinder-face"
     ? geometry.radius
     : undefined
 }
@@ -78,17 +80,9 @@ export function inspectTopologyMeasurements(
   rebuild: { ok: false } | { ok: true; response: unknown },
   target: BodyReference,
 ): readonly TopologyMeasurementElement[] | null {
-  for (const kind of ["edge", "face"] as const) {
-    if (!createModelBodyTopologyEvidence(snapshot, rebuild, { ...target, kind }).ok) return null
-  }
-  if (!rebuild.ok) return null
-  const response = documentWorkerResponseSchema.parse(rebuild.response)
-  if (response.type !== "documentRebuilt") return null
-  const body = response.geometry
-    .find(({ featureId }) => featureId === target.featureId)
-    ?.geometry.bodies?.find(({ outputRole }) => outputRole === target.outputRole)
+  const candidates = inspectModelBodyTopologyCandidates(snapshot, rebuild, target)
   return (
-    body?.topologyCandidates.flatMap((candidate) => {
+    candidates?.flatMap((candidate) => {
       const value = element(candidate)
       return value ? [value] : []
     }) ?? null

@@ -3405,7 +3405,11 @@ describe("ordinary model-edge viewport bridge", () => {
     const first = modelEdge("1")
     const second = modelEdge("2")
     const onSelect = vi.fn()
-    const { createViewport, port } = renderModelEdges({ candidates: [first, second], onSelect })
+    const { createViewport, port } = renderModelEdges({
+      candidates: [first, second],
+      measurements: new Map([[first.candidateId, { kind: "edge", measure: 10, radius: 2 }]]),
+      onSelect,
+    })
     await waitFor(() => expect(port.setEdgeCandidates).toHaveBeenCalled())
     expect(screen.queryByText(first.label)).toBeTruthy()
     expect(screen.queryAllByRole("status").some((node) => node.textContent === first.label)).toBe(
@@ -3424,9 +3428,11 @@ describe("ordinary model-edge viewport bridge", () => {
 
     const callbacks = createViewport.mock.calls[0]?.[1]
     act(() => callbacks?.onEdgePreselectionChange?.(first))
-    expect(screen.getAllByRole("status").some((node) => node.textContent === first.label)).toBe(
-      true,
-    )
+    expect(screen.getByText("Radius")).toBeTruthy()
+    expect(screen.getByText("2 mm")).toBeTruthy()
+    expect(screen.getByText("10 mm")).toBeTruthy()
+    expect(screen.getByText("Diameter")).toBeTruthy()
+    expect(screen.getByText("4 mm")).toBeTruthy()
     act(() => callbacks?.onEdgePreselectionChange?.(null))
     expect(screen.queryAllByRole("status").some((node) => node.textContent === first.label)).toBe(
       false,
