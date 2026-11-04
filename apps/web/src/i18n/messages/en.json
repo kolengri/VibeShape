@@ -1145,7 +1145,7 @@
           "clearSideFace": "Clear side face",
           "sideFaceWrongBody": "The side face must belong to the selected target body.",
           "incidenceValidation": "Choose the side face explicitly. The exact preview verifies that it is adjacent to its edge; no nearby face is inferred.",
-          "planarOnly": "Advanced Chamfer supports planar face pairs. Closed circular plane/cylinder rims also support equal-distance Offset; other curved supports are unsupported.",
+          "planarOnly": "Advanced Chamfer supports planar face pairs. Circular plane/cylinder edges, including corner arcs, also support equal-distance Offset; other curved supports are unsupported.",
           "missingCatalogue": "Current validated body topology is unavailable. Rebuild the source or choose another body.",
           "faceLabel": "Face {ordinal}",
           "keyboardChoices": "Keyboard choices",

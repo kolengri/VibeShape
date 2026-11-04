@@ -175,3 +175,4 @@ When a decision changes, do not rewrite its ADR retroactively. Create a new reco
 | [0146](0146-isolated-design-recipes-and-macros.md) | Accepted | Isolated TypeScript recipes and identity-based macros |
 | [0147](0147-derived-model-picture-rendering.md) | Accepted | Disposable model picture rendering and actor-bound PNG artifacts |
 | [0148](0148-sampled-motion-clearance.md) | Accepted | Exact clearance evidence at bounded solved motion samples |
+| [0149](0149-rounded-opening-edge-treatments.md) | Accepted | Circular corner arcs and default tangent contours for rounded-opening edge treatments |

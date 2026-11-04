@@ -171,8 +171,8 @@ function useTreatmentFields(
   const parsed = treatmentFeature(values, context)
   const normalize = (next: TreatmentValues) => {
     const option = props.options.find(({ id }) => id === next.targetFeatureId)
-    return props.operation === "chamfer" && treatmentUsesV3(next, option)
-      ? promoteTreatmentTargets(next, candidates)
+    return props.operation === "chamfer" && treatmentUsesV3(next, option, props.mode)
+      ? promoteTreatmentTargets({ ...next, retainV3: true }, candidates)
       : next
   }
   const apply = (request: EdgeTreatmentPickRequest) => {
@@ -306,7 +306,7 @@ function TreatmentFields({
     return () => setEscape(null)
   }, [fields.onEscape, setEscape])
   const option = props.options.find(({ id }) => id === values.targetFeatureId)
-  const v3 = props.operation === "chamfer" && treatmentUsesV3(values, option)
+  const v3 = props.operation === "chamfer" && treatmentUsesV3(values, option, props.mode)
   const issues = {
     ...submitIssues,
     ...(v3 && !fields.parsed.ok && fields.parsed.issues.references
@@ -323,6 +323,7 @@ function TreatmentFields({
       )}
       {fields.pickIssue && <Alert>{fields.pickIssue}</Alert>}
       <EdgeTreatmentControls
+        v3={v3}
         values={values}
         onChange={fields.change}
         candidates={fields.candidates}

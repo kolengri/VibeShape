@@ -460,7 +460,9 @@ document protocol 18 carry disposable edge display polylines, limited to 1,025 p
 side-face intent, measured asymmetric modes, direction overrides and native tangent-contour checks.
 Offset/Tangent coincide on planar supports. [ADR-0121](../adr/0121-circular-offset-chamfer.md)
 additionally admits equal-distance Offset on exact closed circular plane/cylinder rims, with measured
-axial/radial setbacks and annular volume. Curved Tangent, directional modes and other curved support
+axial/radial setbacks and annular volume. [ADR-0149](../adr/0149-rounded-opening-edge-treatments.md)
+extends this case to trimmed corner arcs and verifies complete rounded-opening contours from one
+selected edge. Curved Tangent, directional modes and other curved support
 pairs remain unsupported in V3. Legacy V1/V2 execution remains unchanged. Named output roles are
 resolved against their exact native body snapshot. No native mode name is treated as proof of another
 CAD product's semantics, and a valid selection does not guarantee an oversized treatment can cross a

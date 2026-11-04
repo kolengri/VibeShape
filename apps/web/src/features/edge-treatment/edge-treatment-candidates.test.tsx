@@ -135,6 +135,7 @@ it("shares row resolution across a mounted controls owner and replaces its index
       })
     })
   const props: TreatmentControlsProps = {
+    v3: false,
     values: {
       ...initialTreatmentValues(
         { kind: "create", createFeatureId: () => treatmentId, featureLabel: "Fillet" },

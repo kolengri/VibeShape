@@ -22,12 +22,12 @@ import {
   clearTreatmentSelection,
   type TreatmentValues,
   treatmentReferences,
-  treatmentUsesV3,
 } from "./edge-treatment-model"
 import { type EdgeTreatmentTargetOption, edgeTreatmentRequiresV3 } from "./edge-treatment-options"
 import type { EdgeTreatmentPick } from "./edge-treatment-picking"
 
 export type TreatmentControlsProps = {
+  v3: boolean
   values: TreatmentValues
   onChange: (values: TreatmentValues) => void
   copy: EdgeTreatmentFormCopy
@@ -352,12 +352,7 @@ function SelectionHeading({
 function SelectedTargets({ props }: { props: PreparedTreatmentControlsProps }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   if (props.values.scope !== "selected") return null
-  const v3 =
-    props.operation === "chamfer" &&
-    treatmentUsesV3(
-      props.values,
-      props.options.find(({ id }) => id === props.values.targetFeatureId),
-    )
+  const v3 = props.v3
   const references = treatmentReferences(props.values, v3)
   const unavailable = props.candidates.filter(
     (candidate) => candidate.reference.kind === "edge" && !candidate.edgePolyline,
@@ -575,7 +570,9 @@ export function EdgeTreatmentControls(input: TreatmentControlsProps) {
                   directionOverrides: [],
                   targets: [],
                 }
-              : {}),
+              : props.operation === "chamfer" && props.options.some((option) => option.body)
+                ? { retainV3: true, tangentPropagation: true }
+                : {}),
           })
         }}
       />

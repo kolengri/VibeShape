@@ -37,8 +37,8 @@ const edgeCandidate = {
       min: [0, 0, 0] as [number, number, number],
       max: [1, 0, 0] as [number, number, number],
     },
-    boundaryCount: 0,
-    adjacentGeometryClasses: [],
+    boundaryCount: 2,
+    adjacentGeometryClasses: ["PLANE", "PLANE"],
   },
 }
 const topologyCandidates = [
@@ -152,13 +152,25 @@ it.each(["fillet", "chamfer"] as const)(
         edgeSelection: tool.edgeSelection,
       },
     })
-    expect(screen.getByRole("status").textContent).toBe("1 edges selected")
+    expect(screen.getByRole("status").textContent).toBe(
+      operation === "chamfer" ? "1 target selected" : "1 edges selected",
+    )
     await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
     expect(view.onSave).toHaveBeenCalledWith(
       3,
       expect.objectContaining({
         dependencies: [secondTargetId],
-        references: [reference],
+        ...(operation === "chamfer"
+          ? {
+              references: [],
+              parameters: expect.objectContaining({
+                tangentPropagation: true,
+                targets: [
+                  { kind: "edge", edge: { ...reference, schemaVersion: 1, outputRole: "result" } },
+                ],
+              }),
+            }
+          : { references: [reference] }),
       }),
     )
   },

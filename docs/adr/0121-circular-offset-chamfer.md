@@ -2,6 +2,7 @@
 
 - Status: Accepted with bounded circular-rim support
 - Date: 2026-10-21
+- Open-arc restriction superseded by: [ADR-0149](0149-rounded-opening-edge-treatments.md)
 - Supersedes: the curved-support rejection in the measurement boundary of
   [ADR-0118](0118-body-bound-directional-chamfer.md)
 

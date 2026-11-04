@@ -1,6 +1,15 @@
 import { beforeAll, expect, it } from "bun:test"
-import { draw, makeCylinder, measureShapeVolumeProperties, type Shape3D, setOC } from "replicad"
+import {
+  draw,
+  drawRoundedRectangle,
+  makeBox,
+  makeCylinder,
+  measureShapeVolumeProperties,
+  type Shape3D,
+  setOC,
+} from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
+import { inspectOcctBody } from "./occt-body-validation"
 import { chamferOcctShapeV3 } from "./occt-chamfer-v3"
 import { treatSelectedOcctEdges } from "./occt-edge-treatment"
 import { captureReplicadTopologySnapshot } from "./topology-signatures"
@@ -40,6 +49,75 @@ function splitEdgeSource(): Shape3D {
     .extrude(10)
     .asShape3D()
 }
+
+it.each(["line", "arc", "two-lines"] as const)(
+  "chamfers the complete rounded opening from a $seed selection and fillets it from one edge",
+  (seed) => {
+    const outer = makeBox([-40, -32, 0], [40, 32, 12])
+    const opening = drawRoundedRectangle(40, 24, 6).sketchOnPlane("XY").extrude(12).asShape3D()
+    const source = outer.cut(opening)
+    outer.delete()
+    opening.delete()
+    try {
+      const before = captureReplicadTopologySnapshot(source)
+      const rim = before.candidates.filter(
+        (candidate) =>
+          candidate.kind === "edge" &&
+          Math.abs(candidate.signature.bounds.min[2] - 12) < 1e-6 &&
+          Math.abs(candidate.signature.bounds.max[2] - 12) < 1e-6 &&
+          Math.abs(candidate.signature.centroid[0]) < 21 &&
+          Math.abs(candidate.signature.centroid[1]) < 13,
+      )
+      expect(rim).toHaveLength(8)
+      const straight = rim.filter((candidate) => candidate.signature.geometryClass === "LINE")
+      const arc = rim.find((candidate) => candidate.signature.geometryClass === "CIRCLE")
+      const selected = seed === "arc" ? [arc] : straight.slice(0, seed === "two-lines" ? 2 : 1)
+      const keys = selected.map((candidate) => {
+        const key = candidate && before.transientShapeKeys.get(candidate.candidateId)
+        if (key === undefined) throw new Error("The rounded opening needs exact native rim edges.")
+        return key
+      })
+      const originalVolume = shapeVolume(source)
+      const distance = 3
+      const perimeter = 80 + 12 * Math.PI
+      const parameters = {
+        mode: "equal-distance" as const,
+        distance,
+        measurement: "offset" as const,
+        flip: false,
+        tangentPropagation: true,
+      }
+      const targets = keys.map((edgeKey) => ({ kind: "edge" as const, edgeKey }))
+      expect(() =>
+        chamferOcctShapeV3(occt, source, { ...parameters, tangentPropagation: false }, targets, []),
+      ).toThrow("cannot stop within this native tangent contour")
+      const chamfer = chamferOcctShapeV3(occt, source, parameters, targets, [])
+      try {
+        expect(inspectOcctBody(occt, chamfer)).toMatchObject({ valid: true, solidCount: 1 })
+        const removed = (perimeter * distance ** 2) / 2 + (Math.PI * distance ** 3) / 3
+        expect(shapeVolume(chamfer)).toBeCloseTo(originalVolume - removed, 5)
+      } finally {
+        chamfer.delete()
+      }
+      const key = keys[0]
+      if (key === undefined) throw new Error("The fillet requires one exact edge.")
+      const fillet = treatSelectedOcctEdges(occt, source, "fillet", distance, [key])
+      try {
+        expect(inspectOcctBody(occt, fillet)).toMatchObject({ valid: true, solidCount: 1 })
+        const removed =
+          perimeter * distance ** 2 * (1 - Math.PI / 4) +
+          Math.PI * distance ** 3 * (5 / 3 - Math.PI / 2)
+        expect(shapeVolume(fillet)).toBeCloseTo(originalVolume - removed, 5)
+      } finally {
+        fillet.delete()
+      }
+      expect(shapeVolume(source)).toBeCloseTo(originalVolume, 8)
+      expect(captureReplicadTopologySnapshot(source).candidates).toEqual(before.candidates)
+    } finally {
+      source.delete()
+    }
+  },
+)
 
 it("bounds legacy chamfer by a short cone/cylinder transition without broadening V3 support", () => {
   const source = draw([32.1, 0])

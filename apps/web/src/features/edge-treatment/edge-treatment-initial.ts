@@ -108,6 +108,8 @@ export function initialTreatmentValues(
 ): TreatmentValues {
   const defaults = defaultValues(unit)
   if (mode.kind === "edit") return editedValues(mode.feature, operation, options, defaults)
+  defaults.tangentPropagation = operation === "chamfer" && options.some((option) => option.body)
+  defaults.retainV3 = defaults.tangentPropagation
   const preselection = readEdgeTreatmentPreselection(mode.edgeSelection)
   if (!preselection)
     return { ...defaults, targetFeatureId: initialTarget(options, mode.targetFeatureId) }
