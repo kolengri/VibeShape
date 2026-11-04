@@ -98,8 +98,19 @@ const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
 const { DOCUMENT_PROTOCOL_VERSION, documentWorkerResponseSchema } = await import(
   "@vibeshape/protocol"
 )
-const { boxFeatureParametersSchema, createEmptySketch, sketchIdSchema, sketchRecordSchema } =
-  await import("@vibeshape/domain")
+const {
+  boxFeatureParametersSchema,
+  createAngleQuantity,
+  createEmptySketch,
+  createLengthQuantity,
+  featureIdSchema,
+  placementFeatureType,
+  projectDocumentSnapshotV1ToV0,
+  sketchIdSchema,
+  sketchRecordSchema,
+} = await import("@vibeshape/domain")
+const { applyDocumentV2Command } = await import("@vibeshape/domain/document-v2-commands")
+const { projectDocumentSnapshotV2ToV1 } = await import("@vibeshape/domain/document-v2")
 const { i18n } = await import("../i18n")
 const { authoredTestBody, authoredTestId, authoredTreeFixture, requireAuthoredFixture } =
   await import("../test-support/authored-tree-fixture")
@@ -367,6 +378,123 @@ function dependencySketch() {
 }
 
 describe("workspace body highlight composition", () => {
+  it("selects and hovers a History source at its current placement and respects hidden outputs", async () => {
+    const placementId = featureIdSchema.parse(authoredTestId(800))
+    const envelope = {
+      commandId: authoredTestId(801),
+      documentId: authority.id,
+      baseRevision: authority.revision,
+      issuedAt: "2026-11-04T00:00:00Z",
+      actor: { type: "user", userId: null },
+    }
+    const placed = applyDocumentV2Command(authority, {
+      ...envelope,
+      schemaVersion: 2,
+      kind: "org.vibeshape.document.model-command",
+      payload: {
+        partAllocations: [],
+        command: {
+          ...envelope,
+          schemaVersion: 1,
+          kind: "org.vibeshape.history.insert-feature",
+          payload: {
+            historyAfter: authority.history.at(-1),
+            feature: {
+              schemaVersion: 0,
+              id: placementId,
+              type: placementFeatureType.type,
+              dependencies: [firstFeature.id],
+              references: [],
+              suppressed: false,
+              parameters: {
+                targetBody: { schemaVersion: 0, featureId: firstFeature.id, outputRole: "result" },
+                translation: {
+                  x: createLengthQuantity(50),
+                  y: createLengthQuantity(0),
+                  z: createLengthQuantity(10),
+                },
+                rotation: {
+                  x: createAngleQuantity(0),
+                  y: createAngleQuantity(0),
+                  z: createAngleQuantity(90, "deg"),
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    if (!placed.ok) throw new Error(JSON.stringify(placed))
+    const projected = projectDocumentSnapshotV1ToV0(projectDocumentSnapshotV2ToV1(placed.snapshot))
+    if (!projected.ok) throw new Error(JSON.stringify(projected))
+    const response = rebuild(snapshot)
+    const source = requireAuthoredFixture(response.geometry[0])
+    const movedMesh = {
+      ...sample.mesh,
+      positions: new Float32Array([50, 0, 10, 50, 20, 10, 20, 0, 10]),
+    }
+    const report = requireAuthoredFixture(controller.report ?? undefined)
+    const sourceController: DocumentControllerState = {
+      ...controller,
+      authoredSnapshot: placed.snapshot,
+      report: {
+        ...report,
+        snapshot: projected.snapshot,
+        historyItems: placed.snapshot.history,
+        rebuild: {
+          ok: true,
+          response: {
+            ...response,
+            revision: placed.snapshot.revision,
+            evaluation: {
+              ...response.evaluation,
+              records: [
+                ...response.evaluation.records,
+                { featureId: placementId, status: "succeeded", contentHash: "a".repeat(64) },
+              ],
+            },
+            geometry: [
+              ...response.geometry,
+              {
+                ...source,
+                featureId: placementId,
+                geometry: {
+                  ...source.geometry,
+                  mesh: movedMesh,
+                  bodies: [
+                    {
+                      outputRole: "result",
+                      shape: sample.shape,
+                      mesh: movedMesh,
+                      topologyCandidates: [],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
+    }
+    const treeSelection = [{ kind: "feature" as const, id: firstFeature.id }]
+    const rendered = render(
+      <WorkspaceHarness treeSelection={treeSelection} sourceController={sourceController} />,
+    )
+    const expected = [{ featureId: placementId, outputRole: "result", ...movedMesh }]
+    await waitFor(() => expect(port.setFeatureSelection).toHaveBeenLastCalledWith(expected))
+    fireEvent.pointerEnter(historyRow().parentElement ?? historyRow())
+    await waitFor(() => expect(port.setFeaturePreselection).toHaveBeenLastCalledWith(expected))
+    rendered.rerender(
+      <WorkspaceHarness
+        treeSelection={treeSelection}
+        sourceController={sourceController}
+        hiddenFeatureIds={[placementId]}
+      />,
+    )
+    await waitFor(() => expect(port.setFeaturePreselection).toHaveBeenLastCalledWith([]))
+    expect(port.setFeatureSelection).toHaveBeenLastCalledWith([])
+  })
+
   it.each(["available", "suppressed", "missing", "unavailable"] as const)(
     "navigates from dependencies to saved feature History without inventing %s outputs or opening edit",
     async (availability) => {

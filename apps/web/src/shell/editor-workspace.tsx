@@ -164,6 +164,7 @@ import {
   viewerMeshes,
   viewerSketchDisplay,
 } from "./geometry-viewport"
+import { historyFeatureMeshes } from "./history-feature-meshes"
 import { historyInsertionContext } from "./history-insertion-context"
 import type { HistoryRevealRequest } from "./history-reveal-request"
 import type { ModelEdgeViewportSelection as ViewportEdgeSelection } from "./model-edge-viewport"
@@ -2344,12 +2345,14 @@ function workspaceSelectedBodies(
     ? props.modelTreeSelection.flatMap((item) => {
         if (item.kind === "body") return [item]
         if (item.kind === "feature") {
-          return featureMeshes
-            .filter((mesh) => mesh.featureId === item.id)
-            .map(({ outputRole }) => ({
-              featureId: item.id,
-              ...(outputRole === undefined ? {} : { outputRole }),
-            }))
+          return historyFeatureMeshes(
+            props.controller.report?.snapshot.features ?? [],
+            featureMeshes,
+            item.id,
+          ).map(({ featureId, outputRole }) => ({
+            featureId: featureId as FeatureId,
+            ...(outputRole === undefined ? {} : { outputRole }),
+          }))
         }
         if (item.kind !== "part") return []
         const body = selectedAuthoredBody(parts, item.id, props.partVisibility?.overrides)
