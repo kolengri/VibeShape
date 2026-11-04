@@ -17,6 +17,14 @@ opening. Users can disable propagation explicitly; an incomplete native contour 
 Existing saved V1/V2 features and V3 propagation choices retain their authored semantics. MCP callers
 continue to supply their explicit propagation choice through the existing contract.
 
+Preserve new selected-edge chamfers on verified single-result bodies with a closed circular
+cone/cylinder transition through the existing V2 path. This compatibility route requires enabled
+native propagation, equal-distance Offset, losslessly represented edge selections and no side-face
+or directional intent. Mixed selections may include the supported planar and plane/cylinder subset.
+Choose the route before validation; never retry a failed V3 operation through V2. Saved edits,
+named or multiple outputs, face targets and explicit propagation opt-out remain on their existing
+routes. This does not broaden V3 measurement support to cone/cylinder transitions.
+
 Fillet already follows native tangent contours from one selected edge. No Fillet schema or kernel
 behavior changes are required. Neither operation broadens selection to unrelated contours or all
 body edges, and neither substitutes a smaller size for an unbuildable requested size.

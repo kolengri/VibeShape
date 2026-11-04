@@ -634,7 +634,9 @@ Tangent, directional modes and other curved support pairs remain unsupported. Ne
 chamfers enable tangent propagation by default, so one picked edge treats its complete tangent
 contour. Fillet already follows that contour from one edge. Explicitly disabling propagation keeps
 V3 validation and requires every native contour edge to be selected. Apply creates one ordinary committed edit, Cancel
-discards the task, and Undo/Redo uses shared session history. Existing all-edge features retain
+discards the task, and Undo/Redo uses shared session history. New selected closed cone/cylinder rims
+on verified single-result bodies keep their established equal-distance path with propagation
+enabled; advanced intent and saved V3 edits never fall back after failure. Existing all-edge features retain
 version-1 semantics, and explicit-edge features are not migrated automatically. See
 [ADR-0040](../adr/0040-selected-edge-treatments.md),
 [ADR-0118](../adr/0118-body-bound-directional-chamfer.md) and its bounded measurement extension,

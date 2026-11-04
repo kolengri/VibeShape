@@ -209,6 +209,158 @@ it.each(["invalid-boundary", "conical-support"])(
   },
 )
 
+function coneCylinderOption(extraEdges: ReturnType<typeof candidate>[] = []) {
+  const rim = candidate("edge", 1, true)
+  rim.signature.boundaryCount = 0
+  rim.signature.adjacentGeometryClasses = ["CONE", "CYLINDRE"]
+  return { ...option(sourceId, "result", "Body A", [rim, ...extraEdges]), legacy: true }
+}
+
+it.each([0.2, 0.7])(
+  "preserves a new selected cone-cylinder chamfer at %s mm with native propagation",
+  async (distance) => {
+    const options = [coneCylinderOption()]
+    const { onSave } = setup({ options, topologyCandidates: geometry(options) })
+    await pick()
+    fireEvent.change(screen.getByRole("combobox", { name: "Distance" }), {
+      target: { value: `${distance} mm` },
+    })
+    await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+    expect(saved(onSave)).toMatchObject({
+      type: chamferFeatureTypeV2.type,
+      parameters: { distance: { value: distance } },
+      references: [
+        {
+          schemaVersion: 0,
+          featureId: sourceId,
+          kind: "edge",
+          signature: {
+            geometryClass: "CIRCLE",
+            boundaryCount: 0,
+            adjacentGeometryClasses: ["CONE", "CYLINDRE"],
+          },
+        },
+      ],
+    })
+    expect(saved(onSave).references).toHaveLength(1)
+    expect(
+      screen.getByRole<HTMLInputElement>("checkbox", { name: "Propagate along tangent edges" })
+        .checked,
+    ).toBe(true)
+  },
+)
+
+it("preserves a preselected cone-cylinder rim and re-enters strict V3 on propagation opt-out", async () => {
+  const options = [coneCylinderOption()]
+  const selected = edgeTreatmentCandidates(options, geometry(options), (kind) => kind)[0]
+  const body = options[0]?.body
+  if (selected?.reference.schemaVersion !== 1 || !body)
+    throw new Error("Missing cone-cylinder preselection.")
+  const expected = legacyEdgeReference(selected.reference)
+  if (!expected) throw new Error("The cone-cylinder rim requires an exact legacy edge.")
+  const { onSave } = setup({
+    options,
+    topologyCandidates: geometry(options),
+    mode: {
+      kind: "create",
+      createFeatureId: () => treatmentId,
+      featureLabel: "Chamfer",
+      edgeSelection: { targetBody: body, edges: [selected.reference] },
+    },
+  })
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(saved(onSave).type).toEqual(chamferFeatureTypeV2.type)
+  expect(saved(onSave).references).toEqual([expected])
+  onSave.mockClear()
+  await userEvent.click(screen.getByRole("checkbox", { name: "Propagate along tangent edges" }))
+  expect(screen.getByText(/other curved supports are unsupported/)).toBeTruthy()
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(onSave).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole("checkbox", { name: "Propagate along tangent edges" }))
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(saved(onSave).type).toEqual(chamferFeatureTypeV2.type)
+})
+
+it("preserves every edge in a mixed cone-cylinder and planar selection", async () => {
+  const options = [coneCylinderOption([candidate("edge", 2)])]
+  const { onSave } = setup({ options, topologyCandidates: geometry(options) })
+  await pick()
+  await pick("Body A · Edge 2")
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(saved(onSave).type).toEqual(chamferFeatureTypeV2.type)
+  expect(saved(onSave).references).toEqual(
+    edgeTreatmentCandidates(options, geometry(options), (kind) => kind, "edge").map(
+      ({ reference }) => {
+        const legacy = legacyEdgeReference(reference)
+        if (!legacy) throw new Error("The mixed selection requires exact legacy edges.")
+        return legacy
+      },
+    ),
+  )
+})
+
+it.each(["tangent", "directional", "face", "saved-v3"] as const)(
+  "does not downgrade explicit %s intent on a cone-cylinder rim",
+  async (intent) => {
+    const options = [coneCylinderOption()]
+    const selected = edgeTreatmentCandidates(options, geometry(options), (kind) => kind)[0]
+    const body = options[0]?.body
+    if (selected?.reference.schemaVersion !== 1 || !body)
+      throw new Error("Missing cone-cylinder target.")
+    const feature = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: treatmentId,
+      type: chamferFeatureTypeV3.type,
+      label: "Chamfer",
+      parameters: {
+        targetBody: body,
+        mode: "equal-distance",
+        distance: createLengthQuantity(0.2),
+        measurement: "offset",
+        tangentPropagation: true,
+        flip: false,
+        directionOverrides: [],
+        targets: [{ kind: "edge", edge: selected.reference }],
+      },
+      dependencies: [sourceId],
+      references: [],
+      suppressed: false,
+    })
+    const { onSave } = setup({
+      options,
+      topologyCandidates: geometry(options),
+      ...(intent === "saved-v3" ? { mode: { kind: "edit" as const, feature } } : {}),
+    })
+    if (intent !== "saved-v3") await pick()
+    if (intent === "tangent")
+      await userEvent.selectOptions(
+        screen.getByRole("combobox", { name: "Measurement" }),
+        "tangent",
+      )
+    if (intent === "directional") await mode("two-distances")
+    if (intent === "face") {
+      await userEvent.click(screen.getByRole("button", { name: "Pick faces in viewport" }))
+      await pick("Body A · Face 1")
+    }
+    expect(screen.getByText(/other curved supports are unsupported/)).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).not.toHaveBeenCalled()
+  },
+)
+
+it.each([false, undefined])(
+  "requires verified whole-result compatibility instead of legacy eligibility %s",
+  async (legacy) => {
+    const { legacy: _verified, ...source } = coneCylinderOption()
+    const options = [legacy === undefined ? source : { ...source, legacy }]
+    const { onSave } = setup({ options, topologyCandidates: geometry(options) })
+    await pick()
+    expect(screen.getByText(/other curved supports are unsupported/)).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).not.toHaveBeenCalled()
+  },
+)
+
 it("promotes an edited V2 edge set into typed V3 targets only after advanced controls are requested", async () => {
   const options = [option()]
   const selected = edgeTreatmentCandidates(options, geometry(options), (kind) => kind)[0]

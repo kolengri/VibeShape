@@ -71,7 +71,9 @@ type TreatmentValidationCopy = EdgeTreatmentFormCopy & {
 export function treatmentUsesV3(
   values: TreatmentValues,
   option: EdgeTreatmentTargetOption | undefined,
+  formMode: EdgeTreatmentFormMode,
 ) {
+  if (usesLegacyCurvedChamfer(values, option, formMode)) return false
   return (
     values.retainV3 ||
     values.flip ||
@@ -230,6 +232,61 @@ function circularOffsetReference(reference: EdgeTopoRef | BodyTopoRef, values: T
     signature.adjacentGeometryClasses.length === 2 &&
     signature.adjacentGeometryClasses.includes("PLANE") &&
     signature.adjacentGeometryClasses.includes("CYLINDRE")
+  )
+}
+
+function coneCylinderRim(reference: EdgeTopoRef | BodyTopoRef) {
+  const signature = reference.signature
+  return (
+    reference.kind === "edge" &&
+    signature.geometryClass === "CIRCLE" &&
+    signature.boundaryCount === 0 &&
+    signature.adjacentGeometryClasses.length === 2 &&
+    signature.adjacentGeometryClasses.includes("CONE") &&
+    signature.adjacentGeometryClasses.includes("CYLINDRE")
+  )
+}
+
+function nativeContourControls(values: TreatmentValues) {
+  return (
+    values.scope === "selected" &&
+    values.mode === "equal-distance" &&
+    values.measurement === "offset" &&
+    values.tangentPropagation &&
+    !values.flip &&
+    values.directionOverrides.length === 0 &&
+    values.targets.every((target) => target.kind === "edge" && !target.sideFace)
+  )
+}
+
+function legacyContourReference(reference: EdgeTopoRef | BodyTopoRef, values: TreatmentValues) {
+  const legacy = legacyEdgeReference(reference)
+  return (
+    legacy !== null &&
+    values.references.some((stored) => sameTreatmentReference(stored, legacy)) &&
+    (planarReference(reference) ||
+      circularOffsetReference(reference, values) ||
+      coneCylinderRim(reference))
+  )
+}
+
+function usesLegacyCurvedChamfer(
+  values: TreatmentValues,
+  option: EdgeTreatmentTargetOption | undefined,
+  formMode: EdgeTreatmentFormMode,
+) {
+  if (
+    formMode.kind !== "create" ||
+    option?.legacy !== true ||
+    option.body?.outputRole !== "result" ||
+    !nativeContourControls(values)
+  )
+    return false
+  const references = treatmentReferences(values, true)
+  // Preserve proven selected-edge behavior without downgrading saved or advanced intent.
+  return (
+    references.some(coneCylinderRim) &&
+    references.every((reference) => legacyContourReference(reference, values))
   )
 }
 
@@ -456,7 +513,7 @@ export function treatmentFeature(
       fullContext.candidates.filter(({ optionId }) => optionId === values.targetFeatureId),
     ),
   }
-  const v3 = context.operation === "chamfer" && treatmentUsesV3(values, option)
+  const v3 = context.operation === "chamfer" && treatmentUsesV3(values, option, context.mode)
   const base = parseTreatmentBase(values, context, option, v3)
   if (!base.ok) return base
   const legacyParameters =
