@@ -2605,7 +2605,7 @@ describe("GeometryViewport", () => {
     )
   })
 
-  it("highlights hovered and opened features by exact identity, including historical geometry", async () => {
+  it("highlights visible hover outputs while retaining historical geometry for the opened feature", async () => {
     const controller = readyController(
       [
         { id: boxId, dependencies: [] },
@@ -2624,10 +2624,9 @@ describe("GeometryViewport", () => {
     await waitFor(() =>
       expect(port.setFeatureSelection).toHaveBeenLastCalledWith({ featureId: boxId, ...mesh }),
     )
-    expect(port.setFeaturePreselection).toHaveBeenLastCalledWith({
-      featureId: booleanId,
-      ...mesh,
-    })
+    expect(port.setFeaturePreselection).toHaveBeenLastCalledWith([
+      { featureId: booleanId, ...mesh },
+    ])
     const viewport = screen.getByRole("region", { name: "3D viewport" })
     expect(viewport.getAttribute("data-selected-feature")).toBe(boxId)
     expect(viewport.getAttribute("data-preselected-feature")).toBe(booleanId)
@@ -2653,6 +2652,51 @@ describe("GeometryViewport", () => {
     )
 
     await waitFor(() => expect(port.setFeatureSelection).toHaveBeenLastCalledWith(previewMesh))
+  })
+
+  it("preselects the current output after chained body operations while edit retains its source", async () => {
+    const translated = {
+      ...mesh,
+      positions: new Float32Array([50, 0, 0, 70, 0, 0, 50, 20, 0]),
+    }
+    const rotated = {
+      ...mesh,
+      positions: new Float32Array([50, 0, 10, 50, 20, 10, 30, 0, 10]),
+    }
+    const features = [
+      { id: boxId, dependencies: [] },
+      { id: booleanId, dependencies: [boxId] },
+      { id: datumId, dependencies: [booleanId] },
+    ]
+    const geometry = [
+      { featureId: boxId, geometry: { mesh } },
+      { featureId: booleanId, geometry: { mesh: translated } },
+      { featureId: datumId, geometry: { mesh: rotated } },
+    ]
+    const rendered = renderViewport(
+      readyController(features, geometry),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      { preselectedFeatureId: boxId, selectedFeatureId: boxId },
+    )
+    await waitFor(() =>
+      expect(rendered.port.setFeaturePreselection).toHaveBeenLastCalledWith([
+        { featureId: datumId, ...rotated },
+      ]),
+    )
+    expect(rendered.port.setFeatureSelection).toHaveBeenLastCalledWith({
+      featureId: boxId,
+      ...mesh,
+    })
+
+    rendered.rerenderController(readyController(features, geometry.slice(0, 2)))
+    await waitFor(() =>
+      expect(rendered.port.setFeaturePreselection).toHaveBeenLastCalledWith([
+        { featureId: booleanId, ...translated },
+      ]),
+    )
   })
 
   it("renders exact saved sketches with the model and filters hidden sketch identities", async () => {
