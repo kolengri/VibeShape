@@ -15,7 +15,7 @@ async function pickIdleEdge(page: Page) {
   const viewport = page.getByRole("region", { name: "3D viewport" })
   const bounds = await viewport.locator("canvas").boundingBox()
   if (!bounds) throw new Error("Expected the ordinary edge picking canvas.")
-  const status = viewport.getByRole("status").filter({ hasText: /^Box 1 · Edge \d+$/ })
+  const status = viewport.getByRole("status").filter({ hasText: /^Edge length/ })
   for (let radius = 4; radius <= 168; radius += 4) {
     for (const [dx, dy] of [
       [radius, 0],
@@ -61,8 +61,8 @@ for (const operation of ["fillet", "chamfer"] as const) {
       true,
     )
     await pickSourceEdge(page)
-    await expect(form.getByRole("status").filter({ hasText: /^1 edge selected$/ })).toHaveText(
-      "1 edge selected",
+    await expect(form.getByRole("status")).toHaveText(
+      operation === "chamfer" ? "1 target selected" : "1 edge selected",
     )
     await expect(form.getByText("Ambiguous edge", { exact: false })).toHaveCount(0)
     await form.getByRole("button", { name: `Create ${operation}`, exact: true }).click()

@@ -575,7 +575,9 @@ export function EdgeTreatmentControls(input: TreatmentControlsProps) {
                   directionOverrides: [],
                   targets: [],
                 }
-              : {}),
+              : props.operation === "chamfer" && props.options.some((option) => option.body)
+                ? { retainV3: true, tangentPropagation: true }
+                : {}),
           })
         }}
       />

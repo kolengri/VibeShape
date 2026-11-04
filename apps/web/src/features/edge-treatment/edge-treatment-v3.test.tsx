@@ -3,7 +3,11 @@ import { afterEach, expect, it } from "bun:test"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createLengthQuantity, featureRecordSchema } from "@vibeshape/domain"
-import { chamferFeatureTypeV2, chamferFeatureTypeV3 } from "@vibeshape/domain/part-design"
+import {
+  chamferFeatureParametersV3Schema,
+  chamferFeatureTypeV2,
+  chamferFeatureTypeV3,
+} from "@vibeshape/domain/part-design"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
@@ -63,18 +67,86 @@ function saved(onSave: ReturnType<typeof vi.fn>) {
   return featureRecordSchema.parse(onSave.mock.calls.at(-1)?.[1])
 }
 
-it("keeps an ordinary circular rim on legacy V2 with its explicit edge reference", async () => {
-  const options = [option(sourceId, "result", "Body A", [candidate("edge", 1, true)])]
-  const { onSave } = setup({ options, topologyCandidates: geometry(options) })
+it("defaults one picked edge to complete-contour propagation for a new chamfer", async () => {
+  const { onSave } = setup()
+  expect(
+    screen.getByRole<HTMLInputElement>("checkbox", { name: "Propagate along tangent edges" })
+      .checked,
+  ).toBe(true)
   await pick()
   await userEvent.click(screen.getByRole("button", { name: copy.submit }))
   expect(saved(onSave)).toMatchObject({
-    type: chamferFeatureTypeV2.type,
-    dependencies: [sourceId],
-    references: [{ schemaVersion: 0, kind: "edge", signature: { geometryClass: "CIRCLE" } }],
+    type: chamferFeatureTypeV3.type,
+    references: [],
+    parameters: { tangentPropagation: true, targets: [{ kind: "edge" }] },
   })
-  expect(saved(onSave).parameters).not.toHaveProperty("mode")
+  const targets = saved(onSave).parameters.targets
+  expect(targets).toHaveLength(1)
 })
+
+it("retains explicit V3 propagation opt-out for a newly created circular-rim chamfer", async () => {
+  const options = [option(sourceId, "result", "Body A", [candidate("edge", 1, true)])]
+  const { onSave } = setup({ options, topologyCandidates: geometry(options) })
+  await userEvent.click(screen.getByRole("checkbox", { name: "Propagate along tangent edges" }))
+  await pick()
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(saved(onSave)).toMatchObject({
+    type: chamferFeatureTypeV3.type,
+    dependencies: [sourceId],
+    references: [],
+    parameters: {
+      tangentPropagation: false,
+      targets: [{ kind: "edge", edge: { signature: { geometryClass: "CIRCLE" } } }],
+    },
+  })
+})
+
+it("restores contour propagation when switching back from all edges to selected edges", async () => {
+  const { onSave } = setup()
+  await userEvent.click(screen.getByRole("radio", { name: "All edges" }))
+  await userEvent.click(screen.getByRole("radio", { name: "Selected edges" }))
+  expect(
+    screen.getByRole<HTMLInputElement>("checkbox", { name: "Propagate along tangent edges" })
+      .checked,
+  ).toBe(true)
+  await pick()
+  await userEvent.click(screen.getByRole("checkbox", { name: "Propagate along tangent edges" }))
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(saved(onSave)).toMatchObject({
+    type: chamferFeatureTypeV3.type,
+    parameters: { tangentPropagation: false },
+  })
+})
+
+it.each(["propagation", "mode", "measurement"] as const)(
+  "preserves explicit propagation opt-out after entering selected scope through %s",
+  async (control) => {
+    const { onSave } = setup()
+    await userEvent.click(screen.getByRole("radio", { name: "All edges" }))
+    const propagation = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "Propagate along tangent edges",
+    })
+    if (control === "propagation") {
+      await userEvent.click(propagation)
+      await userEvent.click(propagation)
+    } else if (control === "mode") {
+      await mode("two-distances")
+      await mode("equal-distance")
+    } else {
+      const measurement = screen.getByRole("combobox", { name: "Measurement" })
+      await userEvent.selectOptions(measurement, "tangent")
+      await userEvent.selectOptions(measurement, "offset")
+    }
+    expect(propagation.checked).toBe(false)
+    await pick()
+    await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+    expect(saved(onSave)).toMatchObject({
+      type: chamferFeatureTypeV3.type,
+      references: [],
+      parameters: { tangentPropagation: false, targets: [{ kind: "edge" }] },
+    })
+  },
+)
 
 it("authors a closed plane-cylinder rim on a named output with equal-distance Offset and retains unsupported-mode feedback", async () => {
   const rim = candidate("edge", 1, true)
@@ -103,11 +175,29 @@ it("authors a closed plane-cylinder rim on a named output with equal-distance Of
   expect(screen.getByText(/other curved supports are unsupported/)).toBeTruthy()
 })
 
-it.each(["open-rim", "conical-support"])(
+it("accepts an open circular corner arc for equal-distance Offset", async () => {
+  const rim = candidate("edge", 1, true)
+  rim.signature.boundaryCount = 2
+  const options = [option(sourceId, "pattern.instance.1", "Body A", [rim])]
+  const { onSave } = setup({ options, topologyCandidates: geometry(options) })
+  await pick()
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(saved(onSave)).toMatchObject({
+    type: chamferFeatureTypeV3.type,
+    parameters: {
+      tangentPropagation: true,
+      targets: [
+        { kind: "edge", edge: { signature: { geometryClass: "CIRCLE", boundaryCount: 2 } } },
+      ],
+    },
+  })
+})
+
+it.each(["invalid-boundary", "conical-support"])(
   "keeps the V3 circular Offset exception bounded for %s",
   async (unsupported) => {
     const rim = candidate("edge", 1, true)
-    rim.signature.boundaryCount = unsupported === "open-rim" ? 2 : 0
+    rim.signature.boundaryCount = unsupported === "invalid-boundary" ? 1 : 0
     if (unsupported === "conical-support")
       rim.signature.adjacentGeometryClasses = ["CONE", "CYLINDRE"]
     const options = [option(sourceId, "pattern.instance.1", "Body A", [rim])]
@@ -140,6 +230,10 @@ it("promotes an edited V2 edge set into typed V3 targets only after advanced con
     mode: { kind: "edit", feature },
   })
   expect(screen.getByRole("button", { name: "Remove Edge 1" })).toBeTruthy()
+  await userEvent.click(screen.getByRole("button", { name: copy.submit }))
+  expect(saved(onSave).type).toEqual(chamferFeatureTypeV2.type)
+  expect(saved(onSave).references).toEqual([reference])
+  onSave.mockClear()
   await mode("two-distances")
   expect(screen.getByRole("button", { name: "Remove Edge 1" })).toBeTruthy()
   await chooseSide()
@@ -199,7 +293,7 @@ it("requires an explicit side face, then submits actual two-distance V3 intent a
       secondDistance: { value: 3 },
       flip: true,
       measurement: "offset",
-      tangentPropagation: false,
+      tangentPropagation: true,
       targets: [
         {
           kind: "edge",
@@ -227,7 +321,10 @@ it("stores a bounded angle in radians only in distance-angle mode and clears dir
   expect(screen.getByText("Use an angle greater than 0 and less than 90 degrees.")).toBeTruthy()
   fireEvent.change(screen.getByRole("combobox", { name: "Angle" }), { target: { value: "30 deg" } })
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Measurement" }), "tangent")
-  await userEvent.click(screen.getByRole("checkbox", { name: "Propagate along tangent edges" }))
+  expect(
+    screen.getByRole<HTMLInputElement>("checkbox", { name: "Propagate along tangent edges" })
+      .checked,
+  ).toBe(true)
   await userEvent.click(screen.getByRole("checkbox", { name: "Reverse Edge 1" }))
   await userEvent.click(screen.getByRole("checkbox", { name: "Flip direction" }))
   await userEvent.click(screen.getByRole("button", { name: copy.submit }))
@@ -331,7 +428,7 @@ it("reports unsupported advanced curved supports while keeping the normal rim pa
   expect(onSave).not.toHaveBeenCalled()
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Measurement" }), "offset")
   await userEvent.click(screen.getByRole("button", { name: copy.submit }))
-  expect(saved(onSave).type).toEqual(chamferFeatureTypeV2.type)
+  expect(saved(onSave).type).toEqual(chamferFeatureTypeV3.type)
 })
 
 it("exposes bounded keyboard fallback for missing display curves and cancels active picking with focus restoration", async () => {
@@ -356,7 +453,7 @@ it("exposes bounded keyboard fallback for missing display curves and cancels act
   expect(onPickingContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ pick: null }))
   await pick()
   await userEvent.click(screen.getByRole("button", { name: copy.submit }))
-  expect(saved(onSave).type).toEqual(chamferFeatureTypeV2.type)
+  expect(saved(onSave).type).toEqual(chamferFeatureTypeV3.type)
 })
 
 it("refuses an ambiguous catalogue candidate visibly and never fabricates its reference", async () => {
@@ -393,7 +490,10 @@ it("bounds keyboard choices to 32 rows per page while retaining all exact candid
   expect(screen.getAllByRole("button", { name: /^Body A · Edge / })).toHaveLength(1)
   await pick("Body A · Edge 65")
   await userEvent.click(screen.getByRole("button", { name: copy.submit }))
-  expect(saved(onSave).references[0]?.signature.centroid).toEqual([650, 0, 0])
+  expect(saved(onSave)).toMatchObject({
+    references: [],
+    parameters: { targets: [{ kind: "edge", edge: { signature: { centroid: [650, 0, 0] } } }] },
+  })
 })
 
 it("seeds exact idle edge preselection through activation and rejects a foreign output role", async () => {
@@ -470,10 +570,18 @@ it.each(["fillet", "chamfer"] as const)(
     })
     expect(await screen.findByRole("button", { name: "Remove Edge 2" })).toBeTruthy()
     expect(screen.queryByRole("button", { name: "Remove Edge 1" })).toBeNull()
-    expect(screen.getByText("1 targets selected")).toBeTruthy()
+    expect(
+      screen.getByText(operation === "chamfer" ? "1 target selected" : "1 targets selected"),
+    ).toBeTruthy()
     await userEvent.click(screen.getByRole("button", { name: copy.submit }))
     const feature = saved(onSave)
-    expect(feature.references).toHaveLength(1)
-    expect(feature.references[0]?.signature).toEqual(upper.signature)
+    const references =
+      operation === "chamfer"
+        ? chamferFeatureParametersV3Schema
+            .parse(feature.parameters)
+            .targets.flatMap((target) => (target.kind === "edge" ? [target.edge] : []))
+        : feature.references
+    expect(references).toHaveLength(1)
+    expect(references[0]?.signature).toEqual(upper.signature)
   },
 )

@@ -226,7 +226,7 @@ function circularOffsetReference(reference: EdgeTopoRef | BodyTopoRef, values: T
     values.measurement === "offset" &&
     reference.kind === "edge" &&
     signature.geometryClass === "CIRCLE" &&
-    signature.boundaryCount === 0 &&
+    (signature.boundaryCount === 0 || signature.boundaryCount === 2) &&
     signature.adjacentGeometryClasses.length === 2 &&
     signature.adjacentGeometryClasses.includes("PLANE") &&
     signature.adjacentGeometryClasses.includes("CYLINDRE")

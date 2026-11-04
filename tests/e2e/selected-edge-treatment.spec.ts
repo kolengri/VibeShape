@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises"
 import type { Download } from "@playwright/test"
+import type { FeatureRecord } from "../../packages/domain/src/feature-graph"
+import { chamferFeatureParametersV3Schema } from "../../packages/domain/src/part-design"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
@@ -29,7 +31,13 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await invokeModelCommand(page, "Modify", title)
     const form = page.getByRole("form", { name: `Create ${operation}` })
     await expect(form.getByRole("radio", { name: "Selected edges", exact: true })).toBeChecked()
-    await expect(form.getByRole("status")).toHaveText("No edges selected")
+    await expect(form.getByRole("status")).toHaveText(
+      operation === "chamfer" ? "No targets selected" : "No edges selected",
+    )
+    if (operation === "chamfer")
+      await expect(
+        form.getByRole("checkbox", { name: "Propagate along tangent edges" }),
+      ).toBeChecked()
     await expect(
       form.getByRole("button", { name: `Create ${operation}`, exact: true }),
     ).toBeDisabled()
@@ -74,21 +82,40 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
     const downloading = page.waitForEvent("download")
     await openApplicationMenuItem(page, "Save project (.vshape)")
-    await expectSelectedNativeBackup(await downloading, `${title} 1`)
+    await expectSelectedNativeBackup(await downloading, `${title} 1`, operation)
   })
 }
 
-async function expectSelectedNativeBackup(download: Download, label: string) {
+async function expectSelectedNativeBackup(
+  download: Download,
+  label: string,
+  operation: "fillet" | "chamfer",
+) {
   const file = await download.path()
   if (!file) throw new Error("Expected a native backup.")
   const archive = await readAuthoredVShape(new Uint8Array(await readFile(file)))
   if (!archive.ok || archive.value.version !== 3)
     throw new Error("Expected replay-proven selected-edge history.")
   const saved = archive.value.project.snapshot.features.find((feature) => feature.label === label)
-  expect(saved?.type.schemaVersion).toBe(2)
-  expect(saved?.references).toHaveLength(1)
-  expect(saved?.references[0]?.kind).toBe("edge")
-  expect(saved?.references[0]?.semanticRole).toBeTruthy()
-  expect(JSON.stringify(saved?.references)).not.toContain("edgePolyline")
-  expect(JSON.stringify(saved?.references)).not.toContain("candidateId")
+  if (!saved) throw new Error(`Expected the saved ${label} feature.`)
+  const references = selectedTreatmentReferences(saved, operation)
+  expect(references).toHaveLength(1)
+  expect(references[0]?.kind).toBe("edge")
+  expect(references[0]?.semanticRole).toBeTruthy()
+  expect(JSON.stringify(references)).not.toContain("edgePolyline")
+  expect(JSON.stringify(references)).not.toContain("candidateId")
+}
+
+function selectedTreatmentReferences(
+  feature: Pick<FeatureRecord, "type" | "parameters" | "references">,
+  operation: "fillet" | "chamfer",
+) {
+  if (operation === "fillet") {
+    expect(feature.type.schemaVersion).toBe(2)
+    return feature.references
+  }
+  expect(feature.type.schemaVersion).toBe(3)
+  const parameters = chamferFeatureParametersV3Schema.parse(feature.parameters)
+  expect(parameters.tangentPropagation).toBe(true)
+  return parameters.targets.flatMap((target) => (target.kind === "edge" ? [target.edge] : []))
 }

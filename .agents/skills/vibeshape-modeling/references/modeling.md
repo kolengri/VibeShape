@@ -263,13 +263,16 @@ classes do not identify exact adjacent faces; never guess a side from the neares
 worker validates incidence. The first distance and angle are relative to that side. Global flip XOR
 each edge override chooses the opposite side. Equal-distance mode has no direction controls.
 
-V3 Offset and Tangent coincide on planar adjacent faces. Equal-distance Offset also supports an exact
-closed circular rim with one planar and one cylindrical adjacent face, including inner and outer
-rims. The worker verifies exact incidence and closedness. Curved Tangent, directional modes, open
-arcs and other curved pairs (including cone/cylinder transitions) remain unsupported in V3; do not
+V3 Offset and Tangent coincide on planar adjacent faces. Equal-distance Offset also supports exact
+circular edges with one planar and one cylindrical adjacent face, including closed inner/outer rims
+and trimmed corner arcs of rounded openings. The worker verifies exact incidence. Curved Tangent,
+directional modes and other curved pairs (including cone/cylinder transitions) remain unsupported in V3; do not
 relabel a native OCCT mode or silently downgrade an advanced request. Legacy circular equal-distance
 V1/V2 operations retain their existing path.
-Native tangent propagation extends complete contours. With propagation disabled, every contour edge
+Native tangent propagation extends complete contours. Set `tangentPropagation: true` to treat a
+rounded opening's full tangent perimeter from one selected straight edge or circular corner arc.
+New UI chamfers enable this by default; MCP callers retain their explicit parameter choice.
+Fillet already follows the native tangent contour from one selected edge. With propagation disabled, every contour edge
 must be explicitly covered. Uniform complete-contour direction overrides are supported; partial or
 mixed directions within one contour fail explicitly.
 

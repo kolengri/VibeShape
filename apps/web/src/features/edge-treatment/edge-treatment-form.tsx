@@ -172,7 +172,7 @@ function useTreatmentFields(
   const normalize = (next: TreatmentValues) => {
     const option = props.options.find(({ id }) => id === next.targetFeatureId)
     return props.operation === "chamfer" && treatmentUsesV3(next, option)
-      ? promoteTreatmentTargets(next, candidates)
+      ? promoteTreatmentTargets({ ...next, retainV3: true }, candidates)
       : next
   }
   const apply = (request: EdgeTreatmentPickRequest) => {

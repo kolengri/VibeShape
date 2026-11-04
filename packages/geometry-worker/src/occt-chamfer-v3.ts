@@ -90,17 +90,16 @@ function edgeSupports(edges: Map<number, Edge>, faces: readonly Face[]) {
   return supports
 }
 
-function isCircularOffsetRim(
+function isCircularOffsetEdge(
   edge: Edge,
   adjacent: readonly Face[],
   parameters: ChamferGeometryParameters,
 ) {
-  // A closed circular intersection of an exact plane and cylinder is an orthogonal rim.
+  // Circular plane/cylinder intersections are orthogonal, including trimmed corner arcs.
   return (
     parameters.mode === "equal-distance" &&
     parameters.measurement === "offset" &&
     edge.geomType === "CIRCLE" &&
-    edge.isClosed &&
     adjacent.some((face) => face.geomType === "PLANE") &&
     adjacent.some((face) => face.geomType === "CYLINDRE")
   )
@@ -118,9 +117,9 @@ function measurementSupports(
       "Chamfer requires two distinct adjacent faces; seam, degenerate, or non-manifold edges are unsupported.",
     )
   const planar = adjacent.every((face) => face.geomType === "PLANE")
-  if (!planar && !isCircularOffsetRim(edge, adjacent, parameters))
+  if (!planar && !isCircularOffsetEdge(edge, adjacent, parameters))
     throw new ChamferV3Error(
-      "Chamfer V3 measurement on non-planar adjacent faces is unsupported except equal-distance Offset on closed circular plane/cylinder rims.",
+      "Chamfer V3 measurement on non-planar adjacent faces is unsupported except equal-distance Offset on circular plane/cylinder edges.",
     )
   return adjacent
 }

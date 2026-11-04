@@ -268,6 +268,8 @@ it("promotes and validates selected batches with one index per queried scope and
       options,
       "mm",
     ),
+    tangentPropagation: false,
+    retainV3: false,
     references: entries.map(({ reference }) => legacy(reference)),
   }
   const promotion = tracked(entries)
