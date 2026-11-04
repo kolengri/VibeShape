@@ -92,6 +92,7 @@ import {
   currentAuthoredParts,
   currentAuthoredSnapshot,
 } from "./authored-tree-state"
+import { historyFeatureMeshes } from "./history-feature-meshes"
 import {
   ModelEdgeViewportChrome,
   type ModelEdgeViewportSelection,
@@ -2011,10 +2012,23 @@ function useGeometryViewportScene(props: GeometryViewportProps) {
   )
   useClearInvalidBodyHighlight(selectedBody, bodySelection, props.onBodySelectionChange)
   useClearInvalidBodyHighlight(preselectedBody, bodyPreselection, props.onBodyPreselectionChange)
-  const featurePreselections = useMemo(
-    () => bodyHighlightMeshes(meshes, props.preselectedBodies),
-    [meshes, props.preselectedBodies],
-  )
+  const featurePreselections = useMemo(() => {
+    const bodies = bodyHighlightMeshes(meshes, props.preselectedBodies)
+    if (bodies !== undefined || preselectedBody || !preselectedFeatureId) return bodies
+    if (allHiddenFeatureIds.includes(preselectedFeatureId)) return []
+    return historyFeatureMeshes(
+      controller.report?.snapshot.features ?? [],
+      meshes,
+      preselectedFeatureId,
+    )
+  }, [
+    allHiddenFeatureIds,
+    controller.report,
+    meshes,
+    preselectedBody,
+    preselectedFeatureId,
+    props.preselectedBodies,
+  ])
   const featureSelections = useMemo(
     () => bodyHighlightMeshes(meshes, props.selectedBodies),
     [meshes, props.selectedBodies],
