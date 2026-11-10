@@ -1746,7 +1746,13 @@
           "recessDepth": "Recess depth",
           "includedAngle": "Included angle",
           "angleDescription": "Enter an angle or a variable expression.",
-          "invalidRecess": "Use a larger recess diameter and leave cylindrical depth. Countersink angles must be between 10 and 170 degrees."
+          "invalidRecess": "Use a larger recess diameter and leave cylindrical depth. Countersink angles must be between 10 and 170 degrees.",
+          "depthDescription": "Enter a length or a variable expression. Depth is measured to the full-diameter shoulder; a drill point extends beyond it.",
+          "drillPoint": "Drill point",
+          "drillPointDescription": "Add a conical drill-point tip below the blind depth.",
+          "tipAngle": "Tip angle",
+          "tipAngleDescription": "Enter an included angle from 60 to 180 degrees or a variable expression. 118 degrees matches a standard twist drill; 180 degrees is flat.",
+          "invalidTipAngle": "Enter a tip angle from 60 to 180 degrees."
         },
         "createSphere": "Create sphere",
         "sphere": {

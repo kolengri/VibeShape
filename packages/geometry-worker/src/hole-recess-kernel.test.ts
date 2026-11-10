@@ -127,6 +127,78 @@ describe("exact hole recess evaluation", () => {
       expect(engine.getHealth().ownedShapeCount).toBe(0)
     }
   })
+  it.each([
+    { tipAngle: (118 * Math.PI) / 180, treatment: { kind: "simple" } },
+    { tipAngle: Math.PI / 3, treatment: { kind: "simple" } },
+    { tipAngle: (118 * Math.PI) / 180, treatment: { kind: "counterbore", diameter: 8, depth: 3 } },
+    { tipAngle: Math.PI, treatment: { kind: "simple" } },
+  ] as const)(
+    "drills a blind $treatment.kind hole with a $tipAngle rad point beyond its shoulder",
+    async ({ tipAngle, treatment }) => {
+      try {
+        const source = await engine.evaluateFeature(
+          request("org.vibeshape.feature.part-design.box", 1, {
+            width: 20,
+            depth: 20,
+            height: 20,
+            centered: false,
+          }),
+          vi.fn(),
+        )
+        if (!source.ok) throw new Error(source.diagnostic.message)
+        const result = await engine.evaluateFeature(
+          request(
+            "org.vibeshape.feature.part-design.hole",
+            4,
+            { ...base, extent: "blind", depth: 10, treatment, tipAngle },
+            true,
+          ),
+          vi.fn(),
+        )
+        if (!result.ok) throw new Error(result.diagnostic.message)
+        const radius = 2
+        const tipHeight = tipAngle === Math.PI ? 0 : radius / Math.tan(tipAngle / 2)
+        const counterbore =
+          treatment.kind === "counterbore" ? Math.PI * (4 ** 2 - radius ** 2) * 3 : 0
+        const removed =
+          Math.PI * radius ** 2 * 10 + (Math.PI * radius ** 2 * tipHeight) / 3 + counterbore
+        // Depth ends at the full-diameter shoulder; the cone of height r / tan(angle / 2) follows.
+        expect(result.result.shape.volume).toBeCloseTo(8000 - removed, 5)
+        expect(result.result.shape.solidCount).toBe(1)
+        expect(result.result.shape.valid).toBe(true)
+        expect(result.result.shape.bounds.min[2]).toBeCloseTo(0, 6)
+      } finally {
+        engine.disposeDocument(documentId)
+        expect(engine.getHealth().ownedShapeCount).toBe(0)
+      }
+    },
+  )
+  it("rejects a version-4 drill point on a through-all hole", async () => {
+    try {
+      await engine.evaluateFeature(
+        request("org.vibeshape.feature.part-design.box", 1, {
+          width: 20,
+          depth: 20,
+          height: 20,
+          centered: false,
+        }),
+        vi.fn(),
+      )
+      const result = await engine.evaluateFeature(
+        request(
+          "org.vibeshape.feature.part-design.hole",
+          4,
+          { ...base, treatment: { kind: "simple" }, tipAngle: Math.PI / 2 },
+          true,
+        ),
+        vi.fn(),
+      )
+      expect(result).toMatchObject({ ok: false })
+    } finally {
+      engine.disposeDocument(documentId)
+      expect(engine.getHealth().ownedShapeCount).toBe(0)
+    }
+  })
   it("rejects a recess outside the entry face and releases its failed result", async () => {
     await engine.evaluateFeature(
       request("org.vibeshape.feature.part-design.box", 1, {

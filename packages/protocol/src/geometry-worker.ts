@@ -397,26 +397,54 @@ export const holeTreatmentContentSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
 ])
+function holeRecessContentIssues(
+  parameters: Readonly<{
+    diameter: number
+    extent: "blind" | "through-all"
+    depth?: number | undefined
+    treatment: z.infer<typeof holeTreatmentContentSchema>
+  }>,
+  context: z.RefinementCtx,
+) {
+  const treatment = parameters.treatment
+  if (treatment.kind === "simple") return
+  if (treatment.diameter <= parameters.diameter)
+    context.addIssue({
+      code: "custom",
+      path: ["treatment", "diameter"],
+      message: "The recess diameter must be larger than the hole diameter.",
+    })
+  const recessDepth =
+    treatment.kind === "counterbore"
+      ? treatment.depth
+      : (treatment.diameter - parameters.diameter) / (2 * Math.tan(treatment.angle / 2))
+  if (parameters.extent === "blind" && recessDepth >= (parameters.depth ?? 0))
+    context.addIssue({
+      code: "custom",
+      path: ["treatment"],
+      message: "The recess must leave a positive cylindrical depth.",
+    })
+}
 export const holeFeatureContentParametersV3Schema = holeFeatureContentParametersSchema
   .extend({ treatment: holeTreatmentContentSchema })
+  .superRefine(holeRecessContentIssues)
+
+/** Version 4 blind holes carry a drill-point included angle in radians; PI is a flat bottom. */
+export const holeFeatureContentParametersV4Schema = holeFeatureContentParametersSchema
+  .extend({
+    treatment: holeTreatmentContentSchema,
+    tipAngle: finiteNumberSchema
+      .min(Math.PI / 3 - 1e-12)
+      .max(Math.PI + 1e-12)
+      .optional(),
+  })
   .superRefine((parameters, context) => {
-    const treatment = parameters.treatment
-    if (treatment.kind === "simple") return
-    if (treatment.diameter <= parameters.diameter)
+    holeRecessContentIssues(parameters, context)
+    if ((parameters.extent === "blind") !== (parameters.tipAngle !== undefined))
       context.addIssue({
         code: "custom",
-        path: ["treatment", "diameter"],
-        message: "The recess diameter must be larger than the hole diameter.",
-      })
-    const recessDepth =
-      treatment.kind === "counterbore"
-        ? treatment.depth
-        : (treatment.diameter - parameters.diameter) / (2 * Math.tan(treatment.angle / 2))
-    if (parameters.extent === "blind" && recessDepth >= (parameters.depth ?? 0))
-      context.addIssue({
-        code: "custom",
-        path: ["treatment"],
-        message: "The recess must leave a positive cylindrical depth.",
+        path: ["tipAngle"],
+        message: "Version-4 blind holes require a drill-point angle; through-all holes have none.",
       })
   })
 

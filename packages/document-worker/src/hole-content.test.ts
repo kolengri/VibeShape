@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test"
 import {
   boxFeatureType,
+  createAngleQuantity,
   createLengthQuantity,
   documentSnapshotSchema,
   featureRecordSchema,
   holeFeatureType,
   holeFeatureTypeV2,
+  holeFeatureTypeV4,
   sketchEntityIdSchema,
   sketchRecordSchema,
 } from "@vibeshape/domain"
@@ -147,6 +149,34 @@ describe("Hole sketch content preparation", () => {
     const result = await prepare({ document: source.document, feature })
     expect(result).toEqual(await prepare({ document: source.document, feature: source.feature }))
     expect(result?.ok && result.parameters).not.toHaveProperty("targetBody")
+  })
+
+  it("prepares a version-4 drill point as a resolved radian tip angle beside the shoulder depth", async () => {
+    const source = fixture()
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      type: holeFeatureTypeV4.type,
+      parameters: {
+        ...source.feature.parameters,
+        targetBody: { schemaVersion: 0, featureId: source.target.id, outputRole: "result" },
+        treatment: { kind: "simple" },
+        tipAngle: createAngleQuantity(118, "deg"),
+      },
+    })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: source.solution,
+    }))
+    const result = await prepare({ document: source.document, feature })
+    expect(result).toMatchObject({
+      ok: true,
+      parameters: {
+        extent: "blind",
+        depth: 12,
+        treatment: { kind: "simple" },
+        tipAngle: expect.closeTo((118 * Math.PI) / 180, 12),
+      },
+    })
   })
 
   it("produces identical geometry parameters when authored identities change", async () => {

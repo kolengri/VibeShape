@@ -5,6 +5,7 @@ import {
   createLengthQuantity,
   type DocumentSnapshot,
   type FeatureRecord,
+  featureRecordSchema,
 } from "@vibeshape/domain"
 import { ReplicadGeometryEngine } from "@vibeshape/geometry-worker/engine"
 import {
@@ -87,15 +88,15 @@ function feature(
   parameters: Record<string, unknown>,
   dependencies: readonly string[] = [],
 ): FeatureRecord {
-  return {
+  return featureRecordSchema.parse({
     schemaVersion: 0,
     id: id(suffix),
     type,
     parameters,
-    dependencies: [...dependencies],
+    dependencies,
     references: [],
     suppressed: false,
-  } as FeatureRecord
+  })
 }
 
 const mm = createLengthQuantity

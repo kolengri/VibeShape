@@ -389,3 +389,122 @@ describe("counterbore and countersink authored intent", () => {
     })
   })
 })
+
+describe("blind drill-point intent", () => {
+  const targetBody = { schemaVersion: 0, featureId: targetId, outputRole: "result" }
+  async function drill() {
+    const module = await import("./part-design-hole")
+    const { createAngleQuantity } = await import("./units")
+    return { ...module, createAngleQuantity }
+  }
+
+  it("keeps saved v1-v3 records on their schemas and requires v4 for a tip angle", async () => {
+    const {
+      authoredHoleFeatureType,
+      createAngleQuantity,
+      holeFeatureParametersV3Schema,
+      holeFeatureParametersV4Schema,
+      holeFeatureTypeV3,
+      holeFeatureTypeV4,
+    } = await drill()
+    const v3 = { ...parameters(), targetBody, treatment: { kind: "simple" } }
+    const v4 = { ...v3, tipAngle: createAngleQuantity(118, "deg") }
+    expect(holeFeatureParametersV3Schema.safeParse(v4).success).toBe(false)
+    expect(holeFeatureParametersV4Schema.safeParse(v4).success).toBe(true)
+    const legacy = feature({
+      type: holeFeatureTypeV3.type,
+      parameters: v3,
+      dependencies: [targetId],
+    })
+    expect(readHoleFeatureParameters(legacy)).toEqual(holeFeatureParametersV3Schema.parse(v3))
+    expect(holeFeatureType.type.schemaVersion).toBe(1)
+    expect(authoredHoleFeatureType(null, parameters())).toEqual(holeFeatureType.type)
+    expect(authoredHoleFeatureType(null, { targetBody })).toEqual(holeFeatureTypeV2.type)
+    expect(authoredHoleFeatureType(null, v3)).toEqual(holeFeatureTypeV3.type)
+    expect(authoredHoleFeatureType(null, v4)).toEqual(holeFeatureTypeV4.type)
+    expect(authoredHoleFeatureType(holeFeatureTypeV4.type, v3)).toEqual(holeFeatureTypeV4.type)
+  })
+
+  it.each([
+    [59, false],
+    [60, true],
+    [118, true],
+    [180, true],
+    [181, false],
+  ])("bounds a %i degree tip angle", async (degrees, valid) => {
+    const { createAngleQuantity, holeFeatureParametersV4Schema } = await drill()
+    expect(
+      holeFeatureParametersV4Schema.safeParse({
+        ...parameters(),
+        targetBody,
+        treatment: { kind: "simple" },
+        tipAngle: createAngleQuantity(degrees, "deg"),
+      }).success,
+    ).toBe(valid)
+  })
+
+  it("rejects a drill point on a through-all hole", async () => {
+    const { createAngleQuantity, holeFeatureParametersV4Schema } = await drill()
+    const { depth: _depth, ...throughAll } = parameters({ extent: "through-all" })
+    expect(
+      holeFeatureParametersV4Schema.safeParse({
+        ...throughAll,
+        extent: "through-all",
+        targetBody,
+        treatment: { kind: "simple" },
+        tipAngle: createAngleQuantity(118, "deg"),
+      }).success,
+    ).toBe(false)
+    expect(
+      holeFeatureParametersV4Schema.safeParse({
+        ...throughAll,
+        extent: "through-all",
+        targetBody,
+        treatment: { kind: "simple" },
+      }).success,
+    ).toBe(true)
+  })
+
+  it("resolves the tip angle expression into hashed radians and fails closed outside bounds", async () => {
+    const { createAngleQuantity, holeFeatureParametersV4Schema, holeFeatureTypeHandlerV4 } =
+      await drill()
+    const value = {
+      ...parameters(),
+      targetBody,
+      treatment: {
+        kind: "counterbore",
+        diameter: createLengthQuantity(14),
+        depth: createLengthQuantity(3),
+      },
+      tipAngle: createAngleQuantity(118, "deg", "#tip"),
+    }
+    const variables = (tip: number) =>
+      new Map([
+        ["diameter", { dimension: "length" as const, value: 8 }],
+        ["depth", { dimension: "length" as const, value: 12 }],
+        ["tip", { dimension: "angle" as const, value: tip }],
+      ])
+    const resolved = holeFeatureTypeHandlerV4.resolveParameters?.(value, variables(Math.PI / 2))
+    if (!resolved?.ok) throw new Error("Expected the drill point to resolve.")
+    const resolvedParameters = holeFeatureParametersV4Schema.parse(resolved.parameters)
+    expect(holeFeatureTypeHandlerV4.contentParameters?.(resolvedParameters)).toMatchObject({
+      extent: "blind",
+      depth: 12,
+      treatment: { kind: "counterbore", diameter: 14, depth: 3 },
+      tipAngle: Math.PI / 2,
+    })
+    expect(holeFeatureTypeHandlerV4.resolveParameters?.(value, variables(0.5))).toMatchObject({
+      ok: false,
+      diagnostic: { issues: [{ path: "tipAngle" }] },
+    })
+    expect(
+      holeFeatureTypeHandlerV4.validateFeature?.(
+        feature({
+          type: holeFeatureTypeHandlerV4.type,
+          parameters: value,
+          dependencies: [targetId],
+        }),
+      ),
+    ).toEqual([])
+  })
+})

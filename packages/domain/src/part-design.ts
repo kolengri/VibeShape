@@ -37,6 +37,7 @@ import {
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
   holeFeatureTypeHandlerV3,
+  holeFeatureTypeHandlerV4,
 } from "./part-design-hole"
 import { importedFeatureTypeHandler } from "./part-design-import"
 import { loftFeatureTypeHandler, loftFeatureTypeHandlerV2 } from "./part-design-loft"
@@ -2166,6 +2167,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
   holeFeatureTypeHandlerV3,
+  holeFeatureTypeHandlerV4,
   placementFeatureTypeHandler,
   mirrorFeatureTypeHandler,
   mirrorFeatureTypeHandlerV2,

@@ -153,6 +153,7 @@ describe("session CAD auto-apply scope", () => {
     ["thread", 2, true],
     ["revolve", 7, true],
     ["hole", 3, true],
+    ["hole", 4, true],
     ["boolean", 2, true],
     ["imported", 1, false],
     ["imported-mesh", 1, false],

@@ -60,6 +60,7 @@ import {
   holeFeatureType,
   holeFeatureTypeV2,
   holeFeatureTypeV3,
+  holeFeatureTypeV4,
   readHoleFeatureParameters,
 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
@@ -312,6 +313,7 @@ const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord)
   [featureTypeKey(holeFeatureType.type), readHoleFeatureParameters],
   [featureTypeKey(holeFeatureTypeV2.type), readHoleFeatureParameters],
   [featureTypeKey(holeFeatureTypeV3.type), readHoleFeatureParameters],
+  [featureTypeKey(holeFeatureTypeV4.type), readHoleFeatureParameters],
   [featureTypeKey(loftFeatureType.type), readLoftFeatureParameters],
   [featureTypeKey(loftFeatureTypeV2.type), readLoftFeatureParameters],
   [featureTypeKey(loftFeatureTypeV3.type), readLoftFeatureParametersV3],

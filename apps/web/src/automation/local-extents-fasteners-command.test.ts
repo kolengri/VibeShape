@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { type LocalOperation, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, parseDocumentCommand } from "@vibeshape/domain"
 import { extrusionFeatureTypeV6, extrusionFeatureTypeV7 } from "@vibeshape/domain/part-design"
-import { holeFeatureTypeV3 } from "@vibeshape/domain/part-design-hole"
+import { holeFeatureTypeV3, holeFeatureTypeV4 } from "@vibeshape/domain/part-design-hole"
 import { threadFeatureTypeV2 } from "@vibeshape/domain/part-design-thread"
 import {
   createAngleQuantity,
@@ -189,6 +189,41 @@ describe("versioned extent and fastener MCP commands", () => {
         }).success,
       ).toBe(false)
     }
+  })
+
+  it("routes a blind drill point to Hole v4 and defaults an omitted treatment to simple", () => {
+    const { treatment: _treatment, ...plain } = hole
+    for (const [parameters, treatment] of [
+      [{ ...hole, tipAngle: createAngleQuantity(118, "deg", "#tip") }, hole.treatment],
+      [{ ...plain, tipAngle: createAngleQuantity(118, "deg") }, { kind: "simple" }],
+    ] as const) {
+      const request = advancedCommand(
+        localOperationSchema.parse({
+          tool: "create_hole",
+          arguments: { ...base, parameters },
+        }),
+      )
+      expect(parseDocumentCommand(request.command).ok).toBe(true)
+      expect(request.command).toMatchObject({
+        payload: {
+          feature: {
+            type: holeFeatureTypeV4.type,
+            parameters: { ...parameters, pointIds: [...parameters.pointIds].sort(), treatment },
+          },
+        },
+      })
+    }
+    const { depth: _depth, ...throughAll } = { ...hole, extent: "through-all" }
+    for (const parameters of [
+      { ...hole, tipAngle: createAngleQuantity(59, "deg") },
+      { ...hole, tipAngle: createAngleQuantity(181, "deg") },
+      { ...throughAll, tipAngle: createAngleQuantity(118, "deg") },
+      { ...hole, targetBody: undefined, tipAngle: createAngleQuantity(118, "deg") },
+    ])
+      expect(
+        localOperationSchema.safeParse({ tool: "create_hole", arguments: { ...base, parameters } })
+          .success,
+      ).toBe(false)
   })
 
   it("fails closed for invalid recesses, dynamic extents and thread resource budgets", () => {

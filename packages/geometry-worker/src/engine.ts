@@ -36,6 +36,7 @@ import {
   type HoleFeatureContentParameters,
   holeFeatureContentParametersSchema,
   holeFeatureContentParametersV3Schema,
+  holeFeatureContentParametersV4Schema,
   type ImportedFeatureContentParameters,
   type InspectSourceImportInput,
   importedFeatureContentParametersSchema,
@@ -170,7 +171,7 @@ import {
   terminateExtrusionAtPlane,
 } from "./occt-extrusion-end"
 import { createOcctFdmFeature } from "./occt-fdm"
-import { createOcctCountersink } from "./occt-hole-recess"
+import { createOcctCountersink, createOcctDrilledHole } from "./occt-hole-recess"
 import { measureOcctInterference } from "./occt-interference"
 import { createOcctLoft } from "./occt-loft"
 import { createOcctLoftPatchNetwork, type LoftEndSupport } from "./occt-loft-filling"
@@ -1090,6 +1091,14 @@ type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentPar
 type HoleContentParameters =
   | HoleFeatureContentParameters
   | ReturnType<typeof holeFeatureContentParametersV3Schema.parse>
+  | ReturnType<typeof holeFeatureContentParametersV4Schema.parse>
+
+function holeContentSchema(schemaVersion: number) {
+  if (schemaVersion === 4) return holeFeatureContentParametersV4Schema
+  return schemaVersion === 3
+    ? holeFeatureContentParametersV3Schema
+    : holeFeatureContentParametersSchema
+}
 
 function boxTopologyAxes(context: TopologyCandidateContext, parameters: BoxContentParameters) {
   const { centroid } = context.signature
@@ -2046,11 +2055,7 @@ function parseDatumPlaneFeature(input: FeatureEvaluationInput): FeatureParseResu
 
 function parseHoleFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
-  const parameters = (
-    feature.type.schemaVersion === 3
-      ? holeFeatureContentParametersV3Schema
-      : holeFeatureContentParametersSchema
-  ).safeParse(feature.parameters)
+  const parameters = holeContentSchema(feature.type.schemaVersion).safeParse(feature.parameters)
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Hole content parameters are invalid.")
   }
@@ -2076,11 +2081,9 @@ function parseHoleFeatureV2(input: FeatureEvaluationInput): FeatureParseResult {
       "A version-2 hole requires a named canonical target body role.",
     )
   }
-  const parameters = (
-    input.content.feature.type.schemaVersion === 3
-      ? holeFeatureContentParametersV3Schema
-      : holeFeatureContentParametersSchema
-  ).safeParse(input.content.feature.parameters)
+  const parameters = holeContentSchema(input.content.feature.type.schemaVersion).safeParse(
+    input.content.feature.parameters,
+  )
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Hole content parameters are invalid.")
   }
@@ -2589,6 +2592,10 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
     "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.hole#3",
     parseHoleFeatureV2,
   ],
+  [
+    "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.hole#4",
+    parseHoleFeatureV2,
+  ],
 ])
 
 function parseFeatureRequest(
@@ -2956,13 +2963,7 @@ function createHoleFeatureShape(
   try {
     for (const center of parameters.centers) {
       const cutter = holeCutterParameters(parameters, center, maxProjection, tolerance)
-      const tool = createOcctCylinder(
-        opencascade,
-        radius,
-        cutter.height,
-        cutter.origin,
-        cutter.direction,
-      )
+      const tool = createHoleCutter(opencascade, parameters, radius, cutter)
       try {
         const result = cutHoleOnce(opencascade, current, tool, currentVolume)
         if (current !== target) current.delete()
@@ -2988,6 +2989,34 @@ function createHoleFeatureShape(
     if (current !== target) current.delete()
     throw error
   }
+}
+
+function drillTipHeight(diameter: number, tipAngle: number) {
+  const height = diameter / 2 / Math.tan(tipAngle / 2)
+  return height > 1e-9 ? height : 0
+}
+
+function createHoleCutter(
+  opencascade: OpenCascadeInstance,
+  parameters: HoleContentParameters,
+  radius: number,
+  cutter: HoleCutterParameters,
+) {
+  // A flat (180 degree) drill point keeps the exact version-3 cylindrical cutter.
+  const tipHeight =
+    "tipAngle" in parameters && parameters.tipAngle !== undefined
+      ? drillTipHeight(parameters.diameter, parameters.tipAngle)
+      : 0
+  return tipHeight > 0
+    ? createOcctDrilledHole(
+        opencascade,
+        cutter.origin,
+        cutter.direction,
+        radius,
+        cutter.height,
+        tipHeight,
+      )
+    : createOcctCylinder(opencascade, radius, cutter.height, cutter.origin, cutter.direction)
 }
 
 function createHoleRecess(

@@ -45,7 +45,12 @@ import {
 } from "./part-design-body-combination"
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import { fdmFeatureType } from "./part-design-fdm"
-import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
+import {
+  holeFeatureType,
+  holeFeatureTypeV2,
+  holeFeatureTypeV3,
+  holeFeatureTypeV4,
+} from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
 import { loftFeatureTypeV3 } from "./part-design-loft-v3"
@@ -494,6 +499,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     holeFeatureType,
     holeFeatureTypeV2,
     holeFeatureTypeV3,
+    holeFeatureTypeV4,
     booleanFeatureType,
     booleanFeatureTypeV2,
     chamferFeatureType,

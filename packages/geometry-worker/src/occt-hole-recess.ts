@@ -13,6 +13,41 @@ export function createOcctCountersink(
   innerRadius: number,
   height: number,
 ): Shape3D {
+  return revolveAxialMeridian(occt, center, direction, [
+    [0, 0],
+    [outerRadius, 0],
+    [innerRadius, height],
+    [0, height],
+  ])
+}
+
+/**
+ * Revolves one drilled hole: a full-diameter cylinder to the shoulder at `depth`, then a
+ * conical drill point whose apex lies `tipHeight` beyond the shoulder on the hole axis.
+ */
+export function createOcctDrilledHole(
+  occt: OpenCascadeInstance,
+  center: Point,
+  direction: Point,
+  radius: number,
+  depth: number,
+  tipHeight: number,
+): Shape3D {
+  return revolveAxialMeridian(occt, center, direction, [
+    [0, 0],
+    [radius, 0],
+    [radius, depth],
+    [0, depth + tipHeight],
+  ])
+}
+
+/** Revolves a closed [radius, axial depth] polygon whose first and last points lie on the axis. */
+function revolveAxialMeridian(
+  occt: OpenCascadeInstance,
+  center: Point,
+  direction: Point,
+  meridian: readonly (readonly [number, number])[],
+): Shape3D {
   const owned: { delete(): void }[] = []
   const own = <T extends { delete(): void }>(value: T) => {
     owned.push(value)
@@ -26,7 +61,7 @@ export function createOcctCountersink(
       direction[0] * (reference[1] ?? 0) - direction[1] * (reference[0] ?? 0),
     ]
     const norm = Math.hypot(...cross)
-    if (!Number.isFinite(norm) || norm < 1e-9) throw new Error("Countersink axis is invalid.")
+    if (!Number.isFinite(norm) || norm < 1e-9) throw new Error("Revolved hole axis is invalid.")
     const point = (radius: number, depth: number) =>
       own(
         new occt.gp_Pnt_3(
@@ -35,22 +70,17 @@ export function createOcctCountersink(
           center[2] + direction[2] * depth + ((cross[2] ?? 0) * radius) / norm,
         ),
       )
-    const points = [
-      point(0, 0),
-      point(outerRadius, 0),
-      point(innerRadius, height),
-      point(0, height),
-    ]
+    const points = meridian.map(([radius, depth]) => point(radius, depth))
     const wireBuilder = own(new occt.BRepBuilderAPI_MakeWire_1())
     for (const [index, first] of points.entries()) {
       const last = points[(index + 1) % points.length]
-      if (!last) throw new Error("Countersink meridian is incomplete.")
+      if (!last) throw new Error("Revolved hole meridian is incomplete.")
       wireBuilder.Add_1(own(own(new occt.BRepBuilderAPI_MakeEdge_3(first, last)).Edge()))
     }
-    if (!wireBuilder.IsDone()) throw new Error("Countersink meridian wire failed.")
+    if (!wireBuilder.IsDone()) throw new Error("Revolved hole meridian wire failed.")
     const wire = own(wireBuilder.Wire())
     const faceBuilder = own(new occt.BRepBuilderAPI_MakeFace_15(wire, true))
-    if (!faceBuilder.IsDone()) throw new Error("Countersink meridian face failed.")
+    if (!faceBuilder.IsDone()) throw new Error("Revolved hole meridian face failed.")
     const face = own(faceBuilder.Face())
     const origin = own(new occt.gp_Pnt_3(...center))
     const normal = own(new occt.gp_Dir_4(...direction))

@@ -48,6 +48,7 @@ import {
   holeFeatureType,
   holeFeatureTypeV2,
   holeFeatureTypeV3,
+  holeFeatureTypeV4,
   readHoleFeatureParameters,
 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
@@ -229,6 +230,7 @@ const pointOrLineProjections = new Map([
   [featureTypeKey(holeFeatureType.type), holeSketchSemanticInputs],
   [featureTypeKey(holeFeatureTypeV2.type), holeSketchSemanticInputs],
   [featureTypeKey(holeFeatureTypeV3.type), holeSketchSemanticInputs],
+  [featureTypeKey(holeFeatureTypeV4.type), holeSketchSemanticInputs],
   [featureTypeKey(fdmFeatureType.type), fdmSketchSemanticInputs],
 ])
 

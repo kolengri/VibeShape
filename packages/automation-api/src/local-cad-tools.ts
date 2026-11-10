@@ -33,6 +33,8 @@ import {
 import { fdmDependencyIds, fdmFeatureParametersSchema } from "@vibeshape/domain/part-design-fdm"
 import {
   holeFeatureParametersV3Schema,
+  holeFeatureParametersV4Schema,
+  holeTipAngleSchema,
   holeTreatmentSchema,
 } from "@vibeshape/domain/part-design-hole"
 import {
@@ -256,16 +258,33 @@ const holeTreatmentParameters = z
       for (const issue of parsed.error.issues)
         context.addIssue({ code: "custom", path: issue.path, message: issue.message })
   })
+// A tipAngle authors Hole v4; an omitted treatment is the simple drilled hole.
+const holeDrillPointParameters = holeBodyParameters.options[0]
+  .safeExtend({ treatment: holeTreatmentSchema.optional(), tipAngle: holeTipAngleSchema })
+  .superRefine((parameters, context) => {
+    const parsed = holeFeatureParametersV4Schema.safeParse({
+      treatment: { kind: "simple" },
+      ...parameters,
+    })
+    if (!parsed.success)
+      for (const issue of parsed.error.issues)
+        context.addIssue({ code: "custom", path: issue.path, message: issue.message })
+  })
 const hole = z
   .object({
     ...feature,
     dependencies: featureRecordSchema.shape.dependencies.min(1).max(2),
     references: featureRecordSchema.shape.references.max(1),
-    parameters: z.union([holeParameters, holeBodyParameters, holeTreatmentParameters]),
+    parameters: z.union([
+      holeParameters,
+      holeBodyParameters,
+      holeTreatmentParameters,
+      holeDrillPointParameters,
+    ]),
   })
   .strict()
   .superRefine((input, context) => {
-    if (!("treatment" in input.parameters)) return
+    if (!("treatment" in input.parameters) && !("tipAngle" in input.parameters)) return
     const target = input.parameters.targetBody
     const support = input.references[0]?.featureId ?? null
     const expected = [...new Set([target.featureId, ...(support ? [support] : [])])]

@@ -21,12 +21,12 @@ import {
 } from "@vibeshape/domain/part-design-body-combination"
 import { fdmFeatureType } from "@vibeshape/domain/part-design-fdm"
 import {
+  authoredHoleFeatureType,
   holeFeatureParametersSchema,
   holeFeatureParametersV2Schema,
   holeFeatureParametersV3Schema,
+  holeFeatureParametersV4Schema,
   holeFeatureType,
-  holeFeatureTypeV2,
-  holeFeatureTypeV3,
 } from "@vibeshape/domain/part-design-hole"
 import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import { loftFeatureTypeV3 } from "@vibeshape/domain/part-design-loft-v3"
@@ -226,10 +226,20 @@ function bodySelectionFeatureType(
     return "offset" in operation.arguments.parameters
       ? mirrorFeatureTypeV2.type
       : mirrorFeatureType.type
-  if ("treatment" in operation.arguments.parameters) return holeFeatureTypeV3.type
-  return "targetBody" in operation.arguments.parameters
-    ? holeFeatureTypeV2.type
-    : holeFeatureType.type
+  return authoredHoleFeatureType(null, operation.arguments.parameters)
+}
+
+function holeParameters(parameters: Record<string, unknown>) {
+  switch (authoredHoleFeatureType(null, parameters).schemaVersion) {
+    case 4:
+      return holeFeatureParametersV4Schema.parse({ treatment: { kind: "simple" }, ...parameters })
+    case 3:
+      return holeFeatureParametersV3Schema.parse(parameters)
+    case 2:
+      return holeFeatureParametersV2Schema.parse(parameters)
+    default:
+      return holeFeatureParametersSchema.parse(parameters)
+  }
 }
 
 function profileFeatureType(
@@ -290,12 +300,7 @@ export function createLocalCadCommand(
   const featureInput = operation.arguments
   const parameters =
     operation.tool === "create_hole" || operation.tool === "update_hole"
-      ? ("treatment" in featureInput.parameters
-          ? holeFeatureParametersV3Schema
-          : "targetBody" in featureInput.parameters
-            ? holeFeatureParametersV2Schema
-            : holeFeatureParametersSchema
-        ).parse(featureInput.parameters)
+      ? holeParameters(featureInput.parameters)
       : featureInput.parameters
   const feature = featureRecordSchema.parse({
     schemaVersion: 0,
