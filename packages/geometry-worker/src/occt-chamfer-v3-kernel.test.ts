@@ -51,7 +51,7 @@ function splitEdgeSource(): Shape3D {
 }
 
 it.each(["line", "arc", "two-lines"] as const)(
-  "chamfers the complete rounded opening from a $seed selection and fillets it from one edge",
+  "chamfers the complete rounded opening from a %s selection and fillets it from one edge",
   (seed) => {
     const outer = makeBox([-40, -32, 0], [40, 32, 12])
     const opening = drawRoundedRectangle(40, 24, 6).sketchOnPlane("XY").extrude(12).asShape3D()

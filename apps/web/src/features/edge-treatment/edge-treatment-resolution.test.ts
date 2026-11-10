@@ -291,6 +291,7 @@ it("promotes and validates selected batches with one index per queried scope and
       missingCatalogue: "catalogue",
       missingSideFace: "side",
       planarOnly: "planar",
+      plainContourOnly: "plain contour",
       invalidAngle: "angle",
       invalidAdvancedRange: "range",
     },

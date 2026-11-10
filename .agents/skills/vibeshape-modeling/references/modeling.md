@@ -272,9 +272,11 @@ V1/V2 operations retain their existing path.
 Native tangent propagation extends complete contours. Set `tangentPropagation: true` to treat a
 rounded opening's full tangent perimeter from one selected straight edge or circular corner arc.
 New UI chamfers enable this by default; MCP callers retain their explicit parameter choice.
-For new UI selected-edge chamfers on verified single-result bodies, closed cone/cylinder rims keep
-their existing V2 path with propagation enabled and no advanced intent. Saved V3 edits, named outputs,
-faces, directional settings and disabled propagation never use that compatibility route.
+For new UI selected-edge chamfers on verified single-result bodies, edges that V3 cannot measure
+(countersink, cone/cylinder and other curved rims) keep their existing V2 path with propagation
+enabled and no advanced intent. Saved V3 edits, named outputs, faces, directional settings and
+disabled propagation never use that compatibility route. Editing a saved V2 chamfer in the UI keeps
+V2 unless an advanced option is set.
 Fillet already follows the native tangent contour from one selected edge. With propagation disabled, every contour edge
 must be explicitly covered. Uniform complete-contour direction overrides are supported; partial or
 mixed directions within one contour fail explicitly.

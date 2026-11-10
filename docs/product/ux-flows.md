@@ -634,14 +634,19 @@ Tangent, directional modes and other curved support pairs remain unsupported. Ne
 chamfers enable tangent propagation by default, so one picked edge treats its complete tangent
 contour. Fillet already follows that contour from one edge. Explicitly disabling propagation keeps
 V3 validation and requires every native contour edge to be selected. Apply creates one ordinary committed edit, Cancel
-discards the task, and Undo/Redo uses shared session history. New selected closed cone/cylinder rims
-on verified single-result bodies keep their established equal-distance path with propagation
-enabled; advanced intent and saved V3 edits never fall back after failure. Existing all-edge features retain
-version-1 semantics, and explicit-edge features are not migrated automatically. See
+discards the task, and Undo/Redo uses shared session history. New selected edges that V3 cannot
+measure, such as countersink and cone/cylinder rims, keep their established equal-distance path on
+verified single-result bodies while propagation is enabled; leaving that path through advanced
+intent names the plain chamfer as the recovery, and saved V3 edits never fall back after failure.
+An empty selection shows its zero count without a validation error. All edges presents neutral
+chamfer options, and returning to Selected edges restores the options and exact targets it replaced.
+Existing all-edge features retain version-1 semantics, and explicit-edge features are not migrated
+automatically: an edited version-2 chamfer becomes version 3 only while an advanced option is set. See
 [ADR-0040](../adr/0040-selected-edge-treatments.md),
 [ADR-0118](../adr/0118-body-bound-directional-chamfer.md) and its bounded measurement extension,
 [ADR-0121](../adr/0121-circular-offset-chamfer.md), extended by
-[ADR-0149](../adr/0149-rounded-opening-edge-treatments.md).
+[ADR-0149](../adr/0149-rounded-opening-edge-treatments.md) and
+[ADR-0150](../adr/0150-chamfer-authoring-route.md).
 
 
 ## Parts, folders, placement, and export

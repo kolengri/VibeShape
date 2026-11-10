@@ -36,7 +36,7 @@ function reviewedLoader(input: Input, environment: NodeJS.ProcessEnv) {
   // Without an override this exact loader only reads the fully hashed installed OCCT package.
   return (
     input.path === "packages/geometry-worker/src/occt-chamfer-v3-kernel.test.ts" &&
-    input.hash === "e68fab3254ae8273be3077b8ffc31a60c0b9a31c03949ae2503b33e407c6088d" &&
+    input.hash === "3a87618ac132853bbf952b18be5f5170f3b5d5dcabb1fd4c6df0e30098412149" &&
     environment.VIBESHAPE_CHAMFER_OCCT_DIRECTORY === undefined
   )
 }

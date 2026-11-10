@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-11-04
 - Partially supersedes: the open-arc restriction in [ADR-0121](0121-circular-offset-chamfer.md)
+- Compatibility-route bound and scope-switch defaults superseded by:
+  [ADR-0150](0150-chamfer-authoring-route.md)
 
 ## Decision
 
