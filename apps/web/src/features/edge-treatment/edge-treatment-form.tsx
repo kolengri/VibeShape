@@ -130,6 +130,7 @@ function treatmentValidationCopy(
     missingCatalogue: t("missingCatalogue"),
     missingSideFace: t("sideFaceRequired"),
     planarOnly: t("planarOnly"),
+    plainContourOnly: t("plainContourOnly"),
     invalidAngle: t("invalidAngle"),
     invalidAdvancedRange: t("invalidAdvancedRange"),
   }
@@ -172,7 +173,7 @@ function useTreatmentFields(
   const normalize = (next: TreatmentValues) => {
     const option = props.options.find(({ id }) => id === next.targetFeatureId)
     return props.operation === "chamfer" && treatmentUsesV3(next, option, props.mode)
-      ? promoteTreatmentTargets({ ...next, retainV3: true }, candidates)
+      ? promoteTreatmentTargets(next, candidates)
       : next
   }
   const apply = (request: EdgeTreatmentPickRequest) => {
@@ -271,6 +272,12 @@ function useTreatmentFields(
   }
 }
 
+/** Live V3 feedback explains a picked target; an empty selection is not an error before submit. */
+function liveSelectionIssue(values: TreatmentValues, parsed: ReturnType<typeof treatmentFeature>) {
+  if (parsed.ok || (values.targets.length === 0 && values.references.length === 0)) return undefined
+  return parsed.issues.references
+}
+
 function TreatmentFields({
   props,
   values,
@@ -307,12 +314,8 @@ function TreatmentFields({
   }, [fields.onEscape, setEscape])
   const option = props.options.find(({ id }) => id === values.targetFeatureId)
   const v3 = props.operation === "chamfer" && treatmentUsesV3(values, option, props.mode)
-  const issues = {
-    ...submitIssues,
-    ...(v3 && !fields.parsed.ok && fields.parsed.issues.references
-      ? { references: fields.parsed.issues.references }
-      : {}),
-  }
+  const live = v3 ? liveSelectionIssue(values, fields.parsed) : undefined
+  const issues = { ...submitIssues, ...(live ? { references: live } : {}) }
   return (
     <>
       {props.onPreviewChange && (

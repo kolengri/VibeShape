@@ -5,7 +5,7 @@ import { FieldError } from "@vibeshape/ui/components/field"
 import { Scan, X } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import type { ComponentProps } from "react"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -22,6 +22,7 @@ import {
   clearTreatmentSelection,
   type TreatmentValues,
   treatmentReferences,
+  withTreatmentScope,
 } from "./edge-treatment-model"
 import { type EdgeTreatmentTargetOption, edgeTreatmentRequiresV3 } from "./edge-treatment-options"
 import type { EdgeTreatmentPick } from "./edge-treatment-picking"
@@ -465,6 +466,7 @@ function ChamferControls({ props }: { props: PreparedTreatmentControlsProps }) {
       </NativeSelectField>
       <BooleanParameterField
         label={t("tangentPropagation")}
+        description={t("tangentPropagationDescription")}
         checked={values.tangentPropagation}
         disabled={props.disabled}
         onChange={(event) =>
@@ -508,6 +510,7 @@ export function EdgeTreatmentControls(input: TreatmentControlsProps) {
     [input.candidates],
   )
   const props = { ...input, resolution }
+  const selectedIntent = useRef<TreatmentValues | null>(null)
   const allUnavailable = edgeTreatmentRequiresV3(
     props.options.find(({ id }) => id === props.values.targetFeatureId),
   )
@@ -556,24 +559,9 @@ export function EdgeTreatmentControls(input: TreatmentControlsProps) {
           { value: "selected", label: props.copy.selectedEdges },
         ]}
         onValueChange={(scope) => {
-          if (scope !== "all" && scope !== "selected") return
-          props.onChange({
-            ...props.values,
-            scope,
-            ...(scope === "all"
-              ? {
-                  retainV3: false,
-                  mode: "equal-distance",
-                  measurement: "offset",
-                  flip: false,
-                  tangentPropagation: false,
-                  directionOverrides: [],
-                  targets: [],
-                }
-              : props.operation === "chamfer" && props.options.some((option) => option.body)
-                ? { retainV3: true, tangentPropagation: true }
-                : {}),
-          })
+          if ((scope !== "all" && scope !== "selected") || scope === props.values.scope) return
+          if (scope === "all") selectedIntent.current = props.values
+          props.onChange(withTreatmentScope(props.values, scope, selectedIntent.current))
         }}
       />
       <SelectedTargets props={props} />

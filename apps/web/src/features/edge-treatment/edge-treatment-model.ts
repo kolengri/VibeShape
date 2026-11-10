@@ -64,16 +64,22 @@ type TreatmentValidationCopy = EdgeTreatmentFormCopy & {
   missingCatalogue: string
   missingSideFace: string
   planarOnly: string
+  plainContourOnly: string
   invalidAngle: string
   invalidAdvancedRange: string
 }
 
+/**
+ * Single owner of the Chamfer schema route. All edges stays on V1, body-bound new selections and
+ * saved V3 records author V3, and saved V1/V2 intent migrates only while advanced intent is present.
+ */
 export function treatmentUsesV3(
   values: TreatmentValues,
   option: EdgeTreatmentTargetOption | undefined,
   formMode: EdgeTreatmentFormMode,
 ) {
-  if (usesLegacyCurvedChamfer(values, option, formMode)) return false
+  if (edgeTreatmentRequiresV3(option)) return true
+  if (values.scope === "all" || usesLegacyContourChamfer(values, option, formMode)) return false
   return (
     values.retainV3 ||
     values.flip ||
@@ -81,8 +87,7 @@ export function treatmentUsesV3(
     values.mode !== "equal-distance" ||
     values.measurement !== "offset" ||
     values.tangentPropagation ||
-    values.targets.some(({ kind }) => kind === "face") ||
-    edgeTreatmentRequiresV3(option)
+    values.targets.some(({ kind }) => kind === "face")
   )
 }
 
@@ -93,6 +98,37 @@ export function clearTreatmentSelection(
   targetFeatureId = values.targetFeatureId,
 ): TreatmentValues {
   return { ...values, targetFeatureId, references: [], targets: [], directionOverrides: [] }
+}
+
+/** All edges shows and saves neutral controls; returning restores the intent it replaced. */
+export function withTreatmentScope(
+  values: TreatmentValues,
+  scope: TreatmentValues["scope"],
+  selected: TreatmentValues | null,
+): TreatmentValues {
+  if (scope === "all")
+    return {
+      ...values,
+      scope,
+      mode: "equal-distance",
+      measurement: "offset",
+      flip: false,
+      tangentPropagation: false,
+      directionOverrides: [],
+      targets: [],
+    }
+  if (!selected) return { ...values, scope }
+  const { mode, measurement, flip, tangentPropagation, directionOverrides, targets } = selected
+  return {
+    ...values,
+    scope,
+    mode,
+    measurement,
+    flip,
+    tangentPropagation,
+    // Exact targets belong to one body and never transfer to another.
+    ...(selected.targetFeatureId === values.targetFeatureId ? { directionOverrides, targets } : {}),
+  }
 }
 
 export function treatmentReferences(
@@ -235,21 +271,12 @@ function circularOffsetReference(reference: EdgeTopoRef | BodyTopoRef, values: T
   )
 }
 
-function coneCylinderRim(reference: EdgeTopoRef | BodyTopoRef) {
-  const signature = reference.signature
-  return (
-    reference.kind === "edge" &&
-    signature.geometryClass === "CIRCLE" &&
-    signature.boundaryCount === 0 &&
-    signature.adjacentGeometryClasses.length === 2 &&
-    signature.adjacentGeometryClasses.includes("CONE") &&
-    signature.adjacentGeometryClasses.includes("CYLINDRE")
-  )
+function measurableReference(reference: EdgeTopoRef | BodyTopoRef, values: TreatmentValues) {
+  return planarReference(reference) || circularOffsetReference(reference, values)
 }
 
 function nativeContourControls(values: TreatmentValues) {
   return (
-    values.scope === "selected" &&
     values.mode === "equal-distance" &&
     values.measurement === "offset" &&
     values.tangentPropagation &&
@@ -259,48 +286,50 @@ function nativeContourControls(values: TreatmentValues) {
   )
 }
 
-function legacyContourReference(reference: EdgeTopoRef | BodyTopoRef, values: TreatmentValues) {
-  const legacy = legacyEdgeReference(reference)
+function legacyContourBody(
+  option: EdgeTreatmentTargetOption | undefined,
+  formMode: EdgeTreatmentFormMode,
+) {
   return (
-    legacy !== null &&
-    values.references.some((stored) => sameTreatmentReference(stored, legacy)) &&
-    (planarReference(reference) ||
-      circularOffsetReference(reference, values) ||
-      coneCylinderRim(reference))
+    formMode.kind === "create" && option?.legacy === true && option.body?.outputRole === "result"
   )
 }
 
-function usesLegacyCurvedChamfer(
+/**
+ * The legacy builder already treats whole native contours without a measured-setback claim, so a
+ * new plain selection that V3 cannot measure keeps that route. Saved or advanced intent never does.
+ */
+function usesLegacyContourChamfer(
   values: TreatmentValues,
   option: EdgeTreatmentTargetOption | undefined,
   formMode: EdgeTreatmentFormMode,
 ) {
-  if (
-    formMode.kind !== "create" ||
-    option?.legacy !== true ||
-    option.body?.outputRole !== "result" ||
-    !nativeContourControls(values)
-  )
-    return false
-  const references = treatmentReferences(values, true)
-  // Preserve proven selected-edge behavior without downgrading saved or advanced intent.
-  return (
-    references.some(coneCylinderRim) &&
-    references.every((reference) => legacyContourReference(reference, values))
-  )
+  if (!legacyContourBody(option, formMode) || !nativeContourControls(values)) return false
+  // Scan signatures first: measurable selections never pay for the pairing below.
+  if (values.references.every((reference) => measurableReference(reference, values))) return false
+  return values.targets.every((target) => {
+    const legacy = target.kind === "edge" ? legacyEdgeReference(target.edge) : null
+    return (
+      legacy !== null && values.references.some((stored) => sameTreatmentReference(stored, legacy))
+    )
+  })
 }
 
 function selectionIssue(
   values: TreatmentValues,
   v3: boolean,
-  resolution: PreparedTreatmentReferenceResolution,
-  copy: TreatmentValidationCopy,
+  context: ResolvedTreatmentContext,
+  option: EdgeTreatmentTargetOption | undefined,
 ) {
   if (values.scope === "all" && !v3) return undefined
   const references = treatmentReferences(values, v3)
-  if (!references.length || references.length > 256) return copy.missingEdge
+  if (!references.length || references.length > 256) return context.copy.missingEdge
+  // Name the recovery when the plain legacy contour route would still build this edge.
+  const unsupportedEdge = legacyContourBody(option, context.mode)
+    ? context.copy.plainContourOnly
+    : context.copy.planarOnly
   for (const reference of references) {
-    const issue = selectedReferenceIssue(reference, v3, resolution, copy, values)
+    const issue = selectedReferenceIssue(reference, v3, context, values, unsupportedEdge)
     if (issue) return issue
   }
   return undefined
@@ -309,17 +338,16 @@ function selectionIssue(
 function selectedReferenceIssue(
   reference: EdgeTopoRef | BodyTopoRef,
   v3: boolean,
-  resolution: PreparedTreatmentReferenceResolution,
-  copy: TreatmentValidationCopy,
+  context: ResolvedTreatmentContext,
   values: TreatmentValues,
+  unsupportedEdge: string,
 ) {
-  const issue = referenceIssue(reference, resolution, copy)
+  const issue = referenceIssue(reference, context.resolution, context.copy)
   if (issue) return issue
   if (!v3) return undefined
-  if (reference.schemaVersion !== 1) return copy.missingCatalogue
-  return planarReference(reference) || circularOffsetReference(reference, values)
-    ? undefined
-    : copy.planarOnly
+  if (reference.schemaVersion !== 1) return context.copy.missingCatalogue
+  if (measurableReference(reference, values)) return undefined
+  return reference.kind === "edge" ? unsupportedEdge : context.copy.planarOnly
 }
 
 function planarCandidateIssue(
@@ -422,7 +450,7 @@ function parseTreatmentBase(
   const issues: TreatmentIssues = {}
   if (!distance.ok) issues.distance = distance.message
   if (!target.success) issues.targetFeatureId = context.copy.missingTarget
-  const selection = selectionIssue(values, v3, context.resolution, context.copy)
+  const selection = selectionIssue(values, v3, context, option)
   if (selection) issues.references = selection
   if (!distance.ok || !target.success || Object.keys(issues).length)
     return { ok: false as const, issues }
