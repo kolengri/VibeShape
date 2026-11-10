@@ -156,26 +156,55 @@ export function exactSolidBodyOptions(
     })
 }
 
-/** Boolean creation uses the same current body and consumption rules without building labels. */
+type CurrentBodies = NonNullable<ReturnType<ReturnType<typeof currentGeometries>["get"]>>["bodies"]
+
+function visibleSolidBodyCount(
+  featureId: string,
+  bodies: CurrentBodies,
+  visible: ReadonlySet<string>,
+) {
+  let count = 0
+  for (const geometry of bodies ?? []) {
+    if (!selectableBody(geometry)) continue
+    // Preserve the collector's validation even for a malformed, nonterminal body.
+    const id = bodyReferenceSchema.shape.featureId.parse(featureId)
+    const outputRole = bodyReferenceSchema.shape.outputRole.parse(geometry.outputRole)
+    if (visible.has(JSON.stringify([id, outputRole]))) count += 1
+  }
+  return count
+}
+
+/**
+ * Boolean creation and edge-treatment eligibility use the same current body and consumption rules
+ * without building labels. Every body is validated, even after the count suffices.
+ */
+function exactSolidBodyCount(
+  snapshot: DocumentSnapshot,
+  rebuild: DocumentRebuildOutcome | undefined,
+) {
+  if (!rebuild?.ok) return 0
+  const { visible } = bodyScope(snapshot, rebuild, undefined)
+  const geometryByFeature = currentGeometries(rebuild)
+  let count = 0
+  for (const feature of snapshot.features)
+    if (!feature.suppressed)
+      count += visibleSolidBodyCount(feature.id, geometryByFeature.get(feature.id)?.bodies, visible)
+  return count
+}
+
 export function hasMultipleExactSolidBodies(
   snapshot: DocumentSnapshot,
   rebuild: DocumentRebuildOutcome | undefined,
 ): boolean {
-  if (!rebuild?.ok) return false
-  const { visible } = bodyScope(snapshot, rebuild, undefined)
-  const geometryByFeature = currentGeometries(rebuild)
-  let count = 0
-  for (const feature of snapshot.features) {
-    if (feature.suppressed) continue
-    for (const geometry of geometryByFeature.get(feature.id)?.bodies ?? []) {
-      if (!selectableBody(geometry)) continue
-      // Preserve the collector's validation even for a malformed, nonterminal body.
-      const featureId = bodyReferenceSchema.shape.featureId.parse(feature.id)
-      const outputRole = bodyReferenceSchema.shape.outputRole.parse(geometry.outputRole)
-      if (visible.has(JSON.stringify([featureId, outputRole]))) count += 1
-    }
-  }
-  return count >= 2
+  return exactSolidBodyCount(snapshot, rebuild) >= 2
+}
+
+/** Body-bound edge treatments can target any terminal exact solid, including named outputs. */
+export function hasExactSolidBody(
+  snapshot: DocumentSnapshot,
+  rebuild: DocumentRebuildOutcome | undefined,
+): boolean {
+  return exactSolidBodyCount(snapshot, rebuild) >= 1
 }
 
 /** Cache only within the mounted task; document reports publish replacement immutable sources. */

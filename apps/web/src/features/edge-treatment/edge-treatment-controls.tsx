@@ -17,6 +17,8 @@ import {
   prepareTreatmentReferenceResolution,
   sameTreatmentReference,
 } from "./edge-treatment-candidates"
+import { withoutVariableRadius } from "./edge-treatment-fillet"
+import { FilletEdgeRadius, FilletSelectionHelp } from "./edge-treatment-fillet-controls"
 import type { EdgeTreatmentFormCopy, EdgeTreatmentOperation } from "./edge-treatment-form"
 import {
   clearTreatmentSelection,
@@ -41,6 +43,8 @@ export type TreatmentControlsProps = {
   pick: EdgeTreatmentPick | null
   onArm: (pick: EdgeTreatmentPick, element: HTMLButtonElement) => void
   onPick: (candidate: EdgeTreatmentCandidate, pick: EdgeTreatmentPick) => void
+  /** Fillet only: suggested end radius when a variable radius is enabled. */
+  defaultEndRadius?: string
 }
 
 type PreparedTreatmentControlsProps = TreatmentControlsProps & {
@@ -184,6 +188,7 @@ function removeReference(
         !sameTreatmentReference(ref, reference) &&
         !(candidate && props.resolution.matchesCandidate(ref, candidate)),
     ),
+    variableRadii: withoutVariableRadius(props.values, reference),
   })
 }
 
@@ -318,10 +323,51 @@ function SelectedRow({
           <X aria-hidden="true" />
         </Button>
       </div>
-      {v3 && (
-        <SelectedEdgeDirection props={props} index={index} label={label} candidate={candidate} />
-      )}
+      <SelectedRowDetails
+        props={props}
+        index={index}
+        v3={v3}
+        label={label}
+        candidate={candidate}
+        edge={reference.kind === "edge"}
+      />
     </div>
+  )
+}
+
+/** Operation-specific per-target controls: Chamfer direction or Fillet radius law. */
+function SelectedRowDetails({
+  props,
+  index,
+  v3,
+  label,
+  candidate,
+  edge,
+}: {
+  props: PreparedTreatmentControlsProps
+  index: number
+  v3: boolean
+  label: string
+  candidate: EdgeTreatmentCandidate | undefined
+  edge: boolean
+}) {
+  if (props.operation === "chamfer")
+    return v3 ? (
+      <SelectedEdgeDirection props={props} index={index} label={label} candidate={candidate} />
+    ) : null
+  if (!edge) return null
+  return (
+    <FilletEdgeRadius
+      values={props.values}
+      onChange={props.onChange}
+      candidate={candidate}
+      label={label}
+      index={index}
+      disabled={props.disabled}
+      defaultEndRadius={props.defaultEndRadius ?? props.values.distance}
+      expressionDescription={props.copy.expressionDescription}
+      suggestions={props.suggestions}
+    />
   )
 }
 
@@ -366,7 +412,7 @@ function SelectedTargets({ props }: { props: PreparedTreatmentControlsProps }) {
       <SelectionHeading props={props} v3={v3} count={references.length} />
       <div className="flex flex-wrap gap-1">
         <PickButton kind="edges" props={props} />
-        {props.operation === "chamfer" && <PickButton kind="faces" props={props} />}
+        <PickButton kind="faces" props={props} />
       </div>
       {unavailable > 0 && (
         <p className="text-xs text-muted-foreground">
@@ -390,7 +436,12 @@ function SelectedTargets({ props }: { props: PreparedTreatmentControlsProps }) {
           {props.copy.clearEdges}
         </Button>
       )}
-      {v3 && <p className="text-xs text-muted-foreground">{t("incidenceValidation")}</p>}
+      {v3 && props.operation === "chamfer" && (
+        <p className="text-xs text-muted-foreground">{t("incidenceValidation")}</p>
+      )}
+      {props.operation === "fillet" && (
+        <FilletSelectionHelp values={props.values} issue={props.issues.variableRadii} />
+      )}
     </fieldset>
   )
 }
