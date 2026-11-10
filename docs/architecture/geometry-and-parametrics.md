@@ -526,12 +526,18 @@ reverse-tree traversal and source-path intervals avoid repeated ancestor walks a
 sets. Draft targets remain distinct from committed sources even when their IDs match; model evidence
 is memoized only within that inspection by both owner sketch and reference-object identity.
 
-Body-bound Chamfer V3 uses per-output native topology snapshots and explicit feature versions.
-Fillet retains its legacy single-solid whole-result contract. Sketch supports, persistent repair, and a real native multi-copy producer remain
+Body-bound Chamfer V3 and Fillet V3 use per-output native topology snapshots and explicit feature
+versions; both resolve their semantic references through one shared body-bound resolver into
+evaluation-local native keys. Fillet V1/V2 retain their legacy single-solid whole-result contract.
+Fillet V3 follows complete native tangent contours. Its per-edge linear variable radius names the
+start endpoint by sorting the edge endpoints by x, then y, then z in model coordinates, never by
+native orientation, and rejects tangent chains and closed edges
+([ADR-0151](../adr/0151-body-bound-variable-radius-fillet.md)). Sketch supports, persistent repair, and a real native multi-copy producer remain
 open gates; synthetic coincident-body tests are isolation evidence, not native pattern delivery.
 
-Constant-radius Fillet failures retain actionable diagnostics through document evaluation, editor
-preview and paired MCP. A failed native build can run up to four disposable retries at half,
+Constant-radius Fillet V1/V2 failures retain actionable diagnostics through document evaluation,
+editor preview and paired MCP. Fillet V3 failures report reduce-radius or reselection guidance
+without the smaller-radius probe. A failed native build can run up to four disposable retries at half,
 quarter, eighth and sixteenth of the requested radius on the unchanged edge scope. A suggestion is
 reported only after exact validation proves one valid positive-volume solid; no substitute result
 is published and the authored radius remains unchanged. This bounded search does not establish a

@@ -632,7 +632,7 @@ proven planar supports. Equal-distance Offset additionally admits circular plane
 including the corner arcs of rounded openings; exact native incidence remains authoritative. Curved
 Tangent, directional modes and other curved support pairs remain unsupported. New body-bound
 chamfers enable tangent propagation by default, so one picked edge treats its complete tangent
-contour. Fillet already follows that contour from one edge. Explicitly disabling propagation keeps
+contour. Explicitly disabling propagation keeps
 V3 validation and requires every native contour edge to be selected. Apply creates one ordinary committed edit, Cancel
 discards the task, and Undo/Redo uses shared session history. New selected edges that V3 cannot
 measure, such as countersink and cone/cylinder rims, keep their established equal-distance path on
@@ -647,6 +647,19 @@ automatically: an edited version-2 chamfer becomes version 3 only while an advan
 [ADR-0121](../adr/0121-circular-offset-chamfer.md), extended by
 [ADR-0149](../adr/0149-rounded-opening-edge-treatments.md) and
 [ADR-0150](../adr/0150-chamfer-authoring-route.md).
+
+Fillet offers every exact solid body, including named outputs such as Pattern instances and Split
+halves, and accepts edge and face targets. Its help states that a picked edge always rounds its
+complete tangent chain and that a picked face rounds every edge around it; there is no propagation
+toggle. Each selected edge row offers **Variable radius**, with named start and end radius
+expressions and **Reverse radius direction**. The start is the edge end with the smallest X, then Y,
+then Z coordinate. Enabling variable radius suggests twice the constant radius as the end. Equal
+radii and closed edges show validation messages and block Apply; tangent chains are rejected by the
+exact preview. A plain selection on a verified single-result body stays on the version-2 route with
+its tested-radius suggestion. Named or multiple outputs, a face target or a variable radius author
+version 3, and an edited version-2 Fillet returns to version 2 once that intent is removed. All
+edges is unavailable for named outputs. See
+[ADR-0151](../adr/0151-body-bound-variable-radius-fillet.md).
 
 
 ## Parts, folders, placement, and export

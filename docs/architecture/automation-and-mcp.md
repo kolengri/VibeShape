@@ -287,6 +287,11 @@ Tangent, directional modes and other curved support pairs remain unsupported. Se
 [ADR-0118](../adr/0118-body-bound-directional-chamfer.md) and its bounded measurement extension,
 [ADR-0121](../adr/0121-circular-offset-chamfer.md), extended by
 [ADR-0149](../adr/0149-rounded-opening-edge-treatments.md).
+Fillet V3 accepts the same kind of strict `parameters` alternative on `create_fillet` and
+`update_fillet`: an exact `targetBody`, an expression-capable radius and edge/face targets, with an
+optional per-edge linear `variableRadius` whose start is the endpoint that sorts first by x, then y,
+then z. Every target follows its complete native tangent contour. See
+[ADR-0151](../adr/0151-body-bound-variable-radius-fillet.md).
 [ADR-0051](../adr/0051-body-bound-topology-inspection.md) records that staged boundary.
 
 ## Goals and non-goals
