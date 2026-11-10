@@ -7,6 +7,7 @@ import {
   chamferFeatureTypeV2,
   chamferFeatureTypeV3,
   coneFeatureType,
+  coneFeatureTypeV2,
   cylinderFeatureType,
   datumPlaneFeatureType,
   datumPlaneFeatureTypeV1,
@@ -220,7 +221,9 @@ export function isSphereFeature(feature: FeatureRecord) {
 }
 
 export function isConeFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, coneFeatureType.type)
+  return (
+    hasFeatureType(feature, coneFeatureType.type) || hasFeatureType(feature, coneFeatureTypeV2.type)
+  )
 }
 
 export function isPyramidFeature(feature: FeatureRecord) {

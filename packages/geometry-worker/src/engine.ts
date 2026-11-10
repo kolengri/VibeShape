@@ -8,6 +8,7 @@ import {
   chamferFeatureContentParametersV3Schema,
   compoundFeatureContentParametersSchema,
   coneFeatureContentParametersSchema,
+  coneFeatureContentParametersV2Schema,
   connectMountsFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   DEFAULT_SURFACE_TEXTURE_QUALITY,
@@ -352,6 +353,8 @@ const CONNECT_MOUNTS_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.connect-mounts#1"
 const CONE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cone#1"
+const CONE_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cone#2"
 const PYRAMID_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.pyramid#1"
 const TORUS_FEATURE_TYPE_KEY =
@@ -1050,7 +1053,9 @@ type ChamferContentParameters = ReturnType<typeof chamferFeatureContentParameter
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
 type SphereContentParameters = ReturnType<typeof sphereFeatureContentParametersSchema.parse>
-type ConeContentParameters = ReturnType<typeof coneFeatureContentParametersSchema.parse>
+type ConeContentParameters =
+  | ReturnType<typeof coneFeatureContentParametersSchema.parse>
+  | ReturnType<typeof coneFeatureContentParametersV2Schema.parse>
 type PyramidContentParameters = ReturnType<typeof pyramidFeatureContentParametersSchema.parse>
 type TorusContentParameters = ReturnType<typeof torusFeatureContentParametersSchema.parse>
 type ExtrusionContentParameters = ReturnType<
@@ -1213,19 +1218,26 @@ function coneFeatureSemanticRole(
   parameters: ConeContentParameters,
 ) {
   const minimumZ = parameters.origin[2] - (parameters.centered ? parameters.height / 2 : 0)
+  const maximumZ = minimumZ + parameters.height
   const z = context.signature.centroid[2]
+  const truncated = "topRadius" in parameters && parameters.topRadius > 0
   switch (`${context.kind}:${context.signature.geometryClass}`) {
     case "face:CONE":
       return "primitive.cone.wall"
     case "face:PLANE":
-      return nearlyEqual(z, minimumZ) ? "primitive.cone.cap.start" : undefined
+      return coneEndRole(z, minimumZ, truncated ? maximumZ : null, "cap")
     case "edge:CIRCLE":
-      return nearlyEqual(z, minimumZ) ? "primitive.cone.edge.start" : undefined
+      return coneEndRole(z, minimumZ, truncated ? maximumZ : null, "edge")
     case "vertex:POINT":
-      return nearlyEqual(z, minimumZ + parameters.height) ? "primitive.cone.apex" : undefined
+      return !truncated && nearlyEqual(z, maximumZ) ? "primitive.cone.apex" : undefined
     default:
       return undefined
   }
+}
+
+function coneEndRole(z: number, minimumZ: number, maximumZ: number | null, kind: "cap" | "edge") {
+  if (nearlyEqual(z, minimumZ)) return `primitive.cone.${kind}.start`
+  return maximumZ !== null && nearlyEqual(z, maximumZ) ? `primitive.cone.${kind}.end` : undefined
 }
 
 function pyramidAngularRoleIndex(
@@ -1379,7 +1391,7 @@ function parseConnectMountsFeature(input: FeatureEvaluationInput): FeatureParseR
 
 function parseRadialPrimitiveParameters(
   parameters: unknown,
-  kind: "sphere" | "cone" | "torus" | "pyramid",
+  kind: RadialPrimitiveParseKind,
 ): PrimitiveFeature | null {
   switch (kind) {
     case "sphere": {
@@ -1389,6 +1401,10 @@ function parseRadialPrimitiveParameters(
     case "cone": {
       const parsed = coneFeatureContentParametersSchema.safeParse(parameters)
       return parsed.success ? { kind, parameters: parsed.data } : null
+    }
+    case "cone-v2": {
+      const parsed = coneFeatureContentParametersV2Schema.safeParse(parameters)
+      return parsed.success ? { kind: "cone", parameters: parsed.data } : null
     }
     case "torus": {
       const parsed = torusFeatureContentParametersSchema.safeParse(parameters)
@@ -1401,9 +1417,11 @@ function parseRadialPrimitiveParameters(
   }
 }
 
+type RadialPrimitiveParseKind = "sphere" | "cone" | "cone-v2" | "torus" | "pyramid"
+
 function parseRadialPrimitiveFeature(
   input: FeatureEvaluationInput,
-  kind: "sphere" | "cone" | "torus" | "pyramid",
+  kind: RadialPrimitiveParseKind,
 ): FeatureParseResult {
   const feature = input.content.feature
   if (
@@ -1412,7 +1430,7 @@ function parseRadialPrimitiveFeature(
     input.dependencies.length !== 0
   ) {
     return invalidInputCardinality(
-      `${kind} features cannot declare dependency inputs or references.`,
+      `${kind.replace("-v2", "")} features cannot declare dependency inputs or references.`,
     )
   }
   const parsed = parseRadialPrimitiveParameters(feature.parameters, kind)
@@ -1420,7 +1438,7 @@ function parseRadialPrimitiveFeature(
     ? { ok: true, feature: parsed }
     : featureFailure(
         "invalid-feature-parameters",
-        `${kind} content dimensions or placement are invalid.`,
+        `${kind.replace("-v2", "")} content dimensions or placement are invalid.`,
       )
 }
 
@@ -2545,6 +2563,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [SPHERE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "sphere")],
   [CONE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "cone")],
+  [CONE_FEATURE_TYPE_V2_KEY, (input) => parseRadialPrimitiveFeature(input, "cone-v2")],
   [PYRAMID_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "pyramid")],
   [TORUS_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "torus")],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
@@ -3065,7 +3084,14 @@ function createPrimitiveFeatureShape(opencascade: OpenCascadeInstance, feature: 
       )
     case "cone": {
       const { radius, height } = feature.parameters
-      return createOcctCone(opencascade, radius, height, primitiveBaseOrigin(feature.parameters))
+      const topRadius = "topRadius" in feature.parameters ? feature.parameters.topRadius : 0
+      return createOcctCone(
+        opencascade,
+        radius,
+        height,
+        primitiveBaseOrigin(feature.parameters),
+        topRadius,
+      )
     }
     case "pyramid": {
       const { sides, radius, height } = feature.parameters

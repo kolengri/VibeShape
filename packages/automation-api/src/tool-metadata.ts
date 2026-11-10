@@ -69,9 +69,9 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
   update_cylinder:
     "Update a Cylinder preserving its feature ID and complete typed radius/height, centered, origin, label, suppression and expressions. Use a fresh commandId/current draft revision; preview downstream geometry before commit.",
   create_cone:
-    "Create the registered pointed Cone with typed radius/height, centered, quantity origin and explicit suppressed state. Supply fresh UUIDv7 IDs/current draft revision. Preview before commit_draft; truncated cones are outside this primitive contract.",
+    "Create a Cone with typed base radius/height, centered, quantity origin and explicit suppressed state. Optional typed topRadius authors Cone v2: 0 keeps a pointed apex, 0.001 mm or more makes a truncated cone, and a top radius larger than the base inverts the taper; it must differ from radius. Omitting topRadius (or a literal zero) keeps exact pointed Cone v1. Supply fresh UUIDv7 IDs/current draft revision. Preview before commit_draft.",
   update_cone:
-    "Update a pointed Cone preserving identity, typed radius/height, centered, quantity origin, suppression, label and expressions. Inspect the existing feature and preview downstream geometry before commit_draft.",
+    "Update a Cone preserving identity, typed radius/height, optional topRadius, centered, quantity origin, suppression, label and expressions. Resubmit topRadius (including its expression) for a truncated Cone v2; omitting it or a literal zero writes the pointed Cone v1 contract. Inspect the existing feature and preview downstream geometry before commit_draft.",
   create_sphere:
     "Create a Sphere with typed radius, quantity origin and explicit suppressed state through an owned draft. Preserve expressions and workspace bounds; use fresh UUIDv7 IDs/current draft revision. Preview before commit_draft.",
   update_sphere:

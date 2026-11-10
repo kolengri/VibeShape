@@ -9,6 +9,7 @@ import {
   boxFeatureParametersSchema,
   canonicalJson,
   coneFeatureParametersSchema,
+  coneFeatureParametersV2Schema,
   cylinderFeatureParametersSchema,
   type DocumentSnapshot,
   type FeatureId,
@@ -452,6 +453,7 @@ function primitiveManipulator(
   readOnly: boolean,
 ): PrimitiveManipulator | null {
   if (!isPrimitivePartDesignTool(activeTool) || !candidate || readOnly) return null
+  const coneSchema = coneFeatureParametersV2Schema.or(coneFeatureParametersSchema)
   const schemas = {
     "create-box": boxFeatureParametersSchema,
     "edit-box": boxFeatureParametersSchema,
@@ -459,9 +461,9 @@ function primitiveManipulator(
     "edit-cylinder": cylinderFeatureParametersSchema,
     "create-sphere": sphereFeatureParametersSchema,
     "edit-sphere": sphereFeatureParametersSchema,
-    "create-cone": coneFeatureParametersSchema,
+    "create-cone": coneSchema,
     "create-pyramid": pyramidFeatureParametersSchema,
-    "edit-cone": coneFeatureParametersSchema,
+    "edit-cone": coneSchema,
     "edit-pyramid": pyramidFeatureParametersSchema,
     "create-torus": torusFeatureParametersSchema,
     "edit-torus": torusFeatureParametersSchema,

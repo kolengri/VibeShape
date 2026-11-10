@@ -70,6 +70,19 @@ describe("primitive and lifecycle public schemas", () => {
     for (const tool of ["create_wedge", "update_wedge", "delete_project", "set_history_cursor"])
       expect(localOperationSchema.safeParse({ tool, arguments: feature }).success).toBe(false)
   })
+  it("accepts an optional bounded cone top radius distinct from the base radius", () => {
+    const cone = primitiveParameters("cone")
+    const parse = (topRadius: unknown) =>
+      localOperationSchema.safeParse({
+        tool: "create_cone",
+        arguments: { ...feature, parameters: { ...cone, topRadius } },
+      }).success
+    expect(parse(createLengthQuantity(0))).toBe(true)
+    expect(parse(createLengthQuantity(0.001))).toBe(true)
+    expect(parse(createLengthQuantity(cone.radius.value * 2, "mm", "#top"))).toBe(true)
+    for (const value of [-1, 0.0005, cone.radius.value, 1_000_001])
+      expect(parse(createLengthQuantity(value))).toBe(false)
+  })
   it("requires explicit lifecycle assignments and rejects cascade or caller credentials", () => {
     for (const tool of [
       "remove_feature",

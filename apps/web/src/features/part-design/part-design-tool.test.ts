@@ -4,6 +4,7 @@ import {
   boxFeatureType,
   chamferFeatureTypeV3,
   coneFeatureType,
+  coneFeatureTypeV2,
   createAngleQuantity,
   createLengthQuantity,
   createSketchProfileSet,
@@ -416,6 +417,7 @@ describe("basic primitive tool eligibility", () => {
   it.each([
     ["sphere", sphereFeatureType.type, isSphereFeature],
     ["cone", coneFeatureType.type, isConeFeature],
+    ["cone", coneFeatureTypeV2.type, isConeFeature],
     ["pyramid", pyramidFeatureType.type, isPyramidFeature],
     ["torus", torusFeatureType.type, isTorusFeature],
   ] as const)(
@@ -430,7 +432,7 @@ describe("basic primitive tool eligibility", () => {
       expect(booleanInputFeatures([primitive])).toEqual([primitive])
       expect(modifyingSolidTargetFeatures([primitive])).toEqual([primitive])
       expect(
-        matches(featureRecordSchema.parse({ ...primitive, type: { ...type, schemaVersion: 2 } })),
+        matches(featureRecordSchema.parse({ ...primitive, type: { ...type, schemaVersion: 3 } })),
       ).toBe(false)
     },
   )

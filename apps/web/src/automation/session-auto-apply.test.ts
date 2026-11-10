@@ -136,6 +136,7 @@ describe("session CAD auto-apply scope", () => {
     ["compound", 2, true],
     ["sweep", 1, true],
     ["cone", 1, true],
+    ["cone", 2, true],
     ["sphere", 1, true],
     ["torus", 1, true],
     ["pyramid", 1, true],

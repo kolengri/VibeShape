@@ -1767,7 +1767,7 @@
         "createCone": "Create cone",
         "cone": {
           "title": "Create cone",
-          "description": "Create a pointed cone along +Z from its axis placement origin.",
+          "description": "Create a pointed or truncated cone along +Z from its axis placement origin.",
           "editTitle": "Edit cone",
           "editDescription": "Update this Cone's dimensions and placement while preserving its identity and authored expressions.",
           "parameters": "Cone definition",
@@ -1799,6 +1799,8 @@
         "basicPrimitive": {
           "dimensions": "Dimensions",
           "radius": "Radius",
+          "topRadius": "Top radius",
+          "topRadiusDescription": "Enter 0 for a pointed cone, or a length from 0.001 mm that differs from the base radius for a truncated cone. A larger top radius inverts the taper.",
           "height": "Height",
           "majorRadius": "Major radius",
           "minorRadius": "Minor radius",
@@ -1815,6 +1817,7 @@
           "invalidRange": "Enter a length from 0.001 mm to 100,000 mm.",
           "invalidPositionRange": "Enter a coordinate from -100,000 mm to 100,000 mm.",
           "invalidTorusRadii": "The major radius must be greater than the minor radius.",
+          "invalidConeTopRadius": "Enter 0 or a length from 0.001 mm that differs from the base radius. Use Cylinder for equal radii.",
           "invalidWorkspaceBounds": "Reduce dimensions or move the origin to keep the solid within the supported workspace limits.",
           "sides": "Base sides",
           "sidesDescription": "Enter a whole number from 3 to 64. Radius measures from the base center to a vertex.",

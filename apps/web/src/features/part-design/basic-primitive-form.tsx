@@ -1,5 +1,7 @@
 import {
+  authoredConeFeatureType,
   coneFeatureParametersSchema,
+  coneFeatureParametersV2Schema,
   coneFeatureType,
   type DocumentDisplayUnits,
   type FeatureId,
@@ -8,6 +10,7 @@ import {
   type LengthQuantity,
   pyramidFeatureParametersSchema,
   pyramidFeatureType,
+  readConeFeatureParameters,
   sphereFeatureParametersSchema,
   sphereFeatureType,
   torusFeatureParametersSchema,
@@ -44,7 +47,7 @@ import { useParameterFormState } from "./use-parameter-form-state"
 export type BasicPrimitiveKind = "sphere" | "cone" | "torus" | "pyramid"
 const IGNORE_PREVIEW = () => undefined
 
-type DimensionField = "radius" | "height" | "majorRadius" | "minorRadius"
+type DimensionField = "radius" | "topRadius" | "height" | "majorRadius" | "minorRadius"
 type PrimitiveField = DimensionField | PrimitiveOriginField | "sides"
 type PrimitiveFormValues = PrimitiveOriginFormValues &
   Readonly<Record<DimensionField, string>> &
@@ -54,6 +57,7 @@ export type BasicPrimitiveFormCopy = PrimitiveParameterPanelCopy &
   Readonly<Record<DimensionField | PrimitiveOriginField, string>> &
   Readonly<{
     sides: string
+    topRadiusDescription: string
     sidesDescription: string
     invalidSides: string
     positionDescription: string
@@ -64,6 +68,7 @@ export type BasicPrimitiveFormCopy = PrimitiveParameterPanelCopy &
     invalidRange: string
     invalidPositionRange: string
     invalidTorusRadii: string
+    invalidConeTopRadius: string
     invalidWorkspaceBounds: string
     validationSummary: string
     staleRevision: string
@@ -85,7 +90,7 @@ const primitiveDefinitions = {
     type: sphereFeatureType.type,
   },
   cone: {
-    dimensions: ["radius", "height"],
+    dimensions: ["radius", "topRadius", "height"],
     schema: coneFeatureParametersSchema,
     type: coneFeatureType.type,
   },
@@ -103,6 +108,7 @@ const primitiveDefinitions = {
 
 const dimensionSchemas = {
   radius: sphereFeatureParametersSchema.shape.radius,
+  topRadius: coneFeatureParametersV2Schema.shape.topRadius,
   height: coneFeatureParametersSchema.shape.height,
   majorRadius: torusFeatureParametersSchema.shape.majorRadius,
   minorRadius: torusFeatureParametersSchema.shape.minorRadius,
@@ -115,6 +121,7 @@ function initialPrimitiveValues(
 ): PrimitiveFormValues {
   const values: PrimitiveFormValues = {
     radius: defaultLengthExpression(10, unit),
+    topRadius: defaultLengthExpression(0, unit),
     height: defaultLengthExpression(20, unit),
     majorRadius: defaultLengthExpression(20, unit),
     minorRadius: defaultLengthExpression(5, unit),
@@ -132,11 +139,13 @@ function initialPrimitiveValues(
     }
   }
   if (primitiveKind === "cone") {
-    const parameters = coneFeatureParametersSchema.parse(mode.feature.parameters)
+    const parameters = readConeFeatureParameters(mode.feature)
+    if (!parameters) throw new Error("The edited cone parameters are invalid.")
     return {
       ...values,
       ...primitiveOriginFormValues(parameters.origin),
       radius: quantityExpression(parameters.radius),
+      topRadius: quantityExpression(parameters.topRadius),
       height: quantityExpression(parameters.height),
       centered: parameters.centered,
     }
@@ -179,7 +188,11 @@ function parsePrimitiveDimensions(
       displayUnit,
     )
     if (parsed.ok) dimensions[field] = parsed.quantity
-    else issues[field] = parsed.message
+    else
+      issues[field] =
+        field === "topRadius" && parsed.message === copy.invalidRange
+          ? copy.invalidConeTopRadius
+          : parsed.message
   }
   return { dimensions, issues }
 }
@@ -190,6 +203,8 @@ function coupledPrimitiveIssues(
   copy: BasicPrimitiveFormCopy,
 ) {
   const issues: Partial<Record<PrimitiveField, string>> = {}
+  if (primitiveKind === "cone" && radiusOrderInvalid)
+    return { topRadius: copy.invalidConeTopRadius }
   const message = radiusOrderInvalid ? copy.invalidTorusRadii : copy.invalidWorkspaceBounds
   for (const field of primitiveDefinitions[primitiveKind].dimensions) issues[field] = message
   if (!radiusOrderInvalid) {
@@ -215,6 +230,7 @@ function parsePrimitiveValues(
   variables: readonly VariableDefinition[],
   copy: BasicPrimitiveFormCopy,
   displayUnit: DocumentDisplayUnits["length"],
+  savedType: FeatureRecord["type"] | null,
 ) {
   const definition = primitiveDefinitions[primitiveKind]
   const origin = parsePrimitiveOriginValues(values, variables, copy, displayUnit)
@@ -231,36 +247,43 @@ function parsePrimitiveValues(
     ...primitiveSideIssues(primitiveKind, values, copy),
   }
   if (!origin.ok || Object.keys(issues).length > 0) return { ok: false as const, issues }
-  const parsed = definition.schema.safeParse({
-    ...dimensions,
+  const { topRadius, ...baseDimensions } = dimensions
+  const type =
+    primitiveKind === "cone"
+      ? authoredConeFeatureType(savedType, topRadius)
+      : primitiveDefinitions[primitiveKind].type
+  const parsed = (
+    type.schemaVersion === 2 ? coneFeatureParametersV2Schema : definition.schema
+  ).safeParse({
+    ...baseDimensions,
+    ...(type.schemaVersion === 2 ? { topRadius } : {}),
     ...(["cone", "pyramid"].includes(primitiveKind) ? { centered: values.centered } : {}),
     ...(primitiveKind === "pyramid" ? { sides: Number(values.sides) } : {}),
     origin: origin.origin,
   })
   if (!parsed.success) {
-    const radiusOrderInvalid =
-      primitiveKind === "torus" && parsed.error.issues.some(({ path }) => path[0] === "minorRadius")
+    const radiusPath = primitiveKind === "torus" ? "minorRadius" : "topRadius"
+    const radiusOrderInvalid = parsed.error.issues.some(({ path }) => path[0] === radiusPath)
     return {
       ok: false as const,
       issues: coupledPrimitiveIssues(primitiveKind, radiusOrderInvalid, copy),
     }
   }
-  return { ok: true as const, parameters: parsed.data }
+  return { ok: true as const, parameters: parsed.data, type }
 }
 
 function primitiveFeatureRecord(
-  primitiveKind: BasicPrimitiveKind,
   mode: BasicPrimitiveFormMode,
   featureId: FeatureId,
   parameters: Extract<ReturnType<typeof parsePrimitiveValues>, { ok: true }>,
 ) {
   return featureRecordSchema.parse(
     mode.kind === "edit"
-      ? { ...mode.feature, parameters: parameters.parameters }
+      ? { ...mode.feature, type: parameters.type, parameters: parameters.parameters }
       : {
           schemaVersion: 0,
           id: featureId,
-          type: primitiveDefinitions[primitiveKind].type,
+          type: parameters.type,
           parameters: parameters.parameters,
           dependencies: [],
           references: [],
@@ -298,6 +321,7 @@ function useBasicPrimitiveDraft(props: BasicPrimitiveFormProps) {
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
+  const savedType = mode.kind === "edit" ? mode.feature.type : null
   const form = useCadForm({
     validationLogic: cadFormValidationLogic,
     defaultValues: initialPrimitiveValues(primitiveKind, mode, displayUnits.length),
@@ -309,6 +333,7 @@ function useBasicPrimitiveDraft(props: BasicPrimitiveFormProps) {
           variables,
           copy,
           displayUnits.length,
+          savedType,
         )
         return parsed.ok ? undefined : { form: copy.validationSummary, fields: parsed.issues }
       },
@@ -321,13 +346,14 @@ function useBasicPrimitiveDraft(props: BasicPrimitiveFormProps) {
         variables,
         copy,
         displayUnits.length,
+        savedType,
       )
       if (!parsed.ok) return
       clearSubmissionErrors()
       await submitFeatureMutation({
         baseRevision,
         copy,
-        feature: primitiveFeatureRecord(primitiveKind, mode, featureId, parsed),
+        feature: primitiveFeatureRecord(mode, featureId, parsed),
         onSave,
         onSaved,
         setMessage,
@@ -336,11 +362,18 @@ function useBasicPrimitiveDraft(props: BasicPrimitiveFormProps) {
   })
 
   const values = useStore(form.store, (state) => state.values)
-  const parsed = parsePrimitiveValues(primitiveKind, values, variables, copy, displayUnits.length)
+  const parsed = parsePrimitiveValues(
+    primitiveKind,
+    values,
+    variables,
+    copy,
+    displayUnits.length,
+    savedType,
+  )
   const issues = parsed.ok ? {} : parsed.issues
   useDebouncedFeaturePreview({
     onPreviewChange: onPreviewChange ?? IGNORE_PREVIEW,
-    preview: parsed.ok ? primitiveFeatureRecord(primitiveKind, mode, featureId, parsed) : null,
+    preview: parsed.ok ? primitiveFeatureRecord(mode, featureId, parsed) : null,
   })
 
   usePrimitivePlacementRequest({
@@ -424,7 +457,12 @@ export function BasicPrimitiveForm(props: BasicPrimitiveFormProps) {
                   )}
                 </form.Field>
               ) : null}
-              {dimensions.map((field) => lengthField(field, copy.expressionDescription))}
+              {dimensions.map((field) =>
+                lengthField(
+                  field,
+                  field === "topRadius" ? copy.topRadiusDescription : copy.expressionDescription,
+                ),
+              )}
             </>
           }
           centeredField={

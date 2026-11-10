@@ -112,14 +112,18 @@ complete parameter record and the original feature ID. Verify the saved feature 
 ## Registered primitives
 
 Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete
-typed `parameters` record. Cylinder, pointed Cone, Sphere, ring Torus and regular Pyramid each
+typed `parameters` record. Cylinder, Cone, Sphere, ring Torus and regular Pyramid each
 have named create/update tools using their registered domain schemas. Supply quantity dimensions,
 quantity `{ x, y, z }` origin, applicable `centered`, explicit `suppressed`, the label to retain,
 stable feature ID, fresh command ID and current owned draft revision. These independent primitives
 accept no dependencies or topology references. Read the full existing feature before updating;
 preserve its identity and raw expressions. The live schemas define bounds and required fields.
 Torus requires major radius greater than minor radius; Pyramid takes 3–64 integer sides and a
-circumradius. Wedge and truncated Cone are not registered primitive contracts.
+circumradius. Cone takes an optional typed `topRadius`: omit it (or pass a literal zero) for the
+exact pointed Cone v1; any other value authors Cone v2, which accepts 0 or 0.001 mm and larger, must
+differ from the base `radius`, and inverts the taper when larger than the base. Resubmit `topRadius`
+with its expression on every update of a truncated cone. Wedge and horn/spindle Torus are not
+registered primitive contracts.
 
 Inspect exact preview volume, bounds and body count before commit. A valid matching CAD auto-apply
 grant covers all shipped first-party primitive families and supported feature versions, including

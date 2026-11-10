@@ -169,6 +169,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.compound",
         "org.vibeshape.feature.part-design.compound",
         "org.vibeshape.feature.part-design.cone",
+        "org.vibeshape.feature.part-design.cone",
         "org.vibeshape.feature.part-design.connect-mounts",
         "org.vibeshape.feature.part-design.cylinder",
         "org.vibeshape.feature.part-design.extrusion",

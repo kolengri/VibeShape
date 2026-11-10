@@ -196,6 +196,29 @@ describe("named primitive and lifecycle authority", () => {
   )
 
   it.each([
+    ["truncated", createLengthQuantity(6, "mm", "#top"), 2],
+    ["literal zero", createLengthQuantity(0, "mm", "0 mm"), 1],
+  ] as const)(
+    "routes a %s cone top radius to the owning cone version",
+    async (_name, topRadius, schemaVersion) => {
+      const { executor, applyCommand } = setup()
+      const parameters = { ...primitiveParameters("cone"), topRadius }
+      await executor.execute(
+        localOperationSchema.parse({ tool: "create_cone", arguments: { ...feature, parameters } }),
+      )
+      const request = applyCommand.mock.calls[0]?.[1]
+      expect(parseDocumentCommand(request.command).ok).toBe(true)
+      const authored = request.command.payload.feature
+      expect(authored.type).toMatchObject({
+        typeId: "org.vibeshape.feature.part-design.cone",
+        schemaVersion,
+      })
+      if (schemaVersion === 2) expect(authored.parameters).toEqual(parameters)
+      else expect(authored.parameters).toEqual(primitiveParameters("cone"))
+    },
+  )
+
+  it.each([
     ["remove_feature", "org.vibeshape.feature.remove", { featureId: id(4) }],
     ["remove_sketch", "org.vibeshape.sketch.remove", { sketchId: id(6) }],
     [

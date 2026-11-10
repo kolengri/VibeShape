@@ -399,6 +399,8 @@ function useBasicPrimitiveFormCopy(
     parameters: t(`${primitiveKind}.parameters`),
     dimensions: shared("dimensions"),
     radius: shared("radius"),
+    topRadius: shared("topRadius"),
+    topRadiusDescription: shared("topRadiusDescription"),
     height: shared("height"),
     majorRadius: shared("majorRadius"),
     minorRadius: shared("minorRadius"),
@@ -418,6 +420,7 @@ function useBasicPrimitiveFormCopy(
     invalidRange: shared("invalidRange"),
     invalidPositionRange: shared("invalidPositionRange"),
     invalidTorusRadii: shared("invalidTorusRadii"),
+    invalidConeTopRadius: shared("invalidConeTopRadius"),
     invalidWorkspaceBounds: shared("invalidWorkspaceBounds"),
   }
 }

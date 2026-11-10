@@ -283,6 +283,30 @@ export const coneFeatureContentParametersSchema = z
     return radialPrimitiveWithinWorkspace(origin, radius, minimumZ, minimumZ + height)
   }, "Cone dimensions and placement must remain within the 100000 mm workspace.")
 
+/** Cone version 2: zero top radius is the pointed apex, otherwise an exact frustum. */
+export const coneFeatureContentParametersV2Schema = z
+  .object({
+    radius: cadLengthSchema,
+    topRadius: z.union([z.literal(0), cadLengthSchema]),
+    height: cadLengthSchema,
+    centered: z.boolean(),
+    origin: vector3Schema.default([0, 0, 0]),
+  })
+  .strict()
+  .refine(({ radius, topRadius }) => radius !== topRadius, {
+    path: ["topRadius"],
+    message: "A truncated cone requires a top radius that differs from its base radius.",
+  })
+  .refine(({ radius, topRadius, height, centered, origin }) => {
+    const minimumZ = origin[2] - (centered ? height / 2 : 0)
+    return radialPrimitiveWithinWorkspace(
+      origin,
+      Math.max(radius, topRadius),
+      minimumZ,
+      minimumZ + height,
+    )
+  }, "Cone dimensions and placement must remain within the 100000 mm workspace.")
+
 export const pyramidFeatureContentParametersSchema = z
   .object({
     sides: z.number().int().min(3).max(64),
