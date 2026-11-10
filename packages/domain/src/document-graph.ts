@@ -54,6 +54,7 @@ import {
 } from "./part-design-body-combination"
 import { chamferFeatureTypeV3, readChamferFeatureParametersV3 } from "./part-design-chamfer"
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
+import { filletFeatureTypeV3, readFilletFeatureParametersV3 } from "./part-design-fillet"
 import {
   expectedHoleDependencyIds,
   holeFeatureType,
@@ -256,6 +257,7 @@ const bodySelectionParameterReaders = new Map<string, BodySelectionParameterRead
   [featureTypeKey(patternFeatureType.type), readPatternFeatureParameters],
   [featureTypeKey(patternFeatureTypeV2.type), readPatternFeatureParametersV2],
   [featureTypeKey(chamferFeatureTypeV3.type), readChamferFeatureParametersV3],
+  [featureTypeKey(filletFeatureTypeV3.type), readFilletFeatureParametersV3],
   [featureTypeKey(pressPullFeatureType.type), readPressPullFeatureParameters],
   [featureTypeKey(shellFeatureType.type), readShellFeatureParameters],
   [featureTypeKey(shellFeatureTypeV2.type), readShellFeatureParameters],

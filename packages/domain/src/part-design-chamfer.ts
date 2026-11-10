@@ -1,14 +1,19 @@
 import { z } from "zod"
 import { bodyReferenceSchema } from "./body-reference"
-import { bodyFaceRefSchema, bodyTopoRefSchema } from "./body-topology-reference"
-import { canonicalJson } from "./canonical-json"
+import {
+  type BodyTopoRef,
+  bodyEdgeRefSchema,
+  bodyFaceRefSchema,
+  bodyTopoRefContent,
+  bodyTopoRefDurableKeys,
+} from "./body-topology-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { angleQuantitySchema, lengthQuantitySchema } from "./units"
 import { resolveQuantityExpression } from "./variables"
 
-export const chamferEdgeRefSchema = bodyTopoRefSchema.safeExtend({ kind: z.literal("edge") })
+export const chamferEdgeRefSchema = bodyEdgeRefSchema
 export const chamferTargetSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -27,15 +32,6 @@ const angleSchema = angleQuantitySchema.refine(
   ({ value }) => value > 0 && value < Math.PI / 2,
   "Chamfer angles must be strictly between zero and 90 degrees.",
 )
-
-function referenceKeys(reference: z.infer<typeof bodyTopoRefSchema>) {
-  const prefix = `${reference.kind}:${reference.outputRole}:`
-  const keys = [
-    reference.semanticRole && `${prefix}role:${reference.semanticRole}`,
-    reference.lineageToken && `${prefix}lineage:${reference.lineageToken}`,
-  ].filter((value) => value !== undefined)
-  return keys.length ? keys : [canonicalJson(reference)]
-}
 
 export const chamferFeatureParametersV3Schema = z
   .object({
@@ -65,10 +61,7 @@ export const chamferFeatureParametersV3Schema = z
       issue(["flip"], "Equal-distance Chamfer has no direction to flip.")
     const targets = new Set<string>()
     const overrides = new Set<string>()
-    const checkOwner = (
-      reference: z.infer<typeof bodyTopoRefSchema>,
-      path: (string | number)[],
-    ) => {
+    const checkOwner = (reference: BodyTopoRef, path: (string | number)[]) => {
       if (
         reference.featureId !== parameters.targetBody.featureId ||
         reference.outputRole !== parameters.targetBody.outputRole
@@ -78,7 +71,7 @@ export const chamferFeatureParametersV3Schema = z
     parameters.targets.forEach((target, index) => {
       const reference = target.kind === "edge" ? target.edge : target.face
       checkOwner(reference, ["targets", index])
-      const keys = referenceKeys(reference)
+      const keys = bodyTopoRefDurableKeys(reference)
       if (keys.some((key) => targets.has(key)))
         issue(["targets", index], "Chamfer targets must be distinct.")
       for (const key of keys) targets.add(key)
@@ -93,7 +86,7 @@ export const chamferFeatureParametersV3Schema = z
     })
     parameters.directionOverrides.forEach((reference, index) => {
       checkOwner(reference, ["directionOverrides", index])
-      const keys = referenceKeys(reference)
+      const keys = bodyTopoRefDurableKeys(reference)
       if (keys.some((key) => overrides.has(key)))
         issue(["directionOverrides", index], "Chamfer direction overrides must be distinct.")
       for (const key of keys) overrides.add(key)
@@ -120,13 +113,6 @@ export function readChamferFeatureParametersV3(
   if (featureTypeKey(feature.type) !== featureTypeKey(chamferFeatureTypeV3.type)) return null
   const parsed = chamferFeatureParametersV3Schema.safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
-}
-
-function contentReference<T extends z.infer<typeof bodyTopoRefSchema>>({
-  featureId: _featureId,
-  ...reference
-}: T) {
-  return reference
 }
 
 export const chamferFeatureTypeHandlerV3: TrustedFeatureTypeHandler = {
@@ -181,14 +167,14 @@ export const chamferFeatureTypeHandlerV3: TrustedFeatureTypeHandler = {
       tangentPropagation: parsed.tangentPropagation,
       targets: parsed.targets.map((target) =>
         target.kind === "face"
-          ? { kind: "face", face: contentReference(target.face) }
+          ? { kind: "face", face: bodyTopoRefContent(target.face) }
           : {
               kind: "edge",
-              edge: contentReference(target.edge),
-              ...(target.sideFace ? { sideFace: contentReference(target.sideFace) } : {}),
+              edge: bodyTopoRefContent(target.edge),
+              ...(target.sideFace ? { sideFace: bodyTopoRefContent(target.sideFace) } : {}),
             },
       ),
-      directionOverrides: parsed.directionOverrides.map(contentReference),
+      directionOverrides: parsed.directionOverrides.map(bodyTopoRefContent),
     }
   },
 }
