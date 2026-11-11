@@ -66,6 +66,7 @@ import {
 import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
+import { patternFeatureTypeV3, readPatternFeatureParametersV3 } from "./part-design-pattern-path"
 import { placementFeatureType } from "./part-design-placement"
 import { pressPullFeatureType } from "./part-design-press-pull"
 import { scaleFeatureType } from "./part-design-scale"
@@ -171,6 +172,13 @@ const sketchSolidInputReaders = new Map<
     featureTypeKey(loftFeatureTypeV2.type),
     (feature) =>
       readLoftFeatureParameters(feature)?.sections.map(({ sketchId }) => sketchId) ?? null,
+  ],
+  [
+    featureTypeKey(patternFeatureTypeV3.type),
+    (feature) => {
+      const parameters = readPatternFeatureParametersV3(feature)
+      return parameters ? [parameters.path.sketchId] : null
+    },
   ],
   [
     featureTypeKey(sweepFeatureType.type),

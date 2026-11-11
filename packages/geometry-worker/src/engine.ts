@@ -67,6 +67,7 @@ import {
   mirrorFeatureContentParametersV3Schema,
   type PatternFeatureContentParameters,
   type PatternFeatureContentParametersV2,
+  type PatternFeatureContentParametersV3,
   type PlacementFeatureContentParameters,
   type PressPullFeatureContentParameters,
   type PrintOptimizationReconstruction,
@@ -74,6 +75,7 @@ import {
   patternContentOutputRoles,
   patternFeatureContentParametersSchema,
   patternFeatureContentParametersV2Schema,
+  patternFeatureContentParametersV3Schema,
   placementFeatureContentParametersSchema,
   pressPullFeatureContentParametersSchema,
   printOptimizationReconstructionInputSchema,
@@ -193,6 +195,7 @@ import { createOcctLoft } from "./occt-loft"
 import { createOcctLoftPatchNetwork, type LoftEndSupport } from "./occt-loft-filling"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
 import { mirrorOcctShape } from "./occt-mirror"
+import { PathPatternError, samplePathPatternPlacements } from "./occt-path-sampling"
 import { patternOcctShape } from "./occt-pattern"
 import { placeOcctShape } from "./occt-placement"
 import { splitOcctShape } from "./occt-plane-split"
@@ -1383,7 +1386,10 @@ type ParsedFeature =
   | { kind: "split"; parameters: SplitFeatureContentParameters | SplitFeatureContentParametersV2 }
   | {
       kind: "pattern"
-      parameters: PatternFeatureContentParameters | PatternFeatureContentParametersV2
+      parameters:
+        | PatternFeatureContentParameters
+        | PatternFeatureContentParametersV2
+        | PatternFeatureContentParametersV3
     }
   | { kind: "constrained-loft"; parameters: LoftFeatureContentParametersV3 }
   | { kind: "loft"; parameters: LoftFeatureContentParameters | LoftFeatureContentParametersV2 }
@@ -2469,6 +2475,27 @@ function parsePatternFeatureV2(input: FeatureEvaluationInput): FeatureParseResul
       )
 }
 
+/** The target body leads; later inputs are sketch-path owners consumed only for scheduling. */
+function parsePatternFeatureV3(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = patternFeatureContentParametersV3Schema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success)
+    return featureFailure("invalid-feature-parameters", "Path pattern parameters are invalid.")
+  const content = input.content
+  const valid =
+    content.schemaVersion === 1 &&
+    content.feature.references.length === 0 &&
+    content.feature.inputRoles[0] != null &&
+    content.feature.inputRoles.slice(1).every((role) => role === null) &&
+    analyticalSketchInputsAreValid(input, [parameters.data.path], 9)
+  return valid
+    ? { ok: true, feature: { kind: "pattern", parameters: parameters.data } }
+    : invalidInputCardinality(
+        "Path pattern requires its exact target body followed by its sketch-path owners.",
+      )
+}
+
 function parseImportedFeature(input: FeatureEvaluationInput): FeatureParseResult {
   if (
     input.dependencies.length !== 0 ||
@@ -2760,6 +2787,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [SPLIT_FEATURE_TYPE_KEY.replace("#1", "#2"), parseSplitFeatureV2],
   [PATTERN_FEATURE_TYPE_KEY, parsePatternFeature],
   [PATTERN_FEATURE_TYPE_KEY.replace("#1", "#2"), parsePatternFeatureV2],
+  [PATTERN_FEATURE_TYPE_KEY.replace("#1", "#3"), parsePatternFeatureV3],
   [LOFT_FEATURE_TYPE_KEY, parseLoftFeature],
   [LOFT_FEATURE_TYPE_KEY.replace("#1", "#2"), parseLoftFeature],
   [LOFT_FEATURE_TYPE_KEY.replace("#1", "#3"), parseConstrainedLoftFeature],
@@ -4514,6 +4542,33 @@ function aggregateOwnedOutputs(
   }
 }
 
+function patternKernelParameters(
+  opencascade: OpenCascadeInstance,
+  parameters: Extract<ParsedFeature, { kind: "pattern" }>["parameters"],
+): Parameters<typeof patternOcctShape>[2] {
+  if (parameters.kind === "path")
+    return {
+      kind: "placements",
+      count: parameters.count,
+      placements: samplePathPatternPlacements(opencascade, parameters),
+    }
+  if (!("axisDirection" in parameters)) return parameters
+  return parameters.kind === "linear"
+    ? {
+        kind: "linear",
+        count: parameters.count,
+        axis: parameters.axisDirection,
+        spacing: parameters.spacing,
+      }
+    : {
+        kind: "circular",
+        count: parameters.count,
+        axis: parameters.axisDirection,
+        center: parameters.axisOrigin,
+        angle: parameters.angle,
+      }
+}
+
 function createGeneratedBodyBundle(
   opencascade: OpenCascadeInstance,
   target: Shape3D | undefined,
@@ -4526,22 +4581,7 @@ function createGeneratedBodyBundle(
       patternOcctShape(
         opencascade,
         target,
-        "axisDirection" in feature.parameters
-          ? feature.parameters.kind === "linear"
-            ? {
-                kind: "linear",
-                count: feature.parameters.count,
-                axis: feature.parameters.axisDirection,
-                spacing: feature.parameters.spacing,
-              }
-            : {
-                kind: "circular",
-                count: feature.parameters.count,
-                axis: feature.parameters.axisDirection,
-                center: feature.parameters.axisOrigin,
-                angle: feature.parameters.angle,
-              }
-          : feature.parameters,
+        patternKernelParameters(opencascade, feature.parameters),
       ),
     )
   const split =
@@ -4599,7 +4639,7 @@ async function bodyBundleForEvaluation(
       throw new Error("The cached imported source digest does not match its bytes.")
   }
   if (!source.brepHit) {
-    validateCombinationSources(opencascade, source.dependencies)
+    validateCombinationSources(opencascade, bodyBundleSources(feature, source.dependencies))
     if (feature.kind === "imported")
       throw new Error("Imported source materialization did not produce geometry.")
     if (feature.kind === "split" || feature.kind === "pattern")
@@ -4647,6 +4687,25 @@ function cachedRevolveProfileBundle(
     return { role, shape: output }
   })
   return { shape, outputs }
+}
+
+/** Path-pattern sketch owners after the target only schedule the path; they are not bodies. */
+function bodyBundleSources(
+  feature: Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
+  dependencies: readonly Shape3D[],
+) {
+  return feature.kind === "pattern" && feature.parameters.kind === "path"
+    ? dependencies.slice(0, 1)
+    : dependencies
+}
+
+function bodyBundleFailureMessage(
+  feature: Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
+  error: unknown,
+) {
+  if (feature.kind === "split")
+    return "Split plane must cross the body and produce two connected positive-volume pieces."
+  return error instanceof PathPatternError ? error.message : "Compound geometry evaluation failed."
 }
 
 function disposeUncachedBodyBundle(
@@ -5125,13 +5184,11 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           opencascade,
           sourceAsset,
         ),
-      (_error, cleanupSucceeded) =>
+      (error, cleanupSucceeded) =>
         featureFailure(
           "invalid-feature-geometry",
           cleanupSucceeded
-            ? feature.kind === "split"
-              ? "Split plane must cross the body and produce two connected positive-volume pieces."
-              : "Compound geometry evaluation failed."
+            ? bodyBundleFailureMessage(feature, error)
             : "Named body evaluation failed and temporary shape cleanup did not complete.",
         ),
     )

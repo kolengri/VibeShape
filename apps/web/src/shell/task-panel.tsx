@@ -95,6 +95,10 @@ import {
   profileSupportReference,
   profileSupportReferences,
 } from "../features/part-design/profile-feature-selection"
+import type {
+  PatternPathPickingContext,
+  PatternPathPickingRequest,
+} from "../features/pattern/use-pattern-path-picking"
 import type { PlacementManipulator } from "../features/placement/placement-manipulator"
 import { PressPullTaskPanel } from "../features/press-pull/press-pull-task-panel"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
@@ -186,6 +190,8 @@ type TaskPanelProps = Readonly<{
   onEdgeTreatmentPickingContextChange?: (context: EdgeTreatmentPickingContext | null) => void
   shellPickRequest?: ShellPickRequest | null
   onShellPickingContextChange?: (context: ShellPickingContext | null) => void
+  patternPathPickRequest?: PatternPathPickingRequest | null
+  onPatternPathPickingContextChange?: (context: PatternPathPickingContext | null) => void
   primitivePlacementRequest: PrimitivePlacementRequest | null
   revolveAngleRequest: RevolveAngleRequest | null
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
@@ -1407,6 +1413,8 @@ type ActiveTaskPanelProps = Readonly<{
   onEdgeTreatmentPickingContextChange?: TaskPanelProps["onEdgeTreatmentPickingContextChange"]
   shellPickRequest?: TaskPanelProps["shellPickRequest"]
   onShellPickingContextChange?: TaskPanelProps["onShellPickingContextChange"]
+  patternPathPickRequest?: TaskPanelProps["patternPathPickRequest"]
+  onPatternPathPickingContextChange?: TaskPanelProps["onPatternPathPickingContextChange"]
   primitivePlacementRequest: PrimitivePlacementRequest | null
   revolveAngleRequest: RevolveAngleRequest | null
   onRevolveAxisChange?: TaskPanelProps["onRevolveAxisChange"] | undefined
@@ -2113,6 +2121,8 @@ function ModelTaskPanel(props: TaskPanelProps) {
         onEdgeTreatmentPickingContextChange={props.onEdgeTreatmentPickingContextChange}
         shellPickRequest={props.shellPickRequest}
         onShellPickingContextChange={props.onShellPickingContextChange}
+        patternPathPickRequest={props.patternPathPickRequest}
+        onPatternPathPickingContextChange={props.onPatternPathPickingContextChange}
         primitivePlacementRequest={props.primitivePlacementRequest}
         revolveAngleRequest={props.revolveAngleRequest}
         onRevolveAxisChange={props.onRevolveAxisChange}

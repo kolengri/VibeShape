@@ -32,6 +32,7 @@ import {
   readMirrorFeatureParametersV3,
 } from "./part-design-mirror"
 import { readPatternFeatureParameters, readPatternFeatureParametersV2 } from "./part-design-pattern"
+import { readPatternFeatureParametersV3 } from "./part-design-pattern-path"
 import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readPressPullFeatureParameters } from "./part-design-press-pull"
 import { readScaleFeatureParameters } from "./part-design-scale"
@@ -75,6 +76,7 @@ const exactTargetReaders = [
   (feature: FeatureRecord) => readMirrorFeatureParametersV3(feature)?.targetBody,
   (feature: FeatureRecord) => readPatternFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readPatternFeatureParametersV2(feature)?.targetBody,
+  (feature: FeatureRecord) => readPatternFeatureParametersV3(feature)?.targetBody,
   (feature: FeatureRecord) => readShellFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readDraftFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readScaleFeatureParameters(feature)?.targetBody,
@@ -88,6 +90,7 @@ const supportAwareTargetReaders = [
   readFilletFeatureParametersV3,
   readSplitFeatureParametersV2,
   readPatternFeatureParametersV2,
+  readPatternFeatureParametersV3,
 ]
 function exactBodyTarget(feature: FeatureRecord) {
   for (const read of exactTargetReaders) {

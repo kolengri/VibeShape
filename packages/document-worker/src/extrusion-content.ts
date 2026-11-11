@@ -57,14 +57,14 @@ import {
 import { prepareExtrusionEndContent } from "./extrusion-end-content"
 import { prepareFdmContent } from "./fdm-content"
 import {
+  prepareSketchPathFeatureContent,
+  shouldPrepareSketchPathFeatureContent,
+} from "./pattern-path-content"
+import {
   prepareReferenceSupportedFeatureContent,
   shouldPrepareReferenceFrameFeatureContent,
 } from "./reference-frame-content"
 import { prepareRevolveV8Content } from "./revolve-content"
-import {
-  prepareSweepLoftFeatureContent,
-  shouldPrepareSweepLoftFeatureContent,
-} from "./sweep-loft-content"
 import { prepareThreadContent } from "./thread-content"
 
 function failure(
@@ -593,7 +593,7 @@ async function prepareFeatureContent(
     modelMaterializationCache,
   })
   if (parametric) return parametric
-  if (shouldPrepareSweepLoftFeatureContent(feature)) {
+  if (shouldPrepareSketchPathFeatureContent(feature)) {
     const sketchInput = {
       document,
       features,
@@ -603,7 +603,7 @@ async function prepareFeatureContent(
       solveSketch,
       solvedBySketchId,
     }
-    return prepareSweepLoftFeatureContent({
+    return prepareSketchPathFeatureContent({
       document,
       feature,
       features,
@@ -947,7 +947,7 @@ export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
       readHoleFeatureParameters(feature) ||
       readFdmFeatureParameters(feature) ||
       typeof readThreadFeatureParameters(feature)?.axis === "object" ||
-      shouldPrepareSweepLoftFeatureContent(feature),
+      shouldPrepareSketchPathFeatureContent(feature),
   )
 }
 

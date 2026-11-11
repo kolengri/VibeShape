@@ -147,7 +147,7 @@ export type GeometryViewportSketchContext = Readonly<{
     candidates: readonly ViewerSketchReferenceCandidate[]
     measurements?: ReadonlyMap<string, QuickMeasurement | undefined>
     onSelect: (candidate: ViewerSketchReferenceCandidate) => void
-    purpose?: "pierce" | "revolve-axis" | "edge-treatment" | "hole-point" | "use"
+    purpose?: "pierce" | "revolve-axis" | "edge-treatment" | "hole-point" | "pattern-path" | "use"
   }>
   faceIntersectionSelection?: Readonly<{
     onSelect: (selection: ViewerSelection) => void
@@ -3087,10 +3087,17 @@ function SavedProfileSelectOtherOverlay({
   )
 }
 
-type SketchReferencePurpose = "pierce" | "revolve-axis" | "edge-treatment" | "hole-point" | "use"
+type SketchReferencePurpose =
+  | "pierce"
+  | "revolve-axis"
+  | "edge-treatment"
+  | "hole-point"
+  | "pattern-path"
+  | "use"
 
 function referenceSelectionMessageKey(purpose: SketchReferencePurpose) {
   if (purpose === "hole-point") return "holePointSelection" as const
+  if (purpose === "pattern-path") return "patternPathSelection" as const
   if (purpose === "pierce") return "sketchPierceSelection" as const
   if (purpose === "revolve-axis") return "revolveAxisSelection" as const
   if (purpose === "edge-treatment") return "edgeTreatmentSelection" as const
@@ -3099,6 +3106,7 @@ function referenceSelectionMessageKey(purpose: SketchReferencePurpose) {
 
 function referenceCandidateMessageKey(purpose: SketchReferencePurpose) {
   if (purpose === "hole-point") return "holePointCandidate" as const
+  if (purpose === "pattern-path") return "patternPathCandidate" as const
   if (purpose === "pierce") return "sketchPierceCandidate" as const
   if (purpose === "revolve-axis") return "revolveAxisCandidate" as const
   if (purpose === "edge-treatment") return "edgeTreatmentCandidate" as const
@@ -3153,6 +3161,7 @@ function SketchReferenceKeyboardPicker({
   const t = useTranslations("app.shell.viewport")
   const keys = {
     "hole-point": ["holePointKeyboardSelection", "holePointKeyboardPlaceholder"],
+    "pattern-path": ["patternPathKeyboardSelection", "patternPathKeyboardPlaceholder"],
     use: ["sketchReferenceKeyboardSelection", "sketchReferenceKeyboardPlaceholder"],
     pierce: ["sketchPierceKeyboardSelection", "sketchPierceKeyboardPlaceholder"],
     "revolve-axis": ["revolveAxisKeyboardSelection", "revolveAxisKeyboardPlaceholder"],

@@ -155,6 +155,22 @@ export function selectedPathPointIds(
       .flatMap(({ startPointId, endPointId }) => [startPointId, endPointId]) ?? [],
   )
 }
+/** Toggles one path curve and drops a start point that no remaining selected curve owns. */
+export function togglePathCurve(
+  path: PathSketchOption | undefined,
+  values: Readonly<{ entityIds: readonly SketchEntityId[]; startPointId: string }>,
+  entityId: SketchEntityId,
+  selected: boolean,
+) {
+  const entityIds = selected
+    ? [...new Set([...values.entityIds, entityId])].sort()
+    : values.entityIds.filter((id) => id !== entityId)
+  const remaining = selectedPathPointIds(path, entityIds)
+  return {
+    entityIds,
+    startPointId: remaining.has(values.startPointId) ? values.startPointId : "",
+  }
+}
 function sweepParameters(
   values: SweepLoftFormValues,
   profiles: readonly ProfileOption[],
