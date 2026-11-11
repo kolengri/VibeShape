@@ -256,6 +256,12 @@ const flat = [
   { x: 20, y: 0 },
 ] as const
 
+function firstJoinId(sketch: SketchRecord): string {
+  const [join] = sketch.constraints
+  if (!join) throw new Error("The fixture must contain a tangent join.")
+  return join.id
+}
+
 function withConstraints(sketch: SketchRecord, constraints: readonly object[]) {
   return { ...sketch, constraints: [...sketch.constraints, ...constraints] } as SketchRecord
 }
@@ -322,7 +328,7 @@ describe("tangent joins under large single solves", () => {
     // The outgoing handle starts near (13.6, 5.0), beyond the join at (10, 6).
     const solution = solved(sketch, [{ entityId: outgoing.control1PointId, x: 7, y: 7 }])
     expect(solution.status).toBe("failed")
-    expect(solution.failedConstraintIds).toEqual([sketch.constraints[0]?.id])
+    expect<readonly string[]>(solution.failedConstraintIds).toEqual([firstJoinId(sketch)])
     expectStrictG1OrFailedJoins(sketch, solution)
   })
 
@@ -341,7 +347,7 @@ describe("tangent joins under large single solves", () => {
     } as SketchRecord
     const solution = solved(cusp, [])
     expect(solution.status).toBe("failed")
-    expect(solution.failedConstraintIds).toContain(sketch.constraints[0]?.id)
+    expect<readonly string[]>(solution.failedConstraintIds).toContain(firstJoinId(sketch))
   })
 
   it("does not carry a fixed handle when its through-point is dragged", () => {
