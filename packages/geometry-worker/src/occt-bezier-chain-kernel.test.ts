@@ -318,8 +318,8 @@ describe("fitted Bezier chains for non-analytical OCCT edges", () => {
       if (!chain || !flipped) throw new Error("The milder excursion must fit within 64 segments.")
       expect(chain.maxDeviation).toBeLessThanOrEqual(1e-4)
       expect(denseDeviation(forward, chain.poles)).toBeLessThanOrEqual(chain.maxDeviation)
-      // Chains follow the oriented edge from its topological start vertex, so the reversed edge
-      // publishes the same curve backwards; sketch references pair ends with stored anchors.
+      // Chains follow the curve parameterization, so the reversed curve publishes the same poles
+      // backwards; sketch references pair ends with their stored anchors, not with this order.
       expect(chain.poles[0]).toEqual([0, 0, 2])
       expect(flipped.poles[0]?.[0]).toBeCloseTo(20, 9)
       const backwards = [...flipped.poles].reverse()
