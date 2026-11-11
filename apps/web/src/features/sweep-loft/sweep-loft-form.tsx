@@ -43,7 +43,7 @@ export type SweepLoftFormCopy = ParameterPanelCopy &
     sketchPath: string
     helixPath: string
     helixPathDescription: string
-    leadAngle: (angle: string) => string
+    leadAngle: (angle: number) => string
     submit: string
     parameters: string
     validationSummary: string
@@ -334,7 +334,7 @@ function HelicalPathFields({
       />
       {lead !== null && (
         <p className="text-xs text-muted-foreground" aria-live="polite">
-          {copy.leadAngle((Math.round(lead * 1000) / 1000).toString())}
+          {copy.leadAngle(lead)}
         </p>
       )}
     </>

@@ -123,7 +123,7 @@ const source = messages.app.sweepLoft
 export const copy: SweepLoftFormCopy = {
   ...source,
   ...messages.app.helix,
-  leadAngle: (angle) => `Required profile plane tilt (lead angle): ${angle}°`,
+  leadAngle: (angle: number) => `Required profile plane tilt (lead angle): ${angle}°`,
   title: source.loftTitle,
   description: source.loftDescription,
   submit: source.create,

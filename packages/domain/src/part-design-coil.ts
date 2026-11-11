@@ -6,9 +6,11 @@ import type { FeatureParameterResolution, TrustedFeatureTypeHandler } from "./fe
 import type { FeatureId } from "./identifiers"
 import {
   addHelixExtentIssues,
+  type CoilSectionSize,
+  coilMeridianSpan,
   helixContentFields,
   helixFields,
-  minimumHelixPitch,
+  minimumCoilPitch,
   resolveHelixParameters,
   resolveHelixQuantity,
 } from "./part-design-helix"
@@ -63,27 +65,40 @@ export const coilFeatureParametersSchema = z
       })
     addHelixExtentIssues(parameters, context)
     const size = coilSectionSize(parameters.section)
-    if (size.radial / 2 >= parameters.radius.value)
+    if (size.radial / 2 >= parameters.radius.value) {
       context.addIssue({
         code: "custom",
         path: ["section"],
         message:
           "The coil section must not reach the helix axis; reduce the section or increase the radius.",
       })
-    const minimum = minimumHelixPitch(parameters.radius.value, size.axial)
-    if (parameters.pitch.value <= minimum)
+      return
+    }
+    const numeric = coilSectionMillimeters(parameters.section)
+    if (
+      parameters.pitch.value <=
+      coilMeridianSpan(parameters.radius.value, parameters.pitch.value, numeric)
+    )
       context.addIssue({
         code: "custom",
         path: ["pitch"],
-        message: Number.isFinite(minimum)
-          ? `Adjacent coil turns would intersect. Increase the pitch above ${formatMillimeters(minimum)} mm or reduce the section height.`
-          : "Adjacent coil turns would intersect at any pitch; increase the radius or reduce the section height.",
+        message: `Adjacent coil turns would intersect. Increase the pitch above ${pitchFormat.format(
+          minimumCoilPitch(parameters.radius.value, numeric),
+        )} mm or reduce the section.`,
       })
   })
 export type CoilFeatureParameters = Readonly<z.infer<typeof coilFeatureParametersSchema>>
 
-function formatMillimeters(value: number) {
-  return (Math.ceil(value * 1000) / 1000).toString()
+// Rounds up so the stated minimum is itself a clear pitch.
+const pitchFormat = new Intl.NumberFormat("en", {
+  maximumFractionDigits: 3,
+  roundingMode: "ceil",
+} as Intl.NumberFormatOptions)
+
+export function coilSectionMillimeters(section: CoilSection): CoilSectionSize {
+  return section.kind === "circular"
+    ? { kind: "circular", diameter: section.diameter.value }
+    : { kind: "rectangular", width: section.width.value, height: section.height.value }
 }
 
 export const coilFeatureType = featureTypeDescriptorSchema.parse({

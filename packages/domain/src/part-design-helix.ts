@@ -58,14 +58,85 @@ export function helixTurns(extent: HelixExtent, pitch: number) {
   return extent.kind === "turns" ? extent.turns.value : extent.height.value / pitch
 }
 
+/** Centered coil section in millimeters: width is radial, height is axial. */
+export type CoilSectionSize = Readonly<
+  { kind: "circular"; diameter: number } | { kind: "rectangular"; width: number; height: number }
+>
+
 /**
- * A section of axial size `s`, normal to the helix tangent, spans `s / cos(lead angle)` in the
- * meridian plane. Adjacent turns stay apart only when the pitch exceeds that span.
+ * Axial position at which a section point (`inward` along the principal normal, `binormal` along
+ * the binormal) crosses the start meridian half-plane. The point sits at radial R − inward,
+ * tangential −binormal·p/L and axial binormal·2πR/L (L = √((2πR)² + p²)); the screw motion
+ * carries it back by its polar angle, so points nearer the axis climb faster than `s / cos α`.
+ * Mirrors `helixMeridianAxial` in the worker protocol.
  */
-export function minimumHelixPitch(radius: number, axialSectionSize: number) {
+function sectionPointMeridianAxial(
+  radius: number,
+  pitch: number,
+  inward: number,
+  binormal: number,
+) {
+  const radial = radius - inward
+  if (!(radial > 0)) return Number.POSITIVE_INFINITY
   const circumference = 2 * Math.PI * radius
-  if (axialSectionSize >= circumference) return Number.POSITIVE_INFINITY
-  return (axialSectionSize * circumference) / Math.sqrt(circumference ** 2 - axialSectionSize ** 2)
+  const length = Math.hypot(circumference, pitch)
+  const angle = Math.atan2((-binormal * pitch) / length, radial)
+  return (binormal * circumference) / length - (pitch * angle) / (2 * Math.PI)
+}
+
+function largestOnHalfTurn(f: (angle: number) => number) {
+  const samples = 96
+  let best = 0
+  for (let index = 1; index <= samples; index += 1) {
+    const angle = (Math.PI * index) / samples
+    if (f(angle) > f(best)) best = angle
+  }
+  let low = Math.max(0, best - Math.PI / samples)
+  let high = Math.min(Math.PI, best + Math.PI / samples)
+  const golden = (Math.sqrt(5) - 1) / 2
+  for (let iteration = 0; iteration < 60; iteration += 1) {
+    const left = high - golden * (high - low)
+    const right = low + golden * (high - low)
+    if (f(left) < f(right)) low = left
+    else high = right
+  }
+  return Math.max(f(best), f((low + high) / 2))
+}
+
+/**
+ * Exact axial span of the coil's meridian cross-section. The section is symmetric in the
+ * binormal, so the span is twice the highest crossing; adjacent turns are disjoint exactly when
+ * the pitch exceeds it (see ADR-0155).
+ */
+export function coilMeridianSpan(radius: number, pitch: number, section: CoilSectionSize) {
+  if (section.kind === "rectangular")
+    return 2 * sectionPointMeridianAxial(radius, pitch, section.width / 2, section.height / 2)
+  const half = section.diameter / 2
+  return (
+    2 *
+    largestOnHalfTurn((angle) =>
+      sectionPointMeridianAxial(radius, pitch, half * Math.cos(angle), half * Math.sin(angle)),
+    )
+  )
+}
+
+/** Smallest clear pitch found by bisection, or Infinity when the section reaches the axis. */
+export function minimumCoilPitch(radius: number, section: CoilSectionSize) {
+  const radialHalf = (section.kind === "circular" ? section.diameter : section.width) / 2
+  if (radialHalf >= radius) return Number.POSITIVE_INFINITY
+  const isClear = (pitch: number) => pitch > coilMeridianSpan(radius, pitch, section)
+  let clear = Math.max(section.kind === "circular" ? section.diameter : section.height, 1e-6)
+  while (!isClear(clear)) {
+    clear *= 2
+    if (clear > 1e7) return Number.POSITIVE_INFINITY
+  }
+  let blocked = 0
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    const middle = (blocked + clear) / 2
+    if (isClear(middle)) clear = middle
+    else blocked = middle
+  }
+  return clear
 }
 
 export function addHelixExtentIssues(

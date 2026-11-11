@@ -2914,7 +2914,7 @@
       "sketchPath": "Sketch path",
       "helixPath": "Helix",
       "helixPathDescription": "Sweep along an exact helix. Save the profile sketch on a plane through the helix start, normal to its starting tangent (tilted by the lead angle); preview never repositions it. Profiles with holes are not supported on helix paths.",
-      "leadAngle": "Required profile plane tilt (lead angle): {angle}°"
+      "leadAngle": "Required profile plane tilt (lead angle): {angle, number}°"
     },
     "helix": {
       "axis": "Helix axis",
@@ -2967,7 +2967,7 @@
       "validationSummary": "Check the highlighted coil parameters before applying.",
       "sectionReachesAxis": "The section reaches the helix axis. Reduce the section or increase the radius.",
       "turnsOutOfRange": "The height must give between 0.05 and 50 turns at this pitch.",
-      "selfIntersection": "Adjacent turns would intersect. Increase the pitch above {minimumPitch} mm or reduce the section height.",
+      "selfIntersection": "Adjacent turns would intersect. Increase the pitch above {minimumPitch, number} mm or reduce the section.",
       "selfIntersectionAnyPitch": "Adjacent turns would intersect at any pitch. Increase the radius or reduce the section height.",
       "previewFailed": "The exact coil could not be built. Check the axis, section and target body; Apply requires a successful native preview.",
       "staleRevision": "The document changed. Reopen this task before saving.",

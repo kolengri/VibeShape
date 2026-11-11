@@ -12,11 +12,11 @@ import {
   coilDependencyIds,
   coilFeatureParametersSchema,
   coilFeatureType,
-  coilSectionSize,
+  coilSectionMillimeters,
   coilSectionSizeSchema,
   readCoilFeatureParameters,
 } from "@vibeshape/domain/part-design-coil"
-import { minimumHelixPitch } from "@vibeshape/domain/part-design-helix"
+import { minimumCoilPitch } from "@vibeshape/domain/part-design-helix"
 import { defaultLengthExpression } from "../../document/document-display-units"
 import { type ExactBodyOption, exactBodyOptionId } from "../part-design/exact-body-options"
 import {
@@ -47,7 +47,7 @@ export type CoilValidationCopy = HelixValidationCopy &
     missingTarget: string
     sectionReachesAxis: string
     turnsOutOfRange: string
-    selfIntersection: (minimumPitch: string) => string
+    selfIntersection: (minimumPitch: number) => string
     selfIntersectionAnyPitch: string
   }>
 type SectionField = "diameter" | "sectionWidth" | "sectionHeight"
@@ -132,12 +132,13 @@ function crossFieldIssues(
   for (const issue of error.issues) {
     const field = issue.path[0]
     if (field === "pitch") {
-      const minimum = minimumHelixPitch(
+      const minimum = minimumCoilPitch(
         candidate.radius.value,
-        coilSectionSize(candidate.section).axial,
+        coilSectionMillimeters(candidate.section),
       )
+      // Round up so the displayed minimum is itself a clear pitch.
       issues.pitch = Number.isFinite(minimum)
-        ? copy.selfIntersection((Math.ceil(minimum * 1000) / 1000).toString())
+        ? copy.selfIntersection(Math.ceil(minimum * 1000) / 1000)
         : copy.selfIntersectionAnyPitch
     } else if (field === "section")
       issues[values.sectionKind === "circular" ? "diameter" : "sectionWidth"] =

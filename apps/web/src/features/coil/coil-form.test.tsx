@@ -36,7 +36,7 @@ const copy: CoilFormCopy = {
   ...source,
   submit: source.create,
   selfIntersection: (minimumPitch) =>
-    source.selfIntersection.replace("{minimumPitch}", minimumPitch),
+    source.selfIntersection.replace("{minimumPitch, number}", String(minimumPitch)),
 }
 const originalScrollIntoView = Element.prototype.scrollIntoView
 beforeEach(() => {
@@ -129,7 +129,7 @@ describe("Coil task panel", () => {
     const pitch = screen.getByRole("combobox", { name: messages.app.helix.pitch })
     await user.clear(pitch)
     await user.type(pitch, "1.5 mm")
-    expect(screen.getByText(copy.selfIntersection("2.002"))).toBeTruthy()
+    expect(screen.getByText(copy.selfIntersection(2.002))).toBeTruthy()
     expect(pitch.getAttribute("aria-invalid")).toBe("true")
     expect(screen.getByRole("button", { name: source.create }).hasAttribute("disabled")).toBe(true)
     await waitFor(() => expect(view.onPreviewChange).toHaveBeenLastCalledWith(null))

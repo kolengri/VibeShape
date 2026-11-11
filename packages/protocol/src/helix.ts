@@ -95,13 +95,106 @@ export function helixLength(helix: Pick<HelixContent, "radius" | "pitch" | "turn
 }
 
 /**
- * A section of axial size `s`, normal to the helix tangent, spans `s / cos(lead angle)` in the
- * meridian plane; adjacent turns stay apart only when the pitch exceeds that span.
+ * Axial coordinate, in the start meridian half-plane, of a point given in the local helix frame
+ * (x radial, y tangential, a axial). The screw motion carries the point back to angle zero:
+ * `z = a - sign·(p/2π)·atan2(y, x)`. Points must stay on the positive radial side of the axis.
  */
-export function minimumHelixPitchForSection(radius: number, axialSectionSize: number) {
+export function helixMeridianAxial(
+  point: Readonly<{ x: number; y: number; a: number }>,
+  pitch: number,
+  handedness: HelixContent["handedness"],
+) {
+  if (!(point.x > 0)) throw new Error("The helical section must not reach the helix axis.")
+  const sign = handedness === "right" ? 1 : -1
+  return point.a - (sign * pitch * Math.atan2(point.y, point.x)) / (2 * Math.PI)
+}
+
+/** Meridian span of boundary points; adjacent turns stay apart only when the pitch exceeds it. */
+export function helixMeridianSpan(
+  points: readonly Readonly<{ x: number; y: number; a: number }>[],
+  pitch: number,
+  handedness: HelixContent["handedness"],
+) {
+  let minimum = Number.POSITIVE_INFINITY
+  let maximum = Number.NEGATIVE_INFINITY
+  for (const point of points) {
+    const z = helixMeridianAxial(point, pitch, handedness)
+    minimum = Math.min(minimum, z)
+    maximum = Math.max(maximum, z)
+  }
+  return maximum - minimum
+}
+
+/**
+ * A right-handed section point `n` along the inward principal normal and `b` along the binormal
+ * lies at x = R − n, y = −b·p/L, a = b·2πR/L in the local frame, where L = √((2πR)² + p²).
+ * Points nearer the axis have a steeper local lead, so the span exceeds `s / cos(lead angle)`.
+ */
+function coilMeridianAxial(radius: number, pitch: number, n: number, b: number) {
   const circumference = 2 * Math.PI * radius
-  if (axialSectionSize >= circumference) return Number.POSITIVE_INFINITY
-  return (axialSectionSize * circumference) / Math.sqrt(circumference ** 2 - axialSectionSize ** 2)
+  const length = Math.hypot(circumference, pitch)
+  return helixMeridianAxial(
+    { x: radius - n, y: (-b * pitch) / length, a: (b * circumference) / length },
+    pitch,
+    "right",
+  )
+}
+
+/** Maximizes a function on [low, high] by dense sampling then golden-section refinement. */
+function maximizeOnInterval(f: (value: number) => number, low: number, high: number) {
+  const samples = 96
+  let best = low
+  for (let index = 1; index <= samples; index += 1) {
+    const value = low + ((high - low) * index) / samples
+    if (f(value) > f(best)) best = value
+  }
+  const step = (high - low) / samples
+  let [left, right] = [Math.max(low, best - step), Math.min(high, best + step)]
+  const ratio = (Math.sqrt(5) - 1) / 2
+  for (let iteration = 0; iteration < 60; iteration += 1) {
+    const first = right - ratio * (right - left)
+    const second = left + ratio * (right - left)
+    if (f(first) < f(second)) left = first
+    else right = second
+  }
+  return Math.max(f(best), f((left + right) / 2))
+}
+
+/** Exact meridian span of a centered coil section; the section is symmetric in the binormal. */
+export function coilSectionMeridianSpan(
+  radius: number,
+  pitch: number,
+  section: CoilSectionContent,
+) {
+  if (section.kind === "rectangular")
+    return 2 * coilMeridianAxial(radius, pitch, section.width / 2, section.height / 2)
+  const r = section.diameter / 2
+  return (
+    2 *
+    maximizeOnInterval(
+      (angle) => coilMeridianAxial(radius, pitch, r * Math.cos(angle), r * Math.sin(angle)),
+      0,
+      Math.PI,
+    )
+  )
+}
+
+/** Smallest accepted pitch (to bisection precision), or Infinity when none exists. */
+export function minimumCoilPitch(radius: number, section: CoilSectionContent) {
+  if (coilSectionExtent(section).radial / 2 >= radius) return Number.POSITIVE_INFINITY
+  const clear = (pitch: number) => pitch > coilSectionMeridianSpan(radius, pitch, section)
+  let high = Math.max(coilSectionExtent(section).axial, 1e-6)
+  while (!clear(high)) {
+    high *= 2
+    if (high > 1e7) return Number.POSITIVE_INFINITY
+  }
+  let low = 0
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    const middle = (low + high) / 2
+    if (clear(middle)) high = middle
+    else low = middle
+  }
+  return high
 }
 
 const sectionSize = z.number().finite().min(0.001).max(10_000)
@@ -133,7 +226,7 @@ export const coilFeatureContentParametersSchema = z
         path: ["section"],
         message: "The coil section must not reach the helix axis.",
       })
-    if (helix.pitch <= minimumHelixPitchForSection(helix.radius, extent.axial))
+    else if (helix.pitch <= coilSectionMeridianSpan(helix.radius, helix.pitch, section))
       context.addIssue({
         code: "custom",
         path: ["helix", "pitch"],

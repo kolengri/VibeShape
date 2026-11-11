@@ -4,12 +4,18 @@ import {
   coilSectionExtent,
   type HelixContent,
   helixContentSchema,
+  helixMeridianAxial,
   helixStart,
   type SweepFeatureContentParametersV2,
   sweepFeatureContentParametersV2Schema,
 } from "@vibeshape/protocol"
 import type { Shape3D } from "replicad"
-import type { OpenCascadeInstance, TopoDS_Shape, TopoDS_Wire } from "replicad-opencascadejs"
+import type {
+  OpenCascadeInstance,
+  TopAbs_ShapeEnum,
+  TopoDS_Shape,
+  TopoDS_Wire,
+} from "replicad-opencascadejs"
 import { adoptOcctShape, castOcctShape } from "./occt-cast"
 import { createAnalyticalWire, parseAnalyticalProfile, validateOcctProfileSolid } from "./occt-loft"
 import { nativeResult, nativeScope, type OwnNative } from "./occt-native-scope"
@@ -166,69 +172,93 @@ export function createOcctCoil(
   })
 }
 
-/** Local helix coordinates: radial at start, tangential, axial. */
-function profileExtentsInHelixFrame(
-  occt: OpenCascadeInstance,
-  wire: TopoDS_Wire,
-  helix: HelixContent,
-) {
-  const { frame } = helixStart(helix)
-  const [r, t, a] = [frame.radial, frame.tangential, frame.axis]
-  const [x, y, z] = helix.origin
-  return nativeScope(LABEL, (own) => {
-    const transform = own(new occt.gp_Trsf_1())
-    transform.SetValues(
-      r[0],
-      r[1],
-      r[2],
-      -(r[0] * x + r[1] * y + r[2] * z),
-      t[0],
-      t[1],
-      t[2],
-      -(t[0] * x + t[1] * y + t[2] * z),
-      a[0],
-      a[1],
-      a[2],
-      -(a[0] * x + a[1] * y + a[2] * z),
-    )
-    const builder = own(new occt.BRepBuilderAPI_Transform_2(wire, transform, true))
-    if (!builder.IsDone()) throw new Error("OCCT could not place the helical Sweep profile.")
-    const local = own(builder.Shape())
-    const box = own(new occt.Bnd_Box_1())
-    occt.BRepBndLib.AddOptimal(local, box, false, false)
-    if (box.IsVoid() || box.IsOpen())
-      throw new Error("Helical Sweep profile bounds are not finite.")
-    const values = [
-      { current: 0 },
-      { current: 0 },
-      { current: 0 },
-      { current: 0 },
-      { current: 0 },
-      { current: 0 },
-    ] as const
-    Reflect.apply(box.Get, box, values)
-    return {
-      radialMin: values[0].current,
-      axialSize: values[5].current - values[2].current,
+type CurveScalar = (parameter: number) => number
+
+/** Dense sampling then golden-section refinement of the smallest and largest value. */
+function curveExtremes(f: CurveScalar, first: number, last: number) {
+  const samples = 64
+  const step = (last - first) / samples
+  let [low, high] = [first, first]
+  for (let index = 1; index <= samples; index += 1) {
+    const parameter = first + step * index
+    if (f(parameter) < f(low)) low = parameter
+    if (f(parameter) > f(high)) high = parameter
+  }
+  const refine = (center: number, sign: 1 | -1) => {
+    let [left, right] = [Math.max(first, center - step), Math.min(last, center + step)]
+    const golden = (Math.sqrt(5) - 1) / 2
+    for (let iteration = 0; iteration < 50; iteration += 1) {
+      const a = right - golden * (right - left)
+      const b = left + golden * (right - left)
+      if (sign * f(a) < sign * f(b)) left = a
+      else right = b
     }
-  })
+    return sign * Math.max(sign * f(center), sign * f((left + right) / 2))
+  }
+  return { minimum: refine(low, -1), maximum: refine(high, 1) }
 }
 
 /**
- * The profile must stay off the axis, and its meridian span (axial size / cos^2 of the lead
- * angle, because the start plane is tilted by the lead angle) must stay below the pitch.
+ * Exact meridian span of the authored profile boundary, using the same mapping as the Coil
+ * schema (`helixMeridianAxial`). Interior points cannot exceed the boundary: the crossing height
+ * increases monotonically along the binormal, and the radial coordinate is linear in the plane.
  */
 function validateHelicalProfileClearance(
   occt: OpenCascadeInstance,
   wire: TopoDS_Wire,
   helix: HelixContent,
 ) {
-  const extents = profileExtentsInHelixFrame(occt, wire, helix)
-  if (extents.radialMin <= 1e-6)
+  const { frame } = helixStart(helix)
+  const local = (point: Vector) => {
+    const offset: Vector = [
+      point[0] - helix.origin[0],
+      point[1] - helix.origin[1],
+      point[2] - helix.origin[2],
+    ]
+    const dot = (axis: Vector) => offset[0] * axis[0] + offset[1] * axis[1] + offset[2] * axis[2]
+    return { x: dot(frame.radial), y: dot(frame.tangential), a: dot(frame.axis) }
+  }
+  const extremes = nativeScope(LABEL, (own) => {
+    const explorer = own(
+      new occt.TopExp_Explorer_2(
+        wire,
+        occt.TopAbs_ShapeEnum.TopAbs_EDGE as TopAbs_ShapeEnum,
+        occt.TopAbs_ShapeEnum.TopAbs_SHAPE as TopAbs_ShapeEnum,
+      ),
+    )
+    let [radialMinimum, axialMinimum, axialMaximum] = [
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ]
+    for (; explorer.More(); explorer.Next()) {
+      const current = own(explorer.Current())
+      const curve = own(new occt.BRepAdaptor_Curve_2(own(occt.TopoDS.Edge_1(current))))
+      const at = (parameter: number) => {
+        const point = curve.Value(parameter)
+        try {
+          return local([point.X(), point.Y(), point.Z()])
+        } finally {
+          point.delete()
+        }
+      }
+      const [first, last] = [curve.FirstParameter(), curve.LastParameter()]
+      const radial = curveExtremes((parameter) => at(parameter).x, first, last)
+      radialMinimum = Math.min(radialMinimum, radial.minimum)
+      if (!(radialMinimum > 1e-6)) break
+      const axial = curveExtremes(
+        (parameter) => helixMeridianAxial(at(parameter), helix.pitch, helix.handedness),
+        first,
+        last,
+      )
+      axialMinimum = Math.min(axialMinimum, axial.minimum)
+      axialMaximum = Math.max(axialMaximum, axial.maximum)
+    }
+    return { radialMinimum, span: axialMaximum - axialMinimum }
+  })
+  if (!(extremes.radialMinimum > 1e-6))
     throw new Error("The helical Sweep profile must not reach the helix axis.")
-  const circumference = 2 * Math.PI * helix.radius
-  const cosSquared = circumference ** 2 / (circumference ** 2 + helix.pitch ** 2)
-  if (helix.pitch <= extents.axialSize / cosSquared)
+  if (helix.pitch <= extremes.span)
     throw new Error(
       "Adjacent helical Sweep turns would intersect. Increase the pitch or reduce the profile size along the axis.",
     )

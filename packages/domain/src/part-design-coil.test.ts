@@ -16,7 +16,7 @@ import {
   coilFeatureTypeHandler,
   readCoilFeatureParameters,
 } from "./part-design-coil"
-import { helixTurns, minimumHelixPitch } from "./part-design-helix"
+import { coilMeridianSpan, helixTurns, minimumCoilPitch } from "./part-design-helix"
 import { classifyPartOperation } from "./part-operation"
 import { referenceAxisSchema } from "./reference-frame"
 import { createAngleQuantity, createLengthQuantity, createScalarQuantity } from "./units"
@@ -115,7 +115,7 @@ describe("Coil authored intent", () => {
   })
 
   it("rejects self-intersecting pitches with the minimum actionable pitch", () => {
-    const minimum = minimumHelixPitch(10, 2)
+    const minimum = minimumCoilPitch(10, { kind: "circular", diameter: 2 })
     expect(minimum).toBeGreaterThan(2)
     expect(minimum).toBeLessThan(2.01)
     expect(issues({ pitch: createLengthQuantity(2) })).toEqual([
@@ -135,6 +135,38 @@ describe("Coil authored intent", () => {
     expect(issues({ ...rectangular, pitch: createLengthQuantity(4) })[0]?.path).toEqual(["pitch"])
     expect(issues({ ...rectangular, pitch: createLengthQuantity(4.1) })).toEqual([])
     expect(issues({ radius: createLengthQuantity(0.2) })[0]?.message).toContain("helix axis")
+  })
+
+  it.each([
+    { radius: 5, kind: "rectangular", width: 8, height: 2, low: 2.02, high: 2.05, at: 2.0377 },
+    { radius: 1, kind: "circular", diameter: 1.9, low: 1.994, high: 2.0, at: 1.9964 },
+  ] as const)("uses the exact meridian span for the $kind reproduction", (sample) => {
+    const section =
+      sample.kind === "circular"
+        ? { kind: "circular", diameter: createLengthQuantity(sample.diameter) }
+        : {
+            kind: "rectangular",
+            width: createLengthQuantity(sample.width),
+            height: createLengthQuantity(sample.height),
+          }
+    const numeric =
+      sample.kind === "circular"
+        ? ({ kind: "circular", diameter: sample.diameter } as const)
+        : ({ kind: "rectangular", width: sample.width, height: sample.height } as const)
+    const at = (pitch: number) =>
+      issues({
+        radius: createLengthQuantity(sample.radius),
+        pitch: createLengthQuantity(pitch),
+        section,
+      })
+    expect(at(sample.low)[0]?.path).toEqual(["pitch"])
+    expect(at(sample.high)).toEqual([])
+    const minimum = minimumCoilPitch(sample.radius, numeric)
+    expect(minimum).toBeCloseTo(sample.at, 4)
+    expect(coilMeridianSpan(sample.radius, minimum, numeric)).toBeCloseTo(minimum, 9)
+    // R − w/2 must stay positive: the section may not reach the axis.
+    const half = (sample.kind === "circular" ? sample.diameter : sample.width) / 2
+    expect(issues({ radius: createLengthQuantity(half), section })[0]?.path).toEqual(["section"])
   })
 
   it("requires a target exactly for modifying operations and orders target before axis", () => {

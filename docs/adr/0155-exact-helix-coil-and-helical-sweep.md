@@ -34,12 +34,33 @@ Extend the first-party Part Design owner. No new kernel, package or worker opera
 
 ### Self-intersection rule
 
-A section of axial size `s`, normal to the tangent, spans `s / cos α` in the meridian plane, where
-`tan α = p / (2πR)`. Adjacent turns stay apart only when `p > s / cos α`, which gives the minimum
-pitch `s·2πR / √((2πR)² − s²)`. Coil applies this to its analytic section and reports the minimum
-pitch; helical Sweep measures the profile's axial extent in the local helix frame (its meridian span
-is that extent divided by `cos² α`). Sections reaching the axis are rejected. Both checks run in the
-domain/protocol schemas and again in the geometry worker, so invalid content fails closed.
+The swept solid is the set of screw images of the start section. Every section point therefore
+crosses the start meridian half-plane once per turn, at a height fixed by its own polar angle. In the
+local helix frame (x radial, y tangential, a axial, origin on the axis) a point crosses at
+`z = a − sign·(p / 2π)·atan2(y, x)`. For a section point `n` along the inward principal normal and `b`
+along the binormal, with `c = 2πR` and `L = √(c² + p²)`, this is
+`z = b·c/L + (p/2π)·atan(b·p / (L·(R − n)))`. Points nearer the axis climb faster than the centerline,
+so the span exceeds the first-order estimate `s / cos α` (which accepted overlapping coils, for
+example R = 5 mm, 8 × 2 mm rectangle, p = 2.02 mm, or R = 1 mm, ⌀1.9 mm, p = 1.994 mm).
+
+The rule is: every section point stays off the axis (`R − n > 0`, i.e. `R − w/2 > 0`), and
+**the pitch exceeds the exact meridian span** `max z − min z`. This is sufficient and exact:
+`z` increases strictly with `b`, so interior points never exceed the boundary; with `x > 0` a screw
+orbit meets the section half-plane at most once within ±½ turn, so any self-contact must appear as
+two meridian points one pitch apart, which the span rule excludes. At the computed minimum pitch the
+⌀1.9 mm case touches exactly where the centerline's far self-distance equals the section diameter (the
+tube-thickness criterion), and the tests check this agreement independently for several circular
+sections, plus a real-kernel overlap oracle on both reproductions.
+
+- Rectangle: `z_max = (h/2)·c/L + (p/2π)·atan(h·p / (2L·(R − w/2)))`, span `2·z_max`.
+- Circle: `z_max` maximized over the boundary angle by dense sampling and golden-section refinement.
+- Helical Sweep: the kernel samples each profile boundary edge in the start frame and refines the
+  extremes of `z` and of `x` (which must stay positive).
+- The reported minimum pitch is found by bisection and rounded up to 0.001 mm.
+
+The same functions live in the worker protocol and, mirrored, in the domain (which cannot import the
+protocol); tests pin both to identical values. Checks run in the domain and protocol schemas and
+again in the geometry worker, so invalid content fails closed.
 
 ### Geometry
 
@@ -57,6 +78,10 @@ Coil results are ordinary exact solids that downstream features, STEP export, `.
 persistence and undo/redo already handle. The UI and the named MCP tools (`create_coil`,
 `update_coil`, and helix paths on `create_sweep`/`update_sweep`) stage the same validated records
 through owned drafts and disposable preview.
+
+Changing a helical Sweep's radius, pitch, start angle, handedness or axis moves its start point and
+tangent; the profile plane is not moved automatically, so the profile sketch's support must be
+re-oriented (preview fails closed until it is).
 
 Out of scope: flat/ground spring ends (ends are planar cuts normal to the helix), variable pitch or
 radius, conical helices, multi-start coils and holed helical sweep profiles.
