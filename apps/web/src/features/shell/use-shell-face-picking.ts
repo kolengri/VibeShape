@@ -27,6 +27,14 @@ function shellPickingTaskKey(
   return `${report?.snapshot.id}:${report?.snapshot.revision}:${activeTool?.kind}:${featureId}`
 }
 
+/** Body-face picking is shared by every task that selects faces of one exact target body. */
+const facePickingToolKinds = new Set<ActivePartDesignTool["kind"]>([
+  "create-shell",
+  "edit-shell",
+  "create-draft",
+  "edit-draft",
+])
+
 export function useShellFacePicking(
   controller: DocumentControllerState,
   activeTool: ActivePartDesignTool | null,
@@ -37,7 +45,7 @@ export function useShellFacePicking(
   )
   const [pending, setPending] = useState<{ key: string; request: ShellPickRequest } | null>(null)
   const report = controller.report
-  const active = activeTool?.kind === "create-shell" || activeTool?.kind === "edit-shell"
+  const active = activeTool !== null && facePickingToolKinds.has(activeTool.kind)
   const key = shellPickingTaskKey(report, activeTool)
   useEffect(() => setPending(null), [key])
   const onContextChange = useCallback(
@@ -68,7 +76,10 @@ export function useShellFacePicking(
         : undefined,
     [body, targetFeatureId, outputRole],
   )
-  const editingId = activeTool?.kind === "edit-shell" ? activeTool.featureId : null
+  const editingId =
+    activeTool?.kind === "edit-shell" || activeTool?.kind === "edit-draft"
+      ? activeTool.featureId
+      : null
   const excludedFeatureIds = useMemo(() => {
     const excluded = new Set<string>()
     if (editingId) {

@@ -48,6 +48,12 @@ function retainedFeatureBodyTask(controller: DocumentControllerState, tool: Prop
   return { feature, intent }
 }
 
+/** Which saved topology the user must pick again on the replacement body, if any. */
+function reselectedInput(replacement: HistoryFeatureBodyReplacement | null) {
+  if (replacement?.shellClosed === false) return "openings"
+  return replacement?.faceTarget ? "faces" : null
+}
+
 function replacementTaskContext(controller: DocumentControllerState, feature: FeatureRecord) {
   const report = controller.report
   if (!report) return controller
@@ -109,7 +115,7 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
         report.mode === "read-only"
       }
       onSelect={setSelectedBodyId}
-      reselectOpenings={replacement?.shellClosed === false}
+      reselect={reselectedInput(replacement)}
     />
   )
   if (replacement)
@@ -158,7 +164,7 @@ function RepairBodyControls({
   selectedId,
   disabled,
   onSelect,
-  reselectOpenings,
+  reselect,
 }: {
   t: ReturnType<typeof useTranslations>
   selectId: string
@@ -166,7 +172,7 @@ function RepairBodyControls({
   selectedId: string
   disabled: boolean
   onSelect: (id: string) => void
-  reselectOpenings: boolean
+  reselect: "openings" | "faces" | null
 }) {
   return (
     <>
@@ -192,9 +198,9 @@ function RepairBodyControls({
           {t("noBodies")}
         </p>
       )}
-      {reselectOpenings && (
+      {reselect && (
         <p role="status" className="text-xs text-muted-foreground">
-          {t("reselectOpenings")}
+          {t(reselect === "openings" ? "reselectOpenings" : "reselectFaces")}
         </p>
       )}
     </>

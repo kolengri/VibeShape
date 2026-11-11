@@ -5,6 +5,7 @@ import { createModelBodyMeasurementEvidence } from "@vibeshape/application/model
 import {
   booleanFeatureType,
   boxFeatureType,
+  createAngleQuantity,
   createLengthQuantity,
   cylinderFeatureType,
   datumPlaneFeatureType,
@@ -19,6 +20,7 @@ import {
 import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import { terminalBodyOutputs } from "@vibeshape/domain/model-bodies"
 import { bodyMeasurementOutputs } from "@vibeshape/domain/model-body-measurements"
+import { draftFeatureType } from "@vibeshape/domain/part-design-draft"
 import {
   loftFeatureParametersV3Schema,
   loftFeatureTypeV3,
@@ -491,6 +493,67 @@ describe("DocumentWorkerRuntime", () => {
     const response = rebuilt(messages, "fillet-diagnostic")
     expect(
       response.evaluation.records.find(({ featureId }) => featureId === filletId),
+    ).toMatchObject({
+      status: "failed",
+      diagnostics: [{ values: { reason: "invalid-feature-geometry", message } }],
+    })
+  })
+
+  it("forwards the Draft kernel message that names the failing face", async () => {
+    const { runtime, engine, messages } = createHarness()
+    const draftId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3198")
+    const message = "Draft cannot tilt selected face 2 or a face tangent to it."
+    const evaluate = engine.evaluateFeature.bind(engine)
+    engine.evaluateFeature = async (input, progress) =>
+      input.featureId === draftId
+        ? { ok: false, diagnostic: { code: "invalid-feature-geometry", message, retryable: false } }
+        : evaluate(input, progress)
+    const input = request("draft-diagnostic")
+    if (input.type !== "rebuildDocument") throw new Error("Expected rebuild request.")
+    input.document = documentRebuildSnapshotSchema.parse({
+      ...input.document,
+      features: [
+        box(),
+        featureRecordSchema.parse({
+          schemaVersion: 0,
+          id: draftId,
+          type: draftFeatureType.type,
+          parameters: {
+            targetBody: { schemaVersion: 0, featureId: featureIds.box, outputRole: "result" },
+            faces: [
+              {
+                schemaVersion: 1,
+                featureId: featureIds.box,
+                outputRole: "result",
+                kind: "face",
+                semanticRole: "primitive.box.face.x-max",
+                signature: {
+                  kind: "face",
+                  geometryClass: "PLANE",
+                  measure: 1,
+                  centroid: [1, 0.5, 0.5],
+                  bounds: { min: [1, 0, 0], max: [1, 1, 1] },
+                  boundaryCount: 4,
+                  adjacentGeometryClasses: ["PLANE", "PLANE", "PLANE", "PLANE"],
+                  direction: [1, 0, 0],
+                  directionMode: "oriented",
+                },
+              },
+            ],
+            neutralPlane: { kind: "origin-plane", plane: "XY" },
+            angle: createAngleQuantity(5, "deg"),
+            flip: false,
+          },
+          dependencies: [featureIds.box],
+          references: [],
+          suppressed: false,
+        }),
+      ],
+    })
+    await runtime.handle(input)
+    const response = rebuilt(messages, "draft-diagnostic")
+    expect(
+      response.evaluation.records.find(({ featureId }) => featureId === draftId),
     ).toMatchObject({
       status: "failed",
       diagnostics: [{ values: { reason: "invalid-feature-geometry", message } }],

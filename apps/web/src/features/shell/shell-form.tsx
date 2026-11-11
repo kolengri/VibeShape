@@ -6,9 +6,8 @@ import type {
 } from "@vibeshape/domain"
 import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
 import { ChoiceField } from "@vibeshape/ui/components/choice-field"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
@@ -16,13 +15,13 @@ import { ParameterPanel, type ParameterPanelCopy } from "../part-design/paramete
 import {
   type FeatureParameterFormProps,
   type PrimitiveLengthCopy,
-  submitFeatureMutation,
+  submitFeatureOrReport,
 } from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
+import { BodyFaceChecklist, BodyFacePickingSync } from "./body-face-selection"
 import {
-  formatShellMeasurement,
   type ShellFormMode,
   type ShellFormValues,
   shellFormFeature,
@@ -65,72 +64,13 @@ type ShellFormProps = FeatureParameterFormProps<ShellFormMode, ShellFormCopy> & 
   onPickingContextChange?: ((context: ShellPickingContext | null) => void) | undefined
 }
 
-function ShellPickingSync({
-  values,
-  evidence,
-  featureId,
-  mode,
-  request,
-  onContextChange,
-  onOpeningsChange,
-}: {
-  values: ShellFormValues
-  evidence: ModelBodyTopologyEvidence | null
-  featureId: FeatureId
-  mode: ShellFormMode
-  request: ShellPickRequest | null
-  onContextChange: ShellFormProps["onPickingContextChange"]
-  onOpeningsChange: (ids: string[]) => void
-}) {
-  const lastSequence = useRef<number | null>(null)
-  const target = shellTargetBody(mode)
-  useEffect(() => {
-    onContextChange?.(
-      evidence && !values.closed
-        ? {
-            featureId,
-            targetBody: {
-              schemaVersion: 0,
-              featureId: target.featureId,
-              outputRole: target.outputRole,
-            },
-            evidence,
-            openingIds: values.openingIds,
-          }
-        : null,
-    )
-    return () => onContextChange?.(null)
-  }, [
-    evidence,
-    featureId,
-    onContextChange,
-    target.featureId,
-    target.outputRole,
-    values.closed,
-    values.openingIds,
-  ])
-  useEffect(() => {
-    if (!request || lastSequence.current === request.sequence) return
-    lastSequence.current = request.sequence
-    const ids = pickedShellOpenings(values, featureId, evidence, request)
-    if (ids) onOpeningsChange(ids)
-  }, [evidence, featureId, onOpeningsChange, request, values.closed, values.openingIds])
-  return null
-}
-
 function pickedShellOpenings(
   values: ShellFormValues,
-  featureId: FeatureId,
   evidence: ModelBodyTopologyEvidence | null,
   request: ShellPickRequest,
 ): string[] | null {
-  if (
-    values.closed ||
-    request.featureId !== featureId ||
-    request.sourceContentHash !== evidence?.contentHash
-  )
-    return null
-  if (!evidence.candidates.some(({ candidateId }) => candidateId === request.candidateId))
+  if (values.closed) return null
+  if (!evidence?.candidates.some(({ candidateId }) => candidateId === request.candidateId))
     return null
   if (values.openingIds.includes(request.candidateId))
     return values.openingIds.filter((id) => id !== request.candidateId)
@@ -214,19 +154,15 @@ export function ShellForm({
         allowSemanticRebinding,
       )
       if (!feature) return
-      state.setMessage(null)
-      try {
-        await submitFeatureMutation({
-          baseRevision,
-          copy,
-          feature,
-          onSave,
-          onSaved,
-          setMessage: state.setMessage,
-        })
-      } catch {
-        state.setMessage(copy.saveFailed)
-      }
+      await submitFeatureOrReport({
+        baseRevision,
+        copy,
+        feature,
+        onSave,
+        onSaved,
+        setMessage: state.setMessage,
+        saveFailed: copy.saveFailed,
+      })
     },
   })
   return (
@@ -238,14 +174,16 @@ export function ShellForm({
       <TaskPanelContentProvider content={<form.FormError />}>
         <form.Subscribe selector={(formState) => formState.values}>
           {(values) => (
-            <ShellPickingSync
-              values={values}
+            <BodyFacePickingSync
+              enabled={!values.closed}
               evidence={evidence}
               featureId={featureId}
-              mode={mode}
+              target={shellTargetBody(mode)}
+              selectedIds={values.openingIds}
               request={pickingRequest}
               onContextChange={onPickingContextChange}
-              onOpeningsChange={(ids) => {
+              pick={(request) => pickedShellOpenings(values, evidence, request)}
+              onSelectionChange={(ids) => {
                 state.clearSubmissionErrors()
                 form.setFieldValue("openingIds", ids)
               }}
@@ -351,62 +289,23 @@ export function ShellForm({
                   closed ? null : (
                     <form.Field name="openingIds">
                       {(field) => (
-                        <fieldset className="grid gap-1">
-                          <legend className="mb-1 text-xs font-medium">{copy.openings}</legend>
-                          <p className="text-xs text-muted-foreground">
-                            {copy.openingsDescription}
-                          </p>
-                          <details className="min-w-0 rounded-md border">
-                            <summary className="cursor-pointer px-2 py-1.5 text-xs font-medium">
-                              {copy.openingCount({
-                                selected: field.state.value.length,
-                                total: evidence?.candidates.length ?? 0,
-                              })}
-                            </summary>
-                            <div className="grid max-h-48 gap-1 overflow-y-auto overscroll-contain border-t p-2">
-                              {evidence?.candidates.map((candidate, index) => {
-                                const measurement = copy.face({
-                                  number: index + 1,
-                                  area: formatShellMeasurement(candidate.signature.measure),
-                                  x: formatShellMeasurement(candidate.signature.centroid[0]),
-                                  y: formatShellMeasurement(candidate.signature.centroid[1]),
-                                  z: formatShellMeasurement(candidate.signature.centroid[2]),
-                                })
-                                return (
-                                  <Tooltip key={candidate.candidateId}>
-                                    <TooltipTrigger asChild>
-                                      <label className="flex min-h-6 items-center gap-2 text-xs">
-                                        <input
-                                          type="checkbox"
-                                          name="openings"
-                                          checked={field.state.value.includes(
-                                            candidate.candidateId,
-                                          )}
-                                          onBlur={field.handleBlur}
-                                          onChange={(event) => {
-                                            state.clearSubmissionErrors()
-                                            field.handleChange(
-                                              event.currentTarget.checked
-                                                ? [...field.state.value, candidate.candidateId]
-                                                : field.state.value.filter(
-                                                    (id) => id !== candidate.candidateId,
-                                                  ),
-                                            )
-                                          }}
-                                        />
-                                        <span aria-hidden="true">
-                                          {copy.faceName({ number: index + 1 })}
-                                        </span>
-                                        <span className="sr-only">{measurement}</span>
-                                      </label>
-                                    </TooltipTrigger>
-                                    <TooltipContent>{measurement}</TooltipContent>
-                                  </Tooltip>
-                                )
-                              })}
-                            </div>
-                          </details>
-                        </fieldset>
+                        <BodyFaceChecklist
+                          copy={{
+                            legend: copy.openings,
+                            description: copy.openingsDescription,
+                            count: copy.openingCount,
+                            faceName: copy.faceName,
+                            face: copy.face,
+                          }}
+                          name="openings"
+                          evidence={evidence}
+                          selectedIds={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(ids) => {
+                            state.clearSubmissionErrors()
+                            field.handleChange(ids)
+                          }}
+                        />
                       )}
                     </form.Field>
                   )

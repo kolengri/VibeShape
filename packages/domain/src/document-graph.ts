@@ -54,6 +54,7 @@ import {
 } from "./part-design-body-combination"
 import { chamferFeatureTypeV3, readChamferFeatureParametersV3 } from "./part-design-chamfer"
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
+import { draftFeatureType, readDraftFeatureParameters } from "./part-design-draft"
 import { filletFeatureTypeV3, readFilletFeatureParametersV3 } from "./part-design-fillet"
 import {
   expectedHoleDependencyIds,
@@ -81,6 +82,7 @@ import {
 } from "./part-design-pattern"
 import { placementFeatureType, readPlacementFeatureParameters } from "./part-design-placement"
 import { pressPullFeatureType, readPressPullFeatureParameters } from "./part-design-press-pull"
+import { readScaleFeatureParameters, scaleFeatureType } from "./part-design-scale"
 import {
   readShellFeatureParameters,
   shellFeatureType,
@@ -261,6 +263,8 @@ const bodySelectionParameterReaders = new Map<string, BodySelectionParameterRead
   [featureTypeKey(pressPullFeatureType.type), readPressPullFeatureParameters],
   [featureTypeKey(shellFeatureType.type), readShellFeatureParameters],
   [featureTypeKey(shellFeatureTypeV2.type), readShellFeatureParameters],
+  [featureTypeKey(draftFeatureType.type), readDraftFeatureParameters],
+  [featureTypeKey(scaleFeatureType.type), readScaleFeatureParameters],
   [featureTypeKey(splitFeatureType.type), readSplitFeatureParameters],
   [featureTypeKey(splitFeatureTypeV2.type), readSplitFeatureParametersV2],
   [featureTypeKey(compoundFeatureType.type), readCompoundFeatureParameters],
@@ -322,7 +326,9 @@ const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord)
 
 function referenceBodySelectionParameters(feature: FeatureRecord) {
   const thread = readThreadFeatureParameters(feature)
+  const draft = readDraftFeatureParameters(feature)
   return (
+    (draft && { targetBody: draft.targetBody, plane: draft.neutralPlane }) ??
     readMirrorFeatureParametersV3(feature) ??
     readSplitFeatureParametersV2(feature) ??
     readPatternFeatureParametersV2(feature) ??

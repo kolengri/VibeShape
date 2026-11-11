@@ -11,6 +11,8 @@ export type GeometryFeatureKind =
   | "pyramid"
   | "torus"
   | "placement"
+  | "scale"
+  | "draft"
   | "mirror"
   | "press-pull"
   | "shell"

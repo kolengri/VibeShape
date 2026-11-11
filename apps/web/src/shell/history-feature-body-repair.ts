@@ -1,6 +1,7 @@
 import { type FeatureRecord, featureRecordSchema } from "@vibeshape/domain"
 import { type BodyReference, bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import type { DocumentNodeRef } from "@vibeshape/domain/document-node"
+import { readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
 import {
   readMirrorFeatureParameters,
   readMirrorFeatureParametersV3,
@@ -10,6 +11,7 @@ import {
   readPatternFeatureParametersV2,
 } from "@vibeshape/domain/part-design-pattern"
 import { readPlacementFeatureParameters } from "@vibeshape/domain/part-design-placement"
+import { readScaleFeatureParameters } from "@vibeshape/domain/part-design-scale"
 import { readShellFeatureParameters, shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import {
   readSplitFeatureParameters,
@@ -26,13 +28,16 @@ type BodyRecipe = Readonly<{
   parameters: Readonly<Record<string, unknown> & { targetBody: BodyReference }>
   support?: ReferencePlane | ReferenceAxis
   shellClosed?: boolean
+  /** Body-bound faces cannot move to another body; the form keeps the saved record and re-picks. */
+  reselectFaces?: true
 }>
 
 function simpleBodyRecipe(feature: FeatureRecord): BodyRecipe | null {
   const parameters =
     readMirrorFeatureParameters(feature) ??
     readPatternFeatureParameters(feature) ??
-    readSplitFeatureParameters(feature)
+    readSplitFeatureParameters(feature) ??
+    readScaleFeatureParameters(feature)
   return parameters ? { parameters } : null
 }
 
@@ -53,6 +58,8 @@ function bodyRecipe(feature: FeatureRecord): BodyRecipe | null {
     }
   const shell = readShellFeatureParameters(feature)
   if (shell) return { parameters: shell, shellClosed: shell.openings.length === 0 }
+  const draft = readDraftFeatureParameters(feature)
+  if (draft) return { parameters: draft, reselectFaces: true }
   return simpleBodyRecipe(feature)
 }
 
@@ -73,6 +80,8 @@ export function missingHistoryFeatureBody(
 export type HistoryFeatureBodyReplacement = Readonly<{
   feature: FeatureRecord
   shellClosed?: boolean
+  /** Replacement body for a feature whose faces must be picked again on it. */
+  faceTarget?: BodyReference
 }>
 
 /** Disposable form input: saved authority changes only through the ordinary feature update. */
@@ -92,6 +101,9 @@ export function replaceHistoryFeatureBody(
     return null
   const recipe = bodyRecipe(feature)
   if (!recipe) return null
+  // Draft faces and a planar-face neutral plane belong to the missing body, so the saved record
+  // stays unchanged and the form starts on the replacement with an explicit face selection.
+  if (recipe.reselectFaces) return { feature, faceTarget: body.data }
   const support: ReferencePlane | ReferenceAxis | undefined = recipe.support
   const shellClosed = recipe.shellClosed
   const adapted = featureRecordSchema.safeParse({

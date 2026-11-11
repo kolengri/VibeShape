@@ -1444,6 +1444,149 @@ export const ShellIcon = /* @__PURE__ */ coloredIcon("shell", (instanceId) => (
   </>
 ))
 
+export const DraftIcon = /* @__PURE__ */ coloredIcon("draft", (instanceId) => (
+  <>
+    <defs>
+      <linearGradient
+        id={`${instanceId}-frosted-draft-light-material-top`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
+        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-draft-light-material-side`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
+        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
+      </linearGradient>
+    </defs>
+    <g transform="scale(4)">
+      <g data-layer="guide">
+        <path
+          d="M9 56V24"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeDasharray="3.5 3.5"
+        />
+      </g>
+      <g opacity=".91" data-layer="material">
+        <path
+          d="M17 28 27 19H45L35 28Z"
+          fill={`url(#${instanceId}-frosted-draft-light-material-top)`}
+          stroke="none"
+        />
+        <path
+          d="M43 56 53 47 45 19 35 28Z"
+          fill={`url(#${instanceId}-frosted-draft-light-material-side)`}
+          stroke="none"
+        />
+      </g>
+      <g data-layer="action">
+        <path d="M9 56H43L35 28H17Z" fill="var(--icon-action-fill, #f1bc77)" stroke="none" />
+        <path
+          d="M9 56 17 28"
+          fill="none"
+          stroke="var(--icon-action-stroke, #cd7b24)"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+        />
+      </g>
+    </g>
+  </>
+))
+
+export const ScaleIcon = /* @__PURE__ */ coloredIcon("scale", (instanceId) => (
+  <>
+    <defs>
+      <linearGradient
+        id={`${instanceId}-frosted-scale-light-material-top`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
+        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-scale-light-material-front`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
+        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-scale-light-material-side`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
+        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
+      </linearGradient>
+    </defs>
+    <g transform="scale(4)">
+      <g data-layer="guide">
+        <path
+          d="M8 56V20H44V56M8 20 20 9H56L44 20M56 9V45L44 56"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray="3.5 3.5"
+        />
+      </g>
+      <g opacity=".91" data-layer="material">
+        <path
+          d="M8 38 16 31H36L28 38Z"
+          fill={`url(#${instanceId}-frosted-scale-light-material-top)`}
+          stroke="none"
+        />
+        <path
+          d="M8 38H28V56H8Z"
+          fill={`url(#${instanceId}-frosted-scale-light-material-front)`}
+          stroke="none"
+        />
+        <path
+          d="M28 38 36 31V49L28 56Z"
+          fill={`url(#${instanceId}-frosted-scale-light-material-side)`}
+          stroke="none"
+        />
+      </g>
+      <g data-layer="action">
+        <path
+          d="M30 36 42 24M34 24H42V32"
+          fill="none"
+          stroke="var(--icon-action-stroke, #cd7b24)"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+    </g>
+  </>
+))
+
 export const ThreadIcon = /* @__PURE__ */ coloredIcon("thread", (instanceId) => (
   <>
     <defs>
