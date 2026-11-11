@@ -3818,18 +3818,21 @@ function FaceMeasurementChrome({
   )
 }
 
-function hoveredFaceMeasurement(controller: DocumentControllerState, selection: ViewerSelection) {
+/** A rebuild that is current for the controller's snapshot, or undefined while stale. */
+function currentRebuild(controller: DocumentControllerState) {
   const report = controller.report
-  if (
-    controller.status !== "ready" ||
-    !report?.rebuild.ok ||
-    report.snapshot.revision !== report.rebuild.response.revision
-  )
-    return undefined
+  if (controller.status !== "ready" || !report?.rebuild.ok) return undefined
+  const rebuild = report.rebuild
+  return report.snapshot.revision === rebuild.response.revision ? { report, rebuild } : undefined
+}
+
+function hoveredFaceMeasurement(controller: DocumentControllerState, selection: ViewerSelection) {
+  const current = currentRebuild(controller)
+  if (!current) return undefined
   // Datum markers and planes are display geometry; their faces have no measurable model area.
-  const feature = report.snapshot.features.find(({ id }) => id === selection.featureId)
+  const feature = current.report.snapshot.features.find(({ id }) => id === selection.featureId)
   if (feature && isReferenceGeometryFeature(feature)) return undefined
-  const geometry = report.rebuild.response.geometry.find(
+  const geometry = current.rebuild.response.geometry.find(
     (entry) => entry.featureId === selection.featureId,
   )?.geometry
   const candidates =
