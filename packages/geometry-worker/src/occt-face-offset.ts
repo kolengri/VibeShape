@@ -221,6 +221,58 @@ function reachesOtherFeature(
   ).some((face) => shapeDistance(occt, slab, face, own) <= CONTACT_TOLERANCE)
 }
 
+type OffsetRequest = Readonly<{
+  source: Shape3D
+  face: Face
+  distance: number
+  sourceVolume: number
+  evidence: ReturnType<typeof patchEvidence>
+}>
+
+type OffsetBody = Readonly<{
+  copied: TopoDS_Shape
+  selected: TopoDS_Shape
+  contacts: readonly EdgeContact[]
+  expectedFaces: number
+}>
+
+/** Combines one slab with the body; null unless the neighbours provably stayed attached. */
+function slabOffset(
+  occt: OpenCascadeInstance,
+  request: OffsetRequest,
+  body: OffsetBody,
+  slab: TopoDS_Shape,
+  own: Own,
+) {
+  const { copied, selected, contacts } = body
+  const combined = combineShapes(occt, request.distance > 0 ? "fuse" : "cut", copied, slab, own)
+  if (!combined || unifiedFaceCount(occt, combined.shape) !== body.expectedFaces) return null
+  const attachment = { builder: combined.builder, slab }
+  if (!neighboursStayAttached(occt, attachment, copied, selected, contacts, own)) return null
+  return acceptedOffset(occt, combined.shape, request.sourceVolume, request.distance)
+}
+
+/** Tries each slab construction and returns the first result whose neighbours stayed attached. */
+function attachedOffset(
+  occt: OpenCascadeInstance,
+  request: OffsetRequest,
+  copied: TopoDS_Shape,
+  selected: TopoDS_Shape,
+  own: Own,
+) {
+  const contacts = edgeContacts(occt, copied, selected, own)
+  const body = { copied, selected, contacts, expectedFaces: unifiedFaceCount(occt, copied) }
+  let reachesOther = false
+  for (const build of slabBuilders(occt, request.source, [request.face], request.evidence, own)) {
+    const slab = build(request.distance)
+    if (!slab) continue
+    reachesOther ||= reachesOtherFeature(occt, slab, copied, selected, contacts, own)
+    const result = slabOffset(occt, request, body, slab, own)
+    if (result) return result
+  }
+  throw reachesOther ? reachFailure(request.distance) : detachedFailure(request.distance)
+}
+
 /**
  * Moves one curved face along its normals by a signed distance: the swept region between the face
  * and its offset is added or removed. The result is accepted only when Boolean history proves that
@@ -242,31 +294,13 @@ export function offsetOcctFace(
     const { copied, copiedFaces } = copySourceWithFaces(occt, source, [face], own)
     const [selected] = copiedFaces
     if (!selected) throw new ThickenError("The selected face is unavailable on the body copy.")
-    const expectedFaces = unifiedFaceCount(occt, copied)
-    const contacts = edgeContacts(occt, copied, selected, own)
-    let reachesOther = false
-    for (const build of slabBuilders(occt, source, [face], evidence, own)) {
-      const slab = build(distance)
-      if (!slab) continue
-      reachesOther ||= reachesOtherFeature(occt, slab, copied, selected, contacts, own)
-      const combined = combineShapes(occt, distance > 0 ? "fuse" : "cut", copied, slab, own)
-      if (
-        !combined ||
-        unifiedFaceCount(occt, combined.shape) !== expectedFaces ||
-        !neighboursStayAttached(
-          occt,
-          { builder: combined.builder, slab },
-          copied,
-          selected,
-          contacts,
-          own,
-        )
-      )
-        continue
-      const result = acceptedOffset(occt, combined.shape, sourceVolume, distance)
-      if (result) return result
-    }
-    throw reachesOther ? reachFailure(distance) : detachedFailure(distance)
+    return attachedOffset(
+      occt,
+      { source, face, distance, sourceVolume, evidence },
+      copied,
+      selected,
+      own,
+    )
   } catch (error) {
     if (error instanceof ThickenError) throw error
     throw new ThickenError(
