@@ -58,7 +58,7 @@ function splitBezier(poles: readonly Homogeneous[], t: number) {
 }
 
 /** The exact sub-piece of `piece` on the global parameter interval `[from, to]`. */
-export function restrictPiece(piece: RationalBezierPiece, from: number, to: number) {
+function restrictPiece(piece: RationalBezierPiece, from: number, to: number) {
   const span = piece.last - piece.first
   const a = (from - piece.first) / span
   const b = (to - piece.first) / span
@@ -190,7 +190,7 @@ function lexicographicallyBefore(a: Point, b: Point) {
  * Orients a chain independently of the source parameterization: an open chain starts at its
  * lexicographically smaller end, and a closed chain leaves its seam toward the smaller neighbor.
  */
-export function canonicalChainOrientation(poles: readonly Point[]): Point[] {
+function canonicalChainOrientation(poles: readonly Point[]): Point[] {
   const start = poles[0] as Point
   const end = poles.at(-1) as Point
   const closed = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]) <= 1e-9
@@ -228,44 +228,59 @@ function lastKnotIndexAtOrBelow(knots: readonly number[], value: number) {
  * interior knot up to the degree (Boehm insertion on homogeneous poles).
  */
 export function nurbsBezierPieces(curve: NurbsCurve): RationalBezierPiece[] | undefined {
+  const range = clampedRange(curve)
+  if (!range) return undefined
   const { degree, knots } = curve
-  if (knots.length !== curve.poles.length + degree + 1 || degree < 1) return undefined
-  const first = knots[degree] as number
-  const last = knots[knots.length - degree - 1] as number
-  const clamped =
-    knots.slice(0, degree + 1).every((knot) => Math.abs(knot - first) <= KNOT_TOLERANCE) &&
-    knots.slice(-degree - 1).every((knot) => Math.abs(knot - last) <= KNOT_TOLERANCE)
-  if (!clamped || !(last > first)) return undefined
-  let poles = curve.poles.map((pole, index) => homogeneous(pole, curve.weights[index] as number))
-  let vector = [...knots]
   const breaks = [...new Set(knots.slice(degree + 1, -degree - 1))].filter(
-    (knot) => knot > first + KNOT_TOLERANCE && knot < last - KNOT_TOLERANCE,
+    (knot) => knot > range.first + KNOT_TOLERANCE && knot < range.last - KNOT_TOLERANCE,
   )
+  let state = {
+    poles: curve.poles.map((pole, index) => homogeneous(pole, curve.weights[index] as number)),
+    knots: [...knots],
+  }
   for (const knot of breaks) {
-    const multiplicity = vector.filter((value) => Math.abs(value - knot) <= KNOT_TOLERANCE).length
-    for (let present = multiplicity; present < degree; present += 1) {
-      // Knot span `k` with U[k] <= u < U[k + 1]; `present` copies of `u` already exist.
-      const span = lastKnotIndexAtOrBelow(vector, knot)
-      const next: Homogeneous[] = []
-      for (let index = 0; index <= poles.length; index += 1) {
-        if (index <= span - degree) next.push(poles[index] as Homogeneous)
-        else if (index > span - present) next.push(poles[index - 1] as Homogeneous)
-        else {
-          const lower = vector[index] as number
-          const alpha = (knot - lower) / ((vector[index + degree] as number) - lower)
-          next.push(lerp(poles[index - 1] as Homogeneous, poles[index] as Homogeneous, alpha))
-        }
-      }
-      poles = next
-      vector = [...vector.slice(0, span + 1), knot, ...vector.slice(span + 1)]
+    const multiplicity = state.knots.filter((value) => Math.abs(value - knot) <= KNOT_TOLERANCE)
+    for (let present = multiplicity.length; present < degree; present += 1) {
+      state = insertKnot(state, degree, knot, present)
     }
   }
-  const parameters = [first, ...breaks, last]
+  const parameters = [range.first, ...breaks, range.last]
   return parameters.slice(0, -1).map((start, index) => ({
     first: start,
     last: parameters[index + 1] as number,
-    poles: poles.slice(index * degree, index * degree + degree + 1),
+    poles: state.poles.slice(index * degree, index * degree + degree + 1),
   }))
+}
+
+/** The parameter range of a valid clamped curve; open or malformed knot vectors are rejected. */
+function clampedRange({ degree, knots, poles }: NurbsCurve) {
+  if (knots.length !== poles.length + degree + 1 || degree < 1) return null
+  const first = knots[degree] as number
+  const last = knots[knots.length - degree - 1] as number
+  const near = (value: number) => (knot: number) => Math.abs(knot - value) <= KNOT_TOLERANCE
+  const clamped =
+    knots.slice(0, degree + 1).every(near(first)) && knots.slice(-degree - 1).every(near(last))
+  return clamped && last > first ? { first, last } : null
+}
+
+/** One Boehm insertion of `knot`, already present `present` times, into homogeneous poles. */
+function insertKnot(
+  state: Readonly<{ poles: readonly Homogeneous[]; knots: readonly number[] }>,
+  degree: number,
+  knot: number,
+  present: number,
+) {
+  // Knot span `k` with U[k] <= u < U[k + 1].
+  const span = lastKnotIndexAtOrBelow(state.knots, knot)
+  const { knots, poles } = state
+  const next = Array.from({ length: poles.length + 1 }, (_, index): Homogeneous => {
+    if (index <= span - degree) return poles[index] as Homogeneous
+    if (index > span - present) return poles[index - 1] as Homogeneous
+    const lower = knots[index] as number
+    const alpha = (knot - lower) / ((knots[index + degree] as number) - lower)
+    return lerp(poles[index - 1] as Homogeneous, poles[index] as Homogeneous, alpha)
+  })
+  return { poles: next, knots: [...knots.slice(0, span + 1), knot, ...knots.slice(span + 1)] }
 }
 
 /** Exact pieces of one Bezier curve restricted to the trimmed parameter range. */

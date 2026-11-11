@@ -28,7 +28,7 @@ function targetPoint(sketch: SketchRecord, target: SketchPointTarget): SketchPoi
 }
 
 /** Drops picks whose existing point no longer exists, so the gesture continues without them. */
-export function resolvedPendingSpline(sketch: SketchRecord, pending: PendingSpline): PendingSpline {
+function resolvedPendingSpline(sketch: SketchRecord, pending: PendingSpline): PendingSpline {
   const points = pending.points.filter((target) => targetPoint(sketch, target) !== null)
   return points.length === pending.points.length ? pending : { kind: "spline", points }
 }

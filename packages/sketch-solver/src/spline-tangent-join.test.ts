@@ -311,13 +311,16 @@ describe("tangent joins under large single solves", () => {
       const solution = solved(dimensioned, [])
       expect(solution.status).toBe("under-constrained")
       expect(solution.failedConstraintIds).toEqual([])
-      expect(solvedPointMap(solution).get(first.endPointId)?.y).toBeCloseTo(offset, 6)
+      expect(solvedPointMap(solution).get(first.endPointId)).toMatchObject({
+        y: expect.closeTo(offset, 6),
+      })
       const [join] = joinTangents(dimensioned, solvedPointMap(solution))
-      expect(Math.abs(join?.cross ?? 1)).toBeLessThan(1e-9)
-      expect(join?.dot).toBeCloseTo(1, 9)
+      if (!join) throw new Error("The dimensioned spline must keep its join.")
+      expect(Math.abs(join.cross)).toBeLessThan(1e-9)
+      expect(join.dot).toBeCloseTo(1, 9)
       // Both handles keep their authored third-of-chord length instead of collapsing.
-      expect(join?.incomingLength).toBeCloseTo(10 / 3, 4)
-      expect(join?.outgoingLength).toBeCloseTo(10 / 3, 4)
+      expect(join.incomingLength).toBeCloseTo(10 / 3, 4)
+      expect(join.outgoingLength).toBeCloseTo(10 / 3, 4)
     }
   })
 
