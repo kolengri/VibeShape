@@ -18,6 +18,7 @@ export function RevolveParameterPanel({
   disabled = false,
   axisField,
   angleField,
+  extentField,
   operationField,
   targetField,
   message,
@@ -33,6 +34,7 @@ export function RevolveParameterPanel({
   disabled?: boolean
   axisField: ReactNode
   angleField: ReactNode
+  extentField?: ReactNode
   operationField: ReactNode
   targetField?: ReactNode
   message?: ReactNode
@@ -70,6 +72,7 @@ export function RevolveParameterPanel({
       {targetField}
       {axisField}
       {angleField}
+      {extentField}
     </ParameterPanel>
   )
 }
