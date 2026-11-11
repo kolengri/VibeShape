@@ -518,9 +518,7 @@ export const documentSketchDisplaySchema = z
     /** Solved circle radii; a radius constraint or variable can differ from the authored value. */
     solvedCircles: z
       .array(
-        z
-          .object({ entityId: sketchWireIdSchema, radius: z.number().finite().positive() })
-          .strict(),
+        z.object({ entityId: sketchWireIdSchema, radius: z.number().finite().positive() }).strict(),
       )
       .max(MAX_SKETCH_DISPLAY_SAMPLE_POINTS)
       .optional(),

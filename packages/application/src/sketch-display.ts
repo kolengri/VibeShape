@@ -277,9 +277,7 @@ function solvedCircleMetadata(sketch: SketchRecord, solution: SketchDisplaySolut
     sketch.entities.flatMap((entity) => (entity.type === "circle" ? [String(entity.id)] : [])),
   )
   return (solution?.circles ?? []).flatMap(({ entityId, radius }) =>
-    circleIds.has(entityId) && Number.isFinite(radius) && radius > 0
-      ? [{ entityId, radius }]
-      : [],
+    circleIds.has(entityId) && Number.isFinite(radius) && radius > 0 ? [{ entityId, radius }] : [],
   )
 }
 
