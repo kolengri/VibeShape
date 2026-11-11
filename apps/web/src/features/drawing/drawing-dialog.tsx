@@ -200,38 +200,59 @@ function TitleBlockFields({ settings, update }: { settings: DrawingSettings; upd
   )
 }
 
-function DrawingPreview({ view }: { view: ReturnType<typeof useDrawing> }) {
-  const t = useTranslations("app.drawing")
-  const { sheet, previewUrl, status } = view
+type DrawingView = ReturnType<typeof useDrawing>
+
+/** White paper regardless of theme, matching the exported sheet. */
+function SheetImage({ view }: { view: DrawingView }) {
+  const t = useTranslations("app.drawing.preview")
+  const { sheet, previewUrl } = view
+  const loading = view.status === "loading" && (
+    <p role="status" className="text-sm text-neutral-600">
+      {t("loading")}
+    </p>
+  )
   return (
-    <section aria-label={t("preview.label")} className="grid content-start gap-2">
-      <div
-        className="grid place-items-center overflow-hidden rounded-md border border-border bg-white"
-        style={{ aspectRatio: sheet ? `${sheet.width} / ${sheet.height}` : "297 / 210" }}
-      >
-        {previewUrl && sheet ? (
-          <img
-            className="size-full object-contain"
-            src={previewUrl}
-            alt={t("preview.alt")}
-            data-testid="drawing-preview"
-          />
-        ) : (
-          status === "loading" && (
-            <p role="status" className="text-sm text-neutral-600">
-              {t("preview.loading")}
-            </p>
-          )
-        )}
-      </div>
+    <div
+      className="grid place-items-center overflow-hidden rounded-md border border-border bg-white"
+      style={{ aspectRatio: sheet ? `${sheet.width} / ${sheet.height}` : "297 / 210" }}
+    >
+      {previewUrl ? (
+        <img
+          className="size-full object-contain"
+          src={previewUrl}
+          alt={t("alt")}
+          data-testid="drawing-preview"
+        />
+      ) : (
+        loading
+      )}
+    </div>
+  )
+}
+
+function PreviewMessages({ view }: { view: DrawingView }) {
+  const t = useTranslations("app.drawing")
+  const { sheet, status } = view
+  const error = status === "empty" || status === "failed" ? t(`errors.${status}`) : null
+  return (
+    <>
       {sheet && (
         <p className="text-sm text-muted-foreground" data-testid="drawing-scale">
           {t("preview.scale", { scale: `${sheet.scale.numerator}:${sheet.scale.denominator}` })}
         </p>
       )}
       {sheet && !sheet.fits && <Alert role="alert">{t("preview.notFits")}</Alert>}
-      {status === "empty" && <Alert role="alert">{t("errors.empty")}</Alert>}
-      {status === "failed" && <Alert role="alert">{t("errors.failed")}</Alert>}
+      {error && <Alert role="alert">{error}</Alert>}
+    </>
+  )
+}
+
+function DrawingPreview({ view }: { view: DrawingView }) {
+  const t = useTranslations("app.drawing.preview")
+  return (
+    <section aria-label={t("label")} className="grid content-start gap-2">
+      <SheetImage view={view} />
+      <PreviewMessages view={view} />
     </section>
   )
 }

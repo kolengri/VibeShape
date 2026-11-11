@@ -196,7 +196,7 @@ function polylineCurve(
 }
 
 /** Tight sheet-plane extents of exact lines, circles and arcs, and of sampled polylines. */
-export function edgeBounds(edges: readonly DrawingEdge[]): DrawingBounds {
+function edgeBounds(edges: readonly DrawingEdge[]): DrawingBounds {
   const min: Point = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]
   const max: Point = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY]
   const include = (point: readonly [number, number]) => {

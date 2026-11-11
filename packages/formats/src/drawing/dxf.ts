@@ -1,7 +1,14 @@
-import { type DrawingSheet, type SheetLayer, type SheetPrimitive, sheetNumber } from "./sheet"
+import {
+  type DrawingSheet,
+  type PrimitiveWriters,
+  type SheetLayer,
+  type SheetPrimitive,
+  sheetNumber,
+  writePrimitive,
+} from "./sheet"
 
 /** Sheet layers as DXF layers with ACI colours and R12 line types. */
-export const DXF_LAYERS: Readonly<
+const DXF_LAYERS: Readonly<
   Record<SheetLayer, Readonly<{ name: string; color: number; lineType: string }>>
 > = {
   visible: { name: "VISIBLE", color: 7, lineType: "CONTINUOUS" },
@@ -30,89 +37,60 @@ function pairs(...entries: (readonly [number, string | number])[]) {
   ])
 }
 
+const point3 = (code: number, point: readonly [number, number]) =>
+  [
+    [code, point[0]],
+    [code + 10, point[1]],
+    [code + 20, 0],
+  ] as const
+
+const ENTITY_WRITERS: PrimitiveWriters<(layer: string) => string[]> = {
+  line: (item) => (layer) =>
+    pairs([0, "LINE"], [8, layer], ...point3(10, item.start), ...point3(11, item.end)),
+  circle: (item) => (layer) =>
+    pairs([0, "CIRCLE"], [8, layer], ...point3(10, item.center), [40, item.radius]),
+  arc: (item) => (layer) =>
+    pairs(
+      [0, "ARC"],
+      [8, layer],
+      ...point3(10, item.center),
+      [40, item.radius],
+      [50, normalizedDegrees(item.startAngle)],
+      [51, normalizedDegrees(item.endAngle)],
+    ),
+  polyline: (item) => (layer) => [
+    ...pairs([0, "POLYLINE"], [8, layer], [66, "1"], ...point3(10, [0, 0]), [70, "0"]),
+    ...item.points.flatMap((point) => pairs([0, "VERTEX"], [8, layer], ...point3(10, point))),
+    ...pairs([0, "SEQEND"], [8, layer]),
+  ],
+  arrow: (item) => (layer) => {
+    const [a, b, c] = item.points
+    return pairs(
+      [0, "SOLID"],
+      [8, layer],
+      ...point3(10, a),
+      ...point3(11, b),
+      ...point3(12, c),
+      ...point3(13, c),
+    )
+  },
+  text: (item) => (layer) => {
+    const alignment = { start: 0, middle: 1, end: 2 }[item.align]
+    return pairs(
+      [0, "TEXT"],
+      [8, layer],
+      ...point3(10, item.position),
+      [40, item.height],
+      [1, dxfText(item.text)],
+      [50, item.rotation],
+      [72, String(alignment)],
+      ...(alignment === 0 ? [] : point3(11, item.position)),
+    )
+  },
+}
+
 function entity(primitive: SheetPrimitive): string[] {
-  const layer = DXF_LAYERS[primitive.layer].name
-  switch (primitive.kind) {
-    case "line":
-      return pairs(
-        [0, "LINE"],
-        [8, layer],
-        [10, primitive.start[0]],
-        [20, primitive.start[1]],
-        [30, 0],
-        [11, primitive.end[0]],
-        [21, primitive.end[1]],
-        [31, 0],
-      )
-    case "circle":
-      return pairs(
-        [0, "CIRCLE"],
-        [8, layer],
-        [10, primitive.center[0]],
-        [20, primitive.center[1]],
-        [30, 0],
-        [40, primitive.radius],
-      )
-    case "arc":
-      return pairs(
-        [0, "ARC"],
-        [8, layer],
-        [10, primitive.center[0]],
-        [20, primitive.center[1]],
-        [30, 0],
-        [40, primitive.radius],
-        [50, normalizedDegrees(primitive.startAngle)],
-        [51, normalizedDegrees(primitive.endAngle)],
-      )
-    case "polyline":
-      return [
-        ...pairs([0, "POLYLINE"], [8, layer], [66, "1"], [10, 0], [20, 0], [30, 0], [70, "0"]),
-        ...primitive.points.flatMap((point) =>
-          pairs([0, "VERTEX"], [8, layer], [10, point[0]], [20, point[1]], [30, 0]),
-        ),
-        ...pairs([0, "SEQEND"], [8, layer]),
-      ]
-    case "arrow": {
-      const [a, b, c] = primitive.points
-      return pairs(
-        [0, "SOLID"],
-        [8, layer],
-        [10, a[0]],
-        [20, a[1]],
-        [30, 0],
-        [11, b[0]],
-        [21, b[1]],
-        [31, 0],
-        [12, c[0]],
-        [22, c[1]],
-        [32, 0],
-        [13, c[0]],
-        [23, c[1]],
-        [33, 0],
-      )
-    }
-    case "text": {
-      const alignment = primitive.align === "start" ? 0 : primitive.align === "middle" ? 1 : 2
-      return pairs(
-        [0, "TEXT"],
-        [8, layer],
-        [10, primitive.position[0]],
-        [20, primitive.position[1]],
-        [30, 0],
-        [40, primitive.height],
-        [1, dxfText(primitive.text)],
-        [50, primitive.rotation],
-        [72, String(alignment)],
-        ...(alignment === 0
-          ? []
-          : ([
-              [11, primitive.position[0]],
-              [21, primitive.position[1]],
-              [31, 0],
-            ] as const)),
-      )
-    }
-  }
+  return writePrimitive(ENTITY_WRITERS, primitive)(DXF_LAYERS[primitive.layer].name)
 }
 
 function normalizedDegrees(radians: number) {

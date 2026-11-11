@@ -428,6 +428,24 @@ function ApplicationMenuBrand({
   )
 }
 
+/**
+ * Opens a command-owned dialog from the menu; focus first returns to the trigger so the dialog
+ * restores it on close, and the menu's own close-autofocus is suppressed once.
+ */
+function commandDialogLauncher(
+  openingCommandDialog: { current: boolean },
+  trigger: { current: HTMLElement | null },
+) {
+  return (open: (() => void) | undefined) =>
+    open
+      ? () => {
+          openingCommandDialog.current = true
+          trigger.current?.focus()
+          open()
+        }
+      : undefined
+}
+
 export function ApplicationMenu(props: ApplicationMenuProps) {
   const { controller, busy = false, remoteEndpoint } = props
   const editor = props.scope === "library" ? null : props
@@ -440,6 +458,7 @@ export function ApplicationMenu(props: ApplicationMenuProps) {
   const navigation = useProjectNavigation(t("projectNavigationFailed"), t("openingProjects"))
   const trigger = useRef<HTMLButtonElement>(null)
   const openingCommandDialog = useRef(false)
+  const launchCommandDialog = commandDialogLauncher(openingCommandDialog, trigger)
   const closeDialogMenu = (event: Event) => {
     event.preventDefault()
     setOpen(false)
@@ -510,24 +529,8 @@ export function ApplicationMenu(props: ApplicationMenuProps) {
                 controller={controller}
                 unitChangesBlocked={unitChangesBlocked}
                 hideModelExport={hideModelExport}
-                onRenderPicture={
-                  editor?.onRenderPicture
-                    ? () => {
-                        openingCommandDialog.current = true
-                        trigger.current?.focus()
-                        editor.onRenderPicture?.()
-                      }
-                    : undefined
-                }
-                onCreateDrawing={
-                  editor?.onCreateDrawing
-                    ? () => {
-                        openingCommandDialog.current = true
-                        trigger.current?.focus()
-                        editor.onCreateDrawing?.()
-                      }
-                    : undefined
-                }
+                onRenderPicture={launchCommandDialog(editor.onRenderPicture)}
+                onCreateDrawing={launchCommandDialog(editor.onCreateDrawing)}
                 backup={backup}
                 navigation={navigation}
                 launchDialog={launchDialog}

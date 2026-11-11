@@ -129,6 +129,7 @@ export class DocumentWorkerSession {
   }
 
   /** Projects the last successfully rebuilt revision, recovering once like export. */
+  // fallow-ignore-next-line unused-class-member -- Called through the application DocumentRebuildPort.
   projectDrawing(views: readonly DrawingViewId[], options: DrawingProjectionOptions = {}) {
     return this.#enqueue(async () => {
       this.#assertOpen()

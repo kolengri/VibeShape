@@ -235,14 +235,7 @@ export function createBinaryExportSession(
       )
     if (source.file.byteLength === 0 || source.file.byteLength > BINARY_EXPORT_MAX_BYTES)
       return localFailure("export-too-large", "Prepared files must contain at most 6 MiB.")
-    if (
-      format === "png" &&
-      ![137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => source.file[index] === value)
-    )
-      return localFailure("export-invalid-type", "The picture renderer did not return PNG bytes.")
-    if (!hasDrawingSignature(format, source.file))
-      return localFailure("export-invalid-type", "The drawing writer returned unexpected bytes.")
-    return null
+    return signatureFailure(format, source.file)
   }
   function read(operation: Extract<LocalBinaryExportOperation, { tool: "read_export_chunk" }>) {
     const file = retained
@@ -330,15 +323,26 @@ function encodeBytes(bytes: Uint8Array) {
   return btoa(text)
 }
 
-const DRAWING_SIGNATURES: Partial<Record<BinaryExportDescriptor["format"], string>> = {
-  svg: "<?xml",
-  pdf: "%PDF-",
-  dxf: "0\r\nSECTION",
+/** Leading bytes of derived formats whose producers run in the page rather than a kernel. */
+const SIGNATURES: Partial<
+  Record<BinaryExportDescriptor["format"], { bytes: readonly number[]; message: string }>
+> = {
+  png: {
+    bytes: [137, 80, 78, 71, 13, 10, 26, 10],
+    message: "The picture renderer did not return PNG bytes.",
+  },
+  svg: { bytes: asciiBytes("<?xml"), message: "The drawing writer returned unexpected bytes." },
+  pdf: { bytes: asciiBytes("%PDF-"), message: "The drawing writer returned unexpected bytes." },
+  dxf: {
+    bytes: asciiBytes("0\r\nSECTION"),
+    message: "The drawing writer returned unexpected bytes.",
+  },
 }
-function hasDrawingSignature(format: BinaryExportDescriptor["format"], file: Uint8Array) {
-  const signature = DRAWING_SIGNATURES[format]
-  return (
-    signature === undefined ||
-    [...signature].every((character, index) => file[index] === character.charCodeAt(0))
-  )
+function asciiBytes(value: string) {
+  return [...value].map((character) => character.charCodeAt(0))
+}
+function signatureFailure(format: BinaryExportDescriptor["format"], file: Uint8Array) {
+  const signature = SIGNATURES[format]
+  if (!signature || signature.bytes.every((value, index) => file[index] === value)) return null
+  return localFailure("export-invalid-type", signature.message)
 }

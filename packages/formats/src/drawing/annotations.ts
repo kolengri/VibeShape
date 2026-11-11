@@ -14,7 +14,7 @@ const SHOULDER_LENGTH_MM = 4
 const MAX_DIAMETER_CALLOUTS = 8
 
 /** Filled arrowhead with its tip at `tip`, pointing away from `from`. */
-export function arrowhead(tip: SheetPoint, from: SheetPoint): SheetPrimitive {
+function arrowhead(tip: SheetPoint, from: SheetPoint): SheetPrimitive {
   const length = Math.hypot(tip[0] - from[0], tip[1] - from[1]) || 1
   const ux = (tip[0] - from[0]) / length
   const uy = (tip[1] - from[1]) / length
@@ -31,7 +31,7 @@ export function arrowhead(tip: SheetPoint, from: SheetPoint): SheetPrimitive {
 }
 
 /** Dimension value in the requested display unit; geometry stays in millimetres. */
-export function formatLength(millimetres: number, units: DrawingSettings["units"]) {
+function formatLength(millimetres: number, units: DrawingSettings["units"]) {
   return units === "in" ? sheetNumber(millimetres / 25.4, 3) : sheetNumber(millimetres, 2)
 }
 

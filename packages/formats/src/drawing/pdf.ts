@@ -1,4 +1,12 @@
-import { type DrawingSheet, type SheetLayer, type SheetPrimitive, sheetNumber } from "./sheet"
+import {
+  type DrawingSheet,
+  type PrimitiveWriters,
+  pointOnCircle,
+  type SheetLayer,
+  type SheetPoint,
+  sheetNumber,
+  writePrimitive,
+} from "./sheet"
 
 const POINTS_PER_MM = 72 / 25.4
 /** Line width (mm) and dash pattern per layer, matching the SVG writer. */
@@ -24,125 +32,84 @@ const WIN_ANSI_EXTRA: Readonly<Record<string, readonly [code: number, width: num
   "—": [0x97, 1000],
   "€": [0x80, 556],
 }
+/** Helvetica advances for the Latin-1 characters drawings use; others take the digit width. */
+const LATIN_WIDTHS: Readonly<Record<number, number>> = { 176: 400, 215: 584, 216: 778 }
 
-/** Encodes text for the standard WinAnsi Helvetica font; unsupported characters become "?". */
-function winAnsi(value: string) {
-  const codes: number[] = []
-  let width = 0
-  for (const character of value) {
-    const code = character.codePointAt(0) ?? 63
-    const extra = WIN_ANSI_EXTRA[character]
-    if (extra) {
-      codes.push(extra[0])
-      width += extra[1]
-    } else if (code >= 32 && code < 127) {
-      codes.push(code)
-      width += HELVETICA_ASCII[code - 32] ?? 556
-    } else if (code >= 160 && code <= 255) {
-      codes.push(code)
-      width += code === 0xd8 ? 778 : code === 0xd7 ? 584 : 556
-    } else {
-      codes.push(63)
-      width += 556
-    }
-  }
-  const literal = codes
-    .map((code) => {
-      if (code === 40 || code === 41 || code === 92) return `\\${String.fromCharCode(code)}`
-      if (code < 32 || code > 126) return `\\${code.toString(8).padStart(3, "0")}`
-      return String.fromCharCode(code)
-    })
-    .join("")
-  return { literal: `(${literal})`, width: width / 1000 }
+/** WinAnsi code and Helvetica advance of one character; unsupported characters become "?". */
+function encodeCharacter(character: string): readonly [code: number, width: number] {
+  const extra = WIN_ANSI_EXTRA[character]
+  if (extra) return extra
+  const code = character.codePointAt(0) ?? 63
+  if (code >= 32 && code < 127) return [code, HELVETICA_ASCII[code - 32] ?? 556]
+  if (code >= 160 && code <= 255) return [code, LATIN_WIDTHS[code] ?? 556]
+  return [63, 556]
 }
 
-function arcCurves(
-  center: readonly [number, number],
-  radius: number,
-  start: number,
-  end: number,
-  move: boolean,
-) {
+function literalCharacter(code: number) {
+  if (code === 40 || code === 41 || code === 92) return `\\${String.fromCharCode(code)}`
+  if (code < 32 || code > 126) return `\\${code.toString(8).padStart(3, "0")}`
+  return String.fromCharCode(code)
+}
+
+/** Encodes text for the standard WinAnsi Helvetica font as a PDF literal and its em width. */
+function winAnsi(value: string) {
+  const encoded = [...value].map(encodeCharacter)
+  return {
+    literal: `(${encoded.map(([code]) => literalCharacter(code)).join("")})`,
+    width: encoded.reduce((sum, [, width]) => sum + width, 0) / 1000,
+  }
+}
+
+/** Cubic Bézier segments of at most a quarter turn approximating a counter-clockwise arc. */
+function arcCurves(center: SheetPoint, radius: number, start: number, end: number) {
   const n = sheetNumber
   const segments = Math.max(1, Math.ceil((end - start) / (Math.PI / 2) - 1e-9))
   const step = (end - start) / segments
   const handle = (4 / 3) * Math.tan(step / 4) * radius
-  const at = (angle: number) => [
-    center[0] + radius * Math.cos(angle),
-    center[1] + radius * Math.sin(angle),
-  ]
-  const [sx, sy] = at(start)
-  const parts = move ? [`${n(sx ?? 0)} ${n(sy ?? 0)} m`] : []
+  const [sx, sy] = pointOnCircle(center, radius, start)
+  const parts = [`${n(sx)} ${n(sy)} m`]
   for (let index = 0; index < segments; index += 1) {
     const a = start + step * index
     const b = a + step
-    const [ax, ay] = at(a)
-    const [bx, by] = at(b)
-    parts.push(
-      [
-        (ax ?? 0) - handle * Math.sin(a),
-        (ay ?? 0) + handle * Math.cos(a),
-        (bx ?? 0) + handle * Math.sin(b),
-        (by ?? 0) - handle * Math.cos(b),
-        bx ?? 0,
-        by ?? 0,
-      ]
-        .map((value) => n(value))
-        .join(" ")
-        .concat(" c"),
-    )
+    const [ax, ay] = pointOnCircle(center, radius, a)
+    const [bx, by] = pointOnCircle(center, radius, b)
+    const controls = [
+      ax - handle * Math.sin(a),
+      ay + handle * Math.cos(a),
+      bx + handle * Math.sin(b),
+      by - handle * Math.cos(b),
+      bx,
+      by,
+    ]
+    parts.push(`${controls.map((value) => n(value)).join(" ")} c`)
   }
   return parts
 }
 
-function operators(primitive: SheetPrimitive): string[] {
-  const n = sheetNumber
-  switch (primitive.kind) {
-    case "line":
-      return [
-        `${n(primitive.start[0])} ${n(primitive.start[1])} m ${n(primitive.end[0])} ${n(primitive.end[1])} l S`,
-      ]
-    case "circle":
-      return [...arcCurves(primitive.center, primitive.radius, 0, 2 * Math.PI, true), "h S"]
-    case "arc":
-      return [
-        ...arcCurves(
-          primitive.center,
-          primitive.radius,
-          primitive.startAngle,
-          primitive.endAngle,
-          true,
-        ),
-        "S",
-      ]
-    case "polyline":
-      return [
-        primitive.points
-          .map((point, index) => `${n(point[0])} ${n(point[1])} ${index === 0 ? "m" : "l"}`)
-          .join(" ")
-          .concat(" S"),
-      ]
-    case "arrow":
-      return [
-        primitive.points
-          .map((point, index) => `${n(point[0])} ${n(point[1])} ${index === 0 ? "m" : "l"}`)
-          .join(" ")
-          .concat(" h f"),
-      ]
-    case "text": {
-      const encoded = winAnsi(primitive.text)
-      const shift =
-        primitive.align === "start"
-          ? 0
-          : encoded.width * primitive.height * (primitive.align === "middle" ? 0.5 : 1)
-      const [x, y] = primitive.position
-      const matrix =
-        primitive.rotation === 90
-          ? `0 1 -1 0 ${n(x)} ${n(y - shift)}`
-          : `1 0 0 1 ${n(x - shift)} ${n(y)}`
-      return [`BT /F1 ${n(primitive.height)} Tf ${matrix} Tm ${encoded.literal} Tj ET`]
-    }
-  }
+function path(points: readonly SheetPoint[]) {
+  return points
+    .map(
+      (point, index) =>
+        `${sheetNumber(point[0])} ${sheetNumber(point[1])} ${index === 0 ? "m" : "l"}`,
+    )
+    .join(" ")
+}
+
+const OPERATORS: PrimitiveWriters<string[]> = {
+  line: (item) => [`${path([item.start, item.end])} S`],
+  circle: (item) => [...arcCurves(item.center, item.radius, 0, 2 * Math.PI), "h S"],
+  arc: (item) => [...arcCurves(item.center, item.radius, item.startAngle, item.endAngle), "S"],
+  polyline: (item) => [`${path(item.points)} S`],
+  arrow: (item) => [`${path(item.points)} h f`],
+  text: (item) => {
+    const n = sheetNumber
+    const encoded = winAnsi(item.text)
+    const shift = encoded.width * item.height * { start: 0, middle: 0.5, end: 1 }[item.align]
+    const [x, y] = item.position
+    const matrix =
+      item.rotation === 90 ? `0 1 -1 0 ${n(x)} ${n(y - shift)}` : `1 0 0 1 ${n(x - shift)} ${n(y)}`
+    return [`BT /F1 ${n(item.height)} Tf ${matrix} Tm ${encoded.literal} Tj ET`]
+  },
 }
 
 function content(sheet: DrawingSheet) {
@@ -155,7 +122,7 @@ function content(sheet: DrawingSheet) {
         const style = LAYER_STYLE[current]
         lines.push(`${sheetNumber(style.width)} w ${style.dash}`)
       }
-      lines.push(...operators(primitive))
+      lines.push(...writePrimitive(OPERATORS, primitive))
     }
   return lines.join("\n")
 }

@@ -14,9 +14,7 @@ import en from "../../i18n/messages/en.json"
 type SheetCopyMessages = (typeof en)["app"]["drawing"]["sheet"]
 
 /** Builds sheet text from the drawing catalog; MCP output uses the English source catalog. */
-export function drawingSheetCopy(
-  catalog: SheetCopyMessages = en.app.drawing.sheet,
-): DrawingSheetCopy {
+function drawingSheetCopy(catalog: SheetCopyMessages = en.app.drawing.sheet): DrawingSheetCopy {
   return {
     viewLabels: catalog.viewLabels,
     captions: catalog.captions,
@@ -39,7 +37,7 @@ export function composeDocumentDrawing(input: {
   })
 }
 
-export function drawingFilename(documentName: string, format: DrawingFileFormat) {
+function drawingFilename(documentName: string, format: DrawingFileFormat) {
   return `${portableDocumentStem(documentName)} drawing.${format}`
 }
 

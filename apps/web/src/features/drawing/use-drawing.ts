@@ -23,7 +23,7 @@ type ProjectionState =
   | Readonly<{ status: "failed"; key: string }>
 
 /** The model offers at least one exact solid; mesh-only models cannot be projected. */
-export function documentHasDrawableSolid(controller: DocumentControllerState) {
+function documentHasDrawableSolid(controller: DocumentControllerState) {
   const rebuild = controller.report?.rebuild
   return (
     rebuild?.ok === true &&

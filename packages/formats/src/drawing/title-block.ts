@@ -141,7 +141,7 @@ export function titleBlock({
 }
 
 /** Truncates text that would overflow its cell, using an average-advance estimate. */
-export function fit(value: string, width: number, height: number) {
+function fit(value: string, width: number, height: number) {
   const characters = [...value]
   const limit = Math.max(1, Math.floor(width / (height * AVERAGE_ADVANCE)))
   return characters.length <= limit ? value : `${characters.slice(0, limit - 1).join("")}…`

@@ -79,3 +79,16 @@ export function sheetNumber(value: number, digits = 4) {
   const text = value.toFixed(digits).replace(/\.?0+$/, "")
   return text === "-0" ? "0" : text
 }
+
+/** One serializer per primitive kind; writers stay flat instead of branching on every kind. */
+export type PrimitiveWriters<T> = {
+  readonly [K in SheetPrimitive["kind"]]: (item: Extract<SheetPrimitive, { kind: K }>) => T
+}
+
+export function writePrimitive<T>(writers: PrimitiveWriters<T>, item: SheetPrimitive): T {
+  return (writers[item.kind] as (value: SheetPrimitive) => T)(item)
+}
+
+export function pointOnCircle(center: SheetPoint, radius: number, angle: number): SheetPoint {
+  return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)]
+}
