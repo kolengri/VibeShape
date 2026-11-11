@@ -6,6 +6,9 @@ import type { Edge } from "replicad"
 import type { BRepAdaptor_Curve, OpenCascadeInstance } from "replicad-opencascadejs"
 import { createAnalyticalEdge } from "./occt-loft"
 
+/** User-repairable path pattern failures whose message is safe to show unchanged. */
+export class PathPatternError extends Error {}
+
 type Vector3 = readonly [number, number, number]
 export type PatternPlacement = Readonly<{
   /** Applied after the rotation, which pivots about the reference station. */
@@ -123,7 +126,7 @@ function measurePanels(curve: SampledCurve, curveIndex: number, panels: Panel[],
       continue
     }
     if (depth >= MAX_PANEL_DEPTH || accepted.length + pending.length >= MAX_PANELS)
-      throw new Error("Pattern path arc length did not converge.")
+      throw new PathPatternError("Pattern path arc length did not converge.")
     pending.push([middle, b, depth + 1], [a, middle, depth + 1])
   }
   let abscissa = start
@@ -165,10 +168,12 @@ function measurePath(path: Path, curves: readonly SampledCurve[]): MeasuredPath 
   let length = 0
   for (const [index, curve] of curves.entries()) {
     const edgeLength = measurePanels(curve, index, panels, length)
-    if (!Number.isFinite(edgeLength)) throw new Error("Pattern path arc length is not finite.")
+    if (!Number.isFinite(edgeLength))
+      throw new PathPatternError("Pattern path arc length is not finite.")
     length += edgeLength
   }
-  if (!(length > LENGTH_TOLERANCE)) throw new Error("Pattern path length must be positive.")
+  if (!(length > LENGTH_TOLERANCE))
+    throw new PathPatternError("Pattern path length must be positive.")
   if (path.geometry.kind === "circle")
     return {
       panels,
@@ -227,7 +232,7 @@ function station(
   const u = invertPanel(curve, panel, Math.min(panel.length, Math.max(0, clamped - panel.start)))
   const sample = curve.sample(u)
   const magnitude = norm(sample.derivative)
-  if (!(magnitude > 0)) throw new Error("Pattern path tangent is undefined.")
+  if (!(magnitude > 0)) throw new PathPatternError("Pattern path tangent is undefined.")
   return {
     position: sample.point,
     tangent: sample.derivative.map((value) => (direction * value) / magnitude) as [
@@ -250,7 +255,7 @@ export function pathPatternDistances(
 ): readonly number[] {
   const { count, spacing, startOffset } = parameters
   if (startOffset >= length - LENGTH_TOLERANCE)
-    throw new Error(
+    throw new PathPatternError(
       `Pattern start offset ${formatMillimeters(startOffset)} must be shorter than the path length ${formatMillimeters(length)}.`,
     )
   const interval =
@@ -261,11 +266,11 @@ export function pathPatternDistances(
         : (length - startOffset) / (count - 1)
   const travel = (count - 1) * interval
   if (spacing.mode === "fixed" && closed && travel >= length - LENGTH_TOLERANCE)
-    throw new Error(
+    throw new PathPatternError(
       `Fixed spacing ${formatMillimeters(interval)} wraps a closed path of ${formatMillimeters(length)}; the last instance would reach the seed.`,
     )
   if (spacing.mode === "fixed" && !closed && startOffset + travel > length + LENGTH_TOLERANCE)
-    throw new Error(
+    throw new PathPatternError(
       `Fixed spacing overruns the path: ${count} instances need ${formatMillimeters(startOffset + travel)} but the path is ${formatMillimeters(length)}.`,
     )
   return Array.from({ length: count }, (_, index) =>

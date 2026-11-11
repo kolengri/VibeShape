@@ -188,7 +188,7 @@ import { createOcctLoft } from "./occt-loft"
 import { createOcctLoftPatchNetwork, type LoftEndSupport } from "./occt-loft-filling"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
 import { mirrorOcctShape } from "./occt-mirror"
-import { samplePathPatternPlacements } from "./occt-path-sampling"
+import { PathPatternError, samplePathPatternPlacements } from "./occt-path-sampling"
 import { patternOcctShape } from "./occt-pattern"
 import { placeOcctShape } from "./occt-placement"
 import { splitOcctShape } from "./occt-plane-split"
@@ -4503,6 +4503,15 @@ async function bodyBundleForEvaluation(
   return { shape: source.shape, outputs }
 }
 
+function bodyBundleFailureMessage(
+  feature: Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
+  error: unknown,
+) {
+  if (feature.kind === "split")
+    return "Split plane must cross the body and produce two connected positive-volume pieces."
+  return error instanceof PathPatternError ? error.message : "Compound geometry evaluation failed."
+}
+
 function disposeUncachedBodyBundle(
   bundle: OwnedBodyCombination | null,
   snapshots: WeakMap<Shape3D, TopologyCaptureSnapshot>,
@@ -4994,14 +5003,12 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           bodies,
         },
       }
-    } catch {
+    } catch (error) {
       const cleanupSucceeded = disposeUncachedBodyBundle(temporary, this.#topologySnapshots)
       return featureFailure(
         "invalid-feature-geometry",
         cleanupSucceeded
-          ? feature.kind === "split"
-            ? "Split plane must cross the body and produce two connected positive-volume pieces."
-            : "Compound geometry evaluation failed."
+          ? bodyBundleFailureMessage(feature, error)
           : "Named body evaluation failed and temporary shape cleanup did not complete.",
       )
     }

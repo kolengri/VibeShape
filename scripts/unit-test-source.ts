@@ -57,7 +57,7 @@ function reviewedReader(input: Input, hashes: Map<string, string>, environment: 
     input.path === "packages/geometry-worker/src/engine-import-kernel.test.ts" &&
     input.hash === "5624a3f881248fc6a16aab07027bc5a1cf6302a2eb2518f20346650f74acfe70" &&
     hashes.get("packages/geometry-worker/src/engine.ts") ===
-      "bf00fc2bb12e2ac08494c57c850b7b83e90ee163ca2b25ad7a45c4043fe58c59"
+      "c4a705cb1cbd5761f6a79f2dbb2285411232d0578d27acce7f9fd4c97322a837"
   )
 }
 
