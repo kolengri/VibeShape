@@ -1969,6 +1969,7 @@ function HistoryGroup({
         rows={view.rows}
         disabled={historyMetadataControlsDisabled(metadataDisabled, completeGraph, busy)}
         onCommit={props.onAuthoredMetadata}
+        onItemsDeleted={(removed) => closeDeletedActiveSketch(props, removed)}
       >
         <HistoryGroupHeader onDetailedChange={onDetailedChange} />
         <fieldset className="min-w-0">
@@ -2917,8 +2918,18 @@ function useModelBrowserDeletion(props: ModelTreeProps) {
         props.sketchOperationActive ||
         deleteTargets.length !== (props.modelTreeSelection?.length ?? 0),
     ),
-    onDeleted: () => props.onModelTreeSelectionChange?.([]),
+    onDeleted: (removed) => {
+      props.onModelTreeSelectionChange?.([])
+      closeDeletedActiveSketch(props, removed)
+    },
   })
+}
+
+// Like the single-row path, a multi-selection that removed the selected finished sketch must
+// not leave the editor pointing at a deleted sketch.
+function closeDeletedActiveSketch(props: ModelTreeProps, removed: readonly HistoryItemRef[]) {
+  if (removed.some(({ kind, id }) => kind === "sketch" && id === props.activeSketchId))
+    props.onSketchDeleted()
 }
 
 function useModelTreeHistoryView(controller: DocumentControllerState) {

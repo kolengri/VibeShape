@@ -33,6 +33,13 @@ mock.module("@dnd-kit/react/sortable", () => ({
     operation.source !== null && operation.target !== null,
 }))
 
+const removeHistoryItems = vi.fn().mockResolvedValue({ ok: true })
+const documentController = { ...(await import("../document/document-controller")) }
+mock.module("../document/document-controller", () => ({
+  ...documentController,
+  removeHistoryItems,
+}))
+
 const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import(
   "@testing-library/react"
 )
@@ -393,6 +400,47 @@ type RenderTreeOptions = Partial<
     | "revealRequest"
   >
 >
+
+function authoredSketchController() {
+  const base = authoredTreeFixture().authority
+  const envelope = {
+    schemaVersion: 2,
+    commandId: authoredTestId(950),
+    documentId: base.id,
+    baseRevision: base.revision,
+    issuedAt: "2026-10-03T00:00:00Z",
+    actor: { type: "user", userId: null },
+  }
+  const inserted = applyDocumentV2Command(base, {
+    ...envelope,
+    kind: "org.vibeshape.document.model-command",
+    payload: {
+      command: {
+        ...envelope,
+        schemaVersion: 1,
+        kind: "org.vibeshape.history.insert-sketch",
+        payload: { sketch, historyAfter: base.history.at(-1) },
+      },
+      partAllocations: [],
+    },
+  })
+  if (!inserted.ok) throw new Error(JSON.stringify(inserted.diagnostic))
+  const authority = inserted.snapshot
+  return {
+    status: "ready",
+    saveStatus: "saved",
+    diagnostic: null,
+    authoredSnapshot: authority,
+    historyInsertion: null,
+    report: {
+      ...controllerReport,
+      mode: "read-write",
+      snapshot: projectDocumentSnapshotV2ToV1(authority),
+      historyItems: authority.history,
+      rebuild: { ok: false },
+    },
+  } as unknown as DocumentControllerState
+}
 
 function authoredInsertionController() {
   const base = authoredTreeFixture().authority
@@ -2635,6 +2683,42 @@ describe("ModelTree visibility and deletion", () => {
       await user.click(timeline().getByRole("button", { name: "Actions for Box 1" }))
       const deleteItem = screen.getByRole("menuitem", { name: "Delete Box 1…" })
       expect(deleteItem.getAttribute("aria-disabled")).toBe(sketchOperationActive ? "true" : null)
+    },
+  )
+
+  it.each([
+    { selected: "the finished sketch", includesSketch: true },
+    { selected: "only a feature", includesSketch: false },
+  ])(
+    "closes the selected finished sketch only when a browser multi-selection deletes $selected",
+    async ({ includesSketch }) => {
+      const user = userEvent.setup()
+      const onSketchDeleted = vi.fn()
+      const onModelTreeSelectionChange = vi.fn()
+      removeHistoryItems.mockClear()
+      const authored = authoredSketchController()
+      const partFeature = requireAuthoredFixture(authored.authoredSnapshot?.features[0]).id
+      renderTree({
+        controller: authored,
+        activeFeatureId: null,
+        activeSketchId: sketchId,
+        sketchOperationActive: false,
+        onSketchDeleted,
+        onModelTreeSelectionChange,
+        modelTreeSelection: includesSketch
+          ? [
+              { kind: "sketch", id: sketchId },
+              { kind: "feature", id: partFeature },
+            ]
+          : [{ kind: "feature", id: partFeature }],
+      })
+      browser().getAllByRole("treeitem")[0]?.focus()
+      await user.keyboard("{Delete}")
+      const dialog = screen.getByRole("alertdialog")
+      await user.click(within(dialog).getByRole("button", { name: "Delete selection" }))
+      await waitFor(() => expect(onModelTreeSelectionChange).toHaveBeenCalledWith([]))
+      expect(removeHistoryItems).toHaveBeenCalledTimes(1)
+      expect(onSketchDeleted).toHaveBeenCalledTimes(includesSketch ? 1 : 0)
     },
   )
 
