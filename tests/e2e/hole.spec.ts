@@ -160,7 +160,12 @@ for (const theme of ["light", "dark"] as const) {
     await edit.getByRole("button", { name: "Update hole", exact: true }).click()
     await expect(edit).toHaveCount(0)
     await page.reload()
-    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    // Reopening reloads the project and rebuilds Box, Sketch and Hole in the geometry worker. That
+    // exceeds the 5 s UI default when parallel workers share the CPU, so it gets the same reopen
+    // budget as the backup import below.
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+      timeout: 30_000,
+    })
     await saved.click()
     await expect(edit.getByRole("combobox", { name: "Diameter", exact: true })).toHaveValue("6 mm")
     await expect(edit.getByRole("checkbox", { name: "Point 1", exact: true })).toBeChecked()
