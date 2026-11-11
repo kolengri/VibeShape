@@ -1,4 +1,3 @@
-import { resolveShellOpeningCandidates } from "@vibeshape/application/shell-opening-resolution"
 import {
   createAngleQuantity,
   type DocumentDisplayUnits,
@@ -7,15 +6,10 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import type { BodyReference } from "@vibeshape/domain/body-reference"
-import { bodyFaceRefSchema } from "@vibeshape/domain/body-topology-reference"
-import {
-  createBodyTopologyReferenceProjector,
-  type ModelBodyTopologyEvidence,
-} from "@vibeshape/domain/model-body-topology"
+import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
 import {
   DRAFT_MAX_FACES,
   draftAngleSchema,
-  draftContentFace,
   draftFeatureParametersSchema,
   draftFeatureType,
   readDraftFeatureParameters,
@@ -24,6 +18,11 @@ import { type ReferencePlane, referenceFrameDependencyIds } from "@vibeshape/dom
 import { normalizeExpressionWithDisplayUnit } from "../../document/document-display-units"
 import { type BodyFeatureFormMode, bodyFeatureRecord } from "../part-design/body-feature-record"
 import { evaluateFormExpression } from "../part-design/primitive-form"
+import {
+  projectBodyFaceSelection,
+  restoreBodyFaceSelection,
+  toggleBodyFace,
+} from "../shell/body-face-form-model"
 
 /** An edit may target a History replacement body; its saved faces then need explicit reselection. */
 export type DraftFormMode =
@@ -62,28 +61,12 @@ export function draftInitialSelection(
 ): { repair: boolean; faceIds: string[] } {
   if (mode.kind === "create") return { repair: false, faceIds: [] }
   const parameters = readDraftFeatureParameters(mode.feature)
-  if (
-    !parameters ||
-    !evidence ||
-    evidence.featureId !== parameters.targetBody.featureId ||
-    evidence.outputRole !== parameters.targetBody.outputRole
+  return restoreBodyFaceSelection(
+    parameters?.faces,
+    parameters?.targetBody,
+    evidence,
+    allowSemanticRebinding,
   )
-    return { repair: true, faceIds: [] }
-  const faceIds: string[] = []
-  for (const face of parameters.faces) {
-    const durable = Boolean(face.semanticRole || face.lineageToken)
-    const resolved = resolveShellOpeningCandidates(
-      [draftContentFace(face)],
-      evidence.candidates,
-      evidence,
-      durable ? "durable" : "exact",
-      { allowSemanticRebinding },
-    )
-    const id = resolved.ok ? resolved.candidateIds[0] : undefined
-    if (!id || faceIds.includes(id)) return { repair: true, faceIds: [] }
-    faceIds.push(id)
-  }
-  return { repair: false, faceIds }
 }
 
 function draftAngleExpression(mode: DraftFormMode, units: DocumentDisplayUnits) {
@@ -142,20 +125,15 @@ export function draftFormFeature(
     return null
   const angle = parseDraftAngle(values.angle, input.variables, input.units, input.copy)
   if (!angle.ok) return null
-  const selected = values.faceIds.flatMap(
-    (id) => evidence.candidates.find(({ candidateId }) => candidateId === id) ?? [],
+  const faces = projectBodyFaceSelection(
+    evidence,
+    values.faceIds,
+    input.allowSemanticRebinding !== false,
   )
-  if (selected.length !== values.faceIds.length) return null
-  const project = createBodyTopologyReferenceProjector(evidence)
+  if (!faces) return null
   const parameters = draftFeatureParametersSchema.safeParse({
     targetBody,
-    faces: selected.map((candidate) => {
-      const reference = bodyFaceRefSchema.parse(project(candidate))
-      if (input.allowSemanticRebinding !== false) return reference
-      // Modifier Extrusion face roles are heuristic and cannot be persisted as durable identity.
-      const { semanticRole: _semanticRole, ...withoutHeuristicRole } = reference
-      return withoutHeuristicRole
-    }),
+    faces,
     neutralPlane,
     angle: angle.quantity,
     flip: values.flip,
@@ -174,9 +152,7 @@ export function toggleDraftFace(
   candidateId: string,
   evidence: ModelBodyTopologyEvidence | null,
 ): string[] | null {
-  if (!evidence?.candidates.some((candidate) => candidate.candidateId === candidateId)) return null
-  if (faceIds.includes(candidateId)) return faceIds.filter((id) => id !== candidateId)
-  return faceIds.length < DRAFT_MAX_FACES ? [...faceIds, candidateId] : null
+  return toggleBodyFace(faceIds, candidateId, evidence, DRAFT_MAX_FACES)
 }
 
 /** Form-level validation: an angle issue is attached to its field, anything else to the form. */

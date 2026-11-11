@@ -7,6 +7,7 @@ import {
   datumPointFeatureType,
   type FeatureRecord,
   featureRecordSchema,
+  featureTypeKey,
 } from "@vibeshape/domain"
 import {
   booleanFeatureType,
@@ -48,11 +49,17 @@ import {
 import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
 import { patternFeatureTypeV3 } from "@vibeshape/domain/part-design-pattern-path"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
+import {
+  pressPullFeatureType,
+  pressPullFeatureTypeForFace,
+  pressPullFeatureTypeV2,
+} from "@vibeshape/domain/part-design-press-pull"
 import { scaleFeatureType } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
 import { sweepFeatureType, sweepFeatureTypeV2 } from "@vibeshape/domain/part-design-sweep"
+import { thickenFeatureType } from "@vibeshape/domain/part-design-thicken"
 import { threadFeatureType, threadFeatureTypeV2 } from "@vibeshape/domain/part-design-thread"
 
 type CadOperation = Extract<
@@ -88,6 +95,10 @@ type CadOperation = Extract<
       | "create_face_draft"
       | "update_face_draft"
       | "create_scale"
+      | "create_thicken"
+      | "update_thicken"
+      | "create_press_pull"
+      | "update_press_pull"
       | "update_scale"
       | "create_fdm"
       | "update_fdm"
@@ -148,6 +159,10 @@ const directCadFeatureTypes = {
   create_face_draft: draftFeatureType.type,
   update_face_draft: draftFeatureType.type,
   create_scale: scaleFeatureType.type,
+  create_thicken: thickenFeatureType.type,
+  update_thicken: thickenFeatureType.type,
+  create_press_pull: pressPullFeatureTypeV2.type,
+  update_press_pull: pressPullFeatureTypeV2.type,
   update_scale: scaleFeatureType.type,
   create_hole: holeFeatureType.type,
   update_hole: holeFeatureType.type,
@@ -339,6 +354,24 @@ function extrudeProfileFeatureType(
   return parameters.operation === "new" ? extrusionFeatureTypeV3.type : extrusionFeatureTypeV4.type
 }
 
+const pressPullTypeKeys = new Set(
+  [pressPullFeatureType.type, pressPullFeatureTypeV2.type].map(featureTypeKey),
+)
+/**
+ * Creation authors version 1 for planar faces and version 2 for curved faces. An update keeps the
+ * saved version (like Hole), so a version 1 feature is never silently migrated.
+ */
+function pressPullType(operation: CadOperation, savedType: FeatureRecord["type"] | null) {
+  if (operation.tool !== "create_press_pull" && operation.tool !== "update_press_pull") return null
+  if (
+    operation.tool === "update_press_pull" &&
+    savedType &&
+    pressPullTypeKeys.has(featureTypeKey(savedType))
+  )
+    return savedType
+  return pressPullFeatureTypeForFace(operation.arguments.parameters.face)
+}
+
 export function createLocalCadCommand(
   operation: CadOperation,
   actor: CommandActor,
@@ -376,7 +409,7 @@ export function createLocalCadCommand(
   const feature = featureRecordSchema.parse({
     schemaVersion: 0,
     id: featureInput.featureId,
-    type: hole?.type ?? cadFeatureType(operation),
+    type: hole?.type ?? pressPullType(operation, savedType) ?? cadFeatureType(operation),
     parameters: hole?.parameters ?? featureInput.parameters,
     dependencies: featureInput.dependencies,
     references: featureInput.references,

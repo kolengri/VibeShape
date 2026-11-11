@@ -596,6 +596,28 @@ explicit center; the worker copies the source through `gp_Trsf.SetScale` and
 operations validate one positive-volume input and result solid and release native temporaries on
 success and failure.
 
+## Thicken and curved-face offset
+
+[ADR-0159](../adr/0159-thicken-and-curved-face-offset.md) adds Thicken and Press Pull version 2.
+Thicken persists 1–256 body-bound faces, an expression-aware thickness, a side and a new/add/remove
+operation; New keeps the source body unconsumed. The geometry worker resolves the faces through the
+exact/durable body-face resolver shared with Draft, requires one edge-connected patch, and rejects an
+offset that reaches the smallest concave principal curvature radius sampled from
+`BRepAdaptor_Surface::D2`. Each signed offset slab is built from its own deep copy of the body (with
+the selected faces' body orientation restored) by `BRepOffsetAPI_MakeThickSolid`: the simple
+construction first, accepted only within an edge-tolerance bound, then the joined construction with
+every non-selected face closing the slab. Symmetric halves are fused; Add and Remove fuse or cut the
+slab with the source and must change its volume. Closed selections (a shell of the faces that `BRep_Tool::IsClosed` reports closed) are rejected in favour of Shell, and
+simple slabs must fall within Steiner volume bounds. Press Pull authors version 1 for planar faces
+(unchanged prism path) and version 2 for curved faces, which add or cut the same slab and are
+accepted only when `ShapeUpgrade_UnifySameDomain` reports an unchanged face count and the Boolean
+history shows that no body face was deleted and every slab face at a moved edge is internal or merges
+into that edge's own neighbour; in practice perpendicular planar neighbours follow, and slanted ones only
+on an isolated body. A slab that touches a non-bordering face reports "reaches another feature".
+`BRepOffset_MakeOffset` and `BRepAlgoAPI_Defeaturing` are unbound in the pinned build, so a general
+per-face offset with arbitrary neighbour extension is unavailable. Native temporaries are released on
+success and failure.
+
 ## FDM feature family and export mesh quality
 
 Part Design owns FDM feature v1 validation, dependencies, semantic inputs, and quantity resolution. The document worker resolves saved sketch lines/support and reference planes into bounded content; the geometry worker owns exact OCCT construction and disposal. All kinds return one exact connected solid or a diagnostic, copying borrowed target geometry before Boolean operations. See [Editable FDM features](../product/fdm-tools.md) for the supported constructions and explicit limitations.

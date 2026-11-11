@@ -46,13 +46,14 @@ function pickedFaceCandidateId(report: RebuiltReport, target: BodyReference, fac
   )
   return picked?.length === 1 ? picked[0]?.candidateId : undefined
 }
-function resolvePlanarFace(
+/** Press Pull v2 accepts planar and curved faces; the worker enforces attachment rules. */
+function resolveBodyFace(
   evidence: ModelBodyTopologyEvidence,
   candidateId: string | undefined,
   targetBody: BodyReference,
 ) {
   const candidate = evidence.candidates.find((candidate) => candidate.candidateId === candidateId)
-  if (candidate?.signature.geometryClass !== "PLANE") return null
+  if (!candidate) return null
   const face = bodyFaceRefSchema.parse(createBodyTopologyReferenceProjector(evidence)(candidate))
   const { featureId: _featureId, ...contentFace } = face
   const resolution = resolveShellOpeningCandidates(
@@ -79,7 +80,7 @@ export function pressPullToolFromSelection(
   })
   if (!result.ok) return null
   const candidateId = pickedFaceCandidateId(rebuilt, targetBody, selection.faceId)
-  const face = resolvePlanarFace(result.evidence, candidateId, targetBody)
+  const face = resolveBodyFace(result.evidence, candidateId, targetBody)
   if (!face) return null
   return {
     kind: "create-press-pull",

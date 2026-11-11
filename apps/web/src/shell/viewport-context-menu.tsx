@@ -458,6 +458,7 @@ function ModelingActions({ props, menu }: { props: Props; menu: Menu }) {
       {command(editorCommandIds.createDatumPoint, t("datumPoint"))}
       {command(editorCommandIds.shellPart, t("shell"))}
       {command(editorCommandIds.draftPart, t("draft"))}
+      {command(editorCommandIds.thickenPart, t("thicken"))}
       {command(editorCommandIds.scalePart, t("scale"))}
       <MenuAction
         label={t("editFeature")}

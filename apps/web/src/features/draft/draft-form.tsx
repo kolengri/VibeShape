@@ -1,4 +1,4 @@
-import type { FeatureId, FeatureRecord } from "@vibeshape/domain"
+import type { FeatureRecord } from "@vibeshape/domain"
 import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-topology"
 import type { ReferencePlane } from "@vibeshape/domain/reference-frame"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
@@ -15,15 +15,11 @@ import {
   type FeatureParameterFormProps,
   submitFeatureOrReport,
 } from "../part-design/primitive-form"
-import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
 import { ReferencePlaneSelection } from "../reference-geometry/reference-support-fields"
-import {
-  BodyFaceChecklist,
-  type BodyFaceChecklistCopy,
-  BodyFacePickingSync,
-} from "../shell/body-face-selection"
+import { BodyFaceFormSync, BodyFaceStatusNotes } from "../shell/body-face-form-sync"
+import { BodyFaceChecklist, type BodyFaceChecklistCopy } from "../shell/body-face-selection"
 import type { ShellPickingContext, ShellPickRequest } from "../shell/shell-picking"
 import {
   type DraftFormMode,
@@ -61,61 +57,6 @@ type DraftFormProps = FeatureParameterFormProps<DraftFormMode, DraftFormCopy> & 
   previewDiagnostic?: string | undefined
   pickingRequest?: ShellPickRequest | null
   onPickingContextChange?: ((context: ShellPickingContext | null) => void) | undefined
-}
-
-function DraftStatusNotes({
-  copy,
-  repair,
-  available,
-}: Readonly<{ copy: DraftFormCopy; repair: boolean; available: boolean }>) {
-  const note = available ? (repair ? copy.repair : null) : copy.unavailable
-  return note ? (
-    <p role="status" className="text-sm text-muted-foreground">
-      {note}
-    </p>
-  ) : null
-}
-
-function DraftPreview(props: {
-  feature: FeatureRecord | null
-  onPreviewChange: (feature: FeatureRecord | null) => void
-}) {
-  useDebouncedFeaturePreview({ onPreviewChange: props.onPreviewChange, preview: props.feature })
-  return null
-}
-
-/** Keeps viewport face picking and the disposable exact preview in step with the form values. */
-function DraftSync(
-  props: Readonly<{
-    evidence: ModelBodyTopologyEvidence | null
-    featureId: FeatureId
-    mode: DraftFormMode
-    faceIds: string[]
-    preview: FeatureRecord | null
-    request: ShellPickRequest | null
-    onContextChange: DraftFormProps["onPickingContextChange"]
-    onPreviewChange: DraftFormProps["onPreviewChange"]
-    onSelectionChange: (ids: string[]) => void
-  }>,
-) {
-  return (
-    <>
-      <BodyFacePickingSync
-        enabled
-        evidence={props.evidence}
-        featureId={props.featureId}
-        target={draftTargetBody(props.mode)}
-        selectedIds={props.faceIds}
-        request={props.request}
-        onContextChange={props.onContextChange}
-        pick={(request) => toggleDraftFace(props.faceIds, request.candidateId, props.evidence)}
-        onSelectionChange={props.onSelectionChange}
-      />
-      {props.onPreviewChange && (
-        <DraftPreview feature={props.preview} onPreviewChange={props.onPreviewChange} />
-      )}
-    </>
-  )
 }
 
 /** Owns the Draft task state: stable feature identity, neutral plane and the validated form. */
@@ -203,13 +144,14 @@ export function DraftForm(props: DraftFormProps) {
       <TaskPanelContentProvider content={<form.FormError />}>
         <form.Subscribe selector={(formState) => formState.values}>
           {(values) => (
-            <DraftSync
+            <BodyFaceFormSync
               evidence={evidence}
               featureId={featureId}
-              mode={mode}
+              target={draftTargetBody(mode)}
               faceIds={values.faceIds}
               preview={feature(values)}
               request={pickingRequest}
+              toggle={(candidateId) => toggleDraftFace(values.faceIds, candidateId, evidence)}
               onContextChange={onPickingContextChange}
               onPreviewChange={onPreviewChange}
               onSelectionChange={selectFaces}
@@ -228,7 +170,7 @@ export function DraftForm(props: DraftFormProps) {
               previewDiagnostic={previewDiagnostic}
               onCancel={onCancel}
             >
-              <DraftStatusNotes copy={copy} repair={repair} available={evidence !== null} />
+              <BodyFaceStatusNotes copy={copy} repair={repair} available={evidence !== null} />
               <form.Field name="faceIds">
                 {(field) => (
                   <BodyFaceChecklist
