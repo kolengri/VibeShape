@@ -21,6 +21,7 @@ import {
   type ChamferFeatureParametersV3,
   chamferFeatureParametersV3Schema,
   chamferFeatureTypeV3,
+  filletFeatureTypeV3,
 } from "@vibeshape/domain/part-design"
 import { normalizeExpressionWithDisplayUnit } from "../../document/document-display-units"
 import { parsePrimitiveLengthExpression } from "../part-design/primitive-form"
@@ -32,6 +33,11 @@ import {
   sameTreatmentReference,
   toggleSelectedEdgeReference,
 } from "./edge-treatment-candidates"
+import {
+  type FilletVariableRadiusDraft,
+  filletUsesV3,
+  filletV3Parameters,
+} from "./edge-treatment-fillet"
 import type {
   EdgeTreatmentFormCopy,
   EdgeTreatmentFormMode,
@@ -58,6 +64,8 @@ export type TreatmentValues = {
   flip: boolean
   tangentPropagation: boolean
   directionOverrides: ChamferFeatureParametersV3["directionOverrides"]
+  /** Fillet only: linear radius laws keyed by their selected edge target. */
+  variableRadii: readonly FilletVariableRadiusDraft[]
 }
 export type TreatmentIssues = Partial<Record<keyof TreatmentValues, string>>
 type TreatmentValidationCopy = EdgeTreatmentFormCopy & {
@@ -67,21 +75,39 @@ type TreatmentValidationCopy = EdgeTreatmentFormCopy & {
   plainContourOnly: string
   invalidAngle: string
   invalidAdvancedRange: string
+  variableRadiusEqual: string
+  variableRadiusClosed: string
+}
+
+/** Schema route owner for both treatments; each operation has exactly one route function. */
+export function treatmentUsesV3(
+  values: TreatmentValues,
+  option: EdgeTreatmentTargetOption | undefined,
+  formMode: EdgeTreatmentFormMode,
+  operation: EdgeTreatmentOperation,
+) {
+  return operation === "fillet"
+    ? filletUsesV3(values, option)
+    : chamferUsesV3(values, option, formMode)
 }
 
 /**
  * Single owner of the Chamfer schema route. All edges stays on V1, body-bound new selections and
  * saved V3 records author V3, and saved V1/V2 intent migrates only while advanced intent is present.
  */
-export function treatmentUsesV3(
+function chamferUsesV3(
   values: TreatmentValues,
   option: EdgeTreatmentTargetOption | undefined,
   formMode: EdgeTreatmentFormMode,
 ) {
   if (edgeTreatmentRequiresV3(option)) return true
   if (values.scope === "all" || usesLegacyContourChamfer(values, option, formMode)) return false
+  return values.retainV3 || chamferAdvancedIntent(values)
+}
+
+/** Any authored control that only V3 can represent. */
+function chamferAdvancedIntent(values: TreatmentValues) {
   return (
-    values.retainV3 ||
     values.flip ||
     values.directionOverrides.length > 0 ||
     values.mode !== "equal-distance" ||
@@ -97,7 +123,14 @@ export function clearTreatmentSelection(
   values: TreatmentValues,
   targetFeatureId = values.targetFeatureId,
 ): TreatmentValues {
-  return { ...values, targetFeatureId, references: [], targets: [], directionOverrides: [] }
+  return {
+    ...values,
+    targetFeatureId,
+    references: [],
+    targets: [],
+    directionOverrides: [],
+    variableRadii: [],
+  }
 }
 
 /** All edges shows and saves neutral controls; returning restores the intent it replaced. */
@@ -116,9 +149,18 @@ export function withTreatmentScope(
       tangentPropagation: false,
       directionOverrides: [],
       targets: [],
+      variableRadii: [],
     }
   if (!selected) return { ...values, scope }
-  const { mode, measurement, flip, tangentPropagation, directionOverrides, targets } = selected
+  const {
+    mode,
+    measurement,
+    flip,
+    tangentPropagation,
+    directionOverrides,
+    targets,
+    variableRadii,
+  } = selected
   return {
     ...values,
     scope,
@@ -127,7 +169,9 @@ export function withTreatmentScope(
     flip,
     tangentPropagation,
     // Exact targets belong to one body and never transfer to another.
-    ...(selected.targetFeatureId === values.targetFeatureId ? { directionOverrides, targets } : {}),
+    ...(selected.targetFeatureId === values.targetFeatureId
+      ? { directionOverrides, targets, variableRadii }
+      : {}),
   }
 }
 
@@ -232,6 +276,9 @@ export function toggleTreatmentCandidate(
     directionOverrides: selected
       ? next.directionOverrides.filter((ref) => !matches(ref))
       : next.directionOverrides,
+    variableRadii: selected
+      ? next.variableRadii.filter(({ edge }) => !matches(edge))
+      : next.variableRadii,
   }
 }
 
@@ -346,7 +393,8 @@ function selectedReferenceIssue(
   if (issue) return issue
   if (!v3) return undefined
   if (reference.schemaVersion !== 1) return context.copy.missingCatalogue
-  if (measurableReference(reference, values)) return undefined
+  // Fillet V3 follows native contours on any sharp edge; only Chamfer measures its setbacks.
+  if (context.operation === "fillet" || measurableReference(reference, values)) return undefined
   return reference.kind === "edge" ? unsupportedEdge : context.copy.planarOnly
 }
 
@@ -510,8 +558,8 @@ function authoredTreatment(
 ) {
   const types =
     context.operation === "fillet"
-      ? { all: filletFeatureType, selected: filletFeatureTypeV2 }
-      : { all: chamferFeatureType, selected: chamferFeatureTypeV2 }
+      ? { all: filletFeatureType, selected: filletFeatureTypeV2, v3: filletFeatureTypeV3 }
+      : { all: chamferFeatureType, selected: chamferFeatureTypeV2, v3: chamferFeatureTypeV3 }
   const base =
     context.mode.kind === "edit"
       ? context.mode.feature
@@ -523,11 +571,32 @@ function authoredTreatment(
         }
   return featureRecordSchema.parse({
     ...base,
-    type: v3 ? chamferFeatureTypeV3.type : types[values.scope].type,
+    type: (v3 ? types.v3 : types[values.scope]).type,
     parameters,
     dependencies: [target],
     references: v3 || values.scope === "all" ? [] : values.references,
   })
+}
+
+function authoredParameters(
+  values: TreatmentValues,
+  context: ResolvedTreatmentContext,
+  option: EdgeTreatmentTargetOption | undefined,
+  size: ReturnType<typeof chamferFeatureParametersSchema.parse>["distance"],
+  v3: boolean,
+): ParametersResult {
+  if (context.operation === "chamfer")
+    return v3
+      ? v3Parameters(values, context, option, size)
+      : { ok: true, parameters: { distance: size } }
+  if (!v3) return { ok: true, parameters: { radius: size } }
+  return filletV3Parameters(
+    values,
+    option,
+    size,
+    (raw) => parseTreatmentLength(raw, context, true),
+    context.copy,
+  )
 }
 
 export function treatmentFeature(
@@ -541,14 +610,10 @@ export function treatmentFeature(
       fullContext.candidates.filter(({ optionId }) => optionId === values.targetFeatureId),
     ),
   }
-  const v3 = context.operation === "chamfer" && treatmentUsesV3(values, option, context.mode)
+  const v3 = treatmentUsesV3(values, option, context.mode, context.operation)
   const base = parseTreatmentBase(values, context, option, v3)
   if (!base.ok) return base
-  const legacyParameters =
-    context.operation === "fillet" ? { radius: base.distance } : { distance: base.distance }
-  const result = v3
-    ? v3Parameters(values, context, option, base.distance)
-    : { ok: true as const, parameters: legacyParameters }
+  const result = authoredParameters(values, context, option, base.distance, v3)
   if (!result.ok) return result
   return {
     ok: true,

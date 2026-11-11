@@ -10,11 +10,15 @@ import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { type KeyboardEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import type { FeatureMutationResult } from "../../document/document-controller"
+import { defaultLengthExpression } from "../../document/document-display-units"
 import { useReferencePicking } from "../../shell/reference-pick-context"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
-import { submitFeatureMutation } from "../part-design/primitive-form"
+import {
+  parsePrimitiveLengthExpression,
+  submitFeatureMutation,
+} from "../part-design/primitive-form"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
@@ -133,6 +137,8 @@ function treatmentValidationCopy(
     plainContourOnly: t("plainContourOnly"),
     invalidAngle: t("invalidAngle"),
     invalidAdvancedRange: t("invalidAdvancedRange"),
+    variableRadiusEqual: t("fillet.variableRadiusEqual"),
+    variableRadiusClosed: t("fillet.variableRadiusClosed"),
   }
 }
 
@@ -172,7 +178,7 @@ function useTreatmentFields(
   const parsed = treatmentFeature(values, context)
   const normalize = (next: TreatmentValues) => {
     const option = props.options.find(({ id }) => id === next.targetFeatureId)
-    return props.operation === "chamfer" && treatmentUsesV3(next, option, props.mode)
+    return treatmentUsesV3(next, option, props.mode, props.operation)
       ? promoteTreatmentTargets(next, candidates)
       : next
   }
@@ -272,6 +278,14 @@ function useTreatmentFields(
   }
 }
 
+/** A variable radius starts at the constant radius; twice that size is a buildable end default. */
+function doubledRadius(raw: string, variables: readonly VariableDefinition[], state: FormState) {
+  const unit = state.displayUnits.length
+  const parsed = parsePrimitiveLengthExpression(raw, variables, invalidLengthCopy, () => true, unit)
+  return defaultLengthExpression(parsed.ok ? parsed.quantity.value * 2 : 2, unit)
+}
+const invalidLengthCopy = { invalidExpression: "", invalidDimension: "", invalidRange: "" }
+
 /** Live V3 feedback explains a picked target; an empty selection is not an error before submit. */
 function liveSelectionIssue(values: TreatmentValues, parsed: ReturnType<typeof treatmentFeature>) {
   if (parsed.ok || (values.targets.length === 0 && values.references.length === 0)) return undefined
@@ -313,7 +327,7 @@ function TreatmentFields({
     return () => setEscape(null)
   }, [fields.onEscape, setEscape])
   const option = props.options.find(({ id }) => id === values.targetFeatureId)
-  const v3 = props.operation === "chamfer" && treatmentUsesV3(values, option, props.mode)
+  const v3 = treatmentUsesV3(values, option, props.mode, props.operation)
   const live = v3 ? liveSelectionIssue(values, fields.parsed) : undefined
   const issues = { ...submitIssues, ...(live ? { references: live } : {}) }
   return (
@@ -339,6 +353,9 @@ function TreatmentFields({
         pick={fields.pick}
         onArm={fields.onArm}
         onPick={fields.onPick}
+        {...(props.operation === "fillet"
+          ? { defaultEndRadius: doubledRadius(values.distance, props.variables, state) }
+          : {})}
       />
     </>
   )

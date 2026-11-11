@@ -1,6 +1,22 @@
 import { chamferFeatureTypeHandlerV3 } from "./part-design-chamfer"
 
 export {
+  FILLET_V3_MAX_RADIUS_MM,
+  FILLET_V3_MIN_RADIUS_MM,
+  type FilletFeatureParametersV3,
+  type FilletTarget,
+  type FilletVariableRadius,
+  filletEdgeRefSchema,
+  filletFeatureParametersV3Schema,
+  filletFeatureTypeV3,
+  filletTargetSchema,
+  filletVariableRadiusSchema,
+  readFilletFeatureParametersV3,
+} from "./part-design-fillet"
+
+import { filletFeatureTypeHandlerV3 } from "./part-design-fillet"
+
+export {
   type ChamferFeatureParametersV3,
   chamferEdgeRefSchema,
   chamferFeatureParametersV3Schema,
@@ -1805,6 +1821,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     },
   },
   chamferFeatureTypeHandlerV3,
+  filletFeatureTypeHandlerV3,
   {
     type: legacyExtrusionFeatureType.type,
     parametersSchema: legacyExtrusionFeatureParametersSchema,

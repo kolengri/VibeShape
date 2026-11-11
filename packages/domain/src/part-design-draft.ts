@@ -3,7 +3,7 @@ import { bodyReferenceSchema } from "./body-reference"
 import {
   type BodyFaceRef,
   bodyFaceRefSchema,
-  bodyTopoRefIdentityKeys,
+  bodyTopoRefDurableKeys,
 } from "./body-topology-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
@@ -48,12 +48,12 @@ export const draftFeatureParametersSchema = z
       parameters.neutralPlane.kind === "planar-face" ? parameters.neutralPlane.reference : null
     if (neutral && !ownedByTarget(neutral))
       issue(["neutralPlane", "reference"], "A Draft neutral face must belong to the target body.")
-    const neutralKeys = new Set(neutral ? bodyTopoRefIdentityKeys(neutral) : [])
+    const neutralKeys = new Set(neutral ? bodyTopoRefDurableKeys(neutral) : [])
     const seen = new Set<string>()
     parameters.faces.forEach((face, index) => {
       if (!ownedByTarget(face))
         issue(["faces", index], "Draft faces must belong to the exact target body.")
-      const keys = bodyTopoRefIdentityKeys(face)
+      const keys = bodyTopoRefDurableKeys(face)
       if (keys.some((key) => seen.has(key))) issue(["faces", index], "Draft faces must be unique.")
       if (keys.some((key) => neutralKeys.has(key)))
         issue(["faces", index], "The neutral plane face cannot also be drafted.")
