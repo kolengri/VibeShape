@@ -36,17 +36,34 @@ The solver adapter compiles one join as:
    plus two private `POINT_IN_ORIENTED_CHORD_HALF_PLANE` constraints (ADR-0029). The half-planes
    keep the two handles on opposite sides of the line from the through-point to the separator.
    Because the separator translates with the join, a large join move cannot flip or vacate the
-   half-planes. The offset direction is fixed for one solve, so the join tangent turns by less than
-   a quarter turn per solve. The slack parameters and the anchored separator add no freedom, so
-   each join still removes exactly one degree of freedom.
+   half-planes. The offset direction is fixed for one solve and follows the dragged handle when a
+   handle is dragged, so other changes turn a join tangent by less than a quarter turn per solve.
+   The slack parameters and the anchored separator add no freedom, so each join still removes
+   exactly one degree of freedom.
 
 After every solve, an ADR-0029-style check rejects a converged join whose handles are not
 collinear with the through-point, point the same way (`dot <= 0`), or are shorter than one percent
-of their segment chord. The solve then reports `failed` with that join's constraint ID. A handle
-pushed through its join, an authored cusp seed and a collapsed handle therefore fail closed
-instead of solving as `under-constrained`. Dragging a through-point carries both adjacent handles
-rigidly by adding them as dragged points with the same displacement, unless a handle has a
-`fixed` constraint, so the tangent direction survives direct manipulation. Native capacity
+of their segment chord. The solve then reports `failed` with that join's constraint ID. An
+authored cusp seed and a collapsed handle therefore fail closed instead of solving as
+`under-constrained`. The one-percent rule is deliberate: it also fails handles that a user makes
+very short on purpose, and joins whose neighboring chords are stretched to more than a hundred
+times a handle length; such geometry is near a cusp and is rejected rather than silently kept.
+
+Three solve-time rules keep handle lengths stable when joins move:
+
+- **Predictor solve.** Every solve of a sketch with joins first runs once with each free handle
+  (neither explicitly dragged nor `fixed`) held at its current offset from its through-point.
+  Those joins' own G1 constraints are implied and omitted. When the predictor converges without
+  conflicts, its points seed the ordinary solve, which certifies status, freedom and the G1 check;
+  otherwise the ordinary solve runs unchanged. A join that moves along its tangent through a
+  dimension or a coincident point therefore translates with its handles instead of shrinking one.
+- **Carried handles.** Dragging a through-point, or a point coincident with it, carries both
+  adjacent handles rigidly as dragged points with the same displacement, unless a handle has a
+  `fixed` constraint.
+- **Mirrored seed.** Dragging exactly one handle of a join seeds the free opposite handle on the
+  mirrored tangent at its own length, and the separator follows the dragged handle. A fast flick,
+  even one that pushes the handle behind its through-point, turns the join while staying G1
+  instead of stalling or forming a cusp. Native capacity
 accounting counts five constraints, one entity and two parameters per join, plus both projection
 axes. No WASM rebuild is required.
 
@@ -75,15 +92,17 @@ weight coefficient bounds the error. De Casteljau subdivision of that error poly
 4,096 sub-intervals per segment) tightens the bound until it proves **1e-4 mm**. A fit is
 published only when every segment is certified within at most **64 segments**, and the published
 `maxDeviation` is that certified bound. Snapshots also cap the aggregate pole count. Edges that
-cannot be certified, and hyperbola, parabola, offset and other curves that have no exact rational
-form here, publish no chain and fail closed. A fixed sample grid can miss an excursion entirely:
+cannot be certified, periodic B-splines (whose knot vectors are unclamped), and hyperbola,
+parabola, offset and other curves that have no exact rational form here, publish no chain and fail
+closed. Capture only reads the adaptor curve: for an untransformed edge it is the edge's own shared
+geometry, so opening a periodic curve in place would corrupt live feature output. A fixed sample grid can miss an excursion entirely:
 for example, a degree-19 curve that vanishes with zero end slopes at every 1/16 sample hides a
 0.01 mm bulge from a 16-sample check. That curve still needs about 2.1e-4 mm at 64 segments, so it
 is refused.
 
-Published chains are oriented deterministically (an open chain starts at its lexicographically
-smaller end), but consumers never derive end identity from that order: a 0.002 mm edit can move an
-end across the lexicographic boundary and flip it.
+Published chains follow the oriented edge from its topological start vertex, so a new reference
+starts from topology rather than from world coordinates. Consumers never derive end identity from
+any published order after that: a reparameterized or rebuilt edge can reverse it.
 
 A `model-spline` external reference persists the stable `EdgeTopoRef`, the world `endpointAnchors`
 of its start and end, `N` projected curve IDs and `3N + 1` projected point IDs, and nothing else.
@@ -135,8 +154,9 @@ stored identities. Transient candidate IDs, OCCT indices and poles are never per
 - Non-planar edges and edges in planes not parallel to the sketch are not projected. Tilted
   projection of such curves remains future work.
 - Topology capture costs one bounded, certified fit per B-spline or Bezier edge.
-- One solve cannot rotate a join tangent by a quarter turn or more; streamed drags and later
-  solves continue from the new orientation.
+- Except when a handle is dragged, one solve cannot rotate a join tangent by a quarter turn or
+  more; streamed drags and later solves continue from the new orientation.
+- Splines need two native solves per solve request when the predictor applies.
 
 ## Verification
 
@@ -146,12 +166,15 @@ stored identities. Transient candidate IDs, OCCT indices and poles are never per
   perpendicular dimension edits larger than the handle length, closed failure for a single-step
   drag through the join and an authored cusp seed, unmoved fixed handles, exact DOF accounting with
   closing joins, conflict sets and closed-spline profile detection.
+- Predictor and seed tests: tangent-sliding dimensions of 15, 18, 40 and 100 mm and a coincident
+  drag keep both handle lengths, and a 120-degree handle flick and a push-through stay G1.
 - Fitting tests: the grid-invisible degree-19 counterexample is refused at 0.01 mm and certified at
   0.001 mm with a bound covering the measured deviation, plus rational arcs, knot insertion and a
   reversed parameterization.
 - Real-kernel tests: dense independent verification of B-spline fits within 1e-4 mm, chains
   published for solid edges and recomputed after a source change, preserved non-planar evidence,
-  the degree-19 counterexample on an OCCT edge, a reversed edge, and an exact closed-spline
+  the degree-19 counterexample on an OCCT edge, a reversed edge, an untouched periodic curve trimmed
+  across its seam, and an exact closed-spline
   extrusion volume against a Green-integral area.
 - Application and document-worker tests: exact subdivision, the parallel-plane rule, stable
   identities on recompute and every fail-closed path.
