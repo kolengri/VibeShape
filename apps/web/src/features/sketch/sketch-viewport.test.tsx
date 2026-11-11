@@ -8874,3 +8874,77 @@ describe("SketchViewport", () => {
     expect(solveSketch.mock.calls[1]?.[2]?.continuation).toBeNull()
   })
 })
+
+describe("sketch operation layer", () => {
+  function renderTransformOverlay(
+    props: Partial<SketchViewportTestProps> & Pick<SketchViewportTestProps, "onDraftChange">,
+  ) {
+    const fixture = lineSketchFixture("b2f0", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The transform fixture must contain a line.")
+    const viewportProps: SketchViewportTestProps = {
+      overlay: true,
+      draft: fixture,
+      editorTool: "transform",
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      ...props,
+    }
+    const view = renderViewport(viewportProps)
+    return {
+      view,
+      rerender: (next: Partial<SketchViewportTestProps>) =>
+        view.rerender(viewportElement({ ...viewportProps, ...next })),
+    }
+  }
+
+  it("renders operation panels above the sketch region and keeps keyboard focus in them", async () => {
+    const user = userEvent.setup()
+    const onDraftChange = vi.fn()
+    const { rerender } = renderTransformOverlay({ onDraftChange })
+    const panel = await screen.findByRole("form", { name: "Precise transform" })
+    const layer = document.querySelector<HTMLElement>("[data-sketch-operation-layer]")
+    if (!layer) throw new Error("Overlay sketch viewports must provide an operation layer.")
+    // The layer is a sibling of the sketch section, so it can stack above the view controls.
+    expect(layer.contains(panel)).toBe(true)
+    expect(screen.getByRole("region", { name: "2D sketch workspace" }).contains(panel)).toBe(false)
+    expect(layer.className).toContain("pointer-events-none")
+    expect(panel.className).toContain("pointer-events-auto")
+
+    const [first, second] = within(panel).getAllByRole("combobox")
+    if (!first || !second) throw new Error("The transform panel must expose its fields.")
+    await user.click(first)
+    expect(document.activeElement).toBe(first)
+    await user.tab()
+    expect(document.activeElement).toBe(second)
+    // Editing keys stay with the field instead of reaching the sketch canvas.
+    await user.keyboard("{Backspace}{Delete}")
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    // Re-rendering the editor keeps the portaled panel mounted with its focus and draft value.
+    await user.type(second, "7")
+    const typed = (second as HTMLInputElement).value
+    rerender({ onEditorToolChange: vi.fn() })
+    expect(document.activeElement).toBe(second)
+    expect((second as HTMLInputElement).value).toBe(typed)
+  })
+
+  it("hides and disables the layer while the 3D context owns navigation", async () => {
+    const { rerender } = renderTransformOverlay({ onDraftChange: vi.fn() })
+    await screen.findByRole("form", { name: "Precise transform" })
+    rerender({ interactive: false })
+    const layer = document.querySelector<HTMLElement>("[data-sketch-operation-layer]")
+    expect(layer?.hasAttribute("inert")).toBe(true)
+    expect(layer?.getAttribute("aria-hidden")).toBe("true")
+    expect(layer?.className).toContain("opacity-0")
+    expect(screen.queryByRole("form", { name: "Precise transform" })).toBeNull()
+  })
+
+  it("renders panels in place without an overlay layer", async () => {
+    renderTransformOverlay({ onDraftChange: vi.fn(), overlay: false })
+    const panel = await screen.findByRole("form", { name: "Precise transform" })
+    expect(document.querySelector("[data-sketch-operation-layer]")).toBeNull()
+    expect(screen.getByRole("region", { name: "2D sketch workspace" }).contains(panel)).toBe(true)
+  })
+})

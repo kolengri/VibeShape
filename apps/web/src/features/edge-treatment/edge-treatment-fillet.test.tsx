@@ -1,6 +1,6 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, expect, it } from "bun:test"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createLengthQuantity, featureRecordSchema } from "@vibeshape/domain"
 import {
@@ -301,4 +301,45 @@ it("routes a drifted saved V2 edge to V3 when its variable radius is enabled", a
       targets: [{ ...persistedLaw(2, 4, false), edge: { signature: reference.signature } }],
     },
   })
+})
+
+it("lists four selected edges as compact rows and expands Variable radius only when enabled", async () => {
+  const options = [
+    option(
+      sourceId,
+      "result",
+      "Body A",
+      [1, 2, 3, 4].map((n) => candidate("edge", n)),
+    ),
+  ]
+  setup({ options, topologyCandidates: geometry(options) })
+  for (const n of [1, 2, 3, 4]) await pick(`Body A · Edge ${n}`)
+  expect(screen.getByRole("status").textContent).toBe("4 targets selected")
+  // Section guidance lives in the help description, not in stacked paragraphs.
+  expect(
+    screen.getByRole("group", { name: copy.selectedEdges, description: /complete tangent chain/ }),
+  ).toBeTruthy()
+  expect(screen.getByRole("button", { name: copy.clearEdges })).toBeTruthy()
+  const list = screen.getByRole("list")
+  const rows = within(list).getAllByRole("listitem")
+  expect(rows).toHaveLength(4)
+  for (const [index, row] of rows.entries()) {
+    const edge = `Edge ${index + 1}`
+    expect(within(row).getByRole("checkbox", { name: `Variable radius for ${edge}` })).toBeTruthy()
+    expect(within(row).getByRole("button", { name: `Remove ${edge}` })).toBeTruthy()
+    expect(row.querySelector("[data-edge-treatment-row-details]")?.childElementCount).toBe(0)
+  }
+  expect(screen.queryByRole("combobox", { name: /^(Start|End) radius for/ })).toBeNull()
+
+  const third = rows[2]
+  if (!third) throw new Error("The third row must be rendered.")
+  await userEvent.click(within(third).getByRole("checkbox", { name: "Variable radius for Edge 3" }))
+  const expanded = within(list).getAllByRole("listitem")[2]
+  if (!expanded) throw new Error("The third row must stay rendered.")
+  expect(within(expanded).getByRole("combobox", { name: "Start radius for Edge 3" })).toBeTruthy()
+  expect(within(expanded).getByRole("combobox", { name: "End radius for Edge 3" })).toBeTruthy()
+  expect(
+    within(expanded).getByRole("checkbox", { name: "Reverse radius direction for Edge 3" }),
+  ).toBeTruthy()
+  expect(screen.getAllByRole("combobox", { name: /^Start radius for/ })).toHaveLength(1)
 })

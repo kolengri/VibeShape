@@ -874,3 +874,19 @@ it.each(["fillet", "chamfer"] as const)(
     expect(references[0]?.signature).toEqual(upper.signature)
   },
 )
+
+it("wraps the side-face prompt inside the row instead of widening the target list", async () => {
+  setup()
+  await pick()
+  await mode("two-distances")
+  const button = screen.getByRole("button", { name: "Pick side face for Edge 1" })
+  expect(button.textContent).toContain("Pick an explicit side face")
+  // jsdom has no layout: assert the flex contract that lets the prompt shrink and wrap.
+  const classes = button.className.split(/\s+/)
+  expect(classes).toEqual(
+    expect.arrayContaining(["min-w-0", "flex-1", "shrink", "whitespace-normal"]),
+  )
+  expect(classes).not.toContain("shrink-0")
+  expect(classes).not.toContain("whitespace-nowrap")
+  expect(button.parentElement?.className).toContain("min-w-0")
+})

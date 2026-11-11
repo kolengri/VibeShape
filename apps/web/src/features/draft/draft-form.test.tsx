@@ -3,8 +3,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
+import { bodyTopoRefSchema } from "@vibeshape/domain/body-topology-reference"
 import { modelBodyTopologyEvidenceSchema } from "@vibeshape/domain/model-body-topology"
 import { readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
+import { referencePlaneSchema } from "@vibeshape/domain/reference-frame"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { vi } from "../../../../../tests/unit/support/bun-test"
@@ -236,5 +238,60 @@ describe("Draft task form", () => {
     expect(f.onPreviewChange).toHaveBeenLastCalledWith(null)
     setup(mode, evidence, "loading")
     expect(apply().disabled).toBe(true)
+  })
+
+  it("asks for a new neutral plane after repair drops a face on the replaced body", async () => {
+    const replacementId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f7903")
+    const faceReference = bodyTopoRefSchema.parse({
+      schemaVersion: 1,
+      featureId: sourceId,
+      outputRole: "result",
+      kind: "face",
+      semanticRole: "box.face.top",
+      signature: {
+        kind: "face",
+        geometryClass: "PLANE",
+        measure: 400,
+        centroid: [0, 0, 10],
+        bounds: { min: [-10, -10, 10], max: [10, 10, 10] },
+        direction: [0, 0, 1],
+        directionMode: "oriented",
+        boundaryCount: 4,
+        adjacentGeometryClasses: [],
+      },
+    })
+    const feature = draftFormFeature({
+      mode,
+      featureId,
+      values: { faceIds: ["face:x-max"], angle: "3 deg", flip: false },
+      neutralPlane: referencePlaneSchema.parse({ kind: "planar-face", reference: faceReference }),
+      evidence,
+      variables: [],
+      units,
+      copy,
+    })
+    if (!feature) throw new Error("Fixture Draft must be valid.")
+    const f = setup(
+      {
+        kind: "edit",
+        feature,
+        repairTarget: { schemaVersion: 0, featureId: replacementId, outputRole: "result" },
+      },
+      { ...evidence, featureId: replacementId },
+    )
+    const source = screen.getByRole("combobox", { name: "Reference source" }) as HTMLSelectElement
+    expect(source.selectedOptions[0]?.textContent).toBe("Choose a plane")
+    expect(screen.queryByText(/Enter finite coordinates/)).toBeNull()
+    expect(screen.queryByRole("spinbutton")).toBeNull()
+    await userEvent.click(faceBox(1))
+    expect(apply().disabled).toBe(true)
+    await userEvent.selectOptions(source, "origin")
+    await waitFor(() => expect(apply().disabled).toBe(false))
+    await userEvent.click(apply())
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
+    const saved = f.onSave.mock.calls[0]?.[1]
+    const parameters = saved ? readDraftFeatureParameters(saved) : null
+    expect(parameters?.neutralPlane).toEqual({ kind: "origin-plane", plane: "XY" })
+    expect(parameters?.targetBody.featureId).toBe(replacementId)
   })
 })

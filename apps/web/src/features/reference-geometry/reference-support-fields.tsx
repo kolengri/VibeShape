@@ -6,7 +6,7 @@ import {
 } from "@vibeshape/domain/reference-frame"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { FieldError, fieldVariants } from "@vibeshape/ui/components/field"
+import { FieldDescription, FieldError, fieldVariants } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { type ReactNode, useId, useState } from "react"
@@ -77,8 +77,9 @@ function explicitValues(value: Props["value"]) {
   return [...origin, ...direction].map(String)
 }
 type Choices = readonly ReferenceFrameOption<ReferencePlane | ReferenceAxis>[]
-function referenceSource(value: Props["value"], choices: Choices) {
-  if (value == null) return value === null ? "explicit" : "origin"
+function referenceSource(value: Props["value"], choices: Choices, unset: boolean) {
+  if (value === null) return unset ? "" : "explicit"
+  if (value === undefined) return "origin"
   if ("origin" in value) return "explicit"
   if (value.kind === "origin-plane" || value.kind === "origin-axis") return "origin"
   return (
@@ -214,34 +215,59 @@ function ReferenceSourceField({
   choices: Choices
 }) {
   const t = useTranslations("app.referenceFrame")
+  const hintId = useId()
+  const unset = source === ""
   return (
-    <label className={fieldVariants({ orientation: "horizontal" })}>
-      {t("source")}
-      <select
-        className="h-8 min-w-0 rounded-md border bg-background px-2 text-sm"
-        value={source}
-        onChange={(event) => selectReference(event.target.value, kind, value, choices, onChange)}
-      >
-        <option value="origin">{t("origin")}</option>
-        {source === "selected" && <option value="selected">{t("selectedReference")}</option>}
-        {choices.map(({ key, label }) => (
-          <option key={key} value={key}>
-            {label}
-          </option>
-        ))}
-        <option value="explicit">{t("explicit")}</option>
-      </select>
-    </label>
+    <>
+      <label className={fieldVariants({ orientation: "horizontal" })}>
+        {t("source")}
+        <select
+          className="h-8 min-w-0 rounded-md border bg-background px-2 text-sm"
+          value={source}
+          aria-describedby={unset ? hintId : undefined}
+          onChange={(event) => selectReference(event.target.value, kind, value, choices, onChange)}
+        >
+          {unset && (
+            <option value="" disabled>
+              {t(kind === "plane" ? "choosePlane" : "chooseAxis")}
+            </option>
+          )}
+          <option value="origin">{t("origin")}</option>
+          {source === "selected" && <option value="selected">{t("selectedReference")}</option>}
+          {choices.map(({ key, label }) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+          <option value="explicit">{t("explicit")}</option>
+        </select>
+      </label>
+      {unset && <FieldDescription id={hintId}>{t("unsetHint")}</FieldDescription>}
+    </>
   )
 }
 
-function ReferenceSupportFields({ kind, options, value, selectedFace, onChange }: Props) {
+/**
+ * A null value at mount means "no support chosen" (for example after History repair dropped a
+ * face on a deleted body). Later nulls come from unfinished explicit coordinates and stay errors.
+ */
+function useReferenceChoice(value: Props["value"], report: Props["onChange"]) {
+  const [unchosen, setUnchosen] = useState(value === null)
+  const unset = unchosen && value === null
+  const onChange: Props["onChange"] = (next) => {
+    setUnchosen(false)
+    report(next)
+  }
+  return { unset, invalid: value === null && !unset, onChange }
+}
+
+function ReferenceSupportFields({ kind, options, value, selectedFace, onChange: report }: Props) {
   const t = useTranslations("app.referenceFrame")
   // Preview replaces rendered source meshes and can clear the viewport selection.
   const [startingFace] = useState(selectedFace)
+  const { unset, invalid, onChange } = useReferenceChoice(value, report)
   const choices: Choices = kind === "plane" ? options.planes : options.axes
-  const source = referenceSource(value, choices)
-  const invalid = value === null
+  const source = referenceSource(value, choices, unset)
   const errorId = useId()
   return (
     <fieldset
