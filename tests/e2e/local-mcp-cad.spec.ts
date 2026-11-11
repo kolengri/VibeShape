@@ -14,7 +14,7 @@ import {
 } from "../../packages/domain/src/rectangle-sketch"
 import { sketchRecordSchema } from "../../packages/domain/src/sketch"
 import { createAngleQuantity, createLengthQuantity } from "../../packages/domain/src/units"
-import { enableLocalAi } from "./application-menu-support"
+import { enableLocalAi, expectLocalAiReconnected } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -308,9 +308,7 @@ test("creates and updates a sketch-backed extrusion through real local MCP and b
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
+    await expectLocalAiReconnected(page)
     await expect(page.getByRole("treeitem", { name: "MCP extrusion", exact: true })).toBeVisible()
     const afterUndo = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     expect(featureVolume(afterUndo, featureId)).toBeCloseTo(1_000, 6)

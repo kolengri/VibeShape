@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
-import { enableLocalAi } from "./application-menu-support"
+import { enableLocalAi, expectLocalAiReconnected } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -279,9 +279,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
           .getByRole("status", { name: "Project save status", exact: true })
           .filter({ hasText: /^Saved$/ }),
       ).toBeVisible()
-      await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-        timeout: 30_000,
-      })
+      await expectLocalAiReconnected(page)
       const restored = success(localToolOutputs.model_info.parse(await call("model_info", {})))
       expect(volumeFor(restored, treatmentId)).toBeCloseTo(initialVolume, 4)
     } finally {

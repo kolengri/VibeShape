@@ -3,7 +3,7 @@ import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { variableIdSchema } from "../../packages/domain/src/identifiers"
 import { chamferFeatureParametersSchema } from "../../packages/domain/src/part-design"
-import { enableLocalAi } from "./application-menu-support"
+import { enableLocalAi, expectLocalAiReconnected } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -300,9 +300,7 @@ test("creates and repairs a variable-driven chamfer through real local MCP", asy
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
+    await expectLocalAiReconnected(page)
     const restoredInfo = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     const restored = success(
       localToolOutputs.model_variables.parse(

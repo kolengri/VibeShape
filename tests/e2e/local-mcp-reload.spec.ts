@@ -3,6 +3,7 @@ import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import {
   enableLocalAi,
+  expectLocalAiReconnected,
   openAiConnections,
   openAutoApplySetup,
   openLocalAiApprovalMenu,
@@ -32,9 +33,7 @@ test("restores local MCP and auto-apply after reload and respects Stop AI", asyn
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
     await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
     await page.reload()
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
+    await expectLocalAiReconnected(page)
     await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
     const after = localToolOutputs.model_info.parse(
       (await local.callTool({ name: "model_info", arguments: {} })).structuredContent?.result,

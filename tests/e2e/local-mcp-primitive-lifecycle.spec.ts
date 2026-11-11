@@ -8,7 +8,12 @@ import {
   primitiveParameters,
   primitiveVolumes,
 } from "../support/primitive-lifecycle"
-import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
+import {
+  enableLocalAi,
+  expectLocalAiReconnected,
+  openAiConnections,
+  openAutoApplySetup,
+} from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 function success<T>(
@@ -261,9 +266,7 @@ test("authors registered primitive geometry and review-bound lifecycle changes t
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
+    await expectLocalAiReconnected(page)
     await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible({
       timeout: 30_000,
     })
