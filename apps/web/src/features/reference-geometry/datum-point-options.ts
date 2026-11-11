@@ -3,10 +3,11 @@ import {
   type BodyTopoRef,
   type BodyVertexRef,
   bodyVertexRefSchema,
+  createTopologyReferenceResolver,
   type DocumentSnapshot,
   datumPointCircleEdgeRefSchema,
   isReferenceGeometryFeature,
-  resolveTopologyReference,
+  TOPOLOGY_RESOLUTION_POLICY,
   type TopologyCandidate,
 } from "@vibeshape/domain"
 
@@ -83,58 +84,134 @@ const circleKind: OptionKind<BodyTopoRef> = {
   },
 }
 
+type PeerResolver = (
+  candidate: WorkerCandidate,
+  reference: Parameters<ReturnType<typeof createTopologyReferenceResolver>>[0],
+) => ReturnType<ReturnType<typeof createTopologyReferenceResolver>>
+
+function isPointLike(candidate: WorkerCandidate) {
+  const { min, max } = candidate.signature.bounds
+  return min.every((value, index) => value === max[index])
+}
+
+/**
+ * For point-like peers the signature scale is the absolute tolerance, so a peer at least that far
+ * away scores at least (centroid + bounds weight) / total weight. When that floor exceeds the
+ * acceptance score plus the ambiguity margin, such a peer can be neither the best match nor an
+ * ambiguous rival, and resolving against the tolerance neighbourhood gives the full result.
+ */
+function farPeersAreIrrelevant() {
+  const { weights, maximumScore, ambiguityMargin } = TOPOLOGY_RESOLUTION_POLICY
+  const total = Object.values(weights).reduce((sum, weight) => sum + weight, 0)
+  return (weights.centroid + weights.bounds) / total > maximumScore + ambiguityMargin
+}
+
+function peerResolver(peers: readonly WorkerCandidate[]): PeerResolver {
+  if (!farPeersAreIrrelevant() || !peers.every(isPointLike)) {
+    const full = createTopologyReferenceResolver(peers.map(domainCandidate))
+    return (_candidate, reference) => full(reference)
+  }
+  const cell = TOPOLOGY_RESOLUTION_POLICY.absoluteTolerance
+  const cellOf = (position: readonly number[]) => position.map((value) => Math.floor(value / cell))
+  const buckets = new Map<string, WorkerCandidate[]>()
+  for (const peer of peers) {
+    const key = cellOf(peer.signature.centroid).join(":")
+    buckets.set(key, [...(buckets.get(key) ?? []), peer])
+  }
+  return (candidate, reference) => {
+    const [x, y, z] = cellOf(candidate.signature.centroid) as [number, number, number]
+    const nearby: WorkerCandidate[] = []
+    for (const dx of [-1, 0, 1])
+      for (const dy of [-1, 0, 1])
+        for (const dz of [-1, 0, 1])
+          nearby.push(...(buckets.get(`${x + dx}:${y + dy}:${z + dz}`) ?? []))
+    return createTopologyReferenceResolver(nearby.map(domainCandidate))(reference)
+  }
+}
+
+type IdentityCounts = Readonly<{
+  roles: ReadonlyMap<string, number>
+  lineages: ReadonlyMap<string, number>
+}>
+
 /** Keeps only identity tokens that are unique among peers, as body references require. */
-function uniqueIdentity(candidate: WorkerCandidate, peers: readonly WorkerCandidate[]) {
-  const roles = uniqueCounts(peers.map(({ semanticRole }) => semanticRole))
-  const lineages = uniqueCounts(peers.flatMap(({ lineageTokens }) => lineageTokens))
+function uniqueIdentity(candidate: WorkerCandidate, counts: IdentityCounts) {
   const semanticRole =
-    candidate.semanticRole && roles.get(candidate.semanticRole) === 1
+    candidate.semanticRole && counts.roles.get(candidate.semanticRole) === 1
       ? candidate.semanticRole
       : undefined
-  const lineageToken = candidate.lineageTokens.find((token) => lineages.get(token) === 1)
+  const lineageToken = candidate.lineageTokens.find((token) => counts.lineages.get(token) === 1)
   return { ...(semanticRole ? { semanticRole } : {}), ...(lineageToken ? { lineageToken } : {}) }
 }
 
-/** Only offers references that resolve back to exactly this candidate today. */
-function resolvesToCandidate(
-  reference: BodyVertexRef | BodyTopoRef,
-  candidate: WorkerCandidate,
-  peers: readonly TopologyCandidate[],
-) {
-  const { outputRole: _role, schemaVersion: _version, ...legacy } = reference
-  const resolution = resolveTopologyReference({ ...legacy, schemaVersion: 0 }, peers)
-  return resolution.status === "resolved" && resolution.candidateId === candidate.candidateId
-}
-
+/**
+ * Projects one body's candidates of one kind, stopping once `limit` options exist. Identity
+ * counts and the topology index are built once per body and kind; an option is offered only
+ * when its reference resolves back to exactly that candidate today, as the rebuild requires.
+ */
 function bodyOptions<Reference extends BodyVertexRef | BodyTopoRef>(
   source: BodySource,
   optionKind: OptionKind<Reference>,
+  limit: number,
 ): DatumPointReferenceOption<Reference>[] {
+  const options: DatumPointReferenceOption<Reference>[] = []
+  if (limit <= 0) return options
   const peers = source.body.topologyCandidates.filter(({ kind }) => kind === optionKind.kind)
-  const domainPeers = peers.map(domainCandidate)
-  return peers.flatMap((candidate) => {
-    const position = optionKind.position(candidate)
-    const identity = position ? uniqueIdentity(candidate, peers) : null
-    const reference = optionKind.parse({
-      schemaVersion: 1,
-      featureId: source.featureId,
-      outputRole: source.body.outputRole,
-      kind: optionKind.kind,
-      ...identity,
-      signature: candidate.signature,
-    })
-    if (!position || !reference || !resolvesToCandidate(reference, candidate, domainPeers))
-      return []
-    const name = identity?.semanticRole ?? candidate.candidateId
-    return [
-      {
-        key: JSON.stringify([source.featureId, source.body.outputRole, candidate.candidateId]),
-        label: `${source.featureLabel} · ${source.body.outputRole} · ${name} (${formatPosition(position)})`,
-        position,
-        reference,
-      },
-    ]
+  const counts = {
+    roles: uniqueCounts(peers.map(({ semanticRole }) => semanticRole)),
+    lineages: uniqueCounts(peers.flatMap(({ lineageTokens }) => lineageTokens)),
+  }
+  const resolve = peerResolver(peers)
+  for (const candidate of peers) {
+    const option = candidateOption(source, optionKind, candidate, counts, resolve)
+    if (option) options.push(option)
+    if (options.length >= limit) break
+  }
+  return options
+}
+
+function candidateOption<Reference extends BodyVertexRef | BodyTopoRef>(
+  source: BodySource,
+  optionKind: OptionKind<Reference>,
+  candidate: WorkerCandidate,
+  counts: IdentityCounts,
+  resolve: PeerResolver,
+): DatumPointReferenceOption<Reference> | null {
+  const position = optionKind.position(candidate)
+  if (!position) return null
+  const identity = uniqueIdentity(candidate, counts)
+  const reference = optionKind.parse({
+    schemaVersion: 1,
+    featureId: source.featureId,
+    outputRole: source.body.outputRole,
+    kind: optionKind.kind,
+    ...identity,
+    signature: candidate.signature,
   })
+  if (!reference) return null
+  const { outputRole: _role, schemaVersion: _version, ...legacy } = reference
+  const resolution = resolve(candidate, { ...legacy, schemaVersion: 0 })
+  if (resolution.status !== "resolved" || resolution.candidateId !== candidate.candidateId)
+    return null
+  const name = identity.semanticRole ?? candidate.candidateId
+  return {
+    key: JSON.stringify([source.featureId, source.body.outputRole, candidate.candidateId]),
+    label: `${source.featureLabel} · ${source.body.outputRole} · ${name} (${formatPosition(position)})`,
+    position,
+    reference,
+  }
+}
+
+function cappedOptions<Reference extends BodyVertexRef | BodyTopoRef>(
+  sources: readonly BodySource[],
+  optionKind: OptionKind<Reference>,
+) {
+  const options: DatumPointReferenceOption<Reference>[] = []
+  for (const source of sources) {
+    options.push(...bodyOptions(source, optionKind, MAX_OPTIONS_PER_KIND - options.length))
+    if (options.length >= MAX_OPTIONS_PER_KIND) break
+  }
+  return options
 }
 
 /** Valid single-solid bodies of earlier, unsuppressed, non-reference features. */
@@ -169,11 +246,7 @@ export function datumPointOptions(
   if (!rebuild.ok) return { vertices: [], circles: [] }
   const sources = bodySources(snapshot, rebuild, excludedFeatureId)
   return {
-    vertices: sources
-      .flatMap((source) => bodyOptions(source, vertexKind))
-      .slice(0, MAX_OPTIONS_PER_KIND),
-    circles: sources
-      .flatMap((source) => bodyOptions(source, circleKind))
-      .slice(0, MAX_OPTIONS_PER_KIND),
+    vertices: cappedOptions(sources, vertexKind),
+    circles: cappedOptions(sources, circleKind),
   }
 }
