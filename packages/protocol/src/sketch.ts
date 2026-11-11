@@ -1,6 +1,6 @@
-import { isString } from "is-what"
+import { isArray, isPlainObject, isString } from "is-what"
 import { z } from "zod"
-import { topologySignatureSchema } from "./geometry-worker"
+import { NON_ANALYTICAL_EDGE_GEOMETRY_CLASSES, topologySignatureSchema } from "./geometry-worker"
 import {
   sketchSourceImportWireSchema,
   validateSketchSourceImportWireReferences,
@@ -650,14 +650,7 @@ const externalModelCurveReferenceWireSchema = z
     }
   })
 
-const NON_ANALYTICAL_EDGE_CLASSES: readonly string[] = [
-  "BEZIER_CURVE",
-  "BSPLINE_CURVE",
-  "HYPERBOLA",
-  "PARABOLA",
-  "OFFSET_CURVE",
-  "OTHER_CURVE",
-]
+const NON_ANALYTICAL_EDGE_CLASSES: readonly string[] = NON_ANALYTICAL_EDGE_GEOMETRY_CLASSES
 
 function validateProjectedSplineWireIdentities(
   reference: {
@@ -1268,6 +1261,45 @@ function validateWireExternalReferenceIds(sketch: SketchWireStructure, context: 
   }
 }
 
+/**
+ * Interior projected model-spline identities are fit artifacts that move along the edge when its
+ * segment count changes; only the two chain ends identify stable source locations.
+ */
+function unstableModelSplineIds(sketch: SketchWireStructure) {
+  return new Set<string>(
+    (sketch.externalReferences ?? []).flatMap((reference) =>
+      reference.kind === "model-spline"
+        ? [...reference.projectedCurveIds, ...reference.projectedPointIds.slice(1, -1)]
+        : [],
+    ),
+  )
+}
+
+function constraintTargetIds(constraint: object): string[] {
+  return Object.entries(constraint).flatMap(([key, value]) => {
+    if (key !== "id" && key.endsWith("Id") && isString(value)) return [value]
+    if (!isArray(value)) return []
+    return value.flatMap((item) => (isPlainObject(item) ? constraintTargetIds(item) : []))
+  })
+}
+
+function validateModelSplineConstraintTargets(
+  sketch: SketchWireStructure,
+  context: z.RefinementCtx,
+) {
+  const unstable = unstableModelSplineIds(sketch)
+  if (unstable.size === 0) return
+  for (const [index, constraint] of sketch.constraints.entries()) {
+    if (!constraintTargetIds(constraint).some((id) => unstable.has(id))) continue
+    context.addIssue({
+      code: "custom",
+      path: ["constraints", index],
+      message:
+        "Only the start and end points of a projected model spline are stable constraint targets.",
+    })
+  }
+}
+
 function validateWireConstraintTable(
   sketch: SketchWireStructure,
   entities: ReadonlyMap<string, WireEntity>,
@@ -1292,6 +1324,7 @@ function validateWireConstraintTable(
       message: "Sketch constraints must reference compatible entities.",
     })
   }
+  validateModelSplineConstraintTargets(sketch, context)
   if (nativeWireConstraintCount(sketch) <= 10_000) return
   context.addIssue({
     code: "custom",

@@ -484,6 +484,11 @@ describe("external model geometry candidates", () => {
     expect(repairExternalModelGeometryCandidates(candidates, used, reference.id)).toEqual([
       candidate,
     ])
+    // Repair keeps the two stored segments, so a replacement needing more is not offered.
+    const larger = { ...candidate, candidateId: "spline-larger", segmentCount: 4 }
+    expect(repairExternalModelGeometryCandidates([candidate, larger], used, reference.id)).toEqual([
+      candidate,
+    ])
   })
 
   it("offers exact projected candidates for full and bounded elliptical model edges", () => {

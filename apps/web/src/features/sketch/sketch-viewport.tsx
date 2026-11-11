@@ -962,7 +962,13 @@ function displayExternalSpline(
   const curves = projectedExternalSketchEntities([reference]).filter(
     (entity): entity is DisplayExternalCurve => entity.type === "cubic-bezier",
   )
-  return { curves, lines: [], points }
+  // Only the chain ends are stable targets; interior poles only draw the read-only curve.
+  return {
+    curves,
+    lines: [],
+    lookupPoints: points.slice(1, -1),
+    points: [points[0], points.at(-1)].filter((point) => point !== undefined),
+  }
 }
 
 const externalLineReferenceKinds: ReadonlySet<string> = new Set([
@@ -1013,14 +1019,16 @@ function displayExternalGeometry(sketch: SketchRecord, solution: SolvedSketchWir
   const externalPoints: DisplayPoint[] = []
   const externalLines: DisplayExternalLine[] = []
   const externalCurves: DisplayExternalCurve[] = []
+  const externalLookupPoints: DisplayPoint[] = []
   for (const reference of sketch.externalReferences ?? []) {
     const display = displayExternalReference(reference, solvedById)
     if (!display) continue
     externalCurves.push(...display.curves)
     externalLines.push(...display.lines)
     externalPoints.push(...display.points)
+    if ("lookupPoints" in display) externalLookupPoints.push(...display.lookupPoints)
   }
-  return { externalCurves, externalLines, externalPoints }
+  return { externalCurves, externalLines, externalLookupPoints, externalPoints }
 }
 
 function createSketchGeometryPresentation(
@@ -1028,14 +1036,15 @@ function createSketchGeometryPresentation(
   solution: SolvedSketchWire | null,
 ): SketchGeometryPresentation {
   const points = displayPoints(sketch, solution)
-  const { externalCurves, externalLines, externalPoints } = displayExternalGeometry(
-    sketch,
-    solution,
-  )
+  const { externalCurves, externalLines, externalLookupPoints, externalPoints } =
+    displayExternalGeometry(sketch, solution)
   const pointsById = new Map(
-    [...points, ...externalPoints, ...externalLines.flatMap(({ start, end }) => [start, end])].map(
-      (point) => [point.id, point],
-    ),
+    [
+      ...points,
+      ...externalPoints,
+      ...externalLookupPoints,
+      ...externalLines.flatMap(({ start, end }) => [start, end]),
+    ].map((point) => [point.id, point]),
   )
   const curves = sketch.entities.filter(
     (entity): entity is SketchCurveEntity => entity.type !== "point",

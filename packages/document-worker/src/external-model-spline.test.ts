@@ -176,7 +176,7 @@ describe("model spline references", () => {
       /plane parallel to the sketch/,
     )
     await expect(resolve(sketch("xy", 1), geometry(wave))).rejects.toThrow(
-      /replace the reference to refit it/,
+      /more than its 1 projected Bezier segment\(s\).*Repair it with an edge/,
     )
     const spatial = wave.map(([x, y]): Point => [x, y, 5 + x * 0.01])
     await expect(resolve(sketch(), geometry(spatial))).rejects.toThrow(/plane parallel/)

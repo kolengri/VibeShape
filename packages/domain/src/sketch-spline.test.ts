@@ -249,6 +249,33 @@ describe("model spline references", () => {
     ).toBe(false)
   })
 
+  it("accepts constraints only on the stable end points of a projected chain", () => {
+    const pointId = sketchEntityIdSchema.parse(id(760))
+    const withConstraint = (target: string) =>
+      sketchRecordSchema.safeParse({
+        ...base,
+        entities: [{ schemaVersion: 0, id: pointId, type: "point", x: 0, y: 0 }],
+        externalReferences: [reference],
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: sketchConstraintIdSchema.parse(id(761)),
+            type: "coincident",
+            firstPointId: pointId,
+            secondPointId: target,
+          },
+        ],
+      })
+    expect(withConstraint(id(720)).success).toBe(true)
+    expect(withConstraint(id(726)).success).toBe(true)
+    // Interior joints and handles move along the edge when its segment count changes.
+    for (const interior of [id(721), id(723), id(725)]) {
+      const parsed = withConstraint(interior)
+      expect(parsed.success).toBe(false)
+      expect(parsed.error?.issues[0]?.message).toContain("start and end points")
+    }
+  })
+
   it("orphans on feature deletion and repairs without changing projected identities", () => {
     const sketch = sketchRecordSchema.parse({ ...base, externalReferences: [reference] })
     const orphaned = orphanModelReferencesToFeature(sketch, featureId)

@@ -828,6 +828,10 @@ function repairCandidateMatches(
   candidate: ExternalModelGeometryCandidate,
 ) {
   if (repairCandidateKinds[reference.kind] !== candidate.kind) return false
+  // Repair keeps the projected identities, so the replacement must fit in the stored segments.
+  if (reference.kind === "model-spline" && candidate.kind === "model-spline") {
+    return candidate.segmentCount <= reference.projectedCurveIds.length
+  }
   if (reference.kind !== "model-curve" || candidate.kind !== "model-curve") return true
   return (
     candidate.sourceType === reference.sourceType &&

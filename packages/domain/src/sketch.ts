@@ -1,4 +1,4 @@
-import { isString } from "is-what"
+import { isArray, isPlainObject, isString } from "is-what"
 import { z } from "zod"
 import {
   featureIdSchema,
@@ -971,7 +971,6 @@ function projectedExternalCurve(
   }
 }
 
-/** Materializes identity-only geometry for reference validation and UI selection. */
 /** Segment `i` of a projected chain uses points `3i` through `3i + 3`; joints are shared. */
 export function projectedModelSplineEntities(
   reference: Pick<SketchExternalModelSplineReference, "projectedCurveIds" | "projectedPointIds">,
@@ -994,6 +993,7 @@ export function projectedModelSplineEntities(
   ]
 }
 
+/** Materializes identity-only geometry for reference validation and UI selection. */
 export function projectedExternalSketchEntities(
   references: readonly SketchExternalReference[],
 ): readonly SketchEntity[] {
@@ -1360,6 +1360,42 @@ function validateExternalReferenceIds(sketch: SketchStructure, context: z.Refine
   }
 }
 
+/**
+ * Interior projected model-spline identities are fit artifacts that move along the edge when its
+ * segment count changes; only the two chain ends identify stable source locations.
+ */
+function unstableModelSplineIds(sketch: SketchStructure) {
+  return new Set<string>(
+    (sketch.externalReferences ?? []).flatMap((reference) =>
+      reference.kind === "model-spline"
+        ? [...reference.projectedCurveIds, ...reference.projectedPointIds.slice(1, -1)]
+        : [],
+    ),
+  )
+}
+
+function constraintTargetIds(constraint: object): string[] {
+  return Object.entries(constraint).flatMap(([key, value]) => {
+    if (key !== "id" && key.endsWith("Id") && isString(value)) return [value]
+    if (!isArray(value)) return []
+    return value.flatMap((item) => (isPlainObject(item) ? constraintTargetIds(item) : []))
+  })
+}
+
+function validateModelSplineConstraintTargets(sketch: SketchStructure, context: z.RefinementCtx) {
+  const unstable = unstableModelSplineIds(sketch)
+  if (unstable.size === 0) return
+  for (const [index, constraint] of sketch.constraints.entries()) {
+    if (!constraintTargetIds(constraint).some((id) => unstable.has(id))) continue
+    context.addIssue({
+      code: "custom",
+      path: ["constraints", index],
+      message:
+        "Only the start and end points of a projected model spline are stable constraint targets.",
+    })
+  }
+}
+
 function validateSketchConstraintTable(
   sketch: SketchStructure,
   entities: ReadonlyMap<string, SketchEntity>,
@@ -1384,6 +1420,7 @@ function validateSketchConstraintTable(
       message: "A sketch constraint reference has an incompatible or missing target.",
     })
   }
+  validateModelSplineConstraintTargets(sketch, context)
   if (nativeConstraintCount(sketch) <= MAX_SKETCH_CONSTRAINTS) return
   context.addIssue({
     code: "custom",

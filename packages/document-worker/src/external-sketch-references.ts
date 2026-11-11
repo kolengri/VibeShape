@@ -605,11 +605,12 @@ function resolveExternalModelCurve(
 type ExternalCurveChainInput = NonNullable<SketchCompilationInput["externalCurveChains"]>[number]
 
 const MODEL_SPLINE_PROJECTION_FAILURES = {
-  degenerate: (id: string) => `External model spline ${id} has a degenerate projection.`,
-  "not-parallel": (id: string) =>
+  degenerate: (id: string, _segments: number) =>
+    `External model spline ${id} has a degenerate projection.`,
+  "not-parallel": (id: string, _segments: number) =>
     `External model spline ${id} does not lie in a plane parallel to the sketch; only planar edges parallel to the sketch plane can be used.`,
-  "segment-count": (id: string) =>
-    `External model spline ${id} now needs more Bezier segments than its projected identities to stay within 0.0001 mm; replace the reference to refit it.`,
+  "segment-count": (id: string, segments: number) =>
+    `External model spline ${id} now needs more than its ${segments} projected Bezier segment(s) to stay within 0.0001 mm. Repair it with an edge that fits in ${segments} segment(s) to keep its end-point constraints, or remove it and use the edge again.`,
 } as const
 
 function resolveExternalModelSpline(
@@ -636,7 +637,12 @@ function resolveExternalModelSpline(
     reference.projectedCurveIds.length,
   )
   if (!projection.ok)
-    throw new Error(MODEL_SPLINE_PROJECTION_FAILURES[projection.reason](reference.id))
+    throw new Error(
+      MODEL_SPLINE_PROJECTION_FAILURES[projection.reason](
+        reference.id,
+        reference.projectedCurveIds.length,
+      ),
+    )
   const pointId = (index: number) => {
     const id = reference.projectedPointIds[index]
     if (!id) throw new Error("External projected spline point identities are incomplete.")
