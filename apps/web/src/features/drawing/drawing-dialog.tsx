@@ -50,6 +50,17 @@ function parseScale(value: string): DrawingSettings["scale"] {
   return numerator && denominator ? { mode: "explicit", numerator, denominator } : { mode: "auto" }
 }
 
+/** Exact Parts that can be drawn alone, and whether "All parts" skips any mesh Part. */
+function drawableParts(controller: DocumentControllerState) {
+  const authority = controller.authoredSnapshot
+  if (!authority || authority.schemaVersion === 1 || !controller.report)
+    return { parts: [], hasMesh: false }
+  const bodies =
+    resolveAuthoredParts(authority, controller.report)?.filter(({ body }) => body !== null) ?? []
+  const parts = bodies.filter(({ body }) => body?.representation !== "triangle-mesh")
+  return { parts, hasMesh: bodies.length > parts.length }
+}
+
 function PartField({
   controller,
   value,
@@ -60,13 +71,7 @@ function PartField({
   onChange: (value: string) => void
 }) {
   const t = useTranslations("app.drawing.parts")
-  const authority = controller.authoredSnapshot
-  if (!authority || authority.schemaVersion === 1 || !controller.report) return null
-  const bodies = resolveAuthoredParts(authority, controller.report)?.filter(
-    ({ body }) => body !== null,
-  )
-  const parts = bodies?.filter(({ body }) => body?.representation !== "triangle-mesh") ?? []
-  const hasMesh = (bodies?.length ?? 0) > parts.length
+  const { parts, hasMesh } = drawableParts(controller)
   // Mesh parts are skipped by "All parts"; keep the choice visible so that is explained.
   if (parts.length < 2 && !hasMesh) return null
   return (
