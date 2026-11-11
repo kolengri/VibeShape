@@ -119,16 +119,14 @@ export const patternFeatureTypeHandlerV3: TrustedFeatureTypeHandler = {
   },
   validateFeature(feature) {
     const { targetBody } = patternFeatureParametersV3Schema.parse(feature.parameters)
-    if (feature.dependencies[0] !== targetBody.featureId)
-      return [
-        {
-          path: "parameters.targetBody.featureId",
-          message: "Path pattern must list its target body as the first dependency.",
-        },
-      ]
-    return new Set(feature.dependencies).size === feature.dependencies.length
+    return feature.dependencies[0] === targetBody.featureId
       ? []
-      : [{ path: "dependencies", message: "Path pattern dependencies must be distinct." }]
+      : [
+          {
+            path: "parameters.targetBody.featureId",
+            message: "Path pattern must list its target body as the first dependency.",
+          },
+        ]
   },
   contentParameters(parameters) {
     const parsed = patternFeatureParametersV3Schema.parse(parameters)
