@@ -29,6 +29,8 @@ export const countVariable = {
 export const copy: PatternFormCopy = {
   ...messages.app.bodyPattern,
   submit: messages.app.bodyPattern.create,
+  previewFailed: "The exact pattern could not be built.",
+  pathPreviewFailed: "The exact path pattern could not be built.",
 }
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f7910")

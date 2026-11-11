@@ -49,6 +49,7 @@ export type PatternFormCopy = ParameterPanelCopy &
     saveFailed: string
     unavailable: string
     previewFailed: string
+    pathPreviewFailed: string
     kind: string
     linear: string
     circular: string
@@ -185,10 +186,12 @@ function panelMessage(
   sourceAvailable: boolean,
   status: FeaturePreviewState["status"] | undefined,
   copy: PatternFormCopy,
+  isPath: boolean,
 ) {
   if (message) return message
   if (!sourceAvailable) return copy.unavailable
-  return status === "error" ? copy.previewFailed : null
+  if (status !== "error") return null
+  return isPath ? copy.pathPreviewFailed : copy.previewFailed
 }
 type FormContext = Readonly<{
   props: Props
@@ -441,7 +444,13 @@ function PatternFormBody({
         copy={copy}
         legend={copy.parameters}
         disabled={view.busy}
-        message={panelMessage(state.message, props.sourceAvailable, props.previewStatus, copy)}
+        message={panelMessage(
+          state.message,
+          props.sourceAvailable,
+          props.previewStatus,
+          copy,
+          view.isPath,
+        )}
         actions={
           <TaskPanelFormActions
             acceptLabel={copy.submit}

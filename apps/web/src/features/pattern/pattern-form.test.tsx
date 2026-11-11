@@ -295,6 +295,13 @@ describe("Body Pattern form", () => {
     expect(start.value).toBe("")
     expect(screen.queryByText(copy.saveFailed)).toBeNull()
   })
+  it("explains failed path previews with path-specific guidance", async () => {
+    setup({ status: "error" })
+    expect(screen.getByText(copy.previewFailed)).toBeTruthy()
+    await userEvent.click(screen.getByRole("radio", { name: "Path" }))
+    expect(screen.getByText(copy.pathPreviewFailed)).toBeTruthy()
+    expect(screen.queryByText(copy.previewFailed)).toBeNull()
+  })
   it("reopens a path pattern with its authored path values", () => {
     const parsed = parsePatternForm(
       {

@@ -32,11 +32,17 @@ kind is chosen. Version 3 persists:
 **Path.** The path reuses Sweep's selector and materializer, which this feature extends with an
 opt-in closed-loop mode. A path is one connected G1 chain of lines, circular arcs, cubic Beziers or
 elliptical arcs, open or closed, or a single sketch circle. Branches, revisited joints, corners
-(including a closed loop's seam), missing curves and zero-length curves fail preparation. An open
+(including a closed loop's seam), missing curves and zero-length curves fail preparation. Every
+curve must have a defined tangent at both ends, so a Bezier handle collapsed onto its endpoint
+fails. A cubic Bezier must also have no interior cusp: each coordinate of its derivative is a
+quadratic, so the candidates are their real roots in (0, 1), and a cusp is one where the speed falls
+below 1e-6 of the control-polygon scale. Translated and followed copies share these tangent rules. An open
 path starts at its named endpoint. A closed chain starts at its named joint. A circle starts at the
 sketch +X direction from its center when the start point is the center point, or at a named solved
 point that lies on the circle. Closed paths run counterclockwise about the sketch normal; the signed
-loop area decides the traversal direction of a chain regardless of authored curve order.
+loop area decides the traversal direction of a chain regardless of authored curve order. A closed
+chain whose enclosed area is at most 1e-6 of its squared length, such as a symmetric figure eight,
+fails because tiny edits would flip its direction.
 
 **Seed reference.** As in mainstream CAD path patterns, the seed body is not moved. The path point at
 `startOffset` (measured from the path start) is the seed's reference. Instance *i* sits at path
@@ -47,7 +53,9 @@ distance *s<sub>i</sub>*, and its placement maps the reference point to the path
 included. On a closed path it divides the length by the count, so the last instance does not
 duplicate the seed. `fixed` steps by the distance from the offset. Fixed spacing that runs past an
 open path's end, fixed spacing whose span reaches a closed path's length, and an offset at least the
-path length fail with a message that gives the required and available lengths. `reverse` starts an
+path length fail with a message that gives the required and available lengths. The preview
+diagnostic and MCP carry that message. The task panel shows path-specific guidance instead, because
+not every kernel failure message is actionable for users. `reverse` starts an
 open path at its other end and runs a closed path clockwise.
 
 **Orientation frame.** A sketch path is planar. `follow` uses the frame (T, N × T, N), where T is the
@@ -61,9 +69,9 @@ T defined at every station. `translate` applies only the translation.
 Loft analytical edge builder. It integrates |C′(u)| over each `BRepAdaptor_Curve` with a ten-point
 Gauss–Legendre rule, bisecting each panel until the whole-panel and two-half estimates agree within
 1e-12 relative. It inverts arc length with a Newton iteration bracketed by bisection to 1e-10 mm.
-Lines and circular arcs integrate exactly. Tests compare a cubic Bezier against an independent
-dense-polyline measurement to 1e-3 mm. They also compare line, arc and circle stations with
-analytic positions to 1e-6 mm. `BRepGProp` is not used as a cross-check because it is less accurate
+Lines and circular arcs integrate exactly. Tests compare line, arc and circle stations with
+analytic positions to 1e-6 mm, and a cubic Bezier station with an independent Simpson and
+bisection reference to 1e-7 mm. `BRepGProp` is not used as a cross-check because it is less accurate
 than this integration for Beziers.
 
 **Ownership and outputs.** The target producer is the first dependency. The path sketch's support
@@ -79,8 +87,11 @@ independent parts.
 
 **Surfaces.** The Pattern task panel gains a Path kind. It reuses Sweep's keyboard path fields with
 circles added. Choosing a path sketch enables viewport toggling of its non-construction lines,
-arcs, circles and Beziers, with the viewport's keyboard picker as a fallback. Elliptical arcs are
-chosen from the panel list. MCP extends `create_reference_body_pattern` and
+arcs, circles, Beziers and elliptical arcs, with the viewport's keyboard picker as a fallback.
+Viewport candidates come from the solved sketch display (solved point positions and solved circle
+radii) through the shared display sampler, so they match the rendered and evaluated curves. Panel
+and viewport toggles share one reconciliation that clears a start point no selected curve owns.
+MCP extends `create_reference_body_pattern` and
 `update_reference_body_pattern` with the strict path variant, selected by `kind`.
 
 ## Consequences
@@ -100,7 +111,8 @@ chosen from the panel list. MCP extends `create_reference_body_pattern` and
 Real-kernel tests check instance positions against analytic arc-length stations on a straight line,
 a quarter arc and a full circle. They also cover a clockwise-authored closed loop traversed
 counterclockwise, follow orientation turning copies by the analytic tangent angle, start offset,
-reverse on open and closed paths, and a cubic Bezier against an independent measurement. Overrun and
+reverse on open and closed paths, a cubic Bezier against an independent reference, Bezier cusps and
+collapsed handles, a zero-area figure eight, and a Datum Plane sketch support. Overrun and
 wrap failures, native temporary release on rejection, copy release on a failed placement, and engine
 evaluation with named instances consumed by a downstream Scale are covered too. Domain, document
 preparation, form, MCP schema/adapter and Chromium end-to-end tests cover bounds, expressions,
