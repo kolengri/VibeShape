@@ -1,3 +1,4 @@
+import { stripDrawingControlCharacters } from "@vibeshape/domain/drawing"
 import {
   type DrawingSheet,
   type PrimitiveWriters,
@@ -19,8 +20,9 @@ const STYLE = [
   "text{fill:#000;stroke:none;font-family:Helvetica,Arial,sans-serif}",
 ].join("")
 
+/** Drops characters XML 1.0 forbids (same rule as drawing text fields) before escaping markup. */
 function escapeXml(value: string) {
-  return value
+  return stripDrawingControlCharacters(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

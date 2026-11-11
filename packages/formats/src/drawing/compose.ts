@@ -1,4 +1,8 @@
-import { type DrawingSettings, drawingSheetExtent } from "@vibeshape/domain/drawing"
+import {
+  type DrawingSettings,
+  drawingSheetExtent,
+  stripDrawingControlCharacters,
+} from "@vibeshape/domain/drawing"
 import type { DrawingCurve, DrawingProjection } from "@vibeshape/protocol"
 import { diameterCallouts, overallDimensions, TEXT_HEIGHT_MM } from "./annotations"
 import {
@@ -36,13 +40,17 @@ export type ComposeDrawingInput = Readonly<{
  * callouts. Pure and deterministic; every writer renders the same sheet.
  */
 export function composeDrawingSheet(input: ComposeDrawingInput): DrawingSheet {
+  const text = stripDrawingControlCharacters
+  // Every string that reaches the sheet passes this boundary once: the document name (validated
+  // by a schema that allows control characters), title fields and host copy.
+  const fields = Object.fromEntries(
+    Object.entries(input.settings.titleBlock).map(([key, value]) => [key, text(value)]),
+  ) as DrawingSettings["titleBlock"]
   const settings = {
     ...input.settings,
-    titleBlock: {
-      ...input.settings.titleBlock,
-      title: input.settings.titleBlock.title || input.documentTitle,
-    },
+    titleBlock: { ...fields, title: fields.title || text(input.documentTitle).trim() },
   }
+  const copy = sanitizedCopy(input.copy)
   const { width, height } = drawingSheetExtent(settings)
   const inner = {
     x: SHEET_BORDER_MM,
@@ -60,7 +68,7 @@ export function composeDrawingSheet(input: ComposeDrawingInput): DrawingSheet {
   const requested = new Set(settings.views)
   const views = input.projection.views.filter(({ view }) => requested.has(view))
   const annotate = (placement: ViewPlacement, factor: number) =>
-    viewAnnotations(placement, settings, input.copy, factor)
+    viewAnnotations(placement, settings, copy, factor)
   const layout = layoutViews(views, settings, area, (projection, orthographic, factor) =>
     measureAnnotations(projection, orthographic, factor, annotate),
   )
@@ -100,7 +108,7 @@ export function composeDrawingSheet(input: ComposeDrawingInput): DrawingSheet {
       primitives: titleBlock({
         origin: [inner.x + inner.width - TITLE_BLOCK_WIDTH_MM, inner.y],
         settings,
-        copy: input.copy,
+        copy,
         scaleText,
       }),
     },
@@ -222,5 +230,19 @@ function viewLabel(
     text: copy.viewLabels[placement.projection.view],
     align: "middle",
     rotation: 0,
+  }
+}
+
+/** Host copy is trusted catalog text, but it is sanitized with the same rule as user fields. */
+function sanitizedCopy(copy: DrawingSheetCopy): DrawingSheetCopy {
+  const clean = <T extends Readonly<Record<string, string>>>(record: T): T =>
+    Object.fromEntries(
+      Object.entries(record).map(([key, value]) => [key, stripDrawingControlCharacters(value)]),
+    ) as T
+  return {
+    viewLabels: clean(copy.viewLabels),
+    captions: clean(copy.captions),
+    projections: clean(copy.projections),
+    units: clean(copy.units),
   }
 }

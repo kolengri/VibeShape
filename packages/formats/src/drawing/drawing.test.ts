@@ -246,6 +246,64 @@ describe("drawing sheet composition", () => {
   })
 })
 
+describe("externally sourced sheet text", () => {
+  it("strips control characters from the document-name title fallback in every format", () => {
+    const sheet = composeDrawingSheet({
+      projection: boxProjection(),
+      settings: drawingSettingsSchema.parse({}),
+      copy,
+      documentTitle: "Part\u0001A\u000bB\u007fC",
+    })
+    expect(sheet.title).toBe("PartABC")
+    const svg = writeDrawingSvg(sheet)
+    const parser = new SaxesParser({ xmlns: true })
+    const titles: string[] = []
+    let inTitle = false
+    parser.on("opentag", (tag) => {
+      inTitle = tag.local === "title"
+    })
+    parser.on("text", (text) => {
+      if (inTitle) titles.push(text)
+      inTitle = false
+    })
+    expect(() => parser.write(svg).close()).not.toThrow()
+    expect(titles).toEqual(["PartABC"])
+    expect(svg).toContain(">PartABC</text>")
+    const pdf = new TextDecoder("latin1").decode(writeDrawingPdf(sheet))
+    expect(pdf).toContain("/Title <FEFF0050006100720074004100420043>")
+    const dxf = writeDrawingDxf(sheet)
+    expect(dxf).toContain("\r\n1\r\nPartABC\r\n")
+    expect(dxf).not.toMatch(/\\U\+00(?:0|1)[0-9A-F]|\\U\+007F/)
+  })
+
+  it("drops control characters that reach the SVG writer directly", () => {
+    const sheet = sheetFor()
+    const svg = writeDrawingSvg({
+      ...sheet,
+      title: "Bad\u0002Title",
+      groups: [
+        {
+          id: "raw",
+          primitives: [
+            {
+              kind: "text",
+              layer: "title",
+              position: [20, 20],
+              height: 3.5,
+              text: "X\u0007Y",
+              align: "start",
+              rotation: 0,
+            },
+          ],
+        },
+      ],
+    })
+    expect(() => new SaxesParser({ xmlns: true }).write(svg).close()).not.toThrow()
+    expect(svg).toContain("<title>BadTitle</title>")
+    expect(svg).toContain(">XY</text>")
+  })
+})
+
 describe("drawing writers", () => {
   it("writes a well-formed SVG with view groups and line-type styles", () => {
     const svg = writeDrawingSvg(sheetFor())
