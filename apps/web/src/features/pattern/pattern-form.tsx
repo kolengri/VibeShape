@@ -25,7 +25,7 @@ import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
 import { ReferenceAxisSelection } from "../reference-geometry/reference-support-fields"
-import type { PathSketchOption } from "../sweep-loft/sweep-loft-form-model"
+import { type PathSketchOption, togglePathCurve } from "../sweep-loft/sweep-loft-form-model"
 import { SketchPathFields, type SketchPathValues } from "../sweep-loft/sweep-path-fields"
 import {
   type PatternFormMode,
@@ -125,21 +125,26 @@ function PatternPreview({
   })
   return null
 }
-/** Publishes the chosen path sketch for viewport picking and applies each picked curve once. */
+/**
+ * Publishes the chosen path sketch for viewport picking and applies each picked curve once,
+ * through the same toggle and start-point reconciliation as the panel's curve checkboxes.
+ */
 function PatternPathPicking({
   values,
   featureId,
   disabled,
+  paths,
   request,
   onContextChange,
-  onEntityIdsChange,
+  onPathChange,
 }: {
   values: PatternFormValues
   featureId: FeatureId
   disabled: boolean
+  paths: readonly PathSketchOption[]
   request: PatternPathPickingRequest | null | undefined
   onContextChange: ((context: PatternPathPickingContext | null) => void) | undefined
-  onEntityIdsChange: (ids: SketchEntityId[]) => void
+  onPathChange: (changes: Partial<SketchPathValues>) => void
 }) {
   const consumed = useRef<number | null>(null)
   const sketchId = values.kind === "path" && !disabled ? values.pathSketchId : ""
@@ -153,12 +158,9 @@ function PatternPathPicking({
     consumed.current = request.requestId
     if (!sketchId || request.featureId !== featureId || request.sketchId !== sketchId) return
     const entityId = request.entityId as SketchEntityId
-    onEntityIdsChange(
-      values.entityIds.includes(entityId)
-        ? values.entityIds.filter((id) => id !== entityId)
-        : [...values.entityIds, entityId].sort(),
-    )
-  }, [featureId, onEntityIdsChange, request, sketchId, values.entityIds])
+    const path = paths.find(({ sketch }) => sketch.id === sketchId)
+    onPathChange(togglePathCurve(path, values, entityId, !values.entityIds.includes(entityId)))
+  }, [featureId, onPathChange, paths, request, sketchId, values])
   return null
 }
 const commonExpressionFields = ["count"] as const
@@ -300,6 +302,16 @@ function pathChoices(copy: PatternFormCopy) {
     })),
   }
 }
+/** Panel checkboxes and viewport picks edit the path through this one owner. */
+function applyPathChanges(
+  form: PatternFormApi,
+  context: FormContext,
+  changes: Partial<SketchPathValues>,
+) {
+  context.state.clearSubmissionErrors()
+  for (const [name, value] of Object.entries(changes))
+    form.setFieldValue(name as keyof SketchPathValues, value as never)
+}
 function PatternChoice({
   form,
   name,
@@ -350,9 +362,10 @@ function PatternEffects({
         values={values}
         featureId={featureId}
         disabled={busy}
+        paths={props.paths}
         request={props.pickingRequest}
         onContextChange={props.onPickingContextChange}
-        onEntityIdsChange={(ids) => form.setFieldValue("entityIds", ids)}
+        onPathChange={(changes) => applyPathChanges(form, context, changes)}
       />
     </>
   )
@@ -380,11 +393,7 @@ function PatternSupportFields({
         values={values}
         paths={context.props.paths}
         error={error}
-        onChange={(changes) => {
-          onChange()
-          for (const [name, value] of Object.entries(changes))
-            form.setFieldValue(name as keyof SketchPathValues, value as never)
-        }}
+        onChange={(changes) => applyPathChanges(form, context, changes)}
       />
     )
   return (

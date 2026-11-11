@@ -273,6 +273,28 @@ describe("Body Pattern form", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Linear" }))
     await waitFor(() => expect(f.onPickingContextChange).toHaveBeenLastCalledWith(null))
   })
+  it("reconciles the start point and clears save errors when a viewport pick deselects a curve", async () => {
+    const onSave = save().mockRejectedValueOnce(new Error("Storage unavailable"))
+    const f = setup({ onSave })
+    await userEvent.click(screen.getByRole("radio", { name: "Path" }))
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Path sketch" }),
+      pathSketch.id,
+    )
+    await userEvent.click(screen.getByRole("checkbox", { name: "Line 3" }))
+    const start = screen.getByRole("combobox", { name: "Path start point" }) as HTMLSelectElement
+    await userEvent.selectOptions(start, pathStartId)
+    await userEvent.click(screen.getByRole("button", { name: "Apply feature" }))
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(copy.saveFailed))
+    f.pick({ requestId: 1, featureId, sketchId: pathSketch.id, entityId: lineId })
+    await waitFor(() =>
+      expect((screen.getByRole("checkbox", { name: "Line 3" }) as HTMLInputElement).checked).toBe(
+        false,
+      ),
+    )
+    expect(start.value).toBe("")
+    expect(screen.queryByText(copy.saveFailed)).toBeNull()
+  })
   it("reopens a path pattern with its authored path values", () => {
     const parsed = parsePatternForm(
       {

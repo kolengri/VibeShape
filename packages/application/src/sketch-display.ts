@@ -121,7 +121,8 @@ function point(points: PointLookup, id: string) {
   return points.get(id) ?? null
 }
 
-type CurveEntity = Exclude<SketchEntity, { type: "point" }>
+export type SketchCurveEntity = Exclude<SketchEntity, { type: "point" }>
+type CurveEntity = SketchCurveEntity
 
 function lineSamples(entity: Extract<CurveEntity, { type: "line" }>, points: PointLookup) {
   const start = point(points, entity.startPointId)
@@ -193,7 +194,8 @@ function cubicBezierSamples(
     : []
 }
 
-function curveSamples(
+/** Disposable local samples of one solved curve; circles use their solved radius when known. */
+export function sketchCurveSamples(
   entity: CurveEntity,
   points: PointLookup,
   radii: ReadonlyMap<string, number>,
@@ -269,6 +271,18 @@ function solvedPointMetadata(
   return metadata
 }
 
+/** Authored circles' solved radii, published only alongside a current solved-point record. */
+function solvedCircleMetadata(sketch: SketchRecord, solution: SketchDisplaySolution | null) {
+  const circleIds = new Set(
+    sketch.entities.flatMap((entity) => (entity.type === "circle" ? [String(entity.id)] : [])),
+  )
+  return (solution?.circles ?? []).flatMap(({ entityId, radius }) =>
+    circleIds.has(entityId) && Number.isFinite(radius) && radius > 0
+      ? [{ entityId, radius }]
+      : [],
+  )
+}
+
 function appendPoint(target: number[], frame: SupportFrame, local: SketchPoint2) {
   target.push(...worldPoint(frame, local))
 }
@@ -320,7 +334,7 @@ function displayLoop(
   const segments = loop.segments.map((segment) => {
     const entity = entities.get(segment.entityId)
     if (!entity || entity.type !== segment.type) return null
-    const samples = curveSamples(entity as CurveEntity, points, radii)
+    const samples = sketchCurveSamples(entity as CurveEntity, points, radii)
     if (samples.length < 2) return null
     const ordered = segment.reversed ? [...samples].reverse() : samples
     return {
@@ -404,7 +418,7 @@ function appendDisplayEntity(
   return appendSegments(
     entity.construction ? buffers.constructionCurvePositions : buffers.curvePositions,
     frame,
-    curveSamples(entity, points, radii),
+    sketchCurveSamples(entity, points, radii),
     remainingSegments,
   )
 }
@@ -448,6 +462,8 @@ export function materializeSketchDisplay(
     constructionPointPositions: new Float32Array(buffers.constructionPointPositions),
     frame,
     profiles: displayProfiles(sketch, solution, entities, points, radii),
-    ...(solvedPoints ? { solvedPoints } : {}),
+    ...(solvedPoints
+      ? { solvedPoints, solvedCircles: solvedCircleMetadata(sketch, solution) }
+      : {}),
   }
 }
