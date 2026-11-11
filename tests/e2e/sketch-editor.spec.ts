@@ -3244,6 +3244,65 @@ test.describe("full sketch editor", () => {
     )
   })
 
+  for (const { width, height, theme } of [
+    { width: 512, height: 360, theme: "light" },
+    { width: 1024, height: 720, theme: "light" },
+    { width: 1024, height: 720, theme: "dark" },
+  ] as const) {
+    test(`keeps the Precise transform panel inside the canvas at ${width}x${height} in ${theme} theme`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height })
+      await page.goto("/")
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible()
+      await page
+        .locator("html")
+        .evaluate((node, dark) => node.classList.toggle("dark", dark), theme === "dark")
+      await page
+        .getByRole("toolbar", { name: "Model commands", exact: true })
+        .getByRole("button", { name: "Create sketch", exact: true })
+        .click()
+      // The compact layout hides the Sketch task panel, so pick the plane in the viewport.
+      if (width < 1024) await selectOriginPlaneInViewport(page, "xy")
+      else await confirmSketchPlane(page)
+      const drawing = await drawRectangle(page)
+      await selectSketchEntities(page, drawing, "line", [0, 1, 2, 3])
+      // Narrower toolbars move Transform into the modification-tools menu.
+      const transform = page.getByRole("button", { name: "Transform", exact: true })
+      if (await transform.isVisible()) await transform.click()
+      else {
+        await page.getByRole("button", { name: "Sketch modification tools", exact: true }).click()
+        await page.getByRole("option", { name: "Transform", exact: true }).click()
+      }
+      const exactTransform = page.getByRole("form", { name: "Precise transform" })
+      await expect(exactTransform).toBeVisible()
+      // A short canvas scrolls the panel instead of pushing it above the canvas.
+      // The panel stays inside the free canvas and scrolls instead of growing above it.
+      const canvas = await unobscuredDrawingBounds(page, drawing)
+      const panel = await exactTransform.boundingBox()
+      if (!panel) throw new Error("The Precise transform panel must be measurable.")
+      expect(panel.y).toBeGreaterThanOrEqual(canvas.y)
+      expect(panel.y + panel.height).toBeLessThanOrEqual(canvas.y + canvas.height)
+      if (width < 1024) {
+        expect(
+          await exactTransform.evaluate((element) => element.scrollHeight > element.clientHeight),
+        ).toBe(true)
+        return
+      }
+      for (const control of [
+        exactTransform.getByRole("combobox").first(),
+        exactTransform.getByRole("button", { name: "Apply transform" }),
+      ]) {
+        await control.scrollIntoViewIfNeeded()
+        await expectUncoveredControl(control)
+      }
+    })
+  }
+
   test("transforms selected sketch geometry with one preview and undo entry", async ({ page }) => {
     await page.goto("/")
     await expect(

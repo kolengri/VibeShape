@@ -7,17 +7,16 @@ import {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
-import { cn } from "@vibeshape/ui/lib/cn"
 import { useMemo } from "react"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { SAFE_VIEWPORT_RIGHT } from "../../shell/viewport-chrome-styles"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 import { SketchFormActions } from "./sketch-form-actions"
+import { SKETCH_OPERATION_PANEL_CLASS_NAME } from "./sketch-operation-panel"
 import {
   evaluateSketchPatternExpression,
   stableSketchPatternScalar,
@@ -137,11 +136,7 @@ export function SketchCircularPatternForm({
   return (
     <Form
       aria-label={t("title")}
-      className={cn(
-        "absolute bottom-3 right-3 z-10 w-80 gap-3 bg-background/95 p-3 shadow-md",
-        // Keep the panel inside the canvas region left free by floating workspace windows.
-        SAFE_VIEWPORT_RIGHT,
-      )}
+      className={SKETCH_OPERATION_PANEL_CLASS_NAME}
       form={form}
       variant="panel"
     >

@@ -21,7 +21,7 @@ import {
   normalizeExpressionWithDisplayUnit,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { SAFE_VIEWPORT_RIGHT } from "../../shell/viewport-chrome-styles"
+import { SKETCH_OPERATION_PANEL_CLASS_NAME } from "./sketch-operation-panel"
 
 function cornerLength(
   source: string,
@@ -182,11 +182,7 @@ export function SketchCornerTreatmentPanel({
     <Form
       form={form}
       aria-label={t(kind)}
-      className={cn(
-        "absolute bottom-3 right-3 z-10 grid w-80 gap-3 rounded border bg-background/95 p-3 shadow-md",
-        // Keep the panel inside the canvas region left free by floating workspace windows.
-        SAFE_VIEWPORT_RIGHT,
-      )}
+      className={cn(SKETCH_OPERATION_PANEL_CLASS_NAME, "grid rounded border")}
     >
       <p className="text-xs text-muted-foreground">{t("select")}</p>
       <form.AppField name="first">
