@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
-import { documentSnapshotSchema, type SketchRecord, sketchRecordSchema } from "@vibeshape/domain"
+import {
+  documentSnapshotSchema,
+  type SketchRecord,
+  sketchRecordInputSchema,
+  sketchRecordSchema,
+} from "@vibeshape/domain"
 import { compileSketchSystem, type SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { vi } from "../../../tests/unit/support/bun-test"
 import {
@@ -294,7 +299,7 @@ describe("model spline references", () => {
     const [reference] = externalReferences
     if (reference?.kind !== "model-spline") throw new Error("The fixture must hold a spline.")
     const { endpointAnchors: _omitted, ...unanchored } = reference
-    const input = { ...rest, externalReferences: [unanchored] }
+    const input = sketchRecordInputSchema.parse({ ...rest, externalReferences: [unanchored] })
     const target = sketch()
     const anchored = anchorModelSplineReferences(document(target), input, geometry(wave))
     expect(anchored.externalReferences?.[0]).toMatchObject({
@@ -308,7 +313,10 @@ describe("model spline references", () => {
       [20, 0],
       [0, 0],
     ]
-    const given = { ...rest, externalReferences: [{ ...unanchored, endpointAnchors: kept }] }
+    const given = sketchRecordInputSchema.parse({
+      ...rest,
+      externalReferences: [{ ...unanchored, endpointAnchors: kept }],
+    })
     expect(
       anchorModelSplineReferences(document(target), given, geometry(wave)).externalReferences?.[0],
     ).toMatchObject({ endpointAnchors: kept })
