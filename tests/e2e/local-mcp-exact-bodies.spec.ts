@@ -250,6 +250,15 @@ test("repairs and applies exact-body Subtract/Revolve through MCP and restores s
     await expect(edit.locator('select[name="toolFeatureId"]')).toHaveValue(
       JSON.stringify([id(2), "pattern.instance.0"]),
     )
+    // The visible searchable controls show the labels of the restored backing selections.
+    for (const [name, field] of [
+      ["Target solid", "targetFeatureId"],
+      ["Tool solid", "toolFeatureId"],
+    ] as const) {
+      const selected = await edit.locator(`select[name="${field}"] option:checked`).textContent()
+      expect(selected).toBeTruthy()
+      await expect(edit.getByRole("combobox", { name, exact: true })).toHaveText(selected ?? "")
+    }
     await expect(edit.getByRole("checkbox", { name: "Keep tool solid" })).toBeChecked()
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
     await page.getByRole("treeitem", { name: "Exact MCP 5", exact: true }).click()
