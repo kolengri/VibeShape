@@ -10,15 +10,94 @@ import { adoptOcctShape, castOcctShape } from "./occt-cast"
 import { createOcctBox, cutOcctShapes, intersectOcctShapes } from "./occt-shapes"
 
 type Point = readonly [number, number, number]
+type Owned = { delete(): unknown }
 const dot = (a: Point, b: Point) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 /**
  * Swept tools whose caps are half-planes through an axis (Revolve) name each cap's overrun normal
  * and the in-plane side its profile occupies, so coplanar faces across the axis are not caps.
  */
 export type SweptCapOptions = Readonly<{ endNormal?: Point; startSide?: Point; endSide?: Point }>
-function onCapSide(delta: Point, side: Point | undefined) {
-  return side === undefined || dot(delta, side) > 1e-9
+const SIDE_TOLERANCE = 1e-9
+
+function surfaceArea(occt: OpenCascadeInstance, shape: TopoDS_Shape) {
+  const properties = new occt.GProp_GProps_1()
+  try {
+    occt.BRepGProp.SurfaceProperties_1(shape, properties, false, false)
+    return properties.Mass()
+  } finally {
+    properties.delete()
+  }
 }
+
+/** The tight corners of a face's bounding box, without triangulation or tolerance gaps. */
+function faceCorners(occt: OpenCascadeInstance, face: Face): Point[] {
+  const box = new occt.Bnd_Box_1()
+  try {
+    occt.BRepBndLib.AddOptimal(face.wrapped, box, false, false)
+    if (box.IsVoid()) return []
+    const min = box.CornerMin()
+    const max = box.CornerMax()
+    try {
+      const corners: Point[] = []
+      for (const x of [min.X(), max.X()])
+        for (const y of [min.Y(), max.Y()]) for (const z of [min.Z(), max.Z()]) corners.push([x, y, z])
+      return corners
+    } finally {
+      min.delete()
+      max.delete()
+    }
+  } finally {
+    box.delete()
+  }
+}
+
+/** Area of the part of a cap-plane face that lies in the half-plane on `side` of the axis. */
+function halfPlaneArea(
+  occt: OpenCascadeInstance,
+  face: Face,
+  origin: Point,
+  normal: Point,
+  side: Point,
+) {
+  const corners = faceCorners(occt, face)
+  const offsets = corners.map((corner) =>
+    dot([corner[0] - origin[0], corner[1] - origin[1], corner[2] - origin[2]], side),
+  )
+  if (offsets.length === 0 || Math.max(...offsets) <= SIDE_TOLERANCE) return 0
+  if (Math.min(...offsets) >= -SIDE_TOLERANCE) return surfaceArea(occt, face.wrapped)
+  // The face straddles the axis, as when OCCT merges a start cap with a coplanar contact across
+  // the axis into one face. Clip it with a half-plane face that covers its whole extent.
+  const reach =
+    2 *
+      Math.max(
+        ...corners.map((corner) =>
+          Math.hypot(corner[0] - origin[0], corner[1] - origin[1], corner[2] - origin[2]),
+        ),
+      ) +
+    1
+  const owned: Owned[] = []
+  const own = <T extends Owned>(value: T) => {
+    owned.push(value)
+    return value
+  }
+  try {
+    const axes = own(
+      new occt.gp_Ax3_3(
+        own(new occt.gp_Pnt_3(...origin)),
+        own(new occt.gp_Dir_4(...normal)),
+        own(new occt.gp_Dir_4(...side)),
+      ),
+    )
+    const plane = own(new occt.gp_Pln_2(axes))
+    const maker = own(new occt.BRepBuilderAPI_MakeFace_9(plane, 0, reach, -reach, reach))
+    if (!maker.IsDone()) throw new Error("OCCT could not build the revolve cap half-plane.")
+    const halfPlane = own(maker.Face())
+    return intersectionArea(occt, face.wrapped, halfPlane, own(new occt.Message_ProgressRange_1()))
+  } finally {
+    for (const value of owned.reverse()) value.delete()
+  }
+}
+
 function capArea(
   occt: OpenCascadeInstance,
   shape: Shape3D,
@@ -41,17 +120,13 @@ function capArea(
         ]
         if (
           Math.abs(dot(delta, normal)) > 1e-5 ||
-          Math.abs(dot(direction.toTuple(), normal)) < 1 - 1e-6 ||
-          !onCapSide(delta, side)
+          Math.abs(dot(direction.toTuple(), normal)) < 1 - 1e-6
         )
           continue
-        const properties = new occt.GProp_GProps_1()
-        try {
-          occt.BRepGProp.SurfaceProperties_1(face.wrapped, properties, false, false)
-          area += properties.Mass()
-        } finally {
-          properties.delete()
-        }
+        area +=
+          side === undefined
+            ? surfaceArea(occt, face.wrapped)
+            : halfPlaneArea(occt, face, origin, normal, side)
       } finally {
         center.delete()
         direction.delete()
@@ -376,6 +451,19 @@ function faceIntersectionAreas(
   support: Face,
   progress: InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>,
 ) {
+  return {
+    original: surfaceArea(occt, face.wrapped),
+    intersection: intersectionArea(occt, face.wrapped, support.wrapped, progress),
+  }
+}
+
+/** Area of the non-destructive Boolean common of two faces. */
+function intersectionArea(
+  occt: OpenCascadeInstance,
+  face: TopoDS_Shape,
+  other: TopoDS_Shape,
+  progress: InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>,
+) {
   const resources: { delete(): void }[] = []
   const own = <T extends { delete(): void }>(value: T) => {
     resources.push(value)
@@ -384,21 +472,16 @@ function faceIntersectionAreas(
   try {
     const argumentsList = own(new occt.TopTools_ListOfShape_1())
     const tools = own(new occt.TopTools_ListOfShape_1())
-    own(argumentsList.Append_1(face.wrapped))
-    own(tools.Append_1(support.wrapped))
+    own(argumentsList.Append_1(face))
+    own(tools.Append_1(other))
     const common = own(new occt.BRepAlgoAPI_Common_1())
     common.SetArguments(argumentsList)
     common.SetTools(tools)
     common.SetNonDestructive(true)
     common.SetToFillHistory(false)
     common.Build(progress)
-    if (!common.IsDone()) throw new Error("OCCT could not verify end-face coverage.")
-    const original = own(new occt.GProp_GProps_1())
-    const intersection = own(new occt.GProp_GProps_1())
-    const shape = own(common.Shape())
-    occt.BRepGProp.SurfaceProperties_1(shape, intersection, false, false)
-    occt.BRepGProp.SurfaceProperties_1(face.wrapped, original, false, false)
-    return { original: original.Mass(), intersection: intersection.Mass() }
+    if (!common.IsDone()) throw new Error("OCCT could not measure a face intersection.")
+    return surfaceArea(occt, own(common.Shape()))
   } finally {
     for (const resource of resources.reverse()) resource.delete()
   }

@@ -124,6 +124,10 @@ dynamic endpoint with a second angle is rejected before native work.
   is not reachable.
 - Caps are matched as half-planes on the profile's side of the axis, so a first contact lying in
   the sketch plane across the axis (a half turn) or in the overrun-cap plane is reached correctly.
+  Only the part of each coplanar face on the cap's side is measured: a face that straddles the axis
+  is clipped by an exact half-plane face before its area is taken. This covers a profile touching
+  the axis whose start cap lies on a target face spanning the axis, where OCCT merges the start cap
+  and the half-turn contact into one face centred on the axis.
 - Output names are stable only while the partition and each profile's boundary are unchanged:
   - a single-profile revolve, and a multi-profile revolve whose profiles merge, publish `result`;
     adding a separate profile renames that output to per-profile `revolve.profile.<h>` names, and
