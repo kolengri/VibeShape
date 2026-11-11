@@ -220,7 +220,9 @@ skill for the relevant feature family and the export skill for file delivery.
 
 ## Assembly and local component library
 
-Use model_assembly and inspect_assembly at the committed revision. create_assembly_draft returns
+Use model_assembly and inspect_assembly at the committed revision. model_assembly_bom lists one row
+per used definition with occurrence quantity and exact volume; mass needs an explicit catalog material
+per definition and is otherwise null. create_assembly_draft returns
 an original baseRevision and private draftVersion; retain both and use the latest returned version
 for named definition/instance/joint edits. upgrade_assembly explicitly enables general v2 mates.
 preview_assembly_draft evaluates exact owned geometry without saving; commit_assembly_draft always
@@ -831,21 +833,21 @@ Incomplete/unsupported/failed evidence is not a pass and samples never prove cle
 the continuous range. See the bundled export/inspection operator references for limits and workflow.
 
 Both transports support \`prepare_model_export\` with exact committed \`revision\` and geometry
-\`format\`, or \`prepare_project_backup\` for an editable \`.vshape\`. Follow \`read_export_chunk\`
+\`format\` (STEP, STL, 3MF, GLB in meters with Y up, or OBJ as a ZIP with its MTL), or \`prepare_project_backup\` for an editable \`.vshape\`. Follow \`read_export_chunk\`
 byte offsets, reconstruct base64 chunks with ordinary client file tools, verify descriptor byte
 length and SHA-256, then \`discard_export\`. Keep binary output out of conversation. Transfers
 retain one actor-owned file up to 6 MiB for five minutes; reads do not renew expiry. Preparing
 another evicts it. Remote reads share ordinary operation/rate budgets. Larger files and part
 selection use the editor. A descriptor alone is not file delivery.
 
-For STL/3MF, both export tools accept optional \`meshQuality: { chordTolerance, angularTolerance }\`.
+For STL/3MF/GLB/OBJ, both export tools accept optional \`meshQuality: { chordTolerance, angularTolerance }\`.
 Chord tolerance is absolute mm from 0.005 to 1; angular deflection is radians from 0.01 to 0.5.
-Omit quality to preserve STL 0.05 mm / 0.1 rad and 3MF 0.02 mm / 0.1 rad defaults. Finer meshes
+Omit quality to preserve STL 0.05 mm / 0.1 rad and 3MF/GLB/OBJ 0.02 mm / 0.1 rad defaults. Finer meshes
 increase file size; existing transfer and print budgets remain. Imported meshes retain source
 resolution. STEP does not accept mesh quality.
 
-Alternatively, local MCP exports the successful committed revision using \`export_model\` with \`format: "step"\`, \`"stl"\`
-or \`"3mf"\`. Read the returned \`resource_link.uri\` through MCP resources/read, decode its base64
+Alternatively, local MCP exports the successful committed revision using \`export_model\` with \`format: "step"\`, \`"stl"\`,
+\`"3mf"\`, \`"glb"\` or \`"obj"\`. Read the returned \`resource_link.uri\` through MCP resources/read, decode its base64
 blob and save the bytes using your client's ordinary file handling. Exports are limited to 6 MiB,
 expire after five minutes, and become inaccessible when pairing is revoked. No path is accepted
 by the tool. STL has no unit metadata; coordinates are mm. 3MF records millimetres.

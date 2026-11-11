@@ -4,6 +4,7 @@ import type {
   AssemblyInspectionView,
 } from "@vibeshape/automation-api/assembly-tools"
 import {
+  assemblyBomViewSchema,
   assemblyDefinitionViewSchema,
   assemblyModelViewSchema,
 } from "@vibeshape/automation-api/assembly-tools"
@@ -14,6 +15,7 @@ import type {
   PinnedAssemblyDefinition,
 } from "@vibeshape/domain/assembly-authority"
 import { emptyAssemblyAuthority } from "@vibeshape/domain/assembly-authority"
+import { createAssemblyBom } from "@vibeshape/domain/assembly-bom"
 import {
   assemblyLibraryDefinitionAssets,
   assemblyLibraryItemSchema,
@@ -21,6 +23,7 @@ import {
 } from "@vibeshape/domain/assembly-library"
 import type { CommandActor } from "@vibeshape/domain/commands"
 import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
+import type { StructuralMaterialPresetId } from "@vibeshape/domain/lightweighting-materials"
 import type { SourceAssetBlob } from "@vibeshape/domain/source-assets"
 import { sourceAssetBlobSchema } from "@vibeshape/domain/source-assets"
 import { z } from "zod"
@@ -136,6 +139,39 @@ export function assemblyModelView(snapshot: DocumentAuthoritySnapshot) {
     instances: assembly.instances,
     joints: assembly.joints,
     ...(assembly.motionStudies === undefined ? {} : { motionStudies: assembly.motionStudies }),
+  })
+}
+/** BOM rows over the authored assembly and exact inspection at one revision. */
+export function assemblyBomView(
+  snapshot: DocumentAuthoritySnapshot,
+  inspection: AssemblyInspectionView,
+  materials: readonly { definitionId: string; materialId: StructuralMaterialPresetId }[],
+) {
+  const assembly =
+    snapshot.schemaVersion === 4 || snapshot.schemaVersion === 5 || snapshot.schemaVersion === 6
+      ? snapshot.assembly
+      : emptyAssemblyAuthority()
+  const rows = createAssemblyBom({
+    assembly,
+    partAppearances: snapshot.schemaVersion === 6 ? snapshot.partAppearances : [],
+    occurrences: inspection.occurrences.map(
+      ({ instanceId, definitionId, sourceIndex, volume }) => ({
+        instanceId,
+        definitionId,
+        sourceIndex,
+        volumeMm3: volume,
+      }),
+    ),
+    materials: Object.fromEntries(
+      materials.map(({ definitionId, materialId }) => [definitionId, materialId]),
+    ),
+  })
+  return assemblyBomViewSchema.parse({
+    schemaVersion: 1,
+    documentId: snapshot.id,
+    revision: snapshot.revision,
+    units: { volume: "mm3", mass: "g", density: "kg/m3" },
+    rows,
   })
 }
 export function definitionView(definition: PinnedAssemblyDefinition) {

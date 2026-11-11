@@ -6,6 +6,7 @@ import {
   inspectAssemblyInputSchema,
 } from "./assembly-inspection"
 import {
+  exportAppearanceSchema,
   extrusionFrameSchema,
   featureEvaluationEngineResultSchema,
   featureMeshPolicySchema,
@@ -180,6 +181,7 @@ export const documentExportBodiesSchema = z
           .regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/)
           .optional(),
         name: z.string().trim().min(1).max(120).optional(),
+        appearance: exportAppearanceSchema.optional(),
       })
       .strict(),
   )
@@ -212,7 +214,7 @@ const exportDocumentRequestSchema = requestEnvelopeSchema
     message: "Print preparation is available only for 3MF export.",
   })
   .refine((request) => !request.meshQuality || request.format !== "step", {
-    message: "Mesh quality is available only for STL and 3MF export.",
+    message: "Mesh quality is available only for mesh export formats.",
   })
 
 const solveSketchRequestSchema = requestEnvelopeSchema

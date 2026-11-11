@@ -2,6 +2,7 @@ import type { BodyReference } from "@vibeshape/domain/body-reference"
 import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { featureEvaluationRecordSchema } from "@vibeshape/domain/feature-graph"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
+import { resolvePartAppearanceMaterial } from "@vibeshape/domain/part-appearance"
 import {
   patternCountSchema,
   patternOutputRoles,
@@ -143,6 +144,24 @@ export function visibleAuthoredBodies(
 }
 
 /** Resolve stable part identity at the captured revision; hidden bodies remain exportable. */
+/** Display appearance by body key; only snapshots with part appearance authority carry one. */
+function partAppearanceMaterials(
+  authority: AuthoredDocumentSnapshot,
+  parts: readonly ResolvedAuthoredPart[],
+) {
+  const appearances = new Map(
+    "partAppearances" in authority
+      ? authority.partAppearances.map(({ partId, appearance }) => [partId, appearance] as const)
+      : [],
+  )
+  return new Map(
+    parts.flatMap(({ part, body }) => {
+      const material = resolvePartAppearanceMaterial(appearances.get(part.id))
+      return body && material ? [[bodyKey(body), material] as const] : []
+    }),
+  )
+}
+
 export function authoredPartExportBodies(
   authority: AuthoredDocumentSnapshot,
   report: PersistentDocumentSessionReport,
@@ -154,15 +173,19 @@ export function authoredPartExportBodies(
   const names = new Map(
     parts.flatMap(({ part, body }) => (body ? [[bodyKey(body), part.name] as const] : [])),
   )
+  const appearances = partAppearanceMaterials(authority, parts)
   const selected = partId ? parts.find(({ part }) => part.id === partId)?.body : null
   if (partId && !selected) return null
   const bodies = selected ? [selected] : terminal
   return bodies.map(({ featureId, outputRole }) => {
-    const name = names.get(bodyKey({ featureId, outputRole }))
+    const key = bodyKey({ featureId, outputRole })
+    const name = names.get(key)
+    const appearance = appearances.get(key)
     return {
       featureId,
       ...(outputRole === undefined ? {} : { outputRole }),
       ...(name ? { name } : {}),
+      ...(appearance ? { appearance } : {}),
     }
   })
 }

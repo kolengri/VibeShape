@@ -80,6 +80,7 @@
     "./part-design-thread": "./src/part-design-thread.ts",
     "./part-design-mesh-import": "./src/part-design-mesh-import.ts",
     "./assembly-authority": "./src/assembly-authority.ts",
+    "./assembly-bom": "./src/assembly-bom.ts",
     "./assembly-library": "./src/assembly-library.ts",
     "./assembly-library-binding": "./src/assembly-library-binding.ts",
     "./sketch-text-groups": "./src/sketch-text-groups.ts",

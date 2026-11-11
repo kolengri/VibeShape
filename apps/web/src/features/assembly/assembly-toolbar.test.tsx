@@ -37,6 +37,8 @@ function fixture(): AssemblyWorkspaceView {
   return {
     assembly: f.assembly,
     documentKey: f.capture.documentKey,
+    documentName: "",
+    partAppearances: [],
     sources: f.sources,
     task: null,
     setTask: vi.fn(),

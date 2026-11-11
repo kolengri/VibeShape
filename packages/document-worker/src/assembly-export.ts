@@ -1,6 +1,7 @@
 import type { AssemblyMaterializedOccurrence } from "@vibeshape/application/assembly-materialization"
 import type { FeatureTypeRegistry } from "@vibeshape/domain"
 import type { AssemblyConstraintSolvePort } from "@vibeshape/domain/assembly-mates"
+import type { DocumentSnapshotV4 } from "@vibeshape/domain/document-v4"
 import { writeStlMeshes } from "@vibeshape/formats/stl-meshes"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type { AssemblyNativeBody, GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
@@ -13,6 +14,11 @@ import {
 } from "@vibeshape/protocol"
 import { assemblyNativeBodies, withMaterializedAssemblyRuntime } from "./assembly-inspection"
 import type { SketchSolvePort } from "./external-sketch-references"
+import {
+  isVisualMeshExportFormat,
+  type VisualMeshExportFormat,
+  writeVisualMeshExport,
+} from "./visual-mesh-export"
 
 type StepPort = {
   exportAssemblyStep?: (sources: readonly AssemblyNativeBody[]) => Promise<Uint8Array>
@@ -96,6 +102,43 @@ function exportThreeMf(
   return { file: checkedFile(file), bodyCount, ...(printPreparation ? { printPreparation } : {}) }
 }
 
+/** Names placed occurrences after their instances; multi-source definitions number each body. */
+function occurrenceName(
+  source: AssemblyMaterializedOccurrence,
+  authority: DocumentSnapshotV4 | undefined,
+) {
+  const instance = authority?.assembly.instances.find(({ id }) => id === source.instanceId)
+  const definition = authority?.assembly.definitions.find(({ id }) => id === source.definitionId)
+  if (!instance) return `${source.instanceId}:${source.sourceIndex}`
+  return (definition?.sources.length ?? 1) > 1
+    ? `${instance.name} ${source.sourceIndex + 1}`
+    : instance.name
+}
+function exportVisualMeshes(
+  format: VisualMeshExportFormat,
+  selected: readonly AssemblyMaterializedOccurrence[],
+  settings: AssemblyExportSettings,
+  authority: DocumentSnapshotV4 | undefined,
+): AssemblyExportResult {
+  const appearances = new Map(
+    (settings.sourceAppearances ?? []).map(({ definitionId, sourceIndex, appearance }) => [
+      `${definitionId}:${sourceIndex}`,
+      appearance,
+    ]),
+  )
+  const meshes = worldMeshes(selected).map((mesh, index) => {
+    const source = selected[index] as AssemblyMaterializedOccurrence
+    const material = appearances.get(`${source.definitionId}:${source.sourceIndex}`)
+    return { ...mesh, name: occurrenceName(source, authority), ...(material ? { material } : {}) }
+  })
+  return {
+    file: checkedFile(
+      writeVisualMeshExport(format, { title: authority?.name ?? "VibeShape assembly", meshes }),
+    ),
+    bodyCount: selected.length,
+  }
+}
+
 /** Exports a disposable placed copy; the document and native source caches retain their original coordinates. */
 export async function exportAssemblyRuntime(
   engine: GeometryKernelEngine & StepPort,
@@ -115,9 +158,11 @@ export async function exportAssemblyRuntime(
       ? { ...request.assembly, mesh: request.settings.meshQuality }
       : request.assembly,
     identity,
-    async (occurrences, contexts) => {
+    async (occurrences, contexts, _kinematics, authority) => {
       const selected = selectedOccurrences(occurrences, request.settings.instanceIds)
       if (request.settings.format === "step") return exportStep(engine, selected, contexts)
+      if (isVisualMeshExportFormat(request.settings.format))
+        return exportVisualMeshes(request.settings.format, selected, request.settings, authority)
       const meshes = worldMeshes(selected)
       if (request.settings.format === "stl")
         return { file: checkedFile(combinedStl(meshes)), bodyCount: selected.length }

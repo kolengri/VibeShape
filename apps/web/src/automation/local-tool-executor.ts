@@ -1,5 +1,9 @@
 import { isAssemblyLibraryToolName } from "@vibeshape/automation-api/assembly-result-context"
-import { isLocalBinaryExport } from "@vibeshape/automation-api/binary-exports"
+import {
+  binaryExportFilename,
+  binaryExportMimeType,
+  isLocalBinaryExport,
+} from "@vibeshape/automation-api/binary-exports"
 import {
   automationDraftOperationRequestSchema,
   createAutomationDraftRequestSchema,
@@ -94,8 +98,9 @@ import type { ProjectToolPort } from "./project-tool-port"
 import type { createBrowserQuickLightweightingAutomationSession } from "./quick-lightweighting-automation-session"
 import type { createBrowserSurfaceTextureAutomationSession } from "./surface-texture-automation-session"
 
+type ModelExportFormat = "step" | "stl" | "3mf" | "glb" | "obj"
 type LocalExportResult =
-  | { ok: true; format: "step" | "stl" | "3mf"; file: Uint8Array; documentName: string }
+  | { ok: true; format: ModelExportFormat; file: Uint8Array; documentName: string }
   | { ok: false; diagnostic: { code: string; message: string; retryable: boolean } }
 
 type LocalSessionPort = Readonly<{
@@ -137,7 +142,7 @@ type LocalSessionPort = Readonly<{
       | ModelVariableUsageQuery,
   ) => QueryResult
   exportRevisionBound: (
-    format: "step" | "stl" | "3mf",
+    format: ModelExportFormat,
     revision: number,
     meshQuality?: MeshExportQuality,
   ) => Promise<LocalExportResult>
@@ -181,20 +186,14 @@ function encodeExport(
     let binary = ""
     for (let index = 0; index < exported.file.length; index += 0x8000)
       binary += String.fromCharCode(...exported.file.subarray(index, index + 0x8000))
-    const mimeType =
-      exported.format === "step"
-        ? "model/step"
-        : exported.format === "stl"
-          ? "model/stl"
-          : "model/3mf"
     return {
       ok: true as const,
       value: {
         documentId: session.documentId,
         revision: operation.arguments.revision,
         format: exported.format,
-        filename: `model.${exported.format}`,
-        mimeType,
+        filename: binaryExportFilename(exported.format),
+        mimeType: binaryExportMimeType(exported.format),
         base64: btoa(binary),
       },
     }

@@ -49,7 +49,7 @@ import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape
 import { isAnyObject, isError, isInteger, isString } from "is-what"
 import { exportAssemblyRuntime } from "./assembly-export"
 import { AssemblyMaterializationError, inspectAssemblyRuntime } from "./assembly-inspection"
-import { exportBodyName, selectExportBodies } from "./export-bodies"
+import { exportBodyAppearance, exportBodyName, selectExportBodies } from "./export-bodies"
 import {
   type ExternalModelMaterializationCache,
   inspectExternalModelReferenceHealth,
@@ -68,6 +68,11 @@ import {
 import { inspectMeshSource, rebuildImportedMesh } from "./mesh-source-import"
 import { createSketchDisplayRecords } from "./sketch-display"
 import { validateRebuildSourceMaterialization } from "./source-materialization"
+import {
+  isVisualMeshExportFormat,
+  type VisualMeshExportFormat,
+  writeVisualMeshExport,
+} from "./visual-mesh-export"
 
 export interface DocumentWorkerEndpoint {
   postMessage(message: DocumentWorkerResponse, transfer?: Transferable[]): void
@@ -267,6 +272,82 @@ async function exportThreeMfDocument(
     bodyCount: result.meshes.length,
     ...(printPreparation ? { printPreparation } : {}),
   }
+}
+
+async function exportVisualMeshDocument(
+  engine: GeometryKernelEngine,
+  document: RebuildDocumentSnapshot,
+  state: FeatureRebuildState,
+  selection: ReturnType<typeof selectExportBodies>,
+  format: VisualMeshExportFormat,
+  textureOptions?: TextureExportRequestOptions,
+) {
+  const { features, names, appearances } = selection
+  const result = await collectDocumentPrintMeshes(
+    engine,
+    document.id,
+    state,
+    features,
+    textureOptions,
+  )
+  validatePrintMeshExportIdentity(result, features)
+  const labels = new Map(document.features.map(({ id, label }) => [id, label]))
+  const meshes = result.meshes.map((mesh, index) => {
+    const material = exportBodyAppearance(mesh, appearances)
+    return {
+      name: exportBodyName(mesh, names) ?? labels.get(mesh.featureId) ?? `Body ${index + 1}`,
+      vertices: [...mesh.vertices],
+      triangles: [...mesh.triangles],
+      ...(material ? { material } : {}),
+    }
+  })
+  return {
+    file: writeVisualMeshExport(format, { title: document.name, meshes }),
+    bodyCount: result.meshes.length,
+  }
+}
+
+type DocumentExportScope = Readonly<{
+  document: RebuildDocumentSnapshot
+  state: FeatureRebuildState
+  selection: ReturnType<typeof selectExportBodies>
+  hasMeshes: boolean
+}>
+
+/** Routes one validated export request to its writer at the captured revision. */
+function writeDocumentExport(
+  engine: GeometryKernelEngine,
+  request: Extract<DocumentWorkerRequest, { type: "exportDocument" }>,
+  { document, state, selection, hasMeshes }: DocumentExportScope,
+  textureOptions: TextureExportRequestOptions,
+) {
+  const { features, names } = selection
+  if (isVisualMeshExportFormat(request.format))
+    return exportVisualMeshDocument(
+      engine,
+      document,
+      state,
+      selection,
+      request.format,
+      textureOptions,
+    )
+  if (request.format === "3mf")
+    return exportThreeMfDocument(
+      engine,
+      document,
+      state,
+      features,
+      names,
+      request.printPreparation,
+      textureOptions,
+    )
+  if (hasMeshes) return exportDocumentMeshStl(engine, document.id, state, features, textureOptions)
+  return engine.exportDocument({
+    documentId: request.documentId,
+    features,
+    format: request.format,
+    ...textureOptions,
+  })
 }
 
 function terminalExportFeatures(state: FeatureRebuildState) {
@@ -499,7 +580,8 @@ export class DocumentWorkerRuntime {
 
     const { state, document } = current
     try {
-      const { features, names } = selectExportBodies(terminalExportFeatures(state), request.bodies)
+      const selection = selectExportBodies(terminalExportFeatures(state), request.bodies)
+      const { features } = selection
       if (features.length === 0) {
         this.#postFailure(
           request,
@@ -514,25 +596,12 @@ export class DocumentWorkerRuntime {
       if (hasMeshes && request.format === "step")
         throw new Error("STEP export requires exact solids. Export mesh parts as STL or 3MF.")
       const textureOptions = textureExportOptions(request)
-      const exported =
-        request.format === "3mf"
-          ? await exportThreeMfDocument(
-              this.engine,
-              document,
-              state,
-              features,
-              names,
-              request.printPreparation,
-              textureOptions,
-            )
-          : hasMeshes
-            ? await exportDocumentMeshStl(this.engine, document.id, state, features, textureOptions)
-            : await this.engine.exportDocument({
-                documentId: request.documentId,
-                features,
-                format: request.format,
-                ...textureOptions,
-              })
+      const exported = await writeDocumentExport(
+        this.engine,
+        request,
+        { document, state, selection, hasMeshes },
+        textureOptions,
+      )
       this.#post({
         ...requestEnvelope(request),
         type: "documentExported",

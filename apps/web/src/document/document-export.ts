@@ -4,6 +4,8 @@ const mediaTypes: Record<GeometryExportFormat, string> = {
   "3mf": "model/3mf",
   step: "model/step",
   stl: "model/stl",
+  glb: "model/gltf-binary",
+  obj: "application/zip",
 }
 
 export function portableDocumentStem(documentName: string) {
@@ -19,8 +21,9 @@ export function portableDocumentStem(documentName: string) {
   return stem || "Untitled project"
 }
 
+/** OBJ downloads are ZIP archives that keep the OBJ beside its MTL material library. */
 export function createDocumentExportFilename(documentName: string, format: GeometryExportFormat) {
-  return `${portableDocumentStem(documentName)}.${format}`
+  return `${portableDocumentStem(documentName)}.${format === "obj" ? "zip" : format}`
 }
 
 export function downloadDocumentExport(input: {

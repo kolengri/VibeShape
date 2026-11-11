@@ -44,6 +44,7 @@ import {
   SKETCH_SOLVER_ABI,
   solveSketchRecord,
 } from "@vibeshape/sketch-solver"
+import { strFromU8, unzipSync } from "fflate"
 import { createLoftV3Project, loftFixtureId as id } from "../../../tests/support/loft-v3-fixture"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { matchValue } from "../../../tests/unit/support/match-value"
@@ -957,6 +958,41 @@ describe("DocumentWorkerRuntime", () => {
     if (response?.type !== "documentExported") throw new Error("Expected 3MF export response.")
     expect([...response.file.slice(0, 2)]).toEqual([80, 75])
     expect(transfers.at(-1)).toEqual([expect.any(ArrayBuffer)])
+  })
+
+  it("writes named, colored GLB and OBJ archives from the same print meshes", async () => {
+    const { messages, runtime } = createHarness()
+    await runtime.handle(request("rebuild-for-visual-export"))
+    const appearance = { color: "#ff0000", metalness: 0.5, roughness: 0.25, opacity: 1 }
+    const exported = async (format: "glb" | "obj") => {
+      await runtime.handle({
+        protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+        requestId: `export-${format}`,
+        documentId: documentIds.primary,
+        revision: 1,
+        generation: 1,
+        type: "exportDocument",
+        format,
+        bodies: [{ featureId: featureIds.boolean, name: "Housing", appearance }],
+      })
+      const response = messages.at(-1)
+      if (response?.type !== "documentExported") throw new Error(`Expected ${format} export.`)
+      expect(response).toMatchObject({ format, bodyCount: 1 })
+      return response.file
+    }
+    const glb = await exported("glb")
+    const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
+    expect(view.getUint32(0, true)).toBe(0x46546c67)
+    const json = JSON.parse(strFromU8(glb.subarray(20, 20 + view.getUint32(12, true))))
+    expect(json.nodes).toEqual([{ name: "Housing", mesh: 0 }])
+    expect(json.materials[0].pbrMetallicRoughness).toEqual({
+      baseColorFactor: [1, 0, 0, 1],
+      metallicFactor: 0.5,
+      roughnessFactor: 0.25,
+    })
+    const archive = unzipSync(await exported("obj"))
+    expect(strFromU8(archive["model.obj"] as Uint8Array)).toContain("o Housing\n")
+    expect(strFromU8(archive["model.mtl"] as Uint8Array)).toContain("Kd 1 0 0")
   })
 
   it("prepares an oriented print copy without changing the rebuilt design revision", async () => {

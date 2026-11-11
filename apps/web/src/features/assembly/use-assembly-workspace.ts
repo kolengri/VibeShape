@@ -200,6 +200,15 @@ function assemblyPanelState(
     motionActive: motion !== null,
   }
 }
+/** Display-only document data the BOM needs; appearance never implies a physical material. */
+function assemblyDocumentPresentation(controller: DocumentControllerState) {
+  const authored = controller.authoredSnapshot
+  if (!authored) return { documentName: "", partAppearances: [] }
+  return {
+    documentName: authored.name,
+    partAppearances: "partAppearances" in authored ? authored.partAppearances : [],
+  }
+}
 export function useAssemblyWorkspace(controller: DocumentControllerState) {
   const context = assemblyDocumentContext(controller)
   const assembly = activeAssembly(controller)
@@ -263,6 +272,7 @@ export function useAssemblyWorkspace(controller: DocumentControllerState) {
   return {
     assembly,
     documentKey,
+    ...assemblyDocumentPresentation(controller),
     sources,
     task,
     setTask,

@@ -2,7 +2,7 @@
   "name": "@vibeshape/formats",
   "version": "0.0.0",
   "private": true,
-  "description": "Native VibeShape, STEP orchestration, STL, and 3MF format boundaries.",
+  "description": "Native VibeShape, STEP orchestration, STL, 3MF, glTF, and OBJ format boundaries.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
@@ -15,6 +15,9 @@
     "./text-outline": "./src/text-outline/index.ts",
     "./noto-sans-regular.ttf": "./src/text-outline/fonts/NotoSans-Regular.ttf",
     "./stl-meshes": "./src/stl-meshes.ts",
+    "./gltf-meshes": "./src/gltf-meshes.ts",
+    "./obj-meshes": "./src/obj-meshes.ts",
+    "./visual-meshes": "./src/visual-meshes.ts",
     "./f3d": "./src/f3d/index.ts"
   },
   "scripts": {

@@ -22,7 +22,7 @@ The server tells the agent to read the index; the client must expose resources o
 | [vibeshape-modeling](../.agents/skills/vibeshape-modeling/SKILL.md) | Parametric authoring and conditional guidance for mechanical design and 3D printing |
 | [vibeshape-inspection](../.agents/skills/vibeshape-inspection/SKILL.md) | Exact measurements, authored intent, body roles, selectable edges, failure diagnosis |
 | [vibeshape-organization](../.agents/skills/vibeshape-organization/SKILL.md) | Part names/visibility and canonical History folders through manual metadata review |
-| [vibeshape-export](../.agents/skills/vibeshape-export/SKILL.md) | Native editable backup, STEP/STL/3MF delivery, print-preparation copy, slicer handoff |
+| [vibeshape-export](../.agents/skills/vibeshape-export/SKILL.md) | Native editable backup, STEP/STL/3MF/GLB/OBJ delivery, print-preparation copy, slicer handoff |
 
 Each folder contains a `SKILL.md`, Codex UI metadata, and references only where needed. Install all five sibling folders together: their relative links form one portable pack. Runtime instructions need no repository checkout, developer dependencies, global engineering skills, or source-code edits. Existing server/client dependencies still apply.
 

@@ -3,12 +3,14 @@ import type { AssemblyMaterializedOccurrence } from "@vibeshape/application/asse
 type ReplicadGeometryEngine = import("@vibeshape/geometry-worker/engine").ReplicadGeometryEngine
 
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { strFromU8, unzipSync } from "fflate"
 import { denseBoxMesh } from "../../../tests/support/dense-box-fixture"
 import { vi } from "../../../tests/unit/support/bun-test"
 
 const materialization = (() => ({
   occurrences: [] as AssemblyMaterializedOccurrence[],
   contexts: new Map<string, string>(),
+  authority: undefined as unknown,
 }))()
 const originalModule1 = { ...(await import("./assembly-inspection")) }
 mock.module("./assembly-inspection", () => {
@@ -17,7 +19,12 @@ mock.module("./assembly-inspection", () => {
     ...original,
     withMaterializedAssemblyRuntime: vi.fn(
       async (...args: Parameters<typeof original.withMaterializedAssemblyRuntime>) =>
-        args[5](materialization.occurrences, materialization.contexts),
+        args[5](
+          materialization.occurrences,
+          materialization.contexts,
+          undefined,
+          materialization.authority as Parameters<(typeof args)[5]>[3],
+        ),
     ),
   }
 })
@@ -112,9 +119,40 @@ beforeEach(() => {
   vi.clearAllMocks()
   materialization.occurrences = [occurrence(id(60), 0), occurrence(id(61), 40)]
   materialization.contexts = new Map([[`${id(2)}:${contentHash}`, id(100)]])
+  materialization.authority = undefined
 })
 
 describe("assembly export policy over verified world occurrences", () => {
+  it("names GLB/OBJ bodies after instances and applies captured source appearances", async () => {
+    materialization.authority = {
+      name: "Linkage",
+      assembly: {
+        definitions: [{ id: id(50), sources: [{}] }],
+        instances: [
+          { id: id(60), name: "Left arm" },
+          { id: id(61), name: "Right arm" },
+        ],
+      },
+    }
+    const appearance = { color: "#00ff00", metalness: 0, roughness: 0.5, opacity: 1 }
+    const settings = {
+      sourceAppearances: [{ definitionId: id(50), sourceIndex: 0, appearance }],
+    }
+    const glb = await exportWith(new ReplicadGeometryEngine(), { format: "glb", ...settings })
+    expect(glb.bodyCount).toBe(2)
+    const view = new DataView(glb.file.buffer, glb.file.byteOffset, glb.file.byteLength)
+    const json = JSON.parse(strFromU8(glb.file.subarray(20, 20 + view.getUint32(12, true))))
+    expect(json.scenes[0].name).toBe("Linkage")
+    expect(json.nodes.map(({ name }: { name: string }) => name)).toEqual(["Left arm", "Right arm"])
+    expect(json.materials).toHaveLength(1)
+    expect(json.materials[0].pbrMetallicRoughness.baseColorFactor).toEqual([0, 1, 0, 1])
+    // The second occurrence is placed 40 mm along model X, which stays glTF X in meters.
+    expect(json.accessors[2].min[0]).toBeCloseTo(0.04, 6)
+    const obj = await exportWith(new ReplicadGeometryEngine(), { format: "obj" })
+    const text = strFromU8(unzipSync(obj.file)["model.obj"] as Uint8Array)
+    expect(text.match(/^o .+$/gm)).toEqual(["o Left arm", "o Right arm"])
+    expect(text).toContain("v 40 0 0")
+  })
   it("preserves placed mesh doubles in 3MF export", async () => {
     const source = occurrence(id(60), 132.01, true)
     const precisePositions = new Float64Array(

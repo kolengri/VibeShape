@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  assemblyBomViewSchema,
   assemblyDraftPreviewSchema,
   assemblyDraftStateSchema,
   assemblyInspectionViewSchema,
@@ -353,14 +354,17 @@ function motionFixture() {
       authority = result.snapshot
       return { ok: true, value: { revision: authority.revision } }
     })
-  const session = createAssemblyAutomationSession({
+  const configuration: AssemblySessionConfiguration = {
     ...f.configuration,
     readSnapshot: () => authority,
     preview,
     commit,
-  })
+  }
+  const session = createAssemblyAutomationSession(configuration)
   return {
     session,
+    configuration,
+    definitionId: f.definition.id,
     study,
     preview,
     commit,
@@ -372,6 +376,94 @@ function motionFixture() {
     },
   }
 }
+describe("assembly bill of materials automation", () => {
+  function bomSession(volume?: number) {
+    const fixture = motionFixture()
+    const session = createAssemblyAutomationSession({
+      ...fixture.configuration,
+      inspect: async (revision) => ({
+        ok: true,
+        value: assemblyInspectionViewSchema.parse({
+          schemaVersion: 1,
+          documentId: fixture.read().id,
+          revision,
+          interference: [],
+          occurrences: fixture.read().assembly.instances.map((instance) => ({
+            instanceId: instance.id,
+            definitionId: fixture.definitionId,
+            pinRevision: 1,
+            sourceIndex: 0,
+            selectedBody: { schemaVersion: 0, featureId: id(2), outputRole: "result" },
+            contentHash: "a".repeat(64),
+            representation: "exact-solid",
+            geometryFrame: pose,
+            bounds: { min: [0, 0, 0], max: [10, 20, 30] },
+            ...(volume === undefined ? {} : { volume }),
+          })),
+        }),
+      }),
+    })
+    return { fixture, session }
+  }
+  it("counts occurrences and returns mass only for an explicitly assigned catalog density", async () => {
+    const { fixture, session } = bomSession(6000)
+    const revision = fixture.read().revision
+    const unknown = assemblyBomViewSchema.parse(
+      success(
+        await session.execute(actor, { tool: "model_assembly_bom", arguments: { revision } }),
+      ),
+    )
+    expect(unknown.units).toEqual({ volume: "mm3", mass: "g", density: "kg/m3" })
+    expect(unknown.rows).toEqual([
+      {
+        item: 1,
+        definitionId: fixture.definitionId,
+        name: "Frozen bracket",
+        quantity: 2,
+        appearancePresetIds: [],
+        materialId: null,
+        densityKgM3: null,
+        unitVolumeMm3: 6000,
+        unitMassG: null,
+        totalMassG: null,
+      },
+    ])
+    const assigned = assemblyBomViewSchema.parse(
+      success(
+        await session.execute(actor, {
+          tool: "model_assembly_bom",
+          arguments: {
+            revision,
+            materials: [{ definitionId: fixture.definitionId, materialId: "pla" }],
+          },
+        }),
+      ),
+    )
+    expect(assigned.rows[0]).toMatchObject({ materialId: "pla", densityKgM3: 1240 })
+    expect(assigned.rows[0]?.unitMassG).toBeCloseTo(7.44, 12)
+    expect(assigned.rows[0]?.totalMassG).toBeCloseTo(14.88, 12)
+  })
+  it("keeps mass unknown without exact volume and fails closed on stale revisions", async () => {
+    const { fixture, session } = bomSession()
+    const revision = fixture.read().revision
+    const view = assemblyBomViewSchema.parse(
+      success(
+        await session.execute(actor, {
+          tool: "model_assembly_bom",
+          arguments: {
+            revision,
+            materials: [{ definitionId: fixture.definitionId, materialId: "steel-304" }],
+          },
+        }),
+      ),
+    )
+    expect(view.rows[0]).toMatchObject({ densityKgM3: 7900, unitVolumeMm3: null, unitMassG: null })
+    fixture.advance()
+    expect(
+      await session.execute(actor, { tool: "model_assembly_bom", arguments: { revision } }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "stale-revision" } })
+  })
+})
 describe("owned motion study automation", () => {
   it("requires ordinary draft review to save a study without applying its pose, then samples actual solved poses and traces", async () => {
     const f = motionFixture(),

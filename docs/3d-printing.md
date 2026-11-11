@@ -226,6 +226,27 @@ intentionally excludes derived geometry.
 - Round-trip tests compare geometry invariants, not bytes.
 - STEP export does not contain VibeShape feature history.
 
+## glTF and OBJ visual exports
+
+The export dialog, assembly export and MCP export tools also write binary glTF 2.0 (`.glb`) and
+Wavefront OBJ. These are visual mesh formats, not printing or CAD exchange formats, and they are
+not offered as slicer handoff targets. Both reuse the 3MF print-mesh path, including mesh quality
+and enabled surface relief, and are written by pure TypeScript writers because the bundled OCCT WASM
+build has no RWGltf/RWObj modules.
+
+- Each body becomes one glTF node and mesh, or one OBJ `o` group, named after its Part (assembly
+  exports use instance names).
+- Part appearance becomes a display material: glTF `baseColorFactor` (linearized sRGB), metallic,
+  roughness and alpha; OBJ `Kd`, `d`, `Pr` and `Pm` in an MTL library. Bodies without an appearance
+  share a neutral default. No physical material is implied.
+- glTF uses meters and Y up: positions are scaled by 0.001 and mapped `(x, y, z) → (x, z, −y)`, a
+  rotation that preserves winding. No normals or UVs are written; viewers derive flat normals.
+- OBJ uses millimeters and VibeShape's Z-up axes. It is always downloaded as a ZIP containing
+  `model.obj` and `model.mtl`, so the material library cannot be lost.
+- Identical model content produces identical bytes.
+
+See [ADR-0153](adr/0153-gltf-obj-export-and-assembly-bom.md).
+
 ## Placement
 
 Print placement is a derived configuration, not a change to design coordinates:

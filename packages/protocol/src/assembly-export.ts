@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { inspectAssemblyInputSchema } from "./assembly-inspection"
-import { geometryExportFormatSchema } from "./geometry-worker"
+import { exportAppearanceSchema, geometryExportFormatSchema } from "./geometry-worker"
 import { meshExportQualitySchema } from "./mesh-export-quality"
 import { printPreparationSettingsSchema } from "./print-preparation"
 
@@ -18,13 +18,26 @@ export const assemblyExportSettingsSchema = z
       .optional(),
     printPreparation: printPreparationSettingsSchema.optional(),
     meshQuality: meshExportQualitySchema.optional(),
+    /** Display-only source appearances for glTF/OBJ materials, keyed by frozen source. */
+    sourceAppearances: z
+      .array(
+        z
+          .object({
+            definitionId: instanceId,
+            sourceIndex: z.number().int().nonnegative().max(255),
+            appearance: exportAppearanceSchema,
+          })
+          .strict(),
+      )
+      .max(4_096)
+      .optional(),
   })
   .strict()
   .refine((settings) => settings.printPreparation === undefined || settings.format === "3mf", {
     message: "Assembly print preparation requires 3MF export.",
   })
   .refine((settings) => !settings.meshQuality || settings.format !== "step", {
-    message: "Mesh quality is available only for STL and 3MF export.",
+    message: "Mesh quality is available only for mesh export formats.",
   })
 export type AssemblyExportSettings = z.infer<typeof assemblyExportSettingsSchema>
 export const exportAssemblyInputSchema = z

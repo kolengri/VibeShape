@@ -31,6 +31,7 @@ function expectDraftInspectionAnnotations(
     "model_body_measurements",
     "model_body_topology",
     "model_assembly",
+    "model_assembly_bom",
     "inspect_assembly",
     "library_items",
     "library_version",

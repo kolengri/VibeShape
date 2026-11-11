@@ -10,6 +10,7 @@ import { assistantCheckpointForController } from "../../shell/assistant-checkpoi
 import { ResponsiveTaskPanel } from "../../shell/responsive-task-panel"
 import { WorkspacePanels } from "../../shell/workspace-panels"
 import { AssemblyAsBuiltJointForm, AssemblyRigidGroupForm } from "./assembly-as-built-form"
+import { AssemblyBom } from "./assembly-bom"
 import { AssemblyDefinitionForm } from "./assembly-definition-form"
 import { AssemblyTaskPanelContext } from "./assembly-forms"
 import { AssemblyInstanceForm } from "./assembly-instance-form"
@@ -172,6 +173,13 @@ function AssemblyActions({ view }: { view: AssemblyWorkspaceView }) {
         selectedId={view.selected.activeId}
         pending={view.inspection.pending || view.disabled}
         onInspect={view.inspection.inspectPairs}
+      />
+      <AssemblyBom
+        assembly={view.assembly}
+        partAppearances={view.partAppearances}
+        inspection={view.inspection.inspection}
+        pending={view.inspection.pending}
+        documentName={view.documentName}
       />
     </>
   )
