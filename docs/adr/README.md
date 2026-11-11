@@ -179,3 +179,4 @@ When a decision changes, do not rewrite its ADR retroactively. Create a new reco
 | [0150](0150-chamfer-authoring-route.md) | Accepted | Single Chamfer schema route, legacy contour path for unmeasurable edges, lossless scope switching |
 | [0151](0151-body-bound-variable-radius-fillet.md) | Accepted | Body-bound Fillet V3 with face targets and a durable variable-radius direction rule |
 | [0152](0152-draft-and-uniform-scale-features.md) | Accepted | Body-bound face Draft about a neutral plane and uniform Scale about a fixed center |
+| [0155](0155-exact-helix-coil-and-helical-sweep.md) | Accepted | Exact helix, Coil feature and helical Sweep v2 path with Frenet pipe-shell construction |

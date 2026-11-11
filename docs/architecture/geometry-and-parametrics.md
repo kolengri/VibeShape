@@ -314,6 +314,20 @@ The accepted `org.vibeshape.core.reference-geometry` module owns first-class Dat
 
 The document worker resolves an exact right-handed support frame, translates its origin along the original normal by the offset, then rotates its basis around the selected support-local axis through that translated origin. Positive angles follow the right-hand rule; absent and zero rotations preserve the exact prior frame. Both feature versions use the existing orthonormal frame protocol and a bounded ultra-thin OCCT display plate. Reference geometry shares native cache, topology, tessellation, selection and disposal contracts while remaining outside body-terminal traversal, thumbnails and STEP/STL/3MF export. The viewport renders translucent selectable geometry with independent visibility. Downstream sketches use the logical frame; changing its normal can invalidate an authored oriented `datum.plane` cap reference and require explicit reselection. Neither transient face order nor plate thickness repairs that reference. [ADR-0114](../adr/0114-versioned-angular-datum-planes.md) supersedes the offset-only frame contract from [ADR-0025](../adr/0025-first-class-offset-datum-planes.md) and retains its ownership and support-health rules.
 
+### Helical construction
+
+Coil and helical Sweep v2 share one helix contract ([ADR-0155](../adr/0155-exact-helix-coil-and-helical-sweep.md)).
+The domain stores the reference axis, handedness, radius, pitch, turns-or-height extent and start
+angle as expression-capable quantities; the document worker resolves the axis through the same
+reference-frame resolver as Pattern v2 and Thread v2 and emits unit-free `helix` content with a
+`supportInputIndex` instead of a UUID. The geometry worker builds the helix from straight PCurves on a
+cylinder, chained in edges of at most four turns, and sweeps one section wire with
+`BRepOffsetAPI_MakePipeShell` in Frenet mode, so the section is a rigid screw image of the start
+section. Coil applies Add/Remove/Intersect to its exact named target through the shared Boolean
+helpers. Overlapping turns (pitch not above the meridian span of the section) and sections reaching
+the axis are rejected in the schemas and again before native construction; every native wrapper is
+released through a shared ownership scope on success and failure.
+
 ## Tessellation
 
 Each body has at least two levels of detail:

@@ -109,6 +109,31 @@ Preview the owned draft, inspect exact solid count, bounds and volume, then `com
 connection's existing approval policy. Save corrections through `update_connect_mounts` with the
 complete parameter record and the original feature ID. Verify the saved feature after commit.
 
+## Coils and helical sweeps
+
+Use `create_coil`/`update_coil` for springs, wire coils and helical ribs or channels. `parameters`
+holds a helix and a section: `axis` (`origin-axis`, `datum-axis` x/y/normal, stable `linear-edge` or
+`explicit-axis`), `handedness` `right`|`left` (right turns counterclockwise about the axis
+direction), quantity `radius` and `pitch`, `extent` `{kind:"turns",turns}` (scalar, 0.05–50) or
+`{kind:"height",height}` (axial travel of the centerline), quantity `startAngle`, and `section`
+`{kind:"circular",diameter}` or `{kind:"rectangular",width,height}` (width radial, height axial).
+Every size accepts expressions. `operation` `new` uses `targetBody: null` and dependencies
+`[axisProducer?]`; `add`/`remove`/`intersect` require an exact `targetBody` with dependencies
+`[target, distinctAxisProducer?]`. References stay empty.
+
+Turns must not touch: the pitch must exceed `s·2πR/√((2πR)²−s²)` for axial section size `s`
+(the validation message states the minimum). The section must not reach the axis. Ends are flat
+cuts normal to the helix; do not claim ground spring ends, variable pitch, conical or multi-start
+coils. A helical solid's volume is section area × helix length; use it to sanity-check previews.
+
+For a custom profile along a helix, use `create_sweep` with `path: {kind:"helix", …same helix
+fields}` (Sweep v2). First create a datum plane through the helix start whose normal is the start
+tangent: for an origin Z helix starting at +X with right hand, rotate the XZ plane about its x axis
+by the lead angle `atan(pitch/(2π·radius))`, then sketch a hole-free profile around the start point.
+Dependencies are the profile sketch owners, then any distinct helix-axis producer. Planar sketch
+paths keep Sweep v1. Preview before `commit_draft`; misaligned planes and overlapping turns fail
+closed.
+
 ## Registered primitives
 
 Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete
@@ -343,7 +368,7 @@ Reference planes accept `origin-plane` (XY/XZ/YZ), `datum-plane` with the author
 
 Obtain exact body-bound references from `model_body_topology` or `draft_body_topology` at the current revision. For plane support choose an oriented PLANE face with direction; for axis support choose a LINE edge with direction. Pass its stable `reference` unchanged, including the exact `outputRole`; native candidate IDs and indices are inspection-local. These tools do not accept caller source content hashes. Current document/worker resolution binds support content internally and fails closed on missing, stale or ambiguous support. The supporting body remains available; only the exact target is consumed, unless Mirror retains its source. Read existing intent before upgrading a legacy feature, then preview and use ordinary browser review/commit. Local and paired remote MCP expose the same additive contracts when present in discovery.
 
-Sweep uses one solved profile and an open connected tangent-continuous line, circular arc, cubic Bezier, or bounded elliptical arc path with sorted unique entity IDs and an explicit start point. The profile must already lie at the path start normal to its tangent; the tool does not reposition it. Preserve profile-before-path support/external dependencies and references, with at most eight deduplicated producers.
+Sweep uses one solved profile and an open connected tangent-continuous line, circular arc, cubic Bezier, or bounded elliptical arc path with sorted unique entity IDs and an explicit start point. The profile must already lie at the path start normal to its tangent; the tool does not reposition it. Preserve profile-before-path support/external dependencies and references, with at most eight deduplicated producers. A helix path writes Sweep v2; see Coils and helical sweeps.
 
 Loft v1 uses two to twenty-four ordered, unique, hole-free profile selectors. Loft v2 adds explicit durable hole correspondence: match each hole once across every ordered section, retain those stable boundary IDs on edit, and inspect exact preview for crossing or escaping hole tracks. Both use at most 2,000 aggregate outer/hole boundary entities, twenty-four deduplicated support/external producers, and an explicit ruled setting. Preserve section-order dependencies and references. Use v2 only when the advertised tool schema supports `holeCorrespondence`; guide curves and independent end continuity are outside v2.
 
