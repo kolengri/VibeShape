@@ -1099,7 +1099,7 @@
             "endRadiusNamed": "End radius for {edge}",
             "reverseRadius": "Reverse radius direction",
             "reverseRadiusNamed": "Reverse radius direction for {edge}",
-            "variableRadiusDescription": "The radius changes linearly from start to end. Start is the edge end with the smallest X coordinate, then Y, then Z, in the body's coordinates; Reverse swaps the ends. A variable radius needs an open edge that is its own complete tangent chain.",
+            "variableRadiusDescription": "The radius changes linearly from start to end. Start is the edge end with the smallest X coordinate, then Y, then Z, in the body's coordinates, with coordinates within 0.001 mm counted as equal; Reverse swaps the ends. A variable radius needs an open edge that is its own complete tangent chain.",
             "variableRadiusEqual": "Use different start and end radii, or turn off Variable radius.",
             "variableRadiusClosed": "A variable radius needs an open edge with two ends. Use the constant radius for closed edges."
           },

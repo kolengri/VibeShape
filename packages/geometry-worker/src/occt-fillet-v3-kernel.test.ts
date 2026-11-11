@@ -142,6 +142,46 @@ it.each([
   },
 )
 
+it("lets y decide the start when endpoint x values differ by less than the 1e-3 mm tolerance", () => {
+  // The top edge from (20.0005, 0, 10) to (20, 12, 10): x alone would pick (20, 12, 10).
+  const source = draw([0, 0])
+    .lineTo([20.0005, 0])
+    .lineTo([20, 12])
+    .lineTo([0, 12])
+    .close()
+    .sketchOnPlane("XY")
+    .extrude(10)
+    .asShape3D()
+  try {
+    const snapshot = captureReplicadTopologySnapshot(source)
+    const slanted = snapshot.candidates.find(
+      ({ kind, signature: { centroid } }) =>
+        kind === "edge" &&
+        near(centroid[0], 20.00025) &&
+        near(centroid[1], 6) &&
+        near(centroid[2], 10),
+    )
+    const edgeKey = slanted && snapshot.transientShapeKeys.get(slanted.candidateId)
+    if (edgeKey === undefined) throw new Error("The slanted top edge is required.")
+    const start: Point = [20.0005, 0, 10]
+    const end: Point = [20, 12, 10]
+    for (const reverse of [false, true]) {
+      const built = filletOcctShapeV3(occt, source, 1, [
+        { kind: "edge", edgeKey, variableRadius: { startRadius: 1, endRadius: 3, reverse } },
+      ])
+      try {
+        expect(inspectOcctBody(occt, built)).toMatchObject({ valid: true, solidCount: 1 })
+        expect(setbackAt(built, start)).toBeCloseTo(reverse ? 3 : 1, 3)
+        expect(setbackAt(built, end)).toBeCloseTo(reverse ? 1 : 3, 3)
+      } finally {
+        built.delete()
+      }
+    }
+  } finally {
+    source.delete()
+  }
+})
+
 it("bounds variable-radius removal between the constant start and end cases and rebuilds identically", () => {
   const edgeAt = (source: Shape3D) => {
     const edge = straightEdges(source).find(

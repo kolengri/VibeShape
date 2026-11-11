@@ -96,4 +96,9 @@ it("orders endpoints by x, then y, then z with a bounded tolerance", () => {
   expect(compareFilletEndpoints([1e-7, 5, 0], [0, 4, 0])).toBeGreaterThan(0)
   expect(compareFilletEndpoints([0, 0, 2], [0, 0, 1])).toBeGreaterThan(0)
   expect(compareFilletEndpoints([0, 0, 1], [1e-7, -1e-7, 1])).toBe(0)
+  // Within the persisted 1e-3 mm tolerance, x ties and the y order decides.
+  expect(compareFilletEndpoints([20.0005, 0, 10], [20, 12, 10])).toBeLessThan(0)
+  expect(compareFilletEndpoints([20, 12, 10], [20.0009, 0, 10])).toBeGreaterThan(0)
+  expect(compareFilletEndpoints([20.0011, 0, 10], [20, 12, 10])).toBeGreaterThan(0)
+  expect(compareFilletEndpoints([0, 0, 1], [5e-4, -5e-4, 1 + 5e-4])).toBe(0)
 })

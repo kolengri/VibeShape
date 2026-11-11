@@ -290,7 +290,7 @@ Tangent, directional modes and other curved support pairs remain unsupported. Se
 Fillet V3 accepts the same kind of strict `parameters` alternative on `create_fillet` and
 `update_fillet`: an exact `targetBody`, an expression-capable radius and edge/face targets, with an
 optional per-edge linear `variableRadius` whose start is the endpoint that sorts first by x, then y,
-then z. Every target follows its complete native tangent contour. See
+then z, with coordinates within 1e-3 mm treated as equal. Every target follows its complete native tangent contour. See
 [ADR-0151](../adr/0151-body-bound-variable-radius-fillet.md).
 [ADR-0051](../adr/0051-body-bound-topology-inspection.md) records that staged boundary.
 

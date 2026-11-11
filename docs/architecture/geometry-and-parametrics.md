@@ -530,7 +530,8 @@ Body-bound Chamfer V3 and Fillet V3 use per-output native topology snapshots and
 versions; both resolve their semantic references through one shared body-bound resolver into
 evaluation-local native keys. Fillet V1/V2 retain their legacy single-solid whole-result contract.
 Fillet V3 follows complete native tangent contours. Its per-edge linear variable radius names the
-start endpoint by sorting the edge endpoints by x, then y, then z in model coordinates, never by
+start endpoint by sorting the edge endpoints by x, then y, then z in model coordinates, with
+coordinates within 1e-3 mm treated as equal, never by
 native orientation, and rejects tangent chains and closed edges
 ([ADR-0151](../adr/0151-body-bound-variable-radius-fillet.md)). Sketch supports, persistent repair, and a real native multi-copy producer remain
 open gates; synthetic coincident-body tests are isolation evidence, not native pattern delivery.

@@ -1704,7 +1704,10 @@ export type ChamferFeatureContentParametersV3 = z.infer<
 >
 
 const filletRadiusContentSchema = finiteNumberSchema.min(0.001).max(100_000)
-/** Start is the edge endpoint that sorts first by x, then y, then z; `reverse` swaps the ends. */
+/**
+ * Start is the edge endpoint that sorts first by x, then y, then z, with coordinates within
+ * 1e-3 mm treated as equal; `reverse` swaps the ends.
+ */
 export const filletVariableRadiusContentSchema = z
   .object({
     startRadius: filletRadiusContentSchema,

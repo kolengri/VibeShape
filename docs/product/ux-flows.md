@@ -653,7 +653,7 @@ halves, and accepts edge and face targets. Its help states that a picked edge al
 complete tangent chain and that a picked face rounds every edge around it; there is no propagation
 toggle. Each selected edge row offers **Variable radius**, with named start and end radius
 expressions and **Reverse radius direction**. The start is the edge end with the smallest X, then Y,
-then Z coordinate. Enabling variable radius suggests twice the constant radius as the end. Equal
+then Z coordinate; coordinates within 0.001 mm count as equal. Enabling variable radius suggests twice the constant radius as the end. Equal
 radii and closed edges show validation messages and block Apply; tangent chains are rejected by the
 exact preview. A plain selection on a verified single-result body stays on the version-2 route with
 its tested-radius suggestion. Named or multiple outputs, a face target or a variable radius author

@@ -291,7 +291,7 @@ body's producer is the sole dependency. A face target fillets its current native
 Every Fillet target follows its complete native tangent contour; there is no propagation toggle.
 An edge target can add `variableRadius: { startRadius, endRadius, reverse }`. The radius changes
 linearly along the edge. Start is the edge endpoint with the smallest x, then y, then z in the
-body's model coordinates (coordinates within 1e-6 mm compare equal), independent of native edge
+body's model coordinates (coordinates within 0.001 mm, 1 µm, compare equal), independent of native edge
 orientation; `reverse: true` swaps the ends. A rigid upstream transform that reorders those
 endpoints moves the start, so preview after such a change and toggle `reverse` if needed. Variable
 radius requires an open edge that is its own complete tangent contour; tangent chains, closed edges

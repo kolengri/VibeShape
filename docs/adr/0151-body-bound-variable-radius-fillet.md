@@ -37,7 +37,8 @@ edge. OCCT parameterizes that law from the contour's first vertex, which follows
 orientation. Orientation can change between rebuilds, so it is not persisted. The durable rule is:
 
 - start is the edge endpoint that sorts first by x, then y, then z in the target body's model
-  coordinates, and coordinates within 1e-6 mm compare equal;
+  coordinates, and coordinates within 1e-3 mm (1 µm) compare equal. The tolerance is persisted
+  meaning, so it stays above the numeric noise of imported and Boolean geometry;
 - `reverse: true` swaps start and end;
 - the worker adds the edge, reads the contour's first and last vertices, and assigns
   `startRadius`/`endRadius` to them according to the rule above.

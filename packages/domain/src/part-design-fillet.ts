@@ -29,7 +29,7 @@ const radiusSchema = lengthQuantitySchema.refine(
 
 /**
  * Linear radius law along one open edge. `start` is the edge endpoint that sorts first by x, then
- * y, then z in the target body's model coordinates (coordinates within 1e-6 mm compare equal);
+ * y, then z in the target body's model coordinates (coordinates within 1e-3 mm compare equal);
  * `reverse` swaps start and end. The rule never depends on native edge orientation.
  */
 export const filletVariableRadiusSchema = z

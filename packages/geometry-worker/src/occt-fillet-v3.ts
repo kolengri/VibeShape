@@ -18,8 +18,11 @@ export type ResolvedFilletTarget =
   | { kind: "face"; faceKey: number }
 type Seed = { edge: Edge; variableRadius?: VariableRadius; explicit: boolean }
 
-/** Coordinates closer than this compare equal when ordering variable-radius endpoints. */
-const FILLET_ENDPOINT_TOLERANCE_MM = 1e-6
+/**
+ * Coordinates closer than 1 µm compare equal. This is persisted meaning: it must stay above the
+ * numeric noise of imported and Boolean geometry so a rebuild cannot flip the endpoint order.
+ */
+const FILLET_ENDPOINT_TOLERANCE_MM = 1e-3
 
 function uniqueShapes<T extends Edge | Face>(shapes: readonly T[]): Map<number, T> {
   const byKey = new Map(shapes.map((shape) => [shape.hashCode, shape]))
@@ -101,7 +104,7 @@ function vertexPoint(occt: OpenCascadeInstance, vertex: TopoDS_Vertex) {
   }
 }
 
-/** Returns a negative value when `left` is the canonical start (x, then y, then z). */
+/** Negative when `left` is the canonical start: x, then y, then z, each within 1e-3 mm. */
 export function compareFilletEndpoints(left: readonly number[], right: readonly number[]) {
   for (let axis = 0; axis < 3; axis++) {
     const delta = (left[axis] ?? 0) - (right[axis] ?? 0)

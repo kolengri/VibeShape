@@ -24,7 +24,7 @@ const reviewedLoaders = new Map([
   // Reads only the fully hashed installed OCCT package through a fixed relative URL.
   [
     "packages/geometry-worker/src/occt-fillet-v3-kernel.test.ts",
-    "9e0b3018519395553bc8aa0b42ef969c675b429ad3863a3f1fe28dbaf57f5e2b",
+    "54c79778ce46e33341f445e91b1c4d46df95d4979356a5d6e8db08fb89c6454c",
   ],
   [
     "packages/structural-optimization/src/worker.ts",
