@@ -59,7 +59,9 @@ for (const mode of ["discard", "human", "close", "approved-close"] as const) {
         const domain: typeof import("../../packages/domain/src/index") = await import(paths.domain)
         const reviews: typeof import("../../apps/web/src/automation/automation-review-controller") =
           await import(paths.reviews)
-        const originalRequest = reviews.automationReviews.request
+        // Each project runtime owns its review controller; automationReviews only projects it.
+        const activeReviews = reviews.getActiveAutomationReviews()
+        const originalRequest = activeReviews.request
         let markApproved = () => {}
         const approved = new Promise<void>((resolve) => {
           markApproved = resolve
@@ -69,8 +71,8 @@ for (const mode of ["discard", "human", "close", "approved-close"] as const) {
           release = resolve
         })
         if (mode === "approved-close")
-          reviews.automationReviews.request = async (owner, input) => {
-            const decision = await originalRequest(owner, input)
+          activeReviews.request = async (owner, input, viewport) => {
+            const decision = await originalRequest(owner, input, viewport)
             if (decision === "approved") {
               markApproved()
               await released
@@ -135,7 +137,7 @@ for (const mode of ["discard", "human", "close", "approved-close"] as const) {
           return { commit, retained }
         } finally {
           release()
-          reviews.automationReviews.request = originalRequest
+          activeReviews.request = originalRequest
           connection.dispose()
           Reflect.deleteProperty(globalThis, "__automationReviewControl")
         }
