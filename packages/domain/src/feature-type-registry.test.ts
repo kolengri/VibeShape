@@ -130,7 +130,7 @@ describe("feature type registry", () => {
         result.registry.descriptors
           .filter(({ type }) => type.typeId === revolveFeatureType.type.typeId)
           .map(({ type }) => type.schemaVersion),
-      ).toEqual([1, 2, 3, 4, 5, 6, 7])
+      ).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
     }
   })
 

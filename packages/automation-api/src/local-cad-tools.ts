@@ -18,6 +18,7 @@ import {
   booleanFeatureParametersSchema,
   type ExtrusionFeatureParametersV6,
   expectedExtrusionV8DependencyIds,
+  expectedRevolveDependencyIds,
   extrusionFeatureParametersSchema,
   extrusionFeatureParametersV3Schema,
   extrusionFeatureParametersV4Schema,
@@ -29,6 +30,7 @@ import {
   revolveFeatureParametersV5Schema,
   revolveFeatureParametersV6Schema,
   revolveFeatureParametersV7Schema,
+  revolveFeatureParametersV8Schema,
 } from "@vibeshape/domain/part-design"
 import {
   compoundFeatureParametersV2Schema,
@@ -194,9 +196,29 @@ const revolve = z
       revolveFeatureParametersSchema,
       revolveFeatureParametersV5Schema,
       revolveFeatureParametersV6Schema,
+      revolveFeatureParametersV8Schema,
     ]),
   })
   .strict()
+  .superRefine((input, context) => {
+    const parameters = input.parameters
+    if (!("endCondition" in parameters)) return
+    const expected = expectedRevolveDependencyIds(
+      parameters,
+      parameters.targetBody?.featureId ?? null,
+      input.references.map(({ featureId }) => featureId),
+    )
+    if (
+      canonicalJson(expected) !== canonicalJson(input.dependencies) ||
+      input.dependencies.includes(input.featureId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Revolve v8 requires its exact target first, then distinct sketch-support, model-edge axis, and endpoint owners, without self-dependencies.",
+      })
+  })
 const bodyRevolve = z
   .object({ ...feature, parameters: revolveFeatureParametersV7Schema })
   .strict()

@@ -18,6 +18,7 @@ import {
   multiProfileExtrusionFeatureType,
   revolveFeatureType,
   revolveFeatureTypeV6,
+  revolveFeatureTypeV8,
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -824,6 +825,44 @@ describe("document extrusion content preparation", () => {
     })
   })
 
+  it("prepares Revolve v8 two-sided extents and per-profile output roles", async () => {
+    const source = fixture()
+    const profile = source.feature.parameters.profile
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      id: "0195b5ac-b220-7a2c-8c33-000000003310",
+      type: revolveFeatureTypeV8.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [profile] },
+        axis: { kind: "origin-axis", axis: "y" },
+        angle: createAngleQuantity(90, "deg"),
+        symmetric: false,
+        reversed: true,
+        secondAngle: createAngleQuantity(30, "deg"),
+        operation: "new",
+        targetBody: null,
+        endCondition: { kind: "angle" },
+      },
+    })
+    const document = documentSnapshotSchema.parse({ ...source.document, features: [feature] })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: source.solution,
+    }))
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        angleRadians: Math.PI / 2,
+        secondAngleRadians: Math.PI / 6,
+        symmetric: false,
+        reversed: true,
+        endCondition: { kind: "angle" },
+        profileOutputRoles: [expect.stringMatching(/^revolve\.profile\.[0-9a-f]{16}$/)],
+      },
+    })
+  })
+
   it("resolves a selected stable sketch line into an exact support-frame world axis", async () => {
     const source = fixture()
     const sketch = source.document.sketches[0]
@@ -959,6 +998,35 @@ describe("document extrusion content preparation", () => {
         axisOrigin: [0, 0, 0],
         axisDirection: [1, 0, 0],
       },
+    })
+    const v8 = featureRecordSchema.parse({
+      ...feature,
+      type: revolveFeatureTypeV8.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [source.feature.parameters.profile] },
+        axis: { kind: "model-edge", reference },
+        angle: createAngleQuantity(180, "deg"),
+        symmetric: true,
+        reversed: false,
+        secondAngle: null,
+        operation: "new",
+        targetBody: null,
+        endCondition: { kind: "angle" },
+      },
+    })
+    // Multi-profile content shares one model-edge axis schema; parsing it must not throw.
+    await expect(
+      prepare({
+        document: documentSnapshotSchema.parse({
+          ...source.document,
+          features: [source.feature, v8],
+        }),
+        feature: v8,
+        geometry,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      parameters: { axis: { kind: "model-edge", reference }, symmetric: true },
     })
 
     const noncoplanar = [

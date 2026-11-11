@@ -41,6 +41,7 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
   revolveFeatureTypeV7,
+  revolveFeatureTypeV8,
   sphereFeatureType,
   torusFeatureType,
 } from "./part-design"
@@ -290,6 +291,7 @@ const revolveTypeKeys = new Set(
     revolveFeatureTypeV5,
     revolveFeatureTypeV6,
     revolveFeatureTypeV7,
+    revolveFeatureTypeV8,
     legacyRevolveFeatureType,
     legacyRevolveFeatureTypeV2,
     legacyRevolveFeatureTypeV3,

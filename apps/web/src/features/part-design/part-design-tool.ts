@@ -29,6 +29,7 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV6,
   revolveFeatureTypeV7,
+  revolveFeatureTypeV8,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
   sphereFeatureType,
@@ -284,6 +285,7 @@ export function isRevolveFeature(feature: FeatureRecord) {
     hasFeatureType(feature, multiProfileRevolveFeatureType.type) ||
     hasFeatureType(feature, revolveFeatureTypeV6.type) ||
     hasFeatureType(feature, revolveFeatureTypeV7.type) ||
+    hasFeatureType(feature, revolveFeatureTypeV8.type) ||
     hasFeatureType(feature, legacyRevolveFeatureTypeV3.type) ||
     hasFeatureType(feature, legacyRevolveFeatureTypeV2.type) ||
     hasFeatureType(feature, legacyRevolveFeatureType.type)

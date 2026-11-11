@@ -80,7 +80,9 @@ import {
   pressPullFeatureContentParametersSchema,
   printOptimizationReconstructionInputSchema,
   pyramidFeatureContentParametersSchema,
+  type RevolveFeatureContentParametersV8,
   revolveFeatureContentParametersSchema,
+  revolveFeatureContentParametersV8Schema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
   type ScaleFeatureContentParameters,
@@ -200,6 +202,15 @@ import { splitOcctShape } from "./occt-plane-split"
 import { pressPullOcctShape } from "./occt-press-pull"
 import { reconstructOcctPrintOptimization } from "./occt-print-optimization"
 import { splitOcctShapeByReferencePlane } from "./occt-reference-plane"
+import {
+  fuseOwnedRevolveTools,
+  partitionRevolveProfileSolids,
+  RevolveExtentError,
+  type RevolveSweep,
+  revolveEndpointCaps,
+  revolveSweep,
+  terminateRevolveTool,
+} from "./occt-revolve-extent"
 import { scaleOcctShape } from "./occt-scale"
 import {
   createOcctBox,
@@ -220,6 +231,7 @@ import { shellOcctShape } from "./occt-shell"
 import { inspectOcctSourceImport, rebuildOcctSourceImport } from "./occt-source-import"
 import { createOcctSweep } from "./occt-sweep"
 import { threadOcctShape } from "./occt-thread"
+import { revolveExtentInputsAreValid } from "./revolve-extent-inputs"
 import { revolveProfileCrossesAxis } from "./revolve-profile"
 import { resolveSelectedEdgeKeys } from "./selected-edge-resolver"
 import { DocumentFeatureShapeRegistry, OwnedShapeRegistry } from "./shape-registry"
@@ -428,6 +440,8 @@ const REVOLVE_FEATURE_TYPE_V7_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#7"
 const REVOLVE_FEATURE_TYPE_V6_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#6"
+const REVOLVE_FEATURE_TYPE_V8_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#8"
 const DATUM_PLANE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-plane#1"
 const DATUM_PLANE_FEATURE_TYPE_V2_KEY =
@@ -1349,6 +1363,7 @@ type ParsedFeature =
     }
   | { kind: "revolve"; parameters: RevolveContentParameters }
   | { kind: "multi-revolve"; parameters: RevolveMultiProfileContentParameters }
+  | { kind: "revolve-extent"; parameters: RevolveFeatureContentParametersV8 }
   | {
       kind: "multi-revolve-modifying"
       parameters: RevolveMultiProfileModifyingContentParameters
@@ -2117,6 +2132,34 @@ function parseExactMultiRevolveFeature(input: FeatureEvaluationInput): FeaturePa
   return parseMultiRevolveModifyingFeature(input)
 }
 
+function parseRevolveExtentFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = revolveFeatureContentParametersV8Schema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success)
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Revolve v8 content parameters are invalid.",
+    )
+  if (
+    !revolveExtentInputsAreValid(input, parameters.data) ||
+    !supportReferencesAreValid(input, parameters.data.supportFeatureId)
+  )
+    return invalidInputCardinality(
+      "Revolve inputs must be the named target first, then distinct sketch-support, axis, and endpoint owners.",
+    )
+  if (
+    parameters.data.profiles.some((profile) =>
+      revolveProfileCrossesAxis({ ...parameters.data, ...profile }),
+    )
+  )
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Revolve profiles must not cross the selected axis.",
+    )
+  return { ok: true, feature: { kind: "revolve-extent", parameters: parameters.data } }
+}
+
 function parseLegacyRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const parameters = revolveFeatureContentParametersSchema.safeParse(
     input.content.feature.parameters,
@@ -2782,6 +2825,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [REVOLVE_FEATURE_TYPE_V5_KEY, parseMultiRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V6_KEY, parseMultiRevolveModifyingFeature],
   [REVOLVE_FEATURE_TYPE_V7_KEY, parseExactMultiRevolveFeature],
+  [REVOLVE_FEATURE_TYPE_V8_KEY, parseRevolveExtentFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
   [DATUM_PLANE_FEATURE_TYPE_V2_KEY, parseDatumPlaneFeature],
   [
@@ -3415,6 +3459,7 @@ function createFeatureShape(
         | "split"
         | "pattern"
         | "union"
+        | "revolve-extent"
     }
   >,
   dependencyShapes: readonly Shape3D[],
@@ -3970,6 +4015,11 @@ function createRevolveShape(
       outer: RevolveContentParameters["outer"]
       holes: RevolveContentParameters["holes"]
     }>,
+  sweep: RevolveSweep = {
+    startRadians: 0,
+    sweepRadians: parameters.angleRadians,
+    directionSign: 1,
+  },
 ) {
   const plane = extrusionPlane(parameters)
   const makeLoop = (
@@ -3990,16 +4040,28 @@ function createRevolveShape(
   try {
     const holes: Wire[] = []
     let face: ReturnType<typeof makeFace> | null = null
+    const axisDirection = parameters.axisDirection.map((value) => value * sweep.directionSign) as [
+      number,
+      number,
+      number,
+    ]
     const origin = new opencascade.gp_Pnt_3(...parameters.axisOrigin)
-    const direction = new opencascade.gp_Dir_4(...parameters.axisDirection)
+    const direction = new opencascade.gp_Dir_4(...axisDirection)
     const axis = new opencascade.gp_Ax1_2(origin, direction)
     try {
       for (const hole of parameters.holes) holes.push(makeLoop(hole, true))
       face = makeFace(outer, holes)
+      // Replicad transforms consume their source wrapper and return the rotated owner.
+      if (sweep.startRadians !== 0)
+        face = face.rotate(
+          (sweep.startRadians * 180) / Math.PI,
+          [...parameters.axisOrigin],
+          axisDirection,
+        )
       const builder = new opencascade.BRepPrimAPI_MakeRevol_1(
         face.wrapped,
         axis,
-        parameters.angleRadians,
+        sweep.sweepRadians,
         false,
       )
       try {
@@ -4261,30 +4323,28 @@ function featureProfileCount(feature: ParsedFeature) {
   if (feature.kind === "imported") return feature.parameters.outputs.length
   return feature.kind === "multi-extrusion" ||
     feature.kind === "multi-revolve" ||
+    feature.kind === "revolve-extent" ||
     feature.kind === "extent-extrusion"
     ? feature.parameters.profiles.length
     : 1
 }
 
-function featureSolidKind(feature: ParsedFeature): Parameters<typeof featureSolidCountLimit>[0] {
-  switch (feature.kind) {
-    case "extent-extrusion":
-      return feature.parameters.operation === "new"
-        ? "multi-extrusion"
-        : "multi-extrusion-modifying"
-    case "constrained-loft":
-      return "loft"
-    case "selected-fillet":
-    case "advanced-fillet":
-      return "fillet"
-    case "advanced-chamfer":
-    case "selected-chamfer":
-      return "chamfer"
-    case "hole":
-      return "boolean"
-    default:
-      return feature.kind
-  }
+type SolidKind = Parameters<typeof featureSolidCountLimit>[0]
+const solidKindAliases: Partial<Record<ParsedFeature["kind"], SolidKind>> = {
+  "constrained-loft": "loft",
+  "selected-fillet": "fillet",
+  "advanced-fillet": "fillet",
+  "advanced-chamfer": "chamfer",
+  "selected-chamfer": "chamfer",
+  hole: "boolean",
+}
+
+function featureSolidKind(feature: ParsedFeature): SolidKind {
+  if (feature.kind === "extent-extrusion")
+    return feature.parameters.operation === "new" ? "multi-extrusion" : "multi-extrusion-modifying"
+  if (feature.kind === "revolve-extent")
+    return feature.parameters.operation === "new" ? "multi-revolve" : "multi-revolve-modifying"
+  return solidKindAliases[feature.kind] ?? (feature.kind as SolidKind)
 }
 
 const independentBodyBundleKinds = new Set(["compound", "split", "pattern", "imported"])
@@ -4595,6 +4655,40 @@ async function bodyBundleForEvaluation(
   return { shape: source.shape, outputs }
 }
 
+function isBodyBundleFeature(
+  feature: ParsedFeature,
+): feature is Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }> {
+  return independentBodyBundleKinds.has(feature.kind)
+}
+
+/** New multi-profile Revolve v8 may publish one named output per profile solid. */
+function isRevolveProfileBundle(
+  feature: ParsedFeature,
+): feature is Extract<ParsedFeature, { kind: "revolve-extent" }> {
+  return (
+    feature.kind === "revolve-extent" &&
+    feature.parameters.operation === "new" &&
+    feature.parameters.profiles.length > 1
+  )
+}
+
+/** A cached bundle is either the merged result or the complete set of named profile solids. */
+function cachedRevolveProfileBundle(
+  registry: DocumentFeatureShapeRegistry<Shape3D>,
+  input: FeatureEvaluationInput,
+  parameters: RevolveFeatureContentParametersV8,
+  shape: Shape3D,
+): OwnedBodyCombination {
+  const merged = registry.getOutput(input.documentId, input.featureId, input.contentHash, "result")
+  if (merged) return { shape, outputs: [{ role: "result", shape: merged }] }
+  const outputs = parameters.profileOutputRoles.map((role) => {
+    const output = registry.getOutput(input.documentId, input.featureId, input.contentHash, role)
+    if (!output) throw new Error("An exact revolve profile output is unavailable.")
+    return { role, shape: output }
+  })
+  return { shape, outputs }
+}
+
 /** Path-pattern sketch owners after the target only schedule the path; they are not bodies. */
 function bodyBundleSources(
   feature: Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
@@ -4831,6 +4925,7 @@ function featureGeometryFailure(error: unknown, cleanupSucceeded: boolean) {
     return featureFailure("invalid-feature-parameters", error.message)
   if (error instanceof LegacyEdgeTreatmentError) return featureFailure(error.code, error.message)
   if (
+    error instanceof RevolveExtentError ||
     error instanceof ChamferV3Error ||
     error instanceof FilletV3Error ||
     error instanceof ConstrainedLoftError ||
@@ -4975,12 +5070,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     }
 
     const feature = parsed.feature
-    if (
-      feature.kind === "compound" ||
-      feature.kind === "split" ||
-      feature.kind === "pattern" ||
-      feature.kind === "imported"
-    )
+    if (isBodyBundleFeature(feature))
       return this.#evaluateBodyBundle(
         input,
         feature,
@@ -4988,6 +5078,29 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         engine,
         reportProgress,
         sourceAsset,
+      )
+    if (isRevolveProfileBundle(feature))
+      return this.#evaluateOwnedBundle(
+        input,
+        feature,
+        opencascade,
+        engine,
+        reportProgress,
+        (source) =>
+          source.brepHit
+            ? cachedRevolveProfileBundle(
+                this.#featureShapes,
+                input,
+                feature.parameters,
+                source.shape,
+              )
+            : this.#createRevolveProfileBundle(
+                opencascade,
+                feature.parameters,
+                source.dependencies,
+                input,
+              ),
+        featureGeometryFailure,
       )
 
     return this.#evaluateSingleBodyFeature(input, feature, opencascade, engine, reportProgress)
@@ -5048,13 +5161,50 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     }
   }
 
-  async #evaluateBodyBundle(
+  #evaluateBodyBundle(
     input: FeatureEvaluationInput,
     feature: Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
     opencascade: OpenCascadeInstance,
     engine: GeometryEngineMetadata,
     reportProgress: ProgressReporter,
     sourceAsset?: SourceAssetMaterialization,
+  ): Promise<FeatureEvaluationResult> {
+    return this.#evaluateOwnedBundle(
+      input,
+      feature,
+      opencascade,
+      engine,
+      reportProgress,
+      (source) =>
+        bodyBundleForEvaluation(
+          this.#featureShapes,
+          input,
+          feature,
+          source,
+          opencascade,
+          sourceAsset,
+        ),
+      (error, cleanupSucceeded) =>
+        featureFailure(
+          "invalid-feature-geometry",
+          cleanupSucceeded
+            ? bodyBundleFailureMessage(feature, error)
+            : "Named body evaluation failed and temporary shape cleanup did not complete.",
+        ),
+    )
+  }
+
+  /** Named outputs are cached together; an uncached bundle is disposed completely on failure. */
+  async #evaluateOwnedBundle(
+    input: FeatureEvaluationInput,
+    feature: ParsedFeature,
+    opencascade: OpenCascadeInstance,
+    engine: GeometryEngineMetadata,
+    reportProgress: ProgressReporter,
+    build: (
+      source: Extract<FeatureShapeSource, { ok: true }>,
+    ) => OwnedBodyCombination | Promise<OwnedBodyCombination>,
+    failure: (error: unknown, cleanupSucceeded: boolean) => FeatureEvaluationResult,
   ): Promise<FeatureEvaluationResult> {
     reportProgress("feature-validation", 0.1)
     const startedAt = performance.now()
@@ -5063,14 +5213,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     let temporary: OwnedBodyCombination | null = null
     try {
       reportProgress("feature-evaluation", 0.35)
-      const { shape, outputs } = await bodyBundleForEvaluation(
-        this.#featureShapes,
-        input,
-        feature,
-        source,
-        opencascade,
-        sourceAsset,
-      )
+      const { shape, outputs } = await build(source)
       if (!source.brepHit) temporary = { shape, outputs }
       const evaluation = evaluateFeatureGeometry(opencascade, shape, feature)
       this.#topologySnapshots.set(shape, evaluation.topologySnapshot)
@@ -5106,13 +5249,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         },
       }
     } catch (error) {
-      const cleanupSucceeded = disposeUncachedBodyBundle(temporary, this.#topologySnapshots)
-      return featureFailure(
-        "invalid-feature-geometry",
-        cleanupSucceeded
-          ? bodyBundleFailureMessage(feature, error)
-          : "Named body evaluation failed and temporary shape cleanup did not complete.",
-      )
+      return failure(error, disposeUncachedBodyBundle(temporary, this.#topologySnapshots))
     }
   }
 
@@ -5134,6 +5271,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       return this.#createDraftFeature(opencascade, feature.parameters, dependencies[0], input)
     if (feature.kind === "scale")
       return createScaleFeatureShape(opencascade, feature, dependencies[0])
+    if (feature.kind === "revolve-extent")
+      return this.#createRevolveExtent(opencascade, feature.parameters, dependencies, input)
     return this.#createUncachedStandardFeature(opencascade, feature, dependencies, input)
   }
 
@@ -5153,6 +5292,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           | "press-pull"
           | "draft"
           | "scale"
+          | "revolve-extent"
       }
     >,
     dependencies: readonly Shape3D[],
@@ -5199,6 +5339,116 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         input,
       )
     return createFeatureShape(opencascade, feature, dependencies)
+  }
+
+  /** Resolves the body-bound endpoint face once; every profile terminates against it. */
+  #takeRevolveEndFace(
+    parameters: RevolveFeatureContentParametersV8,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
+    const end = parameters.endCondition
+    if (end.kind !== "up-to-face") return null
+    const target = dependencies[end.inputIndex]
+    const snapshot = target ? this.#topologySnapshots.get(target) : undefined
+    const dependency = input.dependencies[end.inputIndex]
+    const resolve = this.resolveShellOpenings
+    if (!target || !snapshot || !dependency?.outputRole || !resolve)
+      throw new RevolveExtentError("Exact revolve end-face topology is unavailable.")
+    let reason = "missing"
+    try {
+      return takeResolvedBodyFace(
+        target,
+        snapshot,
+        end.face,
+        { featureId: dependency.featureId, outputRole: dependency.outputRole },
+        (references, candidates, scope) => {
+          const resolved = resolve(references, candidates, scope, "exact", {
+            allowSemanticRebinding: false,
+          })
+          if (!resolved.ok) reason = resolved.reason
+          else if (resolved.candidateIds.length !== 1) reason = "ambiguous"
+          return resolved
+        },
+      )
+    } catch (error) {
+      throw new RevolveExtentError(
+        `The revolve end face is ${reason} on its exact body; reselect the end face.`,
+        { cause: error },
+      )
+    }
+  }
+
+  /** Every profile is swept and, for a dynamic endpoint, terminated independently. */
+  #createRevolveExtentTools(
+    occt: OpenCascadeInstance,
+    parameters: RevolveFeatureContentParametersV8,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
+    const sweep = revolveSweep(parameters)
+    const end = parameters.endCondition
+    const target = end.kind === "angle" ? undefined : dependencies[end.inputIndex]
+    if (end.kind !== "angle" && !target)
+      throw new RevolveExtentError("The revolve endpoint body is unavailable.")
+    const face = this.#takeRevolveEndFace(parameters, dependencies, input)
+    const tools: Shape3D[] = []
+    try {
+      for (const profile of parameters.profiles) {
+        const tool = createRevolveShape(occt, { ...parameters, ...profile }, sweep)
+        if (!target) {
+          tools.push(tool)
+          continue
+        }
+        try {
+          tools.push(
+            terminateRevolveTool(occt, tool, target, revolveEndpointCaps(parameters, sweep), face),
+          )
+        } finally {
+          tool.delete()
+        }
+      }
+      return tools
+    } catch (error) {
+      for (const tool of tools) tool.delete()
+      throw error
+    } finally {
+      face?.delete()
+    }
+  }
+
+  #createRevolveExtent(
+    occt: OpenCascadeInstance,
+    parameters: RevolveFeatureContentParametersV8,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
+    const tool = fuseOwnedRevolveTools(
+      occt,
+      this.#createRevolveExtentTools(occt, parameters, dependencies, input),
+    )
+    if (parameters.operation === "new") return tool
+    try {
+      const target = dependencies[0]
+      if (!target) throw new RevolveExtentError("The revolve target body is unavailable.")
+      return applyRevolveOperation(occt, parameters, target, tool)
+    } finally {
+      tool.delete()
+    }
+  }
+
+  /** New multi-profile Revolve v8 publishes a merged result or one named solid per profile. */
+  #createRevolveProfileBundle(
+    occt: OpenCascadeInstance,
+    parameters: RevolveFeatureContentParametersV8,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ): OwnedBodyCombination {
+    const tools = this.#createRevolveExtentTools(occt, parameters, dependencies, input)
+    const partition = partitionRevolveProfileSolids(occt, tools, parameters.profileOutputRoles)
+    return partition.merged
+      ? { shape: partition.merged, outputs: [{ role: "result", shape: partition.merged }] }
+      : aggregateOwnedOutputs(occt, partition.separate)
   }
 
   #createFaceTerminatedExtrusion(
