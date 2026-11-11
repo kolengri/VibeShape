@@ -68,7 +68,7 @@ import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./p
 import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
 import { patternFeatureTypeV3, readPatternFeatureParametersV3 } from "./part-design-pattern-path"
 import { placementFeatureType } from "./part-design-placement"
-import { pressPullFeatureType } from "./part-design-press-pull"
+import { pressPullFeatureType, pressPullFeatureTypeV2 } from "./part-design-press-pull"
 import { scaleFeatureType } from "./part-design-scale"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
@@ -78,6 +78,7 @@ import {
   sweepFeatureType,
   sweepFeatureTypeV2,
 } from "./part-design-sweep"
+import { thickenFeatureType } from "./part-design-thicken"
 import { threadFeatureType, threadFeatureTypeV2 } from "./part-design-thread"
 import {
   datumPlaneFeatureType,
@@ -106,9 +107,11 @@ const emptySemanticInputTypeKeys = new Set(
     patternFeatureType,
     patternFeatureTypeV2,
     pressPullFeatureType,
+    pressPullFeatureTypeV2,
     shellFeatureType,
     shellFeatureTypeV2,
     draftFeatureType,
+    thickenFeatureType,
     scaleFeatureType,
     splitFeatureType,
     splitFeatureTypeV2,

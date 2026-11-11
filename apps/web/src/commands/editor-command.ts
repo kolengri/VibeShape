@@ -10,6 +10,7 @@ export const editorCommandIds = {
   mirrorPart: "org.vibeshape.editor.part-design.mirror-part",
   shellPart: "org.vibeshape.editor.part-design.shell-part",
   draftPart: "org.vibeshape.editor.part-design.draft-part",
+  thickenPart: "org.vibeshape.editor.part-design.thicken-part",
   scalePart: "org.vibeshape.editor.part-design.scale-part",
   splitPart: "org.vibeshape.editor.part-design.split-part",
   patternPart: "org.vibeshape.editor.part-design.pattern-part",
@@ -157,6 +158,7 @@ export type EditorCommandIcon =
   | "quick-lightweighting"
   | "shell"
   | "draft"
+  | "thicken"
   | "scale"
   | "thread"
   | "compound"
@@ -251,6 +253,7 @@ export type EditorCommandLabelKey =
   | "mirrorPart"
   | "shellPart"
   | "draftPart"
+  | "thickenPart"
   | "scalePart"
   | "splitPart"
   | "patternPart"
@@ -339,7 +342,7 @@ export type EditorCommandLabelKey =
   | "workspaceSketch"
 
 export type EditorCommandDisabledReason =
-  | "selectPlanarFace"
+  | "selectBodyFace"
   | "activeFeature"
   | "activeSketch"
   | "documentLoading"

@@ -20,6 +20,7 @@ import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { scaleFeatureType } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureType } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType } from "@vibeshape/domain/part-design-split"
+import { thickenFeatureType } from "@vibeshape/domain/part-design-thicken"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 import {
   draftFormFeature,
@@ -28,6 +29,11 @@ import {
   draftTargetBody,
 } from "../features/draft/draft-form-model"
 import { shellFormFeature, shellInitialValues } from "../features/shell/shell-form-model"
+import {
+  thickenFormFeature,
+  thickenInitialSelection,
+  thickenTargetBody,
+} from "../features/thicken/thicken-form-model"
 import { missingHistoryFeatureBody, replaceHistoryFeatureBody } from "./history-feature-body-repair"
 
 const sourceId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f9801")
@@ -246,6 +252,48 @@ describe("retained body feature form adapters", () => {
       expect(JSON.stringify(saved)).not.toContain(sourceId)
     },
   )
+
+  it("keeps a saved Thicken and requires faces again on the replacement body", () => {
+    const original = feature(thickenFeatureType.type, {
+      targetBody,
+      faces: [opening],
+      thickness: length(2),
+      side: "symmetric",
+      operation: "add",
+    })
+    expect(missingHistoryFeatureBody(original, missingInputs)).toEqual(targetBody)
+    const adapted = replaceHistoryFeatureBody(original, missingInputs, replacement)
+    if (!adapted?.faceTarget) throw new Error("Expected a Thicken face-reselection adapter")
+    expect(adapted.feature).toBe(original)
+    const mode = { kind: "edit" as const, feature: original, repairTarget: adapted.faceTarget }
+    expect(thickenTargetBody(mode)).toEqual(replacement)
+    const replacementEvidence = {
+      ...evidence,
+      featureId: replacementId,
+      outputRole: replacement.outputRole,
+    }
+    expect(thickenInitialSelection(mode, replacementEvidence)).toEqual({
+      repair: true,
+      faceIds: [],
+    })
+    const save = (faceIds: string[]) =>
+      thickenFormFeature({
+        mode,
+        featureId,
+        values: { faceIds, thickness: "2 mm", side: "symmetric", operation: "add" },
+        evidence: replacementEvidence,
+        variables: [],
+        units: { length: "mm", angle: "deg" },
+        copy: { invalidExpression: "", invalidDimension: "", invalidRange: "" },
+      })
+    expect(save([])).toBeNull()
+    const saved = save(["face:top"])
+    expect(saved).toMatchObject({
+      dependencies: [replacementId],
+      parameters: { targetBody: replacement, side: "symmetric", operation: "add" },
+    })
+    expect(JSON.stringify(saved)).not.toContain(sourceId)
+  })
 
   it("requires new Shell openings while retaining open cavity, thickness and direction", () => {
     const original = feature(shellFeatureType.type, {

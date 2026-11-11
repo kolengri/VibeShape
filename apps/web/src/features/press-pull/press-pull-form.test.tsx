@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
 import { bodyFaceRefSchema } from "@vibeshape/domain/body-topology-reference"
 import { modelBodyTopologyEvidenceSchema } from "@vibeshape/domain/model-body-topology"
+import { pressPullFeatureType } from "@vibeshape/domain/part-design-press-pull"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { vi } from "../../../../../tests/unit/support/bun-test"
 import { i18n } from "../../i18n"
@@ -110,6 +111,8 @@ describe("Press Pull parameter lifecycle", () => {
       targetBody: mode.kind === "create" ? mode.targetBody : null,
       distance: { value: -2 },
     })
+    // A planar face is authored as version 1, which keeps its prism path and catalog advice.
+    expect(view.onSave.mock.calls[0]?.[1].type).toEqual(pressPullFeatureType.type)
     expect(view.onSaved).toHaveBeenCalledTimes(1)
   })
   it("cancels without saving and clears the disposable preview on unmount", async () => {

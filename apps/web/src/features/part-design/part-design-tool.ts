@@ -66,6 +66,7 @@ import { readScaleFeatureParameters } from "@vibeshape/domain/part-design-scale"
 import { readShellFeatureParameters } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureType, sweepFeatureTypeV2 } from "@vibeshape/domain/part-design-sweep"
+import { readThickenFeatureParameters } from "@vibeshape/domain/part-design-thicken"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 import { terminalModelBodies } from "./model-bodies"
 import type { ModelEdgeSelection } from "./model-edge-selection"
@@ -99,6 +100,8 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-shell"; featureId: FeatureId }>
   | Readonly<{ kind: "create-draft"; partId: PartId; targetBody: BodyReference }>
   | Readonly<{ kind: "edit-draft"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-thicken"; partId: PartId; targetBody: BodyReference }>
+  | Readonly<{ kind: "edit-thicken"; featureId: FeatureId }>
   | Readonly<{ kind: "create-scale"; partId: PartId; targetBody: BodyReference }>
   | Readonly<{ kind: "edit-scale"; featureId: FeatureId }>
   | Readonly<{ kind: "create-split"; partId: PartId; targetBody: BodyReference }>
@@ -315,6 +318,9 @@ function isShellFeature(feature: FeatureRecord) {
 function isDraftFeature(feature: FeatureRecord) {
   return readDraftFeatureParameters(feature) !== null
 }
+function isThickenFeature(feature: FeatureRecord) {
+  return readThickenFeatureParameters(feature) !== null
+}
 function isScaleFeature(feature: FeatureRecord) {
   return readScaleFeatureParameters(feature) !== null
 }
@@ -384,6 +390,7 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
     isPressPullFeature,
     isShellFeature,
     isDraftFeature,
+    isThickenFeature,
     isScaleFeature,
     isLoftFeature,
     isSweepFeature,
@@ -585,6 +592,7 @@ export function editPartDesignTool(
   if (readCoilFeatureParameters(feature)) return { kind: "edit-coil", featureId: feature.id }
   if (isPressPullFeature(feature)) return { kind: "edit-press-pull", featureId: feature.id }
   if (isDraftFeature(feature)) return { kind: "edit-draft", featureId: feature.id }
+  if (isThickenFeature(feature)) return { kind: "edit-thicken", featureId: feature.id }
   if (isScaleFeature(feature)) return { kind: "edit-scale", featureId: feature.id }
   const kind = editableFeatureTools.find(([matches]) => matches(feature))?.[1]
   if (!kind) return null
@@ -620,6 +628,8 @@ const commandByToolKind = {
   "edit-shell": "shell",
   "create-draft": "draft",
   "edit-draft": "draft",
+  "create-thicken": "thicken",
+  "edit-thicken": "thicken",
   "create-scale": "scale",
   "edit-scale": "scale",
   "create-split": "split",
