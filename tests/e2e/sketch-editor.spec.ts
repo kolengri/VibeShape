@@ -690,8 +690,11 @@ test.describe("full sketch editor", () => {
     const firstStart = { x: bounds.x + bounds.width * 0.42, y: bounds.y + bounds.height * 0.5 }
     const firstEnd = { x: bounds.x + bounds.width * 0.62, y: bounds.y + bounds.height * 0.5 }
     await page.getByRole("button", { name: "Line", exact: true }).click()
+    // Suppress inference so the line does not snap to the Box and add model references.
+    await page.keyboard.down("Shift")
     await page.mouse.click(firstStart.x, firstStart.y)
     await page.mouse.click(firstEnd.x, firstEnd.y)
+    await page.keyboard.up("Shift")
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await createSketch.click()
@@ -705,7 +708,9 @@ test.describe("full sketch editor", () => {
 
     await page.getByRole("treeitem", { name: "Sketch 2", exact: true }).click()
     const orbitSketch = page.getByRole("button", { name: "Orbit 3D view", exact: true })
-    await expect(orbitSketch).toBeVisible()
+    // A reopened saved sketch starts in the orbit context; switch to the normal view.
+    await expect(orbitSketch).toHaveAttribute("aria-pressed", "true")
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(drawing).toBeVisible()
     const normalContext = page.locator("section[data-sketch-context-mode='normal']")
     await expect(normalContext).toHaveAttribute("data-rendered-feature-count", "1")
@@ -725,7 +730,9 @@ test.describe("full sketch editor", () => {
     await drawing.focus()
     await page.keyboard.press("Shift+H")
     await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
-    await expect(page.getByRole("button", { name: "Show all sketches" })).toBeVisible()
+    // Earlier sketches are hidden while the edited sketch stays visible: a mixed group state.
+    const sketchVisibility = page.getByRole("button", { name: "Hide all sketches" })
+    await expect(sketchVisibility).toHaveAttribute("aria-pressed", "mixed")
 
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const orbitContext = page.locator("section[data-sketch-context-mode='orbit']")
@@ -738,7 +745,7 @@ test.describe("full sketch editor", () => {
 
     await drawing.focus()
     await page.keyboard.press("Shift+H")
-    await expect(page.getByRole("button", { name: "Hide all sketches" })).toBeVisible()
+    await expect(sketchVisibility).toHaveAttribute("aria-pressed", "true")
     await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
 
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
@@ -753,6 +760,8 @@ test.describe("full sketch editor", () => {
 
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(page.getByText(/Edit point in History: later items are rolled back/)).toBeVisible()
+    await expect(orbitSketch).toHaveAttribute("aria-pressed", "true")
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(normalContext).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
     await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
@@ -2272,13 +2281,14 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page)
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
+    // The vertical edges of the drawing region the floating windows leave free.
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const viewport = page.viewportSize()
-    if (!bounds || !viewport) throw new Error("The sketch viewport is not measurable.")
+    if (!viewport) throw new Error("The sketch viewport is not measurable.")
 
     await page.getByRole("button", { name: "Line", exact: true }).click()
-    const firstPoint = { x: bounds.x + bounds.width * 0.3, y: bounds.y + 8 }
-    const secondPoint = { x: bounds.x + bounds.width * 0.5, y: bounds.y + 8 }
+    const firstPoint = { x: bounds.x + bounds.width * 0.45, y: bounds.y + 8 }
+    const secondPoint = { x: bounds.x + bounds.width * 0.6, y: bounds.y + 8 }
     await page.mouse.click(firstPoint.x, firstPoint.y)
     await page.mouse.click(secondPoint.x, secondPoint.y)
 
@@ -2290,7 +2300,7 @@ test.describe("full sketch editor", () => {
     expect(topBounds.y).toBeGreaterThanOrEqual(0)
     expect(topBounds.y + topBounds.height).toBeLessThanOrEqual(viewport.height)
 
-    await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height - 8)
+    await page.mouse.click(bounds.x + bounds.width * 0.75, bounds.y + bounds.height - 8)
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(2)
     const bottomBounds = await trigger.boundingBox()
     if (!bottomBounds) throw new Error("The optional precision control is not visible.")
@@ -2392,23 +2402,31 @@ test.describe("full sketch editor", () => {
     })
     await canvasExpression.fill("30 mm")
     await page.getByRole("button", { name: "Apply dimension" }).click()
-    await openConstraintManager(page)
+    // The fallback dimension editor lives in the Constraint manager. Open it there, then edit
+    // the same dimension on the canvas; the manager's stale editor must close.
+    const manager = await openConstraintManager(page)
+    await manager
+      .getByRole("listitem")
+      .filter({ hasText: "Distance · 30 mm" })
+      .getByRole("button", { name: "Edit dimension" })
+      .click()
+    const panelExpression = manager.getByRole("combobox", { name: "Driving expression" })
+    await expect(panelExpression).toHaveValue("30 mm")
 
     const dimensionAnnotation = page
       .getByRole("region", { name: "2D sketch workspace" })
       .getByRole("button", { name: "Edit dimension 30 mm" })
     await dimensionAnnotation.dblclick()
-    const panelExpression = constraintManager(page).getByRole("combobox", {
-      name: "Driving expression",
-    })
-    await expect(panelExpression).toHaveValue("30 mm")
     await canvasExpression.fill("35 mm")
     await page.getByRole("button", { name: "Apply dimension" }).click()
 
-    const updatedConstraint = page.getByRole("listitem").filter({ hasText: "Distance · 35 mm" })
-    await expect(updatedConstraint).toBeVisible()
     await expect(page.getByRole("form", { name: "Dimension value" })).toHaveCount(0)
     await expect(panelExpression).toHaveCount(0)
+    // Reopening the manager reads the committed draft value instead of the stale editor's.
+    const updatedConstraint = (await openConstraintManager(page))
+      .getByRole("listitem")
+      .filter({ hasText: "Distance · 35 mm" })
+    await expect(updatedConstraint).toBeVisible()
     await updatedConstraint.getByRole("button", { name: "Edit dimension" }).click()
     await expect(
       updatedConstraint.getByRole("combobox", { name: "Driving expression" }),
