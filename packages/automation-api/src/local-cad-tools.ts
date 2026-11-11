@@ -262,6 +262,11 @@ const holeTreatmentParameters = z
       for (const issue of parsed.error.issues)
         context.addIssue({ code: "custom", path: issue.path, message: issue.message })
   })
+/** Treatment (v3) and drill-point (v4) holes carry explicit body-scoped dependencies. */
+function hasExactHoleScope(parameters: object) {
+  return "treatment" in parameters || "tipAngle" in parameters
+}
+
 // A tipAngle authors Hole v4; an omitted treatment is the simple drilled hole.
 const holeDrillPointParameters = holeBodyParameters.options[0]
   .safeExtend({ treatment: holeTreatmentSchema.optional(), tipAngle: holeTipAngleSchema })
@@ -288,7 +293,7 @@ const hole = z
   })
   .strict()
   .superRefine((input, context) => {
-    if (!("treatment" in input.parameters) && !("tipAngle" in input.parameters)) return
+    if (!hasExactHoleScope(input.parameters)) return
     const target = input.parameters.targetBody
     const support = input.references[0]?.featureId ?? null
     const expected = [...new Set([target.featureId, ...(support ? [support] : [])])]

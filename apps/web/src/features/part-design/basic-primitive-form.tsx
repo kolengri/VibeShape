@@ -247,18 +247,10 @@ function parsePrimitiveValues(
     ...primitiveSideIssues(primitiveKind, values, copy),
   }
   if (!origin.ok || Object.keys(issues).length > 0) return { ok: false as const, issues }
-  const { topRadius, ...baseDimensions } = dimensions
-  const type =
-    primitiveKind === "cone"
-      ? authoredConeFeatureType(savedType, topRadius)
-      : primitiveDefinitions[primitiveKind].type
-  const parsed = (
-    type.schemaVersion === 2 ? coneFeatureParametersV2Schema : definition.schema
-  ).safeParse({
-    ...baseDimensions,
-    ...(type.schemaVersion === 2 ? { topRadius } : {}),
-    ...(["cone", "pyramid"].includes(primitiveKind) ? { centered: values.centered } : {}),
-    ...(primitiveKind === "pyramid" ? { sides: Number(values.sides) } : {}),
+  const { type, schema, candidate } = primitiveCandidate(primitiveKind, dimensions, savedType)
+  const parsed = schema.safeParse({
+    ...candidate,
+    ...primitiveOptions(primitiveKind, values),
     origin: origin.origin,
   })
   if (!parsed.success) {
@@ -270,6 +262,30 @@ function parsePrimitiveValues(
     }
   }
   return { ok: true as const, parameters: parsed.data, type }
+}
+
+/** Routes Cone through its version owner; other primitives keep their single registered type. */
+function primitiveCandidate(
+  primitiveKind: BasicPrimitiveKind,
+  dimensions: Partial<Record<DimensionField, LengthQuantity>>,
+  savedType: FeatureRecord["type"] | null,
+) {
+  const { topRadius, ...candidate } = dimensions
+  if (primitiveKind !== "cone")
+    return {
+      type: primitiveDefinitions[primitiveKind].type,
+      schema: primitiveDefinitions[primitiveKind].schema,
+      candidate,
+    }
+  const type = authoredConeFeatureType(savedType, topRadius)
+  return type.schemaVersion === 2
+    ? { type, schema: coneFeatureParametersV2Schema, candidate: { ...candidate, topRadius } }
+    : { type, schema: coneFeatureParametersSchema, candidate }
+}
+
+function primitiveOptions(primitiveKind: BasicPrimitiveKind, values: PrimitiveFormValues) {
+  if (primitiveKind === "pyramid") return { centered: values.centered, sides: Number(values.sides) }
+  return primitiveKind === "cone" ? { centered: values.centered } : {}
 }
 
 function primitiveFeatureRecord(

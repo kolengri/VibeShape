@@ -434,28 +434,30 @@ export function holeTreatmentContent(treatment: z.infer<typeof holeTreatmentSche
   return { kind: treatment.kind, diameter: treatment.diameter.value, angle: treatment.angle.value }
 }
 
+function resolveHoleParametersV3(parameters: unknown, variables: VariableValues) {
+  const parsed = holeFeatureParametersV3Schema.safeParse(parameters)
+  if (!parsed.success) return { ok: true as const, parameters }
+  const { treatment, ...base } = parsed.data
+  const resolved = resolveHoleParametersV2(base, variables)
+  if (!resolved.ok) return resolved
+  const recess = resolveHoleTreatment(treatment, variables)
+  if (!recess.ok) return recess
+  const valid = holeFeatureParametersV3Schema.safeParse({
+    ...holeFeatureParametersV2Schema.parse(resolved.parameters),
+    treatment: recess.treatment,
+  })
+  return valid.success
+    ? { ok: true as const, parameters: valid.data }
+    : expressionFailure("treatment", {
+        code: "invalid-hole-recess",
+        message: valid.error.issues[0]?.message ?? "Invalid hole recess.",
+      })
+}
+
 export const holeFeatureTypeHandlerV3: TrustedFeatureTypeHandler = {
   type: holeFeatureTypeV3.type,
   parametersSchema: holeFeatureParametersV3Schema,
-  resolveParameters(parameters, variables) {
-    const parsed = holeFeatureParametersV3Schema.safeParse(parameters)
-    if (!parsed.success) return { ok: true, parameters }
-    const { treatment, ...base } = parsed.data
-    const resolved = resolveHoleParametersV2(base, variables)
-    if (!resolved.ok) return resolved
-    const recess = resolveHoleTreatment(treatment, variables)
-    if (!recess.ok) return recess
-    const valid = holeFeatureParametersV3Schema.safeParse({
-      ...holeFeatureParametersV2Schema.parse(resolved.parameters),
-      treatment: recess.treatment,
-    })
-    return valid.success
-      ? { ok: true, parameters: valid.data }
-      : expressionFailure("treatment", {
-          code: "invalid-hole-recess",
-          message: valid.error.issues[0]?.message ?? "Invalid hole recess.",
-        })
-  },
+  resolveParameters: resolveHoleParametersV3,
   validateFeature(feature) {
     const { treatment: _treatment, ...parameters } = holeFeatureParametersV3Schema.parse(
       feature.parameters,
@@ -488,28 +490,30 @@ function resolveHoleTipAngle(
       })
 }
 
+function resolveDrillPointHole(parameters: HoleFeatureParametersV4, variables: VariableValues) {
+  const { tipAngle, ...recessed } = { tipAngle: undefined, ...parameters }
+  const resolved = resolveHoleParametersV3(recessed, variables)
+  if (!resolved.ok || !tipAngle) return resolved
+  const angle = resolveHoleTipAngle(tipAngle, variables)
+  if (!angle.ok) return angle
+  const valid = holeFeatureParametersV4Schema.safeParse({
+    ...holeFeatureParametersV3Schema.parse(resolved.parameters),
+    tipAngle: angle.tipAngle,
+  })
+  return valid.success
+    ? { ok: true as const, parameters: valid.data }
+    : expressionFailure("tipAngle", {
+        code: "invalid-tip-angle",
+        message: valid.error.issues[0]?.message ?? "Invalid drill point.",
+      })
+}
+
 export const holeFeatureTypeHandlerV4: TrustedFeatureTypeHandler = {
   type: holeFeatureTypeV4.type,
   parametersSchema: holeFeatureParametersV4Schema,
   resolveParameters(parameters, variables) {
     const parsed = holeFeatureParametersV4Schema.safeParse(parameters)
-    if (!parsed.success) return { ok: true, parameters }
-    const { tipAngle, ...recessed } = { tipAngle: undefined, ...parsed.data }
-    const resolved = holeFeatureTypeHandlerV3.resolveParameters?.(recessed, variables)
-    if (!resolved?.ok) return resolved ?? { ok: true, parameters }
-    if (!tipAngle) return resolved
-    const angle = resolveHoleTipAngle(tipAngle, variables)
-    if (!angle.ok) return angle
-    const valid = holeFeatureParametersV4Schema.safeParse({
-      ...holeFeatureParametersV3Schema.parse(resolved.parameters),
-      tipAngle: angle.tipAngle,
-    })
-    return valid.success
-      ? { ok: true, parameters: valid.data }
-      : expressionFailure("tipAngle", {
-          code: "invalid-tip-angle",
-          message: valid.error.issues[0]?.message ?? "Invalid drill point.",
-        })
+    return parsed.success ? resolveDrillPointHole(parsed.data, variables) : { ok: true, parameters }
   },
   validateFeature(feature) {
     const { tipAngle: _tipAngle, ...parameters } = {

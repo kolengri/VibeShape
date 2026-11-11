@@ -1228,27 +1228,25 @@ function coneFeatureSemanticRole(
   context: TopologyCandidateContext,
   parameters: ConeContentParameters,
 ) {
-  const minimumZ = parameters.origin[2] - (parameters.centered ? parameters.height / 2 : 0)
-  const maximumZ = minimumZ + parameters.height
-  const z = context.signature.centroid[2]
-  const truncated = "topRadius" in parameters && parameters.topRadius > 0
-  switch (`${context.kind}:${context.signature.geometryClass}`) {
-    case "face:CONE":
-      return "primitive.cone.wall"
-    case "face:PLANE":
-      return coneEndRole(z, minimumZ, truncated ? maximumZ : null, "cap")
-    case "edge:CIRCLE":
-      return coneEndRole(z, minimumZ, truncated ? maximumZ : null, "edge")
-    case "vertex:POINT":
-      return !truncated && nearlyEqual(z, maximumZ) ? "primitive.cone.apex" : undefined
-    default:
-      return undefined
-  }
+  const key = `${context.kind}:${context.signature.geometryClass}`
+  if (key === "face:CONE") return "primitive.cone.wall"
+  const end = coneEnd(context.signature.centroid[2], parameters)
+  return end ? coneEndRoles.get(key)?.[end] : undefined
 }
 
-function coneEndRole(z: number, minimumZ: number, maximumZ: number | null, kind: "cap" | "edge") {
-  if (nearlyEqual(z, minimumZ)) return `primitive.cone.${kind}.start`
-  return maximumZ !== null && nearlyEqual(z, maximumZ) ? `primitive.cone.${kind}.end` : undefined
+const coneEndRoles = new Map<string, Partial<Record<"start" | "end" | "apex", string>>>([
+  ["face:PLANE", { start: "primitive.cone.cap.start", end: "primitive.cone.cap.end" }],
+  ["edge:CIRCLE", { start: "primitive.cone.edge.start", end: "primitive.cone.edge.end" }],
+  ["vertex:POINT", { apex: "primitive.cone.apex" }],
+])
+
+/** Classifies a Z level as the base, the truncated top, or the pointed apex of a cone. */
+function coneEnd(z: number, parameters: ConeContentParameters) {
+  const minimumZ = parameters.origin[2] - (parameters.centered ? parameters.height / 2 : 0)
+  if (nearlyEqual(z, minimumZ)) return "start"
+  if (!nearlyEqual(z, minimumZ + parameters.height)) return undefined
+  const topRadius = "topRadius" in parameters ? parameters.topRadius : 0
+  return topRadius > 0 ? "end" : "apex"
 }
 
 function pyramidAngularRoleIndex(
@@ -1401,6 +1399,16 @@ function parseConnectMountsFeature(input: FeatureEvaluationInput): FeatureParseR
       )
 }
 
+function parseConeParameters(
+  parameters: unknown,
+  kind: "cone" | "cone-v2",
+): PrimitiveFeature | null {
+  const parsed = (
+    kind === "cone-v2" ? coneFeatureContentParametersV2Schema : coneFeatureContentParametersSchema
+  ).safeParse(parameters)
+  return parsed.success ? { kind: "cone", parameters: parsed.data } : null
+}
+
 function parseRadialPrimitiveParameters(
   parameters: unknown,
   kind: RadialPrimitiveParseKind,
@@ -1410,14 +1418,9 @@ function parseRadialPrimitiveParameters(
       const parsed = sphereFeatureContentParametersSchema.safeParse(parameters)
       return parsed.success ? { kind, parameters: parsed.data } : null
     }
-    case "cone": {
-      const parsed = coneFeatureContentParametersSchema.safeParse(parameters)
-      return parsed.success ? { kind, parameters: parsed.data } : null
-    }
-    case "cone-v2": {
-      const parsed = coneFeatureContentParametersV2Schema.safeParse(parameters)
-      return parsed.success ? { kind: "cone", parameters: parsed.data } : null
-    }
+    case "cone":
+    case "cone-v2":
+      return parseConeParameters(parameters, kind)
     case "torus": {
       const parsed = torusFeatureContentParametersSchema.safeParse(parameters)
       return parsed.success ? { kind, parameters: parsed.data } : null
@@ -3165,6 +3168,19 @@ function createPrimitiveFeatureShape(opencascade: OpenCascadeInstance, feature: 
   }
 }
 
+type ReferenceFeature = Extract<ParsedFeature, { kind: "datum-plane" | "datum-point" }>
+
+function isReferenceFeature(feature: ParsedFeature): feature is ReferenceFeature {
+  return feature.kind === "datum-plane" || feature.kind === "datum-point"
+}
+
+/** Reference features evaluate to display-only shapes; consumers read their authored frames. */
+function createReferenceFeatureShape(opencascade: OpenCascadeInstance, feature: ReferenceFeature) {
+  return feature.kind === "datum-plane"
+    ? createDatumPlaneFeatureShape(opencascade, feature.parameters)
+    : createOcctSphere(opencascade, feature.parameters.size / 2, feature.parameters.position)
+}
+
 function createFeatureShape(
   opencascade: OpenCascadeInstance,
   feature: Exclude<
@@ -3190,16 +3206,12 @@ function createFeatureShape(
   dependencyShapes: readonly Shape3D[],
 ) {
   if (isPrimitiveFeature(feature)) return createPrimitiveFeatureShape(opencascade, feature)
+  if (isReferenceFeature(feature)) return createReferenceFeatureShape(opencascade, feature)
   switch (feature.kind) {
     case "connect-mounts":
       return createOcctConnectMounts(opencascade, feature.parameters)
     case "fdm":
       return createOcctFdmFeature(opencascade, feature.parameters, dependencyShapes[0])
-    case "datum-plane":
-      return createDatumPlaneFeatureShape(opencascade, feature.parameters)
-    case "datum-point":
-      // The marker sphere is display geometry only; consumers read the authored position.
-      return createOcctSphere(opencascade, feature.parameters.size / 2, feature.parameters.position)
     case "boolean": {
       return createBooleanFeatureShape(opencascade, dependencyShapes)
     }

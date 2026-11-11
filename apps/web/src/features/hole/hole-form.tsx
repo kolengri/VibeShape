@@ -346,25 +346,50 @@ function parseHoleTreatment(values: Values, context: ParseContext) {
 
 const FLAT_TIP_ANGLE = createAngleQuantity(180, "deg")
 
-/** Returns the authored tip angle, a flat point for saved v4 holes, or null for older versions. */
-function parseDrillPoint(values: Values, context: ParseContext) {
-  const savedV4 = context.mode.kind === "edit" && context.mode.feature.type.schemaVersion === 4
-  if (values.extent !== "blind" || !values.drillPoint)
-    return {
-      ok: true as const,
-      tipAngle: savedV4 && values.extent === "blind" ? FLAT_TIP_ANGLE : null,
-      v4: savedV4,
-    }
-  const expression = normalizeExpressionWithDisplayUnit(values.tipAngle, context.angleUnit)
+function savedHoleVersion(context: ParseContext) {
+  return context.mode.kind === "edit" ? context.mode.feature.type.schemaVersion : null
+}
+
+function parseTipAngle(raw: string, context: ParseContext) {
+  const expression = normalizeExpressionWithDisplayUnit(raw, context.angleUnit)
   const variables = evaluateVariableDefinitions(context.variables)
   const angle = variables.ok ? evaluateExpression(expression, variables.valuesByName) : null
-  const tipAngle =
-    angle?.ok && angle.value.dimension === "angle"
-      ? holeTipAngleSchema.safeParse(createAngleQuantity(angle.value.value, "rad", expression))
-      : null
-  return tipAngle?.success
-    ? { ok: true as const, tipAngle: tipAngle.data, v4: true }
+  if (!angle?.ok || angle.value.dimension !== "angle") return null
+  const parsed = holeTipAngleSchema.safeParse(
+    createAngleQuantity(angle.value.value, "rad", expression),
+  )
+  return parsed.success ? parsed.data : null
+}
+
+/** Returns the authored tip angle, a flat point for saved v4 holes, or null for older versions. */
+function parseDrillPoint(values: Values, context: ParseContext) {
+  const savedV4 = savedHoleVersion(context) === 4
+  const blind = values.extent === "blind"
+  if (!blind || !values.drillPoint)
+    return { ok: true as const, tipAngle: savedV4 && blind ? FLAT_TIP_ANGLE : null, v4: savedV4 }
+  const tipAngle = parseTipAngle(values.tipAngle, context)
+  return tipAngle
+    ? { ok: true as const, tipAngle, v4: true }
     : { ok: false as const, issues: { tipAngle: context.copy.invalidTipAngle } }
+}
+
+const holeFormTypes = {
+  1: holeFeatureType.type,
+  2: holeFeatureTypeV2.type,
+  3: holeFeatureTypeV3.type,
+  4: holeFeatureTypeV4.type,
+} as const
+
+/** One owner for the form's Hole version: a drill point is v4, a recess or saved v3 is v3. */
+function holeFormSchemaVersion(
+  values: Values,
+  context: ParseContext,
+  drillPoint: Extract<ReturnType<typeof parseDrillPoint>, { ok: true }>,
+  target: HoleTargetOption,
+): keyof typeof holeFormTypes {
+  if (drillPoint.v4) return 4
+  if (values.treatment !== "simple" || savedHoleVersion(context) === 3) return 3
+  return target.outputRole !== undefined ? 2 : 1
 }
 
 function parseHoleVersion(
@@ -376,38 +401,29 @@ function parseHoleVersion(
   treatment: Extract<ReturnType<typeof parseHoleTreatment>, { ok: true }>["treatment"],
   drillPoint: Extract<ReturnType<typeof parseDrillPoint>, { ok: true }>,
 ) {
-  const advanced =
-    drillPoint.v4 ||
-    values.treatment !== "simple" ||
-    (context.mode.kind === "edit" && context.mode.feature.type.schemaVersion === 3)
-  const parameters = advanced
-    ? (drillPoint.v4 ? holeFeatureParametersV4Schema : holeFeatureParametersV3Schema).safeParse({
-        sketchId: sketch.id,
-        pointIds: values.pointIds,
-        diameter: dimensions.diameter,
-        direction: values.direction,
-        extent: values.extent,
-        ...(values.extent === "blind" ? { depth: dimensions.depth } : {}),
-        targetBody: {
-          schemaVersion: 0,
-          featureId: target.featureId,
-          outputRole: target.outputRole ?? "result",
-        },
-        treatment: treatment,
-        ...(drillPoint.tipAngle ? { tipAngle: drillPoint.tipAngle } : {}),
-      })
-    : parseHoleParameters(values, dimensions, sketch.id, target)
-  const useNamedTarget = target.outputRole !== undefined
-  return {
-    parsed: parameters,
-    type: drillPoint.v4
-      ? holeFeatureTypeV4.type
-      : advanced
-        ? holeFeatureTypeV3.type
-        : useNamedTarget
-          ? holeFeatureTypeV2.type
-          : holeFeatureType.type,
+  const version = holeFormSchemaVersion(values, context, drillPoint, target)
+  const recessed = {
+    sketchId: sketch.id,
+    pointIds: values.pointIds,
+    diameter: dimensions.diameter,
+    direction: values.direction,
+    extent: values.extent,
+    ...(values.extent === "blind" ? { depth: dimensions.depth } : {}),
+    targetBody: {
+      schemaVersion: 0,
+      featureId: target.featureId,
+      outputRole: target.outputRole ?? "result",
+    },
+    treatment,
+    ...(drillPoint.tipAngle ? { tipAngle: drillPoint.tipAngle } : {}),
   }
+  const parsed =
+    version === 4
+      ? holeFeatureParametersV4Schema.safeParse(recessed)
+      : version === 3
+        ? holeFeatureParametersV3Schema.safeParse(recessed)
+        : parseHoleParameters(values, dimensions, sketch.id, target)
+  return { parsed, type: holeFormTypes[version] }
 }
 function parseValues(values: Values, context: ParseContext) {
   const selection = holeSelection(values, context)

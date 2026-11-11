@@ -144,7 +144,7 @@ export const datumPointFeatureTypeHandler: TrustedFeatureTypeHandler = {
   validateFeature: datumPointInvariant,
 }
 
-export function isDatumPointFeatureType(type: FeatureRecord["type"]) {
+function isDatumPointFeatureType(type: FeatureRecord["type"]) {
   const expected = datumPointFeatureType.type
   return (
     type.moduleId === expected.moduleId &&

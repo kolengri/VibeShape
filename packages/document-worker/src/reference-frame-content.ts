@@ -30,6 +30,33 @@ export function shouldPrepareReferenceFrameFeatureContent(feature: FeatureRecord
 }
 const DATUM_POINT_MARKER_DIAMETER_MM = 4
 
+type ReferenceContext = Parameters<typeof resolveDatumPoint>[1]
+
+/** Resolves the persisted reference now; the worker only sees the resolved position. */
+function prepareDatumPointContent(
+  datumPoint: NonNullable<ReturnType<typeof readDatumPointFeatureParameters>>,
+  context: ReferenceContext,
+) {
+  const resolved = resolveDatumPoint(datumPoint, context)
+  if (!resolved.ok)
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "org.vibeshape.feature.datum-point-reference-unresolved",
+        values: { reason: resolved.reason },
+      },
+    }
+  const supportFeatureId = datumPointSupportFeatureId(datumPoint)
+  return {
+    ok: true as const,
+    parameters: datumPointFeatureContentParametersSchema.parse({
+      position: resolved.position,
+      size: DATUM_POINT_MARKER_DIAMETER_MM,
+      ...(supportFeatureId ? { supportFeatureId } : {}),
+    }),
+  }
+}
+
 export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparationPort = (
   input,
 ) => {
@@ -39,26 +66,7 @@ export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparat
     geometry: input.geometry ?? [],
   }
   const datumPoint = readDatumPointFeatureParameters(input.feature)
-  if (datumPoint) {
-    const resolved = resolveDatumPoint(datumPoint, context)
-    if (!resolved.ok)
-      return {
-        ok: false,
-        diagnostic: {
-          code: "org.vibeshape.feature.datum-point-reference-unresolved",
-          values: { reason: resolved.reason },
-        },
-      }
-    const supportFeatureId = datumPointSupportFeatureId(datumPoint)
-    return {
-      ok: true,
-      parameters: datumPointFeatureContentParametersSchema.parse({
-        position: resolved.position,
-        size: DATUM_POINT_MARKER_DIAMETER_MM,
-        ...(supportFeatureId ? { supportFeatureId } : {}),
-      }),
-    }
-  }
+  if (datumPoint) return prepareDatumPointContent(datumPoint, context)
   const mirror = readMirrorFeatureParametersV3(input.feature)
   const split = readSplitFeatureParametersV2(input.feature)
   const pattern = readPatternFeatureParametersV2(input.feature)

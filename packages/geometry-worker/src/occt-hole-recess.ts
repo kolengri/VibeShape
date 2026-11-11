@@ -41,6 +41,15 @@ export function createOcctDrilledHole(
   ])
 }
 
+/** A unit vector perpendicular to the drilling axis, used as the meridian's radial direction. */
+function radialUnit([dx, dy, dz]: Point): Point {
+  const [rx, ry, rz] = Math.abs(dx) < 0.8 ? [1, 0, 0] : [0, 1, 0]
+  const cross: Point = [dy * rz - dz * ry, dz * rx - dx * rz, dx * ry - dy * rx]
+  const norm = Math.hypot(...cross)
+  if (!Number.isFinite(norm) || norm < 1e-9) throw new Error("Revolved hole axis is invalid.")
+  return [cross[0] / norm, cross[1] / norm, cross[2] / norm]
+}
+
 /** Revolves a closed [radius, axial depth] polygon whose first and last points lie on the axis. */
 function revolveAxialMeridian(
   occt: OpenCascadeInstance,
@@ -54,20 +63,13 @@ function revolveAxialMeridian(
     return value
   }
   try {
-    const reference = Math.abs(direction[0]) < 0.8 ? [1, 0, 0] : [0, 1, 0]
-    const cross = [
-      direction[1] * (reference[2] ?? 0) - direction[2] * (reference[1] ?? 0),
-      direction[2] * (reference[0] ?? 0) - direction[0] * (reference[2] ?? 0),
-      direction[0] * (reference[1] ?? 0) - direction[1] * (reference[0] ?? 0),
-    ]
-    const norm = Math.hypot(...cross)
-    if (!Number.isFinite(norm) || norm < 1e-9) throw new Error("Revolved hole axis is invalid.")
+    const radial = radialUnit(direction)
     const point = (radius: number, depth: number) =>
       own(
         new occt.gp_Pnt_3(
-          center[0] + direction[0] * depth + ((cross[0] ?? 0) * radius) / norm,
-          center[1] + direction[1] * depth + ((cross[1] ?? 0) * radius) / norm,
-          center[2] + direction[2] * depth + ((cross[2] ?? 0) * radius) / norm,
+          center[0] + direction[0] * depth + radial[0] * radius,
+          center[1] + direction[1] * depth + radial[1] * radius,
+          center[2] + direction[2] * depth + radial[2] * radius,
         ),
       )
     const points = meridian.map(([radius, depth]) => point(radius, depth))
