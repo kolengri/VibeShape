@@ -1,4 +1,5 @@
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
+import { projectWorldBezierChainToSupport } from "@vibeshape/application/model-spline-projection"
 import { intersectBoundedLineWithSupportPlane } from "@vibeshape/application/pierce-point"
 import {
   projectSketchCurveBetweenFrames,
@@ -24,6 +25,7 @@ import type {
   SketchExternalModelPiercePointReference,
   SketchExternalModelPointReference,
   SketchExternalModelReference,
+  SketchExternalModelSplineReference,
   SketchExternalPiercePointReference,
   SketchExternalPointReference,
   SketchPoint2,
@@ -33,6 +35,7 @@ import type {
 import {
   isOrphanedModelReference,
   isSketchExternalModelReference,
+  NON_ANALYTICAL_MODEL_EDGE_CLASSES,
   resolveTopologyReference,
 } from "@vibeshape/domain"
 import type {
@@ -57,7 +60,10 @@ export type PlanarFaceSectionPort = (
 ) => PlanarFaceSectionResult | Promise<PlanarFaceSectionResult>
 
 export type ResolvedExternalSketchGeometry = Readonly<
-  Pick<SketchCompilationInput, "externalCurves" | "externalLines" | "externalPoints">
+  Pick<
+    SketchCompilationInput,
+    "externalCurveChains" | "externalCurves" | "externalLines" | "externalPoints"
+  >
 >
 
 type ExternalSketchGeometryCache = Map<string, Promise<ResolvedExternalSketchGeometry>>
@@ -68,6 +74,7 @@ function externalGeometryPoints(geometry: ResolvedExternalSketchGeometry | undef
     ...(geometry?.externalLines?.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]) ??
       []),
     ...(geometry?.externalCurves?.flatMap(({ points }) => points) ?? []),
+    ...(geometry?.externalCurveChains?.flatMap(({ points }) => points) ?? []),
   ]
 }
 
@@ -266,6 +273,7 @@ function resolvedModelCandidateWithRecord(
     | SketchExternalModelLineReference
     | SketchExternalModelPiercePointReference
     | SketchExternalModelCurveReference
+    | SketchExternalModelSplineReference
     | SketchExternalModelIntersectionReference,
   lookup: FeatureGeometryLookup | undefined,
 ): Readonly<{ candidate: ProtocolTopologyCandidate; record: FeatureGeometryRecord }> {
@@ -297,7 +305,8 @@ function resolvedModelCandidate(
     | SketchExternalModelPointReference
     | SketchExternalModelLineReference
     | SketchExternalModelPiercePointReference
-    | SketchExternalModelCurveReference,
+    | SketchExternalModelCurveReference
+    | SketchExternalModelSplineReference,
   lookup: FeatureGeometryLookup | undefined,
 ) {
   return resolvedModelCandidateWithRecord(reference, lookup).candidate
@@ -593,6 +602,61 @@ function resolveExternalModelCurve(
   return materializeProjectedCurve(reference, projection)
 }
 
+type ExternalCurveChainInput = NonNullable<SketchCompilationInput["externalCurveChains"]>[number]
+
+const MODEL_SPLINE_PROJECTION_FAILURES = {
+  degenerate: (id: string) => `External model spline ${id} has a degenerate projection.`,
+  "not-parallel": (id: string) =>
+    `External model spline ${id} does not lie in a plane parallel to the sketch; only planar edges parallel to the sketch plane can be used.`,
+  "segment-count": (id: string) =>
+    `External model spline ${id} now needs more Bezier segments than its projected identities to stay within 0.0001 mm; replace the reference to refit it.`,
+} as const
+
+function resolveExternalModelSpline(
+  reference: SketchExternalModelSplineReference,
+  targetFrame: SupportFrame,
+  lookup: FeatureGeometryLookup | undefined,
+): ExternalCurveChainInput {
+  const candidate = resolvedModelCandidate(reference, lookup)
+  if (
+    candidate.kind !== "edge" ||
+    !NON_ANALYTICAL_MODEL_EDGE_CLASSES.includes(candidate.signature.geometryClass)
+  ) {
+    throw new Error(`External model spline ${reference.id} has mismatched geometry.`)
+  }
+  const geometry = candidate.referenceGeometry
+  if (geometry?.kind !== "bezier-chain-edge") {
+    throw new Error(
+      `External model spline ${reference.id} cannot be fitted within 0.0001 mm using at most 64 cubic Bezier segments.`,
+    )
+  }
+  const projection = projectWorldBezierChainToSupport(
+    targetFrame,
+    geometry.poles,
+    reference.projectedCurveIds.length,
+  )
+  if (!projection.ok)
+    throw new Error(MODEL_SPLINE_PROJECTION_FAILURES[projection.reason](reference.id))
+  const pointId = (index: number) => {
+    const id = reference.projectedPointIds[index]
+    if (!id) throw new Error("External projected spline point identities are incomplete.")
+    return id
+  }
+  return {
+    points: projection.poles.map((pole, index) => projectedPointEntity(pointId(index), pole)),
+    curves: reference.projectedCurveIds.map((id, index) => ({
+      schemaVersion: 0 as const,
+      id,
+      type: "cubic-bezier" as const,
+      construction: true,
+      startPointId: pointId(index * 3),
+      control1PointId: pointId(index * 3 + 1),
+      control2PointId: pointId(index * 3 + 2),
+      endPointId: pointId(index * 3 + 3),
+    })),
+  }
+}
+
 type SourceSketchCurve = Exclude<SketchEntity, { type: "line" | "point" }>
 
 function sourceSketchCurve(
@@ -689,6 +753,7 @@ type ExternalLiveModelReference =
   | SketchExternalModelLineReference
   | SketchExternalModelPiercePointReference
   | SketchExternalModelCurveReference
+  | SketchExternalModelSplineReference
   | SketchExternalModelIntersectionReference
 type ExternalModelReference = SketchExternalModelReference
 export type ExternalModelMaterializationCache = Map<string, Promise<ResolvedReference>>
@@ -697,6 +762,7 @@ type ResolvedReference =
       kind: "curve"
       value: NonNullable<SketchCompilationInput["externalCurves"]>[number]
     }>
+  | Readonly<{ kind: "curve-chain"; value: ExternalCurveChainInput }>
   | Readonly<{
       kind: "line"
       value: NonNullable<SketchCompilationInput["externalLines"]>[number]
@@ -866,6 +932,12 @@ async function resolveExternalModelReference(
       value: resolveExternalModelCurve(reference, targetFrame, geometryLookup),
     }
   }
+  if (reference.kind === "model-spline") {
+    return {
+      kind: "curve-chain",
+      value: resolveExternalModelSpline(reference, targetFrame, geometryLookup),
+    }
+  }
   return {
     kind: "line",
     value: await resolveExternalModelIntersection(
@@ -991,6 +1063,7 @@ export async function resolveExternalSketchGeometry(
   const points: NonNullable<SketchCompilationInput["externalPoints"]> = []
   const lines: NonNullable<SketchCompilationInput["externalLines"]> = []
   const curves: NonNullable<SketchCompilationInput["externalCurves"]> = []
+  const chains: ExternalCurveChainInput[] = []
   for (const reference of sketch.externalReferences ?? []) {
     const resolved = await resolveExternalReference(
       reference,
@@ -1008,6 +1081,12 @@ export async function resolveExternalSketchGeometry(
     if (resolved.kind === "point") points.push(resolved.value)
     if (resolved.kind === "line") lines.push(resolved.value)
     if (resolved.kind === "curve") curves.push(resolved.value)
+    if (resolved.kind === "curve-chain") chains.push(resolved.value)
   }
-  return { externalCurves: curves, externalLines: lines, externalPoints: points }
+  return {
+    externalCurveChains: chains,
+    externalCurves: curves,
+    externalLines: lines,
+    externalPoints: points,
+  }
 }

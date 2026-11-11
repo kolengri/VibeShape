@@ -650,6 +650,56 @@ const externalModelCurveReferenceWireSchema = z
     }
   })
 
+const NON_ANALYTICAL_EDGE_CLASSES: readonly string[] = [
+  "BEZIER_CURVE",
+  "BSPLINE_CURVE",
+  "HYPERBOLA",
+  "PARABOLA",
+  "OFFSET_CURVE",
+  "OTHER_CURVE",
+]
+
+function validateProjectedSplineWireIdentities(
+  reference: {
+    projectedCurveIds: readonly string[]
+    projectedPointIds: readonly string[]
+    reference: { signature: { geometryClass: string } }
+  },
+  context: z.RefinementCtx,
+) {
+  const ids = [...reference.projectedCurveIds, ...reference.projectedPointIds]
+  if (
+    reference.projectedPointIds.length !== reference.projectedCurveIds.length * 3 + 1 ||
+    new Set(ids).size !== ids.length
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedPointIds"],
+      message: "A projected model spline requires 3N + 1 unique point identities for N curves.",
+    })
+  }
+  if (!NON_ANALYTICAL_EDGE_CLASSES.includes(reference.reference.signature.geometryClass)) {
+    context.addIssue({
+      code: "custom",
+      path: ["reference", "signature", "geometryClass"],
+      message: "A model spline reference requires a non-analytical model edge.",
+    })
+  }
+}
+
+const externalModelSplineReferenceWireShape = {
+  id: sketchExternalReferenceIdSchema,
+  kind: z.literal("model-spline"),
+  reference: edgeTopoRefWireSchema,
+  projectedCurveIds: z.array(sketchEntityIdSchema).min(1).max(64),
+  projectedPointIds: z.array(sketchEntityIdSchema).min(4).max(193),
+}
+
+const externalModelSplineReferenceWireSchema = z
+  .object({ schemaVersion: z.literal(0), ...externalModelSplineReferenceWireShape })
+  .strict()
+  .superRefine(validateProjectedSplineWireIdentities)
+
 const externalModelIntersectionReferenceWireSchema = z
   .object({
     schemaVersion: z.literal(0),
@@ -758,6 +808,18 @@ const orphanedExternalModelCurveReferenceWireSchema = z
     }
   })
 
+const orphanedExternalModelSplineReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    ...externalModelSplineReferenceWireShape,
+    orphanedSource: deletedFeatureSourceWireSchema,
+  })
+  .strict()
+  .superRefine((reference, context) => {
+    validateProjectedSplineWireIdentities(reference, context)
+    validateOrphanedModelReference(reference, context)
+  })
+
 const orphanedExternalModelIntersectionReferenceWireSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -789,11 +851,13 @@ const externalReferenceWireSchema = z.union([
   externalModelLineReferenceWireSchema,
   externalModelPiercePointReferenceWireSchema,
   externalModelCurveReferenceWireSchema,
+  externalModelSplineReferenceWireSchema,
   externalModelIntersectionReferenceWireSchema,
   orphanedExternalModelPointReferenceWireSchema,
   orphanedExternalModelLineReferenceWireSchema,
   orphanedExternalModelPiercePointReferenceWireSchema,
   orphanedExternalModelCurveReferenceWireSchema,
+  orphanedExternalModelSplineReferenceWireSchema,
   orphanedExternalModelIntersectionReferenceWireSchema,
 ])
 
@@ -1037,6 +1101,24 @@ function wireProjectedExternalEntities(reference: WireExternalReference): readon
         startPointId: reference.projectedStartPointId,
         endPointId: reference.projectedEndPointId,
       },
+    ]
+  }
+  if (reference.kind === "model-spline") {
+    const point = (index: number) => reference.projectedPointIds[index] ?? ""
+    return [
+      ...reference.projectedPointIds.map(wireProjectedPoint),
+      ...reference.projectedCurveIds.map(
+        (id, index): WireEntity => ({
+          schemaVersion: 0,
+          id,
+          type: "cubic-bezier",
+          construction: true,
+          startPointId: point(index * 3),
+          control1PointId: point(index * 3 + 1),
+          control2PointId: point(index * 3 + 2),
+          endPointId: point(index * 3 + 3),
+        }),
+      ),
     ]
   }
   if (reference.kind !== "curve" && reference.kind !== "model-curve") {

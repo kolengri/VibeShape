@@ -1,10 +1,23 @@
 import { describe, expect, it } from "bun:test"
-import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
-import { type SketchEntity, type SketchRecord, sketchRecordSchema } from "./sketch"
+import { orphanModelReferencesToFeature } from "./feature-removal-intent"
+import {
+  featureIdSchema,
+  sketchConstraintIdSchema,
+  sketchEntityIdSchema,
+  sketchExternalReferenceIdSchema,
+  sketchIdSchema,
+} from "./identifiers"
+import {
+  projectedExternalSketchEntities,
+  type SketchEntity,
+  type SketchRecord,
+  sketchRecordSchema,
+} from "./sketch"
 import {
   appendSketchSpline,
   createEmptySketch,
   removeSketchEntities,
+  replaceSketchExternalReference,
   type SketchPoint2,
 } from "./sketch-edit"
 import { interpolatingSplineControls } from "./sketch-spline"
@@ -172,5 +185,93 @@ describe("interpolating sketch splines", () => {
     })
     expect(cubics(continued.sketch)[1]?.startPointId).toBe(anchor)
     expect(continued.createdConstraintIds).toEqual([])
+  })
+})
+
+describe("model spline references", () => {
+  const featureId = featureIdSchema.parse("01900000-0000-7000-8000-00000000f000")
+  const signature = {
+    kind: "edge" as const,
+    geometryClass: "BSPLINE_CURVE",
+    measure: 24,
+    centroid: [10, 2, 0] as [number, number, number],
+    bounds: {
+      min: [0, 0, 0] as [number, number, number],
+      max: [20, 4, 0] as [number, number, number],
+    },
+    boundaryCount: 2,
+    adjacentGeometryClasses: [],
+  }
+  const reference = {
+    schemaVersion: 0 as const,
+    id: sketchExternalReferenceIdSchema.parse(id(700)),
+    kind: "model-spline" as const,
+    reference: {
+      schemaVersion: 0 as const,
+      featureId,
+      kind: "edge" as const,
+      semanticRole: "edge.spline",
+      signature,
+    },
+    projectedCurveIds: [id(710), id(711)],
+    projectedPointIds: Array.from({ length: 7 }, (_, index) => id(720 + index)),
+  }
+  const base = createEmptySketch({ id: sketchIdSchema.parse(id(901)), label: "Use", plane: "xy" })
+  const parse = (candidate: object) =>
+    sketchRecordSchema.safeParse({ ...base, externalReferences: [candidate] })
+
+  it("persists only the topology reference and chained projected identities", () => {
+    const parsed = parse(reference)
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    const projected = projectedExternalSketchEntities(parsed.data.externalReferences ?? [])
+    expect(projected.filter(({ type }) => type === "point")).toHaveLength(7)
+    expect(projected.filter(({ type }) => type === "cubic-bezier")).toEqual([
+      expect.objectContaining({ id: id(710), startPointId: id(720), endPointId: id(723) }),
+      expect.objectContaining({ id: id(711), startPointId: id(723), endPointId: id(726) }),
+    ])
+    expect(JSON.stringify(parsed.data)).not.toContain('"x"')
+  })
+
+  it("rejects mismatched identity counts, duplicates and analytical source edges", () => {
+    expect(
+      parse({ ...reference, projectedPointIds: reference.projectedPointIds.slice(0, 6) }).success,
+    ).toBe(false)
+    expect(
+      parse({
+        ...reference,
+        projectedPointIds: [...reference.projectedPointIds.slice(0, 6), id(710)],
+      }).success,
+    ).toBe(false)
+    expect(
+      parse({
+        ...reference,
+        reference: { ...reference.reference, signature: { ...signature, geometryClass: "CIRCLE" } },
+      }).success,
+    ).toBe(false)
+  })
+
+  it("orphans on feature deletion and repairs without changing projected identities", () => {
+    const sketch = sketchRecordSchema.parse({ ...base, externalReferences: [reference] })
+    const orphaned = orphanModelReferencesToFeature(sketch, featureId)
+    expect(orphaned.externalReferences?.[0]).toMatchObject({
+      schemaVersion: 1,
+      orphanedSource: { kind: "deleted-feature", featureId },
+    })
+    const repaired = replaceSketchExternalReference(sketch, reference.id, {
+      kind: "model-spline",
+      reference: { ...reference.reference, semanticRole: "edge.other-spline" },
+    })
+    expect(repaired.externalReferences?.[0]).toMatchObject({
+      projectedCurveIds: reference.projectedCurveIds,
+      projectedPointIds: reference.projectedPointIds,
+      reference: { semanticRole: "edge.other-spline" },
+    })
+    expect(() =>
+      replaceSketchExternalReference(sketch, reference.id, {
+        kind: "model-line",
+        reference: { ...reference.reference, signature: { ...signature, geometryClass: "LINE" } },
+      }),
+    ).toThrow(TypeError)
   })
 })

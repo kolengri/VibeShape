@@ -133,16 +133,16 @@ function planeSpread(poles: readonly Point[]) {
   const [origin] = poles
   if (!origin) return 0
   const relative = poles.map((pole) => pole.map((value, axis) => value - (origin[axis] ?? 0)))
-  const far = relative.reduce((best, pole) =>
-    Math.hypot(...pole) > Math.hypot(...best) ? pole : best,
-  )
+  const norm = (vector: readonly number[]) =>
+    Math.hypot(vector[0] ?? 0, vector[1] ?? 0, vector[2] ?? 0)
+  const far = relative.reduce((best, pole) => (norm(pole) > norm(best) ? pole : best))
   const cross = (a: number[], b: number[]) => [
     (a[1] ?? 0) * (b[2] ?? 0) - (a[2] ?? 0) * (b[1] ?? 0),
     (a[2] ?? 0) * (b[0] ?? 0) - (a[0] ?? 0) * (b[2] ?? 0),
     (a[0] ?? 0) * (b[1] ?? 0) - (a[1] ?? 0) * (b[0] ?? 0),
   ]
   const side = relative.reduce((best, pole) =>
-    Math.hypot(...cross(far, pole)) > Math.hypot(...cross(far, best)) ? pole : best,
+    norm(cross(far, pole)) > norm(cross(far, best)) ? pole : best,
   )
   const normal = cross(far, side)
   const length = Math.hypot(...normal)

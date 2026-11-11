@@ -19,6 +19,7 @@ import {
   type SketchExternalModelPiercePointReference,
   type SketchExternalModelPointReference,
   type SketchExternalModelReference,
+  type SketchExternalModelSplineReference,
   type SketchExternalPiercePointReference,
   type SketchExternalPointReference,
   type SketchExternalReference,
@@ -56,6 +57,7 @@ export type SketchExternalReferenceReplacement =
   | Readonly<
       Pick<SketchExternalModelCurveReference, "kind" | "projectedType" | "reference" | "sourceType">
     >
+  | Readonly<Pick<SketchExternalModelSplineReference, "kind" | "reference">>
   | Readonly<Pick<SketchExternalModelIntersectionReference, "kind" | "reference">>
   | Readonly<Pick<SketchExternalModelPiercePointReference, "kind" | "reference">>
 
@@ -2909,6 +2911,21 @@ function modelIntersectionReferenceWithReplacement(
   }
 }
 
+function modelSplineReferenceWithReplacement(
+  reference: Extract<SketchExternalModelReference, { kind: "model-spline" }>,
+  replacement: SketchExternalReferenceReplacement,
+): SketchExternalModelSplineReference {
+  if (replacement.kind !== "model-spline") return modelReferenceKindMismatch(reference, replacement)
+  return {
+    schemaVersion: 0,
+    id: reference.id,
+    kind: reference.kind,
+    reference: replacement.reference,
+    projectedCurveIds: reference.projectedCurveIds,
+    projectedPointIds: reference.projectedPointIds,
+  }
+}
+
 function modelCurveReferenceWithReplacement(
   reference: Extract<SketchExternalModelReference, { kind: "model-curve" }>,
   replacement: SketchExternalReferenceReplacement,
@@ -2948,6 +2965,8 @@ function modelReferenceWithReplacement(
     return modelPiercePointReferenceWithReplacement(reference, replacement)
   if (reference.kind === "model-intersection")
     return modelIntersectionReferenceWithReplacement(reference, replacement)
+  if (reference.kind === "model-spline")
+    return modelSplineReferenceWithReplacement(reference, replacement)
   return modelCurveReferenceWithReplacement(reference, replacement)
 }
 
@@ -2968,6 +2987,10 @@ function replaceModelBackedExternalReference(
     throw new TypeError(
       "A sketch external reference repair must stay within the producing feature.",
     )
+  }
+  if (reference.kind === "model-spline") {
+    // Any non-analytical edge keeps the chain contract; the schema rejects analytical classes.
+    return replaceExternalReferenceRecord(sketch, reference.id, updated)
   }
   const expectedGeometryClass = modelReferenceGeometryClass(reference)
   if (updated.reference.signature.geometryClass !== expectedGeometryClass) {

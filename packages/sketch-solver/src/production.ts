@@ -13,6 +13,7 @@ import {
   type SketchRecord,
   sketchArcEntitySchema,
   sketchCircleEntitySchema,
+  sketchCubicBezierEntitySchema,
   sketchEllipseEntitySchema,
   sketchEllipticalArcEntitySchema,
   sketchLineEntitySchema,
@@ -137,6 +138,36 @@ const externalCurveSchema = z
     }
   })
 
+/**
+ * A fixed projected cubic Bezier chain: curve `i` uses points `3i` through `3i + 3`, so
+ * consecutive curves share their joint point.
+ */
+const externalCurveChainSchema = z
+  .object({
+    curves: z.array(sketchCubicBezierEntitySchema).min(1).max(64),
+    points: z.array(sketchPointEntitySchema).min(4).max(193),
+  })
+  .strict()
+  .superRefine(({ curves, points }, context) => {
+    const pointId = (index: number) => points[index]?.id
+    const chained =
+      points.length === curves.length * 3 + 1 &&
+      curves.every(
+        (curve, index) =>
+          curve.startPointId === pointId(index * 3) &&
+          curve.control1PointId === pointId(index * 3 + 1) &&
+          curve.control2PointId === pointId(index * 3 + 2) &&
+          curve.endPointId === pointId(index * 3 + 3),
+      )
+    if (!chained) {
+      context.addIssue({
+        code: "custom",
+        path: ["curves"],
+        message: "External curve chains must use their points in chained role order.",
+      })
+    }
+  })
+
 const sketchCompilationInputSchema = z
   .object({
     revision: revisionSchema,
@@ -144,6 +175,7 @@ const sketchCompilationInputSchema = z
     externalPoints: z.array(sketchPointEntitySchema).max(4_990).default([]),
     externalLines: z.array(externalLineSchema).max(1_663).default([]),
     externalCurves: z.array(externalCurveSchema).max(1_247).default([]),
+    externalCurveChains: z.array(externalCurveChainSchema).max(256).default([]),
     variables: variableDefinitionsSchema.default([]),
     continuation: sketchSolveContinuationSchema.nullable().default(null),
     draggedPoints: z.array(sketchDragTargetSchema).max(128).default([]),
@@ -211,11 +243,22 @@ function validateExternalGeometry(input: SketchCompilationSchemaInput, context: 
     entityIds,
     context,
   )
+  validateExternalEntityGroups(
+    input.externalCurveChains.map(({ points, curves }) => [...points, ...curves]),
+    "externalCurveChains",
+    "External sketch curve chain IDs cannot collide with other sketch entities.",
+    entityIds,
+    context,
+  )
   if (
     input.sketch.entities.length +
       input.externalPoints.length +
       input.externalLines.length * 3 +
-      input.externalCurves.reduce((count, curve) => count + curve.points.length + 1, 0) <=
+      input.externalCurves.reduce((count, curve) => count + curve.points.length + 1, 0) +
+      input.externalCurveChains.reduce(
+        (count, chain) => count + chain.points.length + chain.curves.length,
+        0,
+      ) <=
     4_990
   ) {
     return
@@ -229,7 +272,7 @@ function validateExternalGeometry(input: SketchCompilationSchemaInput, context: 
 
 function validateExternalEntityGroups(
   groups: readonly (readonly { id: string }[])[],
-  path: "externalCurves" | "externalLines" | "externalPoints",
+  path: "externalCurveChains" | "externalCurves" | "externalLines" | "externalPoints",
   message: string,
   entityIds: Set<string>,
   context: z.RefinementCtx,
@@ -1727,6 +1770,17 @@ function addFixedExternalPoints(
   }
 }
 
+function addFixedExternalCurveChains(
+  builder: ProductionSketchBuilder,
+  chains: readonly z.infer<typeof externalCurveChainSchema>[],
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  for (const { curves, points } of chains) {
+    addFixedExternalPoints(builder, points, pointValues)
+    for (const curve of curves) builder.addCubicBezier(curve)
+  }
+}
+
 function addFixedExternalCurves(
   builder: ProductionSketchBuilder,
   curves: readonly z.infer<typeof externalCurveSchema>[],
@@ -1806,6 +1860,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     ...input.data.externalPoints,
     ...input.data.externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
     ...input.data.externalCurves.flatMap(({ points }) => points),
+    ...input.data.externalCurveChains.flatMap(({ points }) => points),
   ]
   const draggedPoints = withTangentJoinHandleDrags(
     input.data.sketch,
@@ -1838,6 +1893,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     pointValues,
     circleRadii,
   )
+  addFixedExternalCurveChains(builder, input.data.externalCurveChains, pointValues)
   const invalidConstraintIndex = addSketchConstraints(
     builder,
     input.data.sketch,

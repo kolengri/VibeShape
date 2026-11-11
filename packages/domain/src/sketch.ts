@@ -204,6 +204,69 @@ export const sketchExternalModelCurveReferenceSchema = z
     }
   })
 
+/** Model edge classes without an exact sketch entity; mirrors the geometry protocol list. */
+export const NON_ANALYTICAL_MODEL_EDGE_CLASSES: readonly string[] = [
+  "BEZIER_CURVE",
+  "BSPLINE_CURVE",
+  "HYPERBOLA",
+  "PARABOLA",
+  "OFFSET_CURVE",
+  "OTHER_CURVE",
+]
+export const MAX_MODEL_SPLINE_SEGMENTS = 64
+
+function validateProjectedSplineIdentities(
+  reference: {
+    projectedCurveIds: readonly string[]
+    projectedPointIds: readonly string[]
+    reference: { signature: { geometryClass: string } }
+  },
+  context: z.RefinementCtx,
+) {
+  if (reference.projectedPointIds.length !== reference.projectedCurveIds.length * 3 + 1) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedPointIds"],
+      message: "A projected model spline requires 3N + 1 point identities for N curves.",
+    })
+  }
+  const ids = [...reference.projectedCurveIds, ...reference.projectedPointIds]
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedCurveIds"],
+      message: "Projected model spline identities must be unique.",
+    })
+  }
+  if (!NON_ANALYTICAL_MODEL_EDGE_CLASSES.includes(reference.reference.signature.geometryClass)) {
+    context.addIssue({
+      code: "custom",
+      path: ["reference", "signature", "geometryClass"],
+      message: "A model spline reference requires a non-analytical model edge.",
+    })
+  }
+}
+
+const modelSplineReferenceShape = {
+  id: sketchExternalReferenceIdSchema,
+  kind: z.literal("model-spline"),
+  reference: edgeTopoRefSchema,
+  projectedCurveIds: z.array(sketchEntityIdSchema).min(1).max(MAX_MODEL_SPLINE_SEGMENTS),
+  projectedPointIds: z
+    .array(sketchEntityIdSchema)
+    .min(4)
+    .max(MAX_MODEL_SPLINE_SEGMENTS * 3 + 1),
+}
+
+/**
+ * A read-only cubic Bezier chain fitted to one stable non-analytical model edge. Only the topology
+ * reference and the projected chain identities persist; the poles are recomputed on every solve.
+ */
+export const sketchExternalModelSplineReferenceSchema = z
+  .object({ schemaVersion: z.literal(0), ...modelSplineReferenceShape })
+  .strict()
+  .superRefine(validateProjectedSplineIdentities)
+
 /** A read-only bounded line created by intersecting one stable planar model face with the sketch. */
 export const sketchExternalModelIntersectionReferenceSchema = z
   .object({
@@ -313,6 +376,18 @@ const sketchExternalModelIntersectionOrphanSchema = z
     message: "An orphaned model reference must retain its source feature identity.",
   })
 
+const sketchExternalModelSplineOrphanSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    ...modelSplineReferenceShape,
+    orphanedSource: deletedFeatureSourceSchema,
+  })
+  .strict()
+  .superRefine(validateProjectedSplineIdentities)
+  .refine((reference) => reference.orphanedSource.featureId === reference.reference.featureId, {
+    message: "An orphaned model reference must retain its source feature identity.",
+  })
+
 const sketchExternalModelPiercePointOrphanSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -335,6 +410,7 @@ const sketchExternalReferenceSchemaV0 = z.union([
   sketchExternalModelPointReferenceSchema,
   sketchExternalModelLineReferenceSchema,
   sketchExternalModelCurveReferenceSchema,
+  sketchExternalModelSplineReferenceSchema,
   sketchExternalModelIntersectionReferenceSchema,
   sketchExternalModelPiercePointReferenceSchema,
 ])
@@ -344,6 +420,7 @@ export const sketchExternalReferenceSchema = z.union([
   sketchExternalModelPointOrphanSchema,
   sketchExternalModelLineOrphanSchema,
   sketchExternalModelCurveOrphanSchema,
+  sketchExternalModelSplineOrphanSchema,
   sketchExternalModelIntersectionOrphanSchema,
   sketchExternalModelPiercePointOrphanSchema,
 ])
@@ -368,6 +445,12 @@ export type SketchExternalModelLineReference = Readonly<
 >
 export type SketchExternalModelCurveReference = Readonly<
   z.infer<typeof sketchExternalModelCurveReferenceSchema>
+>
+export type SketchExternalModelSplineReference = Readonly<
+  z.infer<typeof sketchExternalModelSplineReferenceSchema>
+>
+export type SketchExternalModelSplineOrphanReference = Readonly<
+  z.infer<typeof sketchExternalModelSplineOrphanSchema>
 >
 export type SketchExternalModelIntersectionReference = Readonly<
   z.infer<typeof sketchExternalModelIntersectionReferenceSchema>
@@ -395,12 +478,14 @@ export type SketchExternalOrphanedModelReference =
   | SketchExternalModelPointOrphanReference
   | SketchExternalModelLineOrphanReference
   | SketchExternalModelCurveOrphanReference
+  | SketchExternalModelSplineOrphanReference
   | SketchExternalModelIntersectionOrphanReference
   | SketchExternalModelPiercePointOrphanReference
 export type SketchExternalModelReference =
   | SketchExternalModelPointReference
   | SketchExternalModelLineReference
   | SketchExternalModelCurveReference
+  | SketchExternalModelSplineReference
   | SketchExternalModelIntersectionReference
   | SketchExternalModelPiercePointReference
   | SketchExternalOrphanedModelReference
@@ -413,6 +498,7 @@ export function isSketchExternalModelReference(
     reference.kind === "model-line" ||
     reference.kind === "model-pierce-point" ||
     reference.kind === "model-curve" ||
+    reference.kind === "model-spline" ||
     reference.kind === "model-intersection"
   )
 }
@@ -886,6 +972,28 @@ function projectedExternalCurve(
 }
 
 /** Materializes identity-only geometry for reference validation and UI selection. */
+/** Segment `i` of a projected chain uses points `3i` through `3i + 3`; joints are shared. */
+export function projectedModelSplineEntities(
+  reference: Pick<SketchExternalModelSplineReference, "projectedCurveIds" | "projectedPointIds">,
+): SketchEntity[] {
+  const point = (index: number) => reference.projectedPointIds[index] as SketchEntityId
+  return [
+    ...reference.projectedPointIds.map(projectedExternalPoint),
+    ...reference.projectedCurveIds.map(
+      (id, index): SketchEntity => ({
+        schemaVersion: 0,
+        id,
+        type: "cubic-bezier",
+        construction: true,
+        startPointId: point(index * 3),
+        control1PointId: point(index * 3 + 1),
+        control2PointId: point(index * 3 + 2),
+        endPointId: point(index * 3 + 3),
+      }),
+    ),
+  ]
+}
+
 export function projectedExternalSketchEntities(
   references: readonly SketchExternalReference[],
 ): readonly SketchEntity[] {
@@ -899,6 +1007,7 @@ export function projectedExternalSketchEntities(
     if (reference.kind === "model-pierce-point") {
       return [projectedExternalPoint(reference.projectedPointId)]
     }
+    if (reference.kind === "model-spline") return projectedModelSplineEntities(reference)
     if (
       reference.kind !== "line" &&
       reference.kind !== "model-line" &&
