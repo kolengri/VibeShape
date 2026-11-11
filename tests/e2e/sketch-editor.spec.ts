@@ -3277,14 +3277,19 @@ test.describe("full sketch editor", () => {
     )
   })
 
-  for (const { width, height, theme } of [
-    { width: 512, height: 360, theme: "light" },
-    { width: 1024, height: 720, theme: "light" },
-    { width: 1024, height: 720, theme: "dark" },
+  for (const { width, height, theme, reducedMotion } of [
+    { width: 512, height: 360, theme: "light", reducedMotion: false },
+    { width: 512, height: 360, theme: "dark", reducedMotion: true },
+    { width: 1024, height: 480, theme: "light", reducedMotion: false },
+    { width: 1024, height: 720, theme: "light", reducedMotion: false },
+    { width: 1024, height: 720, theme: "dark", reducedMotion: false },
+    { width: 1440, height: 900, theme: "light", reducedMotion: true },
+    { width: 1440, height: 900, theme: "dark", reducedMotion: false },
   ] as const) {
-    test(`keeps the Precise transform panel inside the canvas at ${width}x${height} in ${theme} theme`, async ({
+    test(`keeps the Precise transform panel reachable at ${width}x${height} in ${theme} theme${reducedMotion ? " with reduced motion" : ""}`, async ({
       page,
     }) => {
+      await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" })
       await page.setViewportSize({ width, height })
       await page.goto("/")
       await expect(
@@ -3313,7 +3318,6 @@ test.describe("full sketch editor", () => {
       }
       const exactTransform = page.getByRole("form", { name: "Precise transform" })
       await expect(exactTransform).toBeVisible()
-      // A short canvas scrolls the panel instead of pushing it above the canvas.
       // The panel stays inside the free canvas and scrolls instead of growing above it.
       const canvas = await unobscuredDrawingBounds(page, drawing)
       const panel = await exactTransform.boundingBox()
@@ -3324,8 +3328,8 @@ test.describe("full sketch editor", () => {
         expect(
           await exactTransform.evaluate((element) => element.scrollHeight > element.clientHeight),
         ).toBe(true)
-        return
       }
+      // The operation layer sits above the view controls, so the first field and Apply stay reachable.
       for (const control of [
         exactTransform.getByRole("combobox").first(),
         exactTransform.getByRole("button", { name: "Apply transform" }),
@@ -3333,6 +3337,24 @@ test.describe("full sketch editor", () => {
         await control.scrollIntoViewIfNeeded()
         await expectUncoveredControl(control)
       }
+      // Rotate view is the view control enabled while the sketch camera is locked. Whenever the
+      // canvas can fit both, the panel leaves it clickable; navigating hides the operation layer
+      // with the sketch, and resuming restores the panel.
+      const rotateView = page.getByRole("button", { name: "Rotate view", exact: true })
+      if (height >= 480) {
+        await expectUncoveredControl(rotateView)
+        await rotateView.click()
+        await expect(rotateView).toHaveAttribute("aria-pressed", "true")
+        await expect(exactTransform).toBeHidden()
+        await rotateView.click()
+        await expect(rotateView).toHaveAttribute("aria-pressed", "false")
+        await expect(exactTransform).toBeVisible()
+      }
+      await exactTransform.getByRole("combobox").first().focus()
+      await page.keyboard.press("Escape")
+      await expect(exactTransform).toBeHidden()
+      // The pass-through layer never blocks the view controls once the panel closes.
+      await expectUncoveredControl(rotateView)
     })
   }
 
