@@ -24,6 +24,29 @@ describe("assembly export boundary", () => {
       assemblyExportSettingsSchema.parse({ format: "3mf", printPreparation: {} }).printPreparation,
     ).toBeDefined()
   })
+  it("accepts display-only source appearances for visual mesh formats", () => {
+    const appearance = { color: "#c6a24a", metalness: 0.86, roughness: 0.32, opacity: 1 }
+    const settings = {
+      format: "glb",
+      sourceAppearances: [{ definitionId: id, sourceIndex: 0, appearance }],
+    }
+    expect(assemblyExportSettingsSchema.parse(settings).sourceAppearances).toHaveLength(1)
+    expect(
+      assemblyExportSettingsSchema.safeParse({
+        ...settings,
+        sourceAppearances: [{ definitionId: id, sourceIndex: 0, appearance: { color: "red" } }],
+      }).success,
+    ).toBe(false)
+    expect(
+      assemblyExportSettingsSchema.safeParse({
+        format: "obj",
+        meshQuality: {
+          chordTolerance: 0.01,
+          angularTolerance: 0.05,
+        },
+      }).success,
+    ).toBe(true)
+  })
   it("excludes pair inspection and unrecognized export options", () => {
     expect(
       exportAssemblyInputSchema.parse({ assembly, settings: { format: "step" } }),

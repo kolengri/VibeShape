@@ -12,17 +12,27 @@ const meshExportQualitySchema = z.strictObject({
   chordTolerance: z.number().finite().min(0.005).max(1),
   angularTolerance: z.number().finite().min(0.01).max(0.5),
 })
-export const binaryExportFormatSchema = z.enum(["step", "stl", "3mf", "vshape", "png"])
+export const binaryExportFormatSchema = z.enum([
+  "step",
+  "stl",
+  "3mf",
+  "glb",
+  "obj",
+  "vshape",
+  "png",
+])
 const descriptorFields = {
   exportId,
   documentId: documentIdSchema,
   revision: revisionSchema,
   format: binaryExportFormatSchema,
-  filename: z.string().regex(/^model\.(step|stl|3mf|vshape|png)$/),
+  filename: z.string().regex(/^model\.(step|stl|3mf|glb|zip|vshape|png)$/),
   mimeType: z.enum([
     "model/step",
     "model/stl",
     "model/3mf",
+    "model/gltf-binary",
+    "application/zip",
     "application/octet-stream",
     "image/png",
   ]),
@@ -36,7 +46,7 @@ export const binaryExportDescriptorSchema = z
   .strict()
   .refine(
     (value) =>
-      value.filename === `model.${value.format}` &&
+      value.filename === binaryExportFilename(value.format) &&
       value.mimeType === binaryExportMimeType(value.format),
     "Export filename and media type must match its format.",
   )
@@ -68,7 +78,7 @@ export const localBinaryExportInputs = {
     })
     .strict()
     .refine((input) => !input.meshQuality || input.format !== "step", {
-      message: "Mesh quality is available only for STL and 3MF export.",
+      message: "Mesh quality is available only for mesh export formats.",
     }),
   prepare_project_backup: z.object({ revision: revisionSchema }).strict(),
   read_export_chunk: z
@@ -168,9 +178,15 @@ export function binaryExportMimeType(format: z.infer<typeof binaryExportFormatSc
     step: "model/step",
     stl: "model/stl",
     "3mf": "model/3mf",
+    glb: "model/gltf-binary",
+    obj: "application/zip",
     vshape: "application/octet-stream",
   } as const
   return types[format]
+}
+/** OBJ travels as a ZIP with its MTL library; every other format keeps its own extension. */
+export function binaryExportFilename(format: z.infer<typeof binaryExportFormatSchema>) {
+  return format === "obj" ? "model.zip" : `model.${format}`
 }
 
 function chunkIsConsistent(value: {

@@ -39,6 +39,7 @@ import {
   ASSEMBLY_DRAFT_TTL_MS,
   type AssemblyResult,
   type AssemblySessionConfiguration,
+  assemblyBomView,
   assemblyFailure,
   assemblyModelView,
 } from "./assembly-session-contract"
@@ -365,6 +366,27 @@ export function createAssemblyAutomationSession(configuration: AssemblySessionCo
     return result.ok ? bounded(result.value) : result
   }
 
+  async function readBom(
+    operation: Extract<AssemblyOperation, { tool: "model_assembly_bom" }>,
+    signal?: AssemblyCancellation,
+  ) {
+    const { revision, materials } = operation.arguments
+    const current = guard(revision, generation, signal)
+    const interrupted = current()
+    if (interrupted) return interrupted
+    const authority = snapshot()
+    const exact = await configuration.inspect(revision, { interferencePairs: [] })
+    const changed = current()
+    if (changed) return changed
+    if (!exact.ok) return exact
+    const inspection = assemblyInspectionViewSchema.parse(exact.value)
+    if (inspection.documentId !== configuration.documentId || inspection.revision !== revision)
+      return localFailure(
+        "invalid-assembly-preview",
+        "Exact assembly evidence belongs to a different document revision.",
+      )
+    return bounded(assemblyBomView(authority, inspection, materials))
+  }
   function executeAssembly(
     actor: CommandActor,
     operation: AssemblyOperation,
@@ -375,6 +397,8 @@ export function createAssemblyAutomationSession(configuration: AssemblySessionCo
         return sampleMotion(operation, signal)
       case "model_assembly":
         return guard(operation.arguments.revision)() ?? bounded(assemblyModelView(snapshot()))
+      case "model_assembly_bom":
+        return readBom(operation, signal)
       case "inspect_assembly":
         return inspect(operation, signal)
       case "create_assembly_draft":

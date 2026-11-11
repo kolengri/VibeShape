@@ -16,6 +16,8 @@ describe("document export download", () => {
     expect(createDocumentExportFilename("  Корпус принтера  ", "stl")).toBe("Корпус принтера.stl")
     expect(createDocumentExportFilename("...", "step")).toBe("Untitled project.step")
     expect(createDocumentExportFilename("Bracket", "3mf")).toBe("Bracket.3mf")
+    expect(createDocumentExportFilename("Bracket", "glb")).toBe("Bracket.glb")
+    expect(createDocumentExportFilename("Bracket", "obj")).toBe("Bracket.zip")
   })
 
   it("downloads owned bytes with the matching media type and revokes the URL", () => {

@@ -4,6 +4,7 @@ import type { z } from "zod"
 import {
   type AssemblyInspectionView,
   type AssemblyOperation,
+  assemblyBomViewSchema,
   assemblyCommitViewSchema,
   assemblyDiscardViewSchema,
   assemblyDraftPreviewSchema,
@@ -161,6 +162,8 @@ function assemblyMatches(
       return sampledStudyMatches(operation, value, belongs)
     case "model_assembly":
       return assemblyModelMatches(operation, value, belongs)
+    case "model_assembly_bom":
+      return assemblyBomMatches(operation, value, belongs)
     case "inspect_assembly":
       return inspectionMatches(operation, value, belongs)
     case "create_assembly_draft":
@@ -182,6 +185,21 @@ function assemblyModelMatches(
 ) {
   const view = assemblyModelViewSchema.parse(value)
   return belongs(view.documentId) && view.revision === operation.arguments.revision
+}
+function assemblyBomMatches(
+  operation: Extract<AssemblyOperation, { tool: "model_assembly_bom" }>,
+  value: unknown,
+  belongs: DocumentContext,
+) {
+  const view = assemblyBomViewSchema.parse(value)
+  const assigned = new Map(
+    operation.arguments.materials.map(({ definitionId, materialId }) => [definitionId, materialId]),
+  )
+  return (
+    belongs(view.documentId) &&
+    view.revision === operation.arguments.revision &&
+    view.rows.every((row) => row.materialId === (assigned.get(row.definitionId) ?? null))
+  )
 }
 function sampledStudyMatches(
   operation: Extract<AssemblyOperation, { tool: "sample_assembly_motion_study" }>,

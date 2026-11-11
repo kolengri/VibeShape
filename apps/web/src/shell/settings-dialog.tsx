@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import { geometryExportFormatSchema } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -21,9 +22,34 @@ import { type DialogOpenProps, useDialogOpen } from "../components/use-dialog-op
 import { DesktopMcpSettings } from "../desktop/desktop-mcp-settings"
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentDisplayUnitsSettings } from "../document/document-display-units-dialog"
+import { exportFormatTitleKeys } from "../document/document-export-options"
 import { PrinterSettings } from "../printing/printer-settings"
 import { useViewerPreferences } from "./viewer-preferences"
 import { WorkspaceLayoutSettings } from "./workspace-layout-settings"
+
+/** Offers every protocol export format so a format chosen in an export dialog stays selectable. */
+function PreferredExportFormatField() {
+  const t = useTranslations("app.settings")
+  const exportT = useTranslations("app.export")
+  const format = useViewerPreferences((state) => state.preferredExportFormat)
+  const setFormat = useViewerPreferences((state) => state.actions.setPreferredExportFormat)
+  return (
+    <SelectField
+      label={t("exportFormat")}
+      value={format}
+      onValueChange={(value) => {
+        const parsed = geometryExportFormatSchema.safeParse(value)
+        if (parsed.success) setFormat(parsed.data)
+      }}
+    >
+      {geometryExportFormatSchema.options.map((option) => (
+        <SelectOption key={option} value={option}>
+          {exportT(exportFormatTitleKeys[option])}
+        </SelectOption>
+      ))}
+    </SelectField>
+  )
+}
 
 export function SettingsDialog({
   controller,
@@ -153,18 +179,7 @@ export function SettingsDialog({
               className="grid gap-3"
             >
               <h3 className="font-medium">{t("export")}</h3>
-              <SelectField
-                label={t("exportFormat")}
-                value={preferences.preferredExportFormat}
-                onValueChange={(format) => {
-                  if (format === "3mf" || format === "step" || format === "stl")
-                    preferences.actions.setPreferredExportFormat(format)
-                }}
-              >
-                <SelectOption value="3mf">3MF</SelectOption>
-                <SelectOption value="step">STEP</SelectOption>
-                <SelectOption value="stl">STL</SelectOption>
-              </SelectField>
+              <PreferredExportFormatField />
               <p className="text-xs text-muted-foreground">{t("exportDescription")}</p>
             </TabsContent>
             <TabsContent

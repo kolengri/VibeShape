@@ -22,6 +22,8 @@ import {
   revisionSchema,
   timestampSchema,
 } from "@vibeshape/domain/identifiers"
+import { structuralMaterialPresetIdSchema } from "@vibeshape/domain/lightweighting-materials"
+import { appearancePresetIdSchema } from "@vibeshape/domain/part-appearance"
 import { authoredItemNameSchema } from "@vibeshape/domain/parts"
 import { sourceAssetDigestSchema } from "@vibeshape/domain/source-assets"
 import { topoRefSchema } from "@vibeshape/domain/topology"
@@ -100,6 +102,28 @@ export const assemblyToolInputs = {
       "Choose unique occurrences including the trace target.",
     ),
   model_assembly: z.object({ revision: revisionSchema }).strict(),
+  model_assembly_bom: z
+    .object({
+      revision: revisionSchema,
+      /** Explicit catalog materials; omitted definitions keep unknown mass. */
+      materials: z
+        .array(
+          z
+            .object({
+              definitionId: assemblyDefinitionIdSchema,
+              materialId: structuralMaterialPresetIdSchema,
+            })
+            .strict(),
+        )
+        .max(256)
+        .default([])
+        .refine(
+          (materials) =>
+            new Set(materials.map(({ definitionId }) => definitionId)).size === materials.length,
+          "Assign at most one material per definition.",
+        ),
+    })
+    .strict(),
   inspect_assembly: assemblyInspectionArgumentsSchema,
   create_assembly_draft: z.object({ baseRevision: revisionSchema }).strict(),
   upgrade_assembly: assemblyDraftOperationSchema,
@@ -170,6 +194,36 @@ export const assemblyModelViewSchema = z
     motionStudies: assemblyMotionStudiesSchema.optional(),
   })
   .strict()
+const nullableMeasure = z.number().finite().nonnegative().nullable()
+export const assemblyBomViewSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    documentId: documentIdSchema,
+    revision: revisionSchema,
+    units: z
+      .object({ volume: z.literal("mm3"), mass: z.literal("g"), density: z.literal("kg/m3") })
+      .strict(),
+    rows: z
+      .array(
+        z
+          .object({
+            item: z.number().int().min(1).max(256),
+            definitionId: assemblyDefinitionIdSchema,
+            name: authoredItemNameSchema,
+            quantity: z.number().int().min(1).max(256),
+            appearancePresetIds: z.array(appearancePresetIdSchema).max(12),
+            materialId: structuralMaterialPresetIdSchema.nullable(),
+            densityKgM3: nullableMeasure,
+            unitVolumeMm3: nullableMeasure,
+            unitMassG: nullableMeasure,
+            totalMassG: nullableMeasure,
+          })
+          .strict(),
+      )
+      .max(256),
+  })
+  .strict()
+export type AssemblyBomView = z.infer<typeof assemblyBomViewSchema>
 export const assemblyDraftStateSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -239,6 +293,8 @@ export const assemblyInspectionViewSchema = z
             representation: z.enum(["exact-solid", "triangle-mesh"]),
             geometryFrame: assemblyRigidPoseSchema,
             bounds,
+            /** Exact source solid volume in mm^3; omitted for triangle meshes. */
+            volume: z.number().finite().positive().optional(),
           })
           .strict(),
       )
@@ -375,6 +431,12 @@ export const assemblyOperations = [
     .strict(),
   z
     .object({ tool: z.literal("model_assembly"), arguments: assemblyToolInputs.model_assembly })
+    .strict(),
+  z
+    .object({
+      tool: z.literal("model_assembly_bom"),
+      arguments: assemblyToolInputs.model_assembly_bom,
+    })
     .strict(),
   z
     .object({ tool: z.literal("inspect_assembly"), arguments: assemblyToolInputs.inspect_assembly })

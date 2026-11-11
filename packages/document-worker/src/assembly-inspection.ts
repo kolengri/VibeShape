@@ -16,7 +16,7 @@ import {
   projectDocumentSnapshotV1ToV0,
 } from "@vibeshape/domain"
 import type { AssemblyConstraintSolvePort } from "@vibeshape/domain/assembly-mates"
-import { documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
+import { type DocumentSnapshotV4, documentSnapshotV4Schema } from "@vibeshape/domain/document-v4"
 import { readMeshImportFeatureParameters } from "@vibeshape/domain/part-design-mesh-import"
 import type { AssemblyNativeBody, GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
 import {
@@ -125,6 +125,7 @@ export type AssemblyRuntimeAction<T> = (
   occurrences: readonly AssemblyMaterializedOccurrence[],
   nativeContexts: ReadonlyMap<string, string>,
   kinematics?: Extract<AssemblyMaterializationResult, { ok: true }>["kinematics"],
+  authority?: DocumentSnapshotV4,
 ) => T | Promise<T>
 
 /** Rebuilds frozen sources under disposable cache identities without changing their authored UUIDs. */
@@ -218,7 +219,12 @@ export async function withMaterializedAssemblyRuntime<T>(
     })
     if (!materialized.ok) throw new AssemblyMaterializationError(materialized)
     output = {
-      value: await action(materialized.occurrences, nativeContexts, materialized.kinematics),
+      value: await action(
+        materialized.occurrences,
+        nativeContexts,
+        materialized.kinematics,
+        authority,
+      ),
     }
   } catch (error) {
     failed = true
@@ -264,6 +270,9 @@ export async function inspectAssemblyRuntime(
           ...occurrence,
           contentHash: geometry.contentHash,
           topologyCandidates: geometry.topologyCandidates,
+          ...(occurrence.representation === "exact-solid" && geometry.shape.volume > 0
+            ? { volume: geometry.shape.volume }
+            : {}),
         })),
         interference,
         ...(kinematics ? { kinematics } : {}),

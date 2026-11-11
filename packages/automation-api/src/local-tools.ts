@@ -152,6 +152,7 @@ export function printReadinessResultContextMatches(
 }
 
 import {
+  assemblyBomViewSchema,
   assemblyCommitViewSchema,
   assemblyDiscardViewSchema,
   assemblyDraftPreviewSchema,
@@ -459,9 +460,15 @@ export const localExportSchema = z
   .object({
     documentId: documentSummaryViewSchema.shape.documentId,
     revision: revisionSchema,
-    format: z.enum(["step", "stl", "3mf"]),
-    filename: z.string().regex(/^[a-zA-Z0-9_-]{1,100}\.(step|stl|3mf)$/),
-    mimeType: z.enum(["model/step", "model/stl", "model/3mf"]),
+    format: z.enum(["step", "stl", "3mf", "glb", "obj"]),
+    filename: z.string().regex(/^[a-zA-Z0-9_-]{1,100}\.(step|stl|3mf|glb|zip)$/),
+    mimeType: z.enum([
+      "model/step",
+      "model/stl",
+      "model/3mf",
+      "model/gltf-binary",
+      "application/zip",
+    ]),
     base64: z
       .string()
       .max(8 * 1024 * 1024)
@@ -572,6 +579,7 @@ export const localToolOutputs = {
   model_measurements: resultOf(modelMeasurementViewSchema),
   draft_measurements: resultOf(automationDraftInspectionViewSchema),
   model_assembly: resultOf(assemblyModelViewSchema),
+  model_assembly_bom: resultOf(assemblyBomViewSchema),
   sample_assembly_motion_study: resultOf(assemblyMotionSamplesViewSchema),
   create_assembly_motion_study: resultOf(assemblyDraftStateSchema),
   update_assembly_motion_study: resultOf(assemblyDraftStateSchema),
