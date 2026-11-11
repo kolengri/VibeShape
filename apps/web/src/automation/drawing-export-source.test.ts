@@ -152,7 +152,19 @@ describe("prepare_drawing_export", () => {
         diagnostic: { code: "stale-revision", retryable: true },
       },
     )
-    expect(project).toHaveBeenCalledTimes(2)
+    project.mockResolvedValueOnce({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "The requested part does not exist or has no body to draw.",
+        retryable: false,
+        sourceCode: "part-not-found",
+      },
+    })
+    expect(
+      await f.session.execute(actor, operation({ revision: 4, format: "pdf", partId: id(8) })),
+    ).toMatchObject({ ok: false, diagnostic: { code: "part-not-found", retryable: false } })
+    expect(project).toHaveBeenCalledTimes(3)
   })
 
   it("rejects stale revisions and projections of another revision", async () => {

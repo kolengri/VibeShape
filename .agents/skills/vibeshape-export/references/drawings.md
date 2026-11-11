@@ -6,11 +6,15 @@ exact hidden-line removal, composes one sheet and writes it, without a draft, Hi
 entry, filesystem write, browser download or saved setting.
 
 Without `partId` the drawing contains every exact terminal body and silently skips triangle-mesh
-parts. Optional `partId` limits it to one authored Part; obtain it from `model_parts`. A mesh
-`partId`, or a model with no exact body, fails with non-retryable `no-drawable-bodies`. A revision
-that is stale or changes while projecting fails with retryable `stale-revision`: read the current
-revision and prepare again. Other projection failures return `drawing-failed` with the kernel's
-`retryable` flag. Optional `settings` accepts:
+parts. Optional `partId` limits it to one authored Part; obtain it from `model_parts`. Failures:
+
+| Code | Retry | Meaning |
+|---|---|---|
+| `part-not-found` | No | `partId` does not name a Part with a body at that revision; read `model_parts` again |
+| `no-drawable-bodies` | No | The selected Part is a triangle mesh, or the model has no exact body |
+| `drawing-too-complex` | No | A view exceeds the projected edge or curve-sample budget; draw fewer parts or views |
+| `stale-revision` | Yes | The revision is stale, changed while projecting or the session was replaced; read the current revision and prepare again |
+| `drawing-failed` | Kernel flag | Other projection failures | Optional `settings` accepts:
 
 | Field | Default | Values |
 |---|---|---|

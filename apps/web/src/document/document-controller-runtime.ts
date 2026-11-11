@@ -200,7 +200,11 @@ import type { AssistantCheckpointPresentation } from "./assistant-checkpoint-pre
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
 import { createAutomationLibraryPort } from "./browser-library-repository"
 import { BrowserProjectRepository } from "./browser-project-repository"
-import { type ActiveDocumentDrawingResult, projectSessionDrawing } from "./document-drawing"
+import {
+  type ActiveDocumentDrawingResult,
+  projectSessionDrawing,
+  unavailableDrawing,
+} from "./document-drawing"
 import { prepareDocumentGeometryExport } from "./document-geometry-export"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { reconcileHistoryInsertion } from "./history-insertion"
@@ -1485,7 +1489,9 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       preparePicture: pictureRender.prepare,
       prepareDrawing: createDrawingExportPreparer({
         project: (views, partId) =>
-          currentReport() ? projectActiveDocumentDrawing(views, partId) : Promise.reject(),
+          currentReport()
+            ? projectActiveDocumentDrawing(views, partId)
+            : Promise.resolve(unavailableDrawing),
       }),
       documentId: capturedDocumentId,
       currentRevision: () => active.snapshot.revision,
@@ -3316,16 +3322,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     partId?: string,
   ): Promise<ActiveDocumentDrawingResult> {
     const active = session
-    if (!active || state.status !== "ready" || !state.report)
-      return {
-        ok: false,
-        diagnostic: {
-          code: "session-closed",
-          message: "The local document session is unavailable.",
-          retryable: true,
-          sourceCode: null,
-        },
-      }
+    if (!active || state.status !== "ready" || !state.report) return unavailableDrawing
     const revision = active.snapshot.revision
     return projectSessionDrawing({
       session: active,
