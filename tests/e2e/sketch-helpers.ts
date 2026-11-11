@@ -10,12 +10,38 @@ export async function fitIsometricView(page: Page) {
 export async function drawRectangle(page: Page) {
   await selectSketchTool(page, "Rectangle tools", "Rectangle G")
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  const bounds = await drawing.boundingBox()
-  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
-  await page.mouse.click(bounds.x + bounds.width * 0.35, bounds.y + bounds.height * 0.62)
-  await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.38)
+  const [first, second] = await uncoveredRectangleCorners(page, drawing)
+  await page.mouse.click(first.x, first.y)
+  await page.mouse.click(second.x, second.y)
   await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
   return drawing
+}
+
+/** Picks rectangle corners inside the free canvas whose corners all reach the drawing. */
+async function uncoveredRectangleCorners(page: Page, drawing: Locator) {
+  const bounds = await unobscuredDrawingBounds(page, drawing)
+  for (const [left, top, right, bottom] of [
+    [0.35, 0.38, 0.65, 0.62],
+    [0.2, 0.45, 0.45, 0.8],
+    [0.15, 0.25, 0.4, 0.6],
+    [0.55, 0.45, 0.8, 0.8],
+  ] as const) {
+    const point = (horizontal: number, vertical: number) => ({
+      x: bounds.x + bounds.width * horizontal,
+      y: bounds.y + bounds.height * vertical,
+    })
+    const corners = [point(left, top), point(right, top), point(right, bottom), point(left, bottom)]
+    const reachable = await drawing.evaluate(
+      (element, points) =>
+        points.every(({ x, y }) => {
+          const hit = element.ownerDocument.elementFromPoint(x, y)
+          return hit !== null && element.contains(hit)
+        }),
+      corners,
+    )
+    if (reachable) return [point(left, bottom), point(right, top)] as const
+  }
+  throw new Error("No uncovered rectangle fits in the free sketch canvas.")
 }
 
 export async function selectSketchTool(page: Page, family: string, tool: string | RegExp) {
