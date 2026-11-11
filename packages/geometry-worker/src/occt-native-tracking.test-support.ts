@@ -53,15 +53,15 @@ export function trackNativeWrappers(kernel: OpenCascadeInstance) {
         const property = Reflect.get(target, key, target)
         if (typeof property !== "function") return property
         return new Proxy(property, {
-          construct: (constructor, values) =>
-            track(Reflect.construct(constructor as Constructible, values.map(unwrap))) as object,
+          construct: (nativeClass, values) =>
+            track(Reflect.construct(nativeClass as Constructible, values.map(unwrap))) as object,
           apply: (callable, _self, values) =>
             track(Reflect.apply(callable as Callable, undefined, values.map(unwrap))),
-          get: (constructor, member) => {
-            const staticMember = Reflect.get(constructor, member, constructor)
+          get: (nativeClass, member) => {
+            const staticMember = Reflect.get(nativeClass, member, nativeClass)
             return typeof staticMember === "function"
               ? (...values: unknown[]) =>
-                  track(Reflect.apply(staticMember, constructor, values.map(unwrap)))
+                  track(Reflect.apply(staticMember, nativeClass, values.map(unwrap)))
               : staticMember
           },
         })
