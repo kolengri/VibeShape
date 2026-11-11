@@ -210,57 +210,65 @@ function ReferenceSourceField({
   onChange,
   source,
   choices,
-  describedBy,
 }: Pick<Props, "kind" | "value" | "onChange"> & {
   source: ReturnType<typeof referenceSource>
   choices: Choices
-  describedBy: string | undefined
 }) {
   const t = useTranslations("app.referenceFrame")
+  const hintId = useId()
+  const unset = source === ""
   return (
-    <label className={fieldVariants({ orientation: "horizontal" })}>
-      {t("source")}
-      <select
-        className="h-8 min-w-0 rounded-md border bg-background px-2 text-sm"
-        value={source}
-        aria-describedby={describedBy}
-        onChange={(event) => selectReference(event.target.value, kind, value, choices, onChange)}
-      >
-        {source === "" && (
-          <option value="" disabled>
-            {t(kind === "plane" ? "choosePlane" : "chooseAxis")}
-          </option>
-        )}
-        <option value="origin">{t("origin")}</option>
-        {source === "selected" && <option value="selected">{t("selectedReference")}</option>}
-        {choices.map(({ key, label }) => (
-          <option key={key} value={key}>
-            {label}
-          </option>
-        ))}
-        <option value="explicit">{t("explicit")}</option>
-      </select>
-    </label>
+    <>
+      <label className={fieldVariants({ orientation: "horizontal" })}>
+        {t("source")}
+        <select
+          className="h-8 min-w-0 rounded-md border bg-background px-2 text-sm"
+          value={source}
+          aria-describedby={unset ? hintId : undefined}
+          onChange={(event) => selectReference(event.target.value, kind, value, choices, onChange)}
+        >
+          {unset && (
+            <option value="" disabled>
+              {t(kind === "plane" ? "choosePlane" : "chooseAxis")}
+            </option>
+          )}
+          <option value="origin">{t("origin")}</option>
+          {source === "selected" && <option value="selected">{t("selectedReference")}</option>}
+          {choices.map(({ key, label }) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+          <option value="explicit">{t("explicit")}</option>
+        </select>
+      </label>
+      {unset && <FieldDescription id={hintId}>{t("unsetHint")}</FieldDescription>}
+    </>
   )
 }
 
-function ReferenceSupportFields({ kind, options, value, selectedFace, onChange: report }: Props) {
-  const t = useTranslations("app.referenceFrame")
-  // Preview replaces rendered source meshes and can clear the viewport selection.
-  const [startingFace] = useState(selectedFace)
-  // A null value at mount means "no support chosen" (for example after History repair dropped a
-  // face on a deleted body). Later nulls come from unfinished explicit coordinates and stay errors.
+/**
+ * A null value at mount means "no support chosen" (for example after History repair dropped a
+ * face on a deleted body). Later nulls come from unfinished explicit coordinates and stay errors.
+ */
+function useReferenceChoice(value: Props["value"], report: Props["onChange"]) {
   const [unchosen, setUnchosen] = useState(value === null)
   const unset = unchosen && value === null
   const onChange: Props["onChange"] = (next) => {
     setUnchosen(false)
     report(next)
   }
+  return { unset, invalid: value === null && !unset, onChange }
+}
+
+function ReferenceSupportFields({ kind, options, value, selectedFace, onChange: report }: Props) {
+  const t = useTranslations("app.referenceFrame")
+  // Preview replaces rendered source meshes and can clear the viewport selection.
+  const [startingFace] = useState(selectedFace)
+  const { unset, invalid, onChange } = useReferenceChoice(value, report)
   const choices: Choices = kind === "plane" ? options.planes : options.axes
   const source = referenceSource(value, choices, unset)
-  const invalid = value === null && !unset
   const errorId = useId()
-  const hintId = useId()
   return (
     <fieldset
       className="grid gap-2 border-t pt-3"
@@ -274,9 +282,7 @@ function ReferenceSupportFields({ kind, options, value, selectedFace, onChange: 
         onChange={onChange}
         source={source}
         choices={choices}
-        describedBy={unset ? hintId : undefined}
       />
-      {unset && <FieldDescription id={hintId}>{t("unsetHint")}</FieldDescription>}
       {kind === "plane" && (
         <SelectedPlanarFaceButton
           options={options}
