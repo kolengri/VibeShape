@@ -719,3 +719,41 @@ describe("tangent-join predictor holds beside constraints on shared handles", ()
     }
   })
 })
+
+/** Through-points of an open zigzag with `segments` spans. */
+function zigzag(segments: number) {
+  return Array.from({ length: segments + 1 }, (_, index) => ({ x: index * 10, y: (index % 2) * 6 }))
+}
+
+describe("open spline chains in profile detection", () => {
+  it("reports long open chains as open instead of a zero-area out-and-back loop", () => {
+    for (const segments of [18, 30]) {
+      const { sketch } = spline(zigzag(segments))
+      const started = performance.now()
+      const solution = solved(sketch, [])
+      // Rounding once left the out-and-back walk just above the area tolerance, and its
+      // detection took seconds per solve.
+      expect(performance.now() - started).toBeLessThan(1_000)
+      expect(solution.profileResult.profiles).toEqual([])
+      expect(solution.profileResult.loops).toEqual([])
+      expect(solution.profileResult.diagnostics).toMatchObject([
+        {
+          code: "open-chain",
+          entityIds: expect.arrayContaining(cubics(sketch).map(({ id }) => id)),
+        },
+      ])
+    }
+  })
+
+  it("still detects a long closed spline as one profile", () => {
+    const ring = Array.from({ length: 30 }, (_, index) => ({
+      x: 50 * Math.cos((index * Math.PI) / 15),
+      y: 50 * Math.sin((index * Math.PI) / 15),
+    }))
+    const { sketch } = spline(ring, true)
+    const solution = solved(sketch, [])
+    expect(solution.profileResult.diagnostics).toEqual([])
+    expect(solution.profileResult.profiles).toHaveLength(1)
+    expect(solution.profileResult.profiles[0]?.area).toBeCloseTo(Math.PI * 2_500, -1)
+  })
+})

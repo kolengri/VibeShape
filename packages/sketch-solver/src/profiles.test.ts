@@ -389,6 +389,34 @@ describe("sketch profile detection", () => {
     })
   })
 
+  it("keeps a boundary with a dangling spur and ignores a bare out-and-back polyline", () => {
+    const spurred = sketch([
+      point(1, 0, 0),
+      point(2, 20, 0),
+      point(3, 20, 10),
+      point(4, 0, 10),
+      point(5, 5, 5),
+      line(101, 1, 2),
+      line(102, 2, 3),
+      line(103, 3, 4),
+      line(104, 4, 1),
+      line(105, 1, 5),
+    ])
+    const result = detectSketchProfiles(spurred, authoredSolution(spurred))
+    expect(result.profiles).toHaveLength(1)
+    expect(result.profiles[0]?.area).toBeCloseTo(200, 9)
+
+    const polyline = sketch([
+      ...Array.from({ length: 31 }, (_, index) => point(index + 1, index * 10, (index % 2) * 6)),
+      ...Array.from({ length: 30 }, (_, index) => line(101 + index, index + 1, index + 2)),
+    ])
+    expect(detectSketchProfiles(polyline, authoredSolution(polyline))).toMatchObject({
+      profiles: [],
+      loops: [],
+      diagnostics: [{ code: "open-chain" }],
+    })
+  })
+
   it("ignores construction curves when extracting regions", () => {
     const value = sketch([point(1, 0, 0), circle(101, 1, 5), circle(102, 1, 3, true)])
 
