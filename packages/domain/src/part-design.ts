@@ -814,7 +814,8 @@ function resolveExtrusionV6Parameters(
       )
 }
 
-const revolveAngleSchema = angleQuantitySchema.refine(
+/** Every authored Revolve angle: greater than zero and at most one full turn. */
+export const revolveAngleSchema = angleQuantitySchema.refine(
   ({ value }) => value > 0 && value <= Math.PI * 2,
   "Revolve angles must be greater than zero and at most 360 degrees.",
 )

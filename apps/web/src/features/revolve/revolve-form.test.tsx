@@ -726,6 +726,35 @@ describe("RevolveForm v8 extents and endpoints", () => {
     )
   })
 
+  it("retains a supported angle behind an endpoint and restores an out-of-range one", async () => {
+    const user = userEvent.setup()
+    const { onSave, onPreviewChange } = renderExtentForm()
+    const angle = screen.getByRole("combobox", { name: copy.angle })
+    await user.clear(angle)
+    await user.type(angle, "400 deg")
+    await user.selectOptions(screen.getByLabelText("End condition"), "up-to-body")
+    await user.click(screen.getByRole("combobox", { name: "End body" }))
+    await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Wall")
+    await user.click(screen.getByRole("option", { name: "Wall · result" }))
+    const endpoint = expect.objectContaining({
+      angle: expect.objectContaining({ value: Math.PI * 2 }),
+      endCondition: expect.objectContaining({ kind: "up-to-body" }),
+    })
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ parameters: endpoint }),
+      ),
+    )
+    await user.click(submit())
+    expect(onSave).toHaveBeenCalledWith(4, expect.objectContaining({ parameters: endpoint }))
+
+    await user.selectOptions(screen.getByLabelText("End condition"), "angle")
+    expect((screen.getByRole("combobox", { name: copy.angle }) as HTMLInputElement).value).toBe(
+      "400 deg",
+    )
+    expect(await screen.findByText(copy.invalidRange)).toBeTruthy()
+  })
+
   it("binds an up-to-face endpoint to its exact body revision and orders its dependency", async () => {
     const user = userEvent.setup()
     const { onSave } = renderExtentForm()

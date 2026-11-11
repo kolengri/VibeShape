@@ -14,6 +14,7 @@ import {
   type RevolveEndCondition,
   readRevolveFeatureParameters,
   readRevolveProfileSet,
+  revolveAngleSchema,
   type revolveFeatureParametersSchema,
   routeRevolveAuthoring,
   type SketchProfileSelector,
@@ -248,12 +249,13 @@ type ParseContext = Readonly<{
 }>
 
 /**
- * An endpoint hides the angle field; its retained value is the parsed field, else the saved angle
- * of an edited revolve, else a full turn, so hidden raw input never blocks Apply.
+ * An endpoint hides the angle field; its retained value is the parsed field when it is a supported
+ * Revolve angle, else the saved angle of an edited revolve, else a full turn, so hidden raw or
+ * out-of-range input never blocks Apply.
  */
 function retainedEndpointAngle(values: Values, context: ParseContext) {
   const angle = parseAngle(values.angle, "angle", context)
-  if (angle.ok) return angle.quantity
+  if (angle.ok && revolveAngleSchema.safeParse(angle.quantity).success) return angle.quantity
   const saved =
     context.mode.kind === "edit" ? readRevolveFeatureParameters(context.mode.feature)?.angle : null
   return saved ?? createAngleQuantity(Math.PI * 2, "rad")
