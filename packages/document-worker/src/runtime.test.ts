@@ -568,7 +568,8 @@ describe("DocumentWorkerRuntime", () => {
         status: "failed",
         diagnostics: [{ values: { reason: "invalid-feature-geometry" } }],
       })
-      expect(record?.diagnostics[0]?.values).not.toHaveProperty("message")
+      if (record?.status !== "failed") throw new Error("Expected a failed evaluation record.")
+      expect(record.diagnostics[0]?.values).not.toHaveProperty("message")
     },
   )
 
