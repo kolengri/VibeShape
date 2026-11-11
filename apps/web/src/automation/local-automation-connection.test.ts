@@ -337,6 +337,66 @@ describe("unpaired local client discovery", () => {
     expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
     expect(enableAutoApply).toHaveBeenCalled()
     expect(window.localStorage.getItem("vibeshape-local-ai-preferences")).toBe(remembered)
+
+    // Once the review closes, the next poll applies the remembered mode.
+    enableAutoApply.mockReturnValue(true)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
+  })
+
+  it("saves an explicit Manual choice while a shown review refuses the remembered mode", async () => {
+    window.localStorage.setItem(
+      "vibeshape-local-ai-preferences",
+      JSON.stringify({ client, autoApply: true }),
+    )
+    enableAutoApply.mockReturnValue(false)
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    optOut.mockReturnValue(false)
+
+    expect(connection.disableAutoApply()).toBe(true)
+    expect(
+      JSON.parse(window.localStorage.getItem("vibeshape-local-ai-preferences") ?? "null"),
+    ).toEqual({ client, autoApply: false })
+    enableAutoApply.mockReturnValue(true)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+  })
+
+  it("restores the remembered mode on an authorized project switch, not the shown one", async () => {
+    window.localStorage.setItem(
+      "vibeshape-local-ai-preferences",
+      JSON.stringify({ client, autoApply: true }),
+    )
+    // A shown review refuses auto-apply on the source project for the whole session.
+    const sourceEnable = vi.fn().mockReturnValue(false)
+    const original = mocks.createHandle.getMockImplementation()
+    mocks.createHandle.mockImplementation(() => ({
+      ...original?.(),
+      enableAutoApply: sourceEnable,
+    }))
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    connection.setProjectManagement(true)
+    const nextId = "0195b5ac-b250-7a2c-8c33-000000000002"
+    const destinationEnable = vi.fn().mockReturnValue(true)
+    mocks.createHandle.mockReturnValue({
+      ...original?.(),
+      documentId: nextId,
+      readIdentity: () => ({ id: nextId, name: "Assembly", revision: 1 }),
+      enableAutoApply: destinationEnable,
+    })
+    const options = projectOptions()
+    mocks.execute.mockImplementation(async () => {
+      expect(options.replaceSession()).toBe(true)
+      return { ok: true, value: { projectId: nextId, name: "Assembly", revision: 1 } }
+    })
+    deliverProjectChange(nextId)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(destinationEnable).toHaveBeenCalled()
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: true })
   })
 
   it("coalesces slow status reads and stops discovery on disposal", async () => {

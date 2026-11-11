@@ -6,6 +6,7 @@ import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import {
   enableLocalAi,
+  expectLocalAiReconnected,
   openAiConnections,
   openApplicationMenuItem,
   openAutoApplySetup,
@@ -307,49 +308,65 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     expect(
       localToolOutputs.list_projects.parse(await call(local, "list_projects", {})),
     ).toMatchObject({ ok: true })
-    const switching = success(
-      localToolOutputs.create_draft.parse(
-        await call(local, "create_draft", { baseRevision: reopened.summary.revision }),
-      ),
+    // Rename needs review even with auto-apply on, so each commit waits in a visible review.
+    const pendingRename = async (command: number, name: string) => {
+      const base = success(localToolOutputs.model_info.parse(await call(local, "model_info", {})))
+      const draft = success(
+        localToolOutputs.create_draft.parse(
+          await call(local, "create_draft", { baseRevision: base.summary.revision }),
+        ),
+      )
+      expect(
+        await call(local, "rename_project", {
+          draftId: draft.draftId,
+          baseRevision: draft.revision,
+          commandId: id(command),
+          name,
+        }),
+      ).toMatchObject({ ok: true })
+      // Wrap the pending commit so awaiting this helper does not await the commit itself.
+      const pending = call(local, "commit_draft", { draftId: draft.draftId })
+      await expect(review).toBeVisible()
+      return { pending }
+    }
+    const autoApplyOn = page.getByText("AI access on · Auto-apply on", { exact: true })
+    const manualOn = page.getByText("AI access on · Approve each change", { exact: true })
+    const cancelled = review.getByText(
+      "This review was cancelled because its session or calculation ended.",
     )
-    expect(
-      await call(local, "rename_project", {
-        draftId: switching.draftId,
-        baseRevision: switching.revision,
-        commandId: id(41),
-        name: "Metadata awaiting project switch",
-      }),
-    ).toMatchObject({ ok: true })
-    const pendingSwitch = call(local, "commit_draft", { draftId: switching.draftId })
-    await expect(review).toBeVisible()
-    // A project-owned agent review does not block manual navigation (#357). Leaving the project
-    // releases the external client's document scope (ADR-0097), which ends the pending commit.
     const sourceProject = new URL(page.url()).searchParams.get("project")
-    await openApplicationMenuItem(page, "Projects")
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Projects", exact: true }),
-    ).toBeVisible()
-    expect(await pendingSwitch).toMatchObject({ ok: false })
-    // ADR-0100: the remembered local client reconnects to the destination project through ordinary
-    // status discovery with its remembered approval mode, but never regains project management.
     const pairedProject = async () => {
       const info = localToolOutputs.model_info.parse(await call(local, "model_info", {}))
       return info.ok ? info.value.summary.documentId : null
     }
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /^Open Untitled project, revision / })
-      .click()
-    await expect.poll(() => new URL(page.url()).searchParams.get("project")).toBe(sourceProject)
-    await expect.poll(pairedProject, { timeout: 15_000 }).toBe(sourceProject)
-    // The cancelled review stays readable, and while it is shown auto-apply cannot resume here.
-    await expect(
-      review.getByText("This review was cancelled because its session or calculation ended."),
-    ).toBeVisible()
-    await expect(
-      page.getByText("AI access on · Approve each change", { exact: true }),
-    ).toBeVisible()
-    // The cancelled commit published nothing: the source revision is unchanged.
+    // A project-owned agent review does not block manual navigation (#357). Leaving the project
+    // releases the external client's document scope (ADR-0097), which ends the pending commit.
+    // ADR-0100: the remembered local client then re-pairs to the project it returns to.
+    const navigateAwayAndBack = async ({ pending }: { pending: Promise<unknown> }) => {
+      await openApplicationMenuItem(page, "Projects")
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Projects", exact: true }),
+      ).toBeVisible()
+      expect(await pending).toMatchObject({ ok: false })
+      await page
+        .getByRole("main")
+        .getByRole("button", { name: /^Open Untitled project, revision / })
+        .click()
+      await expect.poll(() => new URL(page.url()).searchParams.get("project")).toBe(sourceProject)
+      await expect.poll(pairedProject, { timeout: 15_000 }).toBe(sourceProject)
+      // The cancelled review stays readable; while it is shown, auto-apply cannot resume.
+      await expect(cancelled).toBeVisible()
+      await expect(manualOn).toBeVisible()
+    }
+
+    // Discarding a pending review keeps the session's auto-apply choice.
+    const discarded = await pendingRename(41, "Metadata awaiting discard")
+    await review.getByRole("button", { name: "Discard", exact: true }).click()
+    expect(await discarded.pending).toMatchObject({ ok: false })
+    await expect(autoApplyOn).toBeVisible()
+
+    await navigateAwayAndBack(await pendingRename(42, "Metadata awaiting project switch"))
+    // Neither cancelled commit published anything: the source revision is unchanged.
     expect(
       success(localToolOutputs.model_info.parse(await call(local, "model_info", {}))).summary
         .revision,
@@ -357,6 +374,21 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     expect(
       localToolOutputs.list_projects.parse(await call(local, "list_projects", {})),
     ).toMatchObject({ ok: false, diagnostic: { code: "project-management-disabled" } })
+    // Choosing Manual while the review refuses auto-apply is saved and survives a reload.
+    await openLocalAiApprovalMenu(page)
+    await page.getByRole("menuitemradio", { name: "Approve each change", exact: true }).click()
+    await page.reload()
+    await expectLocalAiReconnected(page)
+    await expect.poll(pairedProject, { timeout: 15_000 }).toBe(sourceProject)
+    await expect(manualOn).toBeVisible()
+    await expect(autoApplyOn).toHaveCount(0)
+
+    // With auto-apply remembered again, it resumes once the cancelled review is closed.
+    await enableAutoApply(page)
+    await navigateAwayAndBack(await pendingRename(43, "Metadata awaiting another switch"))
+    await review.getByRole("button", { name: "Close", exact: true }).click()
+    await expect(review).toHaveCount(0)
+    await expect(autoApplyOn).toBeVisible()
     await openApplicationMenuItem(page, "Projects")
     await expect(page.getByRole("button", { name: "New project", exact: true })).toBeEnabled()
     await page.getByRole("button", { name: "New project", exact: true }).click()

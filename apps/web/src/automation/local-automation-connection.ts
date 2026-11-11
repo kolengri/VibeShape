@@ -468,7 +468,10 @@ export function createLocalAutomationConnection(
           current.handle.dispose()
           current.handle = created
           current.executor = createExecutor(current)
-          const autoApply = snapshot.autoApply && created.enableAutoApply(current.credential.actor)
+          // The remembered mode, not the momentarily displayed one, is the source of truth.
+          const autoApply =
+            preferredAutoApply(current.credential.client, snapshot.autoApply) &&
+            created.enableAutoApply(current.credential.actor)
           observeNumericalJobs(current)
           publish({ ...snapshot, autoApply })
           saveResume(current)
@@ -766,8 +769,18 @@ export function createLocalAutomationConnection(
       await polling
     } finally {
       if (current.polling === polling) current.polling = null
+      resumeRememberedAutoApply(current)
       if (pair === current) current.timer = setTimeout(() => void poll(current), 500)
     }
+  }
+  // A shown review or running commit can refuse the remembered mode when a session starts.
+  // The handle refuses again until the project is idle, so retrying on each poll is enough.
+  function resumeRememberedAutoApply(current: Pair) {
+    if (pair !== current || snapshot.autoApply || current.active || snapshot.busy) return
+    if (!preferredAutoApply(current.credential.client)) return
+    if (!current.handle.enableAutoApply(current.credential.actor)) return
+    publish({ ...snapshot, autoApply: true })
+    if (!saveResume(current)) void disable()
   }
   function publishConnection(current: Pair, restoreAutoApply: boolean) {
     if (restoreTimer) clearTimeout(restoreTimer)
@@ -1260,8 +1273,15 @@ export function createLocalAutomationConnection(
     disableAutoApply() {
       if (nativeProjectAccess) return false
       const current = pair
-      if (!current || snapshot.busy || reviews.getSnapshot() || !current.handle.disableAutoApply())
-        return false
+      if (!current) return false
+      // Already manual (for example while a shown review refuses the remembered mode): the
+      // person's explicit choice still replaces the remembered one.
+      if (!snapshot.autoApply) {
+        if (!writePreference(current.credential.client, false) || !saveResume(current))
+          void disable()
+        return true
+      }
+      if (snapshot.busy || reviews.getSnapshot() || !current.handle.disableAutoApply()) return false
       publish({ ...snapshot, autoApply: false })
       if (!writePreference(current.credential.client, false) || !saveResume(current)) void disable()
       return true
