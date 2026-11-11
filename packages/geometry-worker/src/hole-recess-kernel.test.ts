@@ -217,7 +217,7 @@ describe("exact hole recess evaluation", () => {
           vi.fn(),
         )
         const result = await engine.evaluateFeature(
-          request("org.vibeshape.feature.part-design.hole", 4, parameters, true),
+          request("org.vibeshape.feature.part-design.hole", 4, { ...parameters }, true),
           vi.fn(),
         )
         if (!result.ok) throw new Error(result.diagnostic.message)
