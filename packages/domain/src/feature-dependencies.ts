@@ -157,9 +157,7 @@ export function terminalFeatureIds(features: readonly FeatureRecord[]): Readonly
   const consumed = new Set(features.flatMap(featureBodyDependencyIds))
   return new Set(
     features
-      .filter(
-        (feature) => !consumed.has(feature.id) && !isReferenceGeometryFeature(feature),
-      )
+      .filter((feature) => !consumed.has(feature.id) && !isReferenceGeometryFeature(feature))
       .map(({ id }) => id),
   )
 }
