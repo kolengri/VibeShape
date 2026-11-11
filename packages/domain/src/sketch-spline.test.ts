@@ -212,9 +212,9 @@ describe("model spline references", () => {
       signature,
     },
     endpointAnchors: [
-      [0, 0, 0],
-      [20, 0, 0],
-    ] as [[number, number, number], [number, number, number]],
+      [0, 0],
+      [20, 0],
+    ] as [[number, number], [number, number]],
     projectedCurveIds: [id(710), id(711)],
     projectedPointIds: Array.from({ length: 7 }, (_, index) => id(720 + index)),
   }
@@ -292,15 +292,15 @@ describe("model spline references", () => {
       kind: "model-spline",
       reference: { ...reference.reference, semanticRole: "edge.other-spline" },
       endpointAnchors: [
-        [1, 2, 0],
-        [21, 2, 0],
+        [1, 2],
+        [21, 2],
       ],
     })
     expect(repaired.externalReferences?.[0]).toMatchObject({
       // Repair re-anchors the ends on the replacement edge but keeps every projected identity.
       endpointAnchors: [
-        [1, 2, 0],
-        [21, 2, 0],
+        [1, 2],
+        [21, 2],
       ],
       projectedCurveIds: reference.projectedCurveIds,
       projectedPointIds: reference.projectedPointIds,

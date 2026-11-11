@@ -470,10 +470,10 @@ describe("external model geometry candidates", () => {
     expect(reference.reference).toEqual(candidate.reference)
     expect(reference.projectedCurveIds).toHaveLength(2)
     expect(reference.projectedPointIds).toHaveLength(7)
-    // The edge's current world ends anchor the projected end identities.
+    // The edge's current sketch-local ends anchor the projected end identities.
     expect(reference.endpointAnchors).toEqual([
-      [0, 0, 12],
-      [20, 0, 12],
+      [0, 0],
+      [20, 0],
     ])
     // Transient candidate IDs and fitted poles never persist.
     expect(JSON.stringify(reference)).not.toMatch(/candidateId|poles|"x"/)
@@ -493,15 +493,15 @@ describe("external model geometry candidates", () => {
     const moved = {
       ...candidate,
       endpointAnchors: [
-        [5, 1, 12],
-        [25, 1, 12],
+        [5, 1],
+        [25, 1],
       ] as const,
     }
     const repaired = applyExternalModelCandidateSelection(used, moved, [], reference.id)
     expect(repaired.externalReferences?.[0]).toMatchObject({
       endpointAnchors: [
-        [5, 1, 12],
-        [25, 1, 12],
+        [5, 1],
+        [25, 1],
       ],
       projectedPointIds: reference.projectedPointIds,
     })

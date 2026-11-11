@@ -90,4 +90,62 @@ describe("model spline projection", () => {
     })
     expect(sampleBezierChain(chain, 4)).toHaveLength(9)
   })
+
+  it("keeps end identities when the support frame turns with the edge", () => {
+    type Vector3 = [number, number, number]
+    const angle = (2 * Math.PI) / 3
+    const pivot: Vector3 = [5, 0.5, 0]
+    const rotate = ([x, y, z]: Vector3): Vector3 => [
+      pivot[0] + (x - pivot[0]) * Math.cos(angle) - (y - pivot[1]) * Math.sin(angle),
+      pivot[1] + (x - pivot[0]) * Math.sin(angle) + (y - pivot[1]) * Math.cos(angle),
+      z,
+    ]
+    const direction = ([x, y, z]: Vector3): Vector3 => {
+      const [ox, oy] = rotate([0, 0, 0])
+      const [px, py] = rotate([x, y, z])
+      return [px - ox, py - oy, z]
+    }
+    const frame = {
+      origin: [0, 0, 0] as Vector3,
+      xAxis: [1, 0, 0] as Vector3,
+      yAxis: [0, 1, 0] as Vector3,
+      normal: [0, 0, 1] as Vector3,
+    }
+    const turnedFrame = {
+      origin: rotate(frame.origin),
+      xAxis: direction(frame.xAxis),
+      yAxis: direction(frame.yAxis),
+      normal: frame.normal,
+    }
+    const edge: Vector3[] = [
+      [0, 0, 0],
+      [3, 2, 0],
+      [7, 2, 0],
+      [10, 1, 0],
+    ]
+    const first = projectWorldBezierChainToSupport(frame, edge)
+    if (!first.ok) throw new Error("The parallel edge must project.")
+    const anchors = [
+      [first.poles[0]?.x ?? 0, first.poles[0]?.y ?? 0],
+      [first.poles.at(-1)?.x ?? 0, first.poles.at(-1)?.y ?? 0],
+    ] as const
+    // A feature-derived support turns with its edge, which also rebuilds reparameterized.
+    const turned = projectWorldBezierChainToSupport(
+      turnedFrame,
+      [...edge].reverse().map(rotate),
+      1,
+      anchors,
+    )
+    if (!turned.ok) throw new Error("The turned edge must project.")
+    expect(turned.poles[0]?.x).toBeCloseTo(0, 9)
+    expect(turned.poles[0]?.y).toBeCloseTo(0, 9)
+    expect(turned.poles.at(-1)?.x).toBeCloseTo(10, 9)
+    expect(turned.poles.at(-1)?.y).toBeCloseTo(1, 9)
+    // World anchors would pair the turned ends the other way round after this 120-degree turn.
+    const [worldStart, worldEnd] = [rotate(edge[0] as Vector3), rotate(edge[3] as Vector3)]
+    const gap = (a: Vector3, b: Vector3) => Math.hypot(a[0] - b[0], a[1] - b[1])
+    expect(gap(worldEnd, [0, 0, 0]) + gap(worldStart, [10, 1, 0])).toBeLessThan(
+      gap(worldStart, [0, 0, 0]) + gap(worldEnd, [10, 1, 0]),
+    )
+  })
 })

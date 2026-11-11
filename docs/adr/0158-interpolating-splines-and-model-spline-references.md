@@ -51,12 +51,18 @@ times a handle length; such geometry is near a cusp and is rejected rather than 
 
 Three solve-time rules keep handle lengths stable when joins move:
 
-- **Predictor solve.** Every solve of a sketch with joins first runs once with each free handle
-  (neither explicitly dragged nor `fixed`) held at its current offset from its through-point.
-  Those joins' own G1 constraints are implied and omitted. When the predictor converges without
-  conflicts, its points seed the ordinary solve, which certifies status, freedom and the G1 check;
-  otherwise the ordinary solve runs unchanged. A join that moves along its tangent through a
-  dimension or a coincident point therefore translates with its handles instead of shrinking one.
+- **Predictor solve.** Every solve of a sketch with joins first runs once with both handles of each
+  join held at their current offsets from its through-point, but only for joins where neither
+  handle is explicitly dragged or referenced by any other constraint (fixed, dimensioned,
+  coincident and so on). Holding a driven handle would satisfy its constraint by moving the
+  through-point, and holding only one handle would lock the tangent direction, so such joins keep
+  their ordinary constraint. Held joins' own G1 constraints are implied and omitted, and every hold
+  ties an otherwise unconstrained handle, so the holds never duplicate a user constraint. When the
+  predictor converges without conflicts, its points seed the ordinary solve, which certifies
+  status, freedom and the G1 check; when the sketch itself is over-constrained or does not converge,
+  or no join is held, the ordinary solve runs unchanged for the whole sketch. A join that moves
+  along its tangent through a dimension or a coincident point therefore translates with its
+  handles instead of shrinking one.
 - **Carried handles.** Dragging a through-point, or a point coincident with it, carries both
   adjacent handles rigidly as dragged points with the same displacement, unless a handle has a
   `fixed` constraint.
@@ -100,23 +106,25 @@ for example, a degree-19 curve that vanishes with zero end slopes at every 1/16 
 0.01 mm bulge from a 16-sample check. That curve still needs about 2.1e-4 mm at 64 segments, so it
 is refused.
 
-Published chains follow the oriented edge from its topological start vertex, so a new reference
-starts from topology rather than from world coordinates. Consumers never derive end identity from
-any published order after that: a reparameterized or rebuilt edge can reverse it.
+Published chain poles follow the curve parameterization, which a rebuild can reverse. Consumers
+therefore never derive end identity from the published order.
 
-A `model-spline` external reference persists the stable `EdgeTopoRef`, the world `endpointAnchors`
-of its start and end, `N` projected curve IDs and `3N + 1` projected point IDs, and nothing else.
+A `model-spline` external reference persists the stable `EdgeTopoRef`, the sketch-local
+`endpointAnchors` of its projected start and end, `N` projected curve IDs and `3N + 1` projected point IDs, and nothing else.
 On every authoritative solve, the document worker resolves the reference through the existing
-fail-closed `TopoRef` path and pairs the current chain ends with the anchors, choosing the
-orientation with the smaller summed endpoint displacement. End identity therefore follows the
-physical ends through small edits, large moves and reversed parameterizations alike. Use records
+fail-closed `TopoRef` path, projects the chain, and pairs its projected ends with the anchors,
+choosing the orientation with the smaller summed endpoint displacement. End identity therefore
+follows the physical ends through small edits, large moves and reversed parameterizations alike.
+Because the anchors live in the sketch frame, a feature-derived support frame that turns with the
+referenced edge (an extrusion cap on a rotated datum plane, a box, cylinder or datum face) keeps
+the pairing however far both turn. Use records
 the anchors from the chosen edge's current ends, so the first resolution is exact; reload reads the
 persisted anchors, so a reopened sketch pairs identically; repair re-anchors on the replacement
 edge. A closed chain needs no pairing because both ends are its seam. When the two pairings differ
 by no more than one thousandth of the chord (at least 1e-6 mm), for example after sliding the edge
 along its own chord by more than its length, the correspondence is ambiguous and the reference
-fails closed until it is repaired. Anchors are not refreshed by ordinary rebuilds, so a source that
-eventually turns by more than a quarter turn relative to its anchors can pair with the nearer
+fails closed until it is repaired. Anchors are not refreshed by ordinary rebuilds, so an edge that
+eventually turns by more than a quarter turn relative to its sketch frame can pair with the nearer
 physical ends rather than the original ones; repair re-anchors it. The worker then checks that
 every published pole lies within 1e-4 mm of one plane parallel to the sketch support. That makes the
 orthogonal projection an isometry that preserves the fitting tolerance. The worker projects the
@@ -163,11 +171,13 @@ stored identities. Transient candidate IDs, OCCT indices and poles are never per
 - Domain tests: chain construction, shared through-points, closed seams, collinear opposite
   handles, join validation, removal, model-spline schema, orphaning and repair.
 - Solver tests: G1 continuity while a through-point is dragged in streamed steps, rigid joins under
-  perpendicular dimension edits larger than the handle length, closed failure for a single-step
-  drag through the join and an authored cusp seed, unmoved fixed handles, exact DOF accounting with
+  perpendicular dimension edits larger than the handle length, a single-step drag through the join
+  that turns it while staying G1, closed failure for an authored cusp seed, unmoved fixed handles, exact DOF accounting with
   closing joins, conflict sets and closed-spline profile detection.
 - Predictor and seed tests: tangent-sliding dimensions of 15, 18, 40 and 100 mm and a coincident
-  drag keep both handle lengths, and a 120-degree handle flick and a push-through stay G1.
+  drag keep both handle lengths, also beside an unchanged handle dimension on another join; a
+  handle dimension and a coincident handle drag reshape the tangent instead of moving the join; a
+  120-degree handle flick and a streamed push-through converge at every step and stay G1.
 - Fitting tests: the grid-invisible degree-19 counterexample is refused at 0.01 mm and certified at
   0.001 mm with a bound covering the measured deviation, plus rational arcs, knot insertion and a
   reversed parameterization.
@@ -177,6 +187,8 @@ stored identities. Transient candidate IDs, OCCT indices and poles are never per
   across its seam, and an exact closed-spline
   extrusion volume against a Green-integral area.
 - Application and document-worker tests: exact subdivision, the parallel-plane rule, stable
-  identities on recompute and every fail-closed path.
+  identities on recompute, end pairing through a lexicographic flip, a large move, a rotation, a
+  reversed edge and reload, end identity kept when the support frame turns 120 degrees with the
+  edge, and every fail-closed path.
 - Component tests and a Chromium scenario: the tool lifecycle, extrusion, reopen, and Use of a
   spline model edge.

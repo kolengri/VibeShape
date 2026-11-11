@@ -99,8 +99,8 @@ export type ExternalModelCurveSourceType = "arc" | "circle" | "ellipse" | "ellip
  */
 export type ExternalModelSplineCandidate = Readonly<{
   candidateId: string
-  /** World start and end of the published chain; persisted as the end-identity anchors. */
-  endpointAnchors: readonly [readonly [number, number, number], readonly [number, number, number]]
+  /** Sketch-local start and end of the projected chain; persisted as the end-identity anchors. */
+  endpointAnchors: readonly [readonly [number, number], readonly [number, number]]
   featureId: FeatureId
   kind: "model-spline"
   label: string
@@ -526,12 +526,16 @@ function createExternalModelSplineCandidate(
   // Tilted and spatial edges are not offered; persisted references to them fail closed.
   const projection = projectWorldBezierChainToSupport(targetFrame, geometry.poles)
   if (!projection.ok) return null
-  const start = geometry.poles[0]
-  const end = geometry.poles.at(-1)
+  // Anchors are sketch-local, so a support frame that turns with the edge keeps the pairing.
+  const start = projection.poles[0]
+  const end = projection.poles.at(-1)
   if (!start || !end) return null
   return {
     candidateId: candidate.candidateId,
-    endpointAnchors: [start, end],
+    endpointAnchors: [
+      [start.x, start.y],
+      [end.x, end.y],
+    ],
     featureId,
     kind: "model-spline",
     label: labels.curve(featureLabel, "spline", ordinal),
@@ -1174,7 +1178,10 @@ function splineRepair(candidate: ExternalModelSplineCandidate) {
   return {
     kind: "model-spline" as const,
     reference: candidate.reference,
-    endpointAnchors: [[...start], [...end]] as [[number, number, number], [number, number, number]],
+    endpointAnchors: [
+      [start[0], start[1]],
+      [end[0], end[1]],
+    ] as [[number, number], [number, number]],
   }
 }
 

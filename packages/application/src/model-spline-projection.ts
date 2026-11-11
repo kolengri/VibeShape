@@ -85,46 +85,50 @@ export function expandBezierChain(
   return result
 }
 
-export type ModelSplineEndpointAnchors = readonly [Vector3, Vector3]
+/** Sketch-local start and end anchors of a projected chain. */
+export type ModelSplineEndpointAnchors = readonly [
+  readonly [number, number],
+  readonly [number, number],
+]
 
-function distance(a: Vector3, b: Vector3) {
-  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+function distance(a: SketchPoint2, b: readonly [number, number]) {
+  return Math.hypot(a.x - b[0], a.y - b[1])
 }
 
 /**
- * Orients a published chain so its ends correspond to the stored start and end anchors, choosing
- * the pairing with the smaller summed displacement. A published orientation is never trusted: the
- * source parameterization or a canonical rule can flip it after any small edit. A closed chain
- * needs no pairing because both ends are its seam. When both pairings are within one thousandth of
- * the chord (at least 1e-6 mm) of each other, the correspondence is ambiguous and fails closed.
+ * Orients a projected chain so its ends correspond to the stored sketch-local start and end
+ * anchors, choosing the pairing with the smaller summed displacement. Anchors live in the sketch
+ * frame, so a support frame that turns with the referenced edge keeps the pairing. A published
+ * orientation is never trusted: the source parameterization can flip it after any small edit. A
+ * closed chain needs no pairing because both ends are its seam. When both pairings are within one
+ * thousandth of the chord (at least 1e-6 mm), the correspondence is ambiguous and fails closed.
  */
 export function orientChainToAnchors(
-  worldPoles: readonly Vector3[],
+  poles: readonly SketchPoint2[],
   anchors: ModelSplineEndpointAnchors,
-): readonly Vector3[] | null {
-  const start = worldPoles[0] as Vector3
-  const end = worldPoles.at(-1) as Vector3
-  const chord = distance(start, end)
-  if (chord <= 1e-9) return worldPoles
+): readonly SketchPoint2[] | null {
+  const start = poles[0] as SketchPoint2
+  const end = poles.at(-1) as SketchPoint2
+  const chord = Math.hypot(end.x - start.x, end.y - start.y)
+  if (chord <= 1e-9) return poles
   const direct = distance(start, anchors[0]) + distance(end, anchors[1])
   const swapped = distance(end, anchors[0]) + distance(start, anchors[1])
   if (Math.abs(direct - swapped) <= Math.max(1e-6, chord * 1e-3)) return null
-  return direct < swapped ? worldPoles : [...worldPoles].reverse()
+  return direct < swapped ? poles : [...poles].reverse()
 }
 
 /**
- * Projects a published world-space cubic Bezier chain onto a parallel sketch support and expands it
- * to the persisted segment count. Tilted or spatial edges and chains that now need more segments
- * than the persisted identities provide fail closed.
+ * Projects a published world-space cubic Bezier chain onto a parallel sketch support, pairs its
+ * ends with the sketch-local anchors when given, and expands it to the persisted segment count.
+ * Tilted or spatial edges, ambiguous ends and chains that now need more segments than the
+ * persisted identities provide fail closed.
  */
 export function projectWorldBezierChainToSupport(
   frame: SupportFrame,
-  publishedPoles: readonly Vector3[],
-  segmentCount: number = (publishedPoles.length - 1) / 3,
+  worldPoles: readonly Vector3[],
+  segmentCount: number = (worldPoles.length - 1) / 3,
   anchors?: ModelSplineEndpointAnchors,
 ): ModelSplineProjection {
-  const worldPoles = anchors ? orientChainToAnchors(publishedPoles, anchors) : publishedPoles
-  if (!worldPoles) return { ok: false, reason: "ambiguous-ends" }
   const heights = worldPoles.map((pole) => supportHeight(frame, pole))
   if (Math.max(...heights) - Math.min(...heights) > MODEL_SPLINE_PARALLEL_TOLERANCE_MM) {
     return { ok: false, reason: "not-parallel" }
@@ -134,7 +138,9 @@ export function projectWorldBezierChainToSupport(
   if (!first || projected.every((pole) => Math.hypot(pole.x - first.x, pole.y - first.y) <= 1e-9)) {
     return { ok: false, reason: "degenerate" }
   }
-  const poles = expandBezierChain(projected, segmentCount)
+  const oriented = anchors ? orientChainToAnchors(projected, anchors) : projected
+  if (!oriented) return { ok: false, reason: "ambiguous-ends" }
+  const poles = expandBezierChain(oriented, segmentCount)
   return poles ? { ok: true, poles, segmentCount } : { ok: false, reason: "segment-count" }
 }
 

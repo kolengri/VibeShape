@@ -680,17 +680,13 @@ function validateProjectedSplineWireIdentities(
   }
 }
 
-const worldPointWireSchema = z.tuple([
-  z.number().finite().min(-1e9).max(1e9),
-  z.number().finite().min(-1e9).max(1e9),
-  z.number().finite().min(-1e9).max(1e9),
-])
+const anchorPointWireSchema = z.tuple([coordinateSchema, coordinateSchema])
 
 const externalModelSplineReferenceWireShape = {
   id: sketchExternalReferenceIdSchema,
   kind: z.literal("model-spline"),
   reference: edgeTopoRefWireSchema,
-  endpointAnchors: z.tuple([worldPointWireSchema, worldPointWireSchema]),
+  endpointAnchors: z.tuple([anchorPointWireSchema, anchorPointWireSchema]),
   projectedCurveIds: z.array(sketchEntityIdSchema).min(1).max(64),
   projectedPointIds: z.array(sketchEntityIdSchema).min(4).max(193),
 }

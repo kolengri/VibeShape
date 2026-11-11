@@ -247,22 +247,18 @@ function validateProjectedSplineIdentities(
   }
 }
 
-const worldCoordinateSchema = z.number().finite().min(-1e9).max(1e9)
-const worldPointSchema = z.tuple([
-  worldCoordinateSchema,
-  worldCoordinateSchema,
-  worldCoordinateSchema,
-])
+const anchorPointSchema = z.tuple([coordinateSchema, coordinateSchema])
 
 const modelSplineReferenceShape = {
   id: sketchExternalReferenceIdSchema,
   kind: z.literal("model-spline"),
   reference: edgeTopoRefSchema,
   /**
-   * World positions of the projected start and end at Use or repair. Each solve pairs the current
-   * edge ends with these anchors, so end identities never depend on the edge parameterization.
+   * Sketch-local positions of the projected start and end at Use or repair. Each solve pairs the
+   * current projected ends with these anchors, so end identities never depend on the edge
+   * parameterization or on a support frame that turns with the edge.
    */
-  endpointAnchors: z.tuple([worldPointSchema, worldPointSchema]),
+  endpointAnchors: z.tuple([anchorPointSchema, anchorPointSchema]),
   projectedCurveIds: z.array(sketchEntityIdSchema).min(1).max(MAX_MODEL_SPLINE_SEGMENTS),
   projectedPointIds: z
     .array(sketchEntityIdSchema)

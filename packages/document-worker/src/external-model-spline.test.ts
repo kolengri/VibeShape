@@ -26,10 +26,10 @@ const signature = {
   adjacentGeometryClasses: [],
 }
 
-type Anchors = readonly [Point, Point]
+type Anchors = readonly [readonly [number, number], readonly [number, number]]
 const waveAnchors: Anchors = [
-  [0, 0, 5],
-  [20, 0, 5],
+  [0, 0],
+  [20, 0],
 ]
 
 function sketch(
@@ -215,8 +215,8 @@ describe("model spline references", () => {
     ]
     // Codex counterexample: the lexicographically smaller end flips after a 0.002 mm edit.
     const anchored = sketch("xy", 1, [
-      [0, 0, 5],
-      [-0.001, 10, 5],
+      [0, 0],
+      [-0.001, 10],
     ])
     const flipped = cubic([0.001, 10, 5], [0, 0, 5])
     expect(await endsOf(anchored, flipped)).toEqual([
@@ -240,7 +240,10 @@ describe("model spline references", () => {
       10 * Math.sin((degrees * Math.PI) / 180),
       5,
     ]
-    const rotatedFrom = sketch("xy", 1, [[0, 0, 5], at(80)])
+    const rotatedFrom = sketch("xy", 1, [
+      [0, 0],
+      [at(80)[0], at(80)[1]],
+    ])
     const rotated = cubic(at(90), [0, 0, 5])
     const [start, end] = await endsOf(rotatedFrom, rotated)
     expect(start).toEqual([0, 0])
@@ -256,8 +259,8 @@ describe("model spline references", () => {
 
   it("fails closed when both end pairings are equally plausible, but accepts closed chains", async () => {
     const anchored = sketch("xy", 1, [
-      [0, 0, 5],
-      [0, 10, 5],
+      [0, 0],
+      [0, 10],
     ])
     // Sliding the edge along its own chord by more than its length makes both pairings equal.
     const slid: Point[] = [
@@ -268,8 +271,8 @@ describe("model spline references", () => {
     ]
     await expect(resolve(anchored, geometry(slid))).rejects.toThrow(/re-anchor its end points/)
     const target = sketch("xy", 1, [
-      [0, 0, 5],
-      [0, 10, 5],
+      [0, 0],
+      [0, 10],
     ])
     expect(await inspectExternalModelReferenceHealth(document(target), [], geometry(slid))).toEqual(
       [{ sketchId: target.id, referenceId: id("5301"), status: "broken" }],
