@@ -73,7 +73,7 @@ semantics. Both the transport and the directly invoked geometry engine validate 
 hashes before native lookup; a cached downstream result cannot bypass an unavailable source.
 
 The native registry owns a root shape and explicitly declared output shapes. A successful single-solid
-feature publishes `result` as an alias of its root, except Datum Planes. Multi-solid aggregates expose
+feature publishes `result` as an alias of its root, except Datum Planes and Datum Points. Multi-solid aggregates expose
 no invented constituent roles. Explicit role lookup never falls back to the aggregate. Native wrappers
 have one owner, aliases are disposed once, and failed cleanup invalidates readable entries while
 retaining failed wrappers for recovery. Health counts include every live owned wrapper.
@@ -93,8 +93,8 @@ trapezoid meridian; a zero top radius keeps the version-1 triangle. See
 [ADR-0154](../adr/0154-truncated-cones-drill-points-and-datum-points.md).
 
 Successful geometry carries a derived body catalog. A single-solid producer publishes one `result`
-entry sharing its root mesh buffers; Datum Planes and legacy multi-solid aggregates publish an empty
-catalog. Nonempty catalogs contain at most 256 unique roles, each a valid positive-volume single
+entry sharing its root mesh buffers; Datum Planes, Datum Points and legacy multi-solid aggregates
+publish an empty catalog. Nonempty catalogs contain at most 256 unique roles, each a valid positive-volume single
 solid, and cover every root solid. This is not yet a total mesh-memory budget for patterns.
 
 Document protocol 20 carries these catalogs. The document worker clones complete geometry before

@@ -55,6 +55,19 @@ describe("CAD error presentation", () => {
     expect(screen.getByRole("alert").textContent).toContain("change the end condition to Distance")
   })
 
+  it.each([
+    ["missing", "no longer exists"],
+    ["ambiguous", "matches more than one"],
+    ["not-circular", "no longer circular"],
+  ])("explains a %s datum point reference and its explicit repair", (reason, cause) => {
+    const diagnostic = entry("org.vibeshape.feature.datum-point-reference-unresolved", { reason })
+    expect(cadErrorKind(diagnostic)).toBe("datumPointReference")
+    show(diagnostic)
+    const alert = screen.getByRole("alert")
+    expect(alert.textContent).toContain(cause)
+    expect(alert.textContent).toContain("choose a replacement reference")
+  })
+
   it("keeps an unknown code and complete long original diagnostic behind a keyboard disclosure", async () => {
     const original = `Exact kernel failure ${"unbrokenContext".repeat(500)}`
     show(

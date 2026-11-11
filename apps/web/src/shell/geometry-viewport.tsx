@@ -3826,6 +3826,9 @@ function hoveredFaceMeasurement(controller: DocumentControllerState, selection: 
     report.snapshot.revision !== report.rebuild.response.revision
   )
     return undefined
+  // Datum markers and planes are display geometry; their faces have no measurable model area.
+  const feature = report.snapshot.features.find(({ id }) => id === selection.featureId)
+  if (feature && isReferenceGeometryFeature(feature)) return undefined
   const geometry = report.rebuild.response.geometry.find(
     (entry) => entry.featureId === selection.featureId,
   )?.geometry

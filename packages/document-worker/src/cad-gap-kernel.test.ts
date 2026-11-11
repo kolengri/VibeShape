@@ -214,7 +214,7 @@ describe("datum point kernel resolution", () => {
     })
   })
 
-  it("resolves a stable box vertex and follows it when the box moves", async () => {
+  it("resolves a stable box vertex to its exact corner position", async () => {
     const source = await rebuild([box])
     const corner = source.geometry[0]?.geometry.shape.bounds.max ?? []
     const reference = bodyReference(source, 1, "vertex", corner)

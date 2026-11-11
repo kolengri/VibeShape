@@ -2127,6 +2127,7 @@
           "endCondition": "The selected extrusion end face or body is stale or cannot be reached.",
           "bodyMissing": "A body required by this operation is unavailable.",
           "expression": "A parameter expression could not be evaluated.",
+          "datumPointReference": "{reason, select, ambiguous {The reference of this datum point now matches more than one model vertex or edge.} notCircular {The edge referenced by this datum point is no longer circular, so it has no center.} other {The vertex or circular edge referenced by this datum point no longer exists.}}",
           "unknown": "The operation could not be evaluated."
         },
         "nextStep": {
@@ -2141,6 +2142,7 @@
           "endCondition": "Select the end face or body again, or change the end condition to Distance.",
           "bodyMissing": "Select an available target body, or repair the earlier feature that produces it.",
           "expression": "Correct the expression or its referenced variable, then try again.",
+          "datumPointReference": "Edit the datum point and choose a replacement reference, or switch it to coordinates.",
           "unknown": "Review its parameters and references. Technical details contain the original failure."
         }
       },

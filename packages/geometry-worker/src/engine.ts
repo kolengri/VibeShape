@@ -3024,9 +3024,12 @@ function createHoleFeatureShape(
   }
 }
 
+/** A drill point shorter than this modeling tolerance is treated as a flat bottom. */
+const MIN_DRILL_TIP_HEIGHT_MM = 1e-6
+
 function drillTipHeight(diameter: number, tipAngle: number) {
   const height = diameter / 2 / Math.tan(tipAngle / 2)
-  return height > 1e-9 ? height : 0
+  return height >= MIN_DRILL_TIP_HEIGHT_MM ? height : 0
 }
 
 function createHoleCutter(
