@@ -11,6 +11,7 @@ import {
   projectedExternalSketchEntities,
   type SketchEntity,
   type SketchRecord,
+  sketchRecordInputSchema,
   sketchRecordSchema,
 } from "./sketch"
 import {
@@ -234,6 +235,18 @@ describe("model spline references", () => {
     ])
     expect(JSON.stringify(parsed.data)).not.toContain('"x"')
     expect(parse({ ...reference, endpointAnchors: undefined }).success).toBe(false)
+  })
+
+  it("lets automation input omit anchors while still validating the chain identities", () => {
+    const input = (candidate: object) =>
+      sketchRecordInputSchema.safeParse({ ...base, externalReferences: [candidate] })
+    const { endpointAnchors: _filledBySession, ...unanchored } = reference
+    expect(input(unanchored).success).toBe(true)
+    expect(input(reference).success).toBe(true)
+    expect(
+      input({ ...unanchored, projectedPointIds: reference.projectedPointIds.slice(0, 6) }).success,
+    ).toBe(false)
+    expect(parse(unanchored).success).toBe(false)
   })
 
   it("rejects mismatched identity counts, duplicates and analytical source edges", () => {

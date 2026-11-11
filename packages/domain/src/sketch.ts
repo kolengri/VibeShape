@@ -423,6 +423,20 @@ const sketchExternalReferenceSchemaV0 = z.union([
   sketchExternalModelPiercePointReferenceSchema,
 ])
 
+/**
+ * Automation input only: a model-spline reference may omit its anchors, which the automation
+ * session fills from the current projected chain ends before the sketch becomes a command.
+ * Persisted records and commands always carry anchors.
+ */
+const sketchExternalModelSplineReferenceInputSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    ...modelSplineReferenceShape,
+    endpointAnchors: modelSplineReferenceShape.endpointAnchors.optional(),
+  })
+  .strict()
+  .superRefine(validateProjectedSplineIdentities)
+
 export const sketchExternalReferenceSchema = z.union([
   sketchExternalReferenceSchemaV0,
   sketchExternalModelPointOrphanSchema,
@@ -482,6 +496,9 @@ export type SketchExternalModelPiercePointOrphanReference = Readonly<
   z.infer<typeof sketchExternalModelPiercePointOrphanSchema>
 >
 export type SketchExternalReference = Readonly<z.infer<typeof sketchExternalReferenceSchema>>
+export type SketchExternalModelSplineReferenceInput = Readonly<
+  z.infer<typeof sketchExternalModelSplineReferenceInputSchema>
+>
 export type SketchExternalOrphanedModelReference =
   | SketchExternalModelPointOrphanReference
   | SketchExternalModelLineOrphanReference
@@ -1003,7 +1020,7 @@ export function projectedModelSplineEntities(
 
 /** Materializes identity-only geometry for reference validation and UI selection. */
 export function projectedExternalSketchEntities(
-  references: readonly SketchExternalReference[],
+  references: readonly (SketchExternalReference | SketchExternalModelSplineReferenceInput)[],
 ): readonly SketchEntity[] {
   return references.flatMap((reference): SketchEntity[] => {
     if (reference.kind === "curve" || reference.kind === "model-curve") {
@@ -1185,7 +1202,9 @@ function validateConstraintReferences(
 type SketchStructure = Readonly<{
   constraints: readonly SketchConstraint[]
   entities: readonly SketchEntity[]
-  externalReferences?: readonly SketchExternalReference[] | undefined
+  externalReferences?:
+    | readonly (SketchExternalReference | SketchExternalModelSplineReferenceInput)[]
+    | undefined
 }>
 
 function indexSketchEntities(sketch: SketchStructure, context: z.RefinementCtx) {
@@ -1455,32 +1474,44 @@ function validateNativeSketchCapacity(sketch: SketchStructure, context: z.Refine
   }
 }
 
-export const sketchRecordSchema = z
-  .object({
-    schemaVersion: z.literal(0),
-    id: sketchIdSchema,
-    label: z
-      .string()
-      .min(1)
-      .max(120)
-      .refine((label) => label.trim() === label, "Sketch labels must be normalized."),
-    plane: z.enum(["xy", "xz", "yz"]),
-    support: sketchFeatureFaceSupportSchema.optional(),
-    entities: z.array(sketchEntitySchema).max(MAX_SKETCH_ENTITIES),
-    constraints: z.array(sketchConstraintSchema).max(MAX_SKETCH_CONSTRAINTS),
-    externalReferences: z.array(sketchExternalReferenceSchema).max(MAX_SKETCH_ENTITIES).optional(),
-    textGroups: z.array(sketchTextGroupSchema).max(64).optional(),
-    sourceImport: sketchSourceImportSchema.optional(),
-  })
-  .strict()
-  .superRefine((sketch, context) => {
-    const entities = indexSketchEntities(sketch, context)
-    validateSketchEntityTable(sketch, entities, context)
-    validateSketchConstraintTable(sketch, entities, context)
-    validateNativeSketchCapacity(sketch, context)
-    validateSketchTextGroups(sketch, context)
-    validateSketchSourceImportReferences(sketch, context)
-  })
+function sketchRecordSchemaWith<
+  Reference extends z.ZodType<SketchExternalReference | SketchExternalModelSplineReferenceInput>,
+>(externalReference: Reference) {
+  return z
+    .object({
+      schemaVersion: z.literal(0),
+      id: sketchIdSchema,
+      label: z
+        .string()
+        .min(1)
+        .max(120)
+        .refine((label) => label.trim() === label, "Sketch labels must be normalized."),
+      plane: z.enum(["xy", "xz", "yz"]),
+      support: sketchFeatureFaceSupportSchema.optional(),
+      entities: z.array(sketchEntitySchema).max(MAX_SKETCH_ENTITIES),
+      constraints: z.array(sketchConstraintSchema).max(MAX_SKETCH_CONSTRAINTS),
+      externalReferences: z.array(externalReference).max(MAX_SKETCH_ENTITIES).optional(),
+      textGroups: z.array(sketchTextGroupSchema).max(64).optional(),
+      sourceImport: sketchSourceImportSchema.optional(),
+    })
+    .strict()
+    .superRefine((sketch, context) => {
+      const entities = indexSketchEntities(sketch, context)
+      validateSketchEntityTable(sketch, entities, context)
+      validateSketchConstraintTable(sketch, entities, context)
+      validateNativeSketchCapacity(sketch, context)
+      validateSketchTextGroups(sketch, context)
+      validateSketchSourceImportReferences(sketch, context)
+    })
+}
+
+export const sketchRecordSchema = sketchRecordSchemaWith(sketchExternalReferenceSchema)
+
+/** Automation input: model-spline anchors may be omitted until the session fills them. */
+export const sketchRecordInputSchema = sketchRecordSchemaWith(
+  z.union([sketchExternalReferenceSchema, sketchExternalModelSplineReferenceInputSchema]),
+)
+export type SketchRecordInput = Readonly<z.infer<typeof sketchRecordInputSchema>>
 
 const structuralSketchRecordsSchema = z.array(sketchRecordSchema).max(MAX_SKETCHES_PER_DOCUMENT)
 

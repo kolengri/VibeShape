@@ -26,10 +26,12 @@ import type {
   SketchExternalModelPointReference,
   SketchExternalModelReference,
   SketchExternalModelSplineReference,
+  SketchExternalModelSplineReferenceInput,
   SketchExternalPiercePointReference,
   SketchExternalPointReference,
   SketchPoint2,
   SketchRecord,
+  SketchRecordInput,
   TopologyCandidate,
 } from "@vibeshape/domain"
 import {
@@ -37,6 +39,7 @@ import {
   isSketchExternalModelReference,
   NON_ANALYTICAL_MODEL_EDGE_CLASSES,
   resolveTopologyReference,
+  sketchRecordSchema,
 } from "@vibeshape/domain"
 import type {
   PlanarFaceSectionInput,
@@ -274,6 +277,7 @@ function resolvedModelCandidateWithRecord(
     | SketchExternalModelPiercePointReference
     | SketchExternalModelCurveReference
     | SketchExternalModelSplineReference
+    | SketchExternalModelSplineReferenceInput
     | SketchExternalModelIntersectionReference,
   lookup: FeatureGeometryLookup | undefined,
 ): Readonly<{ candidate: ProtocolTopologyCandidate; record: FeatureGeometryRecord }> {
@@ -306,7 +310,8 @@ function resolvedModelCandidate(
     | SketchExternalModelLineReference
     | SketchExternalModelPiercePointReference
     | SketchExternalModelCurveReference
-    | SketchExternalModelSplineReference,
+    | SketchExternalModelSplineReference
+    | SketchExternalModelSplineReferenceInput,
   lookup: FeatureGeometryLookup | undefined,
 ) {
   return resolvedModelCandidateWithRecord(reference, lookup).candidate
@@ -615,11 +620,16 @@ const MODEL_SPLINE_PROJECTION_FAILURES = {
     `External model spline ${id} now needs more than its ${segments} projected Bezier segment(s) to stay within 0.0001 mm. Repair it with an edge that fits in ${segments} segment(s) to keep its end-point constraints, or remove it and use the edge again.`,
 } as const
 
-function resolveExternalModelSpline(
-  reference: SketchExternalModelSplineReference,
+/**
+ * Projects the current fit of a model-spline reference, paired with `anchors` when given, at the
+ * persisted segment count. Throws the actionable fail-closed message otherwise.
+ */
+function projectedModelSplinePoles(
+  reference: SketchExternalModelSplineReference | SketchExternalModelSplineReferenceInput,
   targetFrame: SupportFrame,
   lookup: FeatureGeometryLookup | undefined,
-): ExternalCurveChainInput {
+  anchors: SketchExternalModelSplineReference["endpointAnchors"] | undefined,
+) {
   const candidate = resolvedModelCandidate(reference, lookup)
   if (
     candidate.kind !== "edge" ||
@@ -637,7 +647,7 @@ function resolveExternalModelSpline(
     targetFrame,
     geometry.poles,
     reference.projectedCurveIds.length,
-    reference.endpointAnchors,
+    anchors,
   )
   if (!projection.ok)
     throw new Error(
@@ -646,13 +656,22 @@ function resolveExternalModelSpline(
         reference.projectedCurveIds.length,
       ),
     )
+  return projection.poles
+}
+
+function resolveExternalModelSpline(
+  reference: SketchExternalModelSplineReference,
+  targetFrame: SupportFrame,
+  lookup: FeatureGeometryLookup | undefined,
+): ExternalCurveChainInput {
+  const poles = projectedModelSplinePoles(reference, targetFrame, lookup, reference.endpointAnchors)
   const pointId = (index: number) => {
     const id = reference.projectedPointIds[index]
     if (!id) throw new Error("External projected spline point identities are incomplete.")
     return id
   }
   return {
-    points: projection.poles.map((pole, index) => projectedPointEntity(pointId(index), pole)),
+    points: poles.map((pole, index) => projectedPointEntity(pointId(index), pole)),
     curves: reference.projectedCurveIds.map((id, index) => ({
       schemaVersion: 0 as const,
       id,
@@ -1098,4 +1117,47 @@ export async function resolveExternalSketchGeometry(
     externalLines: lines,
     externalPoints: points,
   }
+}
+
+function isUnanchoredModelSpline(
+  reference: NonNullable<SketchRecordInput["externalReferences"]>[number],
+): reference is SketchExternalModelSplineReferenceInput {
+  return reference.kind === "model-spline" && reference.endpointAnchors === undefined
+}
+
+/**
+ * Fills omitted model-spline anchors from the projected ends of the current edge, as Use does in
+ * the sketch view, and returns a complete sketch record. Anchors that are present stay unchanged.
+ * Unresolvable, tilted or over-budget edges throw the same actionable messages as a solve.
+ */
+export function anchorModelSplineReferences(
+  document: DocumentSnapshot,
+  sketch: SketchRecordInput,
+  geometryLookup: FeatureGeometryLookup,
+): SketchRecord {
+  const references = sketch.externalReferences ?? []
+  if (!references.some(isUnanchoredModelSpline)) return sketchRecordSchema.parse(sketch)
+  const targetFrame = sketchFrame(
+    { ...sketch, externalReferences: [] },
+    document,
+    document.features,
+    new Set(),
+    geometryLookup,
+  )
+  if (!targetFrame) throw new Error(`Sketch support ${sketch.id} is unavailable.`)
+  const anchored = references.map((reference) => {
+    if (!isUnanchoredModelSpline(reference)) return reference
+    const poles = projectedModelSplinePoles(reference, targetFrame, geometryLookup, undefined)
+    const start = poles[0]
+    const end = poles.at(-1)
+    if (!start || !end) throw new Error(`External model spline ${reference.id} is empty.`)
+    return {
+      ...reference,
+      endpointAnchors: [
+        [start.x, start.y],
+        [end.x, end.y],
+      ],
+    }
+  })
+  return sketchRecordSchema.parse({ ...sketch, externalReferences: anchored })
 }

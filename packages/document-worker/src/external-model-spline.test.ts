@@ -4,6 +4,7 @@ import { documentSnapshotSchema, type SketchRecord, sketchRecordSchema } from "@
 import { compileSketchSystem, type SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { vi } from "../../../tests/unit/support/bun-test"
 import {
+  anchorModelSplineReferences,
   inspectExternalModelReferenceHealth,
   resolveExternalSketchGeometry,
 } from "./external-sketch-references"
@@ -286,5 +287,38 @@ describe("model spline references", () => {
     ]
     const closed = await resolve(anchored, geometry(loop))
     expect(closed.externalCurveChains?.[0]?.points[0]).toMatchObject({ x: 0, y: 0 })
+  })
+
+  it("fills omitted automation anchors from the current projected ends and keeps given ones", () => {
+    const { externalReferences = [], ...rest } = sketch()
+    const [reference] = externalReferences
+    if (reference?.kind !== "model-spline") throw new Error("The fixture must hold a spline.")
+    const { endpointAnchors: _omitted, ...unanchored } = reference
+    const input = { ...rest, externalReferences: [unanchored] }
+    const target = sketch()
+    const anchored = anchorModelSplineReferences(document(target), input, geometry(wave))
+    expect(anchored.externalReferences?.[0]).toMatchObject({
+      endpointAnchors: [
+        [0, 0],
+        [20, 0],
+      ],
+    })
+    // Anchors an agent supplies are never replaced.
+    const kept: Anchors = [
+      [20, 0],
+      [0, 0],
+    ]
+    const given = { ...rest, externalReferences: [{ ...unanchored, endpointAnchors: kept }] }
+    expect(
+      anchorModelSplineReferences(document(target), given, geometry(wave)).externalReferences?.[0],
+    ).toMatchObject({ endpointAnchors: kept })
+    // An edge that cannot be projected fails with the same message as a solve.
+    const tilted = { ...input, plane: "xz" as const }
+    expect(() => anchorModelSplineReferences(document(target), tilted, geometry(wave))).toThrow(
+      /plane parallel to the sketch/,
+    )
+    expect(() => anchorModelSplineReferences(document(target), input, [])).toThrow(
+      /geometry is unavailable/,
+    )
   })
 })
