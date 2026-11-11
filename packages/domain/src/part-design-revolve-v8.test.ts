@@ -162,7 +162,13 @@ describe("Revolve v8 endpoints and dependencies", () => {
   })
 
   it("ignores a stale expression on the hidden angle of an endpoint revolve", () => {
-    const endpoint = { ...base, angle: deg(90, "#deleted"), endCondition: upToFace }
+    // Persisted parameters are plain JSON; the fixture's readonly tuples only narrow its type.
+    type Persisted = Parameters<ReturnType<typeof handler>["resolveParameters"]>[0]
+    const endpoint = {
+      ...base,
+      angle: deg(90, "#deleted"),
+      endCondition: upToFace,
+    } as unknown as Persisted
     expect(handler().resolveParameters(endpoint, new Map())).toEqual({
       ok: true,
       parameters: revolveFeatureParametersV8Schema.parse(endpoint),
@@ -171,12 +177,12 @@ describe("Revolve v8 endpoints and dependencies", () => {
       { schemaVersion: 0, id: id(901), name: "turn", expression: "720 deg" },
     ])
     if (!outOfRange.ok) throw new Error(outOfRange.diagnostic.message)
-    const tooLarge = { ...endpoint, angle: deg(90, "#turn") }
+    const tooLarge = { ...endpoint, angle: deg(90, "#turn") } as unknown as Persisted
     expect(handler().resolveParameters(tooLarge, outOfRange.valuesByName)).toMatchObject({
       ok: true,
     })
     // The same expressions still fail an angle-bounded revolve.
-    const angular = { ...tooLarge, endCondition: { kind: "angle" as const } }
+    const angular = { ...tooLarge, endCondition: { kind: "angle" } } as unknown as Persisted
     expect(handler().resolveParameters(angular, outOfRange.valuesByName)).toMatchObject({
       ok: false,
       diagnostic: { issues: [{ path: "angle" }] },
