@@ -12,6 +12,7 @@ import { type SketchCornerTreatment, treatSketchCorner } from "@vibeshape/domain
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { cn } from "@vibeshape/ui/lib/cn"
 import {
   createBrowserSketchConstraintId,
   createBrowserSketchEntityId,
@@ -20,6 +21,7 @@ import {
   normalizeExpressionWithDisplayUnit,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import { SAFE_VIEWPORT_RIGHT } from "../../shell/viewport-chrome-styles"
 
 function cornerLength(
   source: string,
@@ -180,7 +182,11 @@ export function SketchCornerTreatmentPanel({
     <Form
       form={form}
       aria-label={t(kind)}
-      className="absolute bottom-3 right-3 z-10 grid w-80 max-w-[calc(100%-1.5rem)] gap-3 rounded border bg-background/95 p-3 shadow-md"
+      className={cn(
+        "absolute bottom-3 right-3 z-10 grid w-80 gap-3 rounded border bg-background/95 p-3 shadow-md",
+        // Keep the panel inside the canvas region left free by floating workspace windows.
+        SAFE_VIEWPORT_RIGHT,
+      )}
     >
       <p className="text-xs text-muted-foreground">{t("select")}</p>
       <form.AppField name="first">
