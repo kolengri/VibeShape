@@ -104,6 +104,14 @@ function prepareDatumPointContent(
   }
 }
 
+/** Datum Point and Coil resolve their own support without a consumed target plane. */
+function prepareStandaloneReferenceContent(feature: FeatureRecord, context: ReferenceContext) {
+  const datumPoint = readDatumPointFeatureParameters(feature)
+  return datumPoint
+    ? prepareDatumPointContent(datumPoint, context)
+    : prepareCoilContent(feature, context)
+}
+
 export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparationPort = (
   input,
 ) => {
@@ -112,8 +120,8 @@ export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparat
     features: input.features ?? input.document.features,
     geometry: input.geometry ?? [],
   }
-  const datumPoint = readDatumPointFeatureParameters(input.feature)
-  if (datumPoint) return prepareDatumPointContent(datumPoint, context)
+  const standalone = prepareStandaloneReferenceContent(input.feature, context)
+  if (standalone) return standalone
   const mirror = readMirrorFeatureParametersV3(input.feature)
   const split = readSplitFeatureParametersV2(input.feature)
   const pattern = readPatternFeatureParametersV2(input.feature)
@@ -124,8 +132,6 @@ export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparat
       values: { reason: "missing-or-ambiguous-support" },
     },
   }
-  const coil = prepareCoilContent(input.feature, context)
-  if (coil) return coil
   if (pattern) {
     const axis = resolveReferenceAxis(pattern.axis, context)
     if (!axis) return missing
