@@ -297,29 +297,43 @@ function readEdgeDisplayGeometry(
     : edgeDisplayPolyline(edge, Math.min(1025, displayPointBudget))
 }
 
-function readEdgeSample(
-  edge: Edge,
-  index: number,
-  budgets: Readonly<{ chainPoles: number; displayPoints: number }>,
-) {
+type EdgeSampleBudgets = Readonly<{ chainPoles: number; displayPoints: number }>
+
+/** Reads selectable reference and display geometry; singular boundaries publish neither. */
+function readEdgeGeometry(edge: Edge, start: Vector3, end: Vector3, budgets: EdgeSampleBudgets) {
+  if (getOC().BRep_Tool.Degenerated(edge.wrapped)) {
+    return { chainPoleCount: 0, displayPointCount: 0, geometry: {} }
+  }
+  const referenceGeometry = readEdgeReferenceGeometry(edge, start, end, budgets.chainPoles)
+  const edgePolyline = readEdgeDisplayGeometry(edge, start, end, budgets.displayPoints)
+  return {
+    chainPoleCount:
+      referenceGeometry?.kind === "bezier-chain-edge" ? referenceGeometry.poles.length : 0,
+    displayPointCount: edgePolyline?.length ?? 0,
+    geometry: {
+      ...(referenceGeometry ? { referenceGeometry } : {}),
+      ...(edgePolyline ? { edgePolyline } : {}),
+    },
+  }
+}
+
+function readEdgeSample(edge: Edge, index: number, budgets: EdgeSampleBudgets) {
   const properties = measureShapeLinearProperties(edge)
   try {
     const direction = normalizedDirection(edge.tangentAt(0.5))
     const start = readVector(edge.startPoint)
     const end = readVector(edge.endPoint)
     // Singular surface boundaries remain topology, but cannot serve as selectable model curves.
-    const degenerated = getOC().BRep_Tool.Degenerated(edge.wrapped)
-    const referenceGeometry = degenerated
-      ? undefined
-      : readEdgeReferenceGeometry(edge, start, end, budgets.chainPoles)
-    const edgePolyline = degenerated
-      ? undefined
-      : readEdgeDisplayGeometry(edge, start, end, budgets.displayPoints)
+    const { chainPoleCount, displayPointCount, geometry } = readEdgeGeometry(
+      edge,
+      start,
+      end,
+      budgets,
+    )
     return {
       endpoints: [start, end] as const,
-      chainPoleCount:
-        referenceGeometry?.kind === "bezier-chain-edge" ? referenceGeometry.poles.length : 0,
-      displayPointCount: edgePolyline?.length ?? 0,
+      chainPoleCount,
+      displayPointCount,
       sample: {
         candidateId: `edge:${index}`,
         kind: "edge" as const,
@@ -334,8 +348,7 @@ function readEdgeSample(
           ...(direction ? { direction, directionMode: "axis" as const } : {}),
           boundaryCount: edge.isClosed ? 0 : 2,
         },
-        ...(referenceGeometry ? { referenceGeometry } : {}),
-        ...(edgePolyline ? { edgePolyline } : {}),
+        ...geometry,
       },
     }
   } finally {

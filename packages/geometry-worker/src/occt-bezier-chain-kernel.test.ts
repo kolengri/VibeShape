@@ -52,19 +52,29 @@ function chainPoint(poles: readonly Point[], segment: number, t: number): Point 
   ) as Point
 }
 
+const axes = [0, 1, 2] as const
+
+function segmentPoles(poles: readonly Point[], segment: number) {
+  return [0, 1, 2, 3].map((index) => poles[segment * 3 + index] as Point) as [
+    Point,
+    Point,
+    Point,
+    Point,
+  ]
+}
+
 function segmentDerivatives(poles: readonly Point[], segment: number, t: number) {
-  const [p0, p1, p2, p3] = [0, 1, 2, 3].map((index) => poles[segment * 3 + index] as Point)
+  const [p0, p1, p2, p3] = segmentPoles(poles, segment)
   const s = 1 - t
-  const first = [0, 1, 2].map(
+  const first = axes.map(
     (axis) =>
-      3 * s * s * ((p1?.[axis] ?? 0) - (p0?.[axis] ?? 0)) +
-      6 * s * t * ((p2?.[axis] ?? 0) - (p1?.[axis] ?? 0)) +
-      3 * t * t * ((p3?.[axis] ?? 0) - (p2?.[axis] ?? 0)),
+      3 * s * s * (p1[axis] - p0[axis]) +
+      6 * s * t * (p2[axis] - p1[axis]) +
+      3 * t * t * (p3[axis] - p2[axis]),
   )
-  const second = [0, 1, 2].map(
+  const second = axes.map(
     (axis) =>
-      6 * s * ((p2?.[axis] ?? 0) - 2 * (p1?.[axis] ?? 0) + (p0?.[axis] ?? 0)) +
-      6 * t * ((p3?.[axis] ?? 0) - 2 * (p2?.[axis] ?? 0) + (p1?.[axis] ?? 0)),
+      6 * s * (p2[axis] - 2 * p1[axis] + p0[axis]) + 6 * t * (p3[axis] - 2 * p2[axis] + p1[axis]),
   )
   return { first, second }
 }
@@ -128,28 +138,27 @@ function denseDeviation(edge: Edge, poles: readonly Point[]) {
   }
 }
 
+function cross(a: Point, b: Point): Point {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+}
+
+function norm(vector: Point) {
+  return Math.hypot(vector[0], vector[1], vector[2])
+}
+
 /** Largest distance from the plane through the first pole spanned by the extreme poles. */
 function planeSpread(poles: readonly Point[]) {
-  const [origin] = poles
-  if (!origin) return 0
-  const relative = poles.map((pole) => pole.map((value, axis) => value - (origin[axis] ?? 0)))
-  const norm = (vector: readonly number[]) =>
-    Math.hypot(vector[0] ?? 0, vector[1] ?? 0, vector[2] ?? 0)
+  const origin = poles[0] as Point
+  const relative = poles.map((pole) => axes.map((axis) => pole[axis] - origin[axis]) as Point)
   const far = relative.reduce((best, pole) => (norm(pole) > norm(best) ? pole : best))
-  const cross = (a: number[], b: number[]) => [
-    (a[1] ?? 0) * (b[2] ?? 0) - (a[2] ?? 0) * (b[1] ?? 0),
-    (a[2] ?? 0) * (b[0] ?? 0) - (a[0] ?? 0) * (b[2] ?? 0),
-    (a[0] ?? 0) * (b[1] ?? 0) - (a[1] ?? 0) * (b[0] ?? 0),
-  ]
   const side = relative.reduce((best, pole) =>
     norm(cross(far, pole)) > norm(cross(far, best)) ? pole : best,
   )
   const normal = cross(far, side)
-  const length = Math.hypot(...normal)
+  const length = norm(normal)
   return Math.max(
     ...relative.map(
-      (pole) =>
-        Math.abs(pole.reduce((sum, value, axis) => sum + value * (normal[axis] ?? 0), 0)) / length,
+      (pole) => Math.abs(pole[0] * normal[0] + pole[1] * normal[1] + pole[2] * normal[2]) / length,
     ),
   )
 }

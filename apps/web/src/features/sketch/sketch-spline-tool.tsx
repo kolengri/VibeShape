@@ -36,6 +36,10 @@ function sameTarget(sketch: SketchRecord, first: SketchPointTarget, second: Sket
   return Math.hypot(a.x - b.x, a.y - b.y) <= MIN_SPLINE_POINT_SPACING_MM
 }
 
+function isPendingSpline(pending: Readonly<{ kind: string }> | null): pending is PendingSpline {
+  return pending?.kind === "spline"
+}
+
 function canClose(pending: PendingSpline) {
   return pending.points.length >= 3
 }
@@ -175,12 +179,12 @@ export function PendingSplineShape({
 }
 
 export function SketchInterpolatedSplineInstruction({
-  active,
+  editorTool,
   pending,
-}: Readonly<{ active: boolean; pending: PendingSpline | null }>) {
+}: Readonly<{ editorTool: string; pending: Readonly<{ kind: string }> | null }>) {
   const t = useTranslations("app.sketch.viewport")
-  if (!active) return null
-  const count = pending?.points.length ?? 0
+  if (editorTool !== "spline") return null
+  const count = isPendingSpline(pending) ? pending.points.length : 0
   const step = count === 0 ? "start" : count === 1 ? "second" : count === 2 ? "open" : "closable"
   return (
     <div

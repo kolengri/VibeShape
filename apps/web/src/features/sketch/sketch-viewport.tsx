@@ -965,6 +965,18 @@ function displayExternalSpline(
   return { curves, lines: [], points }
 }
 
+const externalLineReferenceKinds: ReadonlySet<string> = new Set([
+  "line",
+  "model-line",
+  "model-intersection",
+])
+
+function isExternalLineReference(
+  reference: ExternalReference,
+): reference is Extract<ExternalReference, { kind: "line" | "model-line" | "model-intersection" }> {
+  return externalLineReferenceKinds.has(reference.kind ?? "point")
+}
+
 function displayExternalReference(
   reference: ExternalReference,
   solvedById: ReadonlyMap<string, SketchPoint2>,
@@ -974,11 +986,7 @@ function displayExternalReference(
     const curve = displayExternalCurve(reference, solvedById)
     return curve ? { curves: [curve.curve], lines: [], points: curve.points } : null
   }
-  if (
-    reference.kind === "line" ||
-    reference.kind === "model-line" ||
-    reference.kind === "model-intersection"
-  ) {
+  if (isExternalLineReference(reference)) {
     const line = displayExternalLine(reference, solvedById)
     return line ? { curves: [], lines: [line], points: [] } : null
   }
@@ -3634,6 +3642,12 @@ function pairedConstraintAnchor(
       point: midpointForIds(constraint.firstEntityId, constraint.secondEntityId, geometryAnchor),
     } as const
   }
+  if ("incomingCurveId" in constraint) {
+    return {
+      handled: true,
+      point: midpointForIds(constraint.incomingCurveId, constraint.outgoingCurveId, geometryAnchor),
+    } as const
+  }
   return { handled: false } as const
 }
 
@@ -3653,9 +3667,6 @@ function constraintAnchor(
   if ("curveId" in constraint) return geometryAnchor(constraint.curveId)
   if ("arcId" in constraint) {
     return midpointForIds(constraint.lineId, constraint.arcId, geometryAnchor)
-  }
-  if (constraint.type === "tangent-join") {
-    return midpointForIds(constraint.incomingCurveId, constraint.outgoingCurveId, geometryAnchor)
   }
   if (constraint.type === "offset") {
     const pair = constraint.linePairs[0]
@@ -5523,6 +5534,22 @@ function PendingCubicBezierShape({
   )
 }
 
+/** Previews whose geometry depends only on the pending picks and the cursor. */
+function pendingTargetShape(cursor: SketchPoint2, pending: PendingGeometry, sketch: SketchRecord) {
+  switch (pending.kind) {
+    case "cubic-bezier":
+      return <PendingCubicBezierShape cursor={cursor} pending={pending} sketch={sketch} />
+    case "spline":
+      return <PendingSplineShape cursor={cursor} pending={pending} sketch={sketch} />
+    case "split-circle-second":
+      return <PendingCircleSplitShape cursor={cursor} pending={pending} sketch={sketch} />
+    case "split-ellipse-second":
+      return <PendingEllipseSplitShape cursor={cursor} pending={pending} sketch={sketch} />
+    default:
+      return null
+  }
+}
+
 function PendingCurveShape({
   cursor,
   pending,
@@ -5534,10 +5561,8 @@ function PendingCurveShape({
   sketch: SketchRecord
   start: SketchPoint2
 }) {
-  if (pending.kind === "cubic-bezier")
-    return <PendingCubicBezierShape cursor={cursor} pending={pending} sketch={sketch} />
-  if (pending.kind === "spline")
-    return <PendingSplineShape cursor={cursor} pending={pending} sketch={sketch} />
+  const targetShape = pendingTargetShape(cursor, pending, sketch)
+  if (targetShape) return targetShape
   if (pending.kind === "midpoint-line") {
     const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
     return <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
@@ -5547,12 +5572,6 @@ function PendingCurveShape({
   }
   if (pending.kind === "regular-polygon-radius" || pending.kind === "regular-polygon-sides") {
     return <PendingRegularPolygonShape cursor={cursor} pending={pending} sketch={sketch} />
-  }
-  if (pending.kind === "split-circle-second") {
-    return <PendingCircleSplitShape cursor={cursor} pending={pending} sketch={sketch} />
-  }
-  if (pending.kind === "split-ellipse-second") {
-    return <PendingEllipseSplitShape cursor={cursor} pending={pending} sketch={sketch} />
   }
   if (isPendingAnalyticalCurve(pending)) {
     return (
@@ -9150,6 +9169,15 @@ function consumeSplineCompletionKey(
   return true
 }
 
+function consumePendingGeometryKey(
+  input: RegularPolygonKeyInput & Readonly<{ pending: PendingGeometry | null }>,
+) {
+  if (input.pending?.kind === "regular-polygon-sides") {
+    return consumeRegularPolygonSideCountKey(input, input.pending)
+  }
+  return input.pending?.kind === "spline" && consumeSplineCompletionKey(input, input.pending)
+}
+
 function handleSketchKeyDown(input: {
   appendAt: (target: SketchPointTarget, inference?: SketchPointInference) => void
   cursor: SketchPoint2 | null
@@ -9168,13 +9196,7 @@ function handleSketchKeyDown(input: {
 }) {
   if (consumeSketchHistoryShortcut(input.event, input.onUndo, input.onRedo)) return
   if (consumeSketchCancel(input)) return
-  if (
-    input.pending?.kind === "regular-polygon-sides" &&
-    consumeRegularPolygonSideCountKey(input, input.pending)
-  ) {
-    return
-  }
-  if (input.pending?.kind === "spline" && consumeSplineCompletionKey(input, input.pending)) return
+  if (consumePendingGeometryKey(input)) return
   if (!isSketchDeleteKey(input.event) || !input.draft) return
   input.event.preventDefault()
   input.onDraftChange(removeSketchEntities(input.draft, input.selectedEntityIds))
@@ -10273,8 +10295,8 @@ function SketchDrawingView({
       <SketchOffsetInstruction editorTool={configuration.editorTool} pending={state.pending} />
       <SketchSplineInstruction editorTool={configuration.editorTool} pending={state.pending} />
       <SketchInterpolatedSplineInstruction
-        active={configuration.editorTool === "spline"}
-        pending={state.pending?.kind === "spline" ? state.pending : null}
+        editorTool={configuration.editorTool}
+        pending={state.pending}
       />
       <SketchTransformInstruction
         editorTool={configuration.editorTool}

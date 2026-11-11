@@ -1,12 +1,12 @@
+import {
+  MAX_TOPOLOGY_BEZIER_CHAIN_SEGMENTS as MAX_BEZIER_CHAIN_SEGMENTS,
+  TOPOLOGY_BEZIER_CHAIN_TOLERANCE_MM as BEZIER_CHAIN_FIT_TOLERANCE_MM,
+} from "@vibeshape/protocol"
 import { type Edge, getOC } from "replicad"
 import type { GeomAbs_Shape } from "replicad-opencascadejs"
 
 type Point = [number, number, number]
 
-/** Maximum parametric deviation accepted between the native edge and its published chain. */
-export const BEZIER_CHAIN_FIT_TOLERANCE_MM = 1e-4
-/** Upper bound on published segments; edges that need more are not offered as references. */
-export const MAX_BEZIER_CHAIN_SEGMENTS = 64
 const VERIFICATION_SAMPLES_PER_SEGMENT = 16
 
 export type FittedBezierChain = Readonly<{
@@ -105,7 +105,7 @@ function validBreakpoints(breakpoints: readonly number[]) {
  * Fits the coarsest uniform refinement of the edge's smooth pieces whose dense verification samples
  * stay within `BEZIER_CHAIN_FIT_TOLERANCE_MM`, using at most `MAX_BEZIER_CHAIN_SEGMENTS` segments.
  */
-export function fitBezierChain(sampler: CurveSampler): FittedBezierChain | undefined {
+function fitBezierChain(sampler: CurveSampler): FittedBezierChain | undefined {
   if (!validBreakpoints(sampler.breakpoints)) return undefined
   const pieces = sampler.breakpoints.length - 1
   for (

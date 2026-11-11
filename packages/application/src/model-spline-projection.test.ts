@@ -16,22 +16,28 @@ const chain: SketchPoint2[] = [
   { x: 20, y: 0 },
 ]
 
+function pole(poles: readonly SketchPoint2[], index: number): SketchPoint2 {
+  const point = poles[index]
+  if (!point) throw new Error(`Missing pole ${index}.`)
+  return point
+}
+
 function cubicAt(poles: readonly SketchPoint2[], segment: number, t: number) {
-  const [p0, p1, p2, p3] = poles.slice(segment * 3, segment * 3 + 4) as SketchPoint2[]
   const s = 1 - t
-  const w = [s * s * s, 3 * s * s * t, 3 * s * t * t, t * t * t]
-  return {
-    x:
-      (w[0] ?? 0) * (p0?.x ?? 0) +
-      (w[1] ?? 0) * (p1?.x ?? 0) +
-      (w[2] ?? 0) * (p2?.x ?? 0) +
-      (w[3] ?? 0) * (p3?.x ?? 0),
-    y:
-      (w[0] ?? 0) * (p0?.y ?? 0) +
-      (w[1] ?? 0) * (p1?.y ?? 0) +
-      (w[2] ?? 0) * (p2?.y ?? 0) +
-      (w[3] ?? 0) * (p3?.y ?? 0),
-  }
+  const weights = [s * s * s, 3 * s * s * t, 3 * s * t * t, t * t * t]
+  return weights.reduce(
+    (sum, weight, index) => {
+      const point = pole(poles, segment * 3 + index)
+      return { x: sum.x + weight * point.x, y: sum.y + weight * point.y }
+    },
+    { x: 0, y: 0 },
+  )
+}
+
+/** Evaluates a published segment that owns `share` expanded pieces starting at `offset`. */
+function expandedAt(expanded: readonly SketchPoint2[], offset: number, share: number, t: number) {
+  const piece = Math.min(Math.floor(t * share), share - 1)
+  return cubicAt(expanded, offset + piece, t * share - piece)
 }
 
 describe("model spline projection", () => {
@@ -40,18 +46,19 @@ describe("model spline projection", () => {
       const expanded = expandBezierChain(chain, target)
       if (!expanded) throw new Error(`Expansion to ${target} segments must succeed.`)
       expect(expanded).toHaveLength(target * 3 + 1)
-      // Published segment 0 spans the first ceil(target / 2) expanded segments.
+      // Published segment 0 owns the first ceil(target / 2) expanded segments.
       const firstShare = Math.ceil(target / 2)
-      for (let sample = 0; sample <= 40; sample += 1) {
-        const u = sample / 40
-        const original = u < 0.5 ? cubicAt(chain, 0, u * 2) : cubicAt(chain, 1, u * 2 - 1)
-        const share = u < 0.5 ? firstShare : target - firstShare
-        const local = u < 0.5 ? u * 2 : u * 2 - 1
-        const piece = Math.min(Math.floor(local * share), share - 1)
-        const segment = (u < 0.5 ? 0 : firstShare) + piece
-        const fitted = cubicAt(expanded, segment, local * share - piece)
-        expect(fitted.x).toBeCloseTo(original.x, 10)
-        expect(fitted.y).toBeCloseTo(original.y, 10)
+      const ownership = [
+        { offset: 0, share: firstShare },
+        { offset: firstShare, share: target - firstShare },
+      ]
+      for (const [segment, { offset, share }] of ownership.entries()) {
+        for (let sample = 0; sample <= 20; sample += 1) {
+          const original = cubicAt(chain, segment, sample / 20)
+          const fitted = expandedAt(expanded, offset, share, sample / 20)
+          expect(fitted.x).toBeCloseTo(original.x, 10)
+          expect(fitted.y).toBeCloseTo(original.y, 10)
+        }
       }
     }
     expect(expandBezierChain(chain, 1)).toBeNull()

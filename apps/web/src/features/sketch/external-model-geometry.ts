@@ -25,6 +25,7 @@ import type {
   FeatureRecord,
   PlanarFaceTopoRef,
   SketchEntityId,
+  SketchExternalModelReference,
   SketchExternalReferenceId,
   SketchRecord,
   VertexTopoRef,
@@ -268,6 +269,24 @@ function referenceContexts(records: readonly ExternalModelGeometryRecord[]) {
   )
 }
 
+type ProjectedModelTopologyReference = Extract<
+  NonNullable<SketchRecord["externalReferences"]>[number],
+  { kind: "model-point" | "model-line" | "model-curve" | "model-spline" }
+>
+
+const projectedModelTopologyKinds: ReadonlySet<string> = new Set([
+  "model-point",
+  "model-line",
+  "model-curve",
+  "model-spline",
+])
+
+function isProjectedModelTopologyReference(
+  reference: NonNullable<SketchRecord["externalReferences"]>[number],
+): reference is ProjectedModelTopologyReference {
+  return projectedModelTopologyKinds.has(reference.kind ?? "point")
+}
+
 function referencedCandidateKeys(
   records: readonly ExternalModelGeometryRecord[],
   draft: SketchRecord,
@@ -284,14 +303,7 @@ function referencedCandidateKeys(
   )
   const keys = new Set<string>()
   for (const external of draft.externalReferences ?? []) {
-    if (
-      external.kind !== "model-point" &&
-      external.kind !== "model-line" &&
-      external.kind !== "model-curve" &&
-      external.kind !== "model-spline"
-    ) {
-      continue
-    }
+    if (!isProjectedModelTopologyReference(external)) continue
     const context = recordsByFeatureId.get(external.reference.featureId)
     if (!context) continue
     const resolution = context.resolve(external.reference)
@@ -790,23 +802,37 @@ export function repairExternalModelGeometryCandidates(
   if (!referenceId) return candidates
   const reference = draft.externalReferences?.find(({ id }) => id === referenceId)
   if (!reference || !isSketchExternalModelReference(reference)) return []
-  return candidates.filter((candidate) => {
-    if (
-      !isOrphanedModelReference(reference) &&
-      candidate.featureId !== reference.reference.featureId
-    ) {
-      return false
-    }
-    if (reference.kind === "model-point") return candidate.kind === "model-point"
-    if (reference.kind === "model-line" || reference.kind === "model-pierce-point")
-      return candidate.kind === "model-line"
-    if (reference.kind === "model-spline") return candidate.kind === "model-spline"
-    if (reference.kind !== "model-curve" || candidate.kind !== "model-curve") return false
-    return (
-      candidate.sourceType === reference.sourceType &&
-      candidate.projectedType === reference.projectedType
-    )
-  })
+  return candidates.filter(
+    (candidate) =>
+      (isOrphanedModelReference(reference) ||
+        candidate.featureId === reference.reference.featureId) &&
+      repairCandidateMatches(reference, candidate),
+  )
+}
+
+const repairCandidateKinds = {
+  "model-point": "model-point",
+  "model-line": "model-line",
+  "model-pierce-point": "model-line",
+  "model-curve": "model-curve",
+  "model-spline": "model-spline",
+  "model-intersection": null,
+} as const satisfies Record<
+  SketchExternalModelReference["kind"],
+  ExternalModelGeometryCandidate["kind"] | null
+>
+
+/** Repair keeps the projected identity layout, so a curve also keeps its source and projection. */
+function repairCandidateMatches(
+  reference: SketchExternalModelReference,
+  candidate: ExternalModelGeometryCandidate,
+) {
+  if (repairCandidateKinds[reference.kind] !== candidate.kind) return false
+  if (reference.kind !== "model-curve" || candidate.kind !== "model-curve") return true
+  return (
+    candidate.sourceType === reference.sourceType &&
+    candidate.projectedType === reference.projectedType
+  )
 }
 
 export function externalModelGeometryCandidates(

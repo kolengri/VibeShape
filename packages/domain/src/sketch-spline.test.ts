@@ -61,31 +61,29 @@ describe("interpolating sketch splines", () => {
     expect(segments).toHaveLength(3)
     // Four through-points, two handles and one curve per segment.
     expect(createdEntityIds).toHaveLength(4 + 3 * 3)
-    for (const [index, segment] of segments.entries()) {
-      const { x, y } = point(sketch, segment.startPointId)
-      expect({ x, y }).toEqual({ ...wave[index] } as SketchPoint2)
-      const end = point(sketch, segment.endPointId)
-      expect({ x: end.x, y: end.y }).toEqual({ ...wave[index + 1] } as SketchPoint2)
-      if (index > 0)
-        expect<string>(segment.startPointId).toBe(segments[index - 1]?.endPointId ?? "")
-    }
-    const joins = sketch.constraints.filter(({ type }) => type === "tangent-join")
-    expect(joins.map(({ id: constraintId }) => constraintId)).toEqual([...createdConstraintIds])
-    expect(joins).toEqual([
-      expect.objectContaining({
-        incomingCurveId: segments[0]?.id,
-        outgoingCurveId: segments[1]?.id,
+    const through = segments.flatMap((segment) => [segment.startPointId, segment.endPointId])
+    // Each segment starts where the previous one ends.
+    expect(new Set(through).size).toBe(4)
+    expect(
+      through.map((pointId) => {
+        const { x, y } = point(sketch, pointId)
+        return { x, y }
       }),
-      expect.objectContaining({
-        incomingCurveId: segments[1]?.id,
-        outgoingCurveId: segments[2]?.id,
-      }),
+    ).toEqual([wave[0], wave[1], wave[1], wave[2], wave[2], wave[3]])
+    const joins = sketch.constraints.flatMap((constraint) =>
+      constraint.type === "tangent-join"
+        ? [[constraint.id, constraint.incomingCurveId, constraint.outgoingCurveId]]
+        : [],
+    )
+    const [first, second, third] = segments as [Cubic, Cubic, Cubic]
+    expect<string[][]>(joins).toEqual([
+      [createdConstraintIds[0] as string, first.id, second.id],
+      [createdConstraintIds[1] as string, second.id, third.id],
     ])
     for (const [incoming, outgoing] of [
-      [segments[0], segments[1]],
-      [segments[1], segments[2]],
+      [first, second],
+      [second, third],
     ] as const) {
-      if (!incoming || !outgoing) throw new Error("Missing join segments.")
       const join = point(sketch, incoming.endPointId)
       const before = point(sketch, incoming.control2PointId)
       const after = point(sketch, outgoing.control1PointId)

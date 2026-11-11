@@ -951,43 +951,69 @@ function initialPointValues(
   return values
 }
 
+type CubicBezierEntity = Extract<SketchEntity, { type: "cubic-bezier" }>
+type PointValues = ReadonlyMap<SketchEntityId, { x: number; y: number }>
+
+function tangentJoinCurves(
+  curves: ReadonlyMap<string, CubicBezierEntity>,
+  constraint: SketchConstraint,
+) {
+  if (constraint.type !== "tangent-join") return null
+  const incoming = curves.get(constraint.incomingCurveId)
+  const outgoing = curves.get(constraint.outgoingCurveId)
+  return incoming && outgoing ? { incoming, outgoing } : null
+}
+
+function cubicBezierEntities(sketch: SketchRecord): ReadonlyMap<string, CubicBezierEntity> {
+  return new Map(
+    sketch.entities.flatMap((entity) =>
+      entity.type === "cubic-bezier" ? [[entity.id, entity] as const] : [],
+    ),
+  )
+}
+
+/** Translates the free handles of one dragged join point by the drag displacement. */
+function carriedJoinHandles(
+  join: Readonly<{ incoming: CubicBezierEntity; outgoing: CubicBezierEntity }>,
+  currentValues: PointValues,
+  dragged: ReadonlyMap<string, SketchDragTarget>,
+): SketchDragTarget[] {
+  const target = dragged.get(join.incoming.endPointId)
+  const current = currentValues.get(join.incoming.endPointId)
+  if (!target || !current) return []
+  return [join.incoming.control2PointId, join.outgoing.control1PointId].flatMap((handleId) => {
+    const handle = currentValues.get(handleId)
+    if (!handle || dragged.has(handleId)) return []
+    return [
+      {
+        entityId: handleId,
+        x: handle.x + target.x - current.x,
+        y: handle.y + target.y - current.y,
+      },
+    ]
+  })
+}
+
 /**
  * Dragging the shared through-point of a tangent join carries both adjacent handles rigidly, so
  * the join keeps its tangent direction instead of letting least-movement collapse a handle.
  */
 function withTangentJoinHandleDrags(
   sketch: SketchRecord,
-  currentValues: ReadonlyMap<SketchEntityId, { x: number; y: number }> | null,
+  currentValues: PointValues | null,
   draggedPoints: readonly SketchDragTarget[],
 ): readonly SketchDragTarget[] {
   if (!currentValues || draggedPoints.length === 0) return draggedPoints
-  const curves = new Map(
-    sketch.entities.flatMap((entity) =>
-      entity.type === "cubic-bezier" ? [[entity.id, entity] as const] : [],
-    ),
-  )
-  const dragged = new Map(draggedPoints.map((target) => [target.entityId, target]))
-  const carried: SketchDragTarget[] = []
+  const curves = cubicBezierEntities(sketch)
+  const dragged = new Map(draggedPoints.map((target) => [target.entityId as string, target]))
   for (const constraint of sketch.constraints) {
-    if (constraint.type !== "tangent-join") continue
-    const incoming = curves.get(constraint.incomingCurveId)
-    const outgoing = curves.get(constraint.outgoingCurveId)
-    const target = incoming ? dragged.get(incoming.endPointId) : undefined
-    const current = incoming ? currentValues.get(incoming.endPointId) : undefined
-    if (!incoming || !outgoing || !target || !current) continue
-    for (const handleId of [incoming.control2PointId, outgoing.control1PointId]) {
-      const handle = currentValues.get(handleId)
-      if (!handle || dragged.has(handleId)) continue
-      const carriedTarget = {
-        entityId: handleId,
-        x: handle.x + target.x - current.x,
-        y: handle.y + target.y - current.y,
-      }
-      dragged.set(handleId, carriedTarget)
-      carried.push(carriedTarget)
+    const join = tangentJoinCurves(curves, constraint)
+    if (!join) continue
+    for (const carried of carriedJoinHandles(join, currentValues, dragged)) {
+      dragged.set(carried.entityId, carried)
     }
   }
-  return carried.length === 0 ? draggedPoints : [...draggedPoints, ...carried]
+  return dragged.size === draggedPoints.length ? draggedPoints : [...dragged.values()]
 }
 
 function initialCircleRadii(
@@ -1673,21 +1699,20 @@ function addTangentJoinConstraint(
 function tangentJoinHandles(
   sketch: SketchRecord,
   constraint: Extract<SketchConstraint, { type: "tangent-join" }>,
-  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+  pointValues: PointValues,
 ) {
-  const incoming = sketch.entities.find(({ id }) => id === constraint.incomingCurveId)
-  const outgoing = sketch.entities.find(({ id }) => id === constraint.outgoingCurveId)
-  if (incoming?.type !== "cubic-bezier" || outgoing?.type !== "cubic-bezier") return null
+  const curves = tangentJoinCurves(cubicBezierEntities(sketch), constraint)
+  if (!curves) return null
+  const { incoming, outgoing } = curves
   const join = pointValues.get(incoming.endPointId)
   const before = pointValues.get(incoming.control2PointId)
   const after = pointValues.get(outgoing.control1PointId)
   if (!join || !before || !after) return null
   const incomingLength = Math.hypot(join.x - before.x, join.y - before.y)
   const outgoingLength = Math.hypot(after.x - join.x, after.y - join.y)
-  const [dx, dy, length] =
-    incomingLength > 1e-9
-      ? [join.x - before.x, join.y - before.y, incomingLength]
-      : [after.x - join.x, after.y - join.y, outgoingLength]
+  // The incoming handle orients the join; a collapsed one defers to the outgoing handle.
+  const [from, to, length] =
+    incomingLength > 1e-9 ? [before, join, incomingLength] : [join, after, outgoingLength]
   // A zero-length handle pair has no orientation to preserve; tangency remains authoritative.
   if (length <= 1e-9) return null
   return {
@@ -1695,7 +1720,7 @@ function tangentJoinHandles(
     joinId: incoming.endPointId,
     outgoingControlId: outgoing.control1PointId,
     join,
-    normal: { x: -dy / length, y: dx / length },
+    normal: { x: -(to.y - from.y) / length, y: (to.x - from.x) / length },
     scale: Math.max(incomingLength, outgoingLength),
   }
 }
