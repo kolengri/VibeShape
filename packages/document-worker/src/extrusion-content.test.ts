@@ -849,7 +849,7 @@ describe("document extrusion content preparation", () => {
       ok: true,
       solution: source.solution,
     }))
-    const outer = [...profile.outerBoundaryEntityIds].sort()[0]
+    const outer = [...sketchProfileSelectorSchema.parse(profile).outerBoundaryEntityIds].sort()[0]
 
     await expect(prepare({ document, feature })).resolves.toMatchObject({
       ok: true,

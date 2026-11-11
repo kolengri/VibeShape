@@ -258,7 +258,7 @@ describe("RevolveForm", () => {
       // A whole-result choice stays representable by the saved schema; a named output needs v8.
       expect(onSave).toHaveBeenLastCalledWith(
         4,
-        roles.includes("result")
+        (roles as readonly string[]).includes("result")
           ? expect.objectContaining({ type: edited.type, dependencies: [targetFeatureId] })
           : expect.objectContaining({
               type: revolveFeatureTypeV8.type,
@@ -644,7 +644,7 @@ describe("RevolveForm v8 extents and endpoints", () => {
     )
     return { onSave, onPreviewChange }
   }
-  const submit = (name = copy.submit) => screen.getByRole("button", { name })
+  const submit = (name: string = copy.submit) => screen.getByRole("button", { name })
 
   it("splits a symmetric total angle and disables the direction", async () => {
     const user = userEvent.setup()

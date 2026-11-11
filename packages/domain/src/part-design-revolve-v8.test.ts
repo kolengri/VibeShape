@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { featureGeometryDependencies } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
 import { createFeatureTypeRegistry } from "./feature-type-registry"
+import { featureIdSchema } from "./identifiers"
 import {
   createModuleRegistry,
   documentCoreModule,
@@ -33,9 +34,9 @@ const profile = {
 }
 const secondProfile = { ...profile, outerBoundaryEntityIds: [id(21)] }
 const profiles = createSketchProfileSet([profile] as never)
-const featureId = id(100)
-const targetId = id(101)
-const endId = id(102)
+const featureId = featureIdSchema.parse(id(100))
+const targetId = featureIdSchema.parse(id(101))
+const endId = featureIdSchema.parse(id(102))
 const hash = "a".repeat(64)
 const deg = (value: number, expression?: string) => createAngleQuantity(value, "deg", expression)
 const face = {
