@@ -40,6 +40,13 @@ function expandedAt(expanded: readonly SketchPoint2[], offset: number, share: nu
   return cubicAt(expanded, offset + piece, t * share - piece)
 }
 
+function chainEnds(poles: readonly SketchPoint2[]) {
+  const start = poles[0]
+  const end = poles.at(-1)
+  if (!start || !end) throw new Error("A projected chain must have two ends.")
+  return [start, end] as const
+}
+
 describe("model spline projection", () => {
   it("expands a chain to more segments without changing the traced curve", () => {
     for (const target of [2, 3, 5, 8]) {
@@ -125,9 +132,10 @@ describe("model spline projection", () => {
     ]
     const first = projectWorldBezierChainToSupport(frame, edge)
     if (!first.ok) throw new Error("The parallel edge must project.")
+    const [start, end] = chainEnds(first.poles)
     const anchors = [
-      [first.poles[0]?.x ?? 0, first.poles[0]?.y ?? 0],
-      [first.poles.at(-1)?.x ?? 0, first.poles.at(-1)?.y ?? 0],
+      [start.x, start.y],
+      [end.x, end.y],
     ] as const
     // A feature-derived support turns with its edge, which also rebuilds reparameterized.
     const turned = projectWorldBezierChainToSupport(
@@ -137,10 +145,9 @@ describe("model spline projection", () => {
       anchors,
     )
     if (!turned.ok) throw new Error("The turned edge must project.")
-    expect(turned.poles[0]?.x).toBeCloseTo(0, 9)
-    expect(turned.poles[0]?.y).toBeCloseTo(0, 9)
-    expect(turned.poles.at(-1)?.x).toBeCloseTo(10, 9)
-    expect(turned.poles.at(-1)?.y).toBeCloseTo(1, 9)
+    const [turnedStart, turnedEnd] = chainEnds(turned.poles)
+    expect(turnedStart).toMatchObject({ x: expect.closeTo(0, 9), y: expect.closeTo(0, 9) })
+    expect(turnedEnd).toMatchObject({ x: expect.closeTo(10, 9), y: expect.closeTo(1, 9) })
     // World anchors would pair the turned ends the other way round after this 120-degree turn.
     const [worldStart, worldEnd] = [rotate(edge[0] as Vector3), rotate(edge[3] as Vector3)]
     const gap = (a: Vector3, b: Vector3) => Math.hypot(a[0] - b[0], a[1] - b[1])

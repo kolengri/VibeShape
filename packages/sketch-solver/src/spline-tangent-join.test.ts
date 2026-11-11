@@ -257,6 +257,24 @@ const flat = [
   { x: 20, y: 0 },
 ] as const
 
+function threeSegments(sketch: SketchRecord) {
+  const [first, second, last] = cubics(sketch)
+  if (!first || !second || !last) throw new Error("The fixture must contain three segments.")
+  return [first, second, last] as const
+}
+
+function authoredPoint(sketch: SketchRecord, pointId: string) {
+  const point = sketch.entities.find(({ id: entityId }) => entityId === pointId)
+  if (point?.type !== "point") throw new Error(`The fixture must contain point ${pointId}.`)
+  return point
+}
+
+/** Distance the first wave join moved from its authored position at (10, 6). */
+function distanceFromOriginalJoin(join: { x: number; y: number } | undefined) {
+  if (!join) throw new Error("The solution must contain the join point.")
+  return Math.hypot(join.x - 10, join.y - 6)
+}
+
 function firstJoinId(sketch: SketchRecord): string {
   const [join] = sketch.constraints
   if (!join) throw new Error("The fixture must contain a tangent join.")
@@ -489,7 +507,7 @@ describe("tangent joins under large single solves", () => {
     const join = solvedPointMap(solution).get(first.endPointId)
     // Holding this handle forced nearly the whole 5 mm change onto the through-point. Left free,
     // the handle absorbs most of it; the join moves exactly as in a solve without any holds.
-    expect(Math.hypot((join?.x ?? 0) - 10, (join?.y ?? 0) - 6)).toBeLessThan(2.5)
+    expect(distanceFromOriginalJoin(join)).toBeLessThan(2.5)
     expectStrictG1OrFailedJoins(dimensioned, solution)
   })
 
@@ -528,19 +546,16 @@ describe("tangent joins under large single solves", () => {
     expect(solution.failedConstraintIds).toEqual([])
     const join = solvedPointMap(solution).get(first.endPointId)
     // The old predictor carried the join about 3 mm with the held handle.
-    expect(Math.hypot((join?.x ?? 0) - 10, (join?.y ?? 0) - 6)).toBeLessThan(1)
+    expect(distanceFromOriginalJoin(join)).toBeLessThan(1)
     expectStrictG1OrFailedJoins(driven, solution)
   })
 
   it("keeps sliding-join handle lengths beside an unchanged handle dimension on another join", () => {
     const { sketch } = spline()
-    const [first, second, last] = cubics(sketch)
-    if (!first || !second || !last) throw new Error("The fixture must contain three segments.")
-    const before = joinTangents(sketch, solvedPointMap(solved(sketch, [])))[0]
-    const join2 = sketch.entities.find(({ id: entityId }) => entityId === second.endPointId)
-    const handle2 = sketch.entities.find(({ id: entityId }) => entityId === last.control1PointId)
-    if (!before || join2?.type !== "point" || handle2?.type !== "point")
-      throw new Error("The fixture must expose its second join.")
+    const [first, second, last] = threeSegments(sketch)
+    const [before] = joinTangents(sketch, solvedPointMap(solved(sketch, [])))
+    const join2 = authoredPoint(sketch, second.endPointId)
+    const handle2 = authoredPoint(sketch, last.control1PointId)
     const length2 = Math.hypot(handle2.x - join2.x, handle2.y - join2.y)
     const dimensioned = withConstraints(sketch, [
       fixedPoint(first.startPointId, 0),
@@ -566,8 +581,7 @@ describe("tangent joins under large single solves", () => {
     const solution = solved(dimensioned, [])
     expect(solution.failedConstraintIds).toEqual([])
     const [join] = joinTangents(dimensioned, solvedPointMap(solution))
-    if (!join) throw new Error("The spline must keep its first join.")
-    expect(join.incomingLength).toBeCloseTo(before.incomingLength, 6)
-    expect(join.outgoingLength).toBeCloseTo(before.outgoingLength, 6)
+    expect(join?.incomingLength).toBeCloseTo(before?.incomingLength ?? Number.NaN, 6)
+    expect(join?.outgoingLength).toBeCloseTo(before?.outgoingLength ?? Number.NaN, 6)
   })
 })
