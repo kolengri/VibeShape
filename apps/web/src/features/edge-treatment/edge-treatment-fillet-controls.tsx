@@ -1,11 +1,16 @@
 import type { EdgeTopoRef } from "@vibeshape/domain"
 import type { BodyTopoRef } from "@vibeshape/domain/body-topology-reference"
 import { useTranslations } from "@vibeshape/i18n"
+import { FieldError } from "@vibeshape/ui/components/field"
 import type { ComponentProps } from "react"
 import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import type { EdgeTreatmentCandidate } from "./edge-treatment-candidates"
-import { setVariableRadius, variableRadiusFor } from "./edge-treatment-fillet"
+import {
+  setVariableRadius,
+  type VariableRadiusIssue,
+  variableRadiusFor,
+} from "./edge-treatment-fillet"
 import type { TreatmentValues } from "./edge-treatment-model"
 import { SelectedRowToggle } from "./edge-treatment-selected-row"
 
@@ -21,7 +26,14 @@ type FilletEdgeRadiusProps = Readonly<{
   defaultEndRadius: string
   expressionDescription: string
   suggestions: ComponentProps<typeof LengthExpressionField>["suggestions"]
+  /** This row's law issue, shown beside its field or under the row. */
+  issue: VariableRadiusIssue | null
 }>
+
+/** Shared by the inline toggle and the row details: one id per row-level law issue. */
+function lawIssueId(props: FilletEdgeRadiusProps) {
+  return props.issue?.field === "edge" ? `edge-treatment-radius-issue-${props.index}` : undefined
+}
 
 /** Variable radius needs a body-bound catalogue for the resolved current edge. */
 function supportsVariableRadius(props: FilletEdgeRadiusProps) {
@@ -45,6 +57,8 @@ export function FilletEdgeRadiusToggle(props: FilletEdgeRadiusProps) {
       aria-label={t("variableRadiusNamed", { edge: props.label })}
       checked={Boolean(draft)}
       disabled={props.disabled}
+      aria-describedby={lawIssueId(props)}
+      aria-invalid={lawIssueId(props) ? true : undefined}
       onChange={(event) =>
         props.onChange(
           setVariableRadius(
@@ -71,14 +85,19 @@ export function FilletEdgeRadiusDetails(props: FilletEdgeRadiusProps) {
   if (!supportsVariableRadius(props) || !draft) return null
   const update = (patch: Partial<typeof draft>) =>
     props.onChange(setVariableRadius(props.values, props.reference, { ...draft, ...patch }))
+  const fieldIssue = (field: VariableRadiusIssue["field"]) =>
+    props.issue?.field === field ? props.issue.message : undefined
+  const issueId = lawIssueId(props)
   return (
     <>
+      {issueId && <FieldError id={issueId}>{props.issue?.message}</FieldError>}
       <LengthExpressionField
         id={`edge-treatment-start-radius-${props.index}`}
         name={`startRadius-${props.index}`}
         label={t("startRadiusNamed", { edge: props.label })}
         description={props.expressionDescription}
         value={draft.startRadius}
+        error={fieldIssue("startRadius")}
         disabled={props.disabled}
         suggestions={props.suggestions}
         onValueChange={(startRadius) => update({ startRadius })}
@@ -89,6 +108,7 @@ export function FilletEdgeRadiusDetails(props: FilletEdgeRadiusProps) {
         label={t("endRadiusNamed", { edge: props.label })}
         description={props.expressionDescription}
         value={draft.endRadius}
+        error={fieldIssue("endRadius")}
         disabled={props.disabled}
         suggestions={props.suggestions}
         onValueChange={(endRadius) => update({ endRadius })}

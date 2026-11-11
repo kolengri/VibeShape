@@ -171,6 +171,25 @@ export function sameTreatmentReference(
   return canonicalJson(left.signature) === canonicalJson(right.signature)
 }
 
+/**
+ * List identity for a stored target. Promotion to V3 rewrites only the envelope (`schemaVersion`
+ * and `outputRole`), so the key follows the same identity rules as `sameTreatmentReference` and a
+ * row keeps its DOM, including focus, across that switch.
+ */
+export function treatmentReferenceKey(reference: EdgeTopoRef | BodyTopoRef) {
+  const identity = reference.semanticRole
+    ? { semanticRole: reference.semanticRole }
+    : reference.lineageToken
+      ? { lineageToken: reference.lineageToken }
+      : { signature: reference.signature }
+  return canonicalJson([
+    reference.featureId,
+    reference.schemaVersion === 1 ? reference.outputRole : "result",
+    reference.kind,
+    identity,
+  ])
+}
+
 type TreatmentReference = EdgeTopoRef | BodyTopoRef
 type TreatmentReferenceResolution =
   | { status: "resolved"; candidate: EdgeTreatmentCandidate }
