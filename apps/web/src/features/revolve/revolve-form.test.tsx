@@ -702,6 +702,30 @@ describe("RevolveForm v8 extents and endpoints", () => {
     )
   })
 
+  it("ignores an invalid hidden angle once an endpoint is selected", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderExtentForm()
+    const angle = screen.getByRole("combobox", { name: copy.angle })
+    await user.clear(angle)
+    await user.type(angle, "#missing")
+    await user.selectOptions(screen.getByLabelText("End condition"), "up-to-body")
+    expect(screen.queryByRole("combobox", { name: copy.angle })).toBeNull()
+    await user.click(screen.getByRole("combobox", { name: "End body" }))
+    await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Wall")
+    await user.click(screen.getByRole("option", { name: "Wall · result" }))
+    await user.click(submit())
+    expect(screen.queryByText(copy.invalidExpression)).toBeNull()
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        parameters: expect.objectContaining({
+          angle: expect.objectContaining({ value: Math.PI * 2 }),
+          endCondition: expect.objectContaining({ kind: "up-to-body" }),
+        }),
+      }),
+    )
+  })
+
   it("binds an up-to-face endpoint to its exact body revision and orders its dependency", async () => {
     const user = userEvent.setup()
     const { onSave } = renderExtentForm()

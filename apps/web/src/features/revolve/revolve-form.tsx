@@ -247,10 +247,28 @@ type ParseContext = Readonly<{
   mode: RevolveFormMode
 }>
 
+/**
+ * An endpoint hides the angle field; its retained value is the parsed field, else the saved angle
+ * of an edited revolve, else a full turn, so hidden raw input never blocks Apply.
+ */
+function retainedEndpointAngle(values: Values, context: ParseContext) {
+  const angle = parseAngle(values.angle, "angle", context)
+  if (angle.ok) return angle.quantity
+  const saved =
+    context.mode.kind === "edit" ? readRevolveFeatureParameters(context.mode.feature)?.angle : null
+  return saved ?? createAngleQuantity(Math.PI * 2, "rad")
+}
+
 function parseAngles(values: Values, context: ParseContext) {
+  if (values.endKind !== "angle")
+    return {
+      ok: true as const,
+      angle: retainedEndpointAngle(values, context),
+      secondAngle: null,
+    }
   const angle = parseAngle(values.angle, "angle", context)
   if (!angle.ok) return angle
-  if (values.extent !== "two-sided" || values.endKind !== "angle")
+  if (values.extent !== "two-sided")
     return { ok: true as const, angle: angle.quantity, secondAngle: null }
   const second = parseAngle(values.secondAngle, "secondAngle", context)
   return second.ok
