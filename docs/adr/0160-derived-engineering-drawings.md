@@ -50,10 +50,15 @@ shared edges. A grid-indexed coverage pass compares collinear lines and concentr
 circles and arcs within 1e-4 mm: it merges the parameter or angular intervals of visible curves
 (and of hidden curves already kept) and emits only the uncovered pieces of each curve, so a hidden
 edge partly behind visible edges keeps exactly its hidden gaps. Collinearity is checked both ways,
-so a short tilted segment on a long covering line is covered too. Sampled polylines are covered per
-segment: a segment whose end points and midpoint lie within twice the chordal tolerance plus
-1e-4 mm of covering geometry is dropped and the uncovered runs remain, because two samplings of the
-same curve each stay within the chordal tolerance of it. Output contains only coordinates, never OCCT
+so a short tilted segment on a long covering line is covered too. Sampled polylines use continuous
+coverage along their arc length: each segment is clipped analytically against the capsules (the
+covering piece swept by a disc) of nearby lines, polyline segments and circle/arc chords, with a
+radius of twice the chordal tolerance plus 1e-4 mm because two samplings of the same curve each
+stay within the chordal tolerance of it. Covered stretches are merged across vertices; stretches
+shorter than four radii are single crossings and cut nothing; uncovered runs reuse the original
+vertices and runs no longer than one radius are dropped. Straight pieces are indexed in a fine grid
+sized from the view's density, registered only along the piece, and circles and arcs in a coarse
+grid, so dense views stay near-linear. Output contains only coordinates, never OCCT
 indices.
 
 Without an explicit body selection the projection draws every exact terminal body and skips

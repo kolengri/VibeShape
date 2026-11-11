@@ -18,6 +18,17 @@ function quarterEllipse(count: number, from = 0, to = 1, offset = 0): Point[] {
     ellipsePoint(((from + ((to - from) * index) / (count - 1)) * Math.PI) / 2, offset),
   )
 }
+function polylineLength(points: readonly Point[]) {
+  return points.slice(1).reduce((sum, point, index) => {
+    const previous = points[index] ?? point
+    return sum + Math.hypot(point[0] - previous[0], point[1] - previous[1])
+  }, 0)
+}
+function curveLength(curve: DrawingCurve) {
+  if (curve.kind === "line") return polylineLength([curve.start, curve.end])
+  if (curve.kind === "polyline") return polylineLength(curve.points)
+  throw new Error(`Unexpected ${curve.kind}.`)
+}
 const hiddenOf = (edges: readonly DrawingEdge[]) =>
   edges.filter(({ visibility }) => visibility === "hidden").map(({ curve }) => curve)
 
@@ -165,6 +176,78 @@ describe("hidden edge coverage", () => {
     expect(Math.hypot(first[0] - joint[0], first[1] - joint[1])).toBeLessThan(0.5)
     expect(tail.points.at(-1)).toEqual(ellipsePoint(Math.PI / 2))
     expect(offset.points).toHaveLength(60)
+  })
+
+  it("keeps a hidden polyline whose sample points touch only short visible stubs", () => {
+    const hidden: Point[] = [
+      [0, 0],
+      [100, 1],
+      [200, 0],
+    ]
+    const stubs = [
+      [0, 0],
+      [50, 0.5],
+      [100, 1],
+      [150, 0.5],
+      [200, 0],
+    ].map(([x = 0, y = 0]) => edge("visible", line([x - 0.1, y], [x + 0.1, y])))
+    const result = suppressCoincidentEdges([
+      ...stubs,
+      edge("hidden", { kind: "polyline", points: hidden }),
+    ])
+    const total = polylineLength(hidden)
+    const remaining = hiddenOf(result).reduce((sum, curve) => sum + curveLength(curve), 0)
+    // Each stub removes its 0.2 mm plus at most the capsule radius at either end.
+    expect(remaining).toBeGreaterThan(total - 5 * (0.2 + 2 * 0.0201) - 1e-6)
+    expect(remaining).toBeLessThan(total - 5 * 0.2 + 0.25)
+    expect(hiddenOf(result).length).toBeGreaterThanOrEqual(4)
+  })
+
+  it("does not cut a hidden polyline where visible edges merely cross it", () => {
+    const hidden: Point[] = [
+      [0, 0],
+      [10, 1],
+      [20, 0],
+    ]
+    const crossings = [
+      [0, 0],
+      [5, 0.5],
+      [10, 1],
+      [15, 0.5],
+      [20, 0],
+    ].map(([x = 0, y = 0]) => edge("visible", line([x, y - 5], [x, y + 5])))
+    const result = suppressCoincidentEdges([
+      ...crossings,
+      edge("hidden", { kind: "polyline", points: hidden }),
+    ])
+    const remaining = hiddenOf(result).reduce((sum, curve) => sum + curveLength(curve), 0)
+    expect(remaining).toBeGreaterThan(polylineLength(hidden) - 0.0201 * 2 * 5)
+  })
+
+  it("removes a hidden polyline that a coarser visible sampling follows continuously", () => {
+    const result = suppressCoincidentEdges([
+      edge("visible", { kind: "polyline", points: quarterEllipse(60) }),
+      edge("hidden", { kind: "polyline", points: quarterEllipse(200) }),
+    ])
+    expect(hiddenOf(result)).toEqual([])
+  })
+
+  it("removes a hidden polyline that follows a visible exact arc", () => {
+    const samples = Array.from({ length: 90 }, (_, index): Point => {
+      const angle = (index / 89) * Math.PI
+      return [30 * Math.cos(angle), 30 * Math.sin(angle)]
+    })
+    const result = suppressCoincidentEdges([
+      edge("visible", {
+        kind: "arc",
+        center: [0, 0],
+        radius: 30,
+        startAngle: 0,
+        endAngle: Math.PI,
+      }),
+      edge("hidden", { kind: "polyline", points: samples }),
+    ])
+    expect(hiddenOf(result)).toEqual([])
   })
 
   it("covers a short tilted segment lying on a long visible line", () => {
