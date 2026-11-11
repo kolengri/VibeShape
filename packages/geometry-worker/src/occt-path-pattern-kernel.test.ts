@@ -384,7 +384,7 @@ describe("path pattern on closed paths", () => {
       true,
     )
     expect(() => samplePathPatternPlacements(occt, parameters(eight, { count: 4 }))).toThrow(
-      "A closed pattern path must enclose an area",
+      "A closed pattern path must enclose a nonzero net area",
     )
   })
 
@@ -463,10 +463,11 @@ describe("path pattern arc length on a cubic Bezier", () => {
   }
 
   it("matches an independent arc-length measurement", () => {
-    const placements = samplePathPatternPlacements(occt, parameters(bezier, { count: 3 }))
+    // Four stations: the symmetric curve's midpoint alone cannot tell arc length from parameter.
+    const placements = samplePathPatternPlacements(occt, parameters(bezier, { count: 4 }))
     expectPoints(
       placements.map(({ translation }) => translation as Point3),
-      [[0, 0, 0], referenceStation(0.5), [100, 0, 0]],
+      [[0, 0, 0], referenceStation(1 / 3), referenceStation(2 / 3), [100, 0, 0]],
       1e-7,
     )
   })

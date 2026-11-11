@@ -44,11 +44,16 @@ function difference(from: Point2, to: Point2): Point2 {
   return [to[0] - from[0], to[1] - from[1]]
 }
 
-/** Real roots in t of A t² + 2B t + C, plus the vertex for near-double roots. */
+/**
+ * Real roots in t of A t² + 2B t + C, plus the vertex for near-double roots. Uses the
+ * cancellation-free pair q/A and C/q: when rounding leaves A tiny but nonzero (collinear control
+ * points), (−B ± √disc)/A would lose the interior root entirely.
+ */
 function quadraticCandidates(A: number, B: number, C: number) {
   if (A === 0) return B === 0 ? [] : [-C / (2 * B)]
   const root = Math.sqrt(Math.max(0, B * B - A * C))
-  return [(-B - root) / A, (-B + root) / A, -B / A]
+  const q = -(B + (B < 0 ? -root : root))
+  return q === 0 ? [-B / A] : [q / A, C / q, -B / A]
 }
 
 /**

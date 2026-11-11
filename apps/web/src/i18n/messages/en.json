@@ -3079,7 +3079,7 @@
       "reverse": "Reverse direction",
       "reverseDescription": "Open paths start from their other end; closed paths run clockwise.",
       "unavailable": "The exact source body is unavailable. Restore its upstream geometry before applying this pattern.",
-      "previewFailed": "{kind, select, path {The exact path pattern could not be built. Check that the path is one connected tangent-continuous chain or a single circle, without corners, cusps or branches; that the start point is an end of an open path or a joint of a closed loop; and that the count, spacing and start offset fit within the path length.} other {The exact pattern could not be built. Check that the source is one valid solid and the count, spacing, angle and center are within their bounds.}}",
+      "previewFailed": "{kind, select, path {The exact path pattern could not be built. Check that the path is one connected tangent-continuous chain or a single circle, without corners, cusps or branches, and that a closed loop encloses an area rather than crossing itself into cancelling lobes; that the start point is an end of an open path or a joint of a closed loop; and that the count, spacing and start offset fit within the path length.} other {The exact pattern could not be built. Check that the source is one valid solid and the count, spacing, angle and center are within their bounds.}}",
       "validationSummary": "Check the highlighted pattern parameters before applying.",
       "invalidExpression": "Enter a valid expression using available variables.",
       "invalidDimension": "Use a length expression for this field.",

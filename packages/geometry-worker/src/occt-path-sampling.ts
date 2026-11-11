@@ -207,7 +207,7 @@ function loopWinding(
   const area = loopArea(curves, panels, path) / 2
   if (Math.abs(area) <= MIN_ENCLOSED_AREA_RATIO * length * length)
     throw new PathPatternError(
-      "A closed pattern path must enclose an area so its direction is defined; figure-eight and self-overlapping loops are ambiguous.",
+      "A closed pattern path must enclose a nonzero net area so its direction is defined; a symmetric figure eight or a loop whose lobes cancel is ambiguous.",
     )
   return area < 0 ? -1 : 1
 }

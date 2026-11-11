@@ -59,6 +59,16 @@ describe("pattern path tangent validation", () => {
     ).toThrow(`Pattern path curve ${id(1)} has a cusp where its tangent is undefined.`)
   })
 
+  it("rejects a cusp on a collinear Bezier whose quadratic term rounds to almost zero", () => {
+    // The curve runs forward then back along y = 1.7; the cusp sits at t = 0.0125.
+    expect(() =>
+      validatePatternPathChain(
+        [cubic(1, [0.3, 1.7], [0.4, 1.7], [-3.5, 1.7], [-11.4, 1.7])],
+        false,
+      ),
+    ).toThrow(`Pattern path curve ${id(1)} has a cusp where its tangent is undefined.`)
+  })
+
   it("keeps a sharp but regular Bezier turn", () => {
     expect(() =>
       validatePatternPathChain([cubic(1, [0, 0], [10, 10], [1, 10], [10, 0])], false),
