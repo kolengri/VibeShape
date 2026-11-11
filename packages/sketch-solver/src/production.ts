@@ -855,10 +855,29 @@ class ProductionSketchBuilder {
     return { handle, index }
   }
 
-  /** Adds an auxiliary point that the solver keeps at its initial coordinates. */
-  addPinnedAuxiliaryPoint(point: { x: number; y: number }) {
-    const handle = this.#addAuxiliaryPoint(point)
-    this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.whereDragged, { pointA: handle })
+  /**
+   * Adds an auxiliary point held at a fixed sketch-axis offset from a moving anchor, so the pair
+   * translates together during a solve instead of staying at absolute coordinates.
+   */
+  addAnchoredAuxiliaryPoint(
+    id: SketchConstraintId,
+    anchor: number,
+    position: { x: number; y: number },
+    offset: { x: number; y: number },
+  ) {
+    const handle = this.#addAuxiliaryPoint(position)
+    for (const [direction, value] of [
+      ["horizontal", offset.x],
+      ["vertical", offset.y],
+    ] as const) {
+      // Projected distance is the auxiliary coordinate minus the anchor coordinate on that axis.
+      this.addConstraint(id, SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance, {
+        pointA: handle,
+        pointB: anchor,
+        entityA: this.projectedAxis(direction),
+        value,
+      })
+    }
     return handle
   }
 
@@ -977,13 +996,15 @@ function carriedJoinHandles(
   join: Readonly<{ incoming: CubicBezierEntity; outgoing: CubicBezierEntity }>,
   currentValues: PointValues,
   dragged: ReadonlyMap<string, SketchDragTarget>,
+  fixedPointIds: ReadonlySet<string>,
 ): SketchDragTarget[] {
   const target = dragged.get(join.incoming.endPointId)
   const current = currentValues.get(join.incoming.endPointId)
   if (!target || !current) return []
   return [join.incoming.control2PointId, join.outgoing.control1PointId].flatMap((handleId) => {
     const handle = currentValues.get(handleId)
-    if (!handle || dragged.has(handleId)) return []
+    // A fixed handle keeps its authored position; carrying it would rewrite its pin.
+    if (!handle || dragged.has(handleId) || fixedPointIds.has(handleId)) return []
     return [
       {
         entityId: handleId,
@@ -1006,10 +1027,15 @@ function withTangentJoinHandleDrags(
   if (!currentValues || draggedPoints.length === 0) return draggedPoints
   const curves = cubicBezierEntities(sketch)
   const dragged = new Map(draggedPoints.map((target) => [target.entityId as string, target]))
+  const fixedPointIds = new Set<string>(
+    sketch.constraints.flatMap((constraint) =>
+      constraint.type === "fixed" ? [constraint.pointId] : [],
+    ),
+  )
   for (const constraint of sketch.constraints) {
     const join = tangentJoinCurves(curves, constraint)
     if (!join) continue
-    for (const carried of carriedJoinHandles(join, currentValues, dragged)) {
+    for (const carried of carriedJoinHandles(join, currentValues, dragged, fixedPointIds)) {
       dragged.set(carried.entityId, carried)
     }
   }
@@ -1655,9 +1681,11 @@ function addConstraint(
 
 /**
  * Compiles a G1 join as SolveSpace curve-curve tangency plus strict handle ordering. Tangency alone
- * also admits a cusp where both handles point the same way, so a pinned auxiliary point on the
- * current join normal defines a separating line through the moving join point; the two handles
- * must stay on opposite sides of it. The slack-variable half-plane equations add no freedom.
+ * also admits a cusp where both handles point the same way, so an auxiliary point held at a fixed
+ * offset along the initial join normal defines a separating line through the moving join point;
+ * the two handles must stay on opposite sides of it. Within one solve the join tangent therefore
+ * turns by less than a quarter turn. The slack-variable half-plane equations add no freedom, and
+ * `invalidTangentJoinConstraintIds` rejects any converged result that is not strictly G1.
  */
 function addTangentJoinConstraint(
   builder: ProductionSketchBuilder,
@@ -1674,10 +1702,14 @@ function addTangentJoinConstraint(
   const handles = tangentJoinHandles(sketch, constraint, pointValues)
   if (!handles) return
   const { incomingControlId, joinId, outgoingControlId, normal, join, scale } = handles
-  const separator = builder.addPinnedAuxiliaryPoint({
-    x: join.x + normal.x * scale,
-    y: join.y + normal.y * scale,
-  })
+  const offset = { x: normal.x * scale, y: normal.y * scale }
+  // The separator moves with the join, so a large join translation cannot flip the half-planes.
+  const separator = builder.addAnchoredAuxiliaryPoint(
+    constraint.id,
+    builder.entity(joinId),
+    { x: join.x + offset.x, y: join.y + offset.y },
+    offset,
+  )
   for (const [controlId, ahead] of [
     [outgoingControlId, true],
     [incomingControlId, false],
@@ -1991,6 +2023,59 @@ function profileResultForSolve(
   }
 }
 
+/** A handle shorter than this fraction of its segment chord is treated as collapsed. */
+const MIN_TANGENT_HANDLE_CHORD_RATIO = 1e-2
+const TANGENT_JOIN_COLLINEARITY_TOLERANCE = 1e-6
+
+function tangentJoinIsStrictlyG1(
+  incoming: CubicBezierEntity,
+  outgoing: CubicBezierEntity,
+  pointValues: PointValues,
+) {
+  const at = (id: SketchEntityId) => pointValues.get(id)
+  const [start, before, join, after, end] = [
+    at(incoming.startPointId),
+    at(incoming.control2PointId),
+    at(incoming.endPointId),
+    at(outgoing.control1PointId),
+    at(outgoing.endPointId),
+  ]
+  if (!start || !before || !join || !after || !end) return false
+  const a = { x: join.x - before.x, y: join.y - before.y }
+  const b = { x: after.x - join.x, y: after.y - join.y }
+  const incomingLength = Math.hypot(a.x, a.y)
+  const outgoingLength = Math.hypot(b.x, b.y)
+  const incomingChord = Math.hypot(join.x - start.x, join.y - start.y)
+  const outgoingChord = Math.hypot(end.x - join.x, end.y - join.y)
+  if (
+    incomingLength <= Math.max(1e-9, incomingChord * MIN_TANGENT_HANDLE_CHORD_RATIO) ||
+    outgoingLength <= Math.max(1e-9, outgoingChord * MIN_TANGENT_HANDLE_CHORD_RATIO)
+  ) {
+    return false
+  }
+  const scale = incomingLength * outgoingLength
+  const cross = (a.x * b.y - a.y * b.x) / scale
+  const dot = (a.x * b.x + a.y * b.y) / scale
+  return Math.abs(cross) <= TANGENT_JOIN_COLLINEARITY_TOLERANCE && dot > 0
+}
+
+/**
+ * Rejects a converged solve whose join is a cusp, kinked, or has a collapsed handle. Native
+ * residuals cannot express these inequalities exactly, so they are checked after the solve.
+ */
+function invalidTangentJoinConstraintIds(
+  sketch: SketchRecord,
+  points: readonly z.infer<typeof pointSolutionSchema>[],
+) {
+  const curves = cubicBezierEntities(sketch)
+  const pointValues = new Map(points.map((point) => [point.entityId, point] as const))
+  return sketch.constraints.flatMap((constraint) => {
+    const join = tangentJoinCurves(curves, constraint)
+    if (!join) return []
+    return tangentJoinIsStrictlyG1(join.incoming, join.outgoing, pointValues) ? [] : [constraint.id]
+  })
+}
+
 function invalidBoundedEllipticalArcConstraintIds(
   loci: readonly BoundedEllipticalArcLocus[],
   points: readonly z.infer<typeof pointSolutionSchema>[],
@@ -2041,10 +2126,14 @@ export function solveSketchRecord(
     boundedEllipticalArcLoci,
     points,
   )
-  const failedConstraintIds = [
-    ...new Set([...nativeFailedConstraintIds, ...boundedArcFailedConstraintIds]),
+  const postSolveFailedConstraintIds = [
+    ...boundedArcFailedConstraintIds,
+    ...invalidTangentJoinConstraintIds(sketch, points),
   ]
-  const status = boundedArcFailedConstraintIds.length > 0 ? "failed" : result.status
+  const failedConstraintIds = [
+    ...new Set([...nativeFailedConstraintIds, ...postSolveFailedConstraintIds]),
+  ]
+  const status = postSolveFailedConstraintIds.length > 0 ? "failed" : result.status
   return {
     ok: true,
     solution: {

@@ -1139,7 +1139,7 @@ function nativeWireConstraintContribution(constraint: z.infer<typeof sketchConst
     return constraint.linePairs.length * 2 + constraint.endpointPairs.length
   }
   if (constraint.type === "arc-midpoint") return 2
-  if (constraint.type === "tangent-join") return 4
+  if (constraint.type === "tangent-join") return 5
   if (constraint.type === "ellipse-quadrant") return 6
   if (constraint.type === "point-on-ellipse") return 5
   return constraint.type === "point-on-elliptical-arc" ? 6 : 1
@@ -1184,12 +1184,14 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
   const projectionCount =
     Number(
       sketch.constraints.some(
-        ({ type }) => type === "horizontal-distance" || type === "horizontal-points",
+        ({ type }) =>
+          type === "horizontal-distance" || type === "horizontal-points" || type === "tangent-join",
       ),
     ) +
     Number(
       sketch.constraints.some(
-        ({ type }) => type === "vertical-distance" || type === "vertical-points",
+        ({ type }) =>
+          type === "vertical-distance" || type === "vertical-points" || type === "tangent-join",
       ),
     )
   const auxiliaryArcMidpointLineCount =

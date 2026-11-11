@@ -1216,8 +1216,8 @@ function nativeConstraintContribution(constraint: SketchConstraint) {
     return constraint.linePairs.length * 2 + constraint.endpointPairs.length
   }
   if (constraint.type === "arc-midpoint") return 2
-  // Tangency, a pinned separator point and two handle-ordering half-planes.
-  if (constraint.type === "tangent-join") return 4
+  // Tangency, two separator offsets and two handle-ordering half-planes.
+  if (constraint.type === "tangent-join") return 5
   if (constraint.type === "ellipse-quadrant") return 6
   if (constraint.type === "point-on-ellipse") return 5
   return constraint.type === "point-on-elliptical-arc" ? 6 : 1
@@ -1268,12 +1268,14 @@ function nativeSketchCapacity(structure: SketchStructure) {
   const projectionCount =
     Number(
       structure.constraints.some(
-        ({ type }) => type === "horizontal-distance" || type === "horizontal-points",
+        ({ type }) =>
+          type === "horizontal-distance" || type === "horizontal-points" || type === "tangent-join",
       ),
     ) +
     Number(
       structure.constraints.some(
-        ({ type }) => type === "vertical-distance" || type === "vertical-points",
+        ({ type }) =>
+          type === "vertical-distance" || type === "vertical-points" || type === "tangent-join",
       ),
     )
   const auxiliaryArcMidpointLineCount =
