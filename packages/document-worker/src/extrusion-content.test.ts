@@ -849,7 +849,6 @@ describe("document extrusion content preparation", () => {
       ok: true,
       solution: source.solution,
     }))
-    const outer = [...sketchProfileSelectorSchema.parse(profile).outerBoundaryEntityIds].sort()[0]
 
     await expect(prepare({ document, feature })).resolves.toMatchObject({
       ok: true,
@@ -859,7 +858,7 @@ describe("document extrusion content preparation", () => {
         symmetric: false,
         reversed: true,
         endCondition: { kind: "angle" },
-        profileOutputRoles: [`revolve.profile.${outer}`],
+        profileOutputRoles: [expect.stringMatching(/^revolve\.profile\.[0-9a-f]{16}$/)],
       },
     })
   })

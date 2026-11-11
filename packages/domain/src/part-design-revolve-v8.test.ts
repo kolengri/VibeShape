@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { bodyOutputRoleSchema } from "./body-reference"
 import { createFeatureContentIdentity } from "./feature-content-identity"
 import { featureGeometryDependencies } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
@@ -186,8 +187,27 @@ describe("Revolve v8 endpoints and dependencies", () => {
     expect(readRevolveFeatureParameters(record(base))).not.toHaveProperty("targetBody")
   })
 
-  it("names separate profile outputs by their lowest outer boundary entity", () => {
-    expect(revolveProfileOutputRole(profile as never)).toBe(`revolve.profile.${id(11)}`)
+  it("names separate profile outputs by their complete outer boundary", () => {
+    // FNV-1a 64 of the sorted outer-boundary IDs joined by commas, computed independently.
+    expect(revolveProfileOutputRole(profile as never)).toBe("revolve.profile.ee945e77d0948d2e")
+    expect(
+      revolveProfileOutputRole({
+        ...profile,
+        outerBoundaryEntityIds: [id(12), id(11)],
+      } as never),
+    ).toBe("revolve.profile.ee945e77d0948d2e")
+    expect(bodyOutputRoleSchema.safeParse(revolveProfileOutputRole(profile as never)).success).toBe(
+      true,
+    )
+  })
+
+  it("gives adjacent regions that share their lowest boundary entity distinct names", () => {
+    // Two rectangles sharing edge 11 have the same lowest entity but different outer boundaries.
+    const left = { ...profile, outerBoundaryEntityIds: [id(11), id(12), id(13), id(14)] }
+    const right = { ...profile, outerBoundaryEntityIds: [id(11), id(15), id(16), id(17)] }
+    expect(revolveProfileOutputRole(left as never)).not.toBe(
+      revolveProfileOutputRole(right as never),
+    )
   })
 })
 

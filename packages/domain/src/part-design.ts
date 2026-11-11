@@ -976,10 +976,27 @@ export const revolveFeatureParametersV8Schema = z
   })
 export type RevolveFeatureParametersV8 = Readonly<z.infer<typeof revolveFeatureParametersV8Schema>>
 
-/** Separate profile solids of a New Revolve v8 are named by their lowest outer boundary entity. */
+const FNV_64_OFFSET = 0xcbf29ce484222325n
+const FNV_64_PRIME = 0x100000001b3n
+const UINT_64 = 0xffffffffffffffffn
+
+/** 64-bit FNV-1a over UTF-16 code units: short, deterministic, and dependency-free. */
+function fnv1a64(value: string) {
+  let hash = FNV_64_OFFSET
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= BigInt(value.charCodeAt(index))
+    hash = (hash * FNV_64_PRIME) & UINT_64
+  }
+  return hash.toString(16).padStart(16, "0")
+}
+
+/**
+ * Separate profile solids of a New Revolve v8 are named by their complete sorted outer boundary.
+ * One sketch region has exactly one outer boundary set, so distinct selected regions get distinct
+ * names; the worker still fails closed if two roles ever coincide.
+ */
 export function revolveProfileOutputRole(selector: SketchProfileSelector) {
-  const [entityId] = [...selector.outerBoundaryEntityIds].sort()
-  return `revolve.profile.${entityId}`
+  return `revolve.profile.${fnv1a64([...selector.outerBoundaryEntityIds].sort().join(","))}`
 }
 
 type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSchema> & {

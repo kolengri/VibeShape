@@ -429,6 +429,17 @@ describe("Revolve v8 native ownership", () => {
     return { shapes, deleted: shapes.map((shape) => vi.spyOn(shape, "delete")) }
   }
 
+  it("fails closed and releases every tool when separate solids share an output role", () => {
+    const { shapes, deleted } = spiedBoxes([
+      [0, 0, 0],
+      [5, 0, 0],
+    ])
+    expect(() => partitionRevolveProfileSolids(occt(), shapes, ["a.b", "a.b"])).toThrow(
+      "distinct output roles",
+    )
+    for (const spy of deleted) expect(spy).toHaveBeenCalledTimes(1)
+  })
+
   it("releases every profile tool when a partial merge fails", () => {
     const { shapes, deleted } = spiedBoxes([
       [0, 0, 0],

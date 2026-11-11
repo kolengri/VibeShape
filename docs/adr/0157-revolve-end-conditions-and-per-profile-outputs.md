@@ -79,13 +79,18 @@ A New v8 revolve with several profiles builds each profile's solid separately an
 
 - one merged solid publishes the ordinary `result` output;
 - one separate solid per profile publishes each profile's solid as
-  `revolve.profile.<lowest outer-boundary SketchEntityId>`, following the identifier-based role
-  convention of Compound (`body.<slot>`) and import (`import.<output>`);
+  `revolve.profile.<h>`, where `<h>` is the 16-hex-digit 64-bit FNV-1a hash of the profile's
+  complete sorted outer-boundary `SketchEntityId` list joined by commas. This follows the
+  identifier-based role convention of Compound (`body.<slot>`) and import (`import.<output>`) while
+  staying within the 128-character role limit;
 - any other partition fails closed, because a partially merged solid has no stable per-profile
   identity.
 
-The role derives from the profile selector, so adding or removing other profiles does not renumber
-a profile's output. Outputs are cached together and restored by role on a B-Rep cache hit; a
+One sketch region has exactly one outer boundary, so distinct selected regions have distinct
+boundary sets; two adjacent regions that share an edge, even their lowest-ID edge, still get
+distinct names. Should two roles ever coincide (a 64-bit hash collision), the worker fails closed
+with a diagnostic instead of publishing an ambiguous name. The role derives from the profile's own
+boundary, so adding or removing other profiles does not renumber it. Outputs are cached together and restored by role on a B-Rep cache hit; a
 downstream exact-body feature resolves one role through the ordinary slotted input path.
 
 ### Native ownership
@@ -117,6 +122,17 @@ dynamic endpoint with a second angle is rejected before native work.
   start cap are unreachable.
 - Up-to-face never extends a finite face, and a face hidden behind another face of the same body
   is not reachable.
+- Caps are matched as half-planes on the profile's side of the axis, so a first contact lying in
+  the sketch plane across the axis (a half turn) or in the overrun-cap plane is reached correctly.
+- Output names are stable only while the partition and each profile's boundary are unchanged:
+  - a single-profile revolve, and a multi-profile revolve whose profiles merge, publish `result`;
+    adding a separate profile renames that output to per-profile `revolve.profile.<h>` names, and
+    removing profiles down to one, or adding a bridging profile that merges the solids, collapses
+    the names back to `result`;
+  - a sketch edit or reselection that changes a profile's outer-boundary entity set (for example
+    replacing, splitting, or trimming one of its boundary entities) renames that profile's output;
+  - in every rename a downstream reference to the previous role resolves as missing and requires
+    explicit repair; it never retargets to another solid.
 
 ## Rejected alternatives
 
@@ -124,6 +140,8 @@ dynamic endpoint with a second angle is rejected before native work.
   profiles not lying on the target even in builds that include it.
 - **Analytic angle to a face plane:** exact only for planes containing the axis and silent for
   every other face.
+- **Lowest outer-boundary entity as the role:** adjacent regions that share their lowest-ID edge
+  would collide, and replacing that one entity would rename the output.
 - **Index-based profile roles (`revolve.profile.0`):** editing the selection would retarget
   downstream references.
 - **A discriminated `extent` union:** diverges from the Extrude shape and its validation for no
