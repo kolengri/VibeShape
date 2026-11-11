@@ -9,8 +9,11 @@ export function featureForwardsDiagnosticMessage(
   switch (type.typeId) {
     case "org.vibeshape.feature.part-design.loft":
       return type.schemaVersion === 3
+    case "org.vibeshape.feature.part-design.press-pull":
+      return type.schemaVersion === 2
     case "org.vibeshape.feature.part-design.fillet":
     case "org.vibeshape.feature.part-design.draft":
+    case "org.vibeshape.feature.part-design.thicken":
       return true
     default:
       return false

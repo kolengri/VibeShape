@@ -2,6 +2,7 @@ import { featureBodyDependencies } from "./feature-dependencies"
 import type { FeatureRecord } from "./feature-graph"
 import { readLoftFeatureParametersV3 } from "./part-design-loft-v3"
 import { mirrorPreservesSource } from "./part-design-mirror"
+import { thickenPreservesSource } from "./part-design-thicken"
 
 type BodyOutput = { featureId: string; outputRole?: string | undefined }
 
@@ -22,7 +23,9 @@ function consumeFeatureBodies<T extends BodyOutput>(
   consumed: Set<T>,
 ) {
   const retainsSources =
-    mirrorPreservesSource(feature) || readLoftFeatureParametersV3(feature) !== null
+    mirrorPreservesSource(feature) ||
+    thickenPreservesSource(feature) ||
+    readLoftFeatureParametersV3(feature) !== null
   for (const dependency of featureBodyDependencies(feature)) {
     const selected = dependencyBodies(dependency, byFeature)
     if (!selected) return false

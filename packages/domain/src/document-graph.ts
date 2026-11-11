@@ -85,7 +85,11 @@ import {
 } from "./part-design-pattern"
 import { patternFeatureTypeV3, readPatternFeatureParametersV3 } from "./part-design-pattern-path"
 import { placementFeatureType, readPlacementFeatureParameters } from "./part-design-placement"
-import { pressPullFeatureType, readPressPullFeatureParameters } from "./part-design-press-pull"
+import {
+  pressPullFeatureType,
+  pressPullFeatureTypeV2,
+  readPressPullFeatureParameters,
+} from "./part-design-press-pull"
 import { readScaleFeatureParameters, scaleFeatureType } from "./part-design-scale"
 import {
   readShellFeatureParameters,
@@ -109,6 +113,7 @@ import {
   sweepFeatureType,
   sweepFeatureTypeV2,
 } from "./part-design-sweep"
+import { readThickenFeatureParameters, thickenFeatureType } from "./part-design-thicken"
 import {
   readThreadFeatureParameters,
   threadFeatureType,
@@ -273,9 +278,11 @@ const bodySelectionParameterReaders = new Map<string, BodySelectionParameterRead
   [featureTypeKey(chamferFeatureTypeV3.type), readChamferFeatureParametersV3],
   [featureTypeKey(filletFeatureTypeV3.type), readFilletFeatureParametersV3],
   [featureTypeKey(pressPullFeatureType.type), readPressPullFeatureParameters],
+  [featureTypeKey(pressPullFeatureTypeV2.type), readPressPullFeatureParameters],
   [featureTypeKey(shellFeatureType.type), readShellFeatureParameters],
   [featureTypeKey(shellFeatureTypeV2.type), readShellFeatureParameters],
   [featureTypeKey(draftFeatureType.type), readDraftFeatureParameters],
+  [featureTypeKey(thickenFeatureType.type), readThickenFeatureParameters],
   [featureTypeKey(scaleFeatureType.type), readScaleFeatureParameters],
   [featureTypeKey(splitFeatureType.type), readSplitFeatureParameters],
   [featureTypeKey(splitFeatureTypeV2.type), readSplitFeatureParametersV2],

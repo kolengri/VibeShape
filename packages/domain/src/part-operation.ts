@@ -53,6 +53,7 @@ import {
 } from "./part-design-split"
 import { readBooleanFeatureParametersV2 } from "./part-design-subtract"
 import { sweepFeatureType, sweepFeatureTypeV2 } from "./part-design-sweep"
+import { readThickenFeatureParameters, thickenPreservesSource } from "./part-design-thicken"
 import { readThreadFeatureParameters } from "./part-design-thread"
 
 export type PartOperation =
@@ -152,6 +153,7 @@ function classifyExactSubtract(feature: FeatureRecordV1): PartOperation | null {
   return null
 }
 function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation | null {
+  if (thickenPreservesSource(feature)) return { kind: "new" }
   const boolean = classifyExactSubtract(feature)
   if (boolean) return boolean
   const target = [
@@ -160,6 +162,7 @@ function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation
     readShellFeatureParameters,
     readDraftFeatureParameters,
     readScaleFeatureParameters,
+    readThickenFeatureParameters,
     readChamferFeatureParametersV3,
     readFilletFeatureParametersV3,
     readPlacementFeatureParameters,

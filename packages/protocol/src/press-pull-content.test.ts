@@ -1,5 +1,8 @@
 import { expect, it } from "bun:test"
-import { pressPullFeatureContentParametersSchema } from "./geometry-worker"
+import {
+  pressPullFeatureContentParametersSchema,
+  pressPullFeatureContentParametersV2Schema,
+} from "./geometry-worker"
 
 const face = {
   schemaVersion: 1,
@@ -33,5 +36,19 @@ it("validates signed planar Press Pull content at the untrusted worker boundary"
         ...content,
         face: { ...face, ...changes },
       }).success,
+    ).toBe(false)
+})
+
+it("accepts curved faces only in version 2 Press Pull content", () => {
+  const curved = {
+    ...content,
+    face: { ...face, signature: { ...face.signature, geometryClass: "CYLINDRE" } },
+  }
+  expect(pressPullFeatureContentParametersSchema.safeParse(curved).success).toBe(false)
+  expect(pressPullFeatureContentParametersV2Schema.parse(curved)).toEqual<unknown>(curved)
+  expect(pressPullFeatureContentParametersV2Schema.parse(content)).toEqual<unknown>(content)
+  for (const distance of [0, NaN, 100001])
+    expect(
+      pressPullFeatureContentParametersV2Schema.safeParse({ ...curved, distance }).success,
     ).toBe(false)
 })

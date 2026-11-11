@@ -1666,18 +1666,23 @@ export const shellOpeningContentSchema = z
     message: "Shell opening signature must identify a face.",
     path: ["signature", "kind"],
   })
-export const pressPullFeatureContentParametersSchema = z
+/** Version 2 content: the face may be planar or curved; the worker enforces attachment rules. */
+export const pressPullFeatureContentParametersV2Schema = z
   .object({
     distance: finiteNumberSchema.refine(
       (value) => Math.abs(value) >= 0.001 && Math.abs(value) <= 100_000,
     ),
     sourceContentHash: sha256Schema,
+    face: shellOpeningContentSchema,
+  })
+  .strict()
+export const pressPullFeatureContentParametersSchema =
+  pressPullFeatureContentParametersV2Schema.safeExtend({
     face: shellOpeningContentSchema.refine(
       (face) => face.signature.geometryClass === "PLANE",
       "Press Pull supports planar faces only.",
     ),
   })
-  .strict()
 export type PressPullFeatureContentParameters = z.infer<
   typeof pressPullFeatureContentParametersSchema
 >

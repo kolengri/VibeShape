@@ -69,11 +69,15 @@ import {
 import { patternFeatureTypeHandler, patternFeatureTypeHandlerV2 } from "./part-design-pattern"
 import { patternFeatureTypeHandlerV3 } from "./part-design-pattern-path"
 import { placementFeatureTypeHandler } from "./part-design-placement"
-import { pressPullFeatureTypeHandler } from "./part-design-press-pull"
+import {
+  pressPullFeatureTypeHandler,
+  pressPullFeatureTypeHandlerV2,
+} from "./part-design-press-pull"
 import { scaleFeatureTypeHandler } from "./part-design-scale"
 import { shellFeatureTypeHandler, shellFeatureTypeHandlerV2 } from "./part-design-shell"
 import { splitFeatureTypeHandler, splitFeatureTypeHandlerV2 } from "./part-design-split"
 import { sweepFeatureTypeHandler, sweepFeatureTypeHandlerV2 } from "./part-design-sweep"
+import { thickenFeatureTypeHandler } from "./part-design-thicken"
 import { threadFeatureTypeHandler, threadFeatureTypeHandlerV2 } from "./part-design-thread"
 import {
   createSketchProfileSet,
@@ -2197,9 +2201,11 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   patternFeatureTypeHandlerV2,
   patternFeatureTypeHandlerV3,
   pressPullFeatureTypeHandler,
+  pressPullFeatureTypeHandlerV2,
   shellFeatureTypeHandler,
   shellFeatureTypeHandlerV2,
   draftFeatureTypeHandler,
+  thickenFeatureTypeHandler,
   scaleFeatureTypeHandler,
   splitFeatureTypeHandler,
   splitFeatureTypeHandlerV2,

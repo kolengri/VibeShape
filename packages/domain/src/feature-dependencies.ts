@@ -40,6 +40,7 @@ import { readShellFeatureParameters } from "./part-design-shell"
 import { readSplitFeatureParameters, readSplitFeatureParametersV2 } from "./part-design-split"
 import { booleanBodyDependencyIds, readBooleanFeatureParametersV2 } from "./part-design-subtract"
 import { readSweepFeatureParameters, readSweepFeatureParametersV2 } from "./part-design-sweep"
+import { readThickenFeatureParameters, thickenPreservesSource } from "./part-design-thicken"
 import { readThreadFeatureParameters } from "./part-design-thread"
 import { isReferenceGeometryFeature, readDatumPlaneFeatureParameters } from "./reference-geometry"
 
@@ -79,6 +80,7 @@ const exactTargetReaders = [
   (feature: FeatureRecord) => readPatternFeatureParametersV3(feature)?.targetBody,
   (feature: FeatureRecord) => readShellFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readDraftFeatureParameters(feature)?.targetBody,
+  (feature: FeatureRecord) => readThickenFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readScaleFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readSplitFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readSplitFeatureParametersV2(feature)?.targetBody,
@@ -114,6 +116,7 @@ function declaredBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[]
   const boolean = readBooleanFeatureParametersV2(feature)
   if (boolean) return booleanBodyDependencyIds(consumedSubtractBodies(boolean))
   if (mirrorPreservesSource(feature)) return []
+  if (thickenPreservesSource(feature)) return []
   if (independentBodyReaders.some((read) => read(feature) !== null)) return []
   return null
 }
