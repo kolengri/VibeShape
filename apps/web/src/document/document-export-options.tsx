@@ -4,6 +4,15 @@ import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 
 export type ExportDestination = "file" | "slicer"
 
+/** ICU title keys under `app.export`, one per protocol export format. */
+export const exportFormatTitleKeys = {
+  "3mf": "threeMf.title",
+  step: "step.title",
+  stl: "stl.title",
+  glb: "glb.title",
+  obj: "obj.title",
+} as const satisfies Record<GeometryExportFormat, string>
+
 const formatDescriptions = {
   "3mf": "threeMf.description",
   step: "step.description",
