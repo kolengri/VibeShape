@@ -105,7 +105,7 @@ the new revision and export STEP/STL/3MF. The export response contains a resourc
 decode the returned base64 blob and save it with the client's file tools. Ordinary saved state,
 manual editing and Undo use the same document session.
 
-For this local client and browser origin, **AI connection and approval mode → Apply automatically** opens **Set up auto-apply** for an explicit opt-in for valid
+For this local client and browser origin, **Local MCP connection and approval mode → Apply automatically** opens **Set up auto-apply** for an explicit opt-in for valid
 CAD creation and parameter edits. The neutral status-bar **Auto-apply on** indicator always includes **Stop AI**. **Approve each change** returns an idle session to manual review without ending pairing.
 Stop AI ends the pairing immediately and clears automatic reconnection. Destructive or unsupported drafts still require review; an
 already pending review cannot be auto-approved. Invalid geometry and stale revisions are rejected.
@@ -172,7 +172,7 @@ after an edit or expired inspection; cursors cannot cross sections. Reads do not
 ## Project management
 
 Both local stdio and paired remote HTTPS expose `list_projects`, `create_project` and `open_project`.
-The browser owner first enables **AI connection and approval mode → Allow project management**.
+The browser owner first enables **Allow project management** from the status bar's **Local MCP connection and approval mode** or **Remote AI connection and approval mode** menu.
 The separate live grant allows catalog access and create/open; it is never enabled through MCP or
 restored after recovery. Stop AI and manual project navigation revoke it.
 

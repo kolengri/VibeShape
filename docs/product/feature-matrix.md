@@ -208,6 +208,14 @@ directional Chamfer measurement on non-planar supports, variable radius over mul
 chains or closed edges, non-linear radius laws, setback/corner-blend controls and partial Fillet
 contours.
 
+Path Pattern (Pattern v3) distributes copies of one exact body along a tangent-continuous sketch
+path, open or closed, or a single circle. It supports fit-to-path or fixed arc-length spacing, a
+start offset, keep-orientation or follow-path orientation and reverse, with viewport and keyboard
+path picking, exact preview, undo/redo, native persistence and the reference body pattern MCP tools.
+The seed stays in place, and instances keep the `pattern.instance.N` roles. Model-edge chains and
+paths with corners are not accepted
+([ADR-0156](../adr/0156-path-pattern.md)).
+
 | Operation | P0 | P1 | P2 |
 |---|:---:|:---:|:---:|
 | Extrude: new/add/remove/intersect | ✓ |  |  |
@@ -216,6 +224,7 @@ contours.
 | Fillet/chamfer | ✓ |  |  |
 | Mirror feature/body |  | ✓ |  |
 | Linear/circular pattern |  | ✓ |  |
+| Pattern along a sketch path |  | ✓ |  |
 | Shell |  | ✓ |  |
 | Draft faces about a neutral plane |  | ✓ |  |
 | Uniform scale |  | ✓ |  |

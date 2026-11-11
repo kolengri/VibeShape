@@ -2,7 +2,12 @@ import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import type { ModelMeasurementEntry } from "../../packages/domain/src/model-measurements"
 import { createAngleQuantity, createLengthQuantity } from "../../packages/domain/src/units"
-import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
+import {
+  enableLocalAi,
+  expectLocalAiReconnected,
+  openAiConnections,
+  openAutoApplySetup,
+} from "./application-menu-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
@@ -239,7 +244,7 @@ test("authors a finite spherical v7 endpoint through MCP, rejects stale support,
     })
     await page.reload()
     await expect(item).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
+    await expectLocalAiReconnected(page)
     await item.click()
     await expect(edit.getByRole("combobox", { name: "Start offset", exact: true })).toHaveValue(
       "2 mm",

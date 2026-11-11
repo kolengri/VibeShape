@@ -15,6 +15,7 @@ test.describe("project display units", () => {
 
     await openApplicationMenuItem(page, "Settings…")
     const dialog = page.getByRole("dialog", { name: "Settings", exact: true })
+    await dialog.getByRole("tab", { name: "Project units", exact: true }).click()
     await dialog.getByRole("combobox", { name: "Length unit" }).selectOption("in")
     await dialog.getByRole("combobox", { name: "Angle unit" }).selectOption("rad")
     await dialog.getByRole("button", { name: "Apply project units" }).dblclick()
@@ -40,7 +41,7 @@ test.describe("project display units", () => {
       "0.787401574803 in",
     )
     await createBox.getByRole("combobox", { name: "Width" }).fill("2")
-    await createBox.getByRole("button", { name: "Create box" }).dblclick()
+    await createBox.getByRole("button", { name: "Create box", exact: true }).dblclick()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Box 1" }).click()

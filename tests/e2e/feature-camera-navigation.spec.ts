@@ -26,7 +26,7 @@ type ProjectionViewer = {
 
 async function createProfile(page: Page) {
   await page
-    .getByRole("complementary", { name: "Task panel" })
+    .getByRole("toolbar", { name: "Model commands", exact: true })
     .getByRole("button", { name: "Create sketch", exact: true })
     .click()
   await confirmSketchPlane(page, "xy")

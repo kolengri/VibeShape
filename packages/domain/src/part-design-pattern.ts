@@ -85,7 +85,8 @@ export function readPatternFeatureParameters(
 }
 type VariableValues = Parameters<NonNullable<TrustedFeatureTypeHandler["resolveParameters"]>>[1]
 type ResolutionFailure = Extract<FeatureParameterResolution, { ok: false }>
-function resolveField<Q extends Quantity>(
+/** Resolves one quantity expression and re-validates it against its bounded schema. */
+export function resolvePatternField<Q extends Quantity>(
   quantity: Q,
   schema: z.ZodType<Q>,
   path: string,
@@ -117,7 +118,12 @@ function resolveCenter(
 ) {
   const resolved = { ...center }
   for (const axis of ["x", "y", "z"] as const) {
-    const field = resolveField(center[axis], centerCoordinateSchema, `center.${axis}`, variables)
+    const field = resolvePatternField(
+      center[axis],
+      centerCoordinateSchema,
+      `center.${axis}`,
+      variables,
+    )
     if (!field.ok) return field
     resolved[axis] = field.quantity
   }
@@ -125,12 +131,17 @@ function resolveCenter(
 }
 function resolveGeometry(parameters: PatternFeatureParameters, variables: VariableValues) {
   if (parameters.kind === "linear") {
-    const spacing = resolveField(parameters.spacing, patternSpacingSchema, "spacing", variables)
+    const spacing = resolvePatternField(
+      parameters.spacing,
+      patternSpacingSchema,
+      "spacing",
+      variables,
+    )
     return spacing.ok
       ? { ok: true as const, parameters: { ...parameters, spacing: spacing.quantity } }
       : spacing
   }
-  const angle = resolveField(parameters.angle, patternAngleSchema, "angle", variables)
+  const angle = resolvePatternField(parameters.angle, patternAngleSchema, "angle", variables)
   if (!angle.ok) return angle
   const center = resolveCenter(parameters.center, variables)
   return center.ok
@@ -140,30 +151,50 @@ function resolveGeometry(parameters: PatternFeatureParameters, variables: Variab
       }
     : center
 }
+/**
+ * Parses authored Pattern parameters and resolves their count. Unparseable records pass through
+ * unchanged so schema validation reports them.
+ */
+export function resolvePatternCount<T extends { count: z.infer<typeof patternCountSchema> }>(
+  schema: z.ZodType<T>,
+  parameters: unknown,
+  variables: VariableValues,
+):
+  | Readonly<{ resolution: FeatureParameterResolution }>
+  | Readonly<{ parsed: T; count: z.infer<typeof patternCountSchema> }> {
+  const parsed = schema.safeParse(parameters)
+  if (!parsed.success) return { resolution: { ok: true, parameters } }
+  const count = resolvePatternField(parsed.data.count, patternCountSchema, "count", variables)
+  return count.ok ? { parsed: parsed.data, count: count.quantity } : { resolution: count }
+}
+/** Re-validated resolved parameters, or one extent diagnostic listing every bound issue. */
+export function resolvedPatternExtent(
+  result: z.ZodSafeParseResult<unknown>,
+): FeatureParameterResolution {
+  return result.success
+    ? { ok: true, parameters: result.data }
+    : {
+        ok: false,
+        diagnostic: {
+          code: "invalid-pattern-extent",
+          message: "The resolved pattern exceeds its parameter bounds.",
+          issues: result.error.issues.map(({ path, message }) => ({
+            path: path.join("."),
+            message,
+          })),
+        },
+      }
+}
 export const patternFeatureTypeHandler: TrustedFeatureTypeHandler = {
   type: patternFeatureType.type,
   parametersSchema: patternFeatureParametersSchema,
   resolveParameters(parameters, variables) {
-    const parsed = patternFeatureParametersSchema.safeParse(parameters)
-    if (!parsed.success) return { ok: true, parameters }
-    const count = resolveField(parsed.data.count, patternCountSchema, "count", variables)
-    if (!count.ok) return count
-    const geometry = resolveGeometry({ ...parsed.data, count: count.quantity }, variables)
+    const counted = resolvePatternCount(patternFeatureParametersSchema, parameters, variables)
+    if (!("parsed" in counted)) return counted.resolution
+    const geometry = resolveGeometry({ ...counted.parsed, count: counted.count }, variables)
     if (!geometry.ok) return geometry
     const resolved = patternFeatureParametersSchema.safeParse(geometry.parameters)
-    return resolved.success
-      ? { ok: true, parameters: resolved.data }
-      : {
-          ok: false,
-          diagnostic: {
-            code: "invalid-pattern-extent",
-            message: "The resolved pattern exceeds its parameter bounds.",
-            issues: resolved.error.issues.map((issue) => ({
-              path: issue.path.join("."),
-              message: issue.message,
-            })),
-          },
-        }
+    return resolvedPatternExtent(resolved)
   },
   validateFeature(feature) {
     const { targetBody } = patternFeatureParametersSchema.parse(feature.parameters)
@@ -223,34 +254,20 @@ export const patternFeatureTypeHandlerV2: TrustedFeatureTypeHandler = {
   type: patternFeatureTypeV2.type,
   parametersSchema: patternFeatureParametersV2Schema,
   resolveParameters(parameters, variables) {
-    const parsed = patternFeatureParametersV2Schema.safeParse(parameters)
-    if (!parsed.success) return { ok: true, parameters }
-    const count = resolveField(parsed.data.count, patternCountSchema, "count", variables)
-    if (!count.ok) return count
-    const path = parsed.data.kind === "linear" ? "spacing" : "angle"
+    const counted = resolvePatternCount(patternFeatureParametersV2Schema, parameters, variables)
+    if (!("parsed" in counted)) return counted.resolution
+    const path = counted.parsed.kind === "linear" ? "spacing" : "angle"
     const field =
-      parsed.data.kind === "linear"
-        ? resolveField(parsed.data.spacing, patternSpacingSchema, path, variables)
-        : resolveField(parsed.data.angle, patternAngleSchema, path, variables)
+      counted.parsed.kind === "linear"
+        ? resolvePatternField(counted.parsed.spacing, patternSpacingSchema, path, variables)
+        : resolvePatternField(counted.parsed.angle, patternAngleSchema, path, variables)
     if (!field.ok) return field
     const result = patternFeatureParametersV2Schema.safeParse({
-      ...parsed.data,
-      count: count.quantity,
+      ...counted.parsed,
+      count: counted.count,
       [path]: field.quantity,
     })
-    return result.success
-      ? { ok: true, parameters: result.data }
-      : {
-          ok: false,
-          diagnostic: {
-            code: "invalid-pattern-extent",
-            message: "The resolved pattern exceeds its parameter bounds.",
-            issues: result.error.issues.map(({ path, message }) => ({
-              path: path.join("."),
-              message,
-            })),
-          },
-        }
+    return resolvedPatternExtent(result)
   },
   validateFeature(feature) {
     const { targetBody, axis } = patternFeatureParametersV2Schema.parse(feature.parameters)

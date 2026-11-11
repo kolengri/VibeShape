@@ -10,7 +10,7 @@ async function selectFeatureFace(page: Page, featureLabel: string) {
   const canvas = viewport.locator("canvas")
   const bounds = await canvas.boundingBox()
   if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
-  const statusBar = page.locator("main > footer")
+  const statusBar = page.getByRole("status").filter({ hasText: /^Selection: / })
   const samples = [
     { x: bounds.width * 0.5, y: bounds.height * 0.5 },
     { x: bounds.width * 0.4, y: bounds.height * 0.55 },
@@ -175,7 +175,7 @@ test.describe("datum plane reference geometry", () => {
         .getByRole("complementary", { name: "Model tree" })
         .getByRole("treeitem", { name: "Datum plane 1" }),
     ).not.toBeVisible()
-    await createForm.getByRole("button", { name: "Create datum plane" }).dblclick()
+    await createForm.getByRole("button", { name: "Create datum plane", exact: true }).dblclick()
 
     await expect(
       page
@@ -206,14 +206,14 @@ test.describe("datum plane reference geometry", () => {
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
       timeout: 120_000,
     })
-    await editForm.getByRole("button", { name: "Update datum plane" }).click()
+    await editForm.getByRole("button", { name: "Update datum plane", exact: true }).click()
     await expect(viewport).toHaveAttribute("data-preview-status", "idle")
 
     await selectFeatureFace(page, "Datum plane 1")
 
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("feature-face")
     await drawRectangle(page)
@@ -223,7 +223,7 @@ test.describe("datum plane reference geometry", () => {
       .click()
     await page
       .getByRole("form", { name: "Extrude profile" })
-      .getByRole("button", { name: "Create extrusion" })
+      .getByRole("button", { name: "Create extrusion", exact: true })
       .click()
 
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
@@ -243,7 +243,7 @@ test.describe("datum plane reference geometry", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await selectFeatureFace(page, "Box 1")
 
@@ -252,7 +252,7 @@ test.describe("datum plane reference geometry", () => {
     await expect(form.getByRole("combobox", { name: "Support" })).toBeDisabled()
     await expect(form.getByRole("combobox", { name: "Support" })).toHaveText("Selected model face")
     await form.getByRole("combobox", { name: "Offset" }).fill("8 mm")
-    await form.getByRole("button", { name: "Create datum plane" }).click()
+    await form.getByRole("button", { name: "Create datum plane", exact: true }).click()
 
     await expect(
       page

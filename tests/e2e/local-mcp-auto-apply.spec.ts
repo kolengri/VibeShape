@@ -9,6 +9,7 @@ import {
   openAiConnections,
   openApplicationMenuItem,
   openAutoApplySetup,
+  openLocalAiApprovalMenu,
 } from "./application-menu-support"
 import { createEditorProject, expect, test } from "./fixtures"
 
@@ -109,8 +110,7 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     const manual = await boxDraft(local, 10, "Manual box")
     const pendingManual = call(local, "commit_draft", { draftId: manual.draftId })
     await expect(review).toBeVisible()
-    await openAiConnections(page)
-    await page.getByRole("button", { name: "AI connection and approval mode", exact: true }).click()
+    await openLocalAiApprovalMenu(page)
     await expect(
       page.getByRole("menuitemradio", { name: "Apply automatically", exact: true }),
     ).toBeDisabled()
@@ -138,7 +138,7 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     await inspectControls(page)
 
     // Returning to manual review keeps the same pairing and requires Apply again.
-    await page.getByRole("button", { name: "AI connection and approval mode", exact: true }).click()
+    await openLocalAiApprovalMenu(page)
     await page.getByRole("menuitemradio", { name: "Approve each change", exact: true }).click()
     await expect(
       page.getByText("AI access on · Approve each change", { exact: true }),

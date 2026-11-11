@@ -70,10 +70,11 @@ test.describe("Primitive graphical placement", () => {
     await page.mouse.move(handle.x + 200, handle.y + 80, { steps: 5 })
     expect((await page.screenshot({ clip: cameraBounds })).equals(cameraBeforeDrag)).toBe(true)
 
-    // Camera navigation resumes only with a new gesture away from the manipulator.
-    await page.mouse.move(bounds.x + bounds.width * 0.15, bounds.y + bounds.height * 0.1)
+    // Camera navigation resumes only with a new gesture away from the manipulator. Start below the
+    // model tree overlay so the gesture reaches the canvas.
+    await page.mouse.move(bounds.x + bounds.width * 0.15, bounds.y + bounds.height * 0.6)
     await page.mouse.down()
-    await page.mouse.move(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.15, {
+    await page.mouse.move(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.65, {
       steps: 5,
     })
     await page.mouse.up()
@@ -82,7 +83,7 @@ test.describe("Primitive graphical placement", () => {
       .toBe(false)
     await expect(originX).toHaveValue(movedOrigin)
 
-    await form.getByRole("button", { name: "Create box" }).click()
+    await form.getByRole("button", { name: "Create box", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect(viewport).not.toHaveAttribute("data-translation-gizmo-feature")
 
@@ -134,7 +135,7 @@ test.describe("Primitive graphical placement", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     const form = page.getByRole("form", { name: "Edit box" })
@@ -157,7 +158,7 @@ test.describe("Primitive graphical placement", () => {
     const releasedPosition = await originX.inputValue()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready")
     await expect(originX).toHaveValue(releasedPosition)
-    await form.getByRole("button", { name: "Update box" }).click()
+    await form.getByRole("button", { name: "Update box", exact: true }).click()
     await expect(form).not.toBeVisible()
     await expect(
       page
@@ -191,7 +192,7 @@ test.describe("Primitive graphical placement", () => {
       if (editing) {
         await page
           .getByRole("form", { name: "Create box" })
-          .getByRole("button", { name: "Create box" })
+          .getByRole("button", { name: "Create box", exact: true })
           .click()
         await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
       }
@@ -223,7 +224,9 @@ test.describe("Primitive graphical placement", () => {
       await expect(viewport).toHaveAttribute("data-preview-status", "ready")
       await expect(originX).toHaveValue(releasedPosition)
       await expect(viewport).not.toHaveAttribute("data-translation-gizmo-position", "0,0,0")
-      await form.getByRole("button", { name: editing ? "Update box" : "Create box" }).click()
+      await form
+        .getByRole("button", { name: editing ? "Update box" : "Create box", exact: true })
+        .click()
       await expect(form).not.toBeVisible()
       await expect(
         page
