@@ -74,8 +74,10 @@ test("undoes saved feature edits and deletion, then reopens and copies replayabl
   if (!file) throw new Error("The project backup was not retained.")
   const archive = await readAuthoredVShape(new Uint8Array(await readFile(file)))
   expect(archive.ok).toBe(true)
-  if (!archive.ok || archive.value.version !== 3)
-    throw new Error("Expected a replay-proven authored V3 backup.")
+  // Editor deletion uses the ADR-0103 retained-History removal, which adopts V5 authority and
+  // native format 6.
+  if (!archive.ok || archive.value.version !== 6)
+    throw new Error("Expected a replay-proven authored format 6 backup.")
   expect(
     archive.value.project.versionedEvents.filter(
       (event) => event.type === "org.vibeshape.document.restored",

@@ -444,7 +444,19 @@ test.describe("native project file", () => {
     await expect(
       page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
     ).toHaveValue("#width")
-    await expect.poll(() => writerLeaseCount(page)).toBe(1)
+    // Open-project tabs retain their document sessions, so each open tab holds one writer lease.
+    const openProjectTabs = page.getByRole("tablist", { name: "Open projects" }).getByRole("tab")
+    await expect(openProjectTabs).toHaveCount(3)
+    await expect.poll(() => writerLeaseCount(page)).toBe(3)
+    // An open project cannot be deleted. Tabs keep opening order, so the first tab is the
+    // original project; closing it releases that retained session's lease.
+    const originalTab = openProjectTabs.first()
+    await expect(originalTab).toHaveAccessibleName("Untitled project")
+    await originalTab.focus()
+    await page.keyboard.press("Delete")
+    await expect(openProjectTabs).toHaveCount(2)
+    await expect(openProjectTabs.last()).toHaveAccessibleName("Untitled project copy")
+    await expect.poll(() => writerLeaseCount(page)).toBe(2)
     await page
       .getByRole("form", { name: "Edit box" })
       .getByRole("button", { name: "Cancel", exact: true })
@@ -467,6 +479,8 @@ test.describe("native project file", () => {
       .getByRole("button", { name: /^Open Untitled project copy, revision / })
       .click()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
+    await expect(openProjectTabs).toHaveCount(2)
+    await expect.poll(() => writerLeaseCount(page)).toBe(2)
     expect(projectNavigations).toBe(0)
     await page.reload()
     await expect(
