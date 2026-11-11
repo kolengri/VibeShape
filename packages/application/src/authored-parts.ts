@@ -3,12 +3,8 @@ import type { AuthoredDocumentSnapshot } from "@vibeshape/domain/document-v2"
 import { featureEvaluationRecordSchema } from "@vibeshape/domain/feature-graph"
 import { featureIdSchema } from "@vibeshape/domain/identifiers"
 import { resolvePartAppearanceMaterial } from "@vibeshape/domain/part-appearance"
-import {
-  patternCountSchema,
-  patternOutputRoles,
-  readPatternFeatureParameters,
-  readPatternFeatureParametersV2,
-} from "@vibeshape/domain/part-design-pattern"
+import { patternCountSchema, patternOutputRoles } from "@vibeshape/domain/part-design-pattern"
+import { readAnyPatternFeatureParameters } from "@vibeshape/domain/part-design-pattern-path"
 import type { PartRecord } from "@vibeshape/domain/parts"
 import { evaluateVariableDefinitions, resolveQuantityExpression } from "@vibeshape/domain/variables"
 import type { DocumentExportBodies } from "@vibeshape/protocol"
@@ -85,7 +81,7 @@ function dormantPatternRoots(authority: AuthoredDocumentSnapshot): ReadonlySet<s
   const variables = evaluateVariableDefinitions(authority.variables)
   if (!variables.ok) return dormant
   for (const feature of authority.features) {
-    const pattern = readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature)
+    const pattern = readAnyPatternFeatureParameters(feature)
     if (!pattern) continue
     const resolved = resolveQuantityExpression(pattern.count, variables.valuesByName)
     const count = resolved.ok ? patternCountSchema.safeParse(resolved.quantity) : null

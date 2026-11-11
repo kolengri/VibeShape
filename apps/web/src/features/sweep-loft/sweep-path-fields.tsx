@@ -5,6 +5,7 @@ import {
   type ProfileOption,
   type SweepLoftFormValues,
   selectedPathPointIds,
+  togglePathCurve,
 } from "./sweep-loft-form-model"
 export type SweepPathCopy = Readonly<{
   profile: string
@@ -109,16 +110,9 @@ export function SketchPathFields({
               <input
                 type="checkbox"
                 checked={values.entityIds.includes(id)}
-                onChange={(event) => {
-                  const ids = event.currentTarget.checked
-                    ? [...values.entityIds, id].sort()
-                    : values.entityIds.filter((entityId) => entityId !== id)
-                  const remaining = selectedPathPointIds(path, ids)
-                  onChange({
-                    entityIds: ids,
-                    startPointId: remaining.has(values.startPointId) ? values.startPointId : "",
-                  })
-                }}
+                onChange={(event) =>
+                  onChange(togglePathCurve(path, values, id, event.currentTarget.checked))
+                }
               />
               {label}
             </label>

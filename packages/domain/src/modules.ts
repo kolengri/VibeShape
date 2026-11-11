@@ -55,6 +55,7 @@ import { loftFeatureTypeV3 } from "./part-design-loft-v3"
 import { meshImportFeatureType } from "./part-design-mesh-import"
 import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
+import { patternFeatureTypeV3 } from "./part-design-pattern-path"
 import { placementFeatureType } from "./part-design-placement"
 import { pressPullFeatureType } from "./part-design-press-pull"
 import { scaleFeatureType } from "./part-design-scale"
@@ -481,6 +482,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     mirrorFeatureTypeV3,
     patternFeatureType,
     patternFeatureTypeV2,
+    patternFeatureTypeV3,
     pressPullFeatureType,
     shellFeatureType,
     shellFeatureTypeV2,

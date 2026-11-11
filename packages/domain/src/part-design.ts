@@ -67,6 +67,7 @@ import {
   mirrorFeatureTypeHandlerV3,
 } from "./part-design-mirror"
 import { patternFeatureTypeHandler, patternFeatureTypeHandlerV2 } from "./part-design-pattern"
+import { patternFeatureTypeHandlerV3 } from "./part-design-pattern-path"
 import { placementFeatureTypeHandler } from "./part-design-placement"
 import { pressPullFeatureTypeHandler } from "./part-design-press-pull"
 import { scaleFeatureTypeHandler } from "./part-design-scale"
@@ -2194,6 +2195,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   mirrorFeatureTypeHandlerV3,
   patternFeatureTypeHandler,
   patternFeatureTypeHandlerV2,
+  patternFeatureTypeHandlerV3,
   pressPullFeatureTypeHandler,
   shellFeatureTypeHandler,
   shellFeatureTypeHandlerV2,

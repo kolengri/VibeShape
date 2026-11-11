@@ -12,6 +12,31 @@ Circular Pattern uses the chosen axis origin as its center; linear placement use
 Missing or ambiguous edge references and zero directions block Apply. Supporting bodies remain
 available, and version 1 axis and variable-driven circular-center semantics are preserved.
 
+Version 3 adds the **Path** kind ([ADR-0156](../adr/0156-path-pattern.md)). Choose a saved path
+sketch, its curves and a start point, or toggle curves by clicking them in the viewport; the
+viewport's keyboard picker and the panel's curve list are equivalent. A path is one connected
+tangent-continuous chain of lines, circular arcs, cubic Beziers or elliptical arcs, open or closed,
+or a single circle. Viewport candidates follow the solved sketch, including variable-driven circle
+radii. Deselecting the curve that owns the chosen start point clears it. An open path starts at the
+chosen endpoint, a closed chain at the chosen joint, and a circle at the sketch +X direction from its
+center. Closed paths run counterclockwise about the sketch normal; **Reverse direction** starts an
+open path from its other end and runs a closed path clockwise. Corners, branches and disconnected
+curves fail preview, as do Bezier handles collapsed onto an endpoint, interior Bezier cusps and
+closed loops such as a symmetric figure eight whose enclosed area is too small to define a direction.
+These tangent rules apply to both orientations.
+
+The seed stays where it is. The path point at **Start offset**, an arc length from the path start,
+is the seed's reference, and every instance keeps the seed's offset from its own path point.
+**Fit to path** spreads open-path instances from the offset to the path end, end included, and
+divides a closed path's length by the count. **Fixed distance** steps by an arc-length distance;
+spacing that runs past an open path's end, wraps a closed path back onto the seed, or an offset at
+least the path length fails preview. The preview diagnostic and MCP report the required and
+available lengths; the task panel shows path-specific guidance. **Keep seed orientation**
+translates copies. **Follow path** also turns each copy about the sketch normal by the tangent
+turn from the reference point, a rotation-minimizing frame for planar paths. Count, distance and
+offset accept expressions and variables. Editing a version 1 or 2 pattern keeps its version unless
+Path is chosen.
+
 Linear Pattern uses a signed nonzero spacing between instances. Spacing and total displacement are
 bounded to 100,000 mm. Circular Pattern uses a signed nonzero total angle of at most one revolution
 and explicit X, Y, and Z center coordinates. Partial patterns include the angular endpoint. A full
@@ -47,3 +72,7 @@ with the shared reference-axis contract. Circular center comes from the axis; le
 are omitted. Declare the target producer first followed by any distinct support owner, with empty
 generic references. Stable body-bound LINE references come from current body topology inspection;
 caller content hashes and native indices are not accepted. Missing or ambiguous supports fail closed.
+
+The same two tools author version 3 when `kind` is `path`: supply the path selector, `spacing`,
+`startOffset`, `orientation` and `reverse`, and declare the target producer first, followed by the
+path sketch's support and external owners. Preview reports missing curves, corners and overruns.

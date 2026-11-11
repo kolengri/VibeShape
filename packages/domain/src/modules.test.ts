@@ -200,6 +200,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.mirror",
         "org.vibeshape.feature.part-design.pattern",
         "org.vibeshape.feature.part-design.pattern",
+        "org.vibeshape.feature.part-design.pattern",
         "org.vibeshape.feature.part-design.placement",
         "org.vibeshape.feature.part-design.press-pull",
         "org.vibeshape.feature.part-design.pyramid",
