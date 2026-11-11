@@ -523,6 +523,23 @@ async function prepareHelicalSweep(
       })
 }
 
+async function prepareAuthoredSweep(input: PreparationInput) {
+  const sweep = readSweepFeatureParameters(input.feature)
+  if (sweep) return prepareSweep(input, sweep)
+  const helical = readSweepFeatureParametersV2(input.feature)
+  return helical ? prepareHelicalSweep(input, helical) : null
+}
+
+const authoredSchemas = new Map<
+  string,
+  { safeParse: (value: unknown) => { success: boolean; error?: { issues: { message: string }[] } } }
+>([
+  [featureTypeKey(loftFeatureTypeV3.type), loftFeatureParametersV3Schema],
+  [featureTypeKey(loftFeatureTypeV2.type), loftFeatureParametersV2Schema],
+  [featureTypeKey(loftFeatureType.type), loftFeatureParametersSchema],
+  [featureTypeKey(sweepFeatureTypeV2.type), sweepFeatureParametersV2Schema],
+])
+
 export async function prepareSweepLoftFeatureContent(
   input: PreparationInput,
 ): Promise<DocumentFeatureContentPreparationResult | null> {
@@ -531,25 +548,14 @@ export async function prepareSweepLoftFeatureContent(
   if (constrainedLoft) return prepareConstrainedLoft(input, constrainedLoft)
   const loft = readLoftFeatureParameters(input.feature)
   if (loft) return prepareLoft(input, loft)
-  const sweep = readSweepFeatureParameters(input.feature)
-  if (sweep) return prepareSweep(input, sweep)
-  const helicalSweep = readSweepFeatureParametersV2(input.feature)
-  if (helicalSweep) return prepareHelicalSweep(input, helicalSweep)
-  const key = featureTypeKey(input.feature.type)
+  const sweep = await prepareAuthoredSweep(input)
+  if (sweep) return sweep
   const schema =
-    key === featureTypeKey(loftFeatureTypeV3.type)
-      ? loftFeatureParametersV3Schema
-      : key === featureTypeKey(loftFeatureTypeV2.type)
-        ? loftFeatureParametersV2Schema
-        : key === featureTypeKey(loftFeatureType.type)
-          ? loftFeatureParametersSchema
-          : key === featureTypeKey(sweepFeatureTypeV2.type)
-            ? sweepFeatureParametersV2Schema
-            : sweepFeatureParametersSchema
+    authoredSchemas.get(featureTypeKey(input.feature.type)) ?? sweepFeatureParametersSchema
   const invalid = schema.safeParse(input.feature.parameters)
   return failure("invalid-authored-parameters", {
     issue: invalid.success
       ? "unknown-schema-issue"
-      : (invalid.error.issues[0]?.message ?? "unknown-schema-issue"),
+      : (invalid.error?.issues[0]?.message ?? "unknown-schema-issue"),
   })
 }

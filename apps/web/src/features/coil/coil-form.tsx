@@ -1,4 +1,4 @@
-import type { FeatureRecord } from "@vibeshape/domain"
+import type { FeatureId, FeatureRecord } from "@vibeshape/domain"
 import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
@@ -17,8 +17,10 @@ import { ReferencePickField } from "../part-design/reference-pick-field"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
+import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
 import {
+  type CoilFieldIssues,
   type CoilFormMode,
   type CoilFormValues,
   type CoilValidationCopy,
@@ -78,49 +80,225 @@ const operationLabels = {
   intersect: "operationIntersect",
 } as const
 
-export function CoilForm({
-  axisOptions,
-  baseRevision,
+type ParameterState = ReturnType<typeof useParameterFormState>
+type Update = (changes: Partial<CoilFormValues>) => void
+
+function CoilOperationFields({
   copy,
-  disabled = false,
-  mode,
-  onCancel,
-  onPreviewChange,
-  onSave,
-  onSaved,
-  previewDiagnostic,
-  previewStatus,
+  values,
+  issues,
   targets,
-  variables,
-}: Props) {
+  locked,
+  update,
+}: {
+  copy: CoilFormCopy
+  values: CoilFormValues
+  issues: CoilFieldIssues
+  targets: readonly ExactBodyOption[]
+  locked: boolean
+  update: Update
+}) {
+  return (
+    <>
+      <ChoiceField
+        id="coil-operation"
+        label={copy.operation}
+        value={values.operation}
+        disabled={locked}
+        onValueChange={(value) => {
+          const operation = operations.find((candidate) => candidate === value)
+          if (operation) update({ operation })
+        }}
+        options={operations.map((operation) => ({
+          value: operation,
+          label: copy[operationLabels[operation]],
+        }))}
+      />
+      {values.operation !== "new" && (
+        <ReferencePickField
+          id="coil-target-body"
+          label={copy.target}
+          placeholder={copy.missingTarget}
+          value={values.targetId}
+          options={targets.map(({ id, label }) => ({ value: id, label }))}
+          candidates={exactBodyPickCandidates(targets)}
+          description={copy.targetDescription}
+          error={issues.targetId}
+          disabled={locked}
+          required
+          onValueChange={(targetId) => update({ targetId })}
+        />
+      )}
+    </>
+  )
+}
+
+function CoilSectionFields({
+  copy,
+  values,
+  issues,
+  state,
+  locked,
+  update,
+}: {
+  copy: CoilFormCopy
+  values: CoilFormValues
+  issues: CoilFieldIssues
+  state: ParameterState
+  locked: boolean
+  update: Update
+}) {
+  const sizes =
+    values.sectionKind === "circular"
+      ? (["diameter"] as const)
+      : (["sectionWidth", "sectionHeight"] as const)
+  return (
+    <>
+      <ChoiceField
+        id="coil-section"
+        label={copy.section}
+        value={values.sectionKind}
+        disabled={locked}
+        onValueChange={(value) =>
+          update({ sectionKind: value === "rectangular" ? "rectangular" : "circular" })
+        }
+        options={[
+          { value: "circular", label: copy.circular },
+          { value: "rectangular", label: copy.rectangular },
+        ]}
+      />
+      {sizes.map((field) => (
+        <LengthExpressionField
+          key={field}
+          id={`coil-${field}`}
+          label={copy[field]}
+          description={copy.sectionDescription}
+          error={issues[field]}
+          suggestions={state.suggestions}
+          disabled={locked}
+          value={values[field]}
+          onValueChange={(value) => update({ [field]: value })}
+        />
+      ))}
+    </>
+  )
+}
+
+type BodyProps = Pick<
+  Props,
+  "axisOptions" | "copy" | "mode" | "onCancel" | "onPreviewChange" | "previewDiagnostic" | "targets"
+> & {
+  values: CoilFormValues
+  pending: boolean
+  disabled: boolean
+  featureId: FeatureId
+  previewStatus?: FeaturePreviewState["status"] | undefined
+  state: ParameterState
+  parse: (values: CoilFormValues) => ReturnType<typeof parseCoilForm>
+  update: Update
+}
+
+function CoilFormBody(props: BodyProps) {
+  const { copy, values, state, previewStatus } = props
+  const parsed = props.parse(values)
+  const issues = parsed.ok ? {} : parsed.issues
+  const locked = props.disabled || props.pending
+  const previewError =
+    previewStatus === "error" ? (props.previewDiagnostic ?? copy.previewFailed) : null
+  return (
+    <>
+      {props.onPreviewChange && (
+        <CoilPreview
+          feature={
+            parsed.ok ? coilFeatureRecord(props.mode, props.featureId, parsed.parameters) : null
+          }
+          onPreviewChange={props.onPreviewChange}
+        />
+      )}
+      <ParameterPanel
+        previewStatus={previewStatus}
+        copy={copy}
+        legend={copy.parameters}
+        disabled={locked}
+        message={state.message ?? previewError}
+        actions={
+          <TaskPanelFormActions
+            acceptLabel={copy.submit}
+            ariaLabel={copy.title}
+            cancelLabel={copy.cancel}
+            disabled={props.disabled || !parsed.ok}
+            onCancel={props.onCancel}
+            previewStatus={previewStatus}
+          />
+        }
+      >
+        <CoilOperationFields
+          copy={copy}
+          values={values}
+          issues={issues}
+          targets={props.targets}
+          locked={locked}
+          update={props.update}
+        />
+        <HelixFields
+          idPrefix="coil"
+          values={values}
+          issues={issues}
+          copy={copy}
+          axisOptions={props.axisOptions}
+          suggestions={state.suggestions}
+          disabled={locked}
+          onChange={props.update}
+        />
+        <CoilSectionFields
+          copy={copy}
+          values={values}
+          issues={issues}
+          state={state}
+          locked={locked}
+          update={props.update}
+        />
+      </ParameterPanel>
+    </>
+  )
+}
+
+/** Single-flight Apply: the form store owns the pending state until the mutation settles. */
+export function CoilForm(props: Props) {
+  const { copy, mode, targets, variables, previewStatus } = props
+  const disabled = props.disabled ?? false
   const state = useParameterFormState(variables)
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const parse = (values: CoilFormValues) =>
     parseCoilForm(values, targets, variables, state.displayUnits, copy)
+  const submit = async (value: CoilFormValues) => {
+    const parsed = parse(value)
+    if (disabled || !isFeaturePreviewReady(previewStatus) || !parsed.ok) return
+    state.clearSubmissionErrors()
+    try {
+      await submitFeatureMutation({
+        baseRevision: props.baseRevision,
+        copy,
+        feature: coilFeatureRecord(mode, featureId, parsed.parameters),
+        onSave: props.onSave,
+        onSaved: props.onSaved,
+        setMessage: state.setMessage,
+      })
+    } catch {
+      state.setMessage(copy.saveFailed)
+    }
+  }
   const form = useCadForm({
     validationLogic: cadFormValidationLogic,
     defaultValues: coilFormValues(mode, state.displayUnits, targets),
     validators: {
       onDynamic: ({ value }) => (parse(value).ok ? undefined : copy.validationSummary),
     },
-    onSubmit: async ({ value }) => {
-      if (disabled || !isFeaturePreviewReady(previewStatus)) return
-      const parsed = parse(value)
-      if (!parsed.ok) return
-      state.clearSubmissionErrors()
-      await submitFeatureMutation({
-        baseRevision,
-        copy,
-        feature: coilFeatureRecord(mode, featureId, parsed.parameters),
-        onSave,
-        onSaved,
-        setMessage: state.setMessage,
-      }).catch(() => state.setMessage(copy.saveFailed))
-    },
+    onSubmit: ({ value }) => submit(value),
   })
-  const update = (changes: Partial<CoilFormValues>) => {
+  const update: Update = (changes) => {
     state.clearSubmissionErrors()
     for (const [key, value] of Object.entries(changes))
       form.setFieldValue(key as keyof CoilFormValues, value as never)
@@ -132,115 +310,19 @@ export function CoilForm({
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
       <TaskPanelContentProvider content={<form.FormError />}>
-        <form.Subscribe
-          selector={(formState) => [formState.values, formState.isSubmitting] as const}
-        >
-          {([values, pending]) => {
-            const parsed = parse(values)
-            const issues = parsed.ok ? {} : parsed.issues
-            const locked = disabled || pending
-            const message =
-              state.message ??
-              (previewStatus === "error" ? (previewDiagnostic ?? copy.previewFailed) : null)
-            const sizeField = (field: "diameter" | "sectionWidth" | "sectionHeight") => (
-              <LengthExpressionField
-                key={field}
-                id={`coil-${field}`}
-                label={copy[field]}
-                description={copy.sectionDescription}
-                error={issues[field]}
-                suggestions={state.suggestions}
-                disabled={locked}
-                value={values[field]}
-                onValueChange={(value) => update({ [field]: value })}
-              />
-            )
-            return (
-              <>
-                {onPreviewChange && (
-                  <CoilPreview
-                    feature={
-                      parsed.ok ? coilFeatureRecord(mode, featureId, parsed.parameters) : null
-                    }
-                    onPreviewChange={onPreviewChange}
-                  />
-                )}
-                <ParameterPanel
-                  previewStatus={previewStatus}
-                  copy={copy}
-                  legend={copy.parameters}
-                  disabled={locked}
-                  message={message}
-                  actions={
-                    <TaskPanelFormActions
-                      acceptLabel={copy.submit}
-                      ariaLabel={copy.title}
-                      cancelLabel={copy.cancel}
-                      disabled={disabled || !parsed.ok}
-                      onCancel={onCancel}
-                      previewStatus={previewStatus}
-                    />
-                  }
-                >
-                  <ChoiceField
-                    id="coil-operation"
-                    label={copy.operation}
-                    value={values.operation}
-                    disabled={locked}
-                    onValueChange={(value) => {
-                      const operation = operations.find((candidate) => candidate === value)
-                      if (operation) update({ operation })
-                    }}
-                    options={operations.map((operation) => ({
-                      value: operation,
-                      label: copy[operationLabels[operation]],
-                    }))}
-                  />
-                  {values.operation !== "new" && (
-                    <ReferencePickField
-                      id="coil-target-body"
-                      label={copy.target}
-                      placeholder={copy.missingTarget}
-                      value={values.targetId}
-                      options={targets.map(({ id, label }) => ({ value: id, label }))}
-                      candidates={exactBodyPickCandidates(targets)}
-                      description={copy.targetDescription}
-                      error={issues.targetId}
-                      disabled={locked}
-                      required
-                      onValueChange={(targetId) => update({ targetId })}
-                    />
-                  )}
-                  <HelixFields
-                    idPrefix="coil"
-                    values={values}
-                    issues={issues}
-                    copy={copy}
-                    axisOptions={axisOptions}
-                    suggestions={state.suggestions}
-                    disabled={locked}
-                    onChange={update}
-                  />
-                  <ChoiceField
-                    id="coil-section"
-                    label={copy.section}
-                    value={values.sectionKind}
-                    disabled={locked}
-                    onValueChange={(value) =>
-                      update({ sectionKind: value === "rectangular" ? "rectangular" : "circular" })
-                    }
-                    options={[
-                      { value: "circular", label: copy.circular },
-                      { value: "rectangular", label: copy.rectangular },
-                    ]}
-                  />
-                  {values.sectionKind === "circular"
-                    ? sizeField("diameter")
-                    : [sizeField("sectionWidth"), sizeField("sectionHeight")]}
-                </ParameterPanel>
-              </>
-            )
-          }}
+        <form.Subscribe selector={({ values, isSubmitting }) => [values, isSubmitting] as const}>
+          {([values, pending]) => (
+            <CoilFormBody
+              {...props}
+              values={values}
+              pending={pending}
+              disabled={disabled}
+              featureId={featureId}
+              state={state}
+              parse={parse}
+              update={update}
+            />
+          )}
         </form.Subscribe>
       </TaskPanelContentProvider>
     </Form>

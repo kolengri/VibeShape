@@ -218,7 +218,7 @@ function profileExtentsInHelixFrame(
  * The profile must stay off the axis, and its meridian span (axial size / cos^2 of the lead
  * angle, because the start plane is tilted by the lead angle) must stay below the pitch.
  */
-export function validateHelicalProfileClearance(
+function validateHelicalProfileClearance(
   occt: OpenCascadeInstance,
   wire: TopoDS_Wire,
   helix: HelixContent,

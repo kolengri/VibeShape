@@ -92,7 +92,7 @@ export function SweepLoftForm({
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const [message, setMessage] = useState<string | null>(null)
-  const parameterState = useParameterFormState(snapshot.variables ?? [])
+  const parameterState = useParameterFormState(snapshot.variables)
   const units = parameterState.displayUnits
   const form = useCadForm({
     validationLogic: cadFormValidationLogic,
@@ -133,6 +133,11 @@ export function SweepLoftForm({
       }
     },
   })
+  const updatePath = (changes: Partial<SweepLoftFormValues>) => {
+    setMessage(null)
+    for (const [key, value] of Object.entries(changes))
+      form.setFieldValue(key as keyof SweepLoftFormValues, value as never)
+  }
   return (
     <Form
       form={form}
@@ -249,56 +254,18 @@ export function SweepLoftForm({
                       />
                     </>
                   ) : (
-                    <>
-                      <ChoiceField
-                        id="sweep-path-kind"
-                        label={copy.pathKind}
-                        value={values.pathKind}
-                        disabled={disabled || pending}
-                        onValueChange={(value) => {
-                          setMessage(null)
-                          form.setFieldValue("pathKind", value === "helix" ? "helix" : "sketch")
-                        }}
-                        options={[
-                          { value: "sketch", label: copy.sketchPath },
-                          { value: "helix", label: copy.helixPath },
-                        ]}
-                      />
-                      {values.pathKind === "helix" ? (
-                        <HelicalPathFields
-                          values={values}
-                          profiles={profiles}
-                          copy={copy}
-                          axisOptions={axisOptions}
-                          state={parameterState}
-                          variables={snapshot.variables ?? []}
-                          disabled={disabled || pending}
-                          onChange={(changes) => {
-                            setMessage(null)
-                            for (const [key, value] of Object.entries(changes))
-                              form.setFieldValue(key as keyof SweepLoftFormValues, value as never)
-                          }}
-                        />
-                      ) : (
-                        <SweepPathFields
-                          values={values}
-                          profiles={profiles}
-                          paths={paths}
-                          copy={copy}
-                          onChange={(changes) => {
-                            setMessage(null)
-                            if (changes.profileKey !== undefined)
-                              form.setFieldValue("profileKey", changes.profileKey)
-                            if (changes.pathSketchId !== undefined)
-                              form.setFieldValue("pathSketchId", changes.pathSketchId)
-                            if (changes.entityIds !== undefined)
-                              form.setFieldValue("entityIds", changes.entityIds)
-                            if (changes.startPointId !== undefined)
-                              form.setFieldValue("startPointId", changes.startPointId)
-                          }}
-                        />
-                      )}
-                    </>
+                    <SweepPathSection
+                      values={values}
+                      profiles={profiles}
+                      paths={paths}
+                      copy={copy}
+                      axisOptions={axisOptions}
+                      state={parameterState}
+                      variables={snapshot.variables}
+                      disabled={disabled}
+                      pending={pending}
+                      onChange={updatePath}
+                    />
                   )}
                 </ParameterPanel>
               </>
@@ -369,6 +336,50 @@ function HelicalPathFields({
         <p className="text-xs text-muted-foreground" aria-live="polite">
           {copy.leadAngle((Math.round(lead * 1000) / 1000).toString())}
         </p>
+      )}
+    </>
+  )
+}
+
+type SweepPathSectionProps = Readonly<{
+  values: SweepLoftFormValues
+  profiles: readonly ProfileOption[]
+  paths: readonly PathSketchOption[]
+  copy: SweepLoftFormCopy
+  axisOptions: ReferenceFrameOptions | undefined
+  state: ReturnType<typeof useParameterFormState>
+  variables: Parameters<typeof parseHelixForm>[1]
+  disabled: boolean
+  pending: boolean
+  onChange: (changes: Partial<SweepLoftFormValues>) => void
+}>
+/** Sweep path type: an authored sketch path (v1) or an exact helix (v2). */
+function SweepPathSection({ pending, ...props }: SweepPathSectionProps) {
+  const { values, copy, onChange } = props
+  const disabled = props.disabled || pending
+  return (
+    <>
+      <ChoiceField
+        id="sweep-path-kind"
+        label={copy.pathKind}
+        value={values.pathKind}
+        disabled={disabled}
+        onValueChange={(value) => onChange({ pathKind: value === "helix" ? "helix" : "sketch" })}
+        options={[
+          { value: "sketch", label: copy.sketchPath },
+          { value: "helix", label: copy.helixPath },
+        ]}
+      />
+      {values.pathKind === "helix" ? (
+        <HelicalPathFields {...props} disabled={disabled} />
+      ) : (
+        <SweepPathFields
+          values={values}
+          profiles={props.profiles}
+          paths={props.paths}
+          copy={copy}
+          onChange={onChange}
+        />
       )}
     </>
   )

@@ -32,8 +32,14 @@ export const helixContentSchema = z
   .strict()
 export type HelixContent = Readonly<z.infer<typeof helixContentSchema>>
 
+/** Right-handed vector product, written component-cyclically. */
 function cross(a: Vector, b: Vector): Vector {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+  const component = (i: 0 | 1 | 2) => {
+    const j = ((i + 1) % 3) as 0 | 1 | 2
+    const k = ((i + 2) % 3) as 0 | 1 | 2
+    return a[j] * b[k] - a[k] * b[j]
+  }
+  return [component(0), component(1), component(2)]
 }
 function dot(a: Vector, b: Vector) {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]

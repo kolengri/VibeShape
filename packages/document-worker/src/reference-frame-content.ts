@@ -25,6 +25,46 @@ export function shouldPrepareReferenceFrameFeatureContent(feature: FeatureRecord
       readCoilFeatureParameters(feature),
   )
 }
+type Context = Parameters<typeof resolveReferenceAxis>[1]
+type Prepared = Awaited<ReturnType<DocumentFeatureContentPreparationPort>>
+
+/** Coil resolves its axis like Pattern v2 and emits UUID-free helix content. */
+function prepareCoilContent(feature: FeatureRecord, context: Context): Prepared {
+  const coil = readCoilFeatureParameters(feature)
+  if (!coil) return null
+  const axis = resolveReferenceAxis(coil.axis, context)
+  if (!axis)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "org.vibeshape.feature.reference-frame-unresolved",
+        values: { reason: "missing-or-ambiguous-support" },
+      },
+    }
+  const supportFeatureId = referenceFrameSupportFeatureId(coil.axis)
+  const { section } = coil
+  const parsed = coilFeatureContentParametersSchema.safeParse({
+    helix: { origin: axis.origin, direction: axis.direction, ...helixContentFields(coil) },
+    section:
+      section.kind === "circular"
+        ? { kind: "circular", diameter: section.diameter.value }
+        : { kind: "rectangular", width: section.width.value, height: section.height.value },
+    operation: coil.operation,
+    ...(supportFeatureId
+      ? { supportInputIndex: feature.dependencies.indexOf(supportFeatureId) }
+      : {}),
+  })
+  return parsed.success
+    ? { ok: true, parameters: parsed.data }
+    : {
+        ok: false,
+        diagnostic: {
+          code: "org.vibeshape.feature.coil-invalid",
+          values: { reason: parsed.error.issues[0]?.message ?? "invalid-resolved-coil" },
+        },
+      }
+}
+
 export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparationPort = (
   input,
 ) => {
@@ -43,36 +83,8 @@ export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparat
       values: { reason: "missing-or-ambiguous-support" },
     },
   }
-  const coil = readCoilFeatureParameters(input.feature)
-  if (coil) {
-    const axis = resolveReferenceAxis(coil.axis, context)
-    if (!axis) return missing
-    const supportFeatureId = referenceFrameSupportFeatureId(coil.axis)
-    const parsed = coilFeatureContentParametersSchema.safeParse({
-      helix: { origin: axis.origin, direction: axis.direction, ...helixContentFields(coil) },
-      section:
-        coil.section.kind === "circular"
-          ? { kind: "circular", diameter: coil.section.diameter.value }
-          : {
-              kind: "rectangular",
-              width: coil.section.width.value,
-              height: coil.section.height.value,
-            },
-      operation: coil.operation,
-      ...(supportFeatureId
-        ? { supportInputIndex: input.feature.dependencies.indexOf(supportFeatureId) }
-        : {}),
-    })
-    return parsed.success
-      ? { ok: true, parameters: parsed.data }
-      : {
-          ok: false,
-          diagnostic: {
-            code: "org.vibeshape.feature.coil-invalid",
-            values: { reason: parsed.error.issues[0]?.message ?? "invalid-resolved-coil" },
-          },
-        }
-  }
+  const coil = prepareCoilContent(input.feature, context)
+  if (coil) return coil
   if (pattern) {
     const axis = resolveReferenceAxis(pattern.axis, context)
     if (!axis) return missing

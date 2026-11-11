@@ -1395,20 +1395,17 @@ function coilInputsAreValid(
   parameters: CoilFeatureContentParameters,
 ) {
   const content = input.content
-  const dependencies = input.dependencies
-  if (
-    content.feature.references.length !== 0 ||
-    content.feature.inputs.length !== dependencies.length
+  const roles: readonly (string | null)[] =
+    content.schemaVersion === 1 ? content.feature.inputRoles : input.dependencies.map(() => null)
+  // Each expected slot records whether it must carry a named body role.
+  const named = parameters.operation === "new" ? [] : [true]
+  if ((parameters.supportInputIndex ?? -1) >= named.length) named.push(false)
+  return (
+    content.feature.references.length === 0 &&
+    content.feature.inputs.length === input.dependencies.length &&
+    roles.length === named.length &&
+    named.every((required, index) => required === (roles[index] != null))
   )
-    return false
-  const roles =
-    content.schemaVersion === 1 ? content.feature.inputRoles : dependencies.map(() => null)
-  const targets = parameters.operation === "new" ? 0 : 1
-  if (targets === 1 && roles[0] == null) return false
-  const support = parameters.supportInputIndex
-  const distinctSupport = support !== undefined && support >= targets
-  if (dependencies.length !== targets + (distinctSupport ? 1 : 0)) return false
-  return !distinctSupport || roles[support] === null
 }
 
 function parseCoilFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -2778,6 +2775,16 @@ function createExtrusionFeatureShape(
   }
 }
 
+function createHelicalFeatureShape(
+  opencascade: OpenCascadeInstance,
+  feature: Extract<ParsedFeature, { kind: "coil" | "helical-sweep" }>,
+  dependencyShapes: readonly Shape3D[],
+) {
+  return feature.kind === "coil"
+    ? createCoilFeatureShape(opencascade, feature.parameters, dependencyShapes)
+    : createOcctHelicalSweep(opencascade, feature.parameters)
+}
+
 function createCoilFeatureShape(
   opencascade: OpenCascadeInstance,
   parameters: CoilFeatureContentParameters,
@@ -2884,10 +2891,13 @@ function createSketchGeneratedFeatureShape(
   opencascade: OpenCascadeInstance,
   feature:
     | Parameters<typeof createProfileFeatureShape>[1]
-    | Extract<ParsedFeature, { kind: "loft" | "sweep" }>,
+    | Extract<ParsedFeature, { kind: "loft" | "sweep" | "coil" | "helical-sweep" }>,
   dependencyShapes: readonly Shape3D[],
 ) {
   switch (feature.kind) {
+    case "coil":
+    case "helical-sweep":
+      return createHelicalFeatureShape(opencascade, feature, dependencyShapes)
     case "loft":
       return createOcctLoft(opencascade, feature.parameters.sections, {
         ruled: feature.parameters.ruled,
@@ -3279,10 +3289,6 @@ function createFeatureShape(
   switch (feature.kind) {
     case "connect-mounts":
       return createOcctConnectMounts(opencascade, feature.parameters)
-    case "coil":
-      return createCoilFeatureShape(opencascade, feature.parameters, dependencyShapes)
-    case "helical-sweep":
-      return createOcctHelicalSweep(opencascade, feature.parameters)
     case "fdm":
       return createOcctFdmFeature(opencascade, feature.parameters, dependencyShapes[0])
     case "datum-plane":

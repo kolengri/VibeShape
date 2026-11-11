@@ -88,6 +88,30 @@ export type SweepLoftFormValues = LoftConstraintValues &
     entityIds: SketchEntityId[]
     startPointId: string
   }
+const helixDefaults = { radius: 20, pitch: 10, turns: 3 }
+const emptySketchPath = { pathSketchId: "", entityIds: [] as SketchEntityId[], startPointId: "" }
+/** Sweep v1 keeps its sketch path; Sweep v2 restores its helix fields. */
+function sweepPathFormValues(mode: SweepLoftFormMode, units: DocumentDisplayUnits) {
+  const feature = mode.kind === "edit" ? mode.feature : null
+  const sweep = feature ? readSweepFeatureParameters(feature) : null
+  if (sweep)
+    return {
+      ...helixFormValues(null, units, helixDefaults),
+      pathKind: "sketch" as const,
+      profileKey: sketchProfileSelectorKey(sweep.profile),
+      pathSketchId: sweep.path.sketchId,
+      entityIds: [...sweep.path.entityIds],
+      startPointId: sweep.path.startPointId,
+    }
+  const helical = feature ? readSweepFeatureParametersV2(feature) : null
+  return {
+    ...helixFormValues(helical?.path ?? null, units, helixDefaults),
+    ...emptySketchPath,
+    entityIds: [],
+    pathKind: helical ? ("helix" as const) : ("sketch" as const),
+    profileKey: helical ? sketchProfileSelectorKey(helical.profile) : "",
+  }
+}
 export function sweepLoftFormValues(
   mode: SweepLoftFormMode,
   units: DocumentDisplayUnits = defaultDocumentDisplayUnits,
@@ -96,26 +120,15 @@ export function sweepLoftFormValues(
     mode.kind === "edit"
       ? (readLoftFeatureParametersV3(mode.feature) ?? readLoftFeatureParameters(mode.feature))
       : null
-  const sweep = mode.kind === "edit" ? readSweepFeatureParameters(mode.feature) : null
-  const helical = mode.kind === "edit" ? readSweepFeatureParametersV2(mode.feature) : null
   return {
     ...loftConstraintValues(mode),
-    ...helixFormValues(helical?.path ?? null, units, { radius: 20, pitch: 10, turns: 3 }),
-    pathKind: helical ? "helix" : "sketch",
+    ...sweepPathFormValues(mode, units),
     sections: [...(loft?.sections ?? [])],
     holeCorrespondence:
       loft && "holeCorrespondence" in loft
         ? loftHoleCorrespondenceSchema.parse(loft.holeCorrespondence)
         : [],
     ruled: loft?.ruled ?? false,
-    profileKey: sweep
-      ? sketchProfileSelectorKey(sweep.profile)
-      : helical
-        ? sketchProfileSelectorKey(helical.profile)
-        : "",
-    pathSketchId: sweep?.path.sketchId ?? "",
-    entityIds: [...(sweep?.path.entityIds ?? [])],
-    startPointId: sweep?.path.startPointId ?? "",
   }
 }
 export function reorderLoftSection(

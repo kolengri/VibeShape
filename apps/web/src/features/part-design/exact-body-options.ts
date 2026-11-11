@@ -19,6 +19,12 @@ export type ExactBodyOption = Readonly<{ id: string; label: string; body?: BodyR
 export function exactBodyOptionId(body: BodyReference) {
   return JSON.stringify([body.featureId, body.outputRole])
 }
+/** Coil names its optional target explicitly; its axis producer is never a saved body. */
+function savedCoilBodies(feature: FeatureRecord): readonly BodyReference[] | null {
+  const coil = readCoilFeatureParameters(feature)
+  if (!coil) return null
+  return coil.targetBody ? [coil.targetBody] : []
+}
 function savedBodies(feature: FeatureRecord | undefined): readonly BodyReference[] {
   if (!feature) return []
   const fdm = readFdmFeatureParameters(feature)
@@ -27,13 +33,14 @@ function savedBodies(feature: FeatureRecord | undefined): readonly BodyReference
   if (boolean) return [boolean.targetBody, boolean.toolBody]
   const revolve = readRevolveFeatureParameters(feature)
   if (revolve?.targetBody) return [revolve.targetBody]
-  const coil = readCoilFeatureParameters(feature)
-  if (coil) return coil.targetBody ? [coil.targetBody] : []
-  return feature.dependencies.map((featureId) => ({
-    schemaVersion: 0,
-    featureId,
-    outputRole: "result",
-  }))
+  return (
+    savedCoilBodies(feature) ??
+    feature.dependencies.map((featureId) => ({
+      schemaVersion: 0,
+      featureId,
+      outputRole: "result",
+    }))
+  )
 }
 function bodyOwners(parts: readonly ResolvedAuthoredPart[], unnamed: string) {
   const owners = new Map<string, string | null>()

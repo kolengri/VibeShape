@@ -156,12 +156,9 @@ function cadFeatureType(
 ) {
   if (isFaceExtentExtrudeOperation(operation))
     return faceExtentExtrusionType(operation.arguments.parameters)
-  if (operation.tool.endsWith("_loft")) return loftCadFeatureType(operation.arguments.parameters)
   if (isThreadOperation(operation)) return threadType(operation.arguments.parameters)
-  if (operation.tool === "create_sweep" || operation.tool === "update_sweep")
-    return "kind" in operation.arguments.parameters.path
-      ? sweepFeatureTypeV2.type
-      : sweepFeatureType.type
+  const versioned = versionedCadFeatureType(operation)
+  if (versioned) return versioned
   if (isBodySelectionOperation(operation)) return bodySelectionFeatureType(operation)
   if (
     operation.tool === "create_extrude" ||
@@ -171,6 +168,16 @@ function cadFeatureType(
   )
     return profileFeatureType(operation)
   return directCadFeatureTypes[operation.tool]
+}
+/** Loft and Sweep select their schema version from the submitted parameters. */
+function versionedCadFeatureType(
+  operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
+) {
+  if (operation.tool.endsWith("_loft")) return loftCadFeatureType(operation.arguments.parameters)
+  if (operation.tool !== "create_sweep" && operation.tool !== "update_sweep") return null
+  return "kind" in operation.arguments.parameters.path
+    ? sweepFeatureTypeV2.type
+    : sweepFeatureType.type
 }
 function isFaceExtentExtrudeOperation(
   operation: CadOperation,
