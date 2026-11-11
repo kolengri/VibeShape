@@ -21,7 +21,7 @@ export default defineConfig({
   testDir: "./tests/e2e",
   outputDir: ".artifacts/playwright/test-results",
   // A reused server may belong to another checkout; verify it before any test trusts it.
-  globalSetup: reuseExistingServer ? "./tests/e2e/verify-dev-server-checkout.ts" : undefined,
+  ...(reuseExistingServer ? { globalSetup: "./tests/e2e/verify-dev-server-checkout.ts" } : {}),
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
