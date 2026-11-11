@@ -158,6 +158,40 @@ describe("multi-profile geometry content", () => {
     expect(result.success).toBe(true)
   })
 
+  it("parses a stable model-edge axis instead of throwing on its refined signature", () => {
+    const parse = () =>
+      revolveMultiProfileFeatureContentParametersSchema.safeParse({
+        sketchId,
+        frame,
+        profiles: [profile()],
+        axis: {
+          kind: "model-edge",
+          reference: {
+            schemaVersion: 0,
+            featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3301",
+            kind: "edge",
+            signature: {
+              kind: "edge",
+              geometryClass: "LINE",
+              measure: 5,
+              centroid: [2.5, 0, 0],
+              bounds: { min: [0, 0, 0], max: [5, 0, 0] },
+              direction: [1, 0, 0],
+              directionMode: "axis",
+              boundaryCount: 2,
+              adjacentGeometryClasses: ["PLANE", "PLANE"],
+            },
+          },
+        },
+        axisOrigin: [0, 0, 0],
+        axisDirection: [1, 0, 0],
+        angleRadians: Math.PI,
+        operation: "new",
+      })
+    expect(parse).not.toThrow()
+    expect(parse().success).toBe(true)
+  })
+
   it.each(["add", "remove", "intersect"] as const)(
     "accepts %s multi-profile modifying extrusion content",
     (operation) => {

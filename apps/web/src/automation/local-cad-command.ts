@@ -22,6 +22,7 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
   revolveFeatureTypeV7,
+  revolveFeatureTypeV8,
 } from "@vibeshape/domain/part-design"
 import {
   compoundFeatureTypeV2,
@@ -334,6 +335,7 @@ function profileFeatureType(
   if (operation.tool === "create_extrude" || operation.tool === "update_extrude")
     return extrudeProfileFeatureType(operation.arguments.parameters)
   const parameters = operation.arguments.parameters
+  if ("endCondition" in parameters) return revolveFeatureTypeV8.type
   if ("profile" in parameters) return revolveFeatureType.type
   return parameters.operation === "new" ? revolveFeatureTypeV5.type : revolveFeatureTypeV6.type
 }

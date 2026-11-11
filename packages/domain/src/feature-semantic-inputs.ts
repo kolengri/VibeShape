@@ -34,6 +34,7 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
   revolveFeatureTypeV7,
+  revolveFeatureTypeV8,
   sphereFeatureType,
   torusFeatureType,
 } from "./part-design"
@@ -158,6 +159,7 @@ const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureTypeV5.type),
   featureTypeKey(revolveFeatureTypeV6.type),
   featureTypeKey(revolveFeatureTypeV7.type),
+  featureTypeKey(revolveFeatureTypeV8.type),
 ])
 
 const sketchSolidInputReaders = new Map<

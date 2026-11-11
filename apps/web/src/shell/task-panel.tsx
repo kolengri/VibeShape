@@ -541,6 +541,8 @@ function useRevolveFormCopy(mode: RevolveFormMode["kind"]) {
     invalidExpression: t("invalidExpression"),
     invalidDimension: t("invalidDimension"),
     invalidRange: t("invalidRange"),
+    invalidTotal: t("invalidTotal"),
+    missingEnd: t("missingEnd"),
     missingTarget: t("missingTarget"),
     operation: t("operation"),
     operationAdd: t("operationAdd"),
@@ -722,23 +724,26 @@ function profileRemovalHandler(
   }
 }
 
-function RevolveTaskPanel({
-  angleRequest,
-  axisLineLabel,
-  axisSelection,
-  mode,
-  onAxisChange,
-  onAxisSelectionRequest,
-  onCloseTool,
-  onCompleteTool,
-  onProfileRemove,
-  onProfilesClear,
-  onProfileSelectionRequest,
-  options,
-  profileSelectionActive,
-  preview,
-  report,
-}: {
+/** Localized copy, selected-profile labels, and exact endpoint candidates for one Revolve task. */
+function useRevolveTaskContent(
+  report: NonNullable<DocumentControllerState["report"]>,
+  mode: RevolveFormMode,
+) {
+  const t = useTranslations("app.shell.taskPanel.revolve")
+  const panelT = useTranslations("app.shell.taskPanel")
+  const copy = useRevolveFormCopy(mode.kind)
+  const editingId = mode.kind === "edit" ? mode.feature.id : undefined
+  // Exact bodies before the edited feature, with current hashes and faces, for dynamic endpoints.
+  const endOptions = useExtrusionBodyOptions(report.snapshot, report.rebuild, editingId, true)
+  const format = (sketch: string, number: number) =>
+    panelT("selectedProfileLabel", { sketch, number })
+  const profileLabels = mode.profiles.map((profile) =>
+    selectedProfileLabel(report, profile, t("missingProfile"), format),
+  )
+  return { ariaLabel: panelT("ariaLabel"), copy, endOptions, profileLabels }
+}
+
+type RevolveTaskPanelProps = Readonly<{
   angleRequest: RevolveAngleRequest | null
   axisLineLabel?: string | undefined
   axisSelection?: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"] | undefined
@@ -759,21 +764,32 @@ function RevolveTaskPanel({
     status: FeaturePreviewState["status"]
   }>
   report: NonNullable<DocumentControllerState["report"]>
-}) {
+}>
+
+function RevolveTaskPanel({
+  angleRequest,
+  axisLineLabel,
+  axisSelection,
+  mode,
+  onAxisChange,
+  onAxisSelectionRequest,
+  onCloseTool,
+  onCompleteTool,
+  onProfileRemove,
+  onProfilesClear,
+  onProfileSelectionRequest,
+  options,
+  profileSelectionActive,
+  preview,
+  report,
+}: RevolveTaskPanelProps) {
   const snapshot = report.snapshot
-  const t = useTranslations("app.shell.taskPanel.revolve")
-  const panelT = useTranslations("app.shell.taskPanel")
-  const profileLabels = mode.profiles.map((profile) =>
-    selectedProfileLabel(report, profile, t("missingProfile"), (sketch, number) =>
-      panelT("selectedProfileLabel", { sketch, number }),
-    ),
-  )
-  const profileLabel = profileLabels.join(", ")
-  const copy = useRevolveFormCopy(mode.kind)
+  const { ariaLabel, copy, endOptions, profileLabels } = useRevolveTaskContent(report, mode)
   const task = featureTaskContext(mode, snapshot.revision)
   return (
-    <TaskPanelSurface aria-label={panelT("ariaLabel")}>
+    <TaskPanelSurface aria-label={ariaLabel}>
       <RevolveForm
+        endOptions={endOptions}
         angleRequest={angleRequest}
         axisLineLabel={axisLineLabel}
         axisSelection={axisSelection}
@@ -783,7 +799,7 @@ function RevolveTaskPanel({
         disabled={report.mode === "read-only"}
         mode={mode}
         options={options}
-        profileLabel={profileLabel}
+        profileLabel={profileLabels.join(", ")}
         profileLabels={profileLabels}
         onProfileRemove={profileRemovalHandler(mode.profiles, onProfileRemove)}
         onProfilesClear={onProfilesClear}

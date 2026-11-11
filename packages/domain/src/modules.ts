@@ -35,6 +35,7 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
   revolveFeatureTypeV7,
+  revolveFeatureTypeV8,
   sphereFeatureType,
   torusFeatureType,
 } from "./part-design"
@@ -540,6 +541,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     revolveFeatureTypeV5,
     revolveFeatureTypeV6,
     revolveFeatureTypeV7,
+    revolveFeatureTypeV8,
   ],
 })
 

@@ -26,6 +26,7 @@ silently dropping them when a later message arrives.
 | Purpose | Guidance to load |
 | --- | --- |
 | Every CAD model | The common intent rules below and [modeling contracts and recipes](references/modeling.md) |
+| Face Draft, Thicken, Press Pull or uniform Scale | [Face operations](references/face-operations.md) |
 | Functional parts, load-bearing details, fits, or mechanisms | [Mechanical design](references/mechanical-design.md) |
 | Models intended for 3D printing | [3D-printing design](references/3d-printing.md), using the section for the intended process |
 | FDM/FFF insert lids, corner binding, or compliant perimeter retention | [Lid fits and compliant retention](references/lid-fits.md) |
