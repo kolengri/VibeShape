@@ -21,6 +21,7 @@ import {
   writeDrawingPdf,
   writeDrawingSvg,
 } from "./index"
+import { primitiveBox } from "./text-metrics"
 
 const copy: DrawingSheetCopy = {
   viewLabels: {
@@ -207,6 +208,41 @@ describe("drawing sheet composition", () => {
       .find(({ id }) => id === "title-block")
       ?.primitives.find((item) => item.kind === "text" && item.text.startsWith("xxx"))
     expect(title?.kind === "text" && title.text.endsWith("…")).toBe(true)
+  })
+
+  it("fits wide title block values to their cells by measured glyph advances", () => {
+    const sheet = sheetFor({
+      titleBlock: {
+        title: "W".repeat(30),
+        drawingNumber: "WWWWWWWWWWWWWWWWWWWW",
+        author: "MMMMMMMMMMMMMMMMMMMM",
+        date: "2026-11-11",
+        material: "PLA 20% WWWWWWWWWWWWWWWWWW",
+      },
+    })
+    const texts = sheet.groups
+      .find(({ id }) => id === "title-block")
+      ?.primitives.flatMap((item) => (item.kind === "text" ? [item] : []))
+    if (!texts) throw new Error("Missing title block texts.")
+    const titleText = texts.find((item) => item.text.startsWith("WWW") && item.height === 5)
+    expect(titleText?.text.endsWith("…")).toBe(true)
+    // Row edges from the block origin: identification row, material/author/date, scale/units/projection/sheet.
+    const origin: [number, number] = [sheet.width - 10 - 180, 10]
+    const rows: [number, number[]][] = [
+      [20, [120, 180]],
+      [10, [70, 120, 180]],
+      [0, [40, 70, 97, 180]],
+    ]
+    for (const text of texts) {
+      const box = primitiveBox(text)
+      const [, edges = []] = rows.find(([bottom]) => text.position[1] - origin[1] >= bottom) ?? []
+      const right = edges.map((edge) => origin[0] + edge).find((edge) => edge > text.position[0])
+      if (right === undefined) throw new Error(`No cell to the right of ${text.text}.`)
+      expect({ text: text.text, overflow: box[2] > right - 1 }).toEqual({
+        text: text.text,
+        overflow: false,
+      })
+    }
   })
 })
 

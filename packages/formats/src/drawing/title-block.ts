@@ -1,6 +1,7 @@
 import type { DrawingSettings } from "@vibeshape/domain/drawing"
 import { TITLE_BLOCK_HEIGHT_MM, TITLE_BLOCK_WIDTH_MM } from "./layout"
 import type { DrawingSheetCopy, SheetPoint, SheetPrimitive } from "./sheet"
+import { textWidthMm } from "./text-metrics"
 
 /** Published sheet-size names; these are standard designations, not translatable copy. */
 const SHEET_NAMES: Readonly<Record<DrawingSettings["sheetSize"], string>> = {
@@ -15,8 +16,6 @@ const SHEET_NAMES: Readonly<Record<DrawingSettings["sheetSize"], string>> = {
 const CAPTION_HEIGHT_MM = 1.8
 const VALUE_HEIGHT_MM = 3.5
 const TITLE_HEIGHT_MM = 5
-/** Average Helvetica advance as a fraction of text height, used only to truncate long fields. */
-const AVERAGE_ADVANCE = 0.6
 
 type Cell = Readonly<{
   x: number
@@ -140,11 +139,21 @@ export function titleBlock({
   return [...result, ...projectionSymbol(at(105, 4.5), settings.projection)]
 }
 
-/** Truncates text that would overflow its cell, using an average-advance estimate. */
+/**
+ * Truncates text with an ellipsis until its measured Helvetica advance fits the cell, using the
+ * same metrics as annotation clearance and the PDF writer.
+ */
 function fit(value: string, width: number, height: number) {
+  if (textWidthMm(value, height) <= width) return value
   const characters = [...value]
-  const limit = Math.max(1, Math.floor(width / (height * AVERAGE_ADVANCE)))
-  return characters.length <= limit ? value : `${characters.slice(0, limit - 1).join("")}…`
+  let low = 0
+  let high = characters.length
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2)
+    if (textWidthMm(`${characters.slice(0, middle).join("")}…`, height) <= width) low = middle
+    else high = middle - 1
+  }
+  return `${characters.slice(0, low).join("")}…`
 }
 
 /**

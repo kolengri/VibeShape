@@ -33,7 +33,7 @@ export function encodeHelveticaCharacter(
  * Estimated advance of `text` at `height` mm. WinAnsi characters use Helvetica metrics; wide
  * East Asian characters count one em so layout clearance stays conservative in SVG and DXF.
  */
-function textWidthMm(text: string, height: number) {
+export function textWidthMm(text: string, height: number) {
   let units = 0
   for (const character of text) {
     const code = character.codePointAt(0) ?? 63
