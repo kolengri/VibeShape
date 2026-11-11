@@ -269,6 +269,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@vibeshape/domain": "workspace:*",
+        "@vibeshape/protocol": "workspace:*",
         "dxf-parser": "1.1.2",
         "fflate": "catalog:",
         "fzstd": "0.1.1",
