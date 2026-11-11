@@ -9,12 +9,15 @@ import {
   type FeatureRecord,
   readDatumPointFeatureParameters,
 } from "@vibeshape/domain"
+import { readCoilFeatureParameters } from "@vibeshape/domain/part-design-coil"
 import { draftContentFace, readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
+import { helixContentFields } from "@vibeshape/domain/part-design-helix"
 import { readMirrorFeatureParametersV3 } from "@vibeshape/domain/part-design-mirror"
 import { readPatternFeatureParametersV2 } from "@vibeshape/domain/part-design-pattern"
 import { readSplitFeatureParametersV2 } from "@vibeshape/domain/part-design-split"
 import { referenceFrameSupportFeatureId } from "@vibeshape/domain/reference-frame"
 import {
+  coilFeatureContentParametersSchema,
   datumPointFeatureContentParametersSchema,
   draftFeatureContentParametersSchema,
   mirrorFeatureContentParametersV3Schema,
@@ -28,9 +31,50 @@ export function shouldPrepareReferenceFrameFeatureContent(feature: FeatureRecord
       readDraftFeatureParameters(feature) ||
       readMirrorFeatureParametersV3(feature) ||
       readSplitFeatureParametersV2(feature) ||
-      readPatternFeatureParametersV2(feature),
+      readPatternFeatureParametersV2(feature) ||
+      readCoilFeatureParameters(feature),
   )
 }
+type Context = Parameters<typeof resolveReferenceAxis>[1]
+type Prepared = Awaited<ReturnType<DocumentFeatureContentPreparationPort>>
+
+/** Coil resolves its axis like Pattern v2 and emits UUID-free helix content. */
+function prepareCoilContent(feature: FeatureRecord, context: Context): Prepared {
+  const coil = readCoilFeatureParameters(feature)
+  if (!coil) return null
+  const axis = resolveReferenceAxis(coil.axis, context)
+  if (!axis)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "org.vibeshape.feature.reference-frame-unresolved",
+        values: { reason: "missing-or-ambiguous-support" },
+      },
+    }
+  const supportFeatureId = referenceFrameSupportFeatureId(coil.axis)
+  const { section } = coil
+  const parsed = coilFeatureContentParametersSchema.safeParse({
+    helix: { origin: axis.origin, direction: axis.direction, ...helixContentFields(coil) },
+    section:
+      section.kind === "circular"
+        ? { kind: "circular", diameter: section.diameter.value }
+        : { kind: "rectangular", width: section.width.value, height: section.height.value },
+    operation: coil.operation,
+    ...(supportFeatureId
+      ? { supportInputIndex: feature.dependencies.indexOf(supportFeatureId) }
+      : {}),
+  })
+  return parsed.success
+    ? { ok: true, parameters: parsed.data }
+    : {
+        ok: false,
+        diagnostic: {
+          code: "org.vibeshape.feature.coil-invalid",
+          values: { reason: parsed.error.issues[0]?.message ?? "invalid-resolved-coil" },
+        },
+      }
+}
+
 const DATUM_POINT_MARKER_DIAMETER_MM = 4
 
 type ReferenceContext = Parameters<typeof resolveDatumPoint>[1]
@@ -60,6 +104,14 @@ function prepareDatumPointContent(
   }
 }
 
+/** Datum Point and Coil resolve their own support without a consumed target plane. */
+function prepareStandaloneReferenceContent(feature: FeatureRecord, context: ReferenceContext) {
+  const datumPoint = readDatumPointFeatureParameters(feature)
+  return datumPoint
+    ? prepareDatumPointContent(datumPoint, context)
+    : prepareCoilContent(feature, context)
+}
+
 export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparationPort = (
   input,
 ) => {
@@ -68,8 +120,8 @@ export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparat
     features: input.features ?? input.document.features,
     geometry: input.geometry ?? [],
   }
-  const datumPoint = readDatumPointFeatureParameters(input.feature)
-  if (datumPoint) return prepareDatumPointContent(datumPoint, context)
+  const standalone = prepareStandaloneReferenceContent(input.feature, context)
+  if (standalone) return standalone
   const mirror = readMirrorFeatureParametersV3(input.feature)
   const split = readSplitFeatureParametersV2(input.feature)
   const pattern = readPatternFeatureParametersV2(input.feature)

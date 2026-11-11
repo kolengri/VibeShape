@@ -329,6 +329,20 @@ without rebinding. The geometry worker receives only the resolved position and d
 sphere with role `datum.point`. Reference features never contribute bodies, measurements,
 inspection topology or export bodies.
 
+### Helical construction
+
+Coil and helical Sweep v2 share one helix contract ([ADR-0155](../adr/0155-exact-helix-coil-and-helical-sweep.md)).
+The domain stores the reference axis, handedness, radius, pitch, turns-or-height extent and start
+angle as expression-capable quantities; the document worker resolves the axis through the same
+reference-frame resolver as Pattern v2 and Thread v2 and emits unit-free `helix` content with a
+`supportInputIndex` instead of a UUID. The geometry worker builds the helix from straight PCurves on a
+cylinder, chained in edges of at most four turns, and sweeps one section wire with
+`BRepOffsetAPI_MakePipeShell` in Frenet mode, so the section is a rigid screw image of the start
+section. Coil applies Add/Remove/Intersect to its exact named target through the shared Boolean
+helpers. Overlapping turns (pitch not above the meridian span of the section) and sections reaching
+the axis are rejected in the schemas and again before native construction; every native wrapper is
+released through a shared ownership scope on success and failure.
+
 ## Tessellation
 
 Each body has at least two levels of detail:

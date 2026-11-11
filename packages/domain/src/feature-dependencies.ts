@@ -16,6 +16,7 @@ import {
   readUnionFeatureParameters,
 } from "./part-design-body-combination"
 import { readChamferFeatureParametersV3 } from "./part-design-chamfer"
+import { readCoilFeatureParameters } from "./part-design-coil"
 import { readDraftFeatureParameters } from "./part-design-draft"
 import { readFdmFeatureParameters } from "./part-design-fdm"
 import { readFilletFeatureParametersV3 } from "./part-design-fillet"
@@ -36,7 +37,7 @@ import { readScaleFeatureParameters } from "./part-design-scale"
 import { readShellFeatureParameters } from "./part-design-shell"
 import { readSplitFeatureParameters, readSplitFeatureParametersV2 } from "./part-design-split"
 import { booleanBodyDependencyIds, readBooleanFeatureParametersV2 } from "./part-design-subtract"
-import { readSweepFeatureParameters } from "./part-design-sweep"
+import { readSweepFeatureParameters, readSweepFeatureParametersV2 } from "./part-design-sweep"
 import { readThreadFeatureParameters } from "./part-design-thread"
 import { readDatumPointFeatureParameters } from "./datum-point"
 import { isReferenceGeometryFeature, readDatumPlaneFeatureParameters } from "./reference-geometry"
@@ -49,6 +50,7 @@ const independentBodyReaders = [
   readLoftFeatureParameters,
   readLoftFeatureParametersV3,
   readSweepFeatureParameters,
+  readSweepFeatureParametersV2,
 ]
 const edgeModifierTypes = new Set(
   [filletFeatureType, chamferFeatureType, filletFeatureTypeV2, chamferFeatureTypeV2].map(
@@ -66,6 +68,7 @@ const exactTargetReaders = [
   (feature: FeatureRecord) => readExtrusionFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readRevolveFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readThreadFeatureParameters(feature)?.targetBody,
+  (feature: FeatureRecord) => readCoilFeatureParameters(feature)?.targetBody ?? undefined,
   readHoleBodyTarget,
   (feature: FeatureRecord) => readPlacementFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readMirrorFeatureParameters(feature)?.targetBody,
@@ -103,6 +106,8 @@ function consumedSubtractBodies(
 function declaredBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] | null {
   const fdm = readFdmFeatureParameters(feature)
   if (fdm) return fdmTargetDependencyIds(fdm)
+  const coil = readCoilFeatureParameters(feature)
+  if (coil) return coil.targetBody ? [coil.targetBody.featureId] : []
   const boolean = readBooleanFeatureParametersV2(feature)
   if (boolean) return booleanBodyDependencyIds(consumedSubtractBodies(boolean))
   if (mirrorPreservesSource(feature)) return []

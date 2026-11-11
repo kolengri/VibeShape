@@ -7,6 +7,8 @@ export type GeometryFeatureKind =
   | "cylinder"
   | "sphere"
   | "connect-mounts"
+  | "coil"
+  | "helical-sweep"
   | "cone"
   | "pyramid"
   | "torus"

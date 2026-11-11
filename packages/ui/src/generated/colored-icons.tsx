@@ -1168,6 +1168,102 @@ export const SweepIcon = /* @__PURE__ */ coloredIcon("sweep", (instanceId) => (
   </>
 ))
 
+export const CoilIcon = /* @__PURE__ */ coloredIcon("coil", (instanceId) => (
+  <>
+    <defs>
+      <linearGradient
+        id={`${instanceId}-frosted-coil-light-material-front`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
+        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-coil-light-material-side`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
+        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
+      </linearGradient>
+      <mask
+        id={`${instanceId}-frosted-coil-light-visible-action`}
+        x="0"
+        y="0"
+        width="256"
+        height="256"
+        maskUnits="userSpaceOnUse"
+        style={{ maskType: "luminance" }}
+      >
+        <g transform="scale(4)">
+          <g transform="translate(0 0)">
+            <path
+              d="M32 9V55"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.50000"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M46.00 46.80L45.88 46.07 M18.12 42.76L18.48 43.12L19.07 43.46L19.88 43.77L20.89 44.04L22.10 44.27L23.48 44.45L25.00 44.57L26.64 44.63L28.38 44.62L30.17 44.55L32.00 44.40L33.83 44.18L35.62 43.89L37.36 43.53L39.00 43.10L40.52 42.62L41.90 42.07L43.11 41.47L44.12 40.83L44.93 40.16L45.52 39.45L45.88 38.73L46.00 38.00L45.88 37.27 M18.12 33.96L18.48 34.32L19.07 34.66L19.88 34.97L20.89 35.24L22.10 35.47L23.48 35.65L25.00 35.77L26.64 35.83L28.38 35.82L30.17 35.75L32.00 35.60L33.83 35.38L35.62 35.09L37.36 34.73L39.00 34.30L40.52 33.82L41.90 33.27L43.11 32.67L44.12 32.03L44.93 31.36L45.52 30.65L45.88 29.93L46.00 29.20L45.88 28.47 M18.12 25.16L18.48 25.52L19.07 25.86L19.88 26.17L20.89 26.44L22.10 26.67L23.48 26.85L25.00 26.97L26.64 27.03L28.38 27.02L30.17 26.95L32.00 26.80L33.83 26.58L35.62 26.29L37.36 25.93L39.00 25.50L40.52 25.02L41.90 24.47L43.11 23.87L44.12 23.23L44.93 22.56L45.52 21.85L45.88 21.13L46.00 20.40L45.88 19.67"
+              fill="none"
+              stroke="black"
+              strokeWidth="4.60000"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </g>
+        </g>
+      </mask>
+    </defs>
+    <g opacity=".91" data-layer="material">
+      <g transform="scale(4)">
+        <g transform="translate(0 0)">
+          <path
+            d="M45.88 46.07L45.52 45.35L44.93 44.64L44.12 43.97L43.11 43.33L41.90 42.73L40.52 42.18L39.00 41.70L37.36 41.27L35.62 40.91L33.83 40.62L32.00 40.40L30.17 40.25L28.38 40.18L26.64 40.17L25.00 40.23L23.48 40.35L22.10 40.53L20.89 40.76L19.88 41.03L19.07 41.34L18.48 41.68L18.12 42.04L18.00 42.40L18.12 42.76 M45.88 37.27L45.52 36.55L44.93 35.84L44.12 35.17L43.11 34.53L41.90 33.93L40.52 33.38L39.00 32.90L37.36 32.47L35.62 32.11L33.83 31.82L32.00 31.60L30.17 31.45L28.38 31.38L26.64 31.37L25.00 31.43L23.48 31.55L22.10 31.73L20.89 31.96L19.88 32.23L19.07 32.54L18.48 32.88L18.12 33.24L18.00 33.60L18.12 33.96 M45.88 28.47L45.52 27.75L44.93 27.04L44.12 26.37L43.11 25.73L41.90 25.13L40.52 24.58L39.00 24.10L37.36 23.67L35.62 23.31L33.83 23.02L32.00 22.80L30.17 22.65L28.38 22.58L26.64 22.57L25.00 22.63L23.48 22.75L22.10 22.93L20.89 23.16L19.88 23.43L19.07 23.74L18.48 24.08L18.12 24.44L18.00 24.80L18.12 25.16 M45.88 19.67L45.52 18.95L44.93 18.24L44.12 17.57L43.11 16.93L41.90 16.33L40.52 15.78L39.00 15.30L37.36 14.87L35.62 14.51L33.83 14.22L32.00 14.00"
+            fill="none"
+            stroke={`url(#${instanceId}-frosted-coil-light-material-side)`}
+            strokeWidth="4.60000"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M46.00 46.80L45.88 46.07 M18.12 42.76L18.48 43.12L19.07 43.46L19.88 43.77L20.89 44.04L22.10 44.27L23.48 44.45L25.00 44.57L26.64 44.63L28.38 44.62L30.17 44.55L32.00 44.40L33.83 44.18L35.62 43.89L37.36 43.53L39.00 43.10L40.52 42.62L41.90 42.07L43.11 41.47L44.12 40.83L44.93 40.16L45.52 39.45L45.88 38.73L46.00 38.00L45.88 37.27 M18.12 33.96L18.48 34.32L19.07 34.66L19.88 34.97L20.89 35.24L22.10 35.47L23.48 35.65L25.00 35.77L26.64 35.83L28.38 35.82L30.17 35.75L32.00 35.60L33.83 35.38L35.62 35.09L37.36 34.73L39.00 34.30L40.52 33.82L41.90 33.27L43.11 32.67L44.12 32.03L44.93 31.36L45.52 30.65L45.88 29.93L46.00 29.20L45.88 28.47 M18.12 25.16L18.48 25.52L19.07 25.86L19.88 26.17L20.89 26.44L22.10 26.67L23.48 26.85L25.00 26.97L26.64 27.03L28.38 27.02L30.17 26.95L32.00 26.80L33.83 26.58L35.62 26.29L37.36 25.93L39.00 25.50L40.52 25.02L41.90 24.47L43.11 23.87L44.12 23.23L44.93 22.56L45.52 21.85L45.88 21.13L46.00 20.40L45.88 19.67"
+            fill="none"
+            stroke={`url(#${instanceId}-frosted-coil-light-material-front)`}
+            strokeWidth="4.60000"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+      </g>
+    </g>
+    <g mask={`url(#${instanceId}-frosted-coil-light-visible-action)`} data-layer="action">
+      <g transform="scale(4)">
+        <g transform="translate(0 0)">
+          <path
+            d="M32 9V55"
+            fill="none"
+            stroke="var(--icon-action-stroke, #cd7b24)"
+            strokeWidth="2.50000"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="4 5"
+          />
+        </g>
+      </g>
+    </g>
+  </>
+))
+
 export const HoleIcon = /* @__PURE__ */ coloredIcon("hole", (instanceId) => (
   <>
     <g transform="scale(4)">

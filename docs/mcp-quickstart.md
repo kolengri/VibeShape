@@ -21,6 +21,8 @@ chooser before pairing.
 
 Named tools include `create_connect_mounts` and `update_connect_mounts` for exact geometric
 connections between captured mounting points; see [Connect Mounts](product/connect-mounts.md).
+`create_coil` and `update_coil` sweep a section along an exact helix, and the sweep tools accept a
+helix path; see [Coil](product/coil.md).
 Named tools cover all registered Box, Cylinder, Cone, Sphere, Torus and Pyramid authoring, plus
 owned-draft feature/sketch removal, explicit suppression and project rename. Lifecycle changes
 always require browser review and retain dependency-blocked diagnostics; see the
