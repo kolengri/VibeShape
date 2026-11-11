@@ -13,7 +13,20 @@ import {
   patternFeatureRecord,
   patternFormValues,
 } from "./pattern-form-model"
-import { copy, countVariable, featureId, mode, units } from "./pattern-test-fixtures"
+import {
+  copy,
+  countVariable,
+  featureId,
+  lineId,
+  mode,
+  pathSketch,
+  pathStartId,
+  paths,
+  snapshot,
+  targetId,
+  units,
+} from "./pattern-test-fixtures"
+import type { PatternPathPickingRequest } from "./use-pattern-path-picking"
 
 const save = () =>
   vi.fn(async (_revision: number, _feature: FeatureRecord) => ({ ok: true as const }))
@@ -24,15 +37,21 @@ function setup(
     status?: "ready" | "loading" | "error"
     unavailable?: boolean
     referenceOptions?: { planes: []; axes: [] }
+    pickingRequest?: PatternPathPickingRequest | null
   } = {},
 ) {
   const onSave = options.onSave ?? save(),
     onSaved = vi.fn(),
     onCancel = vi.fn(),
-    onPreviewChange = vi.fn()
-  const view = render(
+    onPreviewChange = vi.fn(),
+    onPickingContextChange = vi.fn()
+  const form = (pickingRequest: PatternPathPickingRequest | null | undefined) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <PatternForm
+        snapshot={snapshot}
+        paths={paths}
+        pickingRequest={pickingRequest}
+        onPickingContextChange={onPickingContextChange}
         referenceOptions={options.referenceOptions}
         baseRevision={7}
         copy={copy}
@@ -45,9 +64,18 @@ function setup(
         onPreviewChange={onPreviewChange}
         previewStatus={options.status ?? "ready"}
       />
-    </I18nProvider>,
+    </I18nProvider>
   )
-  return { ...view, onSave, onSaved, onCancel, onPreviewChange }
+  const view = render(form(options.pickingRequest))
+  return {
+    ...view,
+    onSave,
+    onSaved,
+    onCancel,
+    onPreviewChange,
+    onPickingContextChange,
+    pick: (request: PatternPathPickingRequest) => view.rerender(form(request)),
+  }
 }
 afterEach(cleanup)
 describe("Body Pattern form", () => {
@@ -169,6 +197,107 @@ describe("Body Pattern form", () => {
       ).toBe(true)
     },
   )
+  it("authors a fixed-spacing path pattern with its sketch and orientation intent", async () => {
+    const f = setup()
+    await userEvent.click(screen.getByRole("radio", { name: "Path" }))
+    const apply = screen.getByRole("button", { name: "Apply feature" }) as HTMLButtonElement
+    expect(apply.disabled).toBe(true)
+    expect(screen.getByText(copy.invalidPath)).toBeTruthy()
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Path sketch" }),
+      pathSketch.id,
+    )
+    await userEvent.click(screen.getByRole("checkbox", { name: "Line 3" }))
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Path start point" }),
+      pathStartId,
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Fixed distance" }))
+    const distance = screen.getByRole("combobox", { name: "Distance between instances" })
+    await userEvent.clear(distance)
+    await userEvent.type(distance, "25 mm")
+    const offset = screen.getByRole("combobox", { name: "Start offset" })
+    await userEvent.clear(offset)
+    await userEvent.type(offset, "5 mm")
+    await userEvent.click(screen.getByRole("radio", { name: "Follow path" }))
+    await userEvent.click(screen.getByRole("checkbox", { name: "Reverse direction" }))
+    expect(apply.disabled).toBe(false)
+    await userEvent.click(apply)
+    await waitFor(() => expect(f.onSaved).toHaveBeenCalledTimes(1))
+    expect(f.onSave).toHaveBeenCalledTimes(1)
+    expect(f.onSave.mock.calls[0]?.[1]).toMatchObject({
+      type: { schemaVersion: 3 },
+      dependencies: [targetId],
+      parameters: {
+        kind: "path",
+        targetBody: mode.targetBody,
+        path: { sketchId: pathSketch.id, entityIds: [lineId], startPointId: pathStartId },
+        spacing: { mode: "fixed", distance: { value: 25 } },
+        startOffset: { value: 5 },
+        orientation: "follow",
+        reverse: true,
+      },
+    })
+  })
+  it("toggles viewport-picked path curves through the same form state", async () => {
+    const f = setup()
+    await userEvent.click(screen.getByRole("radio", { name: "Path" }))
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Path sketch" }),
+      pathSketch.id,
+    )
+    await waitFor(() =>
+      expect(f.onPickingContextChange).toHaveBeenLastCalledWith({
+        featureId,
+        sketchId: pathSketch.id,
+      }),
+    )
+    const request = { requestId: 1, featureId, sketchId: pathSketch.id, entityId: lineId }
+    f.pick(request)
+    await waitFor(() =>
+      expect((screen.getByRole("checkbox", { name: "Line 3" }) as HTMLInputElement).checked).toBe(
+        true,
+      ),
+    )
+    // The same request is consumed once; a new request toggles the curve off again.
+    f.pick(request)
+    expect((screen.getByRole("checkbox", { name: "Line 3" }) as HTMLInputElement).checked).toBe(
+      true,
+    )
+    f.pick({ ...request, requestId: 2 })
+    await waitFor(() =>
+      expect((screen.getByRole("checkbox", { name: "Line 3" }) as HTMLInputElement).checked).toBe(
+        false,
+      ),
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Linear" }))
+    await waitFor(() => expect(f.onPickingContextChange).toHaveBeenLastCalledWith(null))
+  })
+  it("reopens a path pattern with its authored path values", () => {
+    const parsed = parsePatternForm(
+      {
+        ...patternFormValues(mode, units),
+        kind: "path",
+        pathSketchId: pathSketch.id,
+        entityIds: [lineId],
+        startPointId: pathStartId,
+        orientation: "follow",
+      },
+      [countVariable],
+      units,
+      copy,
+    )
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed))
+    const feature = patternFeatureRecord(mode, featureId, parsed, undefined, snapshot)
+    setup({ mode: { kind: "edit", feature } })
+    expect((screen.getByRole("radio", { name: "Path" }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole("checkbox", { name: "Line 3" }) as HTMLInputElement).checked).toBe(
+      true,
+    )
+    expect((screen.getByRole("radio", { name: "Follow path" }) as HTMLInputElement).checked).toBe(
+      true,
+    )
+  })
   it("cancels without committing and disposes its preview", async () => {
     const f = setup()
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))

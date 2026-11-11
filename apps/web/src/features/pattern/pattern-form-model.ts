@@ -1,13 +1,16 @@
+import { expectedPathPatternDependencyIds } from "@vibeshape/application/feature-rebuild"
 import {
   createAngleQuantity,
   createLengthQuantity,
   createScalarQuantity,
   type DocumentDisplayUnits,
+  type DocumentSnapshot,
   evaluateExpression,
   evaluateVariableDefinitions,
   type FeatureId,
   type FeatureRecord,
   type Quantity,
+  type SketchEntityId,
   type VariableDefinition,
 } from "@vibeshape/domain"
 import type { BodyReference } from "@vibeshape/domain/body-reference"
@@ -23,7 +26,16 @@ import {
   readPatternFeatureParameters,
   readPatternFeatureParametersV2,
 } from "@vibeshape/domain/part-design-pattern"
+import {
+  type PatternFeatureParametersV3,
+  pathPatternDistanceSchema,
+  pathPatternStartOffsetSchema,
+  patternFeatureParametersV3Schema,
+  patternFeatureTypeV3,
+  readPatternFeatureParametersV3,
+} from "@vibeshape/domain/part-design-pattern-path"
 import { type ReferenceAxis, referenceFrameDependencyIds } from "@vibeshape/domain/reference-frame"
+import { sketchPathSelectorSchema } from "@vibeshape/domain/sketch-path-selector"
 import {
   defaultLengthExpression,
   normalizeExpressionWithDisplayUnit,
@@ -43,7 +55,7 @@ export type PatternFormMode =
     }
   | { kind: "edit"; feature: FeatureRecord }
 export type PatternFormValues = {
-  kind: "linear" | "circular"
+  kind: "linear" | "circular" | "path"
   axis: "X" | "Y" | "Z"
   count: string
   spacing: string
@@ -51,6 +63,13 @@ export type PatternFormValues = {
   centerX: string
   centerY: string
   centerZ: string
+  pathSketchId: string
+  entityIds: SketchEntityId[]
+  startPointId: string
+  spacingMode: "equal" | "fixed"
+  startOffset: string
+  orientation: "translate" | "follow"
+  reverse: boolean
 }
 export type PatternValidationCopy = PrimitiveLengthCopy & {
   invalidCountDimension: string
@@ -59,6 +78,7 @@ export type PatternValidationCopy = PrimitiveLengthCopy & {
   invalidAngleRange: string
   invalidCenterRange: string
   invalidSpan: string
+  invalidPath: string
 }
 type ParsedPatternForm =
   | { ok: false; issues: Partial<Record<keyof PatternFormValues, string>> }
@@ -67,6 +87,7 @@ type ParsedPatternForm =
       parameters:
         | Omit<Extract<PatternFeatureParameters, { kind: "linear" }>, "targetBody">
         | Omit<Extract<PatternFeatureParameters, { kind: "circular" }>, "targetBody">
+        | Omit<PatternFeatureParametersV3, "targetBody">
     }
 function sourceExpression(quantity: Quantity) {
   return (
@@ -80,6 +101,7 @@ export function patternTargetBody(mode: PatternFormMode) {
   return mode.kind === "create"
     ? mode.targetBody
     : (
+        readPatternFeatureParametersV3(mode.feature) ??
         readPatternFeatureParametersV2(mode.feature) ??
         patternFeatureParametersSchema.parse(mode.feature.parameters)
       ).targetBody
@@ -99,7 +121,16 @@ export function patternFormValues(
     centerX: zero,
     centerY: zero,
     centerZ: zero,
+    pathSketchId: "",
+    entityIds: [],
+    startPointId: "",
+    spacingMode: "equal",
+    startOffset: zero,
+    orientation: "translate",
+    reverse: false,
   }
+  const pathParameters = mode.kind === "edit" ? readPatternFeatureParametersV3(mode.feature) : null
+  if (pathParameters) return pathFormValues(defaults, pathParameters)
   const referenceParameters =
     mode.kind === "edit" ? readPatternFeatureParametersV2(mode.feature) : null
   if (referenceParameters)
@@ -128,6 +159,26 @@ export function patternFormValues(
         centerY: sourceExpression(parameters.center.y),
         centerZ: sourceExpression(parameters.center.z),
       }
+}
+function pathFormValues(
+  defaults: PatternFormValues,
+  parameters: PatternFeatureParametersV3,
+): PatternFormValues {
+  return {
+    ...defaults,
+    kind: "path",
+    count: sourceExpression(parameters.count),
+    pathSketchId: parameters.path.sketchId,
+    entityIds: [...parameters.path.entityIds],
+    startPointId: parameters.path.startPointId,
+    spacingMode: parameters.spacing.mode,
+    ...(parameters.spacing.mode === "fixed"
+      ? { spacing: sourceExpression(parameters.spacing.distance) }
+      : {}),
+    startOffset: sourceExpression(parameters.startOffset),
+    orientation: parameters.orientation,
+    reverse: parameters.reverse,
+  }
 }
 function evaluateDimension(
   raw: string,
@@ -205,6 +256,55 @@ function parseCenter(
   if (!x.ok || !y.ok || !z.ok) return { ok: false as const, issues }
   return { ok: true as const, center: { x: x.quantity, y: y.quantity, z: z.quantity } }
 }
+function parsePathSelector(values: PatternFormValues) {
+  return (
+    sketchPathSelectorSchema.safeParse({
+      schemaVersion: 0,
+      sketchId: values.pathSketchId,
+      entityIds: [...values.entityIds].sort(),
+      startPointId: values.startPointId,
+    }).data ?? null
+  )
+}
+function parsePathPattern(
+  values: PatternFormValues,
+  count: ReturnType<typeof createScalarQuantity>,
+  variables: readonly VariableDefinition[],
+  units: DocumentDisplayUnits,
+  copy: PatternValidationCopy,
+): ParsedPatternForm {
+  const length = (raw: string, valid: (quantity: Quantity) => boolean) =>
+    parsePrimitiveLengthExpression(raw, variables, copy, valid, units.length)
+  const offset = length(
+    values.startOffset,
+    (quantity) => pathPatternStartOffsetSchema.safeParse(quantity).success,
+  )
+  const distance =
+    values.spacingMode === "fixed"
+      ? length(values.spacing, (quantity) => pathPatternDistanceSchema.safeParse(quantity).success)
+      : null
+  const path = parsePathSelector(values)
+  const issues: Partial<Record<keyof PatternFormValues, string>> = {
+    ...(path ? {} : { entityIds: copy.invalidPath }),
+    ...(offset.ok ? {} : { startOffset: offset.message }),
+    ...(distance && !distance.ok ? { spacing: distance.message } : {}),
+  }
+  if (!path || !offset.ok || (distance && !distance.ok)) return { ok: false, issues }
+  if (distance && offset.quantity.value + (count.value - 1) * distance.quantity.value > 100_000)
+    return { ok: false, issues: { spacing: copy.invalidSpan } }
+  return {
+    ok: true,
+    parameters: {
+      kind: "path",
+      count,
+      path,
+      spacing: distance ? { mode: "fixed", distance: distance.quantity } : { mode: "equal" },
+      startOffset: offset.quantity,
+      orientation: values.orientation,
+      reverse: values.reverse,
+    },
+  }
+}
 export function parsePatternForm(
   values: PatternFormValues,
   variables: readonly VariableDefinition[],
@@ -214,6 +314,8 @@ export function parsePatternForm(
 ): ParsedPatternForm {
   const count = parseCount(values, variables, units, copy)
   if (!count.ok) return { ok: false as const, issues: { count: count.message } }
+  if (values.kind === "path")
+    return parsePathPattern(values, count.quantity, variables, units, copy)
   const common = { count: count.quantity, axis: values.axis }
   if (values.kind === "circular") {
     const angle = parseAngle(values, variables, units, copy)
@@ -260,27 +362,49 @@ export function parsePatternForm(
     parameters: { ...common, kind: "linear" as const, spacing: spacing.quantity },
   }
 }
+function pathPatternFeatureRecord(
+  mode: PatternFormMode,
+  featureId: FeatureId,
+  parameters: Omit<PatternFeatureParametersV3, "targetBody">,
+  snapshot: DocumentSnapshot,
+) {
+  const authored = patternFeatureParametersV3Schema.parse({
+    ...parameters,
+    targetBody: patternTargetBody(mode),
+  })
+  return bodyFeatureRecord(mode, featureId, {
+    type: patternFeatureTypeV3.type,
+    parameters: authored,
+    dependencies: expectedPathPatternDependencyIds(snapshot, authored),
+  })
+}
 export function patternFeatureRecord(
   mode: PatternFormMode,
   featureId: FeatureId,
   parsed: Extract<ReturnType<typeof parsePatternForm>, { ok: true }>,
   referenceAxis?: ReferenceAxis | undefined,
+  snapshot?: DocumentSnapshot,
 ) {
+  if (parsed.parameters.kind === "path") {
+    if (!snapshot) throw new Error("A path pattern requires the current document snapshot.")
+    return pathPatternFeatureRecord(mode, featureId, parsed.parameters, snapshot)
+  }
+  const linearOrCircular = parsed.parameters
   const targetBody = patternTargetBody(mode)
   const v2 =
     referenceAxis !== undefined || (mode.kind === "edit" && mode.feature.type.schemaVersion === 2)
-  const support = referenceAxis ?? { kind: "origin-axis" as const, axis: parsed.parameters.axis }
+  const support = referenceAxis ?? { kind: "origin-axis" as const, axis: linearOrCircular.axis }
   const parameters = v2
     ? patternFeatureParametersV2Schema.parse({
         targetBody,
-        kind: parsed.parameters.kind,
-        count: parsed.parameters.count,
+        kind: linearOrCircular.kind,
+        count: linearOrCircular.count,
         axis: support,
-        ...(parsed.parameters.kind === "linear"
-          ? { spacing: parsed.parameters.spacing }
-          : { angle: parsed.parameters.angle }),
+        ...(linearOrCircular.kind === "linear"
+          ? { spacing: linearOrCircular.spacing }
+          : { angle: linearOrCircular.angle }),
       })
-    : patternFeatureParametersSchema.parse({ ...parsed.parameters, targetBody })
+    : patternFeatureParametersSchema.parse({ ...linearOrCircular, targetBody })
   const type = v2 ? patternFeatureTypeV2.type : patternFeatureType.type
   const dependencies = v2
     ? referenceFrameDependencyIds(targetBody.featureId, support)

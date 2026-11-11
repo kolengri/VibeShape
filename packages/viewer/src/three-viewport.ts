@@ -212,7 +212,7 @@ export type ViewerSketchCurveCandidate = Readonly<{
   points: readonly ViewerVector3[]
   sourceEntityId: string
   sourceSketchId: string
-  sourceType: "arc" | "circle" | "ellipse" | "elliptical-arc"
+  sourceType: "arc" | "circle" | "ellipse" | "elliptical-arc" | "cubic-bezier"
 }>
 
 export type ViewerModelPointCandidate = Readonly<{

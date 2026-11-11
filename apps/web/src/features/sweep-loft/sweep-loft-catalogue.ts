@@ -12,7 +12,10 @@ type SketchDisplay = Extract<
 >["sketches"][number]
 export type SweepLoftCatalogueCopy = Readonly<{
   profile: (sketch: string, number: number) => string
-  curve: (kind: "line" | "arc" | "cubic-bezier" | "elliptical-arc", number: number) => string
+  curve: (
+    kind: "line" | "arc" | "circle" | "cubic-bezier" | "elliptical-arc",
+    number: number,
+  ) => string
   point: (number: number, position: readonly [number, number, number]) => string
 }>
 export function sweepLoftCatalogue(
@@ -21,6 +24,8 @@ export function sweepLoftCatalogue(
   excludedIds: readonly string[],
   _operation: SweepLoftOperation,
   copy: SweepLoftCatalogueCopy,
+  /** Path Pattern accepts a lone circle; its center point names the angle-zero start. */
+  includeCircles = false,
 ) {
   const excluded = new Set(excludedIds)
   const byId = new Map(snapshot.sketches.map((sketch) => [String(sketch.id), sketch]))
@@ -43,6 +48,20 @@ export function sweepLoftCatalogue(
       display.solvedPoints?.map(({ entityId, position }) => [entityId, position]) ?? [],
     )
     const curves = sketch.entities.flatMap((entity, index) => {
+      if (
+        includeCircles &&
+        entity.type === "circle" &&
+        !entity.construction &&
+        pointsById.has(entity.centerPointId)
+      )
+        return [
+          {
+            id: entity.id,
+            label: copy.curve("circle", index + 1),
+            startPointId: entity.centerPointId,
+            endPointId: entity.centerPointId,
+          },
+        ]
       if (
         entity.construction ||
         (entity.type !== "line" &&

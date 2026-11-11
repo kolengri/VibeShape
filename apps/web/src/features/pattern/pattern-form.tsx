@@ -1,14 +1,16 @@
 import type {
   DocumentDisplayUnits,
+  DocumentSnapshot,
   FeatureId,
   FeatureRecord,
+  SketchEntityId,
   VariableDefinition,
 } from "@vibeshape/domain"
 import { readPatternFeatureParametersV2 } from "@vibeshape/domain/part-design-pattern"
 import type { ReferenceAxis } from "@vibeshape/domain/reference-frame"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
@@ -23,6 +25,8 @@ import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import type { ReferenceFrameOptions } from "../reference-geometry/reference-frame-options"
 import { ReferenceAxisSelection } from "../reference-geometry/reference-support-fields"
+import type { PathSketchOption } from "../sweep-loft/sweep-loft-form-model"
+import { SketchPathFields, type SketchPathValues } from "../sweep-loft/sweep-path-fields"
 import {
   type PatternFormMode,
   type PatternFormValues,
@@ -31,6 +35,10 @@ import {
   patternFeatureRecord,
   patternFormValues,
 } from "./pattern-form-model"
+import type {
+  PatternPathPickingContext,
+  PatternPathPickingRequest,
+} from "./use-pattern-path-picking"
 
 export type PatternFormCopy = ParameterPanelCopy &
   PatternValidationCopy & {
@@ -55,12 +63,36 @@ export type PatternFormCopy = ParameterPanelCopy &
     centerY: string
     centerZ: string
     centerDescription: string
+    path: string
+    pathSketch: string
+    choosePath: string
+    pathCurves: string
+    pathDescription: string
+    startPoint: string
+    chooseStart: string
+    unavailablePath: string
+    spacingMode: string
+    spacingEqual: string
+    spacingFixed: string
+    pathSpacing: string
+    pathSpacingDescription: string
+    startOffset: string
+    startOffsetDescription: string
+    orientation: string
+    translate: string
+    follow: string
+    reverse: string
+    reverseDescription: string
   }
 type Props = FeatureParameterFormProps<PatternFormMode, PatternFormCopy> & {
   sourceAvailable: boolean
   referenceOptions?: ReferenceFrameOptions | undefined
   selectedFace?: ViewerSelection | null | undefined
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
+  snapshot: DocumentSnapshot
+  paths: readonly PathSketchOption[]
+  pickingRequest?: PatternPathPickingRequest | null | undefined
+  onPickingContextChange?: ((context: PatternPathPickingContext | null) => void) | undefined
 }
 function PatternPreview({
   values,
@@ -70,6 +102,7 @@ function PatternPreview({
   mode,
   featureId,
   referenceAxis,
+  snapshot,
   onPreviewChange,
 }: {
   values: PatternFormValues
@@ -79,25 +112,67 @@ function PatternPreview({
   mode: PatternFormMode
   featureId: FeatureId
   referenceAxis: ReferenceAxis | null | undefined
+  snapshot: DocumentSnapshot
   onPreviewChange: (feature: FeatureRecord | null) => void
 }) {
   const parsed = parsePatternForm(values, variables, units, copy, referenceAxis ?? undefined)
   useDebouncedFeaturePreview({
     onPreviewChange,
     preview:
-      parsed.ok && referenceAxis !== null
-        ? patternFeatureRecord(mode, featureId, parsed, referenceAxis)
+      parsed.ok && (values.kind === "path" || referenceAxis !== null)
+        ? patternFeatureRecord(mode, featureId, parsed, referenceAxis ?? undefined, snapshot)
         : null,
   })
+  return null
+}
+/** Publishes the chosen path sketch for viewport picking and applies each picked curve once. */
+function PatternPathPicking({
+  values,
+  featureId,
+  disabled,
+  request,
+  onContextChange,
+  onEntityIdsChange,
+}: {
+  values: PatternFormValues
+  featureId: FeatureId
+  disabled: boolean
+  request: PatternPathPickingRequest | null | undefined
+  onContextChange: ((context: PatternPathPickingContext | null) => void) | undefined
+  onEntityIdsChange: (ids: SketchEntityId[]) => void
+}) {
+  const consumed = useRef<number | null>(null)
+  const sketchId = values.kind === "path" && !disabled ? values.pathSketchId : ""
+  useEffect(() => {
+    if (!onContextChange) return
+    onContextChange(sketchId ? { featureId, sketchId } : null)
+    return () => onContextChange(null)
+  }, [featureId, onContextChange, sketchId])
+  useEffect(() => {
+    if (!request || consumed.current === request.requestId) return
+    consumed.current = request.requestId
+    if (!sketchId || request.featureId !== featureId || request.sketchId !== sketchId) return
+    const entityId = request.entityId as SketchEntityId
+    onEntityIdsChange(
+      values.entityIds.includes(entityId)
+        ? values.entityIds.filter((id) => id !== entityId)
+        : [...values.entityIds, entityId].sort(),
+    )
+  }, [featureId, onEntityIdsChange, request, sketchId, values.entityIds])
   return null
 }
 const commonExpressionFields = ["count"] as const
 const linearFields = ["spacing"] as const
 const circularFields = ["angle", "centerX", "centerY", "centerZ"] as const
 function patternExpressionFields(
-  kind: PatternFormValues["kind"],
+  values: PatternFormValues,
   referenceAxis: ReferenceAxis | null | undefined,
 ) {
+  const kind = values.kind
+  if (kind === "path")
+    return values.spacingMode === "fixed"
+      ? (["count", "spacing", "startOffset"] as const)
+      : (["count", "startOffset"] as const)
   if (kind === "linear") return [...commonExpressionFields, ...linearFields] as const
   return referenceAxis === undefined
     ? ([...commonExpressionFields, ...circularFields] as const)
@@ -121,6 +196,10 @@ export function PatternForm({
   referenceOptions,
   selectedFace,
   sourceAvailable,
+  snapshot,
+  paths,
+  pickingRequest,
+  onPickingContextChange,
   onCancel,
   onPreviewChange,
   onSave,
@@ -152,7 +231,7 @@ export function PatternForm({
     },
     onSubmit: async ({ value }) => {
       if (disabled || !isFeaturePreviewReady(previewStatus)) return
-      if (referenceAxis === null) return
+      if (value.kind !== "path" && referenceAxis === null) return
       const parsed = parsePatternForm(
         value,
         variables,
@@ -167,7 +246,13 @@ export function PatternForm({
         await submitFeatureMutation({
           baseRevision,
           copy,
-          feature: patternFeatureRecord(mode, featureId, parsed, referenceAxis),
+          feature: patternFeatureRecord(
+            mode,
+            featureId,
+            parsed,
+            referenceAxis ?? undefined,
+            snapshot,
+          ),
           onSave,
           onSaved,
           setMessage: state.setMessage,
@@ -195,10 +280,16 @@ export function PatternForm({
               copy,
               referenceAxis ?? undefined,
             )
-            const fields = patternExpressionFields(values.kind, referenceAxis)
+            const fields = patternExpressionFields(values, referenceAxis)
+            const isPath = values.kind === "path"
+            const labels = {
+              ...copy,
+              spacing: isPath ? copy.pathSpacing : copy.spacing,
+            }
             const description = {
               count: copy.countDescription,
-              spacing: copy.spacingDescription,
+              spacing: isPath ? copy.pathSpacingDescription : copy.spacingDescription,
+              startOffset: copy.startOffsetDescription,
               angle: copy.angleDescription,
               centerX: copy.centerDescription,
               centerY: copy.centerDescription,
@@ -215,9 +306,18 @@ export function PatternForm({
                     mode={mode}
                     featureId={featureId}
                     referenceAxis={referenceAxis}
+                    snapshot={snapshot}
                     onPreviewChange={onPreviewChange}
                   />
                 )}
+                <PatternPathPicking
+                  values={values}
+                  featureId={featureId}
+                  disabled={disabled || pending || !sourceAvailable}
+                  request={pickingRequest}
+                  onContextChange={onPickingContextChange}
+                  onEntityIdsChange={(ids) => form.setFieldValue("entityIds", ids)}
+                />
                 <ParameterPanel
                   previewStatus={previewStatus}
                   copy={copy}
@@ -230,7 +330,10 @@ export function PatternForm({
                       ariaLabel={copy.title}
                       cancelLabel={copy.cancel}
                       disabled={
-                        disabled || !sourceAvailable || !parsed.ok || referenceAxis === null
+                        disabled ||
+                        !sourceAvailable ||
+                        !parsed.ok ||
+                        (!isPath && referenceAxis === null)
                       }
                       onCancel={onCancel}
                       previewStatus={previewStatus}
@@ -244,40 +347,70 @@ export function PatternForm({
                         onValueChange={() => {
                           state.clearSubmissionErrors()
                         }}
-                        options={(["linear", "circular"] as const).map((kind) => ({
+                        options={(["linear", "circular", "path"] as const).map((kind) => ({
                           value: kind,
                           label: copy[kind],
                         }))}
                       />
                     )}
                   </form.AppField>
-                  <ReferenceAxisSelection
-                    options={referenceOptions}
-                    value={referenceAxis}
-                    selectedFace={selectedFace}
-                    onChange={setReference}
-                  >
-                    <form.AppField name="axis">
+                  {isPath ? (
+                    <PathFields
+                      copy={copy}
+                      values={values}
+                      paths={paths}
+                      error={parsed.ok ? undefined : parsed.issues.entityIds}
+                      onChange={(changes) => {
+                        state.clearSubmissionErrors()
+                        for (const [name, value] of Object.entries(changes))
+                          form.setFieldValue(name as keyof SketchPathValues, value as never)
+                      }}
+                    />
+                  ) : (
+                    <ReferenceAxisSelection
+                      options={referenceOptions}
+                      value={referenceAxis}
+                      selectedFace={selectedFace}
+                      onChange={setReference}
+                    >
+                      <form.AppField name="axis">
+                        {(field) => (
+                          <field.ChoiceField
+                            label={copy.axis}
+                            onValueChange={() => {
+                              state.clearSubmissionErrors()
+                            }}
+                            options={(["X", "Y", "Z"] as const).map((axis) => ({
+                              value: axis,
+                              label: axis,
+                            }))}
+                          />
+                        )}
+                      </form.AppField>
+                    </ReferenceAxisSelection>
+                  )}
+                  {isPath && (
+                    <form.AppField name="spacingMode">
                       {(field) => (
                         <field.ChoiceField
-                          label={copy.axis}
+                          label={copy.spacingMode}
                           onValueChange={() => {
                             state.clearSubmissionErrors()
                           }}
-                          options={(["X", "Y", "Z"] as const).map((axis) => ({
-                            value: axis,
-                            label: axis,
-                          }))}
+                          options={[
+                            { value: "equal", label: copy.spacingEqual },
+                            { value: "fixed", label: copy.spacingFixed },
+                          ]}
                         />
                       )}
                     </form.AppField>
-                  </ReferenceAxisSelection>
+                  )}
                   {fields.map((name) => (
                     <form.AppField name={name} key={name}>
                       {(field) => (
                         <field.LengthExpressionField
                           id={`pattern-${name}`}
-                          label={copy[name]}
+                          label={labels[name]}
                           description={description[name]}
                           error={parsed.ok ? undefined : parsed.issues[name]}
                           suggestions={state.suggestions}
@@ -288,6 +421,36 @@ export function PatternForm({
                       )}
                     </form.AppField>
                   ))}
+                  {isPath && (
+                    <>
+                      <form.AppField name="orientation">
+                        {(field) => (
+                          <field.ChoiceField
+                            label={copy.orientation}
+                            onValueChange={() => {
+                              state.clearSubmissionErrors()
+                            }}
+                            options={(["translate", "follow"] as const).map((value) => ({
+                              value,
+                              label: copy[value],
+                            }))}
+                          />
+                        )}
+                      </form.AppField>
+                      <form.AppField name="reverse">
+                        {(field) => (
+                          <field.CheckboxField
+                            id="pattern-reverse"
+                            label={copy.reverse}
+                            description={copy.reverseDescription}
+                            onValueChange={() => {
+                              state.clearSubmissionErrors()
+                            }}
+                          />
+                        )}
+                      </form.AppField>
+                    </>
+                  )}
                 </ParameterPanel>
               </>
             )
@@ -295,5 +458,36 @@ export function PatternForm({
         </form.Subscribe>
       </TaskPanelContentProvider>
     </Form>
+  )
+}
+
+function PathFields({
+  copy,
+  values,
+  paths,
+  error,
+  onChange,
+}: {
+  copy: PatternFormCopy
+  values: PatternFormValues
+  paths: readonly PathSketchOption[]
+  error: string | undefined
+  onChange: (values: Partial<SketchPathValues>) => void
+}) {
+  return (
+    <>
+      <SketchPathFields
+        values={values}
+        paths={paths}
+        copy={{ ...copy, profile: copy.pathSketch, chooseProfile: copy.choosePath }}
+        onChange={onChange}
+        idPrefix="pattern"
+      />
+      {error ? (
+        <p className="text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </>
   )
 }
