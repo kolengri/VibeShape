@@ -70,34 +70,47 @@ function segmentTouchesBox(start: Point, end: Point, box: Box) {
   return from <= to
 }
 
+/** Smallest box holding every point; a loop, because spreading sampled points can exceed the engine's argument limit. */
+function pointsBox(points: Iterable<Point>): Box | null {
+  let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity]
+  for (const [x, y] of points) {
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x)
+    maxY = Math.max(maxY, y)
+  }
+  return minX <= maxX ? [minX, minY, maxX, maxY] : null
+}
+
 /** Bounding box of a circle, or of an arc's own sweep including the axis extremes it crosses. */
 function roundBox(round: Round): Box {
   const [cx, cy] = round.center
   const r = round.radius
   if (round.kind === "circle") return [cx - r, cy - r, cx + r, cy + r]
   const quarter = Math.PI / 2
-  const angles = [round.startAngle, round.endAngle]
+  const at = (angle: number): Point => [cx + r * Math.cos(angle), cy + r * Math.sin(angle)]
+  const points = [at(round.startAngle), at(round.endAngle)]
   for (let step = Math.ceil(round.startAngle / quarter); step * quarter < round.endAngle; step += 1)
-    angles.push(step * quarter)
-  const xs = angles.map((angle) => cx + r * Math.cos(angle))
-  const ys = angles.map((angle) => cy + r * Math.sin(angle))
-  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+    points.push(at(step * quarter))
+  return pointsBox(points) ?? [cx, cy, cx, cy]
 }
 
 /** Overall extent of the drawn curves; the quadtree root covers it. */
 export function curvesExtent(curves: readonly DrawingCurve[]): Box {
-  const boxes = curves.flatMap((curve): Box[] => {
-    if (curve.kind === "line") return [segmentBox(curve.start, curve.end, 0)]
-    if (curve.kind === "polyline") return curve.points.map((point) => segmentBox(point, point, 0))
-    return [roundBox(curve)]
-  })
-  if (boxes.length === 0) return [0, 0, 1, 1]
-  return [
-    Math.min(...boxes.map((box) => box[0])),
-    Math.min(...boxes.map((box) => box[1])),
-    Math.max(...boxes.map((box) => box[2])),
-    Math.max(...boxes.map((box) => box[3])),
-  ]
+  function* corners(): Generator<Point> {
+    for (const curve of curves) {
+      if (curve.kind === "line") yield* [curve.start, curve.end]
+      else if (curve.kind === "polyline") yield* curve.points
+      else {
+        const box = roundBox(curve)
+        yield* [
+          [box[0], box[1]],
+          [box[2], box[3]],
+        ] as Point[]
+      }
+    }
+  }
+  return pointsBox(corners()) ?? [0, 0, 1, 1]
 }
 
 type QuadNode = {
@@ -234,7 +247,7 @@ export class CurveIndex {
     ]
     for (const index of node.entries)
       for (const child of children) if (this.#reaches(child, index)) child.entries.push(index)
-    const largest = Math.max(...children.map((child) => child.entries.length))
+    const largest = children.reduce((most, child) => Math.max(most, child.entries.length), 0)
     if (largest > node.entries.length * SPLIT_GAIN) {
       node.limit = node.entries.length * 2
       return

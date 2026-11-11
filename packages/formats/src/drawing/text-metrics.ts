@@ -86,9 +86,11 @@ export function primitiveBox(primitive: SheetPrimitive): SheetBox {
               primitive.center[1] + primitive.radius,
             ] as const,
           ]
-  const xs = points.map((point) => point[0])
-  const ys = points.map((point) => point[1])
-  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+  // A loop, not a spread: polylines carry up to the per-curve point budget.
+  let box: SheetBox = [Infinity, Infinity, -Infinity, -Infinity]
+  for (const [x, y] of points)
+    box = [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]
+  return box
 }
 
 export function unionBoxes(boxes: readonly SheetBox[]): SheetBox | null {
