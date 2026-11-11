@@ -52,8 +52,13 @@ function modelReplacement(reference: SketchExternalModelReference) {
     return { kind: reference.kind, reference: reference.reference } as const
   if (reference.kind === "model-intersection")
     return { kind: reference.kind, reference: reference.reference } as const
-  if (reference.kind === "model-spline")
-    return { kind: reference.kind, reference: reference.reference } as const
+  if (reference.kind === "model-spline") {
+    return {
+      kind: reference.kind,
+      reference: reference.reference,
+      endpointAnchors: reference.endpointAnchors,
+    } as const
+  }
   return {
     kind: reference.kind,
     reference: reference.reference,

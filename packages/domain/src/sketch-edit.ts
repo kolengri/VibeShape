@@ -57,7 +57,7 @@ export type SketchExternalReferenceReplacement =
   | Readonly<
       Pick<SketchExternalModelCurveReference, "kind" | "projectedType" | "reference" | "sourceType">
     >
-  | Readonly<Pick<SketchExternalModelSplineReference, "kind" | "reference">>
+  | Readonly<Pick<SketchExternalModelSplineReference, "endpointAnchors" | "kind" | "reference">>
   | Readonly<Pick<SketchExternalModelIntersectionReference, "kind" | "reference">>
   | Readonly<Pick<SketchExternalModelPiercePointReference, "kind" | "reference">>
 
@@ -2921,6 +2921,8 @@ function modelSplineReferenceWithReplacement(
     id: reference.id,
     kind: reference.kind,
     reference: replacement.reference,
+    // Repair re-anchors the end identities on the replacement edge.
+    endpointAnchors: replacement.endpointAnchors,
     projectedCurveIds: reference.projectedCurveIds,
     projectedPointIds: reference.projectedPointIds,
   }

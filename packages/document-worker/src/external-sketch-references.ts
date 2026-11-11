@@ -605,6 +605,8 @@ function resolveExternalModelCurve(
 type ExternalCurveChainInput = NonNullable<SketchCompilationInput["externalCurveChains"]>[number]
 
 const MODEL_SPLINE_PROJECTION_FAILURES = {
+  "ambiguous-ends": (id: string, _segments: number) =>
+    `External model spline ${id} cannot tell which end of the current edge matches its stored start and end. Repair it to re-anchor its end points.`,
   degenerate: (id: string, _segments: number) =>
     `External model spline ${id} has a degenerate projection.`,
   "not-parallel": (id: string, _segments: number) =>
@@ -635,6 +637,7 @@ function resolveExternalModelSpline(
     targetFrame,
     geometry.poles,
     reference.projectedCurveIds.length,
+    reference.endpointAnchors,
   )
   if (!projection.ok)
     throw new Error(

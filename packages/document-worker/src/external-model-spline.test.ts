@@ -26,7 +26,17 @@ const signature = {
   adjacentGeometryClasses: [],
 }
 
-function sketch(plane: "xy" | "xz" = "xy", segments = 2): SketchRecord {
+type Anchors = readonly [Point, Point]
+const waveAnchors: Anchors = [
+  [0, 0, 5],
+  [20, 0, 5],
+]
+
+function sketch(
+  plane: "xy" | "xz" = "xy",
+  segments = 2,
+  endpointAnchors: Anchors = waveAnchors,
+): SketchRecord {
   return sketchRecordSchema.parse({
     schemaVersion: 0,
     id: id("5300"),
@@ -46,6 +56,7 @@ function sketch(plane: "xy" | "xz" = "xy", segments = 2): SketchRecord {
           semanticRole: "edge.spline",
           signature,
         },
+        endpointAnchors,
         projectedCurveIds: curveIds.slice(0, segments),
         projectedPointIds: pointIds.slice(0, segments * 3 + 1),
       },
@@ -189,5 +200,76 @@ describe("model spline references", () => {
     expect(await inspectExternalModelReferenceHealth(document(target), [], geometry(wave))).toEqual(
       [{ sketchId: target.id, referenceId: id("5301"), status: "broken" }],
     )
+  })
+
+  it("keeps end identities on the same physical ends across rebuilds", async () => {
+    const endsOf = async (target: SketchRecord, poles: readonly Point[]) => {
+      const points = (await resolve(target, geometry(poles))).externalCurveChains?.[0]?.points ?? []
+      return [points[0], points.at(-1)].map((point) => [point?.x, point?.y])
+    }
+    const cubic = (start: Point, end: Point): Point[] => [
+      start,
+      [start[0] + 3, start[1] + 3, 5],
+      [end[0] + 3, end[1] - 3, 5],
+      end,
+    ]
+    // Codex counterexample: the lexicographically smaller end flips after a 0.002 mm edit.
+    const anchored = sketch("xy", 1, [
+      [0, 0, 5],
+      [-0.001, 10, 5],
+    ])
+    const flipped = cubic([0.001, 10, 5], [0, 0, 5])
+    expect(await endsOf(anchored, flipped)).toEqual([
+      [0, 0],
+      [0.001, 10],
+    ])
+    // A reversed parameterization of the same edge resolves to the same ends.
+    expect(await endsOf(anchored, [...flipped].reverse())).toEqual([
+      [0, 0],
+      [0.001, 10],
+    ])
+    // A genuine large move keeps the pairing with the smaller summed displacement.
+    const moved = cubic([57, 13, 5], [50, 4, 5])
+    expect(await endsOf(anchored, moved)).toEqual([
+      [50, 4],
+      [57, 13],
+    ])
+    // Reload: the anchors persist with the reference, so a reopened sketch pairs identically.
+    const reopened = sketchRecordSchema.parse(JSON.parse(JSON.stringify(anchored)))
+    expect(await endsOf(reopened, flipped)).toEqual([
+      [0, 0],
+      [0.001, 10],
+    ])
+  })
+
+  it("fails closed when both end pairings are equally plausible, but accepts closed chains", async () => {
+    const anchored = sketch("xy", 1, [
+      [0, 0, 5],
+      [0, 10, 5],
+    ])
+    // Sliding the edge along its own chord by more than its length makes both pairings equal.
+    const slid: Point[] = [
+      [0, 30, 5],
+      [3, 33, 5],
+      [3, 37, 5],
+      [0, 40, 5],
+    ]
+    await expect(resolve(anchored, geometry(slid))).rejects.toThrow(/re-anchor its end points/)
+    const target = sketch("xy", 1, [
+      [0, 0, 5],
+      [0, 10, 5],
+    ])
+    expect(await inspectExternalModelReferenceHealth(document(target), [], geometry(slid))).toEqual(
+      [{ sketchId: target.id, referenceId: id("5301"), status: "broken" }],
+    )
+    // A closed chain starts and ends at its seam, so either orientation keeps the end identities.
+    const loop: Point[] = [
+      [0, 0, 5],
+      [10, 10, 5],
+      [-10, 10, 5],
+      [0, 0, 5],
+    ]
+    const closed = await resolve(anchored, geometry(loop))
+    expect(closed.externalCurveChains?.[0]?.points[0]).toMatchObject({ x: 0, y: 0 })
   })
 })

@@ -470,6 +470,11 @@ describe("external model geometry candidates", () => {
     expect(reference.reference).toEqual(candidate.reference)
     expect(reference.projectedCurveIds).toHaveLength(2)
     expect(reference.projectedPointIds).toHaveLength(7)
+    // The edge's current world ends anchor the projected end identities.
+    expect(reference.endpointAnchors).toEqual([
+      [0, 0, 12],
+      [20, 0, 12],
+    ])
     // Transient candidate IDs and fitted poles never persist.
     expect(JSON.stringify(reference)).not.toMatch(/candidateId|poles|"x"/)
     // Using the same edge again reuses the existing identities.
@@ -484,6 +489,22 @@ describe("external model geometry candidates", () => {
     expect(repairExternalModelGeometryCandidates(candidates, used, reference.id)).toEqual([
       candidate,
     ])
+    // Repair re-anchors the ends on the replacement edge while keeping every identity.
+    const moved = {
+      ...candidate,
+      endpointAnchors: [
+        [5, 1, 12],
+        [25, 1, 12],
+      ] as const,
+    }
+    const repaired = applyExternalModelCandidateSelection(used, moved, [], reference.id)
+    expect(repaired.externalReferences?.[0]).toMatchObject({
+      endpointAnchors: [
+        [5, 1, 12],
+        [25, 1, 12],
+      ],
+      projectedPointIds: reference.projectedPointIds,
+    })
     // Repair keeps the two stored segments, so a replacement needing more is not offered.
     const larger = { ...candidate, candidateId: "spline-larger", segmentCount: 4 }
     expect(repairExternalModelGeometryCandidates([candidate, larger], used, reference.id)).toEqual([

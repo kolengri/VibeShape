@@ -99,8 +99,10 @@ implemented. B-spline and Bezier model edges are usable when their published cub
 lies in a plane parallel to the active support: Use persists the stable `EdgeTopoRef` plus chained
 projected curve and point identities, and every authoritative solve projects the current chain,
 subdividing a coarser fit exactly to the persisted segment count. The fit carries a proven
-1e-4 mm bound with at most 64 segments, and its orientation does not depend on the source
-parameterization. Only the two chain ends are stable constraint targets. Tilted, spatial,
+1e-4 mm bound with at most 64 segments. Each solve pairs the current edge ends with world anchors
+recorded at Use or repair, by smaller summed displacement, so end identity follows the physical
+ends regardless of parameterization and an ambiguous pairing fails closed. Only the two chain ends
+are stable constraint targets. Tilted, spatial,
 over-budget, and uncertified edges, plus hyperbola, parabola, offset, and other curves, fail closed
 with an actionable message and the ordinary repair path, which offers only edges that fit the stored
 segments; spline candidates are offered in the normal view only and never wake passively

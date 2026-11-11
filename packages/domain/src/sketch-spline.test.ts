@@ -211,6 +211,10 @@ describe("model spline references", () => {
       semanticRole: "edge.spline",
       signature,
     },
+    endpointAnchors: [
+      [0, 0, 0],
+      [20, 0, 0],
+    ] as [[number, number, number], [number, number, number]],
     projectedCurveIds: [id(710), id(711)],
     projectedPointIds: Array.from({ length: 7 }, (_, index) => id(720 + index)),
   }
@@ -229,6 +233,7 @@ describe("model spline references", () => {
       expect.objectContaining({ id: id(711), startPointId: id(723), endPointId: id(726) }),
     ])
     expect(JSON.stringify(parsed.data)).not.toContain('"x"')
+    expect(parse({ ...reference, endpointAnchors: undefined }).success).toBe(false)
   })
 
   it("rejects mismatched identity counts, duplicates and analytical source edges", () => {
@@ -286,8 +291,17 @@ describe("model spline references", () => {
     const repaired = replaceSketchExternalReference(sketch, reference.id, {
       kind: "model-spline",
       reference: { ...reference.reference, semanticRole: "edge.other-spline" },
+      endpointAnchors: [
+        [1, 2, 0],
+        [21, 2, 0],
+      ],
     })
     expect(repaired.externalReferences?.[0]).toMatchObject({
+      // Repair re-anchors the ends on the replacement edge but keeps every projected identity.
+      endpointAnchors: [
+        [1, 2, 0],
+        [21, 2, 0],
+      ],
       projectedCurveIds: reference.projectedCurveIds,
       projectedPointIds: reference.projectedPointIds,
       reference: { semanticRole: "edge.other-spline" },

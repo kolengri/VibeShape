@@ -81,15 +81,25 @@ for example, a degree-19 curve that vanishes with zero end slopes at every 1/16 
 0.01 mm bulge from a 16-sample check. That curve still needs about 2.1e-4 mm at 64 segments, so it
 is refused.
 
-Published chains are oriented independently of the source parameterization: an open chain starts
-at its lexicographically smaller end, and a closed chain leaves its seam toward the smaller
-neighbor pole. A rebuild that reverses the edge parameterization therefore keeps both end
-identities.
+Published chains are oriented deterministically (an open chain starts at its lexicographically
+smaller end), but consumers never derive end identity from that order: a 0.002 mm edit can move an
+end across the lexicographic boundary and flip it.
 
-A `model-spline` external reference persists the stable `EdgeTopoRef`, `N` projected curve IDs and
-`3N + 1` projected point IDs, and nothing else. On every authoritative solve, the document worker
-resolves the reference through the existing fail-closed `TopoRef` path and checks that every
-published pole lies within 1e-4 mm of one plane parallel to the sketch support. That makes the
+A `model-spline` external reference persists the stable `EdgeTopoRef`, the world `endpointAnchors`
+of its start and end, `N` projected curve IDs and `3N + 1` projected point IDs, and nothing else.
+On every authoritative solve, the document worker resolves the reference through the existing
+fail-closed `TopoRef` path and pairs the current chain ends with the anchors, choosing the
+orientation with the smaller summed endpoint displacement. End identity therefore follows the
+physical ends through small edits, large moves and reversed parameterizations alike. Use records
+the anchors from the chosen edge's current ends, so the first resolution is exact; reload reads the
+persisted anchors, so a reopened sketch pairs identically; repair re-anchors on the replacement
+edge. A closed chain needs no pairing because both ends are its seam. When the two pairings differ
+by no more than one thousandth of the chord (at least 1e-6 mm), for example after sliding the edge
+along its own chord by more than its length, the correspondence is ambiguous and the reference
+fails closed until it is repaired. Anchors are not refreshed by ordinary rebuilds, so a source that
+eventually turns by more than a quarter turn relative to its anchors can pair with the nearer
+physical ends rather than the original ones; repair re-anchors it. The worker then checks that
+every published pole lies within 1e-4 mm of one plane parallel to the sketch support. That makes the
 orthogonal projection an isometry that preserves the fitting tolerance. The worker projects the
 chain and, when the current fit needs fewer segments than persisted, subdivides it exactly with de
 Casteljau splits until the persisted count is reached. The solver receives the result as fixed
@@ -104,6 +114,7 @@ The following cases fail closed with an actionable message and keep the referenc
 
 - a tilted or spatial edge;
 - a fit that needs more segments than the persisted identities;
+- ambiguous endpoint correspondence with the stored anchors;
 - an edge that cannot be fitted;
 - a missing or ambiguous `TopoRef`.
 

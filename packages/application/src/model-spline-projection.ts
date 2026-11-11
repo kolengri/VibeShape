@@ -11,7 +11,10 @@ export const MODEL_SPLINE_PARALLEL_TOLERANCE_MM = 1e-4
 
 export type ModelSplineProjection =
   | Readonly<{ ok: true; poles: readonly SketchPoint2[]; segmentCount: number }>
-  | Readonly<{ ok: false; reason: "degenerate" | "not-parallel" | "segment-count" }>
+  | Readonly<{
+      ok: false
+      reason: "ambiguous-ends" | "degenerate" | "not-parallel" | "segment-count"
+    }>
 
 function supportHeight(frame: SupportFrame, point: Vector3) {
   return (
@@ -82,6 +85,33 @@ export function expandBezierChain(
   return result
 }
 
+export type ModelSplineEndpointAnchors = readonly [Vector3, Vector3]
+
+function distance(a: Vector3, b: Vector3) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+}
+
+/**
+ * Orients a published chain so its ends correspond to the stored start and end anchors, choosing
+ * the pairing with the smaller summed displacement. A published orientation is never trusted: the
+ * source parameterization or a canonical rule can flip it after any small edit. A closed chain
+ * needs no pairing because both ends are its seam. When both pairings are within one thousandth of
+ * the chord (at least 1e-6 mm) of each other, the correspondence is ambiguous and fails closed.
+ */
+export function orientChainToAnchors(
+  worldPoles: readonly Vector3[],
+  anchors: ModelSplineEndpointAnchors,
+): readonly Vector3[] | null {
+  const start = worldPoles[0] as Vector3
+  const end = worldPoles.at(-1) as Vector3
+  const chord = distance(start, end)
+  if (chord <= 1e-9) return worldPoles
+  const direct = distance(start, anchors[0]) + distance(end, anchors[1])
+  const swapped = distance(end, anchors[0]) + distance(start, anchors[1])
+  if (Math.abs(direct - swapped) <= Math.max(1e-6, chord * 1e-3)) return null
+  return direct < swapped ? worldPoles : [...worldPoles].reverse()
+}
+
 /**
  * Projects a published world-space cubic Bezier chain onto a parallel sketch support and expands it
  * to the persisted segment count. Tilted or spatial edges and chains that now need more segments
@@ -89,9 +119,12 @@ export function expandBezierChain(
  */
 export function projectWorldBezierChainToSupport(
   frame: SupportFrame,
-  worldPoles: readonly Vector3[],
-  segmentCount: number = (worldPoles.length - 1) / 3,
+  publishedPoles: readonly Vector3[],
+  segmentCount: number = (publishedPoles.length - 1) / 3,
+  anchors?: ModelSplineEndpointAnchors,
 ): ModelSplineProjection {
+  const worldPoles = anchors ? orientChainToAnchors(publishedPoles, anchors) : publishedPoles
+  if (!worldPoles) return { ok: false, reason: "ambiguous-ends" }
   const heights = worldPoles.map((pole) => supportHeight(frame, pole))
   if (Math.max(...heights) - Math.min(...heights) > MODEL_SPLINE_PARALLEL_TOLERANCE_MM) {
     return { ok: false, reason: "not-parallel" }

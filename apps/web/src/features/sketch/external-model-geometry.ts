@@ -99,6 +99,8 @@ export type ExternalModelCurveSourceType = "arc" | "circle" | "ellipse" | "ellip
  */
 export type ExternalModelSplineCandidate = Readonly<{
   candidateId: string
+  /** World start and end of the published chain; persisted as the end-identity anchors. */
+  endpointAnchors: readonly [readonly [number, number, number], readonly [number, number, number]]
   featureId: FeatureId
   kind: "model-spline"
   label: string
@@ -524,8 +526,12 @@ function createExternalModelSplineCandidate(
   // Tilted and spatial edges are not offered; persisted references to them fail closed.
   const projection = projectWorldBezierChainToSupport(targetFrame, geometry.poles)
   if (!projection.ok) return null
+  const start = geometry.poles[0]
+  const end = geometry.poles.at(-1)
+  if (!start || !end) return null
   return {
     candidateId: candidate.candidateId,
+    endpointAnchors: [start, end],
     featureId,
     kind: "model-spline",
     label: labels.curve(featureLabel, "spline", ordinal),
@@ -1057,6 +1063,7 @@ export function materializeExternalModelCandidate(
             id: createBrowserSketchExternalReferenceId(),
             kind: "model-spline",
             reference: candidate.reference,
+            endpointAnchors: splineRepair(candidate).endpointAnchors,
             projectedCurveIds,
             projectedPointIds,
           },
@@ -1153,9 +1160,22 @@ export function applyExternalModelCandidateSelection(
       })
     }
   }
-  return repairReferenceId
-    ? replaceSketchExternalReference(draft, repairReferenceId, candidate)
-    : applyExternalModelCandidate(draft, candidate, selectedEntityIds)
+  if (!repairReferenceId) return applyExternalModelCandidate(draft, candidate, selectedEntityIds)
+  return replaceSketchExternalReference(
+    draft,
+    repairReferenceId,
+    candidate.kind === "model-spline" ? splineRepair(candidate) : candidate,
+  )
+}
+
+/** Repair re-anchors the end identities on the chosen edge's current ends. */
+function splineRepair(candidate: ExternalModelSplineCandidate) {
+  const [start, end] = candidate.endpointAnchors
+  return {
+    kind: "model-spline" as const,
+    reference: candidate.reference,
+    endpointAnchors: [[...start], [...end]] as [[number, number, number], [number, number, number]],
+  }
 }
 
 export function applyExternalModelIntersection(
