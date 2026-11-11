@@ -1,7 +1,12 @@
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { createLengthQuantity } from "../../packages/domain/src/units"
-import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
+import {
+  enableLocalAi,
+  expectLocalAiReconnected,
+  openAiConnections,
+  openAutoApplySetup,
+} from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -157,8 +162,9 @@ test("creates, repairs, applies and undoes Datum Plane and body combinations thr
     const committed = success(
       localToolOutputs.commit_draft.parse((await committing).structuredContent?.result),
     )
+    // ADR-0114: datum-plane automation writes schema v2, even without a rotation.
     for (const [n, version, parameters] of [
-      [1, 1, plane(29.5)],
+      [1, 2, plane(29.5)],
       [6, 2, { bodies: [body(2), body(3)] }],
       [7, 1, { operation: "subtract", keepTools: false }],
       [8, 2, { slots: [...slots].reverse() }],
@@ -208,9 +214,7 @@ test("creates, repairs, applies and undoes Datum Plane and body combinations thr
     await expect(page.getByRole("treeitem", { name: "MCP feature 8", exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
+    await expectLocalAiReconnected(page)
     const saved = success(localToolOutputs.model_info.parse(await call(local, "model_info", {})))
     expect(saved.summary.revision).toBe(committed.revision + 2)
     expect(exactVolume(saved.measurements, 8).volume).toBeCloseTo(1348, 6)
@@ -236,7 +240,7 @@ test("requires browser opt-in before automatically applying an exact Union v2 dr
     await openAiConnections(page)
     await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
     const draft = await createDraft(local)
     await draft.stage("create_box", { featureId: id(2), widthMm: 20, depthMm: 10, heightMm: 5 })
     await draft.stage("create_box", { featureId: id(3), widthMm: 10, depthMm: 10, heightMm: 10 })

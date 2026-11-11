@@ -111,7 +111,7 @@ test("authors full packed relief maps and exact faces through manual MCP review,
     await openAiConnections(page)
     await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
     const initial = await readInfo()
     const parts = success(
       localToolOutputs.model_parts.parse(

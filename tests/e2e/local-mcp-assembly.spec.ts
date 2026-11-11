@@ -102,7 +102,7 @@ test("authors owned assembly and library drafts through paired MCP, exact previe
     await openAiConnections(page)
     await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
     const parts = success(
       localToolOutputs.model_parts.parse(await call("model_parts", { revision: created.revision })),
     )

@@ -87,9 +87,11 @@ test("creates two projects, authors each, and returns to their saved models over
         await call("create_project", { ...(await source()), name: "MCP project A" }),
       ),
     )
-    let documentNavigations = 0
-    page.on("framenavigated", (frame) => {
-      if (frame === page.mainFrame()) documentNavigations += 1
+    // Opening a project updates the URL in place with history.pushState, which also emits
+    // framenavigated; only a new document load would drop the MCP pairing.
+    let documentLoads = 0
+    page.on("load", () => {
+      documentLoads += 1
     })
     const draftA = await authorBox(projectA.projectId, 10)
     const projectB = success(
@@ -131,7 +133,7 @@ test("creates two projects, authors each, and returns to their saved models over
     expect((await model()).summary.data.name).toBe("MCP project B")
     expect((await model()).measurements?.data.features).toHaveLength(1)
     await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
-    expect(documentNavigations).toBe(0)
+    expect(documentLoads).toBe(0)
   } finally {
     await local.close()
   }
