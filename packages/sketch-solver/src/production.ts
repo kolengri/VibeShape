@@ -20,6 +20,7 @@ import {
   sketchPointEntitySchema,
   sketchRecordSchema,
 } from "@vibeshape/domain/sketch"
+import { sketchConstraintEntityIds } from "@vibeshape/domain/sketch-edit"
 import {
   evaluateVariableDefinitions,
   resolveQuantityExpression,
@@ -314,6 +315,8 @@ export type CompiledSketchSystem = Readonly<{
   system: FlatSketchSystemInput
   bindings: SketchBindings
   boundedEllipticalArcLoci: readonly BoundedEllipticalArcLocus[]
+  /** Tangent joins whose handles the predictor holds; zero outside predictor compilation. */
+  heldTangentJoinCount: number
 }>
 
 export type SketchCompilationResult =
@@ -1132,16 +1135,17 @@ function mirroredHandleSeed(
 type HeldTangentJoin = Readonly<{
   constraintId: SketchConstraintId
   joinId: SketchEntityId
-  /** Free handles with their current offsets from the through-point. */
+  /** Both handles with their current offsets from the through-point. */
   handles: readonly Readonly<{ id: SketchEntityId; dx: number; dy: number }>[]
-  /** True when both handles are held, which already implies the join's G1 constraint. */
-  complete: boolean
 }>
 
 /**
  * Predictor intent: each free handle keeps its offset from its through-point, so a join that moves
  * for any reason (a dimension, a coincident drag) translates rigidly with its handles. Explicitly
- * dragged and fixed handles stay free so the user's intent is never overridden.
+ * dragged handles and handles referenced by any other constraint stay free, so user intent is never
+ * overridden and the holds never duplicate a user constraint. Each hold only ties an otherwise
+ * unconstrained handle to its join, so it cannot conflict; the predictor still falls back to the
+ * ordinary solve as a whole when the sketch itself is over-constrained or does not converge.
  */
 function heldTangentJoins(
   sketch: SketchRecord,
@@ -1149,10 +1153,13 @@ function heldTangentJoins(
   draggedPoints: readonly SketchDragTarget[],
 ): HeldTangentJoin[] {
   const curves = cubicBezierEntities(sketch)
+  // Any handle that another constraint drives (fixed, dimensioned, coincident, ...) stays free:
+  // holding it would satisfy that constraint by moving the through-point instead of the handle,
+  // and would make the predictor redundant with it.
   const pinned = new Set<string>([
     ...draggedPoints.map(({ entityId }) => entityId),
     ...sketch.constraints.flatMap((constraint) =>
-      constraint.type === "fixed" ? [constraint.pointId] : [],
+      constraint.type === "tangent-join" ? [] : sketchConstraintEntityIds(constraint),
     ),
   ])
   return sketch.constraints.flatMap((constraint) => {
@@ -1160,27 +1167,21 @@ function heldTangentJoins(
     const at = join ? currentValues.get(join.incoming.endPointId) : undefined
     if (!join || !at) return []
     const handleIds = [join.incoming.control2PointId, join.outgoing.control1PointId]
-    // A directly dragged handle turns its join; holding the opposite handle would fight the drag.
-    if (handleIds.some((id) => draggedPoints.some(({ entityId }) => entityId === id))) return []
+    // Holding only one handle would lock the tangent direction, so a driven or dragged handle could
+    // turn the join only by moving its through-point. Such joins keep their ordinary constraint.
+    if (handleIds.some((id) => pinned.has(id))) return []
     const handles = handleIds.flatMap((id) => {
       const handle = currentValues.get(id)
-      return handle && !pinned.has(id) ? [{ id, dx: handle.x - at.x, dy: handle.y - at.y }] : []
+      return handle ? [{ id, dx: handle.x - at.x, dy: handle.y - at.y }] : []
     })
-    return [
-      {
-        constraintId: constraint.id,
-        joinId: join.incoming.endPointId,
-        handles,
-        complete: handles.length === handleIds.length,
-      },
-    ]
+    if (handles.length !== handleIds.length) return []
+    return [{ constraintId: constraint.id, joinId: join.incoming.endPointId, handles }]
   })
 }
 
 function withoutRedundantTangentJoins(sketch: SketchRecord, held: readonly HeldTangentJoin[]) {
-  const implied = new Set<string>(
-    held.flatMap((join) => (join.complete ? [join.constraintId] : [])),
-  )
+  // Both handles are held, which already implies each held join's G1 constraint.
+  const implied = new Set<string>(held.map((join) => join.constraintId))
   if (implied.size === 0) return sketch
   return { ...sketch, constraints: sketch.constraints.filter(({ id }) => !implied.has(id)) }
 }
@@ -2162,6 +2163,7 @@ export function compileSketchSystem(
         input.data.sketch,
         input.data.externalCurves,
       ),
+      heldTangentJoinCount: heldJoins.length,
     },
   }
 }
@@ -2292,6 +2294,8 @@ function tangentJoinPredictorContinuation(
   if (!input.sketch.constraints.some(({ type }) => type === "tangent-join")) return null
   const compilation = compileSketchSystem(input, { holdTangentJoinHandles: true })
   if (!compilation.ok) return null
+  // Without held joins the predictor would only repeat the ordinary solve.
+  if (compilation.compiled.heldTangentJoinCount === 0) return null
   const { bindings, sketch } = compilation.compiled
   const result = solveSketchSystem(module, compilation.compiled.system)
   const converged = result.status === "fully-constrained" || result.status === "under-constrained"
