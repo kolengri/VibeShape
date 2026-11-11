@@ -25,7 +25,10 @@ import { normalizeExpressionWithDisplayUnit } from "../../document/document-disp
 import { type BodyFeatureFormMode, bodyFeatureRecord } from "../part-design/body-feature-record"
 import { evaluateFormExpression } from "../part-design/primitive-form"
 
-export type DraftFormMode = BodyFeatureFormMode
+/** An edit may target a History replacement body; its saved faces then need explicit reselection. */
+export type DraftFormMode =
+  | Extract<BodyFeatureFormMode, { kind: "create" }>
+  | Readonly<{ kind: "edit"; feature: FeatureRecord; repairTarget?: BodyReference }>
 export type DraftFormValues = { faceIds: string[]; angle: string; flip: boolean }
 export type DraftValidationCopy = Readonly<{
   invalidExpression: string
@@ -35,16 +38,20 @@ export type DraftValidationCopy = Readonly<{
 const defaultDraftNeutralPlane: ReferencePlane = { kind: "origin-plane", plane: "XY" }
 
 export function draftTargetBody(mode: DraftFormMode): BodyReference {
-  return mode.kind === "create"
-    ? mode.targetBody
-    : draftFeatureParametersSchema.parse(mode.feature.parameters).targetBody
+  if (mode.kind === "create") return mode.targetBody
+  return mode.repairTarget ?? draftFeatureParametersSchema.parse(mode.feature.parameters).targetBody
 }
 
-export function draftInitialNeutralPlane(mode: DraftFormMode): ReferencePlane {
-  return (
-    (mode.kind === "edit" ? readDraftFeatureParameters(mode.feature)?.neutralPlane : undefined) ??
-    defaultDraftNeutralPlane
-  )
+/** A saved planar-face neutral plane on a replaced body must be chosen again, never transplanted. */
+export function draftInitialNeutralPlane(mode: DraftFormMode): ReferencePlane | null {
+  const saved = mode.kind === "edit" ? readDraftFeatureParameters(mode.feature)?.neutralPlane : null
+  if (!saved) return defaultDraftNeutralPlane
+  const target = draftTargetBody(mode)
+  return saved.kind === "planar-face" &&
+    (saved.reference.featureId !== target.featureId ||
+      saved.reference.outputRole !== target.outputRole)
+    ? null
+    : saved
 }
 
 /** Restores saved faces on the current body; any unresolved face requires explicit reselection. */

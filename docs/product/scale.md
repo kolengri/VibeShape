@@ -8,6 +8,8 @@ shrinks around it.
 
 The disposable preview contains one valid solid. Apply replaces the current body of the same authored
 part and retains its history; Apply is disabled while the preview evaluates and runs once per click.
+If the source body's feature is deleted while Scale is retained, opening Scale offers an earlier
+replacement body; the factor and center are kept.
 Cancel discards the preview. Editing, Undo/Redo, native `.vshape` reopen, and exports use the
 ordinary feature lifecycle. Scale works on named outputs such as Split or Pattern bodies.
 

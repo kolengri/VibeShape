@@ -6,12 +6,13 @@ import { useTranslations } from "@vibeshape/i18n"
 import { useMemo } from "react"
 import { TaskPanelSurface } from "../components/task-panel-layout"
 import { DraftForm, type DraftFormCopy } from "../features/draft/draft-form"
-import { draftTargetBody } from "../features/draft/draft-form-model"
+import { type DraftFormMode, draftTargetBody } from "../features/draft/draft-form-model"
 import type { ReferenceFrameOptions } from "../features/reference-geometry/reference-frame-options"
 import { useReferenceFrameOptions } from "../features/reference-geometry/use-reference-frame-options"
 import type { ShellPickingContext, ShellPickRequest } from "../features/shell/shell-picking"
 import { type BodyFeatureTaskPanelProps, bodyFeatureTaskMode } from "./body-feature-task-mode"
 import { featureTaskFormProps, featureTaskKey } from "./feature-task-form-props"
+import { useHistoryFeatureBodyReplacement } from "./history-feature-repair"
 
 type DraftTaskPanelProps = BodyFeatureTaskPanelProps & {
   shellPickRequest?: ShellPickRequest | null | undefined
@@ -65,20 +66,31 @@ function neutralPlaneOptions(
   }
 }
 
+/** The saved or new Draft task, retargeted when History repair chose a replacement body. */
+function useDraftTaskMode(props: DraftTaskPanelProps, label: string): DraftFormMode | null {
+  const savedMode = bodyFeatureTaskMode({
+    tool: props.activeTool,
+    features: props.report.snapshot.features,
+    label,
+    createKind: "create-draft",
+    editKind: "edit-draft",
+    accepts: (feature) => readDraftFeatureParameters(feature) !== null,
+  })
+  const replacement = useHistoryFeatureBodyReplacement(
+    savedMode?.kind === "edit" ? savedMode.feature.id : undefined,
+  )
+  return savedMode?.kind === "edit" && replacement?.faceTarget
+    ? { ...savedMode, repairTarget: replacement.faceTarget }
+    : savedMode
+}
+
 export function DraftTaskPanel(props: DraftTaskPanelProps) {
   const t = useTranslations("app.draft")
   const task = useTranslations("app.shell.taskPanel")
   const { report } = props
   const features = report.snapshot.features
   const count = features.filter((feature) => readDraftFeatureParameters(feature)).length
-  const mode = bodyFeatureTaskMode({
-    tool: props.activeTool,
-    features,
-    label: t("featureLabel", { number: count + 1 }),
-    createKind: "create-draft",
-    editKind: "edit-draft",
-    accepts: (feature) => readDraftFeatureParameters(feature) !== null,
-  })
+  const mode = useDraftTaskMode(props, t("featureLabel", { number: count + 1 }))
   const copy = useDraftCopy(mode?.kind === "edit")
   const target = mode ? draftTargetBody(mode) : null
   const options = useReferenceFrameOptions(

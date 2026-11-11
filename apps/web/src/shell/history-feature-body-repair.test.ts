@@ -13,12 +13,19 @@ import {
   createBodyTopologyReferenceProjector,
   modelBodyTopologyEvidenceSchema,
 } from "@vibeshape/domain/model-body-topology"
+import { draftFeatureType } from "@vibeshape/domain/part-design-draft"
 import { mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType } from "@vibeshape/domain/part-design-pattern"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
+import { scaleFeatureType } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureType } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType } from "@vibeshape/domain/part-design-split"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
+import {
+  draftInitialNeutralPlane,
+  draftInitialSelection,
+  draftTargetBody,
+} from "../features/draft/draft-form-model"
 import { shellFormFeature, shellInitialValues } from "../features/shell/shell-form-model"
 import { missingHistoryFeatureBody, replaceHistoryFeatureBody } from "./history-feature-body-repair"
 
@@ -89,6 +96,19 @@ const evidence = modelBodyTopologyEvidenceSchema.parse({
 const firstCandidate = evidence.candidates[0]
 if (!firstCandidate) throw new Error("Missing fixture face")
 const opening = createBodyTopologyReferenceProjector(evidence)(firstCandidate)
+const neutralFace = {
+  ...opening,
+  semanticRole: "bottom",
+  signature: {
+    ...opening.signature,
+    centroid: [0, 0, 0] as [number, number, number],
+    bounds: {
+      min: [-5, -5, 0] as [number, number, number],
+      max: [5, 5, 0] as [number, number, number],
+    },
+    direction: [0, 0, -1] as [number, number, number],
+  },
+}
 
 describe("retained body feature form adapters", () => {
   it.each([
@@ -113,6 +133,14 @@ describe("retained body feature form adapters", () => {
       }),
     ],
     ["Split", feature(splitFeatureType.type, { targetBody, plane: "YZ", offset: length(7) })],
+    [
+      "Scale",
+      feature(scaleFeatureType.type, {
+        targetBody,
+        factor: createScalarQuantity(2, "1 + 1"),
+        center: { kind: "origin" },
+      }),
+    ],
     [
       "Thread",
       feature(threadFeatureType.type, {
@@ -157,6 +185,39 @@ describe("retained body feature form adapters", () => {
     expect(adapted?.feature.dependencies).toEqual([replacementId, sourceId])
     expect(adapted?.feature.parameters.plane).toEqual<unknown>(plane)
   })
+
+  it.each([
+    [
+      "an origin neutral plane",
+      { kind: "origin-plane", plane: "XY" },
+      { kind: "origin-plane", plane: "XY" },
+    ],
+    ["a neutral face of the missing body", { kind: "planar-face", reference: neutralFace }, null],
+  ] as const)(
+    "keeps a saved Draft and requires faces again on the replacement body with %s",
+    (_name, neutralPlane, expectedPlane) => {
+      const original = feature(draftFeatureType.type, {
+        targetBody,
+        faces: [opening],
+        neutralPlane,
+        angle: createAngleQuantity(5, "deg"),
+        flip: false,
+      })
+      const adapted = replaceHistoryFeatureBody(original, missingInputs, replacement)
+      if (!adapted?.faceTarget) throw new Error("Expected a Draft face-reselection adapter")
+      // The saved record is not rewritten: its faces belong to the missing body.
+      expect(adapted.feature).toBe(original)
+      expect(adapted.faceTarget).toEqual(replacement)
+      const mode = { kind: "edit" as const, feature: original, repairTarget: adapted.faceTarget }
+      expect(draftTargetBody(mode)).toEqual(replacement)
+      expect(draftInitialNeutralPlane(mode)).toEqual(expectedPlane)
+      const replacementEvidence = { ...evidence, featureId: replacementId }
+      expect(draftInitialSelection(mode, replacementEvidence)).toEqual({
+        repair: true,
+        faceIds: [],
+      })
+    },
+  )
 
   it("requires new Shell openings while retaining open cavity, thickness and direction", () => {
     const original = feature(shellFeatureType.type, {

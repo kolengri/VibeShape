@@ -54,7 +54,10 @@ Both features own task panels, toolbar/context-menu/palette commands with new co
 icons and MCP tools (`create_face_draft`, `update_face_draft`, `create_scale`, `update_scale`) over
 the same draft, preview and commit path. Draft tools are named `*_face_draft` because
 `create_draft` already opens an MCP draft session. Draft face picking reuses the Shell viewport
-picking channel and a shared keyboard-accessible face checklist.
+picking channel and a shared keyboard-accessible face checklist. Both join the History
+missing-body repair: Scale swaps only its target body, while Draft keeps its saved record and opens
+on the replacement body with empty face selection, and with no neutral plane when it was a face of
+the missing body.
 
 ## Consequences
 

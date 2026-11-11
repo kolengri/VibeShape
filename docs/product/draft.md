@@ -15,6 +15,9 @@ that, so tiny angles are rejected rather than silently skipped.
 
 The disposable preview contains one valid solid. Apply replaces the current body of the same authored
 part and retains its history; Apply is disabled while the preview evaluates and runs once per click.
+If the source body's feature is deleted while Draft is retained, opening Draft offers an earlier
+replacement body. Angle and flip are kept; faces, and a neutral plane that was a face of the missing
+body, must be selected again on the replacement, because face references never move between bodies.
 Cancel discards the preview. Editing, Undo/Redo, native `.vshape` reopen, and exports use the
 ordinary feature lifecycle.
 

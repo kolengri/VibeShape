@@ -41,6 +41,7 @@
       "unnamedBody": "Unnamed body",
       "noBodies": "No earlier exact solid bodies are available. Create or restore an earlier body first.",
       "reselectOpenings": "Select the openings again on the replacement body. Previous face selections are cleared.",
+      "reselectFaces": "Select the faces again on the replacement body, and the neutral plane if it was a face of the missing body. Previous face selections are cleared.",
       "cancel": "Cancel"
     },
     "variableSuggestions": {
