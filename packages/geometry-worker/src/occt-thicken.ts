@@ -91,14 +91,32 @@ function requireConnectedFaces(edgeSets: readonly ReadonlySet<number>[]) {
 }
 
 /**
- * A closed selection (every boundary edge shared by two selected faces) has no free boundary, so
- * the offset would be a whole solid rather than a wall. Shell owns uniform walls of closed bodies.
+ * Whether the faces form a closed shell: OCCT pairs every edge occurrence, cancelling shared edges
+ * and same-face seams, and ignores degenerate, INTERNAL and EXTERNAL edges. A closed selection
+ * offsets to a whole solid rather than a wall.
  */
-function requireFreeBoundary(edgeSets: readonly ReadonlySet<number>[]) {
-  const occurrences = new Map<number, number>()
-  for (const edges of edgeSets)
-    for (const edge of edges) occurrences.set(edge, (occurrences.get(edge) ?? 0) + 1)
-  if ([...occurrences.values()].some((count) => count === 1)) return
+export function faceSelectionIsClosed(occt: OpenCascadeInstance, faces: readonly TopoDS_Shape[]) {
+  const builder = new occt.TopoDS_Builder()
+  const shell = new occt.TopoDS_Shell()
+  try {
+    builder.MakeShell(shell)
+    for (const face of faces) builder.Add(shell, face)
+    return occt.BRep_Tool.IsClosed_1(shell)
+  } finally {
+    shell.delete()
+    builder.delete()
+  }
+}
+
+/** Shell owns uniform walls of closed bodies; Thicken needs a free boundary to build a wall from. */
+function requireFreeBoundary(occt: OpenCascadeInstance, faces: readonly Face[]) {
+  if (
+    !faceSelectionIsClosed(
+      occt,
+      faces.map((face) => face.wrapped),
+    )
+  )
+    return
   throw new ThickenError(
     "The selected faces enclose a closed region with no free boundary edge, such as a whole " +
       "sphere, torus or every face of a body, so Thicken cannot build a wall from them. Use Shell " +
@@ -166,7 +184,7 @@ export function thickenOcctShape(
     const selected = selectFaces(faces, faceKeys)
     const edgeSets = faceBoundaryEdges(occt, selected)
     requireConnectedFaces(edgeSets)
-    requireFreeBoundary(edgeSets)
+    requireFreeBoundary(occt, selected)
     const offsets = signedOffsets(parameters.thickness, parameters.side)
     const evidence = patchEvidence(occt, selected)
     requireCurvatureClearance(evidence, offsets, "Thicken")

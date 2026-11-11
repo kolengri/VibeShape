@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { type Face, type Shape3D, setOC } from "replicad"
-import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
+import initializeOpenCascade, {
+  type OpenCascadeInstance,
+  type TopAbs_Orientation,
+  type TopAbs_ShapeEnum,
+} from "replicad-opencascadejs"
 import { inspectOcctBody } from "./occt-body-validation"
+import { castOcctShape } from "./occt-cast"
 import { offsetOcctFace } from "./occt-face-offset"
 import { trackNativeWrappers } from "./occt-native-tracking.test-support"
 import { pressPullOcctShape } from "./occt-press-pull"
@@ -12,7 +17,7 @@ import {
   createOcctSphere,
   createOcctTorus,
 } from "./occt-shapes"
-import { ThickenError, thickenOcctShape } from "./occt-thicken"
+import { faceSelectionIsClosed, ThickenError, thickenOcctShape } from "./occt-thicken"
 
 let occt: OpenCascadeInstance
 beforeAll(async () => {
@@ -217,6 +222,51 @@ describe("OCCT Thicken", () => {
   })
 })
 
+describe("OCCT face selection closure", () => {
+  it("ignores INTERNAL edges, so an internal edge neither opens nor closes a selection", () => {
+    const box = keep(createOcctBox(occt, [10, 20, 5]))
+    const builder = new occt.TopoDS_Builder()
+    const copier = new occt.BRepBuilderAPI_Transform_2(box.wrapped, new occt.gp_Trsf_1(), true)
+    const copiedShape = copier.Shape()
+    const copied = castOcctShape(copiedShape)
+    const top = copied.faces.find(atTop(5))
+    if (!top) throw new Error("The box top is missing.")
+    const edge = new occt.BRepBuilderAPI_MakeEdge_3(
+      new occt.gp_Pnt_3(-2, -5, 5),
+      new occt.gp_Pnt_3(2, 5, 5),
+    ).Edge()
+    const internal = occt.TopAbs_Orientation.TopAbs_INTERNAL as TopAbs_Orientation
+    const wire = new occt.TopoDS_Wire()
+    builder.MakeWire(wire)
+    builder.Add(wire, edge.Oriented(internal))
+    top.wrapped.Free_2(true)
+    builder.Add(top.wrapped, wire.Oriented(internal))
+    const faces = copied.faces
+    const withInternal = faces.find(atTop(5))
+    if (!withInternal) throw new Error("The rebuilt top is missing.")
+    const orientations: unknown[] = []
+    const explorer = new occt.TopExp_Explorer_2(
+      withInternal.wrapped,
+      occt.TopAbs_ShapeEnum.TopAbs_EDGE as TopAbs_ShapeEnum,
+      occt.TopAbs_ShapeEnum.TopAbs_SHAPE as TopAbs_ShapeEnum,
+    )
+    for (; explorer.More(); explorer.Next()) orientations.push(explorer.Current().Orientation_1())
+    expect(orientations).toContain(occt.TopAbs_Orientation.TopAbs_INTERNAL)
+    // Every face of the box is still closed; the top face alone is still open.
+    expect(
+      faceSelectionIsClosed(
+        occt,
+        faces.map((face) => face.wrapped),
+      ),
+    ).toBe(true)
+    expect(faceSelectionIsClosed(occt, [withInternal.wrapped])).toBe(false)
+    for (const face of faces) face.delete()
+    top.delete()
+    copied.delete()
+    for (const value of [explorer, wire, edge, copiedShape, copier, builder]) value.delete()
+  })
+})
+
 describe("OCCT Thicken native ownership", () => {
   it("releases every native wrapper it creates on success and on failure", () => {
     const tracked = trackNativeWrappers(occt)
@@ -400,7 +450,8 @@ describe("OCCT curved-face offset", () => {
       ),
     )
     expect(error).toBeInstanceOf(ThickenError)
-    expect((error as Error).message).toContain("keeping its neighbouring faces attached")
+    // The new ledge runs into the other boss, which does not border the moved face.
+    expect((error as Error).message).toContain("would reach another feature of the part")
   })
 
   it("rejects a counterbore hole offset that consumes the bore floor", () => {
@@ -417,6 +468,71 @@ describe("OCCT curved-face offset", () => {
       withFace(counterbore, smallHole, (face) => offsetOcctFace(occt, counterbore, face, -1)),
     )
     expectSolid(widened, volumeOf(counterbore) - Math.PI * (4 ** 2 - 3 ** 2) * 6)
+  })
+
+  it.each([0.5, -0.5])(
+    "rejects a %s mm move of a frustum boss on a plate because its slanted cap cannot extend",
+    (distance) => {
+      const plate = keep(createOcctBox(occt, [40, 40, 5]))
+      const boss = keep(plate.fuse(keep(createOcctCone(occt, 5, 8, [0, 0, 5], 3))))
+      const error = failure(() =>
+        withFace(
+          boss,
+          (face) => face.geomType === "CONE",
+          (face) => offsetOcctFace(occt, boss, face, distance),
+        ),
+      )
+      expect(error).toBeInstanceOf(ThickenError)
+      expect((error as Error).message).toContain("A slanted planar neighbour extends only when")
+    },
+  )
+
+  it("extends slanted caps of a whole widening frustum but not a slanted top on a plate", () => {
+    const frustum = keep(createOcctCone(occt, 5, 8, [0, 0, 0], 5.5))
+    const grow = Math.hypot(8, 0.5) / 8
+    const frustumVolume = (bottom: number, top: number) =>
+      (Math.PI * 8 * (bottom ** 2 + bottom * top + top ** 2)) / 3
+    const widened = keep(
+      withFace(
+        frustum,
+        (face) => face.geomType === "CONE",
+        (face) => offsetOcctFace(occt, frustum, face, 0.5),
+      ),
+    )
+    expectSolid(widened, frustumVolume(5 + 0.5 * grow, 5.5 + 0.5 * grow), 3)
+    const plate = keep(createOcctBox(occt, [40, 40, 5]))
+    const tall = keep(createOcctCylinder(occt, RADIUS, 20, [0, 0, 5]))
+    // replicad transforms consume their source shape, so only the rotated cutter is kept.
+    const cutter = createOcctBox(occt, [40, 40, 20], false, [0, 0, 15])
+    const tilted = keep(cutter.rotate(15, [0, 0, 15], [1, 0, 0]))
+    const slanted = keep(plate.fuse(keep(tall.cut(tilted))))
+    for (const distance of [0.5, -0.5]) {
+      const error = failure(() =>
+        withFace(slanted, isCylinder, (face) => offsetOcctFace(occt, slanted, face, distance)),
+      )
+      expect((error as Error).message).toContain("A slanted planar neighbour extends only when")
+    }
+  })
+
+  it.each([
+    ["into an adjacent slot", [0, 0] as const, -1.5],
+    ["through the side of the plate", [16, 0] as const, -2],
+  ])("names another feature when a widened hole reaches %s", (_case, [x, y], distance) => {
+    const plate = keep(createOcctBox(occt, [40, 40, 5]))
+    const slotted = keep(plate.cut(keep(createOcctBox(occt, [4, 4, 5], false, [6, 0, 0]))))
+    const holed = keep(slotted.cut(keep(createOcctCylinder(occt, 3, 5, [x, y, 0]))))
+    const wall = (face: Face) =>
+      isCylinder(face) && Math.abs(face.center.x - x) < 1e-6 && Math.abs(face.center.y - y) < 1e-6
+    const error = failure(() =>
+      withFace(holed, wall, (face) => offsetOcctFace(occt, holed, face, distance)),
+    )
+    expect(error).toBeInstanceOf(ThickenError)
+    expect((error as Error).message).toContain("would reach another feature of the part")
+    // A move that stays clear of other features is exact.
+    expectSolid(
+      keep(withFace(holed, wall, (face) => offsetOcctFace(occt, holed, face, -0.5))),
+      volumeOf(holed) - Math.PI * (3.5 ** 2 - 3 ** 2) * 5,
+    )
   })
 
   it("matches planar Press Pull for a planar face slab", () => {

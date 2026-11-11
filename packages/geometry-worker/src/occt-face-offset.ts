@@ -90,6 +90,19 @@ function faceImages(builder: BRepAlgoAPI_BuilderAlgo, face: TopoDS_Shape, own: O
   return images
 }
 
+function shapeDistance(
+  occt: OpenCascadeInstance,
+  left: TopoDS_Shape,
+  right: TopoDS_Shape,
+  own: Own,
+) {
+  const distance = own(new occt.BRepExtrema_DistShapeShape_1())
+  distance.LoadS1(left)
+  distance.LoadS2(right)
+  distance.Perform(own(new occt.Message_ProgressRange_1()))
+  return distance.IsDone() ? distance.Value() : Infinity
+}
+
 function pointToShapeDistance(
   occt: OpenCascadeInstance,
   point: Point,
@@ -97,11 +110,7 @@ function pointToShapeDistance(
   own: Own,
 ) {
   const vertexMaker = own(new occt.BRepBuilderAPI_MakeVertex(own(new occt.gp_Pnt_3(...point))))
-  const distance = own(new occt.BRepExtrema_DistShapeShape_1())
-  distance.LoadS1(own(vertexMaker.Vertex()))
-  distance.LoadS2(shape)
-  distance.Perform(own(new occt.Message_ProgressRange_1()))
-  return distance.IsDone() ? distance.Value() : Infinity
+  return shapeDistance(occt, own(vertexMaker.Vertex()), shape, own)
 }
 
 /**
@@ -171,14 +180,45 @@ function acceptedOffset(
   return null
 }
 
+function moveDescription(distance: number) {
+  return `the curved face ${formatMillimetres(Math.abs(distance))} ${distance > 0 ? "outward" : "inward"}`
+}
+
 function detachedFailure(distance: number) {
   return new ThickenError(
-    `Press Pull cannot move the curved face ${formatMillimetres(Math.abs(distance))} ` +
-      `${distance > 0 ? "outward" : "inward"} while keeping its neighbouring faces attached. ` +
-      "Only planar neighbours that meet the face at right angles or extend along their own plane " +
-      "can follow it; curved neighbours such as chamfers and fillets cannot. Reduce the distance " +
-      "or use Thicken instead.",
+    `Press Pull cannot move ${moveDescription(distance)} while keeping its neighbouring faces ` +
+      "attached. Planar neighbours that meet the face at right angles follow it. A slanted planar " +
+      "neighbour extends only when the moved face and its neighbours make up the whole body, such " +
+      "as an isolated cone frustum, and curved neighbours such as chamfers and fillets never " +
+      "follow. Reduce the distance or use Thicken instead.",
   )
+}
+
+function reachFailure(distance: number) {
+  return new ThickenError(
+    `Press Pull cannot move ${moveDescription(distance)}: the move would reach another feature ` +
+      "of the part, a face that does not border the moved face. Reduce the distance or change " +
+      "that feature first.",
+  )
+}
+
+/** Whether the slab touches a body face that neither is the moved face nor borders it. */
+function reachesOtherFeature(
+  occt: OpenCascadeInstance,
+  slab: TopoDS_Shape,
+  copied: TopoDS_Shape,
+  selected: TopoDS_Shape,
+  contacts: readonly EdgeContact[],
+  own: Own,
+) {
+  const bordering = contacts.flatMap(({ neighbours }) => neighbours)
+  return subShapes(
+    occt,
+    copied,
+    "TopAbs_FACE",
+    own,
+    (face) => !face.IsSame(selected) && !bordering.some((neighbour) => neighbour.IsSame(face)),
+  ).some((face) => shapeDistance(occt, slab, face, own) <= CONTACT_TOLERANCE)
 }
 
 /**
@@ -204,9 +244,12 @@ export function offsetOcctFace(
     if (!selected) throw new ThickenError("The selected face is unavailable on the body copy.")
     const expectedFaces = unifiedFaceCount(occt, copied)
     const contacts = edgeContacts(occt, copied, selected, own)
+    let reachesOther = false
     for (const build of slabBuilders(occt, source, [face], evidence, own)) {
       const slab = build(distance)
-      const combined = slab && combineShapes(occt, distance > 0 ? "fuse" : "cut", copied, slab, own)
+      if (!slab) continue
+      reachesOther ||= reachesOtherFeature(occt, slab, copied, selected, contacts, own)
+      const combined = combineShapes(occt, distance > 0 ? "fuse" : "cut", copied, slab, own)
       if (
         !combined ||
         unifiedFaceCount(occt, combined.shape) !== expectedFaces ||
@@ -223,7 +266,7 @@ export function offsetOcctFace(
       const result = acceptedOffset(occt, combined.shape, sourceVolume, distance)
       if (result) return result
     }
-    throw detachedFailure(distance)
+    throw reachesOther ? reachFailure(distance) : detachedFailure(distance)
   } catch (error) {
     if (error instanceof ThickenError) throw error
     throw new ThickenError(
