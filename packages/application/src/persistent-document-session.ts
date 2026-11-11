@@ -961,14 +961,15 @@ export class PersistentDocumentSession {
     options: Pick<DocumentExportOptions, "bodies"> = {},
   ): Promise<PersistentDrawingProjectionResult> {
     return this.#enqueue(async () => {
-      const port = this.#rebuildPort.projectDrawing
-      if (this.#closed || !port)
+      const port = this.#rebuildPort
+      if (this.#closed || !port.projectDrawing)
         return {
           ok: false,
           diagnostic: diagnostic("session-closed", "The document session is closed."),
         }
       try {
-        const response = await port(views, options)
+        // Call through the port so session implementations keep their `this` binding.
+        const response = await port.projectDrawing(views, options)
         return { ok: true, projection: response.projection }
       } catch (error) {
         return documentExportFailure(error, "The current document geometry could not be drawn.")

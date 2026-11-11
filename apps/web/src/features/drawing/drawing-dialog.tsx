@@ -108,7 +108,7 @@ function ViewFields({ settings, update }: { settings: DrawingSettings; update: U
 function SheetFields({ settings, update }: { settings: DrawingSettings; update: Update }) {
   const t = useTranslations("app.drawing")
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-3">
       <SelectField
         label={t("projection.label")}
         value={settings.projection}
@@ -163,7 +163,7 @@ function SheetFields({ settings, update }: { settings: DrawingSettings; update: 
         <SelectOption value="mm">{t("units.mm")}</SelectOption>
         <SelectOption value="in">{t("units.in")}</SelectOption>
       </SelectField>
-      <div className="grid content-end gap-1">
+      <div className="grid gap-1">
         <CheckboxField
           label={t("hiddenLines")}
           checked={settings.hiddenLines}
@@ -182,7 +182,7 @@ function SheetFields({ settings, update }: { settings: DrawingSettings; update: 
 function TitleBlockFields({ settings, update }: { settings: DrawingSettings; update: Update }) {
   const t = useTranslations("app.drawing.titleBlock")
   return (
-    <fieldset className="grid gap-3 sm:grid-cols-2">
+    <fieldset className="grid gap-3">
       <legend className="mb-1 text-sm font-medium">{t("legend")}</legend>
       {TITLE_FIELDS.map(([field, maxLength]) => (
         <TextField
@@ -268,7 +268,7 @@ function DrawingTask({
   const download = (format: DrawingFileFormat) => setDownloaded(view.download(format))
   return (
     <>
-      <DialogBody className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+      <DialogBody className="grid gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
         <div className="grid content-start gap-4">
           <PartField controller={controller} value={partId} onChange={setPartId} />
           <ViewFields settings={settings} update={update} />

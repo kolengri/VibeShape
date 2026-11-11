@@ -177,6 +177,29 @@ class MemoryRebuildPort implements DocumentRebuildPort {
     }
   }
 
+  readonly drawnViews: unknown[] = []
+  async projectDrawing(views: readonly ("front" | "top")[]) {
+    // Reads instance state, so an unbound call through the session would fail.
+    this.drawnViews.push([...views])
+    return {
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f21fc",
+      documentId,
+      revision: this.revisions.at(-1) ?? 0,
+      generation: 1,
+      type: "drawingProjected" as const,
+      projection: {
+        chordTolerance: 0.01 as const,
+        bodyCount: 1,
+        views: views.map((view) => ({
+          view,
+          bounds: { min: [0, 0] as [number, number], max: [1, 1] as [number, number] },
+          edges: [],
+        })),
+      },
+    }
+  }
+
   async solveSketch(input: Parameters<DocumentRebuildPort["solveSketch"]>[0]) {
     this.solvedSketchIds.push(input.sketchId)
     this.solvedSketchDrafts.push(input.draftSketch ?? null)
@@ -1226,6 +1249,21 @@ describe("persistent document session", () => {
       diagnostic: { code: "session-closed" },
     })
     await created.session.close()
+  })
+
+  it("projects drawings through the bound rebuild port and stops after close", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    await expect(created.session.projectDrawing(["front", "top"])).resolves.toMatchObject({
+      ok: true,
+      projection: { bodyCount: 1, views: [{ view: "front" }, { view: "top" }] },
+    })
+    expect(state.rebuildPorts[0]?.drawnViews).toEqual([["front", "top"]])
+    await created.session.close()
+    await expect(created.session.projectDrawing(["front"])).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "session-closed" },
+    })
   })
 
   it("preserves validated worker export failures through the persistent session", async () => {
