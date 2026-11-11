@@ -22,6 +22,7 @@ import { shellFeatureType } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType } from "@vibeshape/domain/part-design-split"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 import {
+  draftFormFeature,
   draftInitialNeutralPlane,
   draftInitialSelection,
   draftTargetBody,
@@ -211,11 +212,38 @@ describe("retained body feature form adapters", () => {
       const mode = { kind: "edit" as const, feature: original, repairTarget: adapted.faceTarget }
       expect(draftTargetBody(mode)).toEqual(replacement)
       expect(draftInitialNeutralPlane(mode)).toEqual(expectedPlane)
-      const replacementEvidence = { ...evidence, featureId: replacementId }
+      const replacementEvidence = {
+        ...evidence,
+        featureId: replacementId,
+        outputRole: replacement.outputRole,
+      }
       expect(draftInitialSelection(mode, replacementEvidence)).toEqual({
         repair: true,
         faceIds: [],
       })
+      // Apply saves only a complete selection on the replacement body.
+      const save = (faceIds: string[], plane: typeof expectedPlane, source = replacementEvidence) =>
+        draftFormFeature({
+          mode,
+          featureId,
+          values: { faceIds, angle: "5 deg", flip: false },
+          neutralPlane: plane,
+          evidence: source,
+          variables: [],
+          units: { length: "mm", angle: "deg" },
+          copy: { invalidExpression: "", invalidDimension: "", invalidRange: "" },
+        })
+      const plane = expectedPlane ?? ({ kind: "origin-plane", plane: "XY" } as const)
+      expect(save([], plane)).toBeNull()
+      expect(save(["face:top"], null)).toBeNull()
+      expect(save(["face:top"], plane, evidence)).toBeNull()
+      const saved = save(["face:top"], plane)
+      expect(saved).toMatchObject({
+        id: featureId,
+        dependencies: [replacementId],
+        parameters: { targetBody: replacement, flip: false },
+      })
+      expect(JSON.stringify(saved)).not.toContain(sourceId)
     },
   )
 
