@@ -154,14 +154,19 @@ export function featureBodyDependencies(
   return featureBodyDependencyIds(feature).map((featureId) => ({ featureId }))
 }
 
+function endSupportBody(feature: FeatureRecord) {
+  const extrusion = readExtrusionFeatureParameters(feature)?.endCondition
+  if (extrusion) return extrusion.kind === "distance" ? null : extrusion.targetBody
+  const revolve = readRevolveFeatureParameters(feature)?.endCondition
+  return revolve && revolve.kind !== "angle" ? revolve.targetBody : null
+}
+
 /** Exact geometry inputs include retained end supports without consuming their bodies. */
 export function featureGeometryDependencies(feature: FeatureRecord) {
   const bodies = featureBodyDependencies(feature)
-  const end = readExtrusionFeatureParameters(feature)?.endCondition
-  return end &&
-    end.kind !== "distance" &&
-    !bodies.some(({ featureId }) => featureId === end.targetBody.featureId)
-    ? [...bodies, end.targetBody]
+  const end = endSupportBody(feature)
+  return end && !bodies.some(({ featureId }) => featureId === end.featureId)
+    ? [...bodies, end]
     : bodies
 }
 

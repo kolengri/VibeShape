@@ -76,6 +76,7 @@ import { sweepFeatureTypeHandler, sweepFeatureTypeHandlerV2 } from "./part-desig
 import { threadFeatureTypeHandler, threadFeatureTypeHandlerV2 } from "./part-design-thread"
 import {
   createSketchProfileSet,
+  type SketchProfileSelector,
   sketchProfileSelectorSchema,
   sketchProfileSetSchema,
 } from "./sketch-profile-selector"
@@ -888,6 +889,81 @@ export const revolveFeatureParametersV7Schema = revolveFeatureParametersV6Schema
   .strict()
 export type RevolveFeatureParametersV7 = Readonly<z.infer<typeof revolveFeatureParametersV7Schema>>
 
+/** Revolve v8 sweeps an authored angle or stops at the first contact with an exact body or face. */
+export const revolveEndConditionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("angle") }).strict(),
+  z
+    .object({
+      kind: z.literal("up-to-body"),
+      targetBody: bodyReferenceSchema,
+      sourceContentHash: extrusionSourceHashSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("up-to-face"),
+      targetBody: bodyReferenceSchema,
+      sourceContentHash: extrusionSourceHashSchema,
+      face: bodyFaceRefSchema,
+    })
+    .strict(),
+])
+export type RevolveEndCondition = Readonly<z.infer<typeof revolveEndConditionSchema>>
+
+/**
+ * `angle` is the one-sided angle, the symmetric total, or the first of two sides. The second side
+ * sweeps against the first direction; `reversed` flips the first direction.
+ */
+export const revolveFeatureParametersV8Schema = z
+  .object({
+    profiles: multiProfileSetSchema,
+    axis: revolveAxisSchema,
+    angle: revolveAngleSchema,
+    symmetric: z.boolean(),
+    reversed: z.boolean(),
+    secondAngle: revolveAngleSchema.nullable(),
+    operation: extrusionOperationSchema,
+    targetBody: bodyReferenceSchema.nullable(),
+    endCondition: revolveEndConditionSchema,
+  })
+  .strict()
+  .superRefine((parameters, context) => {
+    if ((parameters.operation === "new") !== (parameters.targetBody === null))
+      context.addIssue({
+        code: "custom",
+        path: ["targetBody"],
+        message: "Modifying revolve requires an exact body target; New must not consume one.",
+      })
+    if (parameters.symmetric && (parameters.reversed || parameters.secondAngle !== null))
+      context.addIssue({
+        code: "custom",
+        path: ["symmetric"],
+        message: "A symmetric revolve has neither a second angle nor a reversed direction.",
+      })
+    if (parameters.angle.value + (parameters.secondAngle?.value ?? 0) > Math.PI * 2 + 1e-12)
+      context.addIssue({
+        code: "custom",
+        path: ["secondAngle"],
+        message: "The total revolve angle must be at most 360 degrees.",
+      })
+    const end = parameters.endCondition
+    if (end.kind === "angle") return
+    if (parameters.symmetric || parameters.secondAngle !== null)
+      context.addIssue({
+        code: "custom",
+        path: ["endCondition"],
+        message: "Dynamic revolve endpoints require one directional extent.",
+      })
+    validateExtrusionEndOwnership(parameters.targetBody, end, context)
+  })
+export type RevolveFeatureParametersV8 = Readonly<z.infer<typeof revolveFeatureParametersV8Schema>>
+
+/** Separate profile solids of a New Revolve v8 are named by their lowest outer boundary entity. */
+export function revolveProfileOutputRole(selector: SketchProfileSelector) {
+  const [entityId] = [...selector.outerBoundaryEntityIds].sort()
+  return `revolve.profile.${entityId}`
+}
+
 type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSchema> & {
   profiles?: z.infer<typeof sketchProfileSetSchema>
   reversed: boolean
@@ -900,6 +976,10 @@ type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSc
 type NormalizedRevolveParameters = z.infer<typeof revolveFeatureParametersSchema> & {
   targetBody?: z.infer<typeof bodyReferenceSchema>
   profiles?: z.infer<typeof sketchProfileSetSchema>
+  symmetric?: boolean
+  reversed?: boolean
+  secondAngle?: z.infer<typeof angleQuantitySchema> | null
+  endCondition?: RevolveEndCondition
 }
 
 function parseRevolveParameters<T>(schema: z.ZodType<T>, parameters: unknown): T | null {
@@ -926,6 +1006,15 @@ function normalizeMultiProfileRevolveParameters(
   if (!parameters) return null
   const profile = parameters.profiles.profiles[0]
   return profile ? { ...parameters, profile } : null
+}
+
+function normalizeRevolveV8Parameters(
+  parameters: z.infer<typeof revolveFeatureParametersV8Schema> | null,
+): NormalizedRevolveParameters | null {
+  if (!parameters) return null
+  const profile = parameters.profiles.profiles[0]
+  const { targetBody, ...rest } = parameters
+  return profile ? { ...rest, profile, ...(targetBody ? { targetBody } : {}) } : null
 }
 
 type VariableValues = ReadonlyMap<string, ExpressionValue | EvaluatedVariable>
@@ -1437,6 +1526,13 @@ export const revolveFeatureTypeV7 = featureTypeDescriptorSchema.parse({
   type: { ...revolveFeatureTypeV6.type, schemaVersion: 7 },
 })
 
+/** Target, sketch support, model-edge axis, and endpoint owners are distinct ordered inputs. */
+export const revolveFeatureTypeV8 = featureTypeDescriptorSchema.parse({
+  ...revolveFeatureTypeV6,
+  type: { ...revolveFeatureTypeV6.type, schemaVersion: 8 },
+  dependencies: { min: 0, max: 4 },
+})
+
 export const legacyRevolveFeatureTypeV3 = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -1538,7 +1634,7 @@ export function readExtrusionProfileSet(feature: FeatureRecord) {
     : null
 }
 
-export function isRevolveType(feature: FeatureRecord) {
+export function isRevolveType(feature: Pick<FeatureRecord, "type">) {
   const type = feature.type
   return [
     legacyRevolveFeatureType.type,
@@ -1548,6 +1644,7 @@ export function isRevolveType(feature: FeatureRecord) {
     revolveFeatureTypeV5.type,
     revolveFeatureTypeV6.type,
     revolveFeatureTypeV7.type,
+    revolveFeatureTypeV8.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -1558,7 +1655,7 @@ export function isRevolveType(feature: FeatureRecord) {
 }
 
 export function readRevolveFeatureParameters(
-  feature: FeatureRecord,
+  feature: Pick<FeatureRecord, "type" | "parameters">,
 ): NormalizedRevolveParameters | null {
   if (!isRevolveType(feature)) return null
   switch (feature.type.schemaVersion) {
@@ -1586,6 +1683,10 @@ export function readRevolveFeatureParameters(
       return normalizeMultiProfileRevolveParameters(
         parseRevolveParameters(revolveFeatureParametersV7Schema, feature.parameters),
       )
+    case 8:
+      return normalizeRevolveV8Parameters(
+        parseRevolveParameters(revolveFeatureParametersV8Schema, feature.parameters),
+      )
     default:
       return null
   }
@@ -1604,18 +1705,49 @@ export function revolveAxisSourceFeatureId(
   return axis.kind === "model-edge" ? axis.reference.featureId : null
 }
 
+export function revolveEndSupportFeatureId(
+  endCondition: RevolveEndCondition | undefined,
+): FeatureId | null {
+  return endCondition && endCondition.kind !== "angle" ? endCondition.targetBody.featureId : null
+}
+
 export function expectedRevolveDependencyIds(
-  parameters: z.infer<typeof revolveFeatureParametersSchema>,
+  parameters: Pick<z.infer<typeof revolveFeatureParametersSchema>, "axis" | "operation"> & {
+    endCondition?: RevolveEndCondition
+  },
   targetFeatureId: FeatureId | null,
   supportFeatureIds: readonly FeatureId[],
 ) {
   const axisSourceFeatureId = revolveAxisSourceFeatureId(parameters.axis)
+  const endSupportFeatureId = revolveEndSupportFeatureId(parameters.endCondition)
   const ordered = [
     ...(parameters.operation === "new" ? [] : targetFeatureId ? [targetFeatureId] : []),
     ...supportFeatureIds,
     ...(axisSourceFeatureId ? [axisSourceFeatureId] : []),
+    ...(endSupportFeatureId ? [endSupportFeatureId] : []),
   ]
   return ordered.filter((featureId, index) => ordered.indexOf(featureId) === index)
+}
+
+function resolveRevolveV8Parameters(parameters: unknown, variables: VariableValues) {
+  const parsed = revolveFeatureParametersV8Schema.safeParse(parameters)
+  if (!parsed.success) return { ok: true as const, parameters }
+  const resolved = { ...parsed.data }
+  for (const key of ["angle", "secondAngle"] as const) {
+    const quantity = parsed.data[key]
+    if (quantity === null) continue
+    const value = resolveQuantityExpression(quantity, variables)
+    if (!value.ok) return expressionFailure(key, value.diagnostic.message, value.diagnostic.code)
+    Object.assign(resolved, { [key]: value.quantity })
+  }
+  const valid = revolveFeatureParametersV8Schema.safeParse(resolved)
+  return valid.success
+    ? { ok: true as const, parameters: valid.data }
+    : expressionFailure(
+        valid.error.issues[0]?.path.join(".") ?? "angle",
+        valid.error.issues[0]?.message ?? "The expression did not resolve to a bounded angle.",
+        "invalid-angle",
+      )
 }
 
 function resolveRevolveParameters(parameters: unknown, variables: VariableValues) {
@@ -1684,6 +1816,9 @@ function revolveDependencyIssue(
   )
   const matches =
     (parameters.operation === "new" || feature.dependencies.length > 0) &&
+    !feature.references.some(({ featureId }) =>
+      revolveSupportUsesNamedBody(featureId, parameters),
+    ) &&
     feature.dependencies.length === expectedDependencies.length &&
     feature.dependencies.every(
       (dependencyId, index) => dependencyId === expectedDependencies[index],
@@ -1693,11 +1828,25 @@ function revolveDependencyIssue(
       path: "dependencies",
       message:
         parameters.operation === "new"
-          ? "New-body revolve dependencies must match its sketch support and model-edge axis source."
-          : `${parameters.operation} revolve requires its target first, followed by distinct sketch-support and model-edge axis sources.`,
+          ? "New-body revolve dependencies must match its sketch support, model-edge axis, and endpoint sources."
+          : `${parameters.operation} revolve requires its target first, followed by distinct sketch-support, model-edge axis, and endpoint sources.`,
     }
   }
   return null
+}
+
+/** A sketch support positions the profile through its whole result slot, never a named output. */
+function revolveSupportUsesNamedBody(
+  support: FeatureId,
+  parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>,
+) {
+  const end =
+    parameters.endCondition?.kind === "up-to-body" || parameters.endCondition?.kind === "up-to-face"
+      ? parameters.endCondition.targetBody
+      : null
+  return [parameters.targetBody, end].some(
+    (body) => body?.featureId === support && body.outputRole !== "result",
+  )
 }
 
 function modifyingMultiProfileExtrusionDependencyIssue(
@@ -2144,6 +2293,20 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
         axis: revolve.axis,
         angle: revolve.angle.value,
         operation: revolve.operation,
+      }
+    },
+  },
+  {
+    type: revolveFeatureTypeV8.type,
+    parametersSchema: revolveFeatureParametersV8Schema,
+    validateFeature: revolveFeatureInvariant,
+    resolveParameters: resolveRevolveV8Parameters,
+    contentParameters(parameters) {
+      const revolve = revolveFeatureParametersV8Schema.parse(parameters)
+      return {
+        ...revolve,
+        angle: revolve.angle.value,
+        secondAngle: revolve.secondAngle?.value ?? null,
       }
     },
   },
