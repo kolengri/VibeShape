@@ -425,6 +425,11 @@
     "legacy": ["Ruler"]
   },
   {
+    "id": "drawing",
+    "label": "Drawing",
+    "legacy": []
+  },
+  {
     "id": "section-view",
     "label": "Section view",
     "legacy": ["SectionViewIcon"]

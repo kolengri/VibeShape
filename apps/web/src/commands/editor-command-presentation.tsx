@@ -31,6 +31,7 @@ import {
   DatumPointIcon,
   DimensionIcon,
   DraftIcon,
+  DrawingIcon,
   EllipseIcon,
   EllipticalArcIcon,
   ExtendIcon,
@@ -104,6 +105,7 @@ import type {
 
 const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGElement>>>> = {
   "render-picture": ImageIcon,
+  drawing: DrawingIcon,
   "generative-design": GenerativeDesignIcon,
   "fdm-tools": FdmToolsIcon,
   "sketch-fillet": SketchFilletIcon,

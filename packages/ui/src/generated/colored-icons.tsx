@@ -9697,6 +9697,127 @@ export const MeasureIcon = /* @__PURE__ */ coloredIcon("measure", (instanceId) =
   </>
 ))
 
+export const DrawingIcon = /* @__PURE__ */ coloredIcon("drawing", (instanceId) => (
+  <>
+    <defs>
+      <linearGradient
+        id={`${instanceId}-frosted-drawing-light-material-top`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-top-start, #eff7ff)" />
+        <stop offset="1" stopColor="var(--icon-material-top-end, #c8ddf2)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-drawing-light-material-side`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
+        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
+      </linearGradient>
+      <mask
+        id={`${instanceId}-frosted-drawing-light-visible-action`}
+        x="0"
+        y="0"
+        width="256"
+        height="256"
+        maskUnits="userSpaceOnUse"
+        style={{ maskType: "luminance" }}
+      >
+        <g transform="scale(4)">
+          <path
+            d="M5 11h54v42H5Z"
+            fill="black"
+            stroke="black"
+            strokeWidth="0.35"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M40 44h19v9H40Z"
+            fill="black"
+            stroke="black"
+            strokeWidth="0.35"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 20h17v15H12ZM46 27.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 1 1 13 0Z"
+            fill="none"
+            stroke="black"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 41.5h17M12 39v5M29 39v5"
+            fill="none"
+            stroke="white"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+      </mask>
+    </defs>
+    <g opacity=".91" data-layer="material">
+      <g transform="scale(4)">
+        <path
+          d="M5 11h54v42H5Z"
+          fill={`url(#${instanceId}-frosted-drawing-light-material-top)`}
+          stroke={`url(#${instanceId}-frosted-drawing-light-material-top)`}
+          strokeWidth="0.35"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M40 44h19v9H40Z"
+          fill={`url(#${instanceId}-frosted-drawing-light-material-side)`}
+          stroke={`url(#${instanceId}-frosted-drawing-light-material-side)`}
+          strokeWidth="0.35"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12 20h17v15H12ZM46 27.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 1 1 13 0Z"
+          fill="none"
+          stroke="var(--icon-geometry-recess, #547ca2)"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12 41.5h17M12 39v5M29 39v5"
+          fill="none"
+          stroke="var(--icon-action-stroke, #cd7b24)"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+    </g>
+    <g mask={`url(#${instanceId}-frosted-drawing-light-visible-action)`} data-layer="action">
+      <g transform="scale(4)">
+        <path
+          d="M12 41.5h17M12 39v5M29 39v5"
+          fill="none"
+          stroke="var(--icon-action-stroke, #cd7b24)"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+    </g>
+  </>
+))
+
 export const SectionViewIcon = /* @__PURE__ */ coloredIcon("section-view", (instanceId) => (
   <>
     <defs>

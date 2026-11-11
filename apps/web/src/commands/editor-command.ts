@@ -1,5 +1,6 @@
 export const editorCommandIds = {
   renderPicture: "org.vibeshape.editor.render-picture",
+  createDrawing: "org.vibeshape.editor.create-drawing",
   lightweighting: "org.vibeshape.editor.lightweighting",
   quickLightweighting: "org.vibeshape.editor.quick-lightweighting",
   generativeDesign: "org.vibeshape.editor.generative-design",
@@ -147,6 +148,7 @@ export type EditorCommandSketchPresentation = EditorCommandSketchPresentationBas
 
 export type EditorCommandIcon =
   | "render-picture"
+  | "drawing"
   | "generative-design"
   | "fdm-tools"
   | "sketch-fillet"
@@ -240,6 +242,7 @@ export type EditorCommandIcon =
 
 export type EditorCommandLabelKey =
   | "renderPicture"
+  | "createDrawing"
   | "pressPull"
   | "quickLightweighting"
   | "generativeDesign"

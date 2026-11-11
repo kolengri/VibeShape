@@ -74,6 +74,7 @@ export {
   DraftIcon,
   DragHandleIcon,
   DragHandleIcon as GripVertical,
+  DrawingIcon,
   DuplicateIcon as CopyPlus,
   DuplicateIcon,
   EllipseIcon,
