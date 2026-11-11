@@ -602,6 +602,11 @@ test.describe("selector-backed revolve", () => {
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create revolve" }).click()
     await expect(form).toHaveCount(0, { timeout: 30_000 })
+    const revolveRow = page.getByRole("treeitem", { name: "Revolve 1", exact: true })
+    await toolbar.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(revolveRow).toHaveCount(0)
+    await toolbar.getByRole("button", { name: "Redo", exact: true }).click()
+    await expect(revolveRow).toHaveCount(1)
     await expect(saved).toBeVisible({ timeout: 30_000 })
 
     await page.reload()
