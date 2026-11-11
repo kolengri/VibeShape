@@ -48,8 +48,11 @@ needs more than 65,536 samples fails the projection instead of being thinned. A 
 shared edges. A grid-indexed coverage pass compares collinear lines and concentric equal-radius
 circles and arcs within 1e-4 mm: it merges the parameter or angular intervals of visible curves
 (and of hidden curves already kept) and emits only the uncovered pieces of each curve, so a hidden
-edge partly behind visible edges keeps exactly its hidden gaps. Polylines are dropped only when
-they duplicate a covering polyline point for point. Output contains only coordinates, never OCCT
+edge partly behind visible edges keeps exactly its hidden gaps. Collinearity is checked both ways,
+so a short tilted segment on a long covering line is covered too. Sampled polylines are covered per
+segment: a segment whose end points and midpoint lie within twice the chordal tolerance plus
+1e-4 mm of covering geometry is dropped and the uncovered runs remain, because two samplings of the
+same curve each stay within the chordal tolerance of it. Output contains only coordinates, never OCCT
 indices.
 
 Without an explicit body selection the projection draws every exact terminal body and skips

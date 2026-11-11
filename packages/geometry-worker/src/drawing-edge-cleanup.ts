@@ -1,4 +1,9 @@
-import { type DrawingCurve, type DrawingEdge, MAX_DRAWING_CURVE_POINTS } from "@vibeshape/protocol"
+import {
+  DRAWING_CHORD_TOLERANCE_MM,
+  type DrawingCurve,
+  type DrawingEdge,
+  MAX_DRAWING_CURVE_POINTS,
+} from "@vibeshape/protocol"
 
 type Point = readonly [number, number]
 type Line = Extract<DrawingCurve, { kind: "line" }>
@@ -9,6 +14,11 @@ type Box = readonly [minX: number, minY: number, maxX: number, maxY: number]
 
 /** Distance within which projected edges are treated as the same drawn line. */
 const COINCIDENCE_TOLERANCE_MM = 1e-4
+/**
+ * Two samplings of the same projected curve each stay within the chordal tolerance of it, so a
+ * sampled point or chord midpoint of one lies within twice that tolerance of the other.
+ */
+const SAMPLED_COVERAGE_TOLERANCE_MM = 2 * DRAWING_CHORD_TOLERANCE_MM + COINCIDENCE_TOLERANCE_MM
 const FULL_TURN = 2 * Math.PI
 
 /** Replaces straight sampled curves, such as circles seen edge-on, by exact lines. */
@@ -43,8 +53,9 @@ export function splitPolyline(points: readonly Point[]): DrawingCurve[] {
  * rim of a through-hole) and repeats edges shared by faces. Drawing conventions show a visible line
  * once and dash only what no visible line covers. Lines are compared with collinear lines and
  * circles/arcs with concentric equal-radius curves by merged parameter intervals, so a hidden edge
- * keeps exactly its uncovered pieces. Polylines are only dropped when they duplicate one covering
- * polyline point for point; partial polyline overlaps are kept rather than guessed.
+ * keeps exactly its uncovered pieces. Sampled polylines are covered segment by segment: a segment
+ * whose end points and midpoint lie on covering geometry within twice the chordal tolerance is
+ * dropped, and the remaining runs are kept.
  */
 export function suppressCoincidentEdges(edges: readonly DrawingEdge[]): DrawingEdge[] {
   const cellSize = indexCellSize(edges)
@@ -71,9 +82,9 @@ export function suppressCoincidentEdges(edges: readonly DrawingEdge[]): DrawingE
 }
 
 function uncoveredPieces(curve: DrawingCurve, covers: readonly CurveIndex[]): DrawingCurve[] {
+  if (curve.kind === "polyline") return uncoveredPolyline(curve, covers)
   const candidates = covers.flatMap((index) => index.near(curveBox(curve)))
   if (curve.kind === "line") return uncoveredLine(curve, candidates)
-  if (curve.kind === "polyline") return polylineCovered(curve, candidates) ? [] : [curve]
   return uncoveredRound(curve, candidates)
 }
 
@@ -85,10 +96,8 @@ function uncoveredLine(line: Line, candidates: readonly DrawingCurve[]): Drawing
   const direction: Point = [dx / length, dy / length]
   const parameter = (point: Point) =>
     (point[0] - line.start[0]) * direction[0] + (point[1] - line.start[1]) * direction[1]
-  const onLine = (point: Point) =>
-    lineDistance(point, line.start, direction) <= COINCIDENCE_TOLERANCE_MM
   const intervals = candidates.flatMap((candidate): Interval[] => {
-    if (candidate.kind !== "line" || !onLine(candidate.start) || !onLine(candidate.end)) return []
+    if (candidate.kind !== "line" || !collinear(line, direction, candidate)) return []
     const a = parameter(candidate.start)
     const b = parameter(candidate.end)
     return [[Math.min(a, b), Math.max(a, b)]]
@@ -98,6 +107,28 @@ function uncoveredLine(line: Line, candidates: readonly DrawingCurve[]): Drawing
     start: [line.start[0] + direction[0] * from, line.start[1] + direction[1] * from],
     end: [line.start[0] + direction[0] * to, line.start[1] + direction[1] * to],
   }))
+}
+
+/**
+ * Symmetric collinearity: the candidate lies on the line's extension, or the line lies on the
+ * candidate's extension. Checking only one side misses a short, slightly tilted segment on a long
+ * covering line.
+ */
+function collinear(line: Line, direction: Point, candidate: Line) {
+  const near = (point: Point, origin: Point, axis: Point) =>
+    lineDistance(point, origin, axis) <= COINCIDENCE_TOLERANCE_MM
+  if (near(candidate.start, line.start, direction) && near(candidate.end, line.start, direction))
+    return true
+  const length = Math.hypot(
+    candidate.end[0] - candidate.start[0],
+    candidate.end[1] - candidate.start[1],
+  )
+  if (length <= COINCIDENCE_TOLERANCE_MM) return false
+  const axis: Point = [
+    (candidate.end[0] - candidate.start[0]) / length,
+    (candidate.end[1] - candidate.start[1]) / length,
+  ]
+  return near(line.start, candidate.start, axis) && near(line.end, candidate.start, axis)
 }
 
 function sameRound(left: Round, right: Round) {
@@ -145,26 +176,65 @@ function circlePieces(circle: Round, pieces: readonly Interval[]): DrawingCurve[
   }))
 }
 
-function samePoints(left: readonly Point[], right: readonly Point[]) {
-  return (
-    left.length === right.length &&
-    left.every((point, index) => {
-      const other = right[index]
-      return (
-        other !== undefined &&
-        Math.hypot(point[0] - other[0], point[1] - other[1]) <= COINCIDENCE_TOLERANCE_MM
-      )
-    })
-  )
+/** Keeps the runs of polyline segments that no covering curve follows within the tolerance. */
+function uncoveredPolyline(polyline: Polyline, covers: readonly CurveIndex[]): DrawingCurve[] {
+  const covered = (point: Point) =>
+    covers.some((index) =>
+      index
+        .near(pointBox(point, SAMPLED_COVERAGE_TOLERANCE_MM))
+        .some((candidate) => curveDistance(point, candidate) <= SAMPLED_COVERAGE_TOLERANCE_MM),
+    )
+  const { points } = polyline
+  const pieces: DrawingCurve[] = []
+  let runStart: number | null = null
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index]
+    const end = points[index + 1]
+    if (!start || !end) continue
+    const middle: Point = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2]
+    const hidden = covered(start) && covered(middle) && covered(end)
+    if (!hidden && runStart === null) runStart = index
+    if (hidden && runStart !== null) {
+      pieces.push(...run(points, runStart, index))
+      runStart = null
+    }
+  }
+  if (runStart === 0) return [polyline]
+  if (runStart !== null) pieces.push(...run(points, runStart, points.length - 1))
+  return pieces
 }
 
-function polylineCovered(polyline: Polyline, candidates: readonly DrawingCurve[]) {
-  return candidates.some(
-    (candidate) =>
-      candidate.kind === "polyline" &&
-      (samePoints(polyline.points, candidate.points) ||
-        samePoints(polyline.points, [...candidate.points].reverse())),
-  )
+function run(points: readonly Point[], from: number, to: number): DrawingCurve[] {
+  const curve = straightenPolyline(points.slice(from, to + 1))
+  return curve ? [curve] : []
+}
+
+function pointBox(point: Point, margin: number): Box {
+  return [point[0] - margin, point[1] - margin, point[0] + margin, point[1] + margin]
+}
+
+/** Distance from a point to a line segment, circle or arc (polylines are indexed as segments). */
+function curveDistance(point: Point, curve: DrawingCurve): number {
+  if (curve.kind === "line") return segmentDistance(point, curve.start, curve.end)
+  if (curve.kind === "polyline") return Number.POSITIVE_INFINITY
+  const radial = Math.hypot(point[0] - curve.center[0], point[1] - curve.center[1])
+  if (curve.kind === "circle" || angleWithin(point, curve)) return Math.abs(radial - curve.radius)
+  const ends = [curve.startAngle, curve.endAngle].map((angle) => {
+    const end: Point = [
+      curve.center[0] + curve.radius * Math.cos(angle),
+      curve.center[1] + curve.radius * Math.sin(angle),
+    ]
+    return Math.hypot(point[0] - end[0], point[1] - end[1])
+  })
+  return Math.min(...ends)
+}
+
+function angleWithin(point: Point, arc: Extract<DrawingCurve, { kind: "arc" }>) {
+  const angle = Math.atan2(point[1] - arc.center[1], point[0] - arc.center[0])
+  return [-2, -1, 0, 1, 2].some((turn) => {
+    const candidate = angle + turn * FULL_TURN
+    return candidate >= arc.startAngle && candidate <= arc.endAngle
+  })
 }
 
 /** Parts of `range` not covered by the merged intervals, ignoring slivers within `tolerance`. */
@@ -216,7 +286,20 @@ class CurveIndex {
     this.#cellSize = cellSize
   }
 
+  /** Polylines are indexed as their segments, so coverage queries see straight pieces only. */
   add(curve: DrawingCurve) {
+    if (curve.kind === "polyline") {
+      for (let index = 0; index < curve.points.length - 1; index += 1) {
+        const start = curve.points[index]
+        const end = curve.points[index + 1]
+        if (start && end) this.#insert({ kind: "line", start, end })
+      }
+      return
+    }
+    this.#insert(curve)
+  }
+
+  #insert(curve: DrawingCurve) {
     const index = this.#curves.push(curve) - 1
     this.#visitCells(curveBox(curve), (key) => {
       const bucket = this.#cells.get(key)

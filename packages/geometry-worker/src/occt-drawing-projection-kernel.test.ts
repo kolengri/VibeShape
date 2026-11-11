@@ -6,7 +6,7 @@ import {
   type DrawingViewProjection,
   drawingViewProjectionSchema,
 } from "@vibeshape/protocol"
-import { makeBox, makeCylinder, type Shape3D, setOC } from "replicad"
+import { draw, makeBox, makeCylinder, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
 import { projectOcctDrawingViews } from "./occt-drawing-projection"
 
@@ -184,6 +184,24 @@ describe("exact drawing projection", () => {
         .sort()
     expect(atFloor("visible")).toEqual(["0,20 55,20", "70,20 100,20"])
     expect(atFloor("hidden")).toEqual(["55,20 70,20"])
+  })
+
+  it("does not dash a free-form edge that lies directly behind its visible twin", () => {
+    // HLR splits the top and bottom spline edges differently, so the hidden twins are sampled
+    // with other point counts than the visible curves directly in front of them.
+    const sketch = draw([0, 0])
+      .hLine(60)
+      .smoothSplineTo([40, 30])
+      .smoothSplineTo([10, 35])
+      .smoothSplineTo([0, 10])
+      .close()
+      .sketchOnPlane("XY")
+    const extruded = keep(sketch.extrude(12) as Shape3D)
+    for (const view of ["top", "bottom"] as const) {
+      const projected = project(extruded, view)
+      expect(projected.edges.some(({ curve }) => curve.kind === "polyline")).toBe(true)
+      expect(projected.edges.filter(({ visibility }) => visibility === "hidden")).toEqual([])
+    }
   })
 
   it("keeps arcs exact and counter-clockwise", () => {

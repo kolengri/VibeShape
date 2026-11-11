@@ -38,7 +38,8 @@ Identical model and settings produce identical files. Files are named `<project>
 
 Views come from exact OCCT hidden-line removal, not from the display mesh. Straight edges, circles
 and arcs keep their exact geometry; other curves are sampled within 0.01 mm. Hidden edges are
-dashed only where no visible edge covers them, including partial overlaps. Mesh parts cannot be
+dashed only where no visible edge covers them, including partial overlaps; sampled curves count as
+covered within 0.02 mm. Mesh parts cannot be
 drawn: **All parts** draws the solid parts and skips meshes, and the Part choice stays available
 whenever the model contains mesh parts.
 

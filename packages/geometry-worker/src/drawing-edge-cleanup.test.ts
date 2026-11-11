@@ -9,6 +9,15 @@ const edge = (visibility: DrawingEdge["visibility"], curve: DrawingCurve): Drawi
   edgeClass: "sharp",
   curve,
 })
+/** Samples of the ellipse x = 60 cos t, y = 25 sin t over a fraction of a quarter turn. */
+function ellipsePoint(angle: number, offset = 0): Point {
+  return [(60 + offset) * Math.cos(angle), (25 + offset) * Math.sin(angle)]
+}
+function quarterEllipse(count: number, from = 0, to = 1, offset = 0): Point[] {
+  return Array.from({ length: count }, (_, index) =>
+    ellipsePoint(((from + ((to - from) * index) / (count - 1)) * Math.PI) / 2, offset),
+  )
+}
 const hiddenOf = (edges: readonly DrawingEdge[]) =>
   edges.filter(({ visibility }) => visibility === "hidden").map(({ curve }) => curve)
 
@@ -127,35 +136,43 @@ describe("hidden edge coverage", () => {
     expect(hiddenOf(result)).toEqual([])
   })
 
-  it("keeps polylines unless an identical polyline covers them", () => {
-    const points: Point[] = [
-      [0, 0],
-      [1, 1],
-      [2, 0],
-    ]
+  it("drops a differently sampled hidden twin of a visible free-form curve", () => {
+    const visible = quarterEllipse(154)
+    const stub = quarterEllipse(40, 0, 0.3)
     const result = suppressCoincidentEdges([
-      edge("visible", { kind: "polyline", points }),
-      edge("visible", line([0, 0], [1, 1])),
-      edge("hidden", { kind: "polyline", points: [...points].reverse() }),
-      edge("hidden", {
-        kind: "polyline",
-        points: [
-          [0, 0],
-          [1, 1],
-          [3, 0],
-        ],
-      }),
+      edge("visible", { kind: "polyline", points: visible }),
+      edge("visible", { kind: "polyline", points: stub }),
+      edge("hidden", { kind: "polyline", points: quarterEllipse(114) }),
+      edge("hidden", { kind: "polyline", points: quarterEllipse(66).reverse() }),
     ])
-    expect(hiddenOf(result)).toEqual([
-      {
-        kind: "polyline",
-        points: [
-          [0, 0],
-          [1, 1],
-          [3, 0],
-        ],
-      },
+    expect(hiddenOf(result)).toEqual([])
+    expect(result.filter(({ visibility }) => visibility === "visible")).toHaveLength(1)
+  })
+
+  it("keeps the uncovered run of a partly hidden free-form curve and offset curves", () => {
+    const result = suppressCoincidentEdges([
+      edge("visible", { kind: "polyline", points: quarterEllipse(90, 0, 0.5) }),
+      edge("hidden", { kind: "polyline", points: quarterEllipse(120) }),
+      edge("hidden", { kind: "polyline", points: quarterEllipse(60, 0, 0.5, 0.1) }),
     ])
+    const hidden = hiddenOf(result)
+    expect(hidden).toHaveLength(2)
+    const [tail, offset] = hidden
+    if (tail?.kind !== "polyline" || offset?.kind !== "polyline")
+      throw new Error("Expected the uncovered tail and the offset curve as polylines.")
+    const joint = ellipsePoint(Math.PI / 4)
+    const first = tail.points[0] ?? [Number.NaN, Number.NaN]
+    expect(Math.hypot(first[0] - joint[0], first[1] - joint[1])).toBeLessThan(0.5)
+    expect(tail.points.at(-1)).toEqual(ellipsePoint(Math.PI / 2))
+    expect(offset.points).toHaveLength(60)
+  })
+
+  it("covers a short tilted segment lying on a long visible line", () => {
+    const result = suppressCoincidentEdges([
+      edge("visible", line([0, 0], [1000, 0])),
+      edge("hidden", line([500, 0], [500.01, 2e-8])),
+    ])
+    expect(hiddenOf(result)).toEqual([])
   })
 
   it("straightens collinear samples and keeps genuine curves", () => {
