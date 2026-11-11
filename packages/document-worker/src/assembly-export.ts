@@ -70,7 +70,7 @@ async function exportStep(
 ): Promise<AssemblyExportResult> {
   if (selected.some(({ representation }) => representation !== "exact-solid"))
     throw new Error(
-      "STEP export requires exact assembly sources; triangle meshes support STL or 3MF.",
+      "STEP export requires exact assembly sources; triangle meshes support 3MF, STL, GLB or OBJ.",
     )
   if (!engine.exportAssemblyStep) throw new Error("Exact assembly STEP export is unavailable.")
   return {

@@ -594,7 +594,9 @@ export class DocumentWorkerRuntime {
 
       const hasMeshes = exportIncludesMesh(state, features)
       if (hasMeshes && request.format === "step")
-        throw new Error("STEP export requires exact solids. Export mesh parts as STL or 3MF.")
+        throw new Error(
+          "STEP export requires exact solids. Export mesh parts as 3MF, STL, GLB or OBJ.",
+        )
       const textureOptions = textureExportOptions(request)
       const exported = await writeDocumentExport(
         this.engine,

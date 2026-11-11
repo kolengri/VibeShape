@@ -4,10 +4,12 @@ import {
   type AssemblyBomAuthority,
   type AssemblyBomCsvLabels,
   assemblySourceAppearances,
+  CSV_UTF8_BOM,
   createAssemblyBom,
   csvField,
   formatAssemblyBomCsv,
   solidMassGrams,
+  spreadsheetText,
 } from "./assembly-bom"
 import type { PartAppearance } from "./part-appearance"
 
@@ -36,6 +38,8 @@ const assembly: AssemblyBomAuthority = {
     { definitionId: pin },
   ],
 }
+const pinDefinition = { id: pin, name: "Pin", sources: [partSource("p3")] }
+const pinInstance = { definitionId: pin }
 const occurrences = [
   { instanceId: "i2", definitionId: bracket, sourceIndex: 0, volumeMm3: 1000 },
   { instanceId: "i2", definitionId: bracket, sourceIndex: 1, volumeMm3: 500 },
@@ -48,6 +52,22 @@ const appearances = [
   { partId: "p2", appearance: { presetId: "abs-white" } },
   { partId: "p3", appearance: { presetId: null, color: "#445566" } },
 ] as unknown as PartAppearance[]
+
+const labels: AssemblyBomCsvLabels = {
+  headers: {
+    item: "Item",
+    name: "Part",
+    quantity: "Qty",
+    appearance: "Appearance",
+    material: "Material",
+    density: "Density (kg/m3)",
+    unitVolume: "Unit volume (mm3)",
+    unitMass: "Unit mass (g)",
+    totalMass: "Total mass (g)",
+  },
+  appearance: (ids) => ids.join("; "),
+  material: (id) => id ?? "",
+}
 
 describe("assembly bill of materials", () => {
   it("counts every occurrence of each used definition and skips unused definitions", () => {
@@ -103,21 +123,6 @@ describe("assembly bill of materials", () => {
   })
 
   it("formats a complete CSV with CRLF records and empty unknown values", () => {
-    const labels: AssemblyBomCsvLabels = {
-      headers: {
-        item: "Item",
-        name: "Part",
-        quantity: "Qty",
-        appearance: "Appearance",
-        material: "Material",
-        density: "Density (kg/m3)",
-        unitVolume: "Unit volume (mm3)",
-        unitMass: "Unit mass (g)",
-        totalMass: "Total mass (g)",
-      },
-      appearance: (ids) => ids.join("; "),
-      material: (id) => id ?? "",
-    }
     const csv = formatAssemblyBomCsv(
       createAssemblyBom({
         assembly,
@@ -127,7 +132,8 @@ describe("assembly bill of materials", () => {
       }),
       labels,
     )
-    expect(csv).toBe(
+    expect(csv.startsWith(CSV_UTF8_BOM)).toBe(true)
+    expect(csv.slice(CSV_UTF8_BOM.length)).toBe(
       [
         "Item,Part,Qty,Appearance,Material,Density (kg/m3),Unit volume (mm3),Unit mass (g),Total mass (g)",
         '1,"Bracket, ""left""\nrev B",1,abs-white; brass,,,1500,,',
@@ -135,6 +141,40 @@ describe("assembly bill of materials", () => {
         "",
       ].join("\r\n"),
     )
+  })
+
+  it.each([
+    ["=", '=HYPERLINK("http://example.invalid","x")'],
+    ["+", "+1-2"],
+    ["-", "-2+3"],
+    ["@", "@SUM(A1)"],
+    ["tab", "\t=1+1"],
+    ["CR", "\r=1+1"],
+  ])("prefixes an apostrophe to free text starting with %s", (_prefix, value) => {
+    expect(spreadsheetText(value)).toBe(`'${value}`)
+    const csv = formatAssemblyBomCsv(
+      createAssemblyBom({
+        assembly: { definitions: [{ ...pinDefinition, name: value }], instances: [pinInstance] },
+        occurrences,
+      }),
+      { ...labels, appearance: () => value, material: () => value },
+    )
+    const record = csv.split("\r\n")[1] ?? ""
+    expect(record.startsWith(`1,${csvField(`'${value}`)},1,`)).toBe(true)
+    expect(record.split(`${csvField(`'${value}`)}`)).toHaveLength(4)
+  })
+
+  it("leaves ordinary text and numeric columns unchanged", () => {
+    expect(spreadsheetText("Bracket - left")).toBe("Bracket - left")
+    const csv = formatAssemblyBomCsv(
+      createAssemblyBom({
+        assembly: { definitions: [pinDefinition], instances: [pinInstance] },
+        occurrences,
+        materials: { [pin]: "steel-304" },
+      }),
+      labels,
+    )
+    expect(csv.split("\r\n")[1]).toBe("1,Pin,1,,steel-304,7900,100,0.79,0.79")
   })
 
   it("resolves live part appearance for frozen part sources", () => {

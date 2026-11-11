@@ -12,6 +12,7 @@ import {
 import type { AppearancePresetId, PartAppearance } from "@vibeshape/domain/part-appearance"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { AssemblyInspection } from "@vibeshape/protocol"
+import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import {
   Dialog,
@@ -26,7 +27,7 @@ import {
 } from "@vibeshape/ui/components/dialog"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { downloadAssemblyMotion } from "./assembly-motion-export"
 
 type MaterialAssignments = Readonly<Partial<Record<string, StructuralMaterialPresetId>>>
@@ -35,10 +36,15 @@ type BomProps = {
   partAppearances: readonly PartAppearance[]
   inspection: AssemblyInspection | null
   pending: boolean
+  /** Inspection failure reason; volumes, and therefore mass, are unknown while it is set. */
+  diagnostic: string | null
   documentName: string
 }
 
-function bomRows(props: BomProps, materials: MaterialAssignments) {
+function bomRows(
+  props: Pick<BomProps, "assembly" | "partAppearances" | "inspection">,
+  materials: MaterialAssignments,
+) {
   return createAssemblyBom({
     assembly: props.assembly,
     partAppearances: props.partAppearances,
@@ -177,16 +183,76 @@ function BomTable({
   )
 }
 
+type BomContentProps = BomProps & {
+  materials: MaterialAssignments
+  onMaterialChange: (definitionId: string, materialId: StructuralMaterialPresetId | null) => void
+}
+
+/** Mounted only while the dialog is open, so idle Assembly panel renders derive no BOM rows. */
+function AssemblyBomContent(props: BomContentProps) {
+  const t = useTranslations("app.assembly")
+  const labels = useBomLabels()
+  const { assembly, partAppearances, inspection, materials } = props
+  const rows = useMemo(
+    () => bomRows({ assembly, partAppearances, inspection }, materials),
+    [assembly, partAppearances, inspection, materials],
+  )
+  const measuring = props.pending && inspection === null
+  return (
+    <DialogContent className="max-w-4xl" closeLabel={t("bomClose")}>
+      <DialogHeader>
+        <DialogTitle>{t("bomTitle")}</DialogTitle>
+        <DialogDescription>{t("bomDescription")}</DialogDescription>
+      </DialogHeader>
+      <DialogBody className="content-start gap-3">
+        {measuring ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            {t("bomMeasuring")}
+          </p>
+        ) : null}
+        {/* A failed inspection leaves volumes unknown; say why instead of implying mesh sources. */}
+        {props.diagnostic && !props.pending ? (
+          <Alert>{t("bomVolumesUnavailable", { reason: props.diagnostic })}</Alert>
+        ) : null}
+        {rows.length ? (
+          <BomTable rows={rows} labels={labels} onMaterialChange={props.onMaterialChange} />
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("bomEmpty")}</p>
+        )}
+        <p className="text-xs text-muted-foreground">{t("bomMassNote")}</p>
+      </DialogBody>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button type="button" variant="outline">
+            {t("bomClose")}
+          </Button>
+        </DialogClose>
+        <Button
+          type="button"
+          disabled={rows.length === 0}
+          onClick={() =>
+            downloadAssemblyMotion(
+              `${props.documentName} BOM`,
+              "csv",
+              formatAssemblyBomCsv(rows, labels),
+            )
+          }
+        >
+          {t("bomDownloadCsv")}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  )
+}
+
 /**
  * Read-only bill of materials. Density comes only from an explicit catalog material choice;
  * appearance presets are display data and never imply mass.
  */
 export function AssemblyBom(props: BomProps) {
   const t = useTranslations("app.assembly")
-  const labels = useBomLabels()
+  const [open, setOpen] = useState(false)
   const [materials, setMaterials] = useState<MaterialAssignments>({})
-  const rows = bomRows(props, materials)
-  const measuring = props.pending && props.inspection === null
   const setMaterial = (definitionId: string, materialId: StructuralMaterialPresetId | null) =>
     setMaterials((current) => {
       const { [definitionId]: _previous, ...rest } = current
@@ -197,51 +263,15 @@ export function AssemblyBom(props: BomProps) {
       <h3 id="assembly-bom-heading" className="text-xs font-medium">
         {t("bom")}
       </h3>
-      <Dialog>
+      <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <Button type="button" variant="outline" size="sm" className="justify-self-start">
             {t("bomOpen")}
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-4xl" closeLabel={t("bomClose")}>
-          <DialogHeader>
-            <DialogTitle>{t("bomTitle")}</DialogTitle>
-            <DialogDescription>{t("bomDescription")}</DialogDescription>
-          </DialogHeader>
-          <DialogBody className="content-start gap-3">
-            {measuring ? (
-              <p role="status" className="text-xs text-muted-foreground">
-                {t("bomMeasuring")}
-              </p>
-            ) : null}
-            {rows.length ? (
-              <BomTable rows={rows} labels={labels} onMaterialChange={setMaterial} />
-            ) : (
-              <p className="text-sm text-muted-foreground">{t("bomEmpty")}</p>
-            )}
-            <p className="text-xs text-muted-foreground">{t("bomMassNote")}</p>
-          </DialogBody>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                {t("bomClose")}
-              </Button>
-            </DialogClose>
-            <Button
-              type="button"
-              disabled={rows.length === 0}
-              onClick={() =>
-                downloadAssemblyMotion(
-                  `${props.documentName} BOM`,
-                  "csv",
-                  formatAssemblyBomCsv(rows, labels),
-                )
-              }
-            >
-              {t("bomDownloadCsv")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+        {open ? (
+          <AssemblyBomContent {...props} materials={materials} onMaterialChange={setMaterial} />
+        ) : null}
       </Dialog>
     </section>
   )

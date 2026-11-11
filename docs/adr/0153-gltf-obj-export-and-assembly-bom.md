@@ -59,7 +59,11 @@ the structural material catalog used by lightweighting.
   displayed as "—" or `null`. Catalog densities describe solid material and do not account for
   print infill.
 - CSV follows RFC 4180: CRLF records, quoting of fields containing commas, quotes, CR or LF, and
-  doubled quotes. Numbers use a dot decimal separator and fixed units.
+  doubled quotes. Numbers use a dot decimal separator and fixed units. The file starts with a UTF-8
+  byte-order mark so spreadsheet applications decode unit symbols and non-ASCII names. Free-text
+  cells (part name, appearance, material) that start with `=`, `+`, `-`, `@`, tab or CR get a
+  leading apostrophe before quoting, because spreadsheets evaluate such cells as formulas even when
+  quoted; numeric columns are never altered.
 - The assembly workspace shows the BOM in a dialog with an accessible table and per-row material
   selection. Material choices are view state and are not persisted in the document.
 - MCP adds the read-only `model_assembly_bom` tool over the same domain function and exact
@@ -75,3 +79,12 @@ the structural material catalog used by lightweighting.
 - BOM mass requires an explicit material choice each session. Persisting a physical material per
   Part would require a document schema change and is deferred.
 - IGES remains blocked by the missing IGES module in the bundled WASM build.
+- The geometry engine's `exportDocument` input keeps its `Exclude<GeometryExportFormat, "3mf">`
+  format type, which now nominally admits `glb`/`obj`. The worker routes those formats before the
+  kernel call, and `engine.ts` is content-hash pinned by the unit-test cache policy, so narrowing
+  the type for this latent issue is deferred to a change that already revises that file.
+- `DOCUMENT_PROTOCOL_VERSION` is unchanged: the new export formats, export-body appearance,
+  assembly source appearances and occurrence volume are additive optional fields, and the browser,
+  document worker and geometry worker ship in one bundle.
+- Older builds that receive a `glb`/`obj` preference or request reject it through their existing
+  schemas; they cannot be changed retroactively.

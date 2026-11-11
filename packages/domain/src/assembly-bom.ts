@@ -165,6 +165,18 @@ export function csvField(value: string) {
   return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value
 }
 
+/**
+ * Neutralizes spreadsheet formula injection in a free-text cell. Excel and LibreOffice evaluate a
+ * cell starting with `=`, `+`, `-` or `@` (and tab/CR variants) even when it is quoted, so such text
+ * gets a leading apostrophe. Apply it only to text columns; numeric columns stay machine-readable.
+ */
+export function spreadsheetText(value: string) {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+}
+
+/** UTF-8 byte-order mark so Excel on Windows decodes non-ASCII names and unit symbols. */
+export const CSV_UTF8_BOM = "\uFEFF"
+
 /** Serializes records as RFC 4180 CSV with CRLF record separators and a trailing CRLF. */
 export function formatCsv(records: readonly (readonly string[])[]) {
   return records.map((record) => `${record.map(csvField).join(",")}\r\n`).join("")
@@ -194,14 +206,15 @@ export type AssemblyBomCsvLabels = Readonly<{
 
 /**
  * Machine-readable BOM: numbers use a dot decimal separator and fixed SI-derived units
- * (kg/m^3, mm^3, g); unknown values stay empty rather than estimated.
+ * (kg/m^3, mm^3, g); unknown values stay empty rather than estimated. The text starts with a
+ * UTF-8 BOM and free-text cells are guarded against formula evaluation.
  */
 export function formatAssemblyBomCsv(
   rows: readonly AssemblyBomRow[],
   labels: AssemblyBomCsvLabels,
 ) {
   const { headers } = labels
-  return formatCsv([
+  return `${CSV_UTF8_BOM}${formatCsv([
     [
       headers.item,
       headers.name,
@@ -215,14 +228,14 @@ export function formatAssemblyBomCsv(
     ],
     ...rows.map((row) => [
       String(row.item),
-      row.name,
+      spreadsheetText(row.name),
       String(row.quantity),
-      labels.appearance(row.appearancePresetIds),
-      labels.material(row.materialId),
+      spreadsheetText(labels.appearance(row.appearancePresetIds)),
+      spreadsheetText(labels.material(row.materialId)),
       csvNumber(row.densityKgM3, 3),
       csvNumber(row.unitVolumeMm3, 3),
       csvNumber(row.unitMassG, 3),
       csvNumber(row.totalMassG, 3),
     ]),
-  ])
+  ])}`
 }

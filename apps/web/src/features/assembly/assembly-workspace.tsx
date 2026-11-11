@@ -179,6 +179,7 @@ function AssemblyActions({ view }: { view: AssemblyWorkspaceView }) {
         partAppearances={view.partAppearances}
         inspection={view.inspection.inspection}
         pending={view.inspection.pending}
+        diagnostic={view.inspection.diagnostic}
         documentName={view.documentName}
       />
     </>

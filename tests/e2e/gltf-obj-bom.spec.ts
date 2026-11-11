@@ -159,8 +159,9 @@ test("lists assembly BOM quantities, refuses unknown mass, exports CSV and place
   await expect(row.getByRole("cell").nth(4)).toHaveText(/^\d+(\.\d+)? g$/)
   const csvDownload = page.waitForEvent("download")
   await bom.getByRole("button", { name: "Download CSV", exact: true }).click()
-  const csv = strFromU8(await downloadBytes(csvDownload))
-  const records = csv.split("\r\n")
+  const csvBytes = await downloadBytes(csvDownload)
+  expect([...csvBytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+  const records = strFromU8(csvBytes.subarray(3)).split("\r\n")
   expect(records[0]).toBe(
     "Item,Part,Qty,Appearance,Material,Density (kg/m³),Unit volume (mm³),Unit mass (g),Total mass (g)",
   )

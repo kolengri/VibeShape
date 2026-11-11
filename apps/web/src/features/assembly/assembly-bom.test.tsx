@@ -52,6 +52,7 @@ function renderBom(props: Partial<Parameters<typeof AssemblyBom>[0]> = {}) {
         partAppearances={appearances}
         inspection={inspection}
         pending={false}
+        diagnostic={null}
         documentName="Fixture"
         {...props}
       />
@@ -110,12 +111,47 @@ describe("assembly bill of materials view", () => {
     expect(download).toHaveBeenCalledTimes(1)
     const [name, suffix, csv] = download.mock.calls[0] ?? []
     expect([name, suffix]).toEqual(["Fixture BOM", "csv"])
-    expect(String(csv).split("\r\n")).toEqual([
+    expect(String(csv).startsWith("\uFEFF")).toBe(true)
+    expect(String(csv).slice(1).split("\r\n")).toEqual([
       "Item,Part,Qty,Appearance,Material,Density (kg/m³),Unit volume (mm³),Unit mass (g),Total mass (g)",
       '1,"Plate, ""A""",1,Brass,,,2000,,',
       "2,Bolt,2,,Stainless steel 304 — Outokumpu,7900,100,0.79,1.58",
       "",
     ])
+  })
+
+  it("explains a failed inspection instead of implying mesh sources", async () => {
+    const user = userEvent.setup()
+    renderBom({ inspection: null, diagnostic: "Frozen source unavailable" })
+    await user.click(screen.getByRole("button", { name: "Show bill of materials" }))
+    expect(
+      screen.getByText(
+        "Exact volumes are unavailable, so mass cannot be shown: Frozen source unavailable",
+      ),
+    ).toBeTruthy()
+  })
+
+  it("derives no rows until the dialog opens", async () => {
+    const user = userEvent.setup()
+    const assemblyRead = vi.fn(() => assembly.definitions)
+    const observed = { instances: assembly.instances } as AssemblyBomAuthority
+    Object.defineProperty(observed, "definitions", { get: assemblyRead })
+    const view = renderBom({ assembly: observed })
+    view.rerender(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <AssemblyBom
+          assembly={observed}
+          partAppearances={appearances}
+          inspection={inspection}
+          pending={false}
+          diagnostic={null}
+          documentName="Fixture"
+        />
+      </I18nProvider>,
+    )
+    expect(assemblyRead).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "Show bill of materials" }))
+    expect(assemblyRead).toHaveBeenCalled()
   })
 
   it("shows a measuring status before exact volumes arrive and an empty state without instances", async () => {

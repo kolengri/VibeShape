@@ -357,7 +357,7 @@
         "description": "Includes hidden parts. 3MF keeps body names and relative positions."
       },
       "textureExportHint": "STL and 3MF include surface relief. STEP exports the original CAD geometry.",
-      "meshStepError": "STEP export requires exact solids. Export mesh parts as STL or 3MF.",
+      "meshStepError": "STEP export requires exact solids. Export mesh parts as 3MF, STL, GLB or OBJ.",
       "meshQuality": {
         "label": "Mesh quality",
         "default": "Default",
@@ -3016,7 +3016,7 @@
       "exportScope": "Instances to export",
       "exportAll": "All assembly instances",
       "exportGeometryExplanation": "STEP preserves separate exact solids. STL contains the selected triangles in one file; 3MF retains separate geometry objects. Coincident or interfering instances are not fused.",
-      "exportMeshStep": "STEP is unavailable for selections containing triangle meshes. Choose STL or 3MF, or select an exact instance.",
+      "exportMeshStep": "STEP is unavailable for selections containing triangle meshes. Choose 3MF, STL, GLB or OBJ, or select an exact instance.",
       "exportFormat": {
         "step": "Download STEP",
         "stl": "Download STL",
@@ -3181,6 +3181,7 @@
       "bomMass": "{value, number, :: .## } g",
       "bomUnknown": "—",
       "bomMeasuring": "Measuring exact volumes…",
+      "bomVolumesUnavailable": "Exact volumes are unavailable, so mass cannot be shown: {reason}",
       "bomEmpty": "The assembly has no instances to list.",
       "bomMassNote": "Mass is shown only when you choose a material and every source is an exact solid. It is the solid-body mass at the catalog density; appearance presets are display-only, and printed parts with partial infill weigh less. Material choices are not saved with the project.",
       "bomDownloadCsv": "Download CSV",
