@@ -1683,6 +1683,73 @@ export const ScaleIcon = /* @__PURE__ */ coloredIcon("scale", (instanceId) => (
   </>
 ))
 
+export const ThickenIcon = /* @__PURE__ */ coloredIcon("thicken", (instanceId) => (
+  <>
+    <defs>
+      <linearGradient
+        id={`${instanceId}-frosted-thicken-light-material-front`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
+        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
+      </linearGradient>
+      <linearGradient
+        id={`${instanceId}-frosted-thicken-light-material-side`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-side-start, #7eacd3)" />
+        <stop offset="1" stopColor="var(--icon-material-side-end, #5385b5)" />
+      </linearGradient>
+    </defs>
+    <g transform="scale(4)">
+      <g data-layer="guide">
+        <path
+          d="M4 33V47"
+          fill="none"
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeDasharray="3.5 3.5"
+        />
+      </g>
+      <g opacity=".91" data-layer="material">
+        <path
+          d="M8 32Q26 18 44 30V46Q26 34 8 48Z"
+          fill={`url(#${instanceId}-frosted-thicken-light-material-front)`}
+          stroke="none"
+        />
+        <path
+          d="M44 30 56 20V36L44 46Z"
+          fill={`url(#${instanceId}-frosted-thicken-light-material-side)`}
+          stroke="none"
+        />
+      </g>
+      <g data-layer="action">
+        <path
+          d="M8 32Q26 18 44 30L56 20Q38 8 20 22Z"
+          fill="var(--icon-action-fill, #f1bc77)"
+          stroke="none"
+        />
+        <path
+          d="M8 32Q26 18 44 30"
+          fill="none"
+          stroke="var(--icon-action-stroke, #cd7b24)"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+        />
+      </g>
+    </g>
+  </>
+))
+
 export const ThreadIcon = /* @__PURE__ */ coloredIcon("thread", (instanceId) => (
   <>
     <defs>

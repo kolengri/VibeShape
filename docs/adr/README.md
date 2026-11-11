@@ -185,3 +185,4 @@ When a decision changes, do not rewrite its ADR retroactively. Create a new reco
 | [0156](0156-path-pattern.md) | Accepted | Pattern v3 along an exact sketch path with arc-length spacing and a planar rotation-minimizing follow frame |
 | [0157](0157-revolve-end-conditions-and-per-profile-outputs.md) | Accepted | Revolve v8 symmetric and two-sided angles, up-to-body/up-to-face endpoints and per-profile New outputs |
 | [0158](0158-interpolating-splines-and-model-spline-references.md) | Accepted | Interpolating spline chains with solver-enforced G1 joins and fitted Bezier-chain references to planar non-analytical model edges |
+| [0159](0159-thicken-and-curved-face-offset.md) | Accepted | Thicken connected faces into a solid and Press Pull v2 curved-face offset with an attachment rule |

@@ -207,6 +207,8 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-shell",
   "create-draft",
   "edit-draft",
+  "create-thicken",
+  "edit-thicken",
   "create-scale",
   "edit-scale",
   "create-press-pull",
@@ -1906,6 +1908,7 @@ export type EditorWorkspaceActions = Readonly<{
   placePart?: (partId: PartId) => void
   shellPart?: (partId: PartId) => void
   draftPart?: (partId: PartId) => void
+  thickenPart?: (partId: PartId) => void
   scalePart?: (partId: PartId) => void
   splitPart?: (partId: PartId) => void
   patternPart?: (partId: PartId) => void

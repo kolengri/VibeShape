@@ -82,8 +82,11 @@ The first product viewport displays terminal authoritative meshes and selectable
 
 The viewport context menu and Properties button provide selection actions, exact body properties,
 selected-part STL/3MF export, dependency-aware deletion, Browser/Timeline reveal, and saved visual
-materials with custom colors. Planar Press Pull is a registered, editable exact operation (Q), with
-signed extend/cut distance and ordinary preview/Undo. Curved-face direct offset is not implemented.
+materials with custom colors. Press Pull is a registered, editable exact operation (Q), with signed
+extend/cut distance and ordinary preview/Undo. Version 2 also moves curved faces along their normals
+when its neighbours are planar faces at right angles (slanted caps only on an isolated body) and stay
+attached; chamfers, fillets and other curved neighbours fail closed. See
+[Press Pull](press-pull.md).
 See [selection actions](ux-flows.md#viewport-selection-actions).
 
 ## Sketcher
@@ -228,11 +231,13 @@ paths with corners are not accepted
 | Shell |  | ✓ |  |
 | Draft faces about a neutral plane |  | ✓ |  |
 | Uniform scale |  | ✓ |  |
+| Thicken faces into a solid (new/add/remove) |  | ✓ |  |
+| Press Pull curved faces with perpendicular planar neighbours |  | ✓ |  |
 | Sweep/pipe |  | ✓ |  |
 | Coil/helix and helical sweep |  | ✓ |  |
 | Loft |  | ✓ |  |
 | Split, delete/replace face, non-uniform scale |  |  | ✓ |
-| Direct face move/delete |  |  | ✓ |
+| General direct face move with neighbour extension, face delete |  |  | ✓ |
 | Surface modeling |  |  | ✓ |
 
 Draft tapers 1–256 body-bound faces of one exact solid about an origin, Datum, explicit or same-body
@@ -242,6 +247,15 @@ to 1000 about its bounding-box center, the origin or an explicit point. Delete/r
 non-uniform scale are blocked: the pinned OpenCascade WASM build lacks the face-removal modules and
 `BRepBuilderAPI_GTransform`. See [Draft](draft.md), [Scale](scale.md) and
 [ADR-0152](../adr/0152-draft-and-uniform-scale-features.md).
+
+Thicken builds a solid of uniform thickness from 1–256 connected body-bound faces, outward, inward or
+split across both sides, as a new body or added to or removed from the part; a thickness that reaches
+a concave curvature radius fails, and a closed selection (no free boundary edge) is rejected in favour
+of Shell. Press Pull version 2 moves a curved face along its normals when its neighbours are perpendicular planes and
+Boolean history proves it stayed attached; planar faces keep version 1. A general face move whose arbitrary neighbours extend or trim is
+blocked because the build lacks `BRepOffset_MakeOffset` and `BRepAlgoAPI_Defeaturing`. See
+[Thicken](thicken.md), [Press Pull](press-pull.md) and
+[ADR-0159](../adr/0159-thicken-and-curved-face-offset.md).
 
 Shell version 2 supports open or closed cavities with expression-aware thickness and inward/outward direction. Opening faces can be toggled in the viewport or selected from the task list. Unique durable face identities survive source edits within the same exact body; missing or ambiguous identities require explicit repair. Version 1 retains strict source binding until updated. See [ADR-0076](../adr/0076-closed-shells-and-durable-opening-identity.md).
 Sweep accepts exact open lines, circular arcs, cubic Bezier curves and bounded elliptical arcs with
