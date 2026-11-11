@@ -596,6 +596,24 @@ explicit center; the worker copies the source through `gp_Trsf.SetScale` and
 operations validate one positive-volume input and result solid and release native temporaries on
 success and failure.
 
+## Thicken and curved-face offset
+
+[ADR-0159](../adr/0159-thicken-and-curved-face-offset.md) adds Thicken and Press Pull version 2.
+Thicken persists 1–256 body-bound faces, an expression-aware thickness, a side and a new/add/remove
+operation; New keeps the source body unconsumed. The geometry worker resolves the faces through the
+exact/durable body-face resolver shared with Draft, requires one edge-connected patch, and rejects an
+offset that reaches the smallest concave principal curvature radius sampled from
+`BRepAdaptor_Surface::D2`. Each signed offset slab is built from its own deep copy of the body (with
+the selected faces' body orientation restored) by `BRepOffsetAPI_MakeThickSolid`: the simple
+construction first, accepted only within an edge-tolerance bound, then the joined construction with
+every non-selected face closing the slab. Symmetric halves are fused; Add and Remove fuse or cut the
+slab with the source and must change its volume. Press Pull version 2 keeps the planar prism path and
+moves a curved face by adding or cutting the same slab, accepted only when
+`ShapeUpgrade_UnifySameDomain` reports an unchanged face count, so every neighbour stays attached.
+`BRepOffset_MakeOffset` and `BRepAlgoAPI_Defeaturing` are unbound in the pinned build, so a general
+per-face offset with arbitrary neighbour extension is unavailable. Native temporaries are released on
+success and failure.
+
 ## FDM feature family and export mesh quality
 
 Part Design owns FDM feature v1 validation, dependencies, semantic inputs, and quantity resolution. The document worker resolves saved sketch lines/support and reference planes into bounded content; the geometry worker owns exact OCCT construction and disposal. All kinds return one exact connected solid or a diagnostic, copying borrowed target geometry before Boolean operations. See [Editable FDM features](../product/fdm-tools.md) for the supported constructions and explicit limitations.
