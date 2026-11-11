@@ -5,8 +5,9 @@ import {
   helixLength,
   helixPoint,
   helixStart,
+  minimumCoilPitch,
 } from "@vibeshape/protocol"
-import { makeBox, type Shape3D, setOC } from "replicad"
+import { cast, makeBox, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, {
   type OpenCascadeInstance,
   type TopoDS_Shape,
@@ -14,7 +15,7 @@ import initializeOpenCascade, {
 import { inspectOcctBody } from "./occt-body-validation"
 import { createOcctCoil, createOcctHelicalSweep, createOcctHelixSpine } from "./occt-helix"
 import type { AnalyticalProfile } from "./occt-loft"
-import { cutOcctShapes, fuseOcctShapes } from "./occt-shapes"
+import { cutOcctShapes, fuseOcctShapes, intersectOcctShapes } from "./occt-shapes"
 
 let occt: OpenCascadeInstance
 const owned: { delete(): void }[] = []
@@ -110,6 +111,66 @@ function screw(helix: HelixContent, value: Vector, turns: number): Vector {
   ]
 }
 
+type Segment = readonly [Vector, Vector]
+function edgeSegments(shape: Shape3D): Segment[] {
+  return shape.edges.map((edge) => {
+    const [a, b] = [edge.startPoint, edge.endPoint]
+    return [
+      [a.x, a.y, a.z],
+      [b.x, b.y, b.z],
+    ]
+  })
+}
+const touches = (segment: Segment, point: Vector) =>
+  distance(segment[0], point) < 1e-6 || distance(segment[1], point) < 1e-6
+const nearAny = (point: Vector, corners: readonly Vector[]) =>
+  corners.some((corner) => distance(corner, point) < 1e-6)
+
+/** Lateral edges are split where spine edges join, which also adds short section loops there. */
+function longestUnusedEdge(segments: readonly Segment[], used: ReadonlySet<number>, point: Vector) {
+  let next = -1
+  let length = -1
+  for (const [index, segment] of segments.entries()) {
+    const candidate = distance(segment[0], segment[1])
+    if (used.has(index) || !touches(segment, point) || candidate <= length) continue
+    next = index
+    length = candidate
+  }
+  return next
+}
+
+/** Follows a start corner along its lateral edge chain to the end cap. */
+function traceCorner(segments: readonly Segment[], corner: Vector, end: readonly Vector[]) {
+  const used = new Set<number>()
+  let point = corner
+  while (!nearAny(point, end)) {
+    const index = longestUnusedEdge(segments, used, point)
+    const segment = segments[index]
+    if (!segment) throw new Error("A lateral edge chain is broken.")
+    used.add(index)
+    point = distance(segment[0], point) < 1e-6 ? segment[1] : segment[0]
+  }
+  return point
+}
+
+/**
+ * Each start-cap corner reaches the screw image of that same corner. Matching corners in order
+ * (rather than to the nearest image) also detects twists that coincide with a section symmetry.
+ */
+function expectUntwisted(shape: Shape3D, helix: HelixContent) {
+  const start = helixStart(helix)
+  const [first, last] = [...planarCaps(shape)].sort(
+    (left, right) => distance(left.centroid, start.point) - distance(right.centroid, start.point),
+  )
+  if (!first || !last) throw new Error("Expected two caps.")
+  expect(last.area).toBeCloseTo(first.area, 6)
+  const segments = edgeSegments(shape)
+  for (const corner of first.vertices)
+    expect(
+      distance(traceCorner(segments, corner, last.vertices), screw(helix, corner, helix.turns)),
+    ).toBeLessThan(1e-3)
+}
+
 describe("exact helix and Coil with installed OCCT 0.23.0", () => {
   it("matches the circular-section coil volume to pi r^2 L", () => {
     const shape = keep(createOcctCoil(occt, coil()))
@@ -131,33 +192,18 @@ describe("exact helix and Coil with installed OCCT 0.23.0", () => {
     }
   })
 
-  it("keeps a rectangular section untwisted along the whole helix", () => {
-    const turns = 6.25
-    const helix = { ...zHelix, turns, startAngle: 0.4 }
-    const shape = keep(
-      createOcctCoil(occt, coil(helix, { kind: "rectangular", width: 3, height: 1.5 })),
-    )
-    expect(metrics(shape)).toMatchObject({ valid: true, solidCount: 1 })
-    const caps = planarCaps(shape)
-    expect(caps).toHaveLength(2)
-    const start = helixStart({ ...zHelix, ...helix })
-    const [first, last] = [...caps].sort(
-      (left, right) => distance(left.centroid, start.point) - distance(right.centroid, start.point),
-    )
-    if (!first || !last) throw new Error("Expected two caps.")
-    expect(first.area).toBeCloseTo(4.5, 6)
-    expect(last.area).toBeCloseTo(4.5, 6)
-    expect(distance(first.centroid, start.point)).toBeLessThan(1e-6)
-    expect(
-      distance(last.centroid, screw({ ...zHelix, ...helix }, start.point, turns)),
-    ).toBeLessThan(1e-3)
-    // Each end vertex is the screw image of one start vertex: no section twist.
-    for (const vertex of first.vertices) {
-      const image = screw({ ...zHelix, ...helix }, vertex, turns)
-      const nearest = Math.min(...last.vertices.map((candidate) => distance(candidate, image)))
-      expect(nearest).toBeLessThan(1e-3)
-    }
-  })
+  it.each(["right", "left"] as const)(
+    "keeps a %s-handed rectangular section untwisted, corner by corner",
+    (handedness) => {
+      const helix = { ...zHelix, handedness, turns: 6.25, startAngle: 0.4 }
+      const shape = keep(
+        createOcctCoil(occt, coil(helix, { kind: "rectangular", width: 3, height: 1.5 })),
+      )
+      expect(metrics(shape)).toMatchObject({ valid: true, solidCount: 1 })
+      expect(planarCaps(shape)[0]?.area).toBeCloseTo(4.5, 6)
+      expectUntwisted(shape, helix)
+    },
+  )
 
   it("orients arbitrary datum axes and both handednesses with exact volume", () => {
     const tilted = Math.SQRT1_2
@@ -210,12 +256,30 @@ describe("exact helix and Coil with installed OCCT 0.23.0", () => {
     expect(() =>
       createOcctCoil(occt, coil({ radius: 1 }, { kind: "circular", diameter: 2 })),
     ).toThrow("must not reach the helix axis")
+    // Sections near the axis climb faster than s / cos(lead angle): exact meridian reproductions.
+    const wide = { kind: "rectangular", width: 8, height: 2 } as const
+    expect(() => createOcctCoil(occt, coil({ radius: 5, pitch: 2.02 }, wide))).toThrow(
+      "Adjacent coil turns would intersect",
+    )
+    expect(
+      metrics(keep(createOcctCoil(occt, coil({ radius: 5, pitch: 2.05 }, wide)))),
+    ).toMatchObject({ valid: true, solidCount: 1 })
+    expect(() =>
+      createOcctCoil(
+        occt,
+        coil({ radius: 1, pitch: 1.994, turns: 2 }, { kind: "circular", diameter: 1.9 }),
+      ),
+    ).toThrow("Adjacent coil turns would intersect")
   })
 })
 
 const segmentId = (value: number) => `018f0000-0000-7000-8000-${String(value).padStart(12, "0")}`
 /** A circle profile of radius `r` whose plane contains the helix start normal to its tangent. */
-function startProfile(helix: HelixContent, shape: "circle" | "square", size: number) {
+function startProfile(
+  helix: HelixContent,
+  shape: "circle" | "square" | "triangle" | "wide",
+  size: number,
+) {
   const start = helixStart(helix)
   const normal = start.tangent
   const xAxis: Vector = [-start.frame.radial[0], -start.frame.radial[1], -start.frame.radial[2]]
@@ -242,19 +306,34 @@ function startProfile(helix: HelixContent, shape: "circle" | "square", size: num
       },
       holes: [],
     } as unknown as AnalyticalProfile
-  const points: [number, number][] = [
-    [-size, -size],
-    [size, -size],
-    [size, size],
-    [-size, size],
-  ]
+  // Profile x is the inward principal normal and y the binormal; "wide" is 8 × 2 (x × y).
+  const points: [number, number][] =
+    shape === "triangle"
+      ? [
+          [-size, -size],
+          [size, -size],
+          [-size, size],
+        ]
+      : shape === "wide"
+        ? [
+            [-4, -1],
+            [4, -1],
+            [4, 1],
+            [-4, 1],
+          ]
+        : [
+            [-size, -size],
+            [size, -size],
+            [size, size],
+            [-size, size],
+          ]
   const segments = points.map((first, index) => ({
     entityId: segmentId(index + 1),
     type: "line" as const,
     startPointId: segmentId(index + 10),
-    endPointId: segmentId(((index + 1) % 4) + 10),
+    endPointId: segmentId(((index + 1) % points.length) + 10),
     start: first,
-    end: points[(index + 1) % 4] as [number, number],
+    end: points[(index + 1) % points.length] as [number, number],
   }))
   return {
     sketchId: segmentId(99),
@@ -265,7 +344,7 @@ function startProfile(helix: HelixContent, shape: "circle" | "square", size: num
 }
 
 describe("helical Sweep v2 with installed OCCT 0.23.0", () => {
-  it("matches the equivalent coil volume and keeps the section untwisted", () => {
+  it("matches the equivalent coil volume", () => {
     const helix = { ...zHelix, turns: 2.5 }
     const sweep = keep(
       createOcctHelicalSweep(occt, {
@@ -279,24 +358,22 @@ describe("helical Sweep v2 with installed OCCT 0.23.0", () => {
     expect(Math.abs(sweepMetrics.volume - metrics(reference).volume)).toBeLessThan(
       1e-4 * sweepMetrics.volume,
     )
-    const square = keep(
-      createOcctHelicalSweep(occt, { profile: startProfile(helix, "square", 1) as never, helix }),
-    )
-    const caps = planarCaps(square)
-    expect(caps).toHaveLength(2)
-    const start = helixStart(helix)
-    const [first, last] = [...caps].sort(
-      (left, right) => distance(left.centroid, start.point) - distance(right.centroid, start.point),
-    )
-    if (!first || !last) throw new Error("Expected two caps.")
-    expect(last.area).toBeCloseTo(first.area, 6)
-    for (const vertex of first.vertices) {
-      const image = screw(helix, vertex, helix.turns)
-      expect(
-        Math.min(...last.vertices.map((candidate) => distance(candidate, image))),
-      ).toBeLessThan(1e-3)
-    }
   })
+
+  it.each(["right", "left"] as const)(
+    "keeps an asymmetric triangle untwisted along a %s-handed helix",
+    (handedness) => {
+      const helix = { ...zHelix, handedness, turns: 6.25, startAngle: 0.4 }
+      const triangle = keep(
+        createOcctHelicalSweep(occt, {
+          profile: startProfile(helix, "triangle", 1) as never,
+          helix,
+        }),
+      )
+      expect(metrics(triangle)).toMatchObject({ valid: true, solidCount: 1 })
+      expectUntwisted(triangle, helix)
+    },
+  )
 
   it("fails closed for misplaced, tilted or self-intersecting profiles", () => {
     const helix = { ...zHelix }
@@ -320,52 +397,284 @@ describe("helical Sweep v2 with installed OCCT 0.23.0", () => {
         helix: tight,
       }),
     ).toThrow("Adjacent helical Sweep turns would intersect")
+    for (const [pitch, accepted] of [
+      [2.02, false],
+      [2.05, true],
+    ] as const) {
+      const wide = { ...helix, radius: 5, pitch }
+      const build = () =>
+        createOcctHelicalSweep(occt, {
+          profile: startProfile(wide, "wide", 1) as never,
+          helix: wide,
+        })
+      if (accepted) expect(metrics(keep(build()))).toMatchObject({ valid: true, solidCount: 1 })
+      else expect(build).toThrow("Adjacent helical Sweep turns would intersect")
+    }
   })
 })
 
-/** Tracks every native wrapper constructed through `new`, including those created on failure. */
-function trackedKernel() {
+type Deletable = { delete(): void }
+/**
+ * Tracks every native wrapper the module acquires: objects built with `new`, and wrappers
+ * returned by instance or static methods (`Face()`, `Edge()`, `Wire()`, `Shape()`, `Value()`,
+ * `BRep_Tool.Surface_2`, `TopoDS.Edge_1`, ...). `Handle.get()` is borrowed and excluded.
+ * `failOn` injects a constructor failure to exercise the unwinding path.
+ */
+function trackedKernel(failOn?: string) {
   const created: { deleted: number; name: string }[] = []
+  const targets = new WeakMap<object, object>()
+  const unwrap = (value: unknown) =>
+    (typeof value === "object" && value !== null && targets.get(value)) || value
+  const isWrapper = (value: unknown): value is Deletable =>
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Partial<Deletable>).delete === "function"
+  const track = (value: unknown, name: string): unknown => {
+    if (!isWrapper(value) || targets.has(value)) return value
+    const record = { deleted: 0, name }
+    created.push(record)
+    const release = value.delete.bind(value)
+    value.delete = () => {
+      record.deleted += 1
+      release()
+    }
+    const proxy = new Proxy(value, {
+      get(target, key) {
+        const member = Reflect.get(target, key)
+        if (typeof member !== "function" || key === "delete") return member
+        return (...args: unknown[]) => {
+          const result = Reflect.apply(member, target, args.map(unwrap))
+          return key === "get" ? result : track(result, `${name}.${String(key)}`)
+        }
+      },
+    })
+    targets.set(proxy, value)
+    return proxy
+  }
   const kernel = new Proxy(occt, {
     get(target, key) {
       const value = Reflect.get(target, key)
       if (typeof value !== "function" || typeof key !== "string" || !/^[A-Z]/.test(key))
         return value
       return new Proxy(value, {
-        construct(target, args): object {
-          const instance: { delete(): void } = Reflect.construct(target, args)
-          const record = { deleted: 0, name: key }
-          created.push(record)
-          const release = instance.delete.bind(instance)
-          instance.delete = () => {
-            record.deleted += 1
-            return release()
-          }
-          return instance
+        construct(native, args): object {
+          if (key === failOn) throw new Error(`Injected ${key} failure.`)
+          return track(Reflect.construct(native, args.map(unwrap)), key) as object
+        },
+        get(owner, member) {
+          const value = Reflect.get(owner, member)
+          if (typeof value !== "function" || member === "prototype") return value
+          return (...args: unknown[]) =>
+            track(Reflect.apply(value, owner, args.map(unwrap)), `${key}.${String(member)}`)
         },
       })
     },
   })
   return { kernel, created }
 }
+function expectAllReleased(created: readonly { deleted: number; name: string }[]) {
+  expect(created.filter(({ deleted }) => deleted !== 1)).toEqual([])
+}
 
 describe("helix native temporary disposal", () => {
-  it("releases every constructed wrapper exactly once on success and failure", () => {
+  it("releases every acquired wrapper exactly once on success and failure", () => {
     const success = trackedKernel()
-    const shape = createOcctCoil(success.kernel, coil({ turns: 9 }))
-    shape.delete()
-    expect(success.created.length).toBeGreaterThan(10)
-    expect(success.created.filter(({ deleted }) => deleted !== 1)).toEqual([])
+    createOcctCoil(success.kernel, coil({ turns: 9 })).delete()
+    const names = success.created.map(({ name }) => name)
+    for (const method of ["Face", "Edge", "Wire", "Shape", "Value", "BRep_Tool.Surface_2"])
+      expect(names.some((name) => name.endsWith(method))).toBe(true)
+    expectAllReleased(success.created)
 
-    const failure = trackedKernel()
+    const sweep = trackedKernel()
+    createOcctHelicalSweep(sweep.kernel, {
+      profile: startProfile(zHelix, "triangle", 1) as never,
+      helix: zHelix,
+    }).delete()
+    expect(sweep.created.some(({ name }) => name === "TopoDS.Edge_1")).toBe(true)
+    expectAllReleased(sweep.created)
+
+    const rejected = trackedKernel()
     const tight = { ...zHelix, pitch: 1.9 }
     expect(() =>
-      createOcctHelicalSweep(failure.kernel, {
+      createOcctHelicalSweep(rejected.kernel, {
         profile: startProfile(tight, "circle", 1) as never,
         helix: tight,
       }),
     ).toThrow("Adjacent helical Sweep turns would intersect")
-    expect(failure.created.length).toBeGreaterThan(3)
-    expect(failure.created.filter(({ deleted }) => deleted !== 1)).toEqual([])
+    expectAllReleased(rejected.created)
+
+    // BRepCheck_Analyzer runs only after the pipe solid exists.
+    const injected = trackedKernel("BRepCheck_Analyzer")
+    expect(() => createOcctCoil(injected.kernel, coil())).toThrow(
+      "Injected BRepCheck_Analyzer failure.",
+    )
+    expect(injected.created.some(({ name }) => name.endsWith("BRepOffsetAPI_MakePipeShell"))).toBe(
+      true,
+    )
+    expectAllReleased(injected.created)
   })
+})
+
+describe("exact helix spine accuracy", () => {
+  it("keeps a 50-turn spine on the exact helix with G1 edge joins", () => {
+    const helix = { ...zHelix, turns: 50, pitch: 3 }
+    const wire = keep(createOcctHelixSpine(occt, helix))
+    const properties = keep(new occt.GProp_GProps_1())
+    occt.BRepGProp.LinearProperties(wire, properties, false, false)
+    expect(Math.abs(properties.Mass() / helixLength(helix) - 1)).toBeLessThan(1e-7)
+    let deviation = 0
+    const ends: { start: Vector; end: Vector; first: Vector; last: Vector }[] = []
+    const explorer = keep(
+      new occt.TopExp_Explorer_2(
+        wire,
+        occt.TopAbs_ShapeEnum.TopAbs_EDGE as never,
+        occt.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      ),
+    )
+    for (; explorer.More(); explorer.Next()) {
+      const current = explorer.Current()
+      const edge = occt.TopoDS.Edge_1(current)
+      const curve = new occt.BRepAdaptor_Curve_2(edge)
+      const point = new occt.gp_Pnt_1()
+      const tangent = new occt.gp_Vec_1()
+      const sample = (parameter: number) => {
+        curve.D1(parameter, point, tangent)
+        const length = Math.hypot(tangent.X(), tangent.Y(), tangent.Z())
+        return {
+          at: [point.X(), point.Y(), point.Z()] as Vector,
+          direction: [tangent.X() / length, tangent.Y() / length, tangent.Z() / length] as Vector,
+        }
+      }
+      const [first, last] = [curve.FirstParameter(), curve.LastParameter()]
+      for (let index = 0; index <= 400; index += 1) {
+        const { at } = sample(first + ((last - first) * index) / 400)
+        const angle = (2 * Math.PI * at[2]) / helix.pitch
+        deviation = Math.max(
+          deviation,
+          distance(at, [helix.radius * Math.cos(angle), helix.radius * Math.sin(angle), at[2]]),
+        )
+      }
+      const head = sample(first)
+      const tail = sample(last)
+      ends.push({ start: head.at, end: tail.at, first: head.direction, last: tail.direction })
+      for (const value of [tangent, point, curve, edge, current]) value.delete()
+    }
+    expect(ends.length).toBeGreaterThan(10)
+    expect(deviation).toBeLessThan(1e-5)
+    let joins = 0
+    for (const edge of ends) {
+      const next = ends.find(({ start }) => distance(start, edge.end) < 1e-7)
+      if (!next) continue
+      joins += 1
+      const cosine =
+        edge.last[0] * next.first[0] + edge.last[1] * next.first[1] + edge.last[2] * next.first[2]
+      expect(cosine).toBeGreaterThan(1 - 1e-12)
+    }
+    expect(joins).toBe(ends.length - 1)
+  })
+})
+
+/** Independent tube built in the test (no clearance validation) for overlap oracles. */
+function rawCircularCoil(helix: HelixContent, diameter: number): Shape3D {
+  const spine = createOcctHelixSpine(occt, helix)
+  const start = helixStart(helix)
+  const native: Deletable[] = []
+  const own = <T extends Deletable>(value: T) => {
+    native.push(value)
+    return value
+  }
+  try {
+    const point = own(new occt.gp_Pnt_3(...start.point))
+    const axis = own(
+      new occt.gp_Ax2_2(
+        point,
+        own(new occt.gp_Dir_4(...start.tangent)),
+        own(
+          new occt.gp_Dir_4(-start.frame.radial[0], -start.frame.radial[1], -start.frame.radial[2]),
+        ),
+      ),
+    )
+    const circle = own(new occt.gp_Circ_2(axis, diameter / 2))
+    const edge = own(own(new occt.BRepBuilderAPI_MakeEdge_8(circle)).Edge())
+    const section = own(own(new occt.BRepBuilderAPI_MakeWire_2(edge)).Wire())
+    const builder = own(new occt.BRepOffsetAPI_MakePipeShell(spine))
+    builder.SetMode_1(true)
+    builder.Add_1(section, false, false)
+    builder.Build(own(new occt.Message_ProgressRange_1()))
+    if (!builder.MakeSolid()) throw new Error("Expected a raw coil solid.")
+    const shape = own(builder.Shape())
+    return cast(shape).asShape3D()
+  } finally {
+    for (const value of native.reverse()) value.delete()
+    spine.delete()
+  }
+}
+
+/**
+ * Splits two turns into quarter-turn chunks (each a screw image of the same section) and sums
+ * the common volume of every non-adjacent pair; an overlap between any two turns shows up here.
+ */
+function chunkOverlap(build: (helix: HelixContent) => Shape3D, helix: HelixContent) {
+  const chunks = Array.from({ length: 8 }, (_, index) =>
+    keep(
+      build({
+        ...helix,
+        turns: 0.25,
+        startAngle: (((helix.handedness === "right" ? 1 : -1) * index) % 4) * (Math.PI / 2),
+        origin: [helix.origin[0], helix.origin[1], helix.origin[2] + (helix.pitch * index) / 4],
+      }),
+    ),
+  )
+  let overlap = 0
+  for (const [i, a] of chunks.entries())
+    for (const [j, b] of chunks.entries()) {
+      if (j < i + 2) continue
+      const common = intersectOcctShapes(occt, a, b)
+      try {
+        overlap += metrics(common).volume
+      } finally {
+        common.delete()
+      }
+    }
+  return overlap
+}
+
+describe("exact meridian clearance against an independent overlap oracle", () => {
+  const thin = { ...zHelix, radius: 1, turns: 2 }
+  it("rejects the reported ⌀1.9 near-axis coil and finds no overlap just above the bound", () => {
+    const section = { kind: "circular", diameter: 1.9 } as const
+    const minimum = minimumCoilPitch(1, section)
+    expect(minimum).toBeGreaterThan(1.994)
+    // Exact tube tangency: the closest far centerline points are one section diameter apart.
+    const helix = { ...thin, pitch: minimum }
+    let closest = Number.POSITIVE_INFINITY
+    for (let index = 0; index <= 200_000; index += 1) {
+      const turns = 0.5 + index / 200_000
+      closest = Math.min(closest, distance(helixPoint(helix, 0), helixPoint(helix, turns)))
+    }
+    expect(Math.abs(closest - 1.9)).toBeLessThan(1e-5)
+    expect(() => createOcctCoil(occt, coil({ ...thin, pitch: 1.994 }, section))).toThrow(
+      "Adjacent coil turns would intersect",
+    )
+    const accepted = { ...thin, pitch: minimum * 1.002 }
+    expect(metrics(keep(createOcctCoil(occt, coil(accepted, section))))).toMatchObject({
+      valid: true,
+      solidCount: 1,
+    })
+    expect(chunkOverlap((part) => rawCircularCoil(part, 1.9), accepted)).toBeLessThan(1e-9)
+    expect(
+      chunkOverlap((part) => rawCircularCoil(part, 1.9), { ...thin, pitch: 1.97 }),
+    ).toBeGreaterThan(1e-6)
+  }, 120_000)
+
+  it("finds no overlap for an accepted near-bound 8 × 2 rectangular coil", () => {
+    const section = { kind: "rectangular", width: 8, height: 2 } as const
+    const minimum = minimumCoilPitch(5, section)
+    expect(minimum).toBeGreaterThan(2.03)
+    expect(minimum).toBeLessThan(2.04)
+    const helix = { ...zHelix, radius: 5, turns: 2, pitch: minimum * 1.002 }
+    expect(chunkOverlap((part) => createOcctCoil(occt, coil(part, section)), helix)).toBeLessThan(
+      1e-9,
+    )
+  }, 120_000)
 })
