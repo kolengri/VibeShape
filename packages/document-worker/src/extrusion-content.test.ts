@@ -18,6 +18,7 @@ import {
   multiProfileExtrusionFeatureType,
   revolveFeatureType,
   revolveFeatureTypeV6,
+  revolveFeatureTypeV8,
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -820,6 +821,45 @@ describe("document extrusion content preparation", () => {
         axisDirection: [0, 0, 1],
         angleRadians: Math.PI,
         operation: "new",
+      },
+    })
+  })
+
+  it("prepares Revolve v8 two-sided extents and per-profile output roles", async () => {
+    const source = fixture()
+    const profile = source.feature.parameters.profile
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      id: "0195b5ac-b220-7a2c-8c33-000000003310",
+      type: revolveFeatureTypeV8.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [profile] },
+        axis: { kind: "origin-axis", axis: "y" },
+        angle: createAngleQuantity(90, "deg"),
+        symmetric: false,
+        reversed: true,
+        secondAngle: createAngleQuantity(30, "deg"),
+        operation: "new",
+        targetBody: null,
+        endCondition: { kind: "angle" },
+      },
+    })
+    const document = documentSnapshotSchema.parse({ ...source.document, features: [feature] })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: source.solution,
+    }))
+    const outer = [...profile.outerBoundaryEntityIds].sort()[0]
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        angleRadians: Math.PI / 2,
+        secondAngleRadians: Math.PI / 6,
+        symmetric: false,
+        reversed: true,
+        endCondition: { kind: "angle" },
+        profileOutputRoles: [`revolve.profile.${outer}`],
       },
     })
   })

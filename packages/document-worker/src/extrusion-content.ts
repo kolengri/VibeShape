@@ -60,6 +60,7 @@ import {
   prepareReferenceSupportedFeatureContent,
   shouldPrepareReferenceFrameFeatureContent,
 } from "./reference-frame-content"
+import { prepareRevolveV8Content } from "./revolve-content"
 import {
   prepareSweepLoftFeatureContent,
   shouldPrepareSweepLoftFeatureContent,
@@ -247,6 +248,40 @@ function prepareRevolve(
   return prepared.success
     ? ({ ok: true, parameters: prepared.data } as const)
     : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile")
+}
+
+function prepareRevolveV8(
+  input: ProfileFeatureContentInput,
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  frame: SupportFrame,
+) {
+  const { feature } = input
+  if (feature.kind !== "revolve" || !feature.parameters.profiles)
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-multi-profile-input")
+  const profiles = materializeSelectedProfiles(
+    sketch,
+    solution,
+    feature.parameters.profiles.profiles,
+  )
+  if (!profiles.ok) return profiles
+  const axis = resolveRevolveAxis(sketch, solution, feature.parameters.axis, frame, input.geometry)
+  if (!axis.ok) return axis
+  const prepared = prepareRevolveV8Content({
+    feature: feature.record,
+    context: input,
+    sketch,
+    frame,
+    profiles: profiles.profiles,
+    axisOrigin: axis.origin,
+    axisDirection: axis.direction,
+  })
+  if (prepared.ok) return { ok: true as const, parameters: prepared.parameters as never }
+  return prepared.reason === "invalid-materialized-revolve"
+    ? failure("org.vibeshape.feature.sketch-profile-invalid", prepared.reason, {
+        issue: prepared.issue ?? "unknown-schema-issue",
+      })
+    : failure("org.vibeshape.feature.sketch-support-missing", prepared.reason)
 }
 
 function prepareMultiRevolve(
@@ -519,6 +554,7 @@ function profileFeatureFromRecord(feature: FeatureRecord): ProfileFeature | null
         kind: "revolve",
         parameters: revolve,
         multiProfile: feature.type.schemaVersion >= 5,
+        record: feature,
       }
     : null
 }
@@ -633,6 +669,7 @@ type ProfileFeature =
       kind: "revolve"
       parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>
       multiProfile: boolean
+      record: FeatureRecord
     }>
 
 type SketchFeatureContentInput = Readonly<{
@@ -747,6 +784,8 @@ function prepareSolvedProfileFeature(
   frame: SupportFrame,
 ) {
   const { feature, geometry } = input
+  if (feature.kind === "revolve" && feature.record.type.schemaVersion === 8)
+    return prepareRevolveV8(input, sketch, solution, frame)
   const multiProfile = feature.multiProfile
     ? (feature.parameters.profiles as SketchProfileSet | undefined)
     : null
