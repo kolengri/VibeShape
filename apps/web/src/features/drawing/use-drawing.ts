@@ -20,7 +20,25 @@ type ProjectionState =
   | Readonly<{ status: "idle" }>
   | Readonly<{ status: "loading"; key: string }>
   | Readonly<{ status: "ready"; key: string; projection: DrawingProjection; documentName: string }>
-  | Readonly<{ status: "failed"; key: string; empty: boolean }>
+  | Readonly<{ status: "failed"; key: string; reason: FailureReason }>
+
+type FailureReason = "failed" | "empty" | "tooComplex"
+const FAILURE_REASONS: Readonly<Record<string, FailureReason>> = {
+  "no-exportable-bodies": "empty",
+  "drawing-too-complex": "tooComplex",
+}
+function failureReason(sourceCode: string | null): FailureReason {
+  return (sourceCode && FAILURE_REASONS[sourceCode]) || "failed"
+}
+
+/** True when the rebuilt model contains a triangle-mesh body, which drawings cannot project. */
+export function documentHasMesh(controller: DocumentControllerState) {
+  const rebuild = controller.report?.rebuild
+  return (
+    rebuild?.ok === true &&
+    rebuild.response.geometry.some(({ geometry }) => geometry.representation === "triangle-mesh")
+  )
+}
 
 /** The model offers at least one exact solid; mesh-only models cannot be projected. */
 function documentHasDrawableSolid(controller: DocumentControllerState) {
@@ -85,12 +103,12 @@ export function useDrawing(input: {
             : {
                 status: "failed",
                 key,
-                empty: result.diagnostic.sourceCode === "no-exportable-bodies",
+                reason: failureReason(result.diagnostic.sourceCode),
               },
         )
       })
       .catch(() => {
-        if (current) setState({ status: "failed", key, empty: false })
+        if (current) setState({ status: "failed", key, reason: "failed" })
       })
     return () => {
       current = false
@@ -113,6 +131,7 @@ export function useDrawing(input: {
   )
   return {
     status: drawingStatus(controller, key, state, ready !== null),
+    hasMesh: documentHasMesh(controller),
     sheet,
     previewUrl,
     download(format: DrawingFileFormat) {
@@ -133,8 +152,7 @@ function drawingStatus(
   ready: boolean,
 ) {
   if (!key) return controller.status === "ready" ? ("empty" as const) : ("loading" as const)
-  if (state.status === "failed" && state.key === key)
-    return state.empty ? ("empty" as const) : ("failed" as const)
+  if (state.status === "failed" && state.key === key) return state.reason
   return ready ? ("ready" as const) : ("loading" as const)
 }
 

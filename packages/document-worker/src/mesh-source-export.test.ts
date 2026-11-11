@@ -200,6 +200,10 @@ describe("drawing body selection", () => {
       message:
         "The model has no exact solid body to draw; triangle-mesh parts cannot be projected.",
     })
+    expect(drawingFeatures(state, [], false)).toEqual({
+      ok: false,
+      message: "The model has no exact solid body to draw.",
+    })
     expect(drawingFeatures(state, [selection(exact)], true)).toEqual({
       ok: true,
       features: [selection(exact)],

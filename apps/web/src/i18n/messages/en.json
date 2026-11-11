@@ -79,7 +79,9 @@
       "presetNote": "Drawing settings are remembered for this project on this device.",
       "downloaded": "Drawing downloaded.",
       "errors": {
-        "empty": "The model has no exact solid body to draw. Mesh parts cannot be projected.",
+        "empty": "The model has no exact solid body to draw.",
+        "emptyMesh": "The model has no exact solid body to draw. Mesh parts cannot be projected.",
+        "tooComplex": "This drawing is too complex: a view exceeds the projected edge or curve budget. Draw fewer parts or views.",
         "failed": "The drawing could not be created. Try again after the model finishes rebuilding."
       },
       "sheet": {

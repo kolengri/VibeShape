@@ -25,6 +25,7 @@ import {
   loftFeatureParametersV3Schema,
   loftFeatureTypeV3,
 } from "@vibeshape/domain/part-design-loft-v3"
+import { DrawingBudgetError } from "@vibeshape/geometry-worker/drawing-budget"
 import type {
   FeatureEvaluationInput,
   FeatureEvaluationResult,
@@ -1607,6 +1608,31 @@ describe("DocumentWorkerRuntime", () => {
     expect(messages.at(-1)).toMatchObject({
       type: "failure",
       diagnostic: { code: "export-failed", message: "Exact drawing projection is unavailable." },
+    })
+  })
+
+  it("reports a projection budget overrun as a non-retryable too-complex drawing", async () => {
+    const { engine, messages, runtime } = createHarness()
+    await runtime.handle(request("rebuild-for-budget"))
+    vi.spyOn(engine, "projectDrawing").mockRejectedValueOnce(
+      new DrawingBudgetError("A drawing view has more than 50,000 projected edges."),
+    )
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "budget-draw",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "projectDrawing",
+      views: ["top"],
+    })
+    expect(messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: {
+        code: "drawing-too-complex",
+        message: "A drawing view has more than 50,000 projected edges.",
+        retryable: false,
+      },
     })
   })
 

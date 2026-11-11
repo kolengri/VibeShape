@@ -17,6 +17,8 @@ function projectionFailure(
   const message = diagnostic.message.slice(0, 512)
   if (diagnostic.sourceCode === "stale-revision")
     return new BinaryExportPreparationError("stale-revision", message, true)
+  if (diagnostic.sourceCode === "drawing-too-complex")
+    return new BinaryExportPreparationError("drawing-too-complex", message)
   if (diagnostic.sourceCode === "part-not-found")
     return new BinaryExportPreparationError("part-not-found", message)
   if (diagnostic.sourceCode === "no-exportable-bodies")

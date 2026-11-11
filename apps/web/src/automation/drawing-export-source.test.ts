@@ -164,7 +164,22 @@ describe("prepare_drawing_export", () => {
     expect(
       await f.session.execute(actor, operation({ revision: 4, format: "pdf", partId: id(8) })),
     ).toMatchObject({ ok: false, diagnostic: { code: "part-not-found", retryable: false } })
-    expect(project).toHaveBeenCalledTimes(3)
+    project.mockResolvedValueOnce({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "A drawing view has more than 50,000 projected edges; draw fewer parts or views.",
+        retryable: false,
+        sourceCode: "drawing-too-complex",
+      },
+    })
+    expect(await f.session.execute(actor, operation({ revision: 4, format: "svg" }))).toMatchObject(
+      {
+        ok: false,
+        diagnostic: { code: "drawing-too-complex", retryable: false },
+      },
+    )
+    expect(project).toHaveBeenCalledTimes(4)
   })
 
   it("rejects stale revisions and projections of another revision", async () => {

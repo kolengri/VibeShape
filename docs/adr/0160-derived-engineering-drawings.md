@@ -44,7 +44,8 @@ sampled curves become lines, and other curves (ellipses, B-splines) become polyl
 `GCPnts_TangentialDeflection` at 0.01 mm chordal and 0.05 rad angular deflection. Every sample is
 kept: a curve longer than 4096 points becomes chained polylines sharing end points, and a curve that
 needs more than 65,536 samples fails the projection instead of being thinned. A view holds at most
-50,000 edges. HLR also reports hidden copies of edges lying exactly behind visible ones and repeats
+50,000 edges. Exceeding either budget is a deterministic, non-retryable `drawing-too-complex`
+failure. HLR also reports hidden copies of edges lying exactly behind visible ones and repeats
 shared edges. A grid-indexed coverage pass compares collinear lines and concentric equal-radius
 circles and arcs within 1e-4 mm: it merges the parameter or angular intervals of visible curves
 (and of hidden curves already kept) and emits only the uncovered pieces of each curve, so a hidden

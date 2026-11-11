@@ -776,6 +776,7 @@ export const documentWorkerDiagnosticCodeSchema = z.enum([
   "export-state-unavailable",
   "no-exportable-bodies",
   "export-failed",
+  "drawing-too-complex",
   "sketch-state-unavailable",
   "sketch-not-found",
   "sketch-solver-unavailable",

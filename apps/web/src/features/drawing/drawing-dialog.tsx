@@ -248,10 +248,20 @@ function SheetImage({ view }: { view: DrawingView }) {
   )
 }
 
+function errorMessage(
+  status: DrawingView["status"],
+  hasMesh: boolean,
+  t: (key: "errors.empty" | "errors.emptyMesh" | "errors.failed" | "errors.tooComplex") => string,
+) {
+  if (status === "empty") return t(hasMesh ? "errors.emptyMesh" : "errors.empty")
+  if (status === "failed" || status === "tooComplex") return t(`errors.${status}`)
+  return null
+}
+
 function PreviewMessages({ view }: { view: DrawingView }) {
   const t = useTranslations("app.drawing")
   const { sheet, status } = view
-  const error = status === "empty" || status === "failed" ? t(`errors.${status}`) : null
+  const error = errorMessage(status, view.hasMesh, t)
   return (
     <>
       {sheet && (

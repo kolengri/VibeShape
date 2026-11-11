@@ -61,7 +61,9 @@ export function drawingFeatures(
     return {
       ok: false,
       message:
-        "The model has no exact solid body to draw; triangle-mesh parts cannot be projected.",
+        exact.length < selected.length
+          ? "The model has no exact solid body to draw; triangle-mesh parts cannot be projected."
+          : "The model has no exact solid body to draw.",
     }
   return { ok: true, features: exact }
 }

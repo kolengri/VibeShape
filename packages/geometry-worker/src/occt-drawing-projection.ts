@@ -16,6 +16,7 @@ import type {
   TopAbs_ShapeEnum,
   TopoDS_Shape,
 } from "replicad-opencascadejs"
+import { DrawingBudgetError } from "./drawing-budget"
 import { splitPolyline, suppressCoincidentEdges } from "./drawing-edge-cleanup"
 import { nativeScope, type OwnNative } from "./occt-native-scope"
 
@@ -112,7 +113,9 @@ function collectEdges(
     })
     for (const curve of curves) {
       if (result.length >= MAX_DRAWING_VIEW_EDGES)
-        throw new RangeError("The drawing view exceeds its projected edge budget.")
+        throw new DrawingBudgetError(
+          `A drawing view has more than ${MAX_DRAWING_VIEW_EDGES.toLocaleString("en-US")} projected edges; draw fewer parts or views.`,
+        )
       result.push({ visibility: extraction.visibility, edgeClass: extraction.edgeClass, curve })
     }
   }
@@ -191,7 +194,9 @@ function polylineCurves(
   const count = sampler.NbPoints()
   if (count < 2) return []
   if (count > MAX_DRAWING_CURVE_SAMPLES)
-    throw new RangeError("A projected curve needs more samples than the drawing budget allows.")
+    throw new DrawingBudgetError(
+      `A projected curve needs more than ${MAX_DRAWING_CURVE_SAMPLES.toLocaleString("en-US")} samples at the ${DRAWING_CHORD_TOLERANCE_MM} mm drawing tolerance.`,
+    )
   const points: Point[] = []
   for (let index = 1; index <= count; index += 1) {
     const point = own(sampler.Value(index))

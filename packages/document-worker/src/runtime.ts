@@ -26,6 +26,7 @@ import {
 import type { AssemblyConstraintSolvePort } from "@vibeshape/domain/assembly-mates"
 import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
+import { DrawingBudgetError } from "@vibeshape/geometry-worker/drawing-budget"
 import type {
   DocumentPrintMeshExportInput,
   DocumentPrintMeshExportResult,
@@ -653,7 +654,9 @@ export class DocumentWorkerRuntime {
       })
       this.#post({ ...requestEnvelope(request), type: "drawingProjected", projection })
     } catch (error) {
-      this.#postFailure(request, "export-failed", errorMessage(error), true)
+      if (error instanceof DrawingBudgetError)
+        this.#postFailure(request, "drawing-too-complex", error.message, false)
+      else this.#postFailure(request, "export-failed", errorMessage(error), true)
     }
   }
 

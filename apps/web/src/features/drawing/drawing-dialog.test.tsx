@@ -44,7 +44,7 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f0001"
-function controller(solidCount = 1, revision = 3): DocumentControllerState {
+function controller(solidCount = 1, revision = 3, mesh = false): DocumentControllerState {
   return {
     status: "ready",
     saveStatus: "saved",
@@ -52,7 +52,17 @@ function controller(solidCount = 1, revision = 3): DocumentControllerState {
     report: {
       mode: "read-write",
       snapshot: { id: documentId, name: "Bracket", revision },
-      rebuild: { ok: true, response: { geometry: [{ geometry: { shape: { solidCount } } }] } },
+      rebuild: {
+        ok: true,
+        response: {
+          geometry: [
+            { geometry: { shape: { solidCount } } },
+            ...(mesh
+              ? [{ geometry: { representation: "triangle-mesh", shape: { solidCount: 0 } } }]
+              : []),
+          ],
+        },
+      },
     },
   } as unknown as DocumentControllerState
 }
@@ -162,11 +172,14 @@ describe("Create Drawing dialog", () => {
       },
     }))
     const empty = render(dialog(controller(0), project))
+    expect(screen.getByRole("alert").textContent).toBe("The model has no exact solid body to draw.")
+    empty.unmount()
+    const meshOnly = render(dialog(controller(0, 3, true), project))
     expect(screen.getByRole("alert").textContent).toBe(
       "The model has no exact solid body to draw. Mesh parts cannot be projected.",
     )
     expect(project).not.toHaveBeenCalled()
-    empty.unmount()
+    meshOnly.unmount()
     render(dialog(controller(), project))
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe(
@@ -210,6 +223,24 @@ describe("Create Drawing dialog", () => {
     )
   })
 
+  it("explains a drawing that exceeds the projection budget without suggesting a retry", async () => {
+    const project = vi.fn(async () => ({
+      ok: false as const,
+      diagnostic: {
+        code: "export-failed" as const,
+        message: "A drawing view has more than 50,000 projected edges.",
+        retryable: false,
+        sourceCode: "drawing-too-complex",
+      },
+    }))
+    render(dialog(controller(), project))
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe(
+        "This drawing is too complex: a view exceeds the projected edge or curve budget. Draw fewer parts or views.",
+      ),
+    )
+  })
+
   it("shows the no-solid message when the worker finds only mesh bodies", async () => {
     const project = vi.fn(async () => ({
       ok: false as const,
@@ -221,7 +252,7 @@ describe("Create Drawing dialog", () => {
         sourceCode: "no-exportable-bodies",
       },
     }))
-    render(dialog(controller(), project))
+    render(dialog(controller(1, 3, true), project))
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe(
         "The model has no exact solid body to draw. Mesh parts cannot be projected.",
