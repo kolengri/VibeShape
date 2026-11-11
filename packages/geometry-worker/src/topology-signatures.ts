@@ -1,5 +1,7 @@
 import {
+  MAX_TOPOLOGY_BEZIER_CHAIN_POLES,
   MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS,
+  NON_ANALYTICAL_EDGE_GEOMETRY_CLASSES,
   type TopologyCandidate,
   type TopologySignature,
 } from "@vibeshape/protocol"
@@ -13,6 +15,7 @@ import {
   type Vector,
 } from "replicad"
 
+import { fitEdgeBezierChain } from "./edge-bezier-chain"
 import { edgeDisplayPolyline } from "./edge-display-polyline"
 
 type Vector3 = [number, number, number]
@@ -255,8 +258,28 @@ function readFaceSample(face: Face, index: number): TopologySample {
   }
 }
 
-function readEdgeReferenceGeometry(edge: Edge, start: Vector3, end: Vector3) {
+const nonAnalyticalEdgeClasses: ReadonlySet<string> = new Set(NON_ANALYTICAL_EDGE_GEOMETRY_CLASSES)
+
+function readBezierChainReferenceGeometry(
+  edge: Edge,
+  chainPoleBudget: number,
+): ReferenceGeometry | undefined {
+  const chain = fitEdgeBezierChain(edge)
+  // Budget exhaustion omits the chain; Use then fails closed instead of truncating geometry.
+  if (!chain || chain.poles.length > chainPoleBudget) return undefined
+  return { kind: "bezier-chain-edge", poles: chain.poles, maxDeviation: chain.maxDeviation }
+}
+
+function readEdgeReferenceGeometry(
+  edge: Edge,
+  start: Vector3,
+  end: Vector3,
+  chainPoleBudget: number,
+): ReferenceGeometry | undefined {
   if (edge.geomType === "LINE") return { kind: "line-edge" as const, start, end }
+  if (nonAnalyticalEdgeClasses.has(edge.geomType)) {
+    return readBezierChainReferenceGeometry(edge, chainPoleBudget)
+  }
   return edge.geomType === "ELLIPSE"
     ? readEllipticalReferenceGeometry(edge)
     : readCircularReferenceGeometry(edge)
@@ -274,7 +297,11 @@ function readEdgeDisplayGeometry(
     : edgeDisplayPolyline(edge, Math.min(1025, displayPointBudget))
 }
 
-function readEdgeSample(edge: Edge, index: number, displayPointBudget: number) {
+function readEdgeSample(
+  edge: Edge,
+  index: number,
+  budgets: Readonly<{ chainPoles: number; displayPoints: number }>,
+) {
   const properties = measureShapeLinearProperties(edge)
   try {
     const direction = normalizedDirection(edge.tangentAt(0.5))
@@ -282,12 +309,16 @@ function readEdgeSample(edge: Edge, index: number, displayPointBudget: number) {
     const end = readVector(edge.endPoint)
     // Singular surface boundaries remain topology, but cannot serve as selectable model curves.
     const degenerated = getOC().BRep_Tool.Degenerated(edge.wrapped)
-    const referenceGeometry = degenerated ? undefined : readEdgeReferenceGeometry(edge, start, end)
+    const referenceGeometry = degenerated
+      ? undefined
+      : readEdgeReferenceGeometry(edge, start, end, budgets.chainPoles)
     const edgePolyline = degenerated
       ? undefined
-      : readEdgeDisplayGeometry(edge, start, end, displayPointBudget)
+      : readEdgeDisplayGeometry(edge, start, end, budgets.displayPoints)
     return {
       endpoints: [start, end] as const,
+      chainPoleCount:
+        referenceGeometry?.kind === "bezier-chain-edge" ? referenceGeometry.poles.length : 0,
       displayPointCount: edgePolyline?.length ?? 0,
       sample: {
         candidateId: `edge:${index}`,
@@ -405,10 +436,12 @@ export function captureReplicadTopologySnapshot(
   try {
     faces.push(...shape.faces)
     edges.push(...shape.edges)
-    let displayPointBudget = MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS
+    let displayPoints = MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS
+    let chainPoles = MAX_TOPOLOGY_BEZIER_CHAIN_POLES
     const capturedEdges = edges.map((edge, index) => {
-      const sample = readEdgeSample(edge, index, displayPointBudget)
-      displayPointBudget -= sample.displayPointCount
+      const sample = readEdgeSample(edge, index, { chainPoles, displayPoints })
+      displayPoints -= sample.displayPointCount
+      chainPoles -= sample.chainPoleCount
       return sample
     })
     const samples = [
