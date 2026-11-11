@@ -17,8 +17,11 @@ Cancel discards the preview. Editing, Undo/Redo, native `.vshape` reopen, and ex
 ordinary feature lifecycle.
 
 Draft accepts 1–256 faces of one exact solid. Every selected face must be drafted: when OCCT cannot
-tilt a face, typically because it is parallel to the neutral plane or perpendicular to the pull
-direction, the preview fails and names that face's position in the selection. No face is skipped.
+tilt a face, the preview fails and the task panel names that face's position in the selection. No
+face is skipped. Faces tangent to a selected face are drafted with it, so the failure can come from a
+tangent neighbour, typically a face perpendicular to the pull direction. On filleted parts, draft
+before filleting: walls joined by fillets to a top or bottom face otherwise drag that face into the
+draft and fail.
 Faces are stored as body-bound face references; native face indices are never persisted. A face lost
 after a source edit requires explicit reselection.
 

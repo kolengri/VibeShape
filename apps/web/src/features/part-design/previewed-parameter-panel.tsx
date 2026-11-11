@@ -15,6 +15,7 @@ export function PreviewedParameterPanel({
   message,
   onCancel,
   pending,
+  previewDiagnostic,
   previewStatus,
 }: Readonly<{
   acceptDisabled?: boolean
@@ -24,6 +25,7 @@ export function PreviewedParameterPanel({
   message: string | null
   onCancel: () => void
   pending: boolean
+  previewDiagnostic?: string | undefined
   previewStatus?: FeaturePreviewState["status"] | undefined
 }>) {
   return (
@@ -32,7 +34,9 @@ export function PreviewedParameterPanel({
       copy={copy}
       legend={copy.parameters}
       disabled={disabled || pending}
-      message={message ?? (previewStatus === "error" ? copy.previewFailed : null)}
+      message={
+        message ?? (previewStatus === "error" ? (previewDiagnostic ?? copy.previewFailed) : null)
+      }
       actions={
         <TaskPanelFormActions
           acceptLabel={copy.submit}

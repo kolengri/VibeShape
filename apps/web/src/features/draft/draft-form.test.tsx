@@ -75,6 +75,7 @@ function setup(
   source = evidence,
   status: "ready" | "loading" | "error" = "ready",
   pickingRequest: ShellPickRequest | null = null,
+  previewDiagnostic?: string,
 ) {
   const onSave = vi.fn(async (_revision: number, _feature: FeatureRecord) => ({
     ok: true as const,
@@ -98,6 +99,7 @@ function setup(
           onCancel={onCancel}
           onPreviewChange={onPreviewChange}
           previewStatus={status}
+          previewDiagnostic={previewDiagnostic}
           pickingRequest={pickingRequest}
           onPickingContextChange={onPickingContextChange}
         />
@@ -199,6 +201,16 @@ describe("Draft task form", () => {
     setup({ kind: "edit", feature }, { ...evidence, candidates: evidence.candidates.slice(0, 1) })
     expect(screen.getByText(draft.repair)).toBeTruthy()
     expect(faceBox(1).checked).toBe(false)
+  })
+
+  it("explains a failed preview with the worker's face reason, else the generic advice", () => {
+    const reason = "Draft cannot tilt selected face 2 or a face tangent to it."
+    const failed = setup(mode, evidence, "error", null, reason)
+    expect(screen.getByText(reason)).toBeTruthy()
+    expect(screen.queryByText(draft.previewFailed)).toBeNull()
+    failed.unmount()
+    setup(mode, evidence, "error")
+    expect(screen.getByText(draft.previewFailed)).toBeTruthy()
   })
 
   it("holds the save lock, keeps values after failure, and blocks Apply while previewing", async () => {

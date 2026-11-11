@@ -213,7 +213,7 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
   create_scale:
     "Uniformly scale one exact named solid body in an owned draft. factor is a unitless scalar quantity from 0.001 to 1000 and may be an expression; volume changes by factor cubed. center is origin, bounding-box-center (axis-aligned world box of the source body) or point with three length quantities within 100,000 mm; the center stays fixed. Non-uniform scale is unavailable. Supply one matching dependency, no topology references, fresh UUIDv7 IDs and current draft revision; preview before commit.",
   update_scale:
-    "Update an existing Scale preserving feature identity, targetBody and its sole matching dependency. Resubmit factor and center with their expressions. Downstream topology references to the scaled body may need repair. Use a fresh commandId and current draft revision; preview before commit.",
+    "Update an existing Scale preserving feature identity, targetBody and its sole matching dependency. Resubmit factor and center with their expressions. Scale results carry no durable face identities, so changing the factor requires reselecting downstream topology references to the scaled body. Use a fresh commandId and current draft revision; preview before commit.",
   create_fdm:
     "Create a parametric FDM feature in an owned draft: saved-line Web/Rib, corner relief, seam groove, teardrop hole, compliant hex seat, crush ribs, flexible sleeve, nut/insert pocket, enclosure joint, sacrificial membrane/bridges or calibration coupon. Bind the exact target role, use typed quantities and canonical dependencies, preview and review before commit. Flat cuts use create_reference_split.",
   update_fdm:

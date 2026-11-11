@@ -57,6 +57,8 @@ type DraftFormProps = FeatureParameterFormProps<DraftFormMode, DraftFormCopy> & 
   selectedFace?: ViewerSelection | null | undefined
   allowSemanticRebinding?: boolean
   onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
+  /** Exact worker reason for a failed preview, shown instead of the generic advice. */
+  previewDiagnostic?: string | undefined
   pickingRequest?: ShellPickRequest | null
   onPickingContextChange?: ((context: ShellPickingContext | null) => void) | undefined
 }
@@ -180,6 +182,7 @@ export function DraftForm(props: DraftFormProps) {
     onCancel,
     onPreviewChange,
     previewStatus,
+    previewDiagnostic,
     pickingRequest = null,
     onPickingContextChange,
     referenceOptions,
@@ -222,6 +225,7 @@ export function DraftForm(props: DraftFormProps) {
               pending={pending}
               acceptDisabled={!evidence || neutralPlane === null}
               message={state.message}
+              previewDiagnostic={previewDiagnostic}
               onCancel={onCancel}
             >
               <DraftStatusNotes copy={copy} repair={repair} available={evidence !== null} />

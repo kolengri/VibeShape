@@ -10,6 +10,7 @@ import {
   readRevolveFeatureParameters,
 } from "@vibeshape/domain"
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
+import { readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
 import { readLoftFeatureParametersV3 } from "@vibeshape/domain/part-design-loft-v3"
 import type { DocumentWorkerResponse } from "@vibeshape/protocol"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
@@ -103,6 +104,15 @@ function pendingPreview(
   return { status: "loading", meshes: [], kind }
 }
 
+/** Worker messages that name the failing input are shown verbatim for these feature kinds. */
+function forwardsWorkerDiagnostic(candidate: FeatureRecord) {
+  return (
+    readLoftFeatureParametersV3(candidate) !== null ||
+    isFilletFeature(candidate) ||
+    readDraftFeatureParameters(candidate) !== null
+  )
+}
+
 function failedPreview(candidate: FeatureRecord, error: unknown): FeaturePreviewState {
   return {
     status: "error",
@@ -111,9 +121,7 @@ function failedPreview(candidate: FeatureRecord, error: unknown): FeaturePreview
     ...(error instanceof FeaturePreviewFailure && error.diagnostics.length > 0
       ? { diagnostics: error.diagnostics }
       : {}),
-    ...((readLoftFeatureParametersV3(candidate) || isFilletFeature(candidate)) && isError(error)
-      ? { diagnostic: error.message }
-      : {}),
+    ...(forwardsWorkerDiagnostic(candidate) && isError(error) ? { diagnostic: error.message } : {}),
   }
 }
 
@@ -202,8 +210,7 @@ function assertCandidatePreviewSucceeded(
   const evaluation = response.evaluation.records.find(({ featureId }) => featureId === candidate.id)
   if (evaluation?.status === "succeeded") return
   const diagnostic =
-    evaluation?.status === "failed" &&
-    (readLoftFeatureParametersV3(candidate) || isFilletFeature(candidate))
+    evaluation?.status === "failed" && forwardsWorkerDiagnostic(candidate)
       ? evaluation.diagnostics.find(({ values }) => typeof values.message === "string")?.values
           .message
       : null

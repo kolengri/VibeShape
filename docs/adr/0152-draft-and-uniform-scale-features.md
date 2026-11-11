@@ -57,8 +57,9 @@ picking channel and a shared keyboard-accessible face checklist.
 
 - Native face indices, hashes and candidate IDs are never persisted; edits that lose a face require
   explicit reselection, as for Shell and Chamfer face targets.
-- Scaling changes every downstream face signature. Exact downstream references may need repair after
-  a factor change; durable semantic and lineage identities are unaffected.
+- Draft and Scale results publish no semantic roles or lineage tokens, so downstream face references
+  to their outputs are exact signature matches. Changing a Scale factor or a Draft angle therefore
+  requires reselecting downstream faces.
 - Draft cannot report OCCT's per-face failure category until the WASM build binds
   `Draft_ErrorStatus`. Delete/replace face and non-uniform scale remain blocked by the missing OCCT
   modules in this build.

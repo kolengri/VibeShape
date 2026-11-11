@@ -2697,7 +2697,7 @@
       "cancel": "Cancel",
       "staleRevision": "The document changed. Reopen Draft and select the current faces.",
       "saveFailed": "Draft could not be saved. Your values remain available to retry.",
-      "previewFailed": "Draft could not be built. Choose faces that cross the neutral plane and are not perpendicular to the pull direction, or reduce the angle. Apply requires a successful preview."
+      "previewFailed": "Draft could not be built. Faces tangent to a selected face are drafted with it, so a face perpendicular to the pull direction anywhere in that chain fails. Draft before filleting, choose other faces, or reduce the angle. Apply requires a successful preview."
     },
     "scale": {
       "title": "Scale",

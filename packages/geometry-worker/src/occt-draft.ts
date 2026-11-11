@@ -72,8 +72,9 @@ export function draftOcctShape(
       builder.Add(face.wrapped, pull, parameters.angle, plane, true)
       if (!builder.AddDone())
         throw new DraftError(
-          `Draft cannot tilt selected face ${index + 1}. Choose faces that cross the neutral ` +
-            "plane and are not perpendicular to the pull direction.",
+          `Draft cannot tilt selected face ${index + 1} or a face tangent to it. Faces ` +
+            "perpendicular to the pull direction cannot be drafted; draft before filleting, or " +
+            "choose faces whose tangent neighbours can tilt too.",
         )
     })
     const progress = own(new occt.Message_ProgressRange_1())

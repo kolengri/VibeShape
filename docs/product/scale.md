@@ -12,8 +12,9 @@ Cancel discards the preview. Editing, Undo/Redo, native `.vshape` reopen, and ex
 ordinary feature lifecycle. Scale works on named outputs such as Split or Pattern bodies.
 
 Scale is uniform. Non-uniform scaling needs `BRepBuilderAPI_GTransform`, which the pinned
-OpenCascade WASM build does not include. Changing the factor changes every downstream face
-signature, so exact downstream face references may need repair; durable face identities are kept.
+OpenCascade WASM build does not include. Scale results publish no semantic or lineage face
+identities, so every downstream face reference to a scaled body is an exact signature match, and
+changing the factor requires reselecting those faces.
 
 Named local MCP `create_scale` and `update_scale` use the revision-bound draft command path with one
 matching body dependency and no topology references.

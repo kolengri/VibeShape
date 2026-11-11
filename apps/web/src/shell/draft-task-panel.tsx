@@ -116,6 +116,7 @@ export function DraftTaskPanel(props: DraftTaskPanelProps) {
         pickingRequest={props.shellPickRequest ?? null}
         onPickingContextChange={props.onShellPickingContextChange}
         {...featureTaskFormProps(props, mode)}
+        previewDiagnostic={props.featurePreviewDiagnostic}
         variables={report.snapshot.variables}
       />
     </TaskPanelSurface>
