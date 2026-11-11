@@ -17,6 +17,7 @@ import {
   featureBodyDependencyIds,
   filletFeatureType,
   filletFeatureTypeV2,
+  filletFeatureTypeV3,
   holeFeatureType,
   holeFeatureTypeV2,
   legacyRevolveFeatureType,
@@ -246,7 +247,8 @@ export function isHoleFeature(feature: FeatureRecord) {
 export function isFilletFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, filletFeatureType.type) ||
-    hasFeatureType(feature, filletFeatureTypeV2.type)
+    hasFeatureType(feature, filletFeatureTypeV2.type) ||
+    hasFeatureType(feature, filletFeatureTypeV3.type)
   )
 }
 

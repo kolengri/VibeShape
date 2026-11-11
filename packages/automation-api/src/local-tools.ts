@@ -8,7 +8,10 @@ import {
 } from "@vibeshape/domain/identifiers"
 import { structuralMaterialCatalogSchema } from "@vibeshape/domain/lightweighting-materials"
 import { modelDiagnosticsEvidenceSchema } from "@vibeshape/domain/model-diagnostics"
-import { chamferFeatureParametersV3Schema } from "@vibeshape/domain/part-design"
+import {
+  chamferFeatureParametersV3Schema,
+  filletFeatureParametersV3Schema,
+} from "@vibeshape/domain/part-design"
 import { edgeTopoRefSchema } from "@vibeshape/domain/topology"
 import { variableExpressionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
@@ -329,7 +332,7 @@ const feature = {
   label: z.string().min(1).max(120).optional(),
 }
 const length = z.number().finite().positive().max(1_000_000)
-const fillet = z
+const legacyFillet = z
   .object({
     ...feature,
     targetFeatureId: featureIdSchema,
@@ -338,6 +341,10 @@ const fillet = z
     edges: z.array(edgeTopoRefSchema).min(1).max(256).optional(),
   })
   .strict()
+const fillet = z.union([
+  legacyFillet,
+  z.object({ ...feature, parameters: filletFeatureParametersV3Schema }).strict(),
+])
 const legacyChamfer = z
   .object({
     ...feature,
@@ -956,11 +963,18 @@ export function isProjectOperation(operation: LocalOperation): operation is Proj
   return projectToolNames.some((name) => name === operation.tool)
 }
 export function mcpToolInputSchema(name: LocalToolName) {
-  if (name === "create_chamfer" || name === "update_chamfer")
+  if (
+    name === "create_chamfer" ||
+    name === "update_chamfer" ||
+    name === "create_fillet" ||
+    name === "update_fillet"
+  ) {
+    const versioned = name.endsWith("_chamfer") ? chamfer : fillet
     return z.union([
-      chamfer.options[0].extend({ projectId: documentIdSchema.optional() }),
-      chamfer.options[1].extend({ projectId: documentIdSchema.optional() }),
+      versioned.options[0].extend({ projectId: documentIdSchema.optional() }),
+      versioned.options[1].extend({ projectId: documentIdSchema.optional() }),
     ])
+  }
   if (name === "prepare_picture_render" || name === "inspect_motion_clearance")
     return localToolInputs[name].safeExtend({ projectId: documentIdSchema.optional() })
   if (name === "create_face_aligned_placement")

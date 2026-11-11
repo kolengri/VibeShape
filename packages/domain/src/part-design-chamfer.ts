@@ -1,14 +1,18 @@
 import { z } from "zod"
 import { bodyReferenceSchema } from "./body-reference"
-import { bodyFaceRefSchema, bodyTopoRefSchema } from "./body-topology-reference"
-import { canonicalJson } from "./canonical-json"
+import {
+  bodyEdgeRefSchema,
+  bodyFaceRefSchema,
+  bodyTopoRefChecks,
+  bodyTopoRefContent,
+} from "./body-topology-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { angleQuantitySchema, lengthQuantitySchema } from "./units"
 import { resolveQuantityExpression } from "./variables"
 
-export const chamferEdgeRefSchema = bodyTopoRefSchema.safeExtend({ kind: z.literal("edge") })
+export const chamferEdgeRefSchema = bodyEdgeRefSchema
 export const chamferTargetSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -27,15 +31,6 @@ const angleSchema = angleQuantitySchema.refine(
   ({ value }) => value > 0 && value < Math.PI / 2,
   "Chamfer angles must be strictly between zero and 90 degrees.",
 )
-
-function referenceKeys(reference: z.infer<typeof bodyTopoRefSchema>) {
-  const prefix = `${reference.kind}:${reference.outputRole}:`
-  const keys = [
-    reference.semanticRole && `${prefix}role:${reference.semanticRole}`,
-    reference.lineageToken && `${prefix}lineage:${reference.lineageToken}`,
-  ].filter((value) => value !== undefined)
-  return keys.length ? keys : [canonicalJson(reference)]
-}
 
 export const chamferFeatureParametersV3Schema = z
   .object({
@@ -63,41 +58,26 @@ export const chamferFeatureParametersV3Schema = z
       (parameters.flip || parameters.directionOverrides.length)
     )
       issue(["flip"], "Equal-distance Chamfer has no direction to flip.")
-    const targets = new Set<string>()
-    const overrides = new Set<string>()
-    const checkOwner = (
-      reference: z.infer<typeof bodyTopoRefSchema>,
-      path: (string | number)[],
-    ) => {
-      if (
-        reference.featureId !== parameters.targetBody.featureId ||
-        reference.outputRole !== parameters.targetBody.outputRole
-      )
-        issue(path, "Chamfer references must belong to the exact target body.")
-    }
+    const checks = bodyTopoRefChecks(
+      parameters.targetBody,
+      "Chamfer references must belong to the exact target body.",
+      issue,
+    )
+    const checkTarget = checks.distinct("Chamfer targets must be distinct.")
+    const checkOverride = checks.distinct("Chamfer direction overrides must be distinct.")
     parameters.targets.forEach((target, index) => {
-      const reference = target.kind === "edge" ? target.edge : target.face
-      checkOwner(reference, ["targets", index])
-      const keys = referenceKeys(reference)
-      if (keys.some((key) => targets.has(key)))
-        issue(["targets", index], "Chamfer targets must be distinct.")
-      for (const key of keys) targets.add(key)
+      checkTarget(target.kind === "edge" ? target.edge : target.face, ["targets", index])
       if (target.kind === "edge") {
         if (parameters.mode !== "equal-distance" && !target.sideFace)
           issue(
             ["targets", index, "sideFace"],
             "Directional Chamfer requires an explicit adjacent face.",
           )
-        if (target.sideFace) checkOwner(target.sideFace, ["targets", index, "sideFace"])
+        if (target.sideFace) checks.owned(target.sideFace, ["targets", index, "sideFace"])
       }
     })
-    parameters.directionOverrides.forEach((reference, index) => {
-      checkOwner(reference, ["directionOverrides", index])
-      const keys = referenceKeys(reference)
-      if (keys.some((key) => overrides.has(key)))
-        issue(["directionOverrides", index], "Chamfer direction overrides must be distinct.")
-      for (const key of keys) overrides.add(key)
-    })
+    for (const [index, reference] of parameters.directionOverrides.entries())
+      checkOverride(reference, ["directionOverrides", index])
   })
 export type ChamferFeatureParametersV3 = Readonly<z.infer<typeof chamferFeatureParametersV3Schema>>
 
@@ -120,13 +100,6 @@ export function readChamferFeatureParametersV3(
   if (featureTypeKey(feature.type) !== featureTypeKey(chamferFeatureTypeV3.type)) return null
   const parsed = chamferFeatureParametersV3Schema.safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
-}
-
-function contentReference<T extends z.infer<typeof bodyTopoRefSchema>>({
-  featureId: _featureId,
-  ...reference
-}: T) {
-  return reference
 }
 
 export const chamferFeatureTypeHandlerV3: TrustedFeatureTypeHandler = {
@@ -181,14 +154,14 @@ export const chamferFeatureTypeHandlerV3: TrustedFeatureTypeHandler = {
       tangentPropagation: parsed.tangentPropagation,
       targets: parsed.targets.map((target) =>
         target.kind === "face"
-          ? { kind: "face", face: contentReference(target.face) }
+          ? { kind: "face", face: bodyTopoRefContent(target.face) }
           : {
               kind: "edge",
-              edge: contentReference(target.edge),
-              ...(target.sideFace ? { sideFace: contentReference(target.sideFace) } : {}),
+              edge: bodyTopoRefContent(target.edge),
+              ...(target.sideFace ? { sideFace: bodyTopoRefContent(target.sideFace) } : {}),
             },
       ),
-      directionOverrides: parsed.directionOverrides.map(contentReference),
+      directionOverrides: parsed.directionOverrides.map(bodyTopoRefContent),
     }
   },
 }

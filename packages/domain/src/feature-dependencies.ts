@@ -17,6 +17,7 @@ import {
 } from "./part-design-body-combination"
 import { readChamferFeatureParametersV3 } from "./part-design-chamfer"
 import { readFdmFeatureParameters } from "./part-design-fdm"
+import { readFilletFeatureParametersV3 } from "./part-design-fillet"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { readImportedFeatureParameters } from "./part-design-import"
 import { readLoftFeatureParameters } from "./part-design-loft"
@@ -55,6 +56,7 @@ const edgeModifierTypes = new Set(
 const exactTargetReaders = [
   (feature: FeatureRecord) => readPressPullFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readChamferFeatureParametersV3(feature)?.targetBody,
+  (feature: FeatureRecord) => readFilletFeatureParametersV3(feature)?.targetBody,
   (feature: FeatureRecord) => {
     const parameters = readFdmFeatureParameters(feature)
     return parameters && "targetBody" in parameters ? parameters.targetBody : undefined
@@ -75,6 +77,7 @@ const exactTargetReaders = [
 const supportAwareTargetReaders = [
   readMirrorFeatureParametersV3,
   readChamferFeatureParametersV3,
+  readFilletFeatureParametersV3,
   readSplitFeatureParametersV2,
   readPatternFeatureParametersV2,
 ]

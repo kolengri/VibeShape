@@ -62,7 +62,6 @@ export function useModelEdgeSelection({
       undefined,
       currentAuthoredParts(source),
       "",
-      "chamfer",
       "edge",
     ).filter(({ body }) => body && visible.has(viewerBodyKey(body)))
     return edgeTreatmentCandidates(

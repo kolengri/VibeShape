@@ -26,10 +26,12 @@ import {
   type FeatureContentEnvironment,
   type FeatureEvaluationDependency,
   type FeatureEvaluationEngineResult,
+  type FilletFeatureContentParametersV3,
   fdmFeatureContentParametersSchema,
   featureContentEnvironmentSchema,
   featureEvaluationInputSchema,
   filletFeatureContentParametersSchema,
+  filletFeatureContentParametersV3Schema,
   type GeometryEngineMetadata,
   type GeometryExportFormat,
   type GeometryProgressStage,
@@ -172,6 +174,7 @@ import {
   terminateExtrusionAtPlane,
 } from "./occt-extrusion-end"
 import { createOcctFdmFeature } from "./occt-fdm"
+import { FilletV3Error, filletOcctShapeV3, type ResolvedFilletTarget } from "./occt-fillet-v3"
 import { createOcctCountersink, createOcctDrilledHole } from "./occt-hole-recess"
 import { measureOcctInterference } from "./occt-interference"
 import { createOcctLoft } from "./occt-loft"
@@ -1049,6 +1052,8 @@ function planeSemanticRole(
 type BooleanContentParameters = ReturnType<typeof booleanFeatureContentParametersSchema.parse>
 const CHAMFER_FEATURE_TYPE_V3_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.chamfer#3"
+const FILLET_FEATURE_TYPE_V3_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.fillet#3"
 
 type FilletContentParameters = ReturnType<typeof filletFeatureContentParametersSchema.parse>
 type ChamferContentParameters = ReturnType<typeof chamferFeatureContentParametersSchema.parse>
@@ -1291,6 +1296,7 @@ type ParsedFeature =
   | { kind: "fillet"; parameters: FilletContentParameters }
   | { kind: "chamfer"; parameters: ChamferContentParameters }
   | { kind: "advanced-chamfer"; parameters: ChamferFeatureContentParametersV3 }
+  | { kind: "advanced-fillet"; parameters: FilletFeatureContentParametersV3 }
   | {
       kind: "selected-fillet"
       parameters: FilletContentParameters
@@ -1595,6 +1601,32 @@ function parseChamferV3Feature(input: FeatureEvaluationInput): FeatureParseResul
       "Chamfer V3 references must belong to the exact dependency output role.",
     )
   return { ok: true, feature: { kind: "advanced-chamfer", parameters: parameters.data } }
+}
+
+function parseFilletV3Feature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (
+    feature.inputs.length !== 1 ||
+    feature.references.length !== 0 ||
+    input.dependencies.length !== 1
+  )
+    return invalidInputCardinality(
+      "Fillet V3 requires one exact target body dependency and empty generic references.",
+    )
+  const parameters = filletFeatureContentParametersV3Schema.safeParse(feature.parameters)
+  if (!parameters.success)
+    return featureFailure("invalid-feature-parameters", "Fillet V3 content parameters are invalid.")
+  const role = input.dependencies[0]?.outputRole ?? "result"
+  if (
+    parameters.data.targets.some(
+      (target) => (target.kind === "face" ? target.face : target.edge).outputRole !== role,
+    )
+  )
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Fillet V3 references must belong to the exact dependency output role.",
+    )
+  return { ok: true, feature: { kind: "advanced-fillet", parameters: parameters.data } }
 }
 
 function parseSelectedEdgeTreatmentFeature(
@@ -2587,6 +2619,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [BOOLEAN_FEATURE_TYPE_V2_KEY, parseExactBooleanFeature],
   [FILLET_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "fillet")],
   [CHAMFER_FEATURE_TYPE_V3_KEY, parseChamferV3Feature],
+  [FILLET_FEATURE_TYPE_V3_KEY, parseFilletV3Feature],
   [CHAMFER_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "chamfer")],
   [FILLET_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "fillet")],
   [CHAMFER_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "chamfer")],
@@ -3192,6 +3225,7 @@ function createFeatureShape(
       kind:
         | "constrained-loft"
         | "advanced-chamfer"
+        | "advanced-fillet"
         | "selected-fillet"
         | "selected-chamfer"
         | "placement"
@@ -4064,6 +4098,7 @@ function featureSolidKind(feature: ParsedFeature): Parameters<typeof featureSoli
     case "constrained-loft":
       return "loft"
     case "selected-fillet":
+    case "advanced-fillet":
       return "fillet"
     case "advanced-chamfer":
     case "selected-chamfer":
@@ -4583,7 +4618,11 @@ function featureGeometryFailure(error: unknown, cleanupSucceeded: boolean) {
   if (error instanceof ShellOpeningRepairError)
     return featureFailure("invalid-feature-parameters", error.message)
   if (error instanceof LegacyEdgeTreatmentError) return featureFailure(error.code, error.message)
-  if (error instanceof ChamferV3Error || error instanceof ConstrainedLoftError)
+  if (
+    error instanceof ChamferV3Error ||
+    error instanceof FilletV3Error ||
+    error instanceof ConstrainedLoftError
+  )
     return featureFailure("invalid-feature-geometry", error.message)
   return featureFailure("invalid-feature-geometry", "Feature geometry evaluation failed.")
 }
@@ -4866,6 +4905,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       return this.#createConstrainedLoft(opencascade, feature.parameters, dependencies, input)
     if (feature.kind === "advanced-chamfer")
       return this.#createChamferV3(opencascade, feature.parameters, dependencies[0], input)
+    if (feature.kind === "advanced-fillet")
+      return this.#createFilletV3(opencascade, feature.parameters, dependencies[0], input)
     if (feature.kind === "press-pull")
       return this.#createPressPullFeature(opencascade, feature, dependencies[0], input)
     return this.#createUncachedStandardFeature(opencascade, feature, dependencies, input)
@@ -4883,6 +4924,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           | "imported"
           | "constrained-loft"
           | "advanced-chamfer"
+          | "advanced-fillet"
           | "press-pull"
       }
     >,
@@ -5080,23 +5122,27 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     return shellOpeningShapeKeys(resolved.candidateIds, snapshot)
   }
 
-  #createChamferV3(
+  /**
+   * Resolves body-bound semantic references to evaluation-local native keys on one exact solid.
+   * The keys never leave this evaluation.
+   */
+  #bodyTopologyKeys(
     occt: OpenCascadeInstance,
-    parameters: ChamferFeatureContentParametersV3,
     target: Shape3D | undefined,
     input: FeatureEvaluationInput,
+    label: "Chamfer" | "Fillet",
+    fail: (message: string) => Error,
   ) {
     const dependency = input.dependencies[0]
     const snapshot = target ? this.#topologySnapshots.get(target) : undefined
     if (!target || !snapshot || !dependency)
-      throw new ChamferV3Error("Exact Chamfer source topology is unavailable.")
+      throw fail(`Exact ${label} source topology is unavailable.`)
     if (measureShape(occt, target).solidCount !== 1)
-      throw new ChamferV3Error("Chamfer requires one exact solid body.")
+      throw fail(`${label} requires one exact solid body.`)
     const edgeKey = (
       reference: ChamferFeatureContentParametersV3["directionOverrides"][number],
     ) => {
-      if (!this.resolveReferences)
-        throw new ChamferV3Error("Chamfer edge reference resolution is unavailable.")
+      if (!this.resolveReferences) throw fail(`${label} edge reference resolution is unavailable.`)
       const { outputRole: _role, schemaVersion: _version, ...topology } = reference
       try {
         const ids = this.resolveReferences(
@@ -5107,21 +5153,22 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         const keys = resolveSelectedEdgeKeys(ids, snapshot.transientShapeKeys)
         const key = keys[0]
         if (keys.length !== 1 || key === undefined)
-          throw new ChamferV3Error("Chamfer edge resolution did not identify exactly one edge.")
+          throw fail(`${label} edge resolution did not identify exactly one edge.`)
         return key
       } catch (error) {
-        throw new ChamferV3Error(
-          error instanceof Error ? error.message : "Chamfer edge reference requires repair.",
+        throw fail(
+          error instanceof Error ? error.message : `${label} edge reference requires repair.`,
         )
       }
     }
     const faceKey = (
-      reference: NonNullable<
-        Extract<ChamferFeatureContentParametersV3["targets"][number], { kind: "edge" }>["sideFace"]
-      >,
+      reference: Extract<
+        FilletFeatureContentParametersV3["targets"][number],
+        { kind: "face" }
+      >["face"],
     ) => {
       if (!this.resolveShellOpenings)
-        throw new ChamferV3Error("Chamfer face reference resolution is unavailable.")
+        throw fail(`${label} face reference resolution is unavailable.`)
       const resolved = this.resolveShellOpenings(
         [reference],
         snapshot.candidates,
@@ -5130,15 +5177,29 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         { allowSemanticRebinding: !this.#modifierExtrusionShapes.has(target) },
       )
       if (!resolved.ok)
-        throw new ChamferV3Error(
-          `Chamfer face reference is ${resolved.reason} and requires repair.`,
-        )
+        throw fail(`${label} face reference is ${resolved.reason} and requires repair.`)
       const id = resolved.candidateIds[0] ?? ""
       const key = snapshot.transientShapeKeys.get(id)
       if (resolved.candidateIds.length !== 1 || !id.startsWith("face:") || key === undefined)
-        throw new ChamferV3Error("Chamfer face reference is missing from the exact source.")
+        throw fail(`${label} face reference is missing from the exact source.`)
       return key
     }
+    return { source: target, edgeKey, faceKey }
+  }
+
+  #createChamferV3(
+    occt: OpenCascadeInstance,
+    parameters: ChamferFeatureContentParametersV3,
+    target: Shape3D | undefined,
+    input: FeatureEvaluationInput,
+  ) {
+    const { source, edgeKey, faceKey } = this.#bodyTopologyKeys(
+      occt,
+      target,
+      input,
+      "Chamfer",
+      (message) => new ChamferV3Error(message),
+    )
     const targets: ResolvedChamferTarget[] = parameters.targets.map((selection) =>
       selection.kind === "face"
         ? { kind: "face", faceKey: faceKey(selection.face) }
@@ -5150,11 +5211,36 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     )
     return chamferOcctShapeV3(
       occt,
-      target,
+      source,
       parameters,
       targets,
       parameters.directionOverrides.map(edgeKey),
     )
+  }
+
+  #createFilletV3(
+    occt: OpenCascadeInstance,
+    parameters: FilletFeatureContentParametersV3,
+    target: Shape3D | undefined,
+    input: FeatureEvaluationInput,
+  ) {
+    const { source, edgeKey, faceKey } = this.#bodyTopologyKeys(
+      occt,
+      target,
+      input,
+      "Fillet",
+      (message) => new FilletV3Error(message),
+    )
+    const targets: ResolvedFilletTarget[] = parameters.targets.map((selection) =>
+      selection.kind === "face"
+        ? { kind: "face", faceKey: faceKey(selection.face) }
+        : {
+            kind: "edge",
+            edgeKey: edgeKey(selection.edge),
+            ...(selection.variableRadius ? { variableRadius: selection.variableRadius } : {}),
+          },
+    )
+    return filletOcctShapeV3(occt, source, parameters.radius, targets)
   }
 
   #createSelectedEdgeFeature(

@@ -26,6 +26,7 @@ import {
 import { readChamferFeatureParametersV3 } from "./part-design-chamfer"
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import { readFdmFeatureParameters } from "./part-design-fdm"
+import { readFilletFeatureParametersV3 } from "./part-design-fillet"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { importedBodyOutputRole, readImportedFeatureParameters } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
@@ -157,6 +158,7 @@ function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation
     readPressPullFeatureParameters,
     readShellFeatureParameters,
     readChamferFeatureParametersV3,
+    readFilletFeatureParametersV3,
     readPlacementFeatureParameters,
   ]
     .map((read) => read(feature)?.targetBody)

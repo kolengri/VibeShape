@@ -1748,15 +1748,8 @@ function ResolvedEdgeTreatmentTaskPanel({
   const unnamed = treeT("unnamedFeature")
   const options = useMemo(
     () =>
-      edgeTreatmentTargetOptions(
-        report.snapshot,
-        report.rebuild,
-        editingId,
-        props.parts,
-        unnamed,
-        operation,
-      ),
-    [report.snapshot, report.rebuild, editingId, props.parts, unnamed, operation],
+      edgeTreatmentTargetOptions(report.snapshot, report.rebuild, editingId, props.parts, unnamed),
+    [report.snapshot, report.rebuild, editingId, props.parts, unnamed],
   )
   const modeKind = mode.kind
   const copy = useMemo(() => edgeTreatmentCopy(t, operation, modeKind), [t, operation, modeKind])

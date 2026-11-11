@@ -22,6 +22,7 @@ import {
   extrusionFeatureTypeV8,
   filletFeatureType,
   filletFeatureTypeV2,
+  filletFeatureTypeV3,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
@@ -120,6 +121,7 @@ const emptySemanticInputTypeKeys = new Set(
     filletFeatureTypeV2,
     chamferFeatureTypeV2,
     chamferFeatureTypeV3,
+    filletFeatureTypeV3,
   ].map((feature) => featureTypeKey(feature.type)),
 )
 

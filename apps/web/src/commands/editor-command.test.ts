@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test"
 import type { SketchId } from "@vibeshape/domain"
 import { partIdSchema } from "@vibeshape/domain/identifiers"
+import { patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
+import { splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
 import { bodyCatalogueFixture } from "../features/part-design/exact-body-catalogue.test-fixtures"
@@ -1008,6 +1010,65 @@ it("shares precise Boolean eligibility across command surfaces and refreshes rep
     reason: "saving",
   })
 })
+
+it.each([
+  ["Pattern", patternFeatureTypeV2.type],
+  ["Split", splitFeatureTypeV2.type],
+])(
+  "enables Fillet and Chamfer but not Hole when only %s outputs are exact solid bodies",
+  (_name, type) => {
+    const fixture = bodyCatalogueFixture(1, 2)
+    const snapshot = {
+      ...fixture.snapshot,
+      features: fixture.snapshot.features.map((feature) => ({ ...feature, type })),
+    }
+    const ready = readyController()
+    if (!ready.report) throw new Error("Expected ready report")
+    const controller = (rebuild: typeof fixture.rebuild) =>
+      ({
+        ...ready,
+        report: { ...ready.report, snapshot, rebuild },
+      }) as DocumentControllerState
+    const eligibility = (state: DocumentControllerState) => {
+      const context = commandContext({ controller: state, hasSavedSketches: true })
+      const commands = resolveBuiltInEditorCommands(context)
+      return Object.fromEntries(
+        [editorCommandIds.createFillet, editorCommandIds.createChamfer, editorCommandIds.createHole]
+          .map((id) => [id, commands.find(({ descriptor }) => descriptor.id === id)?.eligibility])
+          .map(([id, value]) => [id, value]),
+      )
+    }
+    expect(eligibility(controller(fixture.rebuild))).toEqual({
+      [editorCommandIds.createFillet]: { enabled: true },
+      [editorCommandIds.createChamfer]: { enabled: true },
+      [editorCommandIds.createHole]: { enabled: false, reason: "selectSolid" },
+    })
+    const record = fixture.rebuild.response.geometry[0]
+    if (!record?.geometry.bodies) throw new Error("Expected exact body fixture")
+    const meshOnly = {
+      ...fixture.rebuild,
+      response: {
+        ...fixture.rebuild.response,
+        geometry: [
+          {
+            ...record,
+            geometry: {
+              ...record.geometry,
+              bodies: record.geometry.bodies.map((body) => ({
+                ...body,
+                representation: "triangle-mesh" as const,
+              })),
+            },
+          },
+        ],
+      },
+    }
+    expect(eligibility(controller(meshOnly))[editorCommandIds.createFillet]).toEqual({
+      enabled: false,
+      reason: "selectSolid",
+    })
+  },
+)
 
 it("opens Render Picture as a read-only Model inspection command and respects active editing guards", () => {
   const renderPicture = vi.fn()

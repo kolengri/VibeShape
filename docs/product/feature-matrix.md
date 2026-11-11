@@ -194,8 +194,17 @@ saving, and restores the same expression and target on edit/reopen. Invalid size
 committed model. Schema version 2 adds 1–256 selected edges with graphical and keyboard picking,
 explicit missing/ambiguous reference repair, committed undo/redo, and native-history persistence.
 Changing the target retains old references as broken until they are removed and replaced; it never
-silently maps them onto congruent geometry. Tangent propagation controls, variable radii, asymmetric
-chamfers, and constituent-body targeting remain open. See [ADR-0040](../adr/0040-selected-edge-treatments.md).
+silently maps them onto congruent geometry. See [ADR-0040](../adr/0040-selected-edge-treatments.md).
+
+Chamfer V3 and Fillet V3 bind to an exact body, including named and multiple outputs such as
+Pattern instances and Split halves, and accept edge and face targets. Chamfer V3 adds two-distance
+and distance-angle modes, Offset/Tangent measurement, a tangent propagation control and direction
+overrides. Fillet V3 always follows native tangent contours and adds a per-edge linear variable
+radius with a durable start-endpoint rule. See [ADR-0118](../adr/0118-body-bound-directional-chamfer.md)
+and [ADR-0151](../adr/0151-body-bound-variable-radius-fillet.md). Still open: curved Tangent and
+directional Chamfer measurement on non-planar supports, variable radius over multi-edge tangent
+chains or closed edges, non-linear radius laws, setback/corner-blend controls and partial Fillet
+contours.
 
 | Operation | P0 | P1 | P2 |
 |---|:---:|:---:|:---:|

@@ -290,9 +290,27 @@ For new UI selected-edge chamfers on verified single-result bodies, edges that V
 enabled and no advanced intent. Saved V3 edits, named outputs, faces, directional settings and
 disabled propagation never use that compatibility route. Editing a saved V2 chamfer in the UI keeps
 V2 unless an advanced option is set.
-Fillet already follows the native tangent contour from one selected edge. With propagation disabled, every contour edge
-must be explicitly covered. Uniform complete-contour direction overrides are supported; partial or
-mixed directions within one contour fail explicitly.
+With Chamfer propagation disabled, every contour edge must be explicitly covered. Uniform
+complete-contour direction overrides are supported; partial or mixed directions within one contour
+fail explicitly.
+
+`create_fillet` and `update_fillet` accept the same kind of strict V3 alternative: `draftId`,
+`baseRevision`, `commandId`, `featureId`, optional `label`, and `parameters` with an exact
+`targetBody`, an expression-capable `radius` (0.001 to 100000 mm) and 1 to 256 distinct `targets`
+owned by that body. Use V3 for named or multiple outputs such as Pattern or Split results, for face
+targets, and for variable radius. Obtain targets through `model_body_topology` or
+`draft_body_topology`, retaining the output role. Generic references stay empty and the target
+body's producer is the sole dependency. A face target fillets its current native boundary edges.
+Every Fillet target follows its complete native tangent contour; there is no propagation toggle.
+An edge target can add `variableRadius: { startRadius, endRadius, reverse }`. The radius changes
+linearly along the edge. Start is the edge endpoint with the smallest x, then y, then z in the
+body's model coordinates (coordinates within 0.001 mm, 1 µm, compare equal), independent of native edge
+orientation; `reverse: true` swaps the ends. A rigid upstream transform that reorders those
+endpoints moves the start, so preview after such a change and toggle `reverse` if needed. Variable
+radius requires an open edge that is its own complete tangent contour; tangent chains, closed edges
+and edges also reached through another target fail explicitly instead of guessing. The UI keeps
+plain selections on verified single-result bodies on V2, saved V1/V2 features on their schema unless
+a face or variable radius is added, and All edges on V1. A failed V3 build is never retried as V2.
 
 On exact preview failure, inspect the complete treatment record and diagnostic. Geometric failures
 advise reducing radius/distance or choosing another edge; missing or ambiguous references require

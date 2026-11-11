@@ -5,6 +5,7 @@
 - Partially supersedes: the open-arc restriction in [ADR-0121](0121-circular-offset-chamfer.md)
 - Compatibility-route bound and scope-switch defaults superseded by:
   [ADR-0150](0150-chamfer-authoring-route.md)
+- Fillet schema note superseded by: [ADR-0151](0151-body-bound-variable-radius-fillet.md)
 
 ## Decision
 

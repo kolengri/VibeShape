@@ -1685,7 +1685,8 @@ export const shellFeatureContentParametersV2Schema = shellFeatureContentParamete
   openings: z.array(shellOpeningContentSchema).max(64),
 })
 
-// Kept separate from shell's face-only refinement at this untrusted worker boundary.
+// Kept separate from shell's face-only refinement at this untrusted worker boundary; Chamfer V3
+// and Fillet V3 share this exact edge reference.
 export const chamferEdgeContentRefSchema = z
   .object({
     ...shellOpeningContentSchema.shape,
@@ -1694,7 +1695,7 @@ export const chamferEdgeContentRefSchema = z
   .strict()
   .refine(
     (reference) => reference.signature.kind === "edge",
-    "Chamfer edge signature must identify an edge.",
+    "Edge reference signature must identify an edge.",
   )
 
 export const chamferFeatureContentParametersV3Schema = z
@@ -1761,6 +1762,46 @@ export const chamferFeatureContentParametersV3Schema = z
   })
 export type ChamferFeatureContentParametersV3 = z.infer<
   typeof chamferFeatureContentParametersV3Schema
+>
+
+const filletRadiusContentSchema = finiteNumberSchema.min(0.001).max(100_000)
+/**
+ * Start is the edge endpoint that sorts first by x, then y, then z, with coordinates within
+ * 1e-3 mm treated as equal; `reverse` swaps the ends.
+ */
+export const filletVariableRadiusContentSchema = z
+  .object({
+    startRadius: filletRadiusContentSchema,
+    endRadius: filletRadiusContentSchema,
+    reverse: z.boolean(),
+  })
+  .strict()
+  .refine(
+    ({ startRadius, endRadius }) => startRadius !== endRadius,
+    "A variable radius needs different start and end radii.",
+  )
+export const filletFeatureContentParametersV3Schema = z
+  .object({
+    radius: filletRadiusContentSchema,
+    targets: z
+      .array(
+        z.discriminatedUnion("kind", [
+          z
+            .object({
+              kind: z.literal("edge"),
+              edge: chamferEdgeContentRefSchema,
+              variableRadius: filletVariableRadiusContentSchema.optional(),
+            })
+            .strict(),
+          z.object({ kind: z.literal("face"), face: shellOpeningContentSchema }).strict(),
+        ]),
+      )
+      .min(1)
+      .max(256),
+  })
+  .strict()
+export type FilletFeatureContentParametersV3 = z.infer<
+  typeof filletFeatureContentParametersV3Schema
 >
 
 const featureContentIdentityV0Schema = z
