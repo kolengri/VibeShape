@@ -31,14 +31,18 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   await box.getByRole("combobox", { name: "Height", exact: true }).fill("30 mm")
   await box.getByRole("button", { name: "Create box", exact: true }).click()
   await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
-  const boxBody = page.locator("[data-body-id]").getByRole("treeitem")
+  // New projects list each solid as an authored Part in the model browser.
+  const boxBody = page.getByRole("treeitem", { name: "Part Box 1", exact: true })
   await expect(boxBody).toHaveCount(1)
   await boxBody.click()
   const measure = await openModelCommand(page, "Inspect", "Measure")
   await measure.focus()
   await page.keyboard.press("Enter")
   const panel = page.getByRole("complementary", { name: "Measure", exact: true })
-  await expect(boxBody).toHaveAttribute("aria-selected", "true")
+  // Measure starts from the body selected in the browser.
+  await expect(
+    panel.getByRole("combobox", { name: "Body output", exact: true }).locator("option:checked"),
+  ).toHaveText("Box 1")
   await expectMetric(panel, "Volume", "6,000 mm³")
   await expectMetric(panel, "Surface area", "2,200 mm²")
   await expectMetric(panel, "Width", "10 mm")
@@ -82,6 +86,8 @@ test("measures exact box and cylinder outputs, converts units, and refreshes aft
   await panel.getByRole("button", { name: "Close", exact: true }).click()
   await openApplicationMenuItem(page, "Settings…")
   const units = page.getByRole("dialog", { name: "Settings", exact: true })
+  // Project units have their own Settings tab.
+  await units.getByRole("tab", { name: "Project units", exact: true }).click()
   await units.getByRole("combobox", { name: "Length unit" }).selectOption("cm")
   await units.getByRole("button", { name: "Apply project units" }).click()
   await units.getByRole("button", { name: "Done", exact: true }).click()

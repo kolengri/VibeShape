@@ -119,7 +119,8 @@ for (const width of [1280, 960]) {
     const workspaceBounds = await layoutBounds(workspace)
     const shortTask = await layoutBounds(task)
     const shortTree = await layoutBounds(tree)
-    const taskCap = width < 1024 ? 450 : workspaceBounds.height
+    // The compact cap is half the 690 px available workspace (design guidelines).
+    const taskCap = width < 1024 ? 345 : workspaceBounds.height
     expect(shortTask.height).toBeLessThan(taskCap - 20)
     expect(shortTree.height).toBeLessThan(workspaceBounds.height - 20)
     expect(await fields.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0)
@@ -169,7 +170,8 @@ test("retains compact task state with a fixed header and footer and resets a fre
   await setAdditionalRows([fields], true)
   await expect
     .poll(async () => (await layoutBounds(page.locator(".workspace-panel--task"))).height)
-    .toBe(380)
+    // Half of the 550 px available workspace (design guidelines, compact task sheet).
+    .toBe(275)
   const headerBefore = await header.boundingBox()
   const footerBefore = await footer.boundingBox()
   const scrollLimit = await fields.evaluate(

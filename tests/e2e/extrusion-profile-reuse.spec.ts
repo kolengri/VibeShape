@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
-import { confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
+import { confirmSketchPlane, selectSketchTool, unobscuredDrawingBounds } from "./sketch-helpers"
 
 function extrudeCommand(page: Page) {
   return page
@@ -24,8 +24,8 @@ async function createRectangleAndCircleExtrusion(page: Page) {
     .click()
   await confirmSketchPlane(page, "xy")
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  const bounds = await drawing.boundingBox()
-  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+  // Floating windows cover parts of the canvas; draw inside the free region it publishes.
+  const bounds = await unobscuredDrawingBounds(page, drawing)
   await selectSketchTool(page, "Rectangle tools", "Rectangle G")
   await page.mouse.click(bounds.x + bounds.width * 0.58, bounds.y + bounds.height * 0.62)
   await page.mouse.click(bounds.x + bounds.width * 0.82, bounds.y + bounds.height * 0.38)
@@ -34,6 +34,7 @@ async function createRectangleAndCircleExtrusion(page: Page) {
   await page.mouse.click(bounds.x + bounds.width * 0.28, bounds.y + bounds.height * 0.5)
   await page.mouse.click(bounds.x + bounds.width * 0.35, bounds.y + bounds.height * 0.5)
   await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(1)
+  await expect(drawing.locator("[data-sketch-profile-index]")).toHaveCount(2)
   await extrudeCommand(page).click()
   const form = page.getByRole("form", { name: "Extrude profile", exact: true })
   await expect(form.getByRole("button", { name: /^Remove Sketch 1 · Profile [12]$/ })).toHaveCount(
@@ -109,8 +110,8 @@ test("explains a selected model face and creates a sketch on its planar support"
   await page.getByRole("button", { name: "Hide Sketch 1", exact: true }).click()
   await extrudeCommand(page).click()
   const viewport = page.getByRole("region", { name: "3D viewport" })
-  const bounds = await viewport.locator("canvas").boundingBox()
-  if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+  // Sample only the canvas region that floating windows leave uncovered.
+  const bounds = await unobscuredDrawingBounds(page, viewport.locator("canvas"))
   const status = page.getByRole("status").filter({ hasText: /^Selection: / })
   for (let row = 2; row < 10; row += 1) {
     for (let column = 1; column < 6; column += 1) {

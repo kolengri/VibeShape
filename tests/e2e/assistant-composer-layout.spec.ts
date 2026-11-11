@@ -4,34 +4,14 @@ import type {
   AssistantEvent,
   AssistantSnapshot,
 } from "../../packages/automation-api/src/assistant"
-import { LOCAL_AUTOMATION_PATH } from "../../packages/automation-api/src/local-session"
 import { createEditorProject, expect, test } from "./fixtures"
+import { routeNativeProjectAccess } from "./native-project-access-support"
 
 test.use({ autoCreateProject: false })
 
 async function installAgent(page: Page) {
   const client = { name: "Composer layout fixture", version: "1" }
-  await page.route(`**${LOCAL_AUTOMATION_PATH}/*`, async (route) => {
-    const path = new URL(route.request().url()).pathname
-    const body = path.endsWith("/status")
-      ? { protocolVersion: 1, client, paired: false }
-      : ["/connect", "/resume", "/renew"].some((endpoint) => path.endsWith(endpoint))
-        ? {
-            protocolVersion: 1,
-            token: "l".repeat(43),
-            actor: {
-              type: "mcp",
-              clientId: "org.vibeshape.composer-layout",
-              sessionId: "01900000-0000-7000-8000-000000000001",
-            },
-            expiresAt: Date.now() + 60 * 60_000,
-            client,
-          }
-        : path.endsWith("/poll")
-          ? { protocolVersion: 1, work: null, cancelledRequestIds: [] }
-          : { ok: true }
-    await route.fulfill({ json: body })
-  })
+  await routeNativeProjectAccess(page, client, "org.vibeshape.composer-layout")
   await page.addInitScript(() => {
     let snapshot: AssistantSnapshot
     let turns = 0

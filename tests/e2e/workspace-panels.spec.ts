@@ -234,12 +234,19 @@ test("keeps the task draft and canvas mounted across compact layout and collapse
   const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
   const preview = viewport.getByText("Unsaved feature preview", { exact: true })
   await expect(preview).toBeVisible()
+  // Origin-plane visibility moved to the model tree; the view controls are the viewport chrome.
   const previewBounds = await preview.boundingBox()
-  const planesBounds = await viewport
-    .getByRole("group", { name: "Origin plane visibility", exact: true })
+  const controlsBounds = await viewport
+    .getByRole("button", { name: "Standard views", exact: true })
+    .locator("..")
     .boundingBox()
-  if (!previewBounds || !planesBounds) throw new Error("Preview chrome must remain measurable")
-  expect(previewBounds.y).toBeGreaterThan(planesBounds.y + planesBounds.height)
+  if (!previewBounds || !controlsBounds) throw new Error("Preview chrome must remain measurable")
+  expect(
+    previewBounds.x + previewBounds.width <= controlsBounds.x ||
+      controlsBounds.x + controlsBounds.width <= previewBounds.x ||
+      previewBounds.y + previewBounds.height <= controlsBounds.y ||
+      controlsBounds.y + controlsBounds.height <= previewBounds.y,
+  ).toBe(true)
   await expect
     .poll(async () => {
       const canvasBounds = await canvas.boundingBox()
@@ -347,14 +354,16 @@ test("keeps transparent panels above sketch gestures and viewport controls insid
       }),
     ).toBe(true)
   }
-  const planeToggle = page.getByRole("button", { name: "Hide YZ plane", exact: true }).last()
-  const planeBounds = await planeToggle.boundingBox()
-  expect(planeBounds?.x).toBeGreaterThan(248)
-  expect((planeBounds?.x ?? 0) + (planeBounds?.width ?? 0)).toBeLessThan(1112)
-  await planeToggle.click()
-  await expect(
-    page.getByRole("button", { name: "Show YZ plane", exact: true }).last(),
-  ).toBeVisible()
+  // Origin-plane visibility moved to the model tree. The view-controls cluster and the
+  // point-dimension toggle are the viewport controls that must stay in the clear region.
+  const viewControls = page.getByRole("button", { name: "Rotate view", exact: true }).locator("..")
+  const pointDimensions = page.getByRole("button", { name: "Show all point dimensions" })
+  for (const control of [viewControls, pointDimensions]) {
+    const bounds = await control.boundingBox()
+    expect(bounds?.x).toBeGreaterThan(248)
+    expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThan(1112)
+  }
+  await pointDimensions.click()
   expect(await sketch.locator("[data-sketch-entity-type]").count()).toBe(entityCount)
   await page.screenshot({ path: test.info().outputPath("transparent-sketch-panels.png") })
 })

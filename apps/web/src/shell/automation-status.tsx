@@ -24,6 +24,7 @@ import {
 } from "../document/document-controller"
 import { useEditorSessionStoreApi } from "../editor-session/editor-session-provider"
 import type { EditorSessionState } from "../editor-session/editor-session-store"
+import { sketchOperationActive } from "../editor-session/sketch-operation"
 import { LocalAutomationStatus } from "./local-automation-status"
 import { RemoteAutomationConsentDialog, RemoteAutomationStatus } from "./remote-automation-status"
 
@@ -187,7 +188,7 @@ export function AutomationEditorScope() {
   return null
 }
 function editorDraftBlock(state: EditorSessionState) {
-  const sketchDraft = state.sketch.activeSketchTool || state.sketch.draft
+  const sketchDraft = sketchOperationActive(state.sketch)
   if (state.activePartDesignTool?.kind === "surface-texture" && !sketchDraft)
     return "surface-texture-draft" as const
   if ((state.activePartDesignTool && state.activePartDesignTool.kind !== "measure") || sketchDraft)
