@@ -30,6 +30,7 @@ import {
   compoundFeatureParametersV2Schema,
   unionFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-body-combination"
+import { draftFeatureParametersSchema } from "@vibeshape/domain/part-design-draft"
 import { fdmDependencyIds, fdmFeatureParametersSchema } from "@vibeshape/domain/part-design-fdm"
 import {
   holeFeatureParametersV3Schema,
@@ -54,6 +55,7 @@ import {
   patternFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-pattern"
 import { placementFeatureParametersSchema } from "@vibeshape/domain/part-design-placement"
+import { scaleFeatureParametersSchema } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureParametersV2Schema } from "@vibeshape/domain/part-design-shell"
 import {
   splitFeatureParametersSchema,
@@ -320,6 +322,10 @@ const shell = z
   .object({ ...exactBodyFeature, parameters: shellFeatureParametersV2Schema })
   .strict()
   .superRefine(matchingBodyDependency("Shell"))
+const scale = z
+  .object({ ...exactBodyFeature, parameters: scaleFeatureParametersSchema })
+  .strict()
+  .superRefine(matchingBodyDependency("Scale"))
 const split = z
   .object({ ...exactBodyFeature, parameters: splitFeatureParametersSchema })
   .strict()
@@ -362,6 +368,17 @@ const referenceMirror = z
       input,
       input.parameters.targetBody,
       input.parameters.plane,
+      context,
+    ),
+  )
+const draft = z
+  .object({ ...referenceBodyFeature, parameters: draftFeatureParametersSchema })
+  .strict()
+  .superRefine((input, context) =>
+    matchingReferenceDependencies(
+      input,
+      input.parameters.targetBody,
+      input.parameters.neutralPlane,
       context,
     ),
   )
@@ -596,6 +613,10 @@ export const localCadInputs = {
   update_mirror: mirror,
   create_shell: shell,
   update_shell: shell,
+  create_face_draft: draft,
+  update_face_draft: draft,
+  create_scale: scale,
+  update_scale: scale,
   create_thread: thread,
   update_thread: thread,
   create_body_pattern: bodyPattern,
@@ -657,6 +678,10 @@ export const localCadOperations = [
   z.object({ tool: z.literal("update_mirror"), arguments: mirror }).strict(),
   z.object({ tool: z.literal("create_shell"), arguments: shell }).strict(),
   z.object({ tool: z.literal("update_shell"), arguments: shell }).strict(),
+  z.object({ tool: z.literal("create_face_draft"), arguments: draft }).strict(),
+  z.object({ tool: z.literal("update_face_draft"), arguments: draft }).strict(),
+  z.object({ tool: z.literal("create_scale"), arguments: scale }).strict(),
+  z.object({ tool: z.literal("update_scale"), arguments: scale }).strict(),
   z.object({ tool: z.literal("create_thread"), arguments: thread }).strict(),
   z.object({ tool: z.literal("update_thread"), arguments: thread }).strict(),
   z.object({ tool: z.literal("create_body_pattern"), arguments: bodyPattern }).strict(),
