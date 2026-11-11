@@ -196,6 +196,12 @@ describe("Draft neutral-plane content preparation", () => {
       parameters: { planeNormal: [0, 0, -1], pullDirection: [0, 0, 1], supportInputIndex: 0 },
     })
     expect(await prepareReferenceSupportedFeatureContent({ document, feature })).toMatchObject({
+      ok: false,
+      diagnostic: { code: "org.vibeshape.feature.reference-frame-unresolved" },
+    })
+  })
+})
+
 describe("Coil reference axis content preparation", () => {
   const coil = (overrides: Record<string, unknown>, dependencies: string[]) =>
     featureRecordSchema.parse({
@@ -224,18 +230,22 @@ describe("Coil reference axis content preparation", () => {
     })
 
   it("resolves the axis into UUID-free helix content with derived turns", async () => {
-    expect(await prepareReferenceFrameFeatureContent({ document, feature: coil({}, []) })).toEqual(
+    expect(await prepareReferenceFrameFeatureContent({ document, feature: coil({}, []) })).toEqual({
       ok: true,
-      parameters: 
+      parameters: {
+        helix: {
           origin: [1, 2, 3],
           direction: [0, 1, 0],
           handedness: "left",
           radius: 10,
           pitch: 4,
           turns: 2.5,
-          startAngle: 0.5,,
-        section: kind: "rectangular", width: 2, height: 1 ,
-        operation: "new",,)
+          startAngle: 0.5,
+        },
+        section: { kind: "rectangular", width: 2, height: 1 },
+        operation: "new",
+      },
+    })
   })
 
   it("indexes a datum-axis support after the exact target and fails closed when unresolved", async () => {
