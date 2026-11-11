@@ -462,6 +462,10 @@
           "label": "Datum plane",
           "keywords": "create datum plane|reference plane|offset plane|construction plane"
         },
+        "createDatumPoint": {
+          "label": "Datum point",
+          "keywords": "create datum point|reference point|construction point|vertex|circle center"
+        },
         "createExtrusion": {
           "label": "Extrude",
           "keywords": "create extrusion|profile|solid|pad"
@@ -1510,6 +1514,42 @@
           "invalidAngleDimension": "This expression must resolve to an angle.",
           "invalidAngleRange": "Enter an angle between -360° and 360°."
         },
+        "datumPoint": {
+          "title": "Create datum point",
+          "description": "Create a reusable reference point from coordinates, a model vertex, or the center of a circular edge.",
+          "editTitle": "Edit datum point",
+          "editDescription": "Update how this point is located while preserving its identity. A reference that no longer resolves must be replaced explicitly.",
+          "parameters": "Point definition",
+          "mode": "Locate by",
+          "modeDescription": "Coordinates stay fixed in model space; vertex and circle-center points follow the referenced body.",
+          "modeCoordinates": "Coordinates",
+          "modeVertex": "Model vertex",
+          "modeCircleCenter": "Circular edge center",
+          "x": "X",
+          "y": "Y",
+          "z": "Z",
+          "coordinateDescription": "Enter a signed coordinate from -100,000 mm to 100,000 mm, or use a variable such as #offset.",
+          "vertex": "Vertex",
+          "vertexDescription": "Choose a stable vertex of an earlier body.",
+          "circle": "Circular edge",
+          "circleDescription": "Choose a stable circle or arc of an earlier body; the point is placed at its center.",
+          "savedReference": "Current reference",
+          "unavailableReference": "The saved reference is missing or ambiguous. Choose a replacement.",
+          "chooseReference": "Choose a reference",
+          "noCandidates": "No stable references are available",
+          "create": "Create datum point",
+          "update": "Update datum point",
+          "cancel": "Cancel",
+          "featureLabel": "Datum point {number}",
+          "invalidExpression": "Enter a valid expression using supported units and existing variables.",
+          "invalidDimension": "This expression must resolve to a length.",
+          "invalidRange": "Enter a coordinate from -100,000 mm to 100,000 mm.",
+          "validationSummary": "Fix the highlighted parameters before creating the datum point.",
+          "updateValidationSummary": "Fix the highlighted parameters before updating the datum point.",
+          "staleRevision": "The document changed while this datum point was being edited. Review the current model and try again.",
+          "createFailed": "The datum point could not be created. Your parameter values are preserved.",
+          "updateFailed": "The datum point could not be updated. Your parameter values are preserved."
+        },
         "boolean": {
           "title": "Subtract solids",
           "description": "Remove the tool solid from the target solid. Input order changes the result.",
@@ -1783,7 +1823,13 @@
           "recessDepth": "Recess depth",
           "includedAngle": "Included angle",
           "angleDescription": "Enter an angle or a variable expression.",
-          "invalidRecess": "Use a larger recess diameter and leave cylindrical depth. Countersink angles must be between 10 and 170 degrees."
+          "invalidRecess": "Use a larger recess diameter and leave cylindrical depth. Countersink angles must be between 10 and 170 degrees.",
+          "depthDescription": "Enter a length or a variable expression. Depth is measured to the full-diameter shoulder; a drill point extends beyond it.",
+          "drillPoint": "Drill point",
+          "drillPointDescription": "Add a conical drill-point tip below the blind depth.",
+          "tipAngle": "Tip angle",
+          "tipAngleDescription": "Enter an included angle from 60 to 180 degrees or a variable expression. 118 degrees matches a standard twist drill; 180 degrees is flat.",
+          "invalidTipAngle": "Enter a tip angle from 60 to 180 degrees."
         },
         "createSphere": "Create sphere",
         "sphere": {
@@ -1804,7 +1850,7 @@
         "createCone": "Create cone",
         "cone": {
           "title": "Create cone",
-          "description": "Create a pointed cone along +Z from its axis placement origin.",
+          "description": "Create a pointed or truncated cone along +Z from its axis placement origin.",
           "editTitle": "Edit cone",
           "editDescription": "Update this Cone's dimensions and placement while preserving its identity and authored expressions.",
           "parameters": "Cone definition",
@@ -1836,6 +1882,8 @@
         "basicPrimitive": {
           "dimensions": "Dimensions",
           "radius": "Radius",
+          "topRadius": "Top radius",
+          "topRadiusDescription": "Enter 0 for a pointed cone, or a length from 0.001 mm that differs from the base radius for a truncated cone. A larger top radius inverts the taper.",
           "height": "Height",
           "majorRadius": "Major radius",
           "minorRadius": "Minor radius",
@@ -1852,6 +1900,7 @@
           "invalidRange": "Enter a length from 0.001 mm to 100,000 mm.",
           "invalidPositionRange": "Enter a coordinate from -100,000 mm to 100,000 mm.",
           "invalidTorusRadii": "The major radius must be greater than the minor radius.",
+          "invalidConeTopRadius": "Enter 0 or a length from 0.001 mm that differs from the base radius. Use Cylinder for equal radii.",
           "invalidWorkspaceBounds": "Reduce dimensions or move the origin to keep the solid within the supported workspace limits.",
           "sides": "Base sides",
           "sidesDescription": "Enter a whole number from 3 to 64. Radius measures from the base center to a vertex.",
@@ -2001,6 +2050,9 @@
         "datumPreviewFailed": "The unsaved datum plane could not be previewed. Adjust its support or offset.",
         "datumPreviewLoading": "Rebuilding unsaved datum plane preview…",
         "datumPreviewReady": "Unsaved datum plane preview",
+        "datumPointPreviewFailed": "The unsaved datum point could not be previewed. Choose a reference that still resolves or enter coordinates.",
+        "datumPointPreviewLoading": "Rebuilding unsaved datum point preview…",
+        "datumPointPreviewReady": "Unsaved datum point preview",
         "rebuildFailed": "The saved model could not be rebuilt. Its semantic revision is still available.",
         "showPlane": "Show {plane}",
         "title": "3D viewport",
@@ -2112,6 +2164,7 @@
           "endCondition": "The selected extrusion end face or body is stale or cannot be reached.",
           "bodyMissing": "A body required by this operation is unavailable.",
           "expression": "A parameter expression could not be evaluated.",
+          "datumPointReference": "{reason, select, ambiguous {The reference of this datum point now matches more than one model vertex or edge.} notCircular {The edge referenced by this datum point is no longer circular, so it has no center.} other {The vertex or circular edge referenced by this datum point no longer exists.}}",
           "unknown": "The operation could not be evaluated."
         },
         "nextStep": {
@@ -2126,6 +2179,7 @@
           "endCondition": "Select the end face or body again, or change the end condition to Distance.",
           "bodyMissing": "Select an available target body, or repair the earlier feature that produces it.",
           "expression": "Correct the expression or its referenced variable, then try again.",
+          "datumPointReference": "Edit the datum point and choose a replacement reference, or switch it to coordinates.",
           "unknown": "Review its parameters and references. Technical details contain the original failure."
         }
       },
@@ -4413,6 +4467,7 @@
       "createSketch": "Create Sketch",
       "extrude": "Extrude",
       "offsetPlane": "Offset Plane",
+      "datumPoint": "Datum Point",
       "shell": "Shell",
       "draft": "Draft",
       "scale": "Scale",

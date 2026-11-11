@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { datumPointFeatureTypeHandler, readDatumPointFeatureParameters } from "./datum-point"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
@@ -179,6 +180,16 @@ function contentParameters(parameters: unknown) {
   }
 }
 
+export {
+  type DatumPointParameters,
+  datumPointCircleEdgeRefSchema,
+  datumPointFeatureType,
+  datumPointParametersSchema,
+  datumPointSupportFeatureId,
+  hasCompleteDatumPointDependencyModel,
+  readDatumPointFeatureParameters,
+} from "./datum-point"
+
 export const referenceGeometryFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[] = [
   {
     type: datumPlaneFeatureTypeV1.type,
@@ -199,6 +210,7 @@ export const referenceGeometryFeatureTypeHandlers: readonly TrustedFeatureTypeHa
     contentParameters,
     validateFeature: datumPlaneInvariant,
   },
+  datumPointFeatureTypeHandler,
 ]
 
 export function readDatumPlaneFeatureParameters(
@@ -220,4 +232,15 @@ export function readDatumPlaneFeatureParameters(
         : null
   const parsed = schema?.safeParse(feature.parameters)
   return parsed?.success ? parsed.data : null
+}
+
+/**
+ * Reference-geometry display features (datum planes and points). They never own bodies,
+ * measurements, topology inspection or exports.
+ */
+export function isReferenceGeometryFeature(feature: FeatureRecord) {
+  return (
+    readDatumPlaneFeatureParameters(feature) !== null ||
+    readDatumPointFeatureParameters(feature) !== null
+  )
 }

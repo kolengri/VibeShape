@@ -16,6 +16,7 @@ export type CadErrorKind =
   | "endCondition"
   | "bodyMissing"
   | "expression"
+  | "datumPointReference"
   | "unknown"
 
 const codeKinds = new Map<string, CadErrorKind>([
@@ -28,6 +29,7 @@ const codeKinds = new Map<string, CadErrorKind>([
   ["org.vibeshape.feature.sketch-solver-unavailable", "solverUnavailable"],
   ["org.vibeshape.feature.dependency-blocked", "dependencyBlocked"],
   ["org.vibeshape.feature.parameter-expression-failed", "expression"],
+  ["org.vibeshape.feature.datum-point-reference-unresolved", "datumPointReference"],
 ])
 const reasonKinds = new Map<string, CadErrorKind>([
   ["extrusion-end-support-stale-or-unreachable", "endCondition"],
@@ -39,6 +41,17 @@ export function cadErrorKind(entry: CadDiagnosticEntry): CadErrorKind {
   const reason = entry.values.reason
   const specific = typeof reason === "string" ? reasonKinds.get(reason) : undefined
   return specific ?? codeKinds.get(entry.code) ?? "unknown"
+}
+
+const messageReasons = new Map([
+  ["ambiguous", "ambiguous"],
+  ["not-circular", "notCircular"],
+])
+
+/** ICU select keys are identifiers; unmapped diagnostic reasons use the generic message. */
+function diagnosticReason(entry: CadDiagnosticEntry) {
+  const reason = entry.values.reason
+  return (typeof reason === "string" ? messageReasons.get(reason) : undefined) ?? "other"
 }
 
 function relatedLabels(diagnostics: readonly CadDiagnosticEntry[], snapshot: DocumentSnapshot) {
@@ -82,7 +95,7 @@ export function CadErrorPresentation({
   const labels = [...new Set([...contextLabels, ...relatedLabels(diagnostics, snapshot)])]
   return (
     <Alert className="mb-3" aria-live="polite" aria-label={t("title")}>
-      <p className="font-medium">{t(`cause.${kind}`)}</p>
+      <p className="font-medium">{t(`cause.${kind}`, { reason: diagnosticReason(first) })}</p>
       <p>{t(`nextStep.${kind}`)}</p>
       {labels.length > 0 ? (
         <p className="text-muted-foreground">

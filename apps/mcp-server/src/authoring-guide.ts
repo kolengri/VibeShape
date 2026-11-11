@@ -50,10 +50,12 @@ surface-relief layers are outside the CAD body render contract.
 ## Additional exact feature tools
 
 Box retains \`create_box\` millimeter shorthand and adds typed \`update_box\`.
-Cylinder, pointed Cone, Sphere, ring Torus and regular Pyramid have named create/update tools.
+Cylinder, Cone, Sphere, ring Torus and regular Pyramid have named create/update tools.
 Use complete quantity parameters, quantity origin, applicable centered state and explicit suppression;
 preserve existing IDs, labels and raw expressions. These independent primitives accept no dependencies
-or topology references. Wedge and truncated Cone have no registered primitive tool.
+or topology references. Cone accepts an optional typed \`topRadius\`: omitted or literal zero keeps the
+pointed Cone v1, otherwise Cone v2 builds a truncated (or, when larger than the base, inverted) frustum.
+Wedge and horn/spindle Torus have no registered primitive tool.
 
 Owned drafts also expose \`remove_feature\`, \`remove_sketch\`, \`set_feature_suppressed\`
 and \`rename_project\` through ordinary registered commands. Referenced records block removal;
@@ -791,8 +793,8 @@ Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on 
 
 Tools currently cover registered Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update;
 sketch, Extrude, Revolve and Hole create/update;
-Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
-face Draft, uniform Scale, Split, Sweep, Loft, custom Thread and FDM create/update;
+Fillet/Chamfer, Datum Plane, Datum Point, Boolean subtraction, Union, Compound, Mirror, body Pattern,
+Shell, face Draft, uniform Scale, Split, Sweep, Loft, custom Thread and FDM create/update;
 variables; bounded inspection; draft lifecycle and export; feature/sketch removal,
 explicit feature suppression and project rename; Placement and editable sketch text;
 owned native/planar imports, assembly/library authoring, surface textures and saved-change Undo/Redo.

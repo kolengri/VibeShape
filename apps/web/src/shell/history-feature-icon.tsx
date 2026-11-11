@@ -32,6 +32,7 @@ const featureIcons: Readonly<Record<string, EditorCommandIcon>> = {
   "org.vibeshape.feature.part-design.fdm": "fdm-tools",
   "org.vibeshape.feature.part-design.connect-mounts": "union",
   "org.vibeshape.feature.part-design.coil": "coil",
+  "org.vibeshape.feature.reference-geometry.datum-point": "datum-point",
 }
 
 export function HistoryFeatureIcon({ feature }: { feature: FeatureRecord }) {

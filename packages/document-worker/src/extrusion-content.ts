@@ -40,6 +40,7 @@ import {
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   holeFeatureContentParametersSchema,
   holeFeatureContentParametersV3Schema,
+  holeFeatureContentParametersV4Schema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
@@ -714,13 +715,16 @@ function materializedHoleContent(
   centers: readonly [number, number, number][],
 ) {
   const prepared = (
-    "treatment" in parameters
-      ? holeFeatureContentParametersV3Schema
-      : holeFeatureContentParametersSchema
+    "tipAngle" in parameters
+      ? holeFeatureContentParametersV4Schema
+      : "treatment" in parameters
+        ? holeFeatureContentParametersV3Schema
+        : holeFeatureContentParametersSchema
   ).safeParse({
     frame,
     centers,
     ...("treatment" in parameters ? { treatment: holeTreatmentContent(parameters.treatment) } : {}),
+    ...("tipAngle" in parameters ? { tipAngle: parameters.tipAngle.value } : {}),
     diameter: parameters.diameter.value,
     direction: parameters.direction,
     extent: parameters.extent,

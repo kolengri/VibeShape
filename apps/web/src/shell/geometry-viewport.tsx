@@ -1,6 +1,6 @@
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
 import {
-  readDatumPlaneFeatureParameters,
+  isReferenceGeometryFeature,
   type SketchEntity,
   type SketchProfileSelector,
   type SketchRecord,
@@ -206,11 +206,7 @@ export function viewerMeshes(
         ...(appearance?.color ? { color: appearance.color } : {}),
       }
     })
-  const datumIds = new Set<string>(
-    features
-      .filter((feature) => readDatumPlaneFeatureParameters(feature) !== null)
-      .map(({ id }) => id),
-  )
+  const datumIds = new Set<string>(features.filter(isReferenceGeometryFeature).map(({ id }) => id))
   const datumMeshes = rebuild.response.geometry
     .filter(({ featureId }) => datumIds.has(featureId) && !hiddenIds.has(featureId))
     .map(({ featureId, geometry }) => ({
@@ -1391,6 +1387,9 @@ type PreviewMessageKey =
   | "datumPreviewFailed"
   | "datumPreviewLoading"
   | "datumPreviewReady"
+  | "datumPointPreviewFailed"
+  | "datumPointPreviewLoading"
+  | "datumPointPreviewReady"
   | "previewFailed"
   | "previewLoading"
   | "previewReady"
@@ -1411,6 +1410,11 @@ const PREVIEW_MESSAGE_KEYS: Readonly<
     error: "datumPreviewFailed",
     loading: "datumPreviewLoading",
     ready: "datumPreviewReady",
+  },
+  "datum-point": {
+    error: "datumPointPreviewFailed",
+    loading: "datumPointPreviewLoading",
+    ready: "datumPointPreviewReady",
   },
   extrusion: {
     error: "previewFailed",
@@ -3814,15 +3818,21 @@ function FaceMeasurementChrome({
   )
 }
 
-function hoveredFaceMeasurement(controller: DocumentControllerState, selection: ViewerSelection) {
+/** A rebuild that is current for the controller's snapshot, or undefined while stale. */
+function currentRebuild(controller: DocumentControllerState) {
   const report = controller.report
-  if (
-    controller.status !== "ready" ||
-    !report?.rebuild.ok ||
-    report.snapshot.revision !== report.rebuild.response.revision
-  )
-    return undefined
-  const geometry = report.rebuild.response.geometry.find(
+  if (controller.status !== "ready" || !report?.rebuild.ok) return undefined
+  const rebuild = report.rebuild
+  return report.snapshot.revision === rebuild.response.revision ? { report, rebuild } : undefined
+}
+
+function hoveredFaceMeasurement(controller: DocumentControllerState, selection: ViewerSelection) {
+  const current = currentRebuild(controller)
+  if (!current) return undefined
+  // Datum markers and planes are display geometry; their faces have no measurable model area.
+  const feature = current.report.snapshot.features.find(({ id }) => id === selection.featureId)
+  if (feature && isReferenceGeometryFeature(feature)) return undefined
+  const geometry = current.rebuild.response.geometry.find(
     (entry) => entry.featureId === selection.featureId,
   )?.geometry
   const candidates =

@@ -1,4 +1,4 @@
-import { readDatumPlaneFeatureParameters, terminalFeatureIds } from "@vibeshape/domain"
+import { isReferenceGeometryFeature, terminalFeatureIds } from "@vibeshape/domain"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import { documentIdSchema, featureIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
 import {
@@ -70,7 +70,7 @@ function requestedFeatures(snapshot: DocumentSnapshot, query: ModelMeasurementQu
   if (query.featureId) {
     const feature = snapshot.features.find((feature) => feature.id === query.featureId)
     if (!feature) return failure("feature-not-found", "The requested feature does not exist.")
-    if (readDatumPlaneFeatureParameters(feature) !== null)
+    if (isReferenceGeometryFeature(feature))
       return failure(
         "feature-not-measurable",
         "Construction plane display geometry cannot be measured as a model output.",

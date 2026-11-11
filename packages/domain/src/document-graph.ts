@@ -18,6 +18,7 @@ import {
   chamferFeatureType,
   chamferFeatureTypeV2,
   coneFeatureType,
+  coneFeatureTypeV2,
   cylinderFeatureType,
   expectedRevolveDependencyIds,
   extrusionFeatureType,
@@ -62,6 +63,7 @@ import {
   holeFeatureType,
   holeFeatureTypeV2,
   holeFeatureTypeV3,
+  holeFeatureTypeV4,
   readHoleFeatureParameters,
 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
@@ -115,7 +117,9 @@ import { referenceFrameInvariant } from "./reference-frame"
 import {
   datumPlaneFeatureType,
   datumPlaneFeatureTypeV1,
+  datumPointFeatureType,
   hasCompleteDatumPlaneDependencyModel,
+  hasCompleteDatumPointDependencyModel,
 } from "./reference-geometry"
 import {
   isOrphanedModelReference,
@@ -243,6 +247,7 @@ const dependencyCompleteFeatureTypeKeys = new Set([
   featureTypeKey(cylinderFeatureType.type),
   featureTypeKey(sphereFeatureType.type),
   featureTypeKey(coneFeatureType.type),
+  featureTypeKey(coneFeatureTypeV2.type),
   featureTypeKey(pyramidFeatureType.type),
   featureTypeKey(torusFeatureType.type),
   featureTypeKey(booleanFeatureType.type),
@@ -323,6 +328,7 @@ const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord)
   [featureTypeKey(holeFeatureType.type), readHoleFeatureParameters],
   [featureTypeKey(holeFeatureTypeV2.type), readHoleFeatureParameters],
   [featureTypeKey(holeFeatureTypeV3.type), readHoleFeatureParameters],
+  [featureTypeKey(holeFeatureTypeV4.type), readHoleFeatureParameters],
   [featureTypeKey(loftFeatureType.type), readLoftFeatureParameters],
   [featureTypeKey(loftFeatureTypeV2.type), readLoftFeatureParameters],
   [featureTypeKey(loftFeatureTypeV3.type), readLoftFeatureParametersV3],
@@ -385,6 +391,8 @@ function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   ) {
     return hasCompleteDatumPlaneDependencyModel(feature)
   }
+  if (typeKey === featureTypeKey(datumPointFeatureType.type))
+    return hasCompleteDatumPointDependencyModel(feature)
   return dependencyCompleteFeatureTypeKeys.has(typeKey)
 }
 

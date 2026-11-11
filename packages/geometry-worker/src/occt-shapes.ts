@@ -255,7 +255,9 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     radius: number,
     height: number,
     origin: Vector3,
+    topRadius = 0,
   ): Shape3D {
+    if (topRadius > 0) return createFrustum(opencascade, radius, topRadius, height, origin)
     // The shipped kernel omits MakeCone; revolving this exact meridian retains a conical surface.
     const owned: { delete(): void }[] = []
     const own = <T extends { delete(): void }>(value: T) => {
@@ -276,6 +278,48 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
       const wire = own(wireMaker.Wire())
       const faceMaker = own(new opencascade.BRepBuilderAPI_MakeFace_15(wire, true))
       if (!faceMaker.IsDone()) throw new Error("The cone meridian could not form a planar face.")
+      const face = own(faceMaker.Face())
+      const direction = own(new opencascade.gp_Dir_4(0, 0, 1))
+      const axis = own(new opencascade.gp_Ax1_2(base, direction))
+      const maker = own(new opencascade.BRepPrimAPI_MakeRevol_1(face, axis, 2 * Math.PI, false))
+      return adoptOcctShape(maker.Shape(), castShape)
+    } finally {
+      for (const object of owned.reverse()) object.delete()
+    }
+  }
+
+  function createFrustum(
+    opencascade: OpenCascadeInstance,
+    radius: number,
+    topRadius: number,
+    height: number,
+    origin: Vector3,
+  ): Shape3D {
+    // Revolve the exact trapezoid meridian; the slanted edge keeps one conical surface.
+    const owned: { delete(): void }[] = []
+    const own = <T extends { delete(): void }>(value: T) => {
+      owned.push(value)
+      return value
+    }
+    try {
+      const [x, y, z] = origin
+      const base = own(new opencascade.gp_Pnt_3(x, y, z))
+      const corners = [
+        base,
+        own(new opencascade.gp_Pnt_3(x + radius, y, z)),
+        own(new opencascade.gp_Pnt_3(x + topRadius, y, z + height)),
+        own(new opencascade.gp_Pnt_3(x, y, z + height)),
+      ]
+      const wireMaker = own(new opencascade.BRepBuilderAPI_MakeWire_1())
+      for (const [index, start] of corners.entries()) {
+        const end = corners[(index + 1) % corners.length]
+        if (!end) throw new Error("The frustum meridian is incomplete.")
+        wireMaker.Add_1(own(own(new opencascade.BRepBuilderAPI_MakeEdge_3(start, end)).Edge()))
+      }
+      if (!wireMaker.IsDone()) throw new Error("The frustum meridian wire could not be built.")
+      const wire = own(wireMaker.Wire())
+      const faceMaker = own(new opencascade.BRepBuilderAPI_MakeFace_15(wire, true))
+      if (!faceMaker.IsDone()) throw new Error("The frustum meridian could not form a face.")
       const face = own(faceMaker.Face())
       const direction = own(new opencascade.gp_Dir_4(0, 0, 1))
       const axis = own(new opencascade.gp_Ax1_2(base, direction))

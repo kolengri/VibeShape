@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   coneFeatureType,
+  coneFeatureTypeV2,
   createLengthQuantity,
   type FeatureRecord,
   featureIdSchema,
@@ -224,6 +225,84 @@ describe("BasicPrimitiveForm", () => {
       )
     },
   )
+
+  it("keeps a literal zero top radius on the pointed cone version and authors a frustum as v2", async () => {
+    const user = userEvent.setup()
+    const { copy, onSave } = renderPrimitive("cone")
+    expect((screen.getByRole("combobox", { name: copy.topRadius }) as HTMLInputElement).value).toBe(
+      "0 mm",
+    )
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({
+        type: coneFeatureType.type,
+        parameters: expect.not.objectContaining({ topRadius: expect.anything() }),
+      }),
+    )
+    cleanup()
+    const truncated = renderPrimitive("cone")
+    await setLength(user, truncated.copy.topRadius, "4 mm")
+    await user.click(screen.getByRole("button", { name: truncated.copy.submit }))
+    expect(truncated.onSave).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({
+        type: coneFeatureTypeV2.type,
+        parameters: expect.objectContaining({
+          topRadius: expect.objectContaining({ value: 4 }),
+        }),
+      }),
+    )
+  })
+
+  it("rejects a top radius equal to the base radius without previewing or saving", async () => {
+    const user = userEvent.setup()
+    const { copy, onSave, onPreviewChange } = renderPrimitive("cone")
+    const topRadius = await setLength(user, copy.topRadius, "10 mm")
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(await screen.findByText(copy.invalidConeTopRadius)).toBeTruthy()
+    expect(topRadius.getAttribute("aria-invalid")).toBe("true")
+    expect(onSave).not.toHaveBeenCalled()
+    await waitFor(() => expect(onPreviewChange).toHaveBeenLastCalledWith(null))
+  })
+
+  it("restores a saved truncated cone and never migrates it back to version 1", async () => {
+    const user = userEvent.setup()
+    const feature = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: featureId,
+      type: coneFeatureTypeV2.type,
+      parameters: {
+        radius: createLengthQuantity(12, "mm", "#radius"),
+        topRadius: createLengthQuantity(4, "mm", "4 mm"),
+        height: createLengthQuantity(30, "mm", "30 mm"),
+        centered: false,
+        origin: {
+          x: createLengthQuantity(0),
+          y: createLengthQuantity(0),
+          z: createLengthQuantity(0),
+        },
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+      label: "Frustum",
+    })
+    const { copy, onSave } = renderPrimitive("cone", { mode: { kind: "edit", feature } })
+    expect((screen.getByRole("combobox", { name: copy.topRadius }) as HTMLInputElement).value).toBe(
+      "4 mm",
+    )
+    await setLength(user, copy.topRadius, "0 mm")
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({
+        id: featureId,
+        type: coneFeatureTypeV2.type,
+        parameters: expect.objectContaining({ topRadius: expect.objectContaining({ value: 0 }) }),
+      }),
+    )
+  })
 
   it("rejects equal torus radii without previewing or saving and focuses the first error", async () => {
     const user = userEvent.setup()

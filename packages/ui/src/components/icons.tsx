@@ -67,6 +67,7 @@ export {
   CopyIcon,
   CylinderIcon,
   DatumPlaneIcon,
+  DatumPointIcon,
   DeleteIcon,
   DeleteIcon as Trash2,
   DimensionIcon,

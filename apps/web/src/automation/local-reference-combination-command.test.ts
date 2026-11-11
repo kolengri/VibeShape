@@ -5,6 +5,7 @@ import {
   createAngleQuantity,
   createLengthQuantity,
   datumPlaneFeatureType,
+  datumPointFeatureType,
 } from "@vibeshape/domain"
 import { booleanFeatureType } from "@vibeshape/domain/part-design"
 import {
@@ -46,6 +47,33 @@ const face = {
     directionMode: "oriented",
     boundaryCount: 4,
     adjacentGeometryClasses: ["PLANE"],
+  },
+}
+const circleEdge = {
+  schemaVersion: 1,
+  featureId: id(5),
+  outputRole: "result",
+  kind: "edge",
+  signature: {
+    kind: "edge",
+    geometryClass: "CIRCLE",
+    measure: 12 * Math.PI,
+    centroid: [0, 0, 10],
+    bounds: { min: [-6, -6, 10], max: [6, 6, 10] },
+    boundaryCount: 0,
+    adjacentGeometryClasses: ["CYLINDRE", "PLANE"],
+  },
+}
+const datumPointCoordinates = {
+  ...base,
+  dependencies: [],
+  parameters: {
+    mode: "coordinates",
+    position: {
+      x: createLengthQuantity(1),
+      y: createLengthQuantity(-2, "mm", "#offset"),
+      z: createLengthQuantity(3),
+    },
   },
 }
 const slots = bodies.map((targetBody, index) => ({ slotId: id(10 + index), targetBody }))
@@ -98,9 +126,44 @@ const cases = [
     type: compoundFeatureTypeV2.type,
     arguments: { ...base, dependencies: [id(5), id(6)], parameters: { slots } },
   },
+  { suffix: "datum_point", type: datumPointFeatureType.type, arguments: datumPointCoordinates },
+  {
+    suffix: "datum_point",
+    type: datumPointFeatureType.type,
+    arguments: {
+      ...base,
+      dependencies: [id(5)],
+      parameters: { mode: "circle-center", reference: circleEdge },
+    },
+  },
 ]
 
 describe("local Datum Plane and body combination draft tools", () => {
+  it.each([
+    { dependencies: [id(5)] },
+    { references: [face] },
+    {
+      parameters: {
+        mode: "coordinates",
+        position: { ...datumPointCoordinates.parameters.position, x: createLengthQuantity(1e6) },
+      },
+    },
+    { parameters: { mode: "vertex", reference: circleEdge }, dependencies: [id(5)] },
+    { parameters: { mode: "circle-center", reference: circleEdge }, dependencies: [] },
+    { parameters: { mode: "circle-center", reference: circleEdge }, dependencies: [id(6)] },
+    {
+      parameters: { mode: "circle-center", reference: { ...circleEdge, outputRole: undefined } },
+      dependencies: [id(5)],
+    },
+  ])("rejects invalid Datum Point intent before dispatch %j", (changes) => {
+    expect(
+      localOperationSchema.safeParse({
+        tool: "create_datum_point",
+        arguments: { ...datumPointCoordinates, ...changes },
+      }).success,
+    ).toBe(false)
+  })
+
   it.each(cases)(
     "dispatches create/update $suffix through the owner-bound ordinary host",
     async ({ suffix, type, arguments: arguments_ }) => {

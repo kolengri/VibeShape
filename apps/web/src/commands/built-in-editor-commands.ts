@@ -62,6 +62,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     createPyramid: () => void
     createTorus: () => void
     createDatumPlane: () => void
+    createDatumPoint: () => void
     createExtrusion: () => unknown
     createRevolve?: () => unknown
     createLoft?: () => void
@@ -318,6 +319,13 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     labelKey: "createDatumPlane",
     ownerModuleId: referenceGeometryOwner,
     toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "datum-point",
+    id: editorCommandIds.createDatumPoint,
+    labelKey: "createDatumPoint",
+    ownerModuleId: referenceGeometryOwner,
   },
   {
     group: "modeling",
@@ -1158,6 +1166,14 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: canCreateFeature,
     id: editorCommandIds.createDatumPlane,
     isActive: ({ state }) => state.activePartDesignCommand === "datum-plane",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: referenceGeometryOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createDatumPoint(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createDatumPoint,
+    isActive: ({ state }) => state.activePartDesignCommand === "datum-point",
     isToolbarVisible: ({ state }) => state.activeSketchTool === null,
     ownerModuleId: referenceGeometryOwner,
   },

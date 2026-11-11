@@ -1,6 +1,14 @@
 import type { DocumentFeatureContentPreparationPort } from "@vibeshape/application/feature-rebuild"
-import { resolveReferenceAxis, resolveReferencePlane } from "@vibeshape/application/reference-frame"
-import type { FeatureRecord } from "@vibeshape/domain"
+import {
+  resolveDatumPoint,
+  resolveReferenceAxis,
+  resolveReferencePlane,
+} from "@vibeshape/application/reference-frame"
+import {
+  datumPointSupportFeatureId,
+  type FeatureRecord,
+  readDatumPointFeatureParameters,
+} from "@vibeshape/domain"
 import { readCoilFeatureParameters } from "@vibeshape/domain/part-design-coil"
 import { draftContentFace, readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
 import { helixContentFields } from "@vibeshape/domain/part-design-helix"
@@ -10,6 +18,7 @@ import { readSplitFeatureParametersV2 } from "@vibeshape/domain/part-design-spli
 import { referenceFrameSupportFeatureId } from "@vibeshape/domain/reference-frame"
 import {
   coilFeatureContentParametersSchema,
+  datumPointFeatureContentParametersSchema,
   draftFeatureContentParametersSchema,
   mirrorFeatureContentParametersV3Schema,
   patternFeatureContentParametersV2Schema,
@@ -18,7 +27,8 @@ import {
 
 export function shouldPrepareReferenceFrameFeatureContent(feature: FeatureRecord) {
   return Boolean(
-    readDraftFeatureParameters(feature) ||
+    readDatumPointFeatureParameters(feature) ||
+      readDraftFeatureParameters(feature) ||
       readMirrorFeatureParametersV3(feature) ||
       readSplitFeatureParametersV2(feature) ||
       readPatternFeatureParametersV2(feature) ||
@@ -65,6 +75,35 @@ function prepareCoilContent(feature: FeatureRecord, context: Context): Prepared 
       }
 }
 
+const DATUM_POINT_MARKER_DIAMETER_MM = 4
+
+type ReferenceContext = Parameters<typeof resolveDatumPoint>[1]
+
+/** Resolves the persisted reference now; the worker only sees the resolved position. */
+function prepareDatumPointContent(
+  datumPoint: NonNullable<ReturnType<typeof readDatumPointFeatureParameters>>,
+  context: ReferenceContext,
+) {
+  const resolved = resolveDatumPoint(datumPoint, context)
+  if (!resolved.ok)
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "org.vibeshape.feature.datum-point-reference-unresolved",
+        values: { reason: resolved.reason },
+      },
+    }
+  const supportFeatureId = datumPointSupportFeatureId(datumPoint)
+  return {
+    ok: true as const,
+    parameters: datumPointFeatureContentParametersSchema.parse({
+      position: resolved.position,
+      size: DATUM_POINT_MARKER_DIAMETER_MM,
+      ...(supportFeatureId ? { supportFeatureId } : {}),
+    }),
+  }
+}
+
 export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparationPort = (
   input,
 ) => {
@@ -73,6 +112,8 @@ export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparat
     features: input.features ?? input.document.features,
     geometry: input.geometry ?? [],
   }
+  const datumPoint = readDatumPointFeatureParameters(input.feature)
+  if (datumPoint) return prepareDatumPointContent(datumPoint, context)
   const mirror = readMirrorFeatureParametersV3(input.feature)
   const split = readSplitFeatureParametersV2(input.feature)
   const pattern = readPatternFeatureParametersV2(input.feature)

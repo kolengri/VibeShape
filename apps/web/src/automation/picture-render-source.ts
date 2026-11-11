@@ -4,7 +4,7 @@ import {
 } from "@vibeshape/application/authored-parts"
 import type { ModelBodyGeometry } from "@vibeshape/application/model-bodies"
 import type { PersistentDocumentSessionReport } from "@vibeshape/application/persistent-document-session"
-import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
+import { isReferenceGeometryFeature } from "@vibeshape/domain"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import type { DocumentAuthoritySnapshot } from "@vibeshape/domain/document-v2"
 import { appearancePresets, type PartAppearanceValue } from "@vibeshape/domain/part-appearance"
@@ -82,9 +82,7 @@ export function projectPictureMeshes(source: PictureRenderSource, rebuilt: Rebui
       ? authority.partAppearances.map((item) => [item.partId, item.appearance])
       : [],
   )
-  const datum = new Set(
-    snapshot.features.filter((f) => readDatumPlaneFeatureParameters(f)).map((f) => f.id),
-  )
+  const datum = new Set(snapshot.features.filter(isReferenceGeometryFeature).map((f) => f.id))
   return bodies
     .filter(
       ({ geometry }) => !datum.has(geometry.featureId) && !hidden.has(authoredBodyKey(geometry)),

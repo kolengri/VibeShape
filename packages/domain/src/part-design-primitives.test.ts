@@ -127,7 +127,7 @@ describe("radial part-design primitives", () => {
       expect(
         registry().validateFeature({
           ...feature(primitive),
-          type: { ...primitive.type.type, schemaVersion: 2 },
+          type: { ...primitive.type.type, schemaVersion: 3 },
         }),
       ).toMatchObject({ ok: false, diagnostic: { code: "feature-type-unavailable" } })
     },

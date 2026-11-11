@@ -139,6 +139,7 @@ import { SurfaceTextureTaskPanel } from "../features/surface-texture/surface-tex
 import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
 import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
 import { CadErrorPresentation } from "./cad-error-presentation"
+import { DatumPointTaskPanel } from "./datum-point-task-panel"
 import { DraftTaskPanel } from "./draft-task-panel"
 import { FdmTaskPanel } from "./fdm-task-panel"
 import { HistoryFeatureRepair } from "./history-feature-repair"
@@ -402,6 +403,8 @@ function useBasicPrimitiveFormCopy(
     parameters: t(`${primitiveKind}.parameters`),
     dimensions: shared("dimensions"),
     radius: shared("radius"),
+    topRadius: shared("topRadius"),
+    topRadiusDescription: shared("topRadiusDescription"),
     height: shared("height"),
     majorRadius: shared("majorRadius"),
     minorRadius: shared("minorRadius"),
@@ -421,6 +424,7 @@ function useBasicPrimitiveFormCopy(
     invalidRange: shared("invalidRange"),
     invalidPositionRange: shared("invalidPositionRange"),
     invalidTorusRadii: shared("invalidTorusRadii"),
+    invalidConeTopRadius: shared("invalidConeTopRadius"),
     invalidWorkspaceBounds: shared("invalidWorkspaceBounds"),
   }
 }
@@ -1847,6 +1851,12 @@ function HoleToolTaskPanel(props: ActiveTaskPanelProps) {
     includedAngle: t("includedAngle"),
     angleDescription: t("angleDescription"),
     invalidRecess: t("invalidRecess"),
+    depthDescription: t("depthDescription"),
+    drillPoint: t("drillPoint"),
+    drillPointDescription: t("drillPointDescription"),
+    tipAngle: t("tipAngle"),
+    tipAngleDescription: t("tipAngleDescription"),
+    invalidTipAngle: t("invalidTipAngle"),
     invalidExpression: t("invalidExpression"),
     invalidDimension: t("invalidDimension"),
     invalidRange: t("invalidRange"),
@@ -2015,6 +2025,8 @@ const activeTaskPanelByKind = {
   "edit-torus": BasicPrimitiveToolTaskPanel,
   "create-datum-plane": DatumPlaneToolTaskPanel,
   "edit-datum-plane": DatumPlaneToolTaskPanel,
+  "create-datum-point": DatumPointTaskPanel,
+  "edit-datum-point": DatumPointTaskPanel,
   "create-extrusion": ExtrusionToolTaskPanel,
   "edit-extrusion": ExtrusionToolTaskPanel,
   "create-revolve": RevolveToolTaskPanel,

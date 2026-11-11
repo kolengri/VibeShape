@@ -1,6 +1,13 @@
 import { applyAutomationDraftCommandRequestSchema } from "@vibeshape/automation-api/drafts"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
-import { type CommandActor, datumPlaneFeatureType, featureRecordSchema } from "@vibeshape/domain"
+import {
+  type CommandActor,
+  createAngleQuantity,
+  datumPlaneFeatureType,
+  datumPointFeatureType,
+  type FeatureRecord,
+  featureRecordSchema,
+} from "@vibeshape/domain"
 import {
   booleanFeatureType,
   extrusionFeatureType,
@@ -23,12 +30,12 @@ import { coilFeatureType } from "@vibeshape/domain/part-design-coil"
 import { draftFeatureType } from "@vibeshape/domain/part-design-draft"
 import { fdmFeatureType } from "@vibeshape/domain/part-design-fdm"
 import {
+  authoredHoleFeatureType,
   holeFeatureParametersSchema,
   holeFeatureParametersV2Schema,
   holeFeatureParametersV3Schema,
+  holeFeatureParametersV4Schema,
   holeFeatureType,
-  holeFeatureTypeV2,
-  holeFeatureTypeV3,
 } from "@vibeshape/domain/part-design-hole"
 import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import { loftFeatureTypeV3 } from "@vibeshape/domain/part-design-loft-v3"
@@ -96,6 +103,8 @@ type CadOperation = Extract<
       | "update_coil"
       | "create_datum_plane"
       | "update_datum_plane"
+      | "create_datum_point"
+      | "update_datum_point"
       | "create_boolean"
       | "update_boolean"
       | "create_union"
@@ -124,6 +133,8 @@ const directCadFeatureTypes = {
   update_reference_mirror: mirrorFeatureTypeV3.type,
   create_datum_plane: datumPlaneFeatureType.type,
   update_datum_plane: datumPlaneFeatureType.type,
+  create_datum_point: datumPointFeatureType.type,
+  update_datum_point: datumPointFeatureType.type,
   create_boolean: booleanFeatureType.type,
   update_boolean: booleanFeatureType.type,
   create_union: unionFeatureTypeV2.type,
@@ -252,10 +263,38 @@ function bodySelectionFeatureType(
     return "offset" in operation.arguments.parameters
       ? mirrorFeatureTypeV2.type
       : mirrorFeatureType.type
-  if ("treatment" in operation.arguments.parameters) return holeFeatureTypeV3.type
-  return "targetBody" in operation.arguments.parameters
-    ? holeFeatureTypeV2.type
-    : holeFeatureType.type
+  return authoredHoleFeatureType(null, operation.arguments.parameters)
+}
+
+const FLAT_TIP_ANGLE = createAngleQuantity(180, "deg")
+
+/**
+ * Routes MCP hole intent through the domain owner. An update keeps its saved v3/v4 version unless
+ * it explicitly requests legacy whole-result scope by omitting `targetBody`. Omitted recess intent
+ * defaults to a simple hole, and an omitted blind tip angle on a v4 hole is a flat point.
+ */
+function authoredHole(
+  parameters: Record<string, unknown>,
+  savedType: FeatureRecord["type"] | null,
+) {
+  const type = authoredHoleFeatureType("targetBody" in parameters ? savedType : null, parameters)
+  const recessed = { treatment: { kind: "simple" }, ...parameters }
+  switch (type.schemaVersion) {
+    case 4:
+      return {
+        type,
+        parameters: holeFeatureParametersV4Schema.parse({
+          ...(parameters.extent === "blind" ? { tipAngle: FLAT_TIP_ANGLE } : {}),
+          ...recessed,
+        }),
+      }
+    case 3:
+      return { type, parameters: holeFeatureParametersV3Schema.parse(recessed) }
+    case 2:
+      return { type, parameters: holeFeatureParametersV2Schema.parse(parameters) }
+    default:
+      return { type, parameters: holeFeatureParametersSchema.parse(parameters) }
+  }
 }
 
 function profileFeatureType(
@@ -289,6 +328,7 @@ export function createLocalCadCommand(
   operation: CadOperation,
   actor: CommandActor,
   documentId: string,
+  savedType: FeatureRecord["type"] | null = null,
 ) {
   const input = operation.arguments
   const envelope = {
@@ -314,20 +354,15 @@ export function createLocalCadCommand(
     })
   }
   const featureInput = operation.arguments
-  const parameters =
+  const hole =
     operation.tool === "create_hole" || operation.tool === "update_hole"
-      ? ("treatment" in featureInput.parameters
-          ? holeFeatureParametersV3Schema
-          : "targetBody" in featureInput.parameters
-            ? holeFeatureParametersV2Schema
-            : holeFeatureParametersSchema
-        ).parse(featureInput.parameters)
-      : featureInput.parameters
+      ? authoredHole(featureInput.parameters, savedType)
+      : null
   const feature = featureRecordSchema.parse({
     schemaVersion: 0,
     id: featureInput.featureId,
-    type: cadFeatureType(operation),
-    parameters,
+    type: hole?.type ?? cadFeatureType(operation),
+    parameters: hole?.parameters ?? featureInput.parameters,
     dependencies: featureInput.dependencies,
     references: featureInput.references,
     suppressed: featureInput.suppressed,

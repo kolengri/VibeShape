@@ -175,6 +175,11 @@
     "legacy": ["DatumPlaneIcon"]
   },
   {
+    "id": "datum-point",
+    "label": "Datum point",
+    "legacy": []
+  },
+  {
     "id": "transform",
     "label": "Transform / placement",
     "legacy": ["Move"]
