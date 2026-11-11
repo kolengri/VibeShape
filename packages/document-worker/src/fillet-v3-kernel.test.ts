@@ -101,13 +101,13 @@ async function evaluated(input: FeatureEvaluationInput) {
   if (!result.ok) throw new Error(result.diagnostic.message)
   return result.result
 }
-async function sourceBox() {
+async function sourceBox(origin: readonly [number, number, number] = [0, 0, 0]) {
   const input = featureInput("box", 1, {
     width: 20,
     depth: 12,
     height: 10,
     centered: false,
-    origin: [0, 0, 0],
+    origin,
   })
   return { input, result: await evaluated(input) }
 }
@@ -164,6 +164,32 @@ it("rebuilds a persisted variable radius identically after reopening with new na
   expect(nearPoint(first.topologyCandidates, [-10, -3, 10])).toBe(true)
   expect(nearPoint(first.topologyCandidates, [10, -5, 10])).toBe(true)
   expect(nearPoint(second.topologyCandidates, [-10, -3, 10])).toBe(true)
+})
+
+it("keeps the variable-radius start on the same physical end after an upstream move", async () => {
+  // The canonical rule compares coordinate differences, so any translation preserves it. Rotations
+  // can reorder the endpoints; ADR-0151 records why that rule is kept.
+  const offset = [137.25, -48.5, 12.75] as const
+  const { input, result } = await sourceBox(offset)
+  const moved = (s: TopologyCandidate["signature"]) =>
+    topFront({
+      ...s,
+      centroid: [s.centroid[0] - offset[0], s.centroid[1] - offset[1], s.centroid[2] - offset[2]],
+    })
+  const parameters: FilletFeatureContentParametersV3 = {
+    radius: 2,
+    targets: [
+      {
+        kind: "edge",
+        edge: reference(only(result.topologyCandidates, "edge", moved), "edge"),
+        variableRadius: { startRadius: 1, endRadius: 3, reverse: true },
+      },
+    ],
+  }
+  const built = await evaluated(featureInput("fillet", 3, parameters, input))
+  const at = (point: readonly number[]) => point.map((value, axis) => value + (offset[axis] ?? 0))
+  expect(nearPoint(built.topologyCandidates, at([-10, -3, 10]))).toBe(true)
+  expect(nearPoint(built.topologyCandidates, at([10, -5, 10]))).toBe(true)
 })
 
 it("fillets a face target and only the exact named output of a multi-body producer", async () => {
