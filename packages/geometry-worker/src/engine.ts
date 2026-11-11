@@ -78,6 +78,7 @@ import {
   patternFeatureContentParametersV3Schema,
   placementFeatureContentParametersSchema,
   pressPullFeatureContentParametersSchema,
+  pressPullFeatureContentParametersV2Schema,
   printOptimizationReconstructionInputSchema,
   pyramidFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
@@ -104,10 +105,12 @@ import {
   splitFeatureContentParametersV2Schema,
   sweepFeatureContentParametersSchema,
   sweepFeatureContentParametersV2Schema,
+  type ThickenFeatureContentParameters,
   type ThreadGeometryParameters,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
   type TopologySpikeParameters,
+  thickenFeatureContentParametersSchema,
   threadContentParametersSchema,
   threadContentParametersV2Schema,
   torusFeatureContentParametersSchema,
@@ -219,6 +222,7 @@ import {
 import { shellOcctShape } from "./occt-shell"
 import { inspectOcctSourceImport, rebuildOcctSourceImport } from "./occt-source-import"
 import { createOcctSweep } from "./occt-sweep"
+import { offsetOcctFace, ThickenError, thickenOcctShape } from "./occt-thicken"
 import { threadOcctShape } from "./occt-thread"
 import { revolveProfileCrossesAxis } from "./revolve-profile"
 import { resolveSelectedEdgeKeys } from "./selected-edge-resolver"
@@ -348,6 +352,8 @@ const SHELL_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.shell#2"
 const DRAFT_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.draft#1"
+const THICKEN_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.thicken#1"
 const SCALE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.scale#1"
 const MIRROR_FEATURE_TYPE_KEY =
@@ -1357,9 +1363,12 @@ type ParsedFeature =
   | { kind: "placement"; parameters: PlacementFeatureContentParameters }
   | { kind: "scale"; parameters: ScaleFeatureContentParameters }
   | { kind: "draft"; parameters: DraftFeatureContentParameters }
+  | { kind: "thicken"; parameters: ThickenFeatureContentParameters }
   | {
       kind: "press-pull"
       parameters: PressPullFeatureContentParameters
+      /** Version 2 also offsets curved faces; version 1 stays planar-only. */
+      allowCurved: boolean
     }
   | {
       kind: "shell"
@@ -2623,16 +2632,21 @@ function parseSplitFeature(input: FeatureEvaluationInput): FeatureParseResult {
     : featureFailure("invalid-feature-parameters", "Split content parameters are invalid.")
 }
 
-function parsePressPullFeature(input: FeatureEvaluationInput): FeatureParseResult {
+function parsePressPullFeature(input: FeatureEvaluationInput, version = 1): FeatureParseResult {
   if (!hasExactSingleBodyInput(input))
     return invalidInputCardinality("Press Pull requires one exact named body dependency.")
-  const parameters = pressPullFeatureContentParametersSchema.safeParse(
-    input.content.feature.parameters,
-  )
+  const allowCurved = version === 2
+  const parameters = (
+    allowCurved
+      ? pressPullFeatureContentParametersV2Schema
+      : pressPullFeatureContentParametersSchema
+  ).safeParse(input.content.feature.parameters)
   if (!parameters.success)
     return featureFailure(
       "invalid-feature-parameters",
-      "Press Pull requires a planar face and a nonzero bounded distance.",
+      allowCurved
+        ? "Press Pull requires one face and a nonzero bounded distance."
+        : "Press Pull requires a planar face and a nonzero bounded distance.",
     )
   if (parameters.data.sourceContentHash !== input.dependencies[0]?.contentHash)
     return featureFailure(
@@ -2644,7 +2658,26 @@ function parsePressPullFeature(input: FeatureEvaluationInput): FeatureParseResul
       "invalid-feature-parameters",
       "Press Pull face must belong to the exact input body role.",
     )
-  return { ok: true, feature: { kind: "press-pull", parameters: parameters.data } }
+  return { ok: true, feature: { kind: "press-pull", parameters: parameters.data, allowCurved } }
+}
+
+function parseThickenFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  if (!hasExactSingleBodyInput(input))
+    return invalidInputCardinality(
+      "Thicken requires one exact named body dependency and no topology references.",
+    )
+  const parameters = thickenFeatureContentParametersSchema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success)
+    return featureFailure("invalid-feature-parameters", "Thicken content parameters are invalid.")
+  const role = input.content.feature.inputRoles[0]
+  return parameters.data.faces.every((face) => face.outputRole === role)
+    ? { ok: true, feature: { kind: "thicken", parameters: parameters.data } }
+    : featureFailure(
+        "invalid-feature-parameters",
+        "Thicken faces must belong to the exact dependency output role.",
+      )
 }
 
 function parseShellFeature(input: FeatureEvaluationInput, version = 1): FeatureParseResult {
@@ -2721,6 +2754,10 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
     "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.press-pull#1",
     parsePressPullFeature,
   ],
+  [
+    "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.press-pull#2",
+    (input) => parsePressPullFeature(input, 2),
+  ],
   ["org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.fdm#1", parseFdmFeature],
   [COMPOUND_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "compound")],
   [UNION_FEATURE_TYPE_KEY, (input) => parseBodyCombinationFeature(input, "union")],
@@ -2729,6 +2766,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [PLACEMENT_FEATURE_TYPE_KEY, parsePlacementFeature],
   [SCALE_FEATURE_TYPE_KEY, parseScaleFeature],
   [DRAFT_FEATURE_TYPE_KEY, parseDraftFeature],
+  [THICKEN_FEATURE_TYPE_KEY, parseThickenFeature],
   [MIRROR_FEATURE_TYPE_KEY, parseMirrorFeature],
   [MIRROR_FEATURE_TYPE_V2_KEY, parseMirrorFeature],
   [MIRROR_FEATURE_TYPE_KEY.replace("#1", "#3"), parseMirrorFeatureV3],
@@ -3406,6 +3444,7 @@ function createFeatureShape(
         | "placement"
         | "scale"
         | "draft"
+        | "thicken"
         | "mirror"
         | "press-pull"
         | "shell"
@@ -4319,6 +4358,7 @@ function evaluateFeatureGeometry(
       "placement",
       "scale",
       "draft",
+      "thicken",
       "mirror",
       "press-pull",
       "shell",
@@ -4834,7 +4874,8 @@ function featureGeometryFailure(error: unknown, cleanupSucceeded: boolean) {
     error instanceof ChamferV3Error ||
     error instanceof FilletV3Error ||
     error instanceof ConstrainedLoftError ||
-    error instanceof DraftError
+    error instanceof DraftError ||
+    error instanceof ThickenError
   )
     return featureFailure("invalid-feature-geometry", error.message)
   return featureFailure("invalid-feature-geometry", "Feature geometry evaluation failed.")
@@ -5132,6 +5173,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       return this.#createPressPullFeature(opencascade, feature, dependencies[0], input)
     if (feature.kind === "draft")
       return this.#createDraftFeature(opencascade, feature.parameters, dependencies[0], input)
+    if (feature.kind === "thicken")
+      return this.#createThickenFeature(opencascade, feature.parameters, dependencies[0], input)
     if (feature.kind === "scale")
       return createScaleFeatureShape(opencascade, feature, dependencies[0])
     return this.#createUncachedStandardFeature(opencascade, feature, dependencies, input)
@@ -5152,6 +5195,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           | "advanced-fillet"
           | "press-pull"
           | "draft"
+          | "thicken"
           | "scale"
       }
     >,
@@ -5305,7 +5349,9 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         resolve(references, candidates, scope, "exact", { allowSemanticRebinding: false }),
     )
     try {
-      return pressPullOcctShape(occt, target, face, feature.parameters.distance)
+      return feature.allowCurved && face.geomType !== "PLANE"
+        ? offsetOcctFace(occt, target, face, feature.parameters.distance)
+        : pressPullOcctShape(occt, target, face, feature.parameters.distance)
     } finally {
       face.delete()
     }
@@ -5451,14 +5497,44 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     target: Shape3D | undefined,
     input: FeatureEvaluationInput,
   ) {
+    const faceKeys = this.#resolveBodyFaceKeys(target, parameters.faces, input, "Draft", DraftError)
+    if (!target) throw new DraftError("Exact Draft source topology is unavailable.")
+    return draftOcctShape(occt, target, faceKeys, parameters)
+  }
+
+  #createThickenFeature(
+    occt: OpenCascadeInstance,
+    parameters: ThickenFeatureContentParameters,
+    target: Shape3D | undefined,
+    input: FeatureEvaluationInput,
+  ) {
+    const faceKeys = this.#resolveBodyFaceKeys(
+      target,
+      parameters.faces,
+      input,
+      "Thicken",
+      ThickenError,
+    )
+    if (!target) throw new ThickenError("Exact Thicken source topology is unavailable.")
+    return thickenOcctShape(occt, target, faceKeys, parameters)
+  }
+
+  /** Resolves each body-bound face to one native key; a missing face fails with its index. */
+  #resolveBodyFaceKeys(
+    target: Shape3D | undefined,
+    faces: DraftFeatureContentParameters["faces"],
+    input: FeatureEvaluationInput,
+    label: string,
+    Failure: new (message: string) => Error,
+  ) {
     const dependency = input.dependencies[0]
     const snapshot = target ? this.#topologySnapshots.get(target) : undefined
     const resolve = this.resolveShellOpenings
     if (!target || !snapshot || !dependency?.outputRole || !resolve)
-      throw new DraftError("Exact Draft source topology is unavailable.")
+      throw new Failure(`Exact ${label} source topology is unavailable.`)
     const scope = { featureId: dependency.featureId, outputRole: dependency.outputRole }
     const allowSemanticRebinding = !this.#modifierExtrusionShapes.has(target)
-    const faceKeys = parameters.faces.map((face, index) => {
+    return faces.map((face, index) => {
       const resolved = resolve(
         [face],
         snapshot.candidates,
@@ -5470,12 +5546,11 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       )
       const key = uniqueFaceShapeKey(resolved, snapshot)
       if (key === undefined)
-        throw new DraftError(
-          `Draft face ${index + 1} is ${resolved.ok ? "missing" : resolved.reason}. Reselect the faces on the current body.`,
+        throw new Failure(
+          `${label} face ${index + 1} is ${resolved.ok ? "missing" : resolved.reason}. Reselect the faces on the current body.`,
         )
       return key
     })
-    return draftOcctShape(occt, target, faceKeys, parameters)
   }
 
   #createFilletV3(

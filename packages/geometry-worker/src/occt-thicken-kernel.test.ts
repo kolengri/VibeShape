@@ -88,9 +88,14 @@ describe("OCCT Thicken", () => {
       )
       expectSolid(result, 10 * 20 * 2, 6)
       const bounds = result.boundingBox.bounds
-      const expected = { outward: [5, 7], inward: [3, 5], symmetric: [4, 6] }[side]
-      expect(bounds[0][2]).toBeCloseTo(expected[0], 3)
-      expect(bounds[1][2]).toBeCloseTo(expected[1], 3)
+      const extents: Record<typeof side, readonly [number, number]> = {
+        outward: [5, 7],
+        inward: [3, 5],
+        symmetric: [4, 6],
+      }
+      const [low, high] = extents[side]
+      expect(bounds[0][2]).toBeCloseTo(low, 3)
+      expect(bounds[1][2]).toBeCloseTo(high, 3)
     }
     expect(volumeOf(source)).toBeCloseTo(1000, 6)
   })
