@@ -185,23 +185,25 @@ function uncoveredPolyline(polyline: Polyline, covers: readonly CurveIndex[]): D
         .some((candidate) => curveDistance(point, candidate) <= SAMPLED_COVERAGE_TOLERANCE_MM),
     )
   const { points } = polyline
-  const pieces: DrawingCurve[] = []
-  let runStart: number | null = null
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const start = points[index]
-    const end = points[index + 1]
-    if (!start || !end) continue
+  const segmentCovered = points.slice(1).map((end, index) => {
+    const start = points[index] ?? end
     const middle: Point = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2]
-    const hidden = covered(start) && covered(middle) && covered(end)
-    if (!hidden && runStart === null) runStart = index
-    if (hidden && runStart !== null) {
-      pieces.push(...run(points, runStart, index))
-      runStart = null
-    }
-  }
-  if (runStart === 0) return [polyline]
-  if (runStart !== null) pieces.push(...run(points, runStart, points.length - 1))
-  return pieces
+    return covered(start) && covered(middle) && covered(end)
+  })
+  if (!segmentCovered.some(Boolean)) return [polyline]
+  return uncoveredRuns(segmentCovered).flatMap(([from, to]) => run(points, from, to))
+}
+
+/** Point index ranges of consecutive uncovered segments. */
+function uncoveredRuns(segmentCovered: readonly boolean[]) {
+  const runs: [number, number][] = []
+  segmentCovered.forEach((covered, index) => {
+    const last = runs.at(-1)
+    if (covered) return
+    if (last && last[1] === index) last[1] = index + 1
+    else runs.push([index, index + 1])
+  })
+  return runs
 }
 
 function run(points: readonly Point[], from: number, to: number): DrawingCurve[] {

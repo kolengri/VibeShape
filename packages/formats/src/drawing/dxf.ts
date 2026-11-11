@@ -31,23 +31,18 @@ const DEGREES = 180 / Math.PI
 function dxfText(value: string) {
   const characters = [...value]
   return characters
-    .map((character, index) =>
-      dxfCharacter(character, characters[index - 1], characters[index + 1], characters[index + 2]),
-    )
+    .map((character, index) => {
+      const next = characters[index + 1] ?? ""
+      if (character === "%")
+        return characters[index - 1] === "%" || next === "%" || next === "Ø" ? "%%%" : "%"
+      if (character === "\\")
+        return /^[UuMm]$/.test(next) && characters[index + 2] === "+" ? "\\U+005C" : "\\"
+      return dxfCharacter(character)
+    })
     .join("")
 }
 
-function dxfCharacter(
-  character: string,
-  previous: string | undefined,
-  next: string | undefined,
-  afterNext: string | undefined,
-) {
-  if (character === "%") return previous === "%" || next === "%" || next === "Ø" ? "%%%" : "%"
-  if (character === "\\")
-    return (next === "U" || next === "u" || next === "M" || next === "m") && afterNext === "+"
-      ? "\\U+005C"
-      : "\\"
+function dxfCharacter(character: string) {
   if (character === "Ø") return "%%c"
   const code = character.codePointAt(0) ?? 63
   if (code >= 32 && code < 127) return character

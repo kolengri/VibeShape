@@ -32,7 +32,7 @@ function failureReason(sourceCode: string | null): FailureReason {
 }
 
 /** True when the rebuilt model contains a triangle-mesh body, which drawings cannot project. */
-export function documentHasMesh(controller: DocumentControllerState) {
+function documentHasMesh(controller: DocumentControllerState) {
   const rebuild = controller.report?.rebuild
   return (
     rebuild?.ok === true &&
