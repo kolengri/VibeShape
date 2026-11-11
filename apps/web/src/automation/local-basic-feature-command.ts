@@ -12,6 +12,7 @@ import {
   featureRecordSchema,
   filletFeatureType,
   filletFeatureTypeV2,
+  filletFeatureTypeV3,
 } from "@vibeshape/domain"
 
 type BasicFeatureOperation = Extract<
@@ -27,6 +28,19 @@ function treatmentScope(
   selectedEdges: FeatureTypeDescriptor,
 ) {
   return { type: edges ? selectedEdges.type : allEdges.type, references: edges ?? [] }
+}
+
+/** Versioned body-bound intent: the exact target body is the sole dependency. */
+function bodyBoundTreatment(
+  descriptor: FeatureTypeDescriptor,
+  parameters: { targetBody: { featureId: string } },
+) {
+  return {
+    type: descriptor.type,
+    parameters,
+    dependencies: [parameters.targetBody.featureId],
+    references: [],
+  }
 }
 
 function featureContent(operation: BasicFeatureOperation) {
@@ -51,6 +65,7 @@ function featureContent(operation: BasicFeatureOperation) {
   }
   if (operation.tool === "create_fillet" || operation.tool === "update_fillet") {
     const input = operation.arguments
+    if ("parameters" in input) return bodyBoundTreatment(filletFeatureTypeV3, input.parameters)
     return {
       ...treatmentScope(input.edges, filletFeatureType, filletFeatureTypeV2),
       parameters: {
@@ -60,13 +75,7 @@ function featureContent(operation: BasicFeatureOperation) {
     }
   }
   const input = operation.arguments
-  if ("parameters" in input)
-    return {
-      type: chamferFeatureTypeV3.type,
-      parameters: input.parameters,
-      dependencies: [input.parameters.targetBody.featureId],
-      references: [],
-    }
+  if ("parameters" in input) return bodyBoundTreatment(chamferFeatureTypeV3, input.parameters)
   return {
     ...treatmentScope(input.edges, chamferFeatureType, chamferFeatureTypeV2),
     parameters: {

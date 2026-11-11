@@ -294,6 +294,8 @@ it("promotes and validates selected batches with one index per queried scope and
       plainContourOnly: "plain contour",
       invalidAngle: "angle",
       invalidAdvancedRange: "range",
+      variableRadiusEqual: "equal",
+      variableRadiusClosed: "closed",
     },
   }
   expect(treatmentFeature(values, context).ok).toBe(true)

@@ -1,7 +1,10 @@
 import type { PartId } from "@vibeshape/domain/identifiers"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { SketchCameraMode } from "../editor-session/editor-session-store"
-import { hasMultipleExactSolidBodies } from "../features/part-design/exact-body-options"
+import {
+  hasExactSolidBody,
+  hasMultipleExactSolidBodies,
+} from "../features/part-design/exact-body-options"
 import {
   type activePartDesignCommand,
   modifyingSolidTargetFeatures,
@@ -859,19 +862,28 @@ function canCreateSavedSketchFeature(context: BuiltInEditorCommandContext) {
     : editorCommandDisabled("noSavedSketches")
 }
 
+function hasModifyingSolidTarget(context: BuiltInEditorCommandContext) {
+  const features = context.state.controller.report?.snapshot.features ?? []
+  return (
+    modifyingSolidTargetFeatures(features, undefined, context.state.controller.report?.rebuild)
+      .length > 0
+  )
+}
+
 function canCreateEdgeTreatment(context: BuiltInEditorCommandContext) {
   const eligibility = canCreateFeature(context)
   if (!eligibility.enabled) return eligibility
-  const features = context.state.controller.report?.snapshot.features ?? []
-  return modifyingSolidTargetFeatures(features, undefined, context.state.controller.report?.rebuild)
-    .length > 0
+  const report = context.state.controller.report
+  return hasModifyingSolidTarget(context) ||
+    (report !== null && report !== undefined && hasExactSolidBody(report.snapshot, report.rebuild))
     ? editorCommandEnabled()
     : editorCommandDisabled("selectSolid")
 }
 
 function canCreateHole(context: BuiltInEditorCommandContext) {
-  const eligibility = canCreateEdgeTreatment(context)
+  const eligibility = canCreateFeature(context)
   if (!eligibility.enabled) return eligibility
+  if (!hasModifyingSolidTarget(context)) return editorCommandDisabled("selectSolid")
   const sketches = context.state.controller.report?.snapshot.sketches ?? []
   return sketches.some(({ entities }) => entities.some(({ type }) => type === "point"))
     ? editorCommandEnabled()

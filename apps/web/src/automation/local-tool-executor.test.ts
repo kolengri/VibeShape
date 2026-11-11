@@ -980,7 +980,7 @@ it("counts complete model info bytes before returning a diagnostic catalog", asy
   ).toMatchObject({ ok: false, diagnostic: { code: "query-result-too-large" } })
 })
 
-it.each(["create_chamfer", "update_chamfer"] as const)(
+it.each(["create_chamfer", "update_chamfer", "create_fillet", "update_fillet"] as const)(
   "routes %s V3 intent through the ordinary feature command",
   async (tool) => {
     const actor = commandActorSchema.parse({
@@ -1016,28 +1016,32 @@ it.each(["create_chamfer", "update_chamfer"] as const)(
       boundaryCount: 4,
       adjacentGeometryClasses: ["PLANE"],
     }
-    const parameters = {
-      targetBody: { schemaVersion: 0, featureId: id(12), outputRole: "pattern.instance.1" },
-      mode: "two-distances",
-      distance: createLengthQuantity(2, "mm", "#bevel"),
-      secondDistance: createLengthQuantity(3),
-      measurement: "offset",
-      flip: true,
-      tangentPropagation: true,
-      targets: [
-        {
+    const targetBody = { schemaVersion: 0, featureId: id(12), outputRole: "pattern.instance.1" }
+    const targets = [
+      {
+        kind: "face",
+        face: {
+          schemaVersion: 1,
+          featureId: id(12),
+          outputRole: "pattern.instance.1",
           kind: "face",
-          face: {
-            schemaVersion: 1,
-            featureId: id(12),
-            outputRole: "pattern.instance.1",
-            kind: "face",
-            signature,
-          },
+          signature,
         },
-      ],
-      directionOverrides: [],
-    }
+      },
+    ]
+    const parameters = tool.endsWith("_fillet")
+      ? { targetBody, radius: createLengthQuantity(2, "mm", "#round"), targets }
+      : {
+          targetBody,
+          mode: "two-distances",
+          distance: createLengthQuantity(2, "mm", "#bevel"),
+          secondDistance: createLengthQuantity(3),
+          measurement: "offset",
+          flip: true,
+          tangentPropagation: true,
+          targets,
+          directionOverrides: [],
+        }
     await executor.execute(
       localOperationSchema.parse({
         tool,
@@ -1056,10 +1060,10 @@ it.each(["create_chamfer", "update_chamfer"] as const)(
     if (!parsed.ok || !("feature" in parsed.command.payload))
       throw new Error("The ordinary feature command must contain a validated feature.")
     expect(parsed.command.kind).toBe(
-      tool === "create_chamfer" ? "org.vibeshape.feature.add" : "org.vibeshape.feature.update",
+      tool.startsWith("create_") ? "org.vibeshape.feature.add" : "org.vibeshape.feature.update",
     )
     expect(parsed.command.payload.feature).toMatchObject({
-      type: { schemaVersion: 3 },
+      type: { typeId: `org.vibeshape.feature.part-design.${tool.split("_")[1]}`, schemaVersion: 3 },
       dependencies: [id(12)],
       references: [],
       parameters,

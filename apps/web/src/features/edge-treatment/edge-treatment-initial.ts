@@ -9,12 +9,15 @@ import {
 } from "@vibeshape/domain"
 import {
   type ChamferFeatureParametersV3,
+  type FilletFeatureParametersV3,
   readChamferFeatureParametersV3,
+  readFilletFeatureParametersV3,
 } from "@vibeshape/domain/part-design"
 import { defaultLengthExpression } from "../../document/document-display-units"
 import { quantityExpression } from "../part-design/primitive-form"
 import { readEdgeTreatmentPreselection } from "./edge-treatment-activation"
 import { legacyEdgeReference } from "./edge-treatment-candidates"
+import { filletDraftTargets } from "./edge-treatment-fillet"
 import type { EdgeTreatmentFormMode, EdgeTreatmentOperation } from "./edge-treatment-form"
 import type { TreatmentValues } from "./edge-treatment-model"
 import { type EdgeTreatmentTargetOption, edgeTreatmentOptionOwner } from "./edge-treatment-options"
@@ -53,6 +56,7 @@ function defaultValues(unit: DocumentDisplayUnits["length"]): TreatmentValues {
     flip: false,
     tangentPropagation: false,
     directionOverrides: [],
+    variableRadii: [],
   }
 }
 
@@ -81,6 +85,21 @@ function v3Values(
   }
 }
 
+function filletV3Values(
+  parameters: FilletFeatureParametersV3,
+  options: readonly EdgeTreatmentTargetOption[],
+  defaults: TreatmentValues,
+): TreatmentValues {
+  const { targetBody, radius } = parameters
+  return {
+    ...defaults,
+    ...filletDraftTargets(parameters),
+    retainV3: true,
+    targetFeatureId: initialTarget(options, targetBody.featureId, targetBody),
+    distance: quantityExpression(radius),
+  }
+}
+
 function editedValues(
   feature: FeatureRecord,
   operation: EdgeTreatmentOperation,
@@ -89,6 +108,8 @@ function editedValues(
 ): TreatmentValues {
   const v3 = readChamferFeatureParametersV3(feature)
   if (v3) return v3Values(v3, options, defaults)
+  const fillet = readFilletFeatureParametersV3(feature)
+  if (fillet) return filletV3Values(fillet, options, defaults)
   return {
     ...defaults,
     distance: quantityExpression(legacyDistance(feature, operation)),

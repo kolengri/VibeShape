@@ -1,9 +1,13 @@
 import { readFile } from "node:fs/promises"
 import type { Download } from "@playwright/test"
 import type { FeatureRecord } from "../../packages/domain/src/feature-graph"
-import { chamferFeatureParametersV3Schema } from "../../packages/domain/src/part-design"
+import {
+  chamferFeatureParametersV3Schema,
+  readFilletFeatureParametersV3,
+} from "../../packages/domain/src/part-design"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
+import { saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
@@ -85,6 +89,81 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await expectSelectedNativeBackup(await downloading, `${title} 1`, operation)
   })
 }
+
+test("fillets a named Pattern output with a variable radius and restores it after reload", async ({
+  page,
+}) => {
+  test.setTimeout(180_000)
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await page.goto("/")
+  await saved(page)
+  await invokeModelCommand(page, "Primitives", "Box")
+  const boxForm = page.getByRole("form", { name: "Create box" })
+  await boxForm.getByRole("button", { name: "Create box", exact: true }).click()
+  const box = page.getByRole("treeitem", { name: "Part Box 1", exact: true })
+  await expect(box).toBeVisible({ timeout: 30_000 })
+  await saved(page)
+  await box.click()
+  await page.getByRole("button", { name: "Pattern", exact: true }).click()
+  const pattern = page.getByRole("form", { name: "Pattern body", exact: true })
+  await expect(pattern).toBeVisible()
+  await pattern.getByRole("combobox", { name: "Instance count", exact: true }).fill("2")
+  await pattern.getByRole("combobox", { name: "Spacing", exact: true }).fill("40 mm")
+  const applyPattern = pattern.getByRole("button", { name: "Apply feature", exact: true })
+  await expect(applyPattern).toBeEnabled({ timeout: 30_000 })
+  await applyPattern.click()
+  await expect(pattern).toHaveCount(0)
+  await expect(page.getByRole("treeitem", { name: "Pattern 1", exact: true })).toBeVisible()
+  await saved(page)
+  await invokeModelCommand(page, "Modify", "Fillet")
+  const form = page.getByRole("form", { name: "Create fillet" })
+  await expect(form.getByText(/complete tangent chain of each picked edge/)).toBeVisible()
+  await form.getByText("Keyboard choices", { exact: true }).focus()
+  await form.getByText("Keyboard choices", { exact: true }).click()
+  const firstEdges = form.getByRole("button", { name: / · Edge 1$/ })
+  await expect(firstEdges).toHaveCount(2)
+  await firstEdges.nth(1).click()
+  await expect(form.getByRole("radio", { name: "All edges", exact: true })).toBeDisabled()
+  await form.getByRole("checkbox", { name: "Variable radius for Edge 1", exact: true }).check()
+  await form.getByRole("combobox", { name: "End radius for Edge 1", exact: true }).fill("1.5 mm")
+  await form
+    .getByRole("checkbox", { name: "Reverse radius direction for Edge 1", exact: true })
+    .check()
+  const accept = form.getByRole("button", { name: "Create fillet", exact: true })
+  await expect(accept).toBeEnabled({ timeout: 30_000 })
+  await accept.click()
+  const treatment = page.getByRole("treeitem", { name: "Fillet 1", exact: true })
+  await expect(treatment).toBeVisible()
+  await saved(page)
+  const archive = await saveProject(page)
+  const fillet = archive.project.snapshot.features.find(({ label }) => label === "Fillet 1")
+  const parameters = fillet ? readFilletFeatureParametersV3(fillet) : null
+  expect(fillet?.references).toEqual([])
+  expect(parameters?.targetBody.outputRole).toMatch(/^pattern\.instance\.\d+$/)
+  expect(parameters?.targets).toEqual([
+    expect.objectContaining({
+      kind: "edge",
+      variableRadius: expect.objectContaining({
+        startRadius: expect.objectContaining({ value: 1 }),
+        endRadius: expect.objectContaining({ value: 1.5 }),
+        reverse: true,
+      }),
+    }),
+  ])
+  await page.reload()
+  await expect(treatment).toBeVisible()
+  await treatment.click()
+  const edit = page.getByRole("form", { name: "Edit fillet" })
+  await expect(
+    edit.getByRole("checkbox", { name: "Reverse radius direction for Edge 1", exact: true }),
+  ).toBeChecked()
+  await expect(
+    edit.getByRole("combobox", { name: "End radius for Edge 1", exact: true }),
+  ).toHaveValue("1.5 mm")
+  await expect(edit.getByRole("button", { name: "Update fillet", exact: true })).toBeEnabled({
+    timeout: 30_000,
+  })
+})
 
 async function expectSelectedNativeBackup(
   download: Download,

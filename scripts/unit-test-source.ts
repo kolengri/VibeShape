@@ -21,6 +21,11 @@ const reviewedLoaders = new Map([
     "packages/geometry-worker/src/occt-primitives-kernel.test.ts",
     "a8748d1017dc539eae631911180c69b31c27465af48eafecdb8ff215807d71f3",
   ],
+  // Reads only the fully hashed installed OCCT package through a fixed relative URL.
+  [
+    "packages/geometry-worker/src/occt-fillet-v3-kernel.test.ts",
+    "54c79778ce46e33341f445e91b1c4d46df95d4979356a5d6e8db08fb89c6454c",
+  ],
   [
     "packages/structural-optimization/src/worker.ts",
     "583eac7626a630e52f9d8e302e8b3206f01111ebf135a523715cbcd12b6ed207",
@@ -52,7 +57,7 @@ function reviewedReader(input: Input, hashes: Map<string, string>, environment: 
     input.path === "packages/geometry-worker/src/engine-import-kernel.test.ts" &&
     input.hash === "5624a3f881248fc6a16aab07027bc5a1cf6302a2eb2518f20346650f74acfe70" &&
     hashes.get("packages/geometry-worker/src/engine.ts") ===
-      "a2cd75d652a552dc4accd36b5790a477f80d764ce8db6b0699f43e514346adfa"
+      "6c0b5c862cf8c5330781060ee6c76b98eefe38ebec7eeaf01e584b2a81f715eb"
   )
 }
 

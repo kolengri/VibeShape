@@ -6,6 +6,7 @@
   [ADR-0049](0049-constituent-body-identity-and-solid-patterns.md)
 - Measurement boundary superseded in part by:
   [ADR-0121](0121-circular-offset-chamfer.md)
+- Fillet versioning superseded by: [ADR-0151](0151-body-bound-variable-radius-fillet.md)
 
 ## Decision
 
