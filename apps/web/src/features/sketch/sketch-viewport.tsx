@@ -9159,18 +9159,21 @@ function consumeRegularPolygonSideCountKey(
 }
 
 function consumeSplineCompletionKey(
-  input: Pick<RegularPolygonKeyInput, "appendAt" | "event">,
+  input: Pick<RegularPolygonKeyInput, "appendAt" | "event"> &
+    Readonly<{ draft: SketchRecord | null }>,
   pending: PendingSpline,
 ) {
   if (input.event.key !== "Enter") return false
   input.event.preventDefault()
-  const target = splineKeyboardCompletionTarget(pending, input.event.shiftKey)
+  if (!input.draft) return true
+  const target = splineKeyboardCompletionTarget(input.draft, pending, input.event.shiftKey)
   if (target) input.appendAt(target)
   return true
 }
 
 function consumePendingGeometryKey(
-  input: RegularPolygonKeyInput & Readonly<{ pending: PendingGeometry | null }>,
+  input: RegularPolygonKeyInput &
+    Readonly<{ draft: SketchRecord | null; pending: PendingGeometry | null }>,
 ) {
   if (input.pending?.kind === "regular-polygon-sides") {
     return consumeRegularPolygonSideCountKey(input, input.pending)

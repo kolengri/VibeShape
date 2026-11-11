@@ -20,11 +20,17 @@ import { SAFE_VIEWPORT_CENTER } from "../../shell/viewport-chrome-styles"
 /** Through-points picked so far; nothing reaches the draft until the spline completes. */
 export type PendingSpline = Readonly<{ kind: "spline"; points: readonly SketchPointTarget[] }>
 
-function targetPoint(sketch: SketchRecord, target: SketchPointTarget): SketchPoint2 {
+/** Resolves a pick; an existing point removed meanwhile (for example by Undo) resolves to null. */
+function targetPoint(sketch: SketchRecord, target: SketchPointTarget): SketchPoint2 | null {
   if (target.kind === "new") return target.point
   const entity = sketch.entities.find(({ id }) => id === target.pointId)
-  if (entity?.type !== "point") throw new TypeError("A spline target must reference a point.")
-  return entity
+  return entity?.type === "point" ? entity : null
+}
+
+/** Drops picks whose existing point no longer exists, so the gesture continues without them. */
+export function resolvedPendingSpline(sketch: SketchRecord, pending: PendingSpline): PendingSpline {
+  const points = pending.points.filter((target) => targetPoint(sketch, target) !== null)
+  return points.length === pending.points.length ? pending : { kind: "spline", points }
 }
 
 function sameTarget(sketch: SketchRecord, first: SketchPointTarget, second: SketchPointTarget) {
@@ -33,7 +39,7 @@ function sameTarget(sketch: SketchRecord, first: SketchPointTarget, second: Sket
   }
   const a = targetPoint(sketch, first)
   const b = targetPoint(sketch, second)
-  return Math.hypot(a.x - b.x, a.y - b.y) <= MIN_SPLINE_POINT_SPACING_MM
+  return a !== null && b !== null && Math.hypot(a.x - b.x, a.y - b.y) <= MIN_SPLINE_POINT_SPACING_MM
 }
 
 function isPendingSpline(pending: Readonly<{ kind: string }> | null): pending is PendingSpline {
@@ -71,8 +77,11 @@ export function placeSplineThroughPoint(
     target: SketchPointTarget
   }>,
 ): Readonly<{ draft: SketchRecord | null; pending: PendingSpline | null }> {
-  const pending = input.pending
-  if (!pending) return { draft: null, pending: { kind: "spline", points: [input.target] } }
+  const pending = input.pending && resolvedPendingSpline(input.draft, input.pending)
+  if (targetPoint(input.draft, input.target) === null) return { draft: null, pending }
+  if (!pending?.points.length) {
+    return { draft: null, pending: { kind: "spline", points: [input.target] } }
+  }
   const [first] = pending.points
   const last = pending.points.at(-1)
   if (first && canClose(pending) && sameTarget(input.draft, first, input.target)) {
@@ -95,22 +104,24 @@ export function splineCompletionSnap(
   point: SketchPoint2,
   tolerance: number,
 ): SketchPointTarget | null {
-  const [first] = pending.points
-  const last = pending.points.at(-1)
+  const resolved = resolvedPendingSpline(sketch, pending)
+  const [first] = resolved.points
+  const last = resolved.points.at(-1)
   const near = (target: SketchPointTarget | undefined) => {
-    if (!target) return false
-    const position = targetPoint(sketch, target)
-    return Math.hypot(position.x - point.x, position.y - point.y) <= tolerance
+    const position = target ? targetPoint(sketch, target) : null
+    return position !== null && Math.hypot(position.x - point.x, position.y - point.y) <= tolerance
   }
-  if (canClose(pending) && near(first)) return first ?? null
+  if (canClose(resolved) && near(first)) return first ?? null
   return near(last) ? (last ?? null) : null
 }
 
 /** Enter finishes an open spline and Shift+Enter closes it by repeating the matching pick. */
 export function splineKeyboardCompletionTarget(
-  pending: PendingSpline,
+  sketch: SketchRecord,
+  current: PendingSpline,
   closed: boolean,
 ): SketchPointTarget | null {
+  const pending = resolvedPendingSpline(sketch, current)
   if (closed) return canClose(pending) ? (pending.points[0] ?? null) : null
   return pending.points.length >= 2 ? (pending.points.at(-1) ?? null) : null
 }
@@ -136,7 +147,7 @@ export function PendingSplineShape({
   pending,
   sketch,
 }: Readonly<{ cursor: SketchPoint2; pending: PendingSpline; sketch: SketchRecord }>) {
-  const picked = pending.points.map((target) => targetPoint(sketch, target))
+  const picked = pending.points.flatMap((target) => targetPoint(sketch, target) ?? [])
   const last = picked.at(-1)
   // Right after a pick the cursor rests on it; preview the committed picks alone.
   const resting =
@@ -164,7 +175,7 @@ export function PendingSplineShape({
           data-sketch-spline-through-point={index}
         />
       ))}
-      {first && canClose(pending) ? (
+      {first && picked.length >= 3 ? (
         <circle
           cx={first.x}
           cy={first.y}

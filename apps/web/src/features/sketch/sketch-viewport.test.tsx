@@ -6174,6 +6174,54 @@ describe("SketchViewport", () => {
     expect(instruction()).toContain("Click the first through-point")
   })
 
+  it("keeps a pending spline usable when Undo removes a snapped existing through-point", () => {
+    const anchorId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-00000000a001")
+    const anchored = sketchRecordSchema.parse({
+      ...sketch,
+      entities: [
+        { schemaVersion: 0, id: anchorId, type: "point", construction: false, x: 10, y: 10 },
+      ],
+      constraints: [],
+    })
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
+      draft: anchored,
+      editorTool: "spline",
+      sketch: emptySketch,
+      solveSketch,
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    // The first pick snaps to the existing point; the second is a new point.
+    fireEvent.pointerDown(drawing, clientPointForSketch(drawing, { x: 10, y: 10 }))
+    fireEvent.pointerDown(drawing, clientPointForSketch(drawing, { x: 40, y: 30 }))
+    fireEvent.pointerMove(drawing, clientPointForSketch(drawing, { x: 50, y: 20 }))
+    expect(document.querySelectorAll("[data-sketch-spline-through-point]")).toHaveLength(2)
+    // Undo removes the snapped point while the gesture is still pending.
+    view.rerender(
+      viewportElement({
+        draft: emptySketch,
+        editorTool: "spline",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    fireEvent.pointerMove(drawing, clientPointForSketch(drawing, { x: 10, y: 10 }))
+    expect(document.querySelectorAll("[data-sketch-spline-through-point]")).toHaveLength(1)
+    fireEvent.keyDown(drawing, { key: "Enter" })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    fireEvent.pointerDown(drawing, clientPointForSketch(drawing, { x: 70, y: 10 }))
+    fireEvent.keyDown(drawing, { key: "Enter" })
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
+    const placed = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    expect(placed.entities.some(({ id }) => id === anchorId)).toBe(false)
+    expect(placed.entities.filter(({ type }) => type === "cubic-bezier")).toHaveLength(1)
+  })
+
   it("closes a spline on the first through-point or with Shift+Enter and finishes with Enter", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
