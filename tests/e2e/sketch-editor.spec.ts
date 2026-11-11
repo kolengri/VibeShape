@@ -3078,7 +3078,10 @@ test.describe("full sketch editor", () => {
 
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
     await expect(page.getByRole("button", { name: /^Set exact Radius:/ })).toBeVisible()
-    await expect(page.getByText("Tangent", { exact: true })).toBeVisible()
+    // Drawing closes the Constraint manager; reopen it to read the applied relations.
+    await expect(
+      (await openConstraintManager(page)).getByText("Tangent", { exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole("button", { name: "Line", exact: true })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -3568,6 +3571,8 @@ test.describe("full sketch editor", () => {
     const initialDistance = await signedDistance()
     expect(Math.sign(initialDistance)).toBe(Math.sign(previewDistance))
     const oppositeExpression = initialDistance > 0 ? "-8 mm" : "8 mm"
+    // Undo and Redo close the Constraint manager; reopen it to edit the dimension.
+    await openConstraintManager(page)
     await offsetConstraint.getByRole("button", { name: "Edit dimension" }).click()
     await offsetConstraint
       .getByRole("combobox", { name: "Driving expression" })
