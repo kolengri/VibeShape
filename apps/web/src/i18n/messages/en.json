@@ -1190,6 +1190,8 @@
           "reverseNamedEdge": "Reverse {edge}",
           "pickGraphicalEdges": "Pick edges in viewport",
           "pickGraphicalFaces": "Pick faces in viewport",
+          "pickEdgesShort": "Edges",
+          "pickFacesShort": "Faces",
           "pickDirectionOverrides": "Pick edges to reverse",
           "pickSideFace": "Pick side face for {edge}",
           "sideFaceRequired": "Pick an explicit side face for each directional edge.",

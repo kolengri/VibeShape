@@ -2,10 +2,11 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { ChoiceField } from "@vibeshape/ui/components/choice-field"
 import { FieldError } from "@vibeshape/ui/components/field"
-import { Scan, X } from "@vibeshape/ui/components/icons"
+import { FieldHelp } from "@vibeshape/ui/components/field-help"
+import { Scan } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import type { ComponentProps } from "react"
-import { useMemo, useRef, useState } from "react"
+import { useId, useMemo, useRef, useState } from "react"
 import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { BooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -18,7 +19,11 @@ import {
   sameTreatmentReference,
 } from "./edge-treatment-candidates"
 import { withoutVariableRadius } from "./edge-treatment-fillet"
-import { FilletEdgeRadius, FilletSelectionHelp } from "./edge-treatment-fillet-controls"
+import {
+  FilletEdgeRadiusDetails,
+  FilletEdgeRadiusToggle,
+  FilletSelectionHelp,
+} from "./edge-treatment-fillet-controls"
 import type { EdgeTreatmentFormCopy, EdgeTreatmentOperation } from "./edge-treatment-form"
 import {
   clearTreatmentSelection,
@@ -28,6 +33,7 @@ import {
 } from "./edge-treatment-model"
 import { type EdgeTreatmentTargetOption, edgeTreatmentRequiresV3 } from "./edge-treatment-options"
 import type { EdgeTreatmentPick } from "./edge-treatment-picking"
+import { SelectedTargetList, SelectedTargetRow } from "./edge-treatment-selected-row"
 
 export type TreatmentControlsProps = {
   v3: boolean
@@ -54,9 +60,12 @@ type PreparedTreatmentControlsProps = TreatmentControlsProps & {
 function PickButton({
   kind,
   props,
+  compact = false,
 }: {
   kind: "edges" | "faces" | "overrides"
   props: PreparedTreatmentControlsProps
+  /** Shows a short visible label; the accessible name keeps the full action. */
+  compact?: boolean
 }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   const labels = {
@@ -64,19 +73,26 @@ function PickButton({
     faces: t("pickGraphicalFaces"),
     overrides: t("pickDirectionOverrides"),
   }
+  const shortLabels = { edges: t("pickEdgesShort"), faces: t("pickFacesShort") }
   return (
     <Button
       id={`edge-treatment-pick-${kind}`}
       type="button"
-      size="sm"
+      size={compact ? "xs" : "sm"}
       variant="outline"
+      className={compact ? "min-w-0 aria-pressed:bg-accent aria-pressed:border-primary" : undefined}
       disabled={props.disabled}
+      aria-label={compact ? labels[kind] : undefined}
       aria-pressed={props.pick?.kind === kind}
       aria-invalid={(kind === "edges" && Boolean(props.issues.references)) || undefined}
       onClick={(event) => props.onArm({ kind }, event.currentTarget)}
     >
       <Scan aria-hidden="true" />
-      {labels[kind]}
+      {compact && kind !== "overrides" ? (
+        <span className="truncate">{shortLabels[kind]}</span>
+      ) : (
+        labels[kind]
+      )}
     </Button>
   )
 }
@@ -211,7 +227,8 @@ function SideFaceField({
       <Button
         type="button"
         variant="outline"
-        size="sm"
+        size="content"
+        className="min-w-0 justify-start py-1 text-left text-xs"
         disabled={props.disabled}
         aria-label={t("pickSideFace", { edge: label })}
         aria-pressed={props.pick?.kind === "side-face" && props.pick.index === index}
@@ -284,10 +301,53 @@ function SelectedEdgeDirection({
   if (target?.kind !== "edge" || props.values.mode === "equal-distance") return null
   return (
     <>
-      <SideFaceField props={props} index={index} label={label} side={target.sideFace} />
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <SideFaceField props={props} index={index} label={label} side={target.sideFace} />
+      </div>
       <EdgeOverrideCheckbox props={props} label={label} candidate={candidate} />
     </>
   )
+}
+
+type SelectedRowContext = {
+  props: PreparedTreatmentControlsProps
+  index: number
+  v3: boolean
+  label: string
+  candidate: EdgeTreatmentCandidate | undefined
+  reference: ReturnType<typeof treatmentReferences>[number]
+}
+
+function filletRadiusProps({ props, index, label, candidate, reference }: SelectedRowContext) {
+  return {
+    values: props.values,
+    onChange: props.onChange,
+    candidate,
+    reference,
+    label,
+    index,
+    disabled: props.disabled,
+    defaultEndRadius: props.defaultEndRadius ?? props.values.distance,
+    expressionDescription: props.copy.expressionDescription,
+    suggestions: props.suggestions,
+  }
+}
+
+/** Compact controls shown on the row line: Fillet's Variable radius toggle. */
+function SelectedRowInline(context: SelectedRowContext) {
+  if (context.props.operation !== "fillet" || context.reference.kind !== "edge") return null
+  return <FilletEdgeRadiusToggle {...filletRadiusProps(context)} />
+}
+
+/** Operation-specific details expanded under the row: Chamfer direction or Fillet radius law. */
+function SelectedRowDetails(context: SelectedRowContext) {
+  const { props, index, v3, label, candidate, reference } = context
+  if (props.operation === "chamfer")
+    return v3 ? (
+      <SelectedEdgeDirection props={props} index={index} label={label} candidate={candidate} />
+    ) : null
+  if (reference.kind !== "edge") return null
+  return <FilletEdgeRadiusDetails {...filletRadiusProps(context)} />
 }
 
 function SelectedRow({
@@ -304,116 +364,106 @@ function SelectedRow({
   const resolved = props.resolution.resolve(reference, props.values.targetFeatureId)
   const candidate = resolved.status === "resolved" ? resolved.candidate : undefined
   const label = candidate?.label ?? props.copy.missingEdge
+  const context = { props, index, v3, label, candidate, reference }
   return (
-    <div className="grid gap-1 rounded-md border bg-accent px-2 py-1 text-sm">
-      <div className="flex min-w-0 items-center justify-between gap-1">
-        <span
-          className={candidate?.resolveStatus() === "resolved" ? "truncate" : "text-destructive"}
-        >
-          {label}
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={props.copy.removeEdgeLabel(label)}
-          disabled={props.disabled}
-          onClick={() => removeReference(props, reference, candidate)}
-        >
-          <X aria-hidden="true" />
-        </Button>
-      </div>
-      <SelectedRowDetails
-        props={props}
-        index={index}
-        v3={v3}
-        label={label}
-        candidate={candidate}
-        reference={reference}
-      />
-    </div>
-  )
-}
-
-/** Operation-specific per-target controls: Chamfer direction or Fillet radius law. */
-function SelectedRowDetails({
-  props,
-  index,
-  v3,
-  label,
-  candidate,
-  reference,
-}: {
-  props: PreparedTreatmentControlsProps
-  index: number
-  v3: boolean
-  label: string
-  candidate: EdgeTreatmentCandidate | undefined
-  reference: ReturnType<typeof treatmentReferences>[number]
-}) {
-  if (props.operation === "chamfer")
-    return v3 ? (
-      <SelectedEdgeDirection props={props} index={index} label={label} candidate={candidate} />
-    ) : null
-  if (reference.kind !== "edge") return null
-  return (
-    <FilletEdgeRadius
-      values={props.values}
-      onChange={props.onChange}
-      candidate={candidate}
-      reference={reference}
+    <SelectedTargetRow
       label={label}
-      index={index}
+      resolved={candidate?.resolveStatus() === "resolved"}
+      inline={<SelectedRowInline {...context} />}
+      details={<SelectedRowDetails {...context} />}
+      removeLabel={props.copy.removeEdgeLabel(label)}
       disabled={props.disabled}
-      defaultEndRadius={props.defaultEndRadius ?? props.values.distance}
-      expressionDescription={props.copy.expressionDescription}
-      suggestions={props.suggestions}
+      onRemove={() => removeReference(props, reference, candidate)}
     />
   )
 }
 
+/** Guidance for the selection block, shown in its information popover rather than inline. */
+function SelectionHelp({ props, v3 }: { props: PreparedTreatmentControlsProps; v3: boolean }) {
+  const t = useTranslations("app.shell.taskPanel.edgeTreatment")
+  return (
+    <>
+      <span className="block">
+        {v3 ? t("selectedTargetsDescription") : props.copy.selectedEdgesDescription}
+      </span>
+      {v3 && props.operation === "chamfer" && (
+        <span className="block">{t("incidenceValidation")}</span>
+      )}
+      {props.operation === "fillet" && <FilletSelectionHelp values={props.values} />}
+    </>
+  )
+}
+
+/** One header line: live count, section help and a compact Clear action. */
 function SelectionHeading({
   props,
   v3,
   count,
+  legend,
+  helpId,
 }: {
   props: PreparedTreatmentControlsProps
   v3: boolean
   count: number
+  legend: string
+  helpId: string
 }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   return (
     <>
-      <legend className="text-xs font-medium">
-        {v3 ? t("selectedTargets") : props.copy.selectedEdges}
-      </legend>
-      <p className="text-xs text-muted-foreground">
-        {v3 ? t("selectedTargetsDescription") : props.copy.selectedEdgesDescription}
-      </p>
-      <p role="status" aria-live="polite" aria-atomic="true" className="text-sm font-medium">
-        {v3 ? t("selectedTargetCount", { count }) : props.copy.selectedEdgeCount(count)}
-      </p>
+      {/* The All/Selected control already shows this name; keep it for assistive technology. */}
+      <legend className="sr-only">{legend}</legend>
+      <div className="flex min-h-6 min-w-0 items-center gap-1">
+        <p
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="min-w-0 truncate text-xs font-medium"
+        >
+          {v3 ? t("selectedTargetCount", { count }) : props.copy.selectedEdgeCount(count)}
+        </p>
+        <FieldHelp label={legend} descriptionId={helpId}>
+          <SelectionHelp props={props} v3={v3} />
+        </FieldHelp>
+        {count > 0 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="ml-auto shrink-0"
+            disabled={props.disabled}
+            onClick={() => props.onChange(clearTreatmentSelection(props.values))}
+          >
+            {props.copy.clearEdges}
+          </Button>
+        )}
+      </div>
     </>
   )
 }
 
 function SelectedTargets({ props }: { props: PreparedTreatmentControlsProps }) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
+  const helpId = useId()
   if (props.values.scope !== "selected") return null
   const v3 = props.v3
   const references = treatmentReferences(props.values, v3)
+  const legend = v3 ? t("selectedTargets") : props.copy.selectedEdges
   const unavailable = props.candidates.filter(
     (candidate) => candidate.reference.kind === "edge" && !candidate.edgePolyline,
   ).length
   return (
-    <fieldset
-      className="grid min-w-0 gap-2"
-      aria-label={v3 ? t("selectedTargets") : props.copy.selectedEdges}
-    >
-      <SelectionHeading props={props} v3={v3} count={references.length} />
-      <div className="flex flex-wrap gap-1">
-        <PickButton kind="edges" props={props} />
-        <PickButton kind="faces" props={props} />
+    <fieldset className="grid min-w-0 gap-1.5" aria-label={legend} aria-describedby={helpId}>
+      <SelectionHeading
+        props={props}
+        v3={v3}
+        count={references.length}
+        legend={legend}
+        helpId={helpId}
+      />
+      <div className="grid grid-cols-2 gap-1">
+        <PickButton kind="edges" props={props} compact />
+        <PickButton kind="faces" props={props} compact />
       </div>
       {unavailable > 0 && (
         <p className="text-xs text-muted-foreground">
@@ -421,27 +471,16 @@ function SelectedTargets({ props }: { props: PreparedTreatmentControlsProps }) {
         </p>
       )}
       <CandidateFallback key={JSON.stringify(props.pick)} props={props} />
-      {references.map((reference, index) => (
-        <SelectedRow key={JSON.stringify(reference)} props={props} index={index} v3={v3} />
-      ))}
-      {props.issues.references && <FieldError>{props.issues.references}</FieldError>}
       {references.length > 0 && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="w-fit"
-          disabled={props.disabled}
-          onClick={() => props.onChange(clearTreatmentSelection(props.values))}
-        >
-          {props.copy.clearEdges}
-        </Button>
+        <SelectedTargetList>
+          {references.map((reference, index) => (
+            <SelectedRow key={JSON.stringify(reference)} props={props} index={index} v3={v3} />
+          ))}
+        </SelectedTargetList>
       )}
-      {v3 && props.operation === "chamfer" && (
-        <p className="text-xs text-muted-foreground">{t("incidenceValidation")}</p>
-      )}
-      {props.operation === "fillet" && (
-        <FilletSelectionHelp values={props.values} issue={props.issues.variableRadii} />
+      {props.issues.references && <FieldError>{props.issues.references}</FieldError>}
+      {props.operation === "fillet" && props.issues.variableRadii && (
+        <FieldError>{props.issues.variableRadii}</FieldError>
       )}
     </fieldset>
   )
