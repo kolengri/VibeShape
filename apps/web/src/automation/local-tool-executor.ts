@@ -56,7 +56,7 @@ import {
 } from "@vibeshape/automation-api/sketch-corner-tools"
 import { isSurfaceTextureToolName } from "@vibeshape/automation-api/surface-texture-tools"
 import type { AutomationHost, AutomationHostResult } from "@vibeshape/automation-host/host"
-import type { CommandActor } from "@vibeshape/domain"
+import type { CommandActor, FeatureRecord } from "@vibeshape/domain"
 import { structuralMaterialCatalog } from "@vibeshape/domain/lightweighting-materials"
 import type { MeshExportQuality } from "@vibeshape/protocol"
 import type { ActiveAutomationInfo } from "../document/document-controller"
@@ -254,6 +254,35 @@ function isVariableCommand(operation: LocalOperation): operation is Extract<
   )
 }
 
+/**
+ * Reads the saved type of a versioned feature being updated so its version owner can keep it.
+ * When the draft record cannot be read, field presence routes the update and the command itself
+ * reports any stale revision or missing feature.
+ */
+async function savedFeatureType(
+  session: LocalSessionPort,
+  actor: CommandActor,
+  operation: Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
+): Promise<FeatureRecord["type"] | null> {
+  if (operation.tool !== "update_cone" && operation.tool !== "update_hole") return null
+  const input = operation.arguments
+  const result = await session.host.inspectDraft(actor, {
+    schemaVersion: 1,
+    draftId: input.draftId,
+    query: {
+      kind: "org.vibeshape.cad.inspection.detail",
+      schemaVersion: 1,
+      documentId: session.documentId,
+      revision: input.baseRevision,
+      entity: { kind: "feature", id: input.featureId },
+    },
+  })
+  const view = result?.ok ? result.value.view : null
+  return view?.kind === "org.vibeshape.cad.inspection.detail" && view.data.entityKind === "feature"
+    ? view.data.record.type
+    : null
+}
+
 function draftCommandRequest(
   operation: Exclude<
     Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
@@ -263,10 +292,11 @@ function draftCommandRequest(
   >,
   actor: CommandActor,
   documentId: string,
+  savedType: FeatureRecord["type"] | null,
 ) {
   if (isVariableCommand(operation)) return createLocalVariableCommand(operation, actor, documentId)
   if (isLocalPrimitiveCommand(operation))
-    return createLocalPrimitiveCommand(operation, actor, documentId)
+    return createLocalPrimitiveCommand(operation, actor, documentId, savedType)
   if (isLocalLifecycleCommand(operation))
     return createLocalLifecycleCommand(operation, actor, documentId)
   switch (operation.tool) {
@@ -277,7 +307,7 @@ function draftCommandRequest(
     case "update_chamfer":
       return createLocalBasicFeatureCommand(operation, actor, documentId)
     default:
-      return createLocalCadCommand(operation, actor, documentId)
+      return createLocalCadCommand(operation, actor, documentId, savedType)
   }
 }
 
@@ -305,7 +335,8 @@ async function dispatchDraftCommand(
     return executeSketchCornerCommand(session.host, actor, session.documentId, operation, signal)
   if (isLocalSketchTextOperation(operation))
     return executeSketchTextCommand(session.host, actor, session.documentId, operation, signal)
-  const request = draftCommandRequest(operation, actor, session.documentId)
+  const savedType = await savedFeatureType(session, actor, operation)
+  const request = draftCommandRequest(operation, actor, session.documentId, savedType)
   const result = await session.host.applyCommand(actor, request)
   return result.ok ? { ok: true as const, value: result.value } : diagnostic(result)
 }

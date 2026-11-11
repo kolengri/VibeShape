@@ -122,7 +122,8 @@ Torus requires major radius greater than minor radius; Pyramid takes 3–64 inte
 circumradius. Cone takes an optional typed `topRadius`: omit it (or pass a literal zero) for the
 exact pointed Cone v1; any other value authors Cone v2, which accepts 0 or 0.001 mm and larger, must
 differ from the base `radius`, and inverts the taper when larger than the base. Resubmit `topRadius`
-with its expression on every update of a truncated cone. Wedge and horn/spindle Torus are not
+with its expression on every update of a truncated cone; an update of a saved v2 cone that omits it
+(or passes a literal zero) stays v2 with a pointed apex. Wedge and horn/spindle Torus are not
 registered primitive contracts.
 
 Inspect exact preview volume, bounds and body count before commit. A valid matching CAD auto-apply
@@ -213,7 +214,7 @@ Use 1–256 stable point IDs from an inspected sketch, a positive typed diameter
 
 Adding `treatment` selects Hole v3 and requires `targetBody`: `{kind:"simple"}`, `{kind:"counterbore",diameter,depth}`, or `{kind:"countersink",diameter,angle}`. Recess dimensions are length quantities; countersink angle is the included angle quantity between 10 and 170 degrees. The recess diameter exceeds the hole diameter, and a blind recess must leave positive cylindrical depth. Preserve treatment and quantity expressions when updating. Preview the actual recess before committing.
 
-Adding `tipAngle` to a blind Hole with `targetBody` selects Hole v4 with a drill point; `treatment` then defaults to `{kind:"simple"}` when omitted. `tipAngle` is an included-angle quantity from 60 to 180 degrees: use 118 degrees for a standard twist drill and 180 degrees for a flat bottom. `depth` remains the full-diameter cylindrical depth measured to the shoulder; the conical tip of height `diameter / 2 / tan(tipAngle / 2)` is added beyond it, so a blind hole near the far face needs that extra material. Counterbore and countersink behave as in v3. Through-all holes reject `tipAngle`. Resubmit `tipAngle` with its expression on every update; omitting it writes a hole without a drill point.
+Adding `tipAngle` to a blind Hole with `targetBody` selects Hole v4 with a drill point; `treatment` then defaults to `{kind:"simple"}` when omitted. `tipAngle` is an included-angle quantity from 60 to 180 degrees: use 118 degrees for a standard twist drill and 180 degrees for a flat bottom. `depth` remains the full-diameter cylindrical depth measured to the shoulder; the conical tip of height `diameter / 2 / tan(tipAngle / 2)` is added beyond it, so a blind hole near the far face needs that extra material. Counterbore and countersink behave as in v3. Through-all holes reject `tipAngle`. Resubmit `tipAngle` with its expression on every update. `update_hole` keeps a saved v3 or v4 version while `targetBody` is present (omitting `targetBody` still requests legacy whole-result scope); omitted `treatment` is simple, and omitting `tipAngle` on a saved v4 blind hole writes a flat 180-degree point.
 
 ## Extrusion endpoints and body scope
 

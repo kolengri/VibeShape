@@ -1,4 +1,5 @@
 import {
+  authoredHoleFeatureType,
   createAngleQuantity,
   evaluateExpression,
   evaluateVariableDefinitions,
@@ -10,10 +11,6 @@ import {
   holeFeatureParametersV2Schema,
   holeFeatureParametersV3Schema,
   holeFeatureParametersV4Schema,
-  holeFeatureType,
-  holeFeatureTypeV2,
-  holeFeatureTypeV3,
-  holeFeatureTypeV4,
   holeTipAngleSchema,
   readHoleBodyTarget,
   readHoleFeatureParameters,
@@ -366,30 +363,25 @@ function parseDrillPoint(values: Values, context: ParseContext) {
   const savedV4 = savedHoleVersion(context) === 4
   const blind = values.extent === "blind"
   if (!blind || !values.drillPoint)
-    return { ok: true as const, tipAngle: savedV4 && blind ? FLAT_TIP_ANGLE : null, v4: savedV4 }
+    return { ok: true as const, tipAngle: savedV4 && blind ? FLAT_TIP_ANGLE : null }
   const tipAngle = parseTipAngle(values.tipAngle, context)
   return tipAngle
-    ? { ok: true as const, tipAngle, v4: true }
+    ? { ok: true as const, tipAngle }
     : { ok: false as const, issues: { tipAngle: context.copy.invalidTipAngle } }
 }
 
-const holeFormTypes = {
-  1: holeFeatureType.type,
-  2: holeFeatureTypeV2.type,
-  3: holeFeatureTypeV3.type,
-  4: holeFeatureTypeV4.type,
-} as const
-
-/** One owner for the form's Hole version: a drill point is v4, a recess or saved v3 is v3. */
-function holeFormSchemaVersion(
+/** The form's authored intent, routed through the domain's single Hole version owner. */
+function holeFormFeatureType(
   values: Values,
   context: ParseContext,
   drillPoint: Extract<ReturnType<typeof parseDrillPoint>, { ok: true }>,
   target: HoleTargetOption,
-): keyof typeof holeFormTypes {
-  if (drillPoint.v4) return 4
-  if (values.treatment !== "simple" || savedHoleVersion(context) === 3) return 3
-  return target.outputRole !== undefined ? 2 : 1
+) {
+  return authoredHoleFeatureType(context.mode.kind === "edit" ? context.mode.feature.type : null, {
+    ...(drillPoint.tipAngle ? { tipAngle: drillPoint.tipAngle } : {}),
+    ...(values.treatment !== "simple" ? { treatment: values.treatment } : {}),
+    ...(target.outputRole !== undefined ? { targetBody: target.outputRole } : {}),
+  })
 }
 
 function parseHoleVersion(
@@ -401,7 +393,7 @@ function parseHoleVersion(
   treatment: Extract<ReturnType<typeof parseHoleTreatment>, { ok: true }>["treatment"],
   drillPoint: Extract<ReturnType<typeof parseDrillPoint>, { ok: true }>,
 ) {
-  const version = holeFormSchemaVersion(values, context, drillPoint, target)
+  const type = holeFormFeatureType(values, context, drillPoint, target)
   const recessed = {
     sketchId: sketch.id,
     pointIds: values.pointIds,
@@ -418,12 +410,12 @@ function parseHoleVersion(
     ...(drillPoint.tipAngle ? { tipAngle: drillPoint.tipAngle } : {}),
   }
   const parsed =
-    version === 4
+    type.schemaVersion === 4
       ? holeFeatureParametersV4Schema.safeParse(recessed)
-      : version === 3
+      : type.schemaVersion === 3
         ? holeFeatureParametersV3Schema.safeParse(recessed)
         : parseHoleParameters(values, dimensions, sketch.id, target)
-  return { parsed, type: holeFormTypes[version] }
+  return { parsed, type }
 }
 function parseValues(values: Values, context: ParseContext) {
   const selection = holeSelection(values, context)

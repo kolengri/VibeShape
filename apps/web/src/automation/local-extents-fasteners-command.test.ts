@@ -226,6 +226,33 @@ describe("versioned extent and fastener MCP commands", () => {
       ).toBe(false)
   })
 
+  it("keeps a saved v3 or v4 hole version on update unless legacy scope is requested", () => {
+    const { treatment: _treatment, ...scoped } = hole
+    const { targetBody: _targetBody, ...legacy } = scoped
+    const update = (parameters: object, savedType: Parameters<typeof createLocalCadCommand>[3]) => {
+      const operation = localOperationSchema.parse({
+        tool: "update_hole",
+        arguments: { ...base, parameters },
+      })
+      if (operation.tool !== "update_hole") throw new Error("Expected a hole update.")
+      const request = createLocalCadCommand(operation, actor, id(60), savedType)
+      expect(parseDocumentCommand(request.command).ok).toBe(true)
+      return request.command.payload as { feature: { type: unknown; parameters: unknown } }
+    }
+    expect(update(scoped, holeFeatureTypeV3.type).feature).toMatchObject({
+      type: holeFeatureTypeV3.type,
+      parameters: { treatment: { kind: "simple" } },
+    })
+    expect(update(scoped, holeFeatureTypeV4.type).feature).toMatchObject({
+      type: holeFeatureTypeV4.type,
+      parameters: { treatment: { kind: "simple" }, tipAngle: { value: Math.PI } },
+    })
+    expect(update(legacy, holeFeatureTypeV4.type).feature).toMatchObject({
+      type: { schemaVersion: 1 },
+    })
+    expect(update(scoped, null).feature).toMatchObject({ type: { schemaVersion: 2 } })
+  })
+
   it("fails closed for invalid recesses, dynamic extents and thread resource budgets", () => {
     const rejected = (tool: string, parameters: unknown, dependencies = base.dependencies) =>
       expect(

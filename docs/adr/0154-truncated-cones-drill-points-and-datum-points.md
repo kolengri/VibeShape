@@ -22,7 +22,9 @@ a zero top radius and revolves an exact trapezoid otherwise, naming both caps an
 (`primitive.cone.{cap,edge}.{start,end}`) and the apex only for a pointed cone.
 
 `authoredConeFeatureType` owns the version route: a missing top radius or a literal zero (no
-variable) authors v1, any other value authors v2, and a saved v2 cone never migrates back. Saved v1
+variable) authors v1, any other value authors v2, and a saved v2 cone never migrates back. The task
+panel and MCP `update_cone` both pass the saved type; MCP reads it from the owned draft, so an
+omitted or literal-zero top radius on a saved v2 cone writes `topRadius: 0` on v2. Saved v1
 records keep their exact schema and content hash. Equal radii are rejected; Cylinder owns that
 shape.
 
@@ -40,10 +42,14 @@ v3 geometry and validation. The worker revolves one exact cylinder-plus-cone mer
 a flat point keeps the v3 cylindrical cutter. Through-all v4 holes carry no tip angle, so editing a
 saved v4 hole to through-all does not change its schema version.
 
-`authoredHoleFeatureType` owns the route for the form and MCP. A tip angle authors v4, a saved v4
-hole stays v4 (clearing the control writes 180 degrees), and older routes are unchanged. MCP routes
-by field presence, as Hole v2/v3 already do; omitting `tipAngle` on update therefore writes a hole
-without a drill point.
+`authoredHoleFeatureType(savedType, parameters)` is the single Hole version owner for the form and
+MCP. In priority order: a tip angle authors v4, a saved v4 stays v4, a recess treatment authors v3,
+a saved v3 stays v3, an exact `targetBody` authors v2, and anything else is legacy v1. The task
+panel passes its edited record's type; clearing its drill-point control on a saved v4 hole writes
+180 degrees. MCP `update_hole` reads the saved type from the owned draft and passes it unless the
+update omits `targetBody`, which remains the explicit request for legacy whole-result scope.
+Omitted recess intent then defaults to a simple hole, and an omitted blind tip angle on a v4 hole
+is a flat 180-degree point.
 
 ### Datum Point version 1
 

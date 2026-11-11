@@ -1,6 +1,11 @@
 import { applyAutomationDraftCommandRequestSchema } from "@vibeshape/automation-api/drafts"
 import type { LocalPrimitiveCommandOperation } from "@vibeshape/automation-api/local-tools"
-import { type CommandActor, featureRecordSchema } from "@vibeshape/domain"
+import {
+  type CommandActor,
+  createLengthQuantity,
+  type FeatureRecord,
+  featureRecordSchema,
+} from "@vibeshape/domain"
 import {
   authoredConeFeatureType,
   boxFeatureType,
@@ -27,13 +32,18 @@ const featureTypes = {
   create_pyramid: pyramidFeatureType.type,
   update_pyramid: pyramidFeatureType.type,
 } as const
-function primitiveTypeAndParameters(operation: LocalPrimitiveCommandOperation) {
+function primitiveTypeAndParameters(
+  operation: LocalPrimitiveCommandOperation,
+  savedType: FeatureRecord["type"] | null,
+) {
   const parameters = operation.arguments.parameters
   if (operation.tool !== "create_cone" && operation.tool !== "update_cone")
     return { type: featureTypes[operation.tool], parameters }
   const topRadius = "topRadius" in parameters ? parameters.topRadius : undefined
-  const type = authoredConeFeatureType(null, topRadius)
-  if (type.schemaVersion === 2) return { type, parameters }
+  const type = authoredConeFeatureType(savedType, topRadius)
+  // A saved truncated cone never migrates back; an omitted top radius is the pointed apex.
+  if (type.schemaVersion === 2)
+    return { type, parameters: { topRadius: createLengthQuantity(0), ...parameters } }
   // A literal zero top radius is the exact pointed cone, which version 1 already owns.
   const { topRadius: _topRadius, ...pointed } = { topRadius: undefined, ...parameters }
   return { type, parameters: pointed }
@@ -43,9 +53,10 @@ export function createLocalPrimitiveCommand(
   operation: LocalPrimitiveCommandOperation,
   actor: CommandActor,
   documentId: string,
+  savedType: FeatureRecord["type"] | null = null,
 ) {
   const input = operation.arguments
-  const { type, parameters } = primitiveTypeAndParameters(operation)
+  const { type, parameters } = primitiveTypeAndParameters(operation, savedType)
   const feature = featureRecordSchema.parse({
     schemaVersion: 0,
     id: input.featureId,

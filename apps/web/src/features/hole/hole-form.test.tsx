@@ -350,6 +350,40 @@ describe("HoleForm", () => {
     )
   })
 
+  it("keeps a saved simple v3 hole on v3 through the domain version owner", async () => {
+    const feature = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: holeFeatureId,
+      type: holeFeatureTypeV3.type,
+      parameters: {
+        sketchId: sketch.id,
+        pointIds: [validPointId],
+        diameter: createLengthQuantity(5),
+        direction: "forward",
+        extent: "blind",
+        depth: createLengthQuantity(10),
+        targetBody: { schemaVersion: 0, featureId: target, outputRole: "result" },
+        treatment: { kind: "simple" },
+      },
+      dependencies: [target],
+      references: [],
+      suppressed: false,
+      label: "Simple v3",
+    })
+    const { onSave } = renderForm({
+      mode: { kind: "edit", feature },
+      options: [{ featureId: target, outputRole: "result", label: "Body · result" }],
+    })
+    await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        type: holeFeatureTypeV3.type,
+        parameters: expect.objectContaining({ treatment: { kind: "simple" } }),
+      }),
+    )
+  })
+
   it("keeps a saved v4 hole on v4 with a flat point when the drill point is cleared", async () => {
     const feature = featureRecordSchema.parse({
       schemaVersion: 0,

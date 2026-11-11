@@ -423,6 +423,14 @@ describe("blind drill-point intent", () => {
     expect(authoredHoleFeatureType(null, v3)).toEqual(holeFeatureTypeV3.type)
     expect(authoredHoleFeatureType(null, v4)).toEqual(holeFeatureTypeV4.type)
     expect(authoredHoleFeatureType(holeFeatureTypeV4.type, v3)).toEqual(holeFeatureTypeV4.type)
+    const scoped = { ...parameters(), targetBody }
+    expect(authoredHoleFeatureType(holeFeatureTypeV3.type, scoped)).toEqual(holeFeatureTypeV3.type)
+    expect(authoredHoleFeatureType(holeFeatureTypeV3.type, v4)).toEqual(holeFeatureTypeV4.type)
+    expect(authoredHoleFeatureType(holeFeatureTypeV4.type, scoped)).toEqual(holeFeatureTypeV4.type)
+    expect(authoredHoleFeatureType(holeFeatureTypeV2.type, scoped)).toEqual(holeFeatureTypeV2.type)
+    expect(authoredHoleFeatureType(holeFeatureTypeV2.type, parameters())).toEqual(
+      holeFeatureType.type,
+    )
   })
 
   it.each([

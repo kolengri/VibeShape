@@ -2,8 +2,10 @@ import { applyAutomationDraftCommandRequestSchema } from "@vibeshape/automation-
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
 import {
   type CommandActor,
+  createAngleQuantity,
   datumPlaneFeatureType,
   datumPointFeatureType,
+  type FeatureRecord,
   featureRecordSchema,
 } from "@vibeshape/domain"
 import {
@@ -238,16 +240,34 @@ function bodySelectionFeatureType(
   return authoredHoleFeatureType(null, operation.arguments.parameters)
 }
 
-function holeParameters(parameters: Record<string, unknown>) {
-  switch (authoredHoleFeatureType(null, parameters).schemaVersion) {
+const FLAT_TIP_ANGLE = createAngleQuantity(180, "deg")
+
+/**
+ * Routes MCP hole intent through the domain owner. An update keeps its saved v3/v4 version unless
+ * it explicitly requests legacy whole-result scope by omitting `targetBody`. Omitted recess intent
+ * defaults to a simple hole, and an omitted blind tip angle on a v4 hole is a flat point.
+ */
+function authoredHole(
+  parameters: Record<string, unknown>,
+  savedType: FeatureRecord["type"] | null,
+) {
+  const type = authoredHoleFeatureType("targetBody" in parameters ? savedType : null, parameters)
+  const recessed = { treatment: { kind: "simple" }, ...parameters }
+  switch (type.schemaVersion) {
     case 4:
-      return holeFeatureParametersV4Schema.parse({ treatment: { kind: "simple" }, ...parameters })
+      return {
+        type,
+        parameters: holeFeatureParametersV4Schema.parse({
+          ...(parameters.extent === "blind" ? { tipAngle: FLAT_TIP_ANGLE } : {}),
+          ...recessed,
+        }),
+      }
     case 3:
-      return holeFeatureParametersV3Schema.parse(parameters)
+      return { type, parameters: holeFeatureParametersV3Schema.parse(recessed) }
     case 2:
-      return holeFeatureParametersV2Schema.parse(parameters)
+      return { type, parameters: holeFeatureParametersV2Schema.parse(parameters) }
     default:
-      return holeFeatureParametersSchema.parse(parameters)
+      return { type, parameters: holeFeatureParametersSchema.parse(parameters) }
   }
 }
 
@@ -282,6 +302,7 @@ export function createLocalCadCommand(
   operation: CadOperation,
   actor: CommandActor,
   documentId: string,
+  savedType: FeatureRecord["type"] | null = null,
 ) {
   const input = operation.arguments
   const envelope = {
@@ -307,15 +328,15 @@ export function createLocalCadCommand(
     })
   }
   const featureInput = operation.arguments
-  const parameters =
+  const hole =
     operation.tool === "create_hole" || operation.tool === "update_hole"
-      ? holeParameters(featureInput.parameters)
-      : featureInput.parameters
+      ? authoredHole(featureInput.parameters, savedType)
+      : null
   const feature = featureRecordSchema.parse({
     schemaVersion: 0,
     id: featureInput.featureId,
-    type: cadFeatureType(operation),
-    parameters,
+    type: hole?.type ?? cadFeatureType(operation),
+    parameters: hole?.parameters ?? featureInput.parameters,
     dependencies: featureInput.dependencies,
     references: featureInput.references,
     suppressed: featureInput.suppressed,

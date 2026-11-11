@@ -533,18 +533,18 @@ export const holeFeatureTypeHandlerV4: TrustedFeatureTypeHandler = {
 }
 
 /**
- * Owns the hole version route for new and edited records. A drill point authors version 4, a
- * saved version 4 hole stays version 4, and otherwise the existing body/recess route applies.
+ * The single owner of the Hole version route for new and edited records, in priority order:
+ * a tip angle authors v4; a saved v4 stays v4; a recess treatment authors v3; a saved v3 stays
+ * v3; an exact `targetBody` authors v2; otherwise legacy whole-result v1.
  */
 export function authoredHoleFeatureType(
   savedType: FeatureRecord["type"] | null,
   parameters: object,
 ) {
-  if (
-    (savedType && isHoleType({ type: savedType }, holeFeatureTypeV4.type)) ||
-    "tipAngle" in parameters
-  )
+  const saved = savedType ? { type: savedType } : null
+  if ("tipAngle" in parameters || (saved && isHoleType(saved, holeFeatureTypeV4.type)))
     return holeFeatureTypeV4.type
-  if ("treatment" in parameters) return holeFeatureTypeV3.type
+  if ("treatment" in parameters || (saved && isHoleType(saved, holeFeatureTypeV3.type)))
+    return holeFeatureTypeV3.type
   return "targetBody" in parameters ? holeFeatureTypeV2.type : holeFeatureType.type
 }
