@@ -8,6 +8,7 @@ import type { ShellPickingContext, ShellPickRequest } from "../features/shell/sh
 import { ThickenForm, type ThickenFormCopy } from "../features/thicken/thicken-form"
 import { type ThickenFormMode, thickenTargetBody } from "../features/thicken/thicken-form-model"
 import { type BodyFeatureTaskPanelProps, bodyFeatureTaskMode } from "./body-feature-task-mode"
+import { previewedTaskStatusCopy } from "./feature-task-copy"
 import { featureTaskFormProps, featureTaskKey } from "./feature-task-form-props"
 import { useHistoryFeatureBodyReplacement } from "./history-feature-repair"
 
@@ -40,14 +41,7 @@ function useThickenCopy(editing: boolean): ThickenFormCopy {
     operationDescription: t("operationDescription"),
     operations: { new: t("operationNew"), add: t("operationAdd"), remove: t("operationRemove") },
     repair: t("repair"),
-    unavailable: t("unavailable"),
-    validationSummary: t("validationSummary"),
-    invalidExpression: t("invalidExpression"),
-    invalidDimension: t("invalidDimension"),
-    invalidRange: t("invalidRange"),
-    staleRevision: t("staleRevision"),
-    saveFailed: t("saveFailed"),
-    previewFailed: t("previewFailed"),
+    ...previewedTaskStatusCopy(t),
   }
 }
 

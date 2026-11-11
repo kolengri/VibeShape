@@ -152,26 +152,30 @@ function classifyExactSubtract(feature: FeatureRecordV1): PartOperation | null {
     }
   return null
 }
-function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation | null {
+const bodyTargetReaders = [
+  readThreadFeatureParameters,
+  readPressPullFeatureParameters,
+  readShellFeatureParameters,
+  readDraftFeatureParameters,
+  readScaleFeatureParameters,
+  readThickenFeatureParameters,
+  readChamferFeatureParametersV3,
+  readFilletFeatureParametersV3,
+  readPlacementFeatureParameters,
+]
+/** Features that rebuild one exact target body, or add a new body beside it. */
+function classifyTargetOperation(feature: FeatureRecordV1): PartOperation | null {
   if (thickenPreservesSource(feature)) return { kind: "new" }
+  const target =
+    bodyTargetReaders.map((read) => read(feature)?.targetBody).find((body) => body !== undefined) ??
+    readCoilFeatureParameters(feature)?.targetBody
+  return target ? { kind: "modify", target, consumed: [] } : null
+}
+function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation | null {
   const boolean = classifyExactSubtract(feature)
   if (boolean) return boolean
-  const target = [
-    readThreadFeatureParameters,
-    readPressPullFeatureParameters,
-    readShellFeatureParameters,
-    readDraftFeatureParameters,
-    readScaleFeatureParameters,
-    readThickenFeatureParameters,
-    readChamferFeatureParametersV3,
-    readFilletFeatureParametersV3,
-    readPlacementFeatureParameters,
-  ]
-    .map((read) => read(feature)?.targetBody)
-    .find((body) => body !== undefined)
-  const coilTarget = readCoilFeatureParameters(feature)?.targetBody
-  if (coilTarget) return { kind: "modify", target: coilTarget, consumed: [] }
-  if (target) return { kind: "modify", target, consumed: [] }
+  const targeted = classifyTargetOperation(feature)
+  if (targeted) return targeted
   const mirror = classifyMirrorOperation(feature)
   if (mirror) return mirror
   const compound = readCompoundFeatureParameters(feature)

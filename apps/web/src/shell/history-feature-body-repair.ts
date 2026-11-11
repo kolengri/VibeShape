@@ -63,11 +63,15 @@ function bodyRecipe(feature: FeatureRecord): BodyRecipe | null {
       parameters: thread,
       ...(typeof thread.axis === "string" ? {} : { support: thread.axis }),
     }
+  return faceSelectionRecipe(feature) ?? simpleBodyRecipe(feature)
+}
+
+/** Features whose body-bound faces cannot move to a replacement body without reselection. */
+function faceSelectionRecipe(feature: FeatureRecord): BodyRecipe | null {
   const shell = readShellFeatureParameters(feature)
   if (shell) return { parameters: shell, shellClosed: shell.openings.length === 0 }
   const faceBound = readDraftFeatureParameters(feature) ?? readThickenFeatureParameters(feature)
-  if (faceBound) return { parameters: faceBound, reselectFaces: true }
-  return simpleBodyRecipe(feature)
+  return faceBound ? { parameters: faceBound, reselectFaces: true } : null
 }
 
 /** Only first-party, schema-validated body fields participate in this form adapter. */

@@ -60,37 +60,37 @@ function requireSourceSolid(occt: OpenCascadeInstance, source: Shape3D, label: s
   return metrics.volume
 }
 
-type Vector = readonly [number, number, number]
-const dot = (a: Vector, b: Vector) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-const cross = (a: Vector, b: Vector): Vector => [
-  a[1] * b[2] - a[2] * b[1],
-  a[2] * b[0] - a[0] * b[2],
-  a[0] * b[1] - a[1] * b[0],
-]
+type SurfaceDerivatives = Readonly<
+  Record<"u" | "v" | "uu" | "vv" | "uv", InstanceType<OpenCascadeInstance["gp_Vec_1"]>>
+>
 
 /**
  * Principal curvatures relative to the outward face normal. A negative curvature is convex: an
  * offset `s` along the outward normal collapses where `s * curvature` reaches 1.
  */
 function principalCurvatures(
-  derivatives: Readonly<{ u: Vector; v: Vector; uu: Vector; vv: Vector; uv: Vector }>,
+  derivatives: SurfaceDerivatives,
   reversed: boolean,
 ): readonly [number, number] | null {
   const { u, v, uu, vv, uv } = derivatives
-  const normal = cross(u, v)
-  const length = Math.hypot(...normal) * (reversed ? -1 : 1)
-  const e = dot(u, u),
-    f = dot(u, v),
-    g = dot(v, v)
-  const determinant = e * g - f * f
-  if (!(Math.abs(length) > 1e-12) || !(determinant > 1e-12 * e * g)) return null
-  const l = dot(uu, normal) / length,
-    m = dot(uv, normal) / length,
-    n = dot(vv, normal) / length
-  const mean = (e * n - 2 * f * m + g * l) / (2 * determinant)
-  const gaussian = (l * n - m * m) / determinant
-  const spread = Math.sqrt(Math.max(mean * mean - gaussian, 0))
-  return [mean + spread, mean - spread]
+  const normal = u.Crossed(v)
+  try {
+    const length = normal.Magnitude() * (reversed ? -1 : 1)
+    const e = u.Dot(u),
+      f = u.Dot(v),
+      g = v.Dot(v)
+    const determinant = e * g - f * f
+    if (!(Math.abs(length) > 1e-12) || !(determinant > 1e-12 * e * g)) return null
+    const l = uu.Dot(normal) / length,
+      m = uv.Dot(normal) / length,
+      n = vv.Dot(normal) / length
+    const mean = (e * n - 2 * f * m + g * l) / (2 * determinant)
+    const gaussian = (l * n - m * m) / determinant
+    const spread = Math.sqrt(Math.max(mean * mean - gaussian, 0))
+    return [mean + spread, mean - spread]
+  } finally {
+    normal.delete()
+  }
 }
 
 /**
@@ -102,49 +102,26 @@ function collapsingCurvatureRadius(occt: OpenCascadeInstance, face: Face, offset
   try {
     const adaptor = own(new occt.BRepAdaptor_Surface_2(face.wrapped, true))
     if (adaptor.GetType() === occt.GeomAbs_SurfaceType.GeomAbs_Plane) return Infinity
-    const bounds = [
+    const [u0, u1, v0, v1] = [
       adaptor.FirstUParameter(),
       adaptor.LastUParameter(),
       adaptor.FirstVParameter(),
       adaptor.LastVParameter(),
-    ] as const
-    if (!bounds.every(Number.isFinite)) return Infinity
+    ]
+    if (![u0, u1, v0, v1].every(Number.isFinite)) return Infinity
     const reversed = face.wrapped.Orientation_1() === occt.TopAbs_Orientation.TopAbs_REVERSED
     const point = own(new occt.gp_Pnt_1())
-    const vectors = Array.from({ length: 5 }, () => own(new occt.gp_Vec_1()))
-    const read = (index: number): Vector => {
-      const vector = vectors[index]
-      return vector ? [vector.X(), vector.Y(), vector.Z()] : [0, 0, 0]
-    }
+    const vector = () => own(new occt.gp_Vec_1())
+    const derivatives = { u: vector(), v: vector(), uu: vector(), vv: vector(), uv: vector() }
+    const step = 1 / (CURVATURE_SAMPLES - 1)
     let radius = Infinity
-    for (let i = 0; i < CURVATURE_SAMPLES; i += 1) {
-      for (let j = 0; j < CURVATURE_SAMPLES; j += 1) {
-        const s = i / (CURVATURE_SAMPLES - 1),
-          t = j / (CURVATURE_SAMPLES - 1)
-        const [du, dv, duu, dvv, duv] = vectors as [
-          (typeof vectors)[0],
-          (typeof vectors)[0],
-          (typeof vectors)[0],
-          (typeof vectors)[0],
-          (typeof vectors)[0],
-        ]
-        adaptor.D2(
-          bounds[0] + (bounds[1] - bounds[0]) * s,
-          bounds[2] + (bounds[3] - bounds[2]) * t,
-          point,
-          du,
-          dv,
-          duu,
-          dvv,
-          duv,
-        )
-        const curvatures = principalCurvatures(
-          { u: read(0), v: read(1), uu: read(2), vv: read(3), uv: read(4) },
-          reversed,
-        )
-        for (const curvature of curvatures ?? [])
-          if (curvature * offset > 0) radius = Math.min(radius, 1 / Math.abs(curvature))
-      }
+    for (let index = 0; index < CURVATURE_SAMPLES ** 2; index += 1) {
+      const s = Math.floor(index / CURVATURE_SAMPLES) * step,
+        t = (index % CURVATURE_SAMPLES) * step
+      const { u, v, uu, vv, uv } = derivatives
+      adaptor.D2(u0 + (u1 - u0) * s, v0 + (v1 - v0) * t, point, u, v, uu, vv, uv)
+      for (const curvature of principalCurvatures(derivatives, reversed) ?? [])
+        if (curvature * offset > 0) radius = Math.min(radius, 1 / Math.abs(curvature))
     }
     return radius
   } finally {
