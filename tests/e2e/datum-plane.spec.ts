@@ -212,7 +212,7 @@ test.describe("datum plane reference geometry", () => {
     await selectFeatureFace(page, "Datum plane 1")
 
     await page
-      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("feature-face")

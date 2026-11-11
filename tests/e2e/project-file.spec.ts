@@ -196,7 +196,7 @@ test.describe("native project file", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     const createBox = page.getByRole("form", { name: "Create box" })
     await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
-    await createBox.getByRole("button", { name: "Create box" }).click()
+    await createBox.getByRole("button", { name: "Create box", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
@@ -385,7 +385,7 @@ test.describe("native project file", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     const createBox = page.getByRole("form", { name: "Create box" })
     await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
-    await createBox.getByRole("button", { name: "Create box" }).click()
+    await createBox.getByRole("button", { name: "Create box", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 

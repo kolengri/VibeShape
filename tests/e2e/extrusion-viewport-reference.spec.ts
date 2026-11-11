@@ -109,7 +109,7 @@ test("anchors and drags Extrude at an offset profile on a tilted support", async
     /Selection: Datum plane 1 · Face \d+/,
   )
   await page
-    .getByRole("complementary", { name: "Task panel", exact: true })
+    .getByRole("toolbar", { name: "Model commands", exact: true })
     .getByRole("button", { name: "Create sketch", exact: true })
     .click()
   await expect(page.getByRole("combobox", { name: "Support plane", exact: true })).toHaveValue(

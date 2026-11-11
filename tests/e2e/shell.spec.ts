@@ -48,8 +48,8 @@ test.describe("foundation CAD shell", () => {
       timeout: 30_000,
     })
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -99,7 +99,7 @@ test.describe("foundation CAD shell", () => {
     await selectIdleOriginPlaneInViewport(page, "xz")
     await page
       .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
 
     await expect(page.getByRole("heading", { name: "Select a sketch plane" })).toHaveCount(0)
@@ -124,7 +124,7 @@ test.describe("foundation CAD shell", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })

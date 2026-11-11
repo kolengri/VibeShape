@@ -81,7 +81,7 @@ test.describe("Box parameters", () => {
     await expect(editForm.getByRole("combobox", { name: "Origin Z" })).toHaveValue("5 mm")
     await editForm.getByRole("combobox", { name: "Depth" }).fill("28 mm")
     await editForm.getByRole("combobox", { name: "Origin Z" }).fill("12 mm")
-    await editForm.getByRole("button", { name: "Update box" }).dblclick()
+    await editForm.getByRole("button", { name: "Update box", exact: true }).dblclick()
     await expect(editForm).not.toBeVisible()
     await expect(
       page

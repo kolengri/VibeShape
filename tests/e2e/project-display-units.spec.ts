@@ -40,7 +40,7 @@ test.describe("project display units", () => {
       "0.787401574803 in",
     )
     await createBox.getByRole("combobox", { name: "Width" }).fill("2")
-    await createBox.getByRole("button", { name: "Create box" }).dblclick()
+    await createBox.getByRole("button", { name: "Create box", exact: true }).dblclick()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Box 1" }).click()

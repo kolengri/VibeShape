@@ -47,7 +47,7 @@ test.describe("Cylinder parameters", () => {
     ).toBeChecked()
     await editForm.getByRole("combobox", { name: "Height" }).fill("42 mm")
     await editForm.getByRole("combobox", { name: "Origin X" }).fill("24 mm")
-    await editForm.getByRole("button", { name: "Update cylinder" }).dblclick()
+    await editForm.getByRole("button", { name: "Update cylinder", exact: true }).dblclick()
     await expect(editForm).not.toBeVisible()
 
     await page.reload()

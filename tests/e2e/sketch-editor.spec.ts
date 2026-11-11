@@ -25,7 +25,7 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page, "xy")
@@ -70,8 +70,10 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
 
-    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
-    await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page, "xy")
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const bounds = await drawing.boundingBox()
@@ -94,7 +96,10 @@ test.describe("full sketch editor", () => {
       timeout: 120_000,
     })
 
-    await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page, "xy")
     await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
     const ellipseEdge = page
@@ -128,14 +133,14 @@ test.describe("full sketch editor", () => {
       await createCylinderForm.getByRole("combobox", { name: "Radius" }).inputValue(),
     )
     expect(cylinderRadius).toBeGreaterThan(0)
-    await createCylinderForm.getByRole("button", { name: "Create cylinder" }).click()
+    await createCylinderForm.getByRole("button", { name: "Create cylinder", exact: true }).click()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
 
     await page
-      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page, "xy")
@@ -200,14 +205,14 @@ test.describe("full sketch editor", () => {
     const createCylinderForm = page.getByRole("form", { name: "Create cylinder" })
     await createCylinderForm.getByRole("combobox", { name: "Origin X" }).fill("30 mm")
     await createCylinderForm.getByRole("combobox", { name: "Origin Y" }).fill("20 mm")
-    await createCylinderForm.getByRole("button", { name: "Create cylinder" }).click()
+    await createCylinderForm.getByRole("button", { name: "Create cylinder", exact: true }).click()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
 
     await page
-      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page, "xy")
@@ -269,10 +274,10 @@ test.describe("full sketch editor", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await page
-      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page, "xy")
@@ -322,10 +327,10 @@ test.describe("full sketch editor", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await page
-      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page, "xy")
@@ -395,15 +400,15 @@ test.describe("full sketch editor", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     await page
-      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page, "xy")
@@ -550,7 +555,7 @@ test.describe("full sketch editor", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -561,7 +566,7 @@ test.describe("full sketch editor", () => {
     })
 
     await page
-      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
@@ -633,7 +638,7 @@ test.describe("full sketch editor", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
 
     const createSketch = toolbar.getByRole("button", { name: "Create sketch", exact: true })
@@ -723,8 +728,10 @@ test.describe("full sketch editor", () => {
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
-    await taskPanel.getByRole("button", { name: "Create sketch" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page, "xy")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -742,8 +749,8 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page, "xz")
     await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
@@ -821,8 +828,10 @@ test.describe("full sketch editor", () => {
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
-    await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page, "xz")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -840,7 +849,10 @@ test.describe("full sketch editor", () => {
     await page.keyboard.press("Escape")
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
-    await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page, "xy")
     const targetBounds = await drawing.boundingBox()
     if (!targetBounds) throw new Error("The target sketch canvas is not visible.")
@@ -916,7 +928,7 @@ test.describe("full sketch editor", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
@@ -965,8 +977,10 @@ test.describe("full sketch editor", () => {
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
-    await taskPanel.getByRole("button", { name: "Create sketch" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page, "xy")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -1500,7 +1514,7 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page, "xy")
@@ -1732,8 +1746,10 @@ test.describe("full sketch editor", () => {
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
-    await taskPanel.getByRole("button", { name: "Create sketch" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page, "xy")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -1771,8 +1787,10 @@ test.describe("full sketch editor", () => {
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
-    await taskPanel.getByRole("button", { name: "Create sketch" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page, "xy")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -1855,8 +1873,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
 
@@ -2095,8 +2113,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
@@ -2164,8 +2182,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     await drawRectangle(page)
@@ -2211,8 +2229,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
 
@@ -2251,8 +2269,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
@@ -2317,8 +2335,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
@@ -2367,8 +2385,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
@@ -2437,8 +2455,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await selectOriginPlaneInViewport(page, "yz")
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2485,8 +2503,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2521,8 +2539,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2556,8 +2574,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2611,8 +2629,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2651,8 +2669,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2707,8 +2725,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2748,8 +2766,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2789,8 +2807,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2835,8 +2853,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2884,8 +2902,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2921,8 +2939,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -2972,8 +2990,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -3032,8 +3050,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -3073,8 +3091,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -3156,8 +3174,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -3190,8 +3208,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -3253,8 +3271,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
@@ -3320,8 +3338,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
@@ -3356,8 +3374,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
@@ -3391,8 +3409,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
@@ -3471,8 +3489,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -3537,8 +3555,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -3596,8 +3614,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -3667,8 +3685,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -3742,8 +3760,8 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
