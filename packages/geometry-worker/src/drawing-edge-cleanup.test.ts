@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test"
-import { type DrawingCurve, type DrawingEdge, MAX_DRAWING_CURVE_POINTS } from "@vibeshape/protocol"
+import {
+  type DrawingCurve,
+  type DrawingEdge,
+  MAX_DRAWING_CURVE_POINTS,
+  MAX_DRAWING_VIEW_EDGES,
+} from "@vibeshape/protocol"
+import { DrawingBudgetError } from "./drawing-budget"
 import { splitPolyline, straightenPolyline, suppressCoincidentEdges } from "./drawing-edge-cleanup"
 
 type Point = [number, number]
@@ -290,4 +296,14 @@ describe("hidden edge coverage", () => {
     })
     expect(chained).toEqual(points)
   })
+
+  it("rejects a view whose cleanup splits edges beyond the view budget", () => {
+    // 25,000 hidden lines, each interrupted by a visible stub: 50,000 raw edges become 75,000.
+    const edges = Array.from({ length: 25_000 }, (_, index) => {
+      const y = index * 0.5
+      return [edge("visible", line([4, y], [6, y])), edge("hidden", line([0, y], [10, y]))]
+    }).flat()
+    expect(edges).toHaveLength(MAX_DRAWING_VIEW_EDGES)
+    expect(() => suppressCoincidentEdges(edges)).toThrow(DrawingBudgetError)
+  }, 60_000)
 })

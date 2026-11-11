@@ -3,7 +3,9 @@ import {
   type DrawingCurve,
   type DrawingEdge,
   MAX_DRAWING_CURVE_POINTS,
+  MAX_DRAWING_VIEW_EDGES,
 } from "@vibeshape/protocol"
+import { DrawingBudgetError } from "./drawing-budget"
 import { CurveIndex, indexCellSizes, roundBox } from "./drawing-curve-index"
 import {
   complement,
@@ -75,18 +77,26 @@ export function suppressCoincidentEdges(edges: readonly DrawingEdge[]): DrawingE
   const keptVisible = new CurveIndex(segment, round, margin)
   const keptHidden = new CurveIndex(segment, round, margin)
   const kept: DrawingEdge[] = []
+  // Splitting can add edges, so the view budget also applies to the cleaned result.
+  const keep = (edge: DrawingEdge, curve: DrawingCurve) => {
+    if (kept.length >= MAX_DRAWING_VIEW_EDGES)
+      throw new DrawingBudgetError(
+        `A drawing view has more than ${MAX_DRAWING_VIEW_EDGES.toLocaleString("en-US")} edges after hidden-line cleanup; draw fewer parts or views.`,
+      )
+    kept.push({ ...edge, curve })
+  }
   for (const edge of edges) {
     if (edge.visibility !== "visible") continue
     for (const curve of uncoveredPieces(edge.curve, [keptVisible])) {
       keptVisible.add(curve)
-      kept.push({ ...edge, curve })
+      keep(edge, curve)
     }
   }
   for (const edge of edges) {
     if (edge.visibility !== "hidden") continue
     for (const curve of uncoveredPieces(edge.curve, [visible, keptHidden])) {
       keptHidden.add(curve)
-      kept.push({ ...edge, curve })
+      keep(edge, curve)
     }
   }
   return kept
