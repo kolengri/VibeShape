@@ -9,7 +9,8 @@ import { appendSketchSpline, createEmptySketch } from "@vibeshape/domain/sketch-
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import initializeSolver from "../runtime/vibeshape_slvs.mjs"
 import type { NativeSketchSolverModule } from "./abi"
-import { type SketchSolveContinuation, solveSketchRecord } from "./production"
+import { compileSketchSystem, type SketchSolveContinuation, solveSketchRecord } from "./production"
+import { solveSketchSystem } from "./solver"
 
 let module: NativeSketchSolverModule
 beforeAll(async () => {
@@ -583,5 +584,138 @@ describe("tangent joins under large single solves", () => {
     const [join] = joinTangents(dimensioned, solvedPointMap(solution))
     expect(join?.incomingLength).toBeCloseTo(before?.incomingLength ?? Number.NaN, 6)
     expect(join?.outgoingLength).toBeCloseTo(before?.outgoingLength ?? Number.NaN, 6)
+  })
+})
+
+/** Ordinary solve without the predictor, as the reference for joins the predictor must not hold. */
+function solvedWithoutHolds(
+  sketch: SketchRecord,
+  draggedPoints: { entityId: string; x: number; y: number }[],
+) {
+  const compilation = compileSketchSystem({
+    revision: 1,
+    sketch,
+    draggedPoints,
+    continuation: null,
+  })
+  if (!compilation.ok) throw new Error(compilation.diagnostic.message)
+  const { bindings, system } = compilation.compiled
+  const { parameterValues } = solveSketchSystem(module, system)
+  return (pointId: string) => {
+    const binding = bindings.pointParameters.get(pointId as never)
+    if (!binding) throw new Error(`Missing solved point ${pointId}.`)
+    return {
+      x: parameterValues[binding.xIndex] ?? Number.NaN,
+      y: parameterValues[binding.yIndex] ?? Number.NaN,
+    }
+  }
+}
+
+/** Adds a horizontal construction line from `startPointId` to an existing or a new end point. */
+function withHorizontalLine(
+  sketch: SketchRecord,
+  startPointId: string,
+  end: string | { x: number; y: number },
+  index: number,
+) {
+  const lineId = sketchEntityIdSchema.parse(id(3_900 + index * 4))
+  const endPointId =
+    typeof end === "string" ? end : sketchEntityIdSchema.parse(id(3_901 + index * 4))
+  const endPoint =
+    typeof end === "string"
+      ? []
+      : [{ schemaVersion: 0, id: endPointId, type: "point", construction: true, ...end }]
+  const constrained = {
+    ...sketch,
+    entities: [
+      ...sketch.entities,
+      ...endPoint,
+      { schemaVersion: 0, id: lineId, type: "line", construction: true, startPointId, endPointId },
+    ],
+    constraints: [
+      ...sketch.constraints,
+      {
+        schemaVersion: 0,
+        id: sketchConstraintIdSchema.parse(id(3_902 + index * 4)),
+        type: "horizontal",
+        lineId,
+      },
+    ],
+  } as SketchRecord
+  return { sketch: constrained, endPointId }
+}
+
+function slidFirstJoin(sketch: SketchRecord, offset: number) {
+  const [first, , last] = threeSegments(sketch)
+  return withConstraints(sketch, [
+    fixedPoint(first.startPointId, 0),
+    fixedPoint(last.endPointId, 1),
+    {
+      schemaVersion: 0,
+      id: sketchConstraintIdSchema.parse(id(3_950)),
+      type: "horizontal-distance",
+      firstPointId: first.endPointId,
+      secondPointId: first.startPointId,
+      value: createLengthQuantity(offset, "mm"),
+    },
+  ])
+}
+
+describe("tangent-join predictor holds beside constraints on shared handles", () => {
+  it("keeps sliding-join handle lengths beside a horizontal line on another join's handle", () => {
+    const { sketch } = spline()
+    const [, second, last] = threeSegments(sketch)
+    const [before] = joinTangents(sketch, solvedPointMap(solved(sketch, [])))
+    // A horizontal construction line from join 2 to its outgoing handle sets that join's tangent.
+    const { sketch: lined } = withHorizontalLine(sketch, second.endPointId, last.control1PointId, 0)
+    for (const offset of [15, 18, 40]) {
+      const dimensioned = slidFirstJoin(lined, offset)
+      const solution = solved(dimensioned, [])
+      expect(solution.failedConstraintIds).toEqual([])
+      const [join] = joinTangents(dimensioned, solvedPointMap(solution))
+      expect(join?.incomingLength).toBeCloseTo(before?.incomingLength ?? Number.NaN, 6)
+      expect(join?.outgoingLength).toBeCloseTo(before?.outgoingLength ?? Number.NaN, 6)
+      expectStrictG1OrFailedJoins(dimensioned, solution)
+    }
+  })
+
+  it("moves a join exactly as without holds when a line attached to its handle is dragged", () => {
+    const { sketch } = spline()
+    const [first] = threeSegments(sketch)
+    const handle = authoredPoint(sketch, first.control2PointId)
+    const end = { x: handle.x - 5, y: handle.y }
+    const { sketch: lined, endPointId } = withHorizontalLine(sketch, first.control2PointId, end, 1)
+    const drag = [{ entityId: endPointId, x: handle.x - 5, y: handle.y + 3 }]
+    const solution = solved(lined, drag)
+    const join = solvedPointMap(solution).get(first.endPointId)
+    const unheld = solvedWithoutHolds(lined, drag)(first.endPointId)
+    expect(join?.x).toBeCloseTo(unheld.x, 6)
+    expect(join?.y).toBeCloseTo(unheld.y, 6)
+    // A held join was carried about 3 mm with the line; left free it moves under 1 mm.
+    expect(distanceFromOriginalJoin(join)).toBeLessThan(1)
+    expectStrictG1OrFailedJoins(lined, solution)
+  })
+
+  it("still holds a join whose handle carries only a non-driving reference dimension", () => {
+    const { sketch } = spline()
+    const [first] = threeSegments(sketch)
+    const [before] = joinTangents(sketch, solvedPointMap(solved(sketch, [])))
+    for (const offset of [15, 18, 40]) {
+      const measured = withConstraints(slidFirstJoin(sketch, offset), [
+        {
+          schemaVersion: 0,
+          id: sketchConstraintIdSchema.parse(id(3_960)),
+          type: "distance",
+          firstPointId: first.control2PointId,
+          secondPointId: first.startPointId,
+          mode: "reference",
+        },
+      ])
+      const solution = solved(measured, [])
+      expect(solution.failedConstraintIds).toEqual([])
+      const [join] = joinTangents(measured, solvedPointMap(solution))
+      expect(join?.incomingLength).toBeCloseTo(before?.incomingLength ?? Number.NaN, 6)
+      expect(join?.outgoingLength).toBeCloseTo(before?.outgoingLength ?? Number.NaN, 6)
+    }
   })
 })

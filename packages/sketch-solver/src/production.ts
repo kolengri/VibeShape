@@ -20,7 +20,7 @@ import {
   sketchPointEntitySchema,
   sketchRecordSchema,
 } from "@vibeshape/domain/sketch"
-import { sketchConstraintEntityIds } from "@vibeshape/domain/sketch-edit"
+import { sketchConstraintEntityIds, sketchCurvePointIds } from "@vibeshape/domain/sketch-edit"
 import {
   evaluateVariableDefinitions,
   resolveQuantityExpression,
@@ -1140,10 +1140,27 @@ type HeldTangentJoin = Readonly<{
 }>
 
 /**
+ * Points a driving constraint can move. A constraint on a curve (a horizontal construction line from
+ * a through-point to its handle, say) drives the curve's defining points, so those count too.
+ * Reference dimensions only measure, and tangent joins are what the predictor replaces.
+ */
+function drivenPointIds(
+  entitiesById: ReadonlyMap<string, SketchEntity>,
+  constraint: SketchConstraint,
+): readonly string[] {
+  if (constraint.type === "tangent-join" || isReferenceSketchDimension(constraint)) return []
+  return sketchConstraintEntityIds(constraint).flatMap((entityId) => {
+    const entity = entitiesById.get(entityId)
+    return entity && entity.type !== "point" ? sketchCurvePointIds(entity) : [entityId]
+  })
+}
+
+/**
  * Predictor intent: each free handle keeps its offset from its through-point, so a join that moves
  * for any reason (a dimension, a coincident drag) translates rigidly with its handles. Explicitly
- * dragged handles and handles referenced by any other constraint stay free, so user intent is never
- * overridden and the holds never duplicate a user constraint. Each hold only ties an otherwise
+ * dragged handles and handles driven by any other constraint, directly or through a curve that
+ * shares them, stay free, so user intent is never overridden and the holds never duplicate a user
+ * constraint. Each hold only ties an otherwise
  * unconstrained handle to its join, so it cannot conflict; the predictor still falls back to the
  * ordinary solve as a whole when the sketch itself is over-constrained or does not converge.
  */
@@ -1153,14 +1170,12 @@ function heldTangentJoins(
   draggedPoints: readonly SketchDragTarget[],
 ): HeldTangentJoin[] {
   const curves = cubicBezierEntities(sketch)
-  // Any handle that another constraint drives (fixed, dimensioned, coincident, ...) stays free:
-  // holding it would satisfy that constraint by moving the through-point instead of the handle,
-  // and would make the predictor redundant with it.
+  const entitiesById = new Map<string, SketchEntity>(
+    sketch.entities.map((entity) => [entity.id, entity]),
+  )
   const pinned = new Set<string>([
     ...draggedPoints.map(({ entityId }) => entityId),
-    ...sketch.constraints.flatMap((constraint) =>
-      constraint.type === "tangent-join" ? [] : sketchConstraintEntityIds(constraint),
-    ),
+    ...sketch.constraints.flatMap((constraint) => drivenPointIds(entitiesById, constraint)),
   ])
   return sketch.constraints.flatMap((constraint) => {
     const join = tangentJoinCurves(curves, constraint)
