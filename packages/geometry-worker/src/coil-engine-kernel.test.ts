@@ -151,6 +151,27 @@ describe("registered exact Coil evaluation", () => {
         ok: false,
         diagnostic: { code: "invalid-feature-parameters" },
       })
+      // A new-body coil with one axis producer must index that producer, not a phantom slot.
+      const base = coil({ helix, section: circular, operation: "new" }, "9")
+      const phantom: FeatureEvaluationInput = {
+        ...base,
+        content: {
+          schemaVersion: 0,
+          environment: environment(),
+          feature: {
+            ...base.content.feature,
+            parameters: JSON.parse(
+              JSON.stringify({ helix, section: circular, operation: "new", supportInputIndex: 3 }),
+            ),
+            inputs: [sourceHash],
+          },
+        },
+        dependencies: [{ featureId: sourceId, contentHash: sourceHash }],
+      }
+      expect(await engine.evaluateFeature(phantom, vi.fn())).toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-feature-parameters" },
+      })
       const tight = await engine.evaluateFeature(
         coil({ helix: { ...helix, pitch: 1.5 }, section: circular, operation: "new" }, "f"),
         vi.fn(),

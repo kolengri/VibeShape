@@ -1399,8 +1399,10 @@ function coilInputsAreValid(
     content.schemaVersion === 1 ? content.feature.inputRoles : input.dependencies.map(() => null)
   // Each expected slot records whether it must carry a named body role.
   const named = parameters.operation === "new" ? [] : [true]
-  if ((parameters.supportInputIndex ?? -1) >= named.length) named.push(false)
+  const support = parameters.supportInputIndex ?? -1
+  if (support >= named.length) named.push(false)
   return (
+    support < input.dependencies.length &&
     content.feature.references.length === 0 &&
     content.feature.inputs.length === input.dependencies.length &&
     roles.length === named.length &&
