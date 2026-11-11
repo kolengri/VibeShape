@@ -3,7 +3,7 @@ import type { treeInputs } from "./unit-test-files"
 
 type Input = Awaited<ReturnType<typeof treeInputs>>[number]
 const engine = "packages/geometry-worker/src/engine.ts"
-const engineHash = "af1071ce16a61dc3f2a48fa44c9f97312e6a8d98013cbce83e968398cad06e89"
+const engineHash = "d26f98cd1c2408cb5d841557647b7e0e39c2bbd965c3b0f32733dfddc45974e5"
 const reflectedGlobals = new Map([
   ["tests/unit/support/dom.ts", "6ea7655949bb970b91af80fa86b8961f920bffe3e21c6fc848327223aecd26f7"],
   [

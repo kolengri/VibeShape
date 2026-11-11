@@ -288,6 +288,7 @@ function useFeatureActivationActions(
         | "create-mirror"
         | "create-shell"
         | "create-draft"
+        | "create-thicken"
         | "create-scale"
         | "create-split"
         | "create-pattern"
@@ -316,6 +317,10 @@ function useFeatureActivationActions(
 
   const draftPart = useCallback(
     (partId: PartId) => startBodyOperation(partId, "create-draft"),
+    [startBodyOperation],
+  )
+  const thickenPart = useCallback(
+    (partId: PartId) => startBodyOperation(partId, "create-thicken"),
     [startBodyOperation],
   )
   const scalePart = useCallback(
@@ -358,6 +363,7 @@ function useFeatureActivationActions(
     mirrorPart,
     shellPart,
     draftPart,
+    thickenPart,
     scalePart,
     splitPart,
     patternPart,
@@ -512,6 +518,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     mirrorPart,
     shellPart,
     draftPart,
+    thickenPart,
     scalePart,
     splitPart,
     patternPart,
@@ -597,6 +604,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         mirrorPart,
         shellPart,
         draftPart,
+        thickenPart,
         scalePart,
         splitPart,
         patternPart,
@@ -645,6 +653,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       mirrorPart,
       shellPart,
       draftPart,
+      thickenPart,
       scalePart,
       splitPart,
       patternPart,
@@ -856,6 +865,7 @@ function resolveEditorApplicationCommands(
       mirrorPart: workspaceActions.mirrorPart,
       shellPart: workspaceActions.shellPart,
       draftPart: workspaceActions.draftPart,
+      thickenPart: workspaceActions.thickenPart,
       scalePart: workspaceActions.scalePart,
       splitPart: workspaceActions.splitPart,
       patternPart: workspaceActions.patternPart,

@@ -68,6 +68,7 @@ import {
   patternFeatureParametersV3Schema,
 } from "@vibeshape/domain/part-design-pattern-path"
 import { placementFeatureParametersSchema } from "@vibeshape/domain/part-design-placement"
+import { pressPullFeatureParametersV2Schema } from "@vibeshape/domain/part-design-press-pull"
 import { scaleFeatureParametersSchema } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureParametersV2Schema } from "@vibeshape/domain/part-design-shell"
 import {
@@ -80,6 +81,7 @@ import {
   sweepFeatureParametersV2Schema,
   sweepV2AxisOwnerIds,
 } from "@vibeshape/domain/part-design-sweep"
+import { thickenFeatureParametersSchema } from "@vibeshape/domain/part-design-thicken"
 import {
   threadFeatureParametersSchema,
   threadFeatureParametersV2Schema,
@@ -385,6 +387,14 @@ const scale = z
   .object({ ...exactBodyFeature, parameters: scaleFeatureParametersSchema })
   .strict()
   .superRefine(matchingBodyDependency("Scale"))
+const thicken = z
+  .object({ ...exactBodyFeature, parameters: thickenFeatureParametersSchema })
+  .strict()
+  .superRefine(matchingBodyDependency("Thicken"))
+const pressPull = z
+  .object({ ...exactBodyFeature, parameters: pressPullFeatureParametersV2Schema })
+  .strict()
+  .superRefine(matchingBodyDependency("Press Pull"))
 const split = z
   .object({ ...exactBodyFeature, parameters: splitFeatureParametersSchema })
   .strict()
@@ -764,6 +774,10 @@ export const localCadInputs = {
   update_face_draft: draft,
   create_scale: scale,
   update_scale: scale,
+  create_thicken: thicken,
+  update_thicken: thicken,
+  create_press_pull: pressPull,
+  update_press_pull: pressPull,
   create_thread: thread,
   update_thread: thread,
   create_body_pattern: bodyPattern,
@@ -833,6 +847,10 @@ export const localCadOperations = [
   z.object({ tool: z.literal("update_face_draft"), arguments: draft }).strict(),
   z.object({ tool: z.literal("create_scale"), arguments: scale }).strict(),
   z.object({ tool: z.literal("update_scale"), arguments: scale }).strict(),
+  z.object({ tool: z.literal("create_thicken"), arguments: thicken }).strict(),
+  z.object({ tool: z.literal("update_thicken"), arguments: thicken }).strict(),
+  z.object({ tool: z.literal("create_press_pull"), arguments: pressPull }).strict(),
+  z.object({ tool: z.literal("update_press_pull"), arguments: pressPull }).strict(),
   z.object({ tool: z.literal("create_thread"), arguments: thread }).strict(),
   z.object({ tool: z.literal("update_thread"), arguments: thread }).strict(),
   z.object({ tool: z.literal("create_body_pattern"), arguments: bodyPattern }).strict(),

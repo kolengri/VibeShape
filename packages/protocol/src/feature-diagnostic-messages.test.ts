@@ -13,6 +13,8 @@ describe("featureForwardsDiagnosticMessage", () => {
     ["fillet", 2],
     ["fillet", 3],
     ["draft", 1],
+    ["thicken", 1],
+    ["press-pull", 2],
   ] as const)("forwards %s v%s kernel messages", (name, version) => {
     expect(featureForwardsDiagnosticMessage(type(name, version))).toBe(true)
   })
@@ -24,6 +26,7 @@ describe("featureForwardsDiagnosticMessage", () => {
     ["sweep", 1],
     ["scale", 1],
     ["shell", 2],
+    ["press-pull", 1],
   ] as const)("keeps catalog advice for %s v%s", (name, version) => {
     expect(featureForwardsDiagnosticMessage(type(name, version))).toBe(false)
   })

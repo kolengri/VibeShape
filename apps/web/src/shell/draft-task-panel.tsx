@@ -11,6 +11,7 @@ import type { ReferenceFrameOptions } from "../features/reference-geometry/refer
 import { useReferenceFrameOptions } from "../features/reference-geometry/use-reference-frame-options"
 import type { ShellPickingContext, ShellPickRequest } from "../features/shell/shell-picking"
 import { type BodyFeatureTaskPanelProps, bodyFeatureTaskMode } from "./body-feature-task-mode"
+import { previewedTaskStatusCopy } from "./feature-task-copy"
 import { featureTaskFormProps, featureTaskKey } from "./feature-task-form-props"
 import { useHistoryFeatureBodyReplacement } from "./history-feature-repair"
 
@@ -39,14 +40,7 @@ function useDraftCopy(editing: boolean): DraftFormCopy {
     flip: t("flip"),
     flipDescription: t("flipDescription"),
     repair: t("repair"),
-    unavailable: t("unavailable"),
-    validationSummary: t("validationSummary"),
-    invalidExpression: t("invalidExpression"),
-    invalidDimension: t("invalidDimension"),
-    invalidRange: t("invalidRange"),
-    staleRevision: t("staleRevision"),
-    saveFailed: t("saveFailed"),
-    previewFailed: t("previewFailed"),
+    ...previewedTaskStatusCopy(t),
   }
 }
 

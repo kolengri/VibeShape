@@ -105,6 +105,11 @@
     "legacy": ["ScaleIcon"]
   },
   {
+    "id": "thicken",
+    "label": "Thicken",
+    "legacy": ["ThickenIcon"]
+  },
+  {
     "id": "thread",
     "label": "Thread",
     "legacy": ["ThreadIcon"]

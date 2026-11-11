@@ -174,7 +174,7 @@ describe("current viewer selection to durable Press Pull intent", () => {
       pressPullToolFromSelection({ ...current, snapshot: { ...snapshot, revision: 2 } }, pick),
     ).toBeNull()
   })
-  it("rejects ambiguous mesh mappings and curved geometry", () => {
+  it("captures curved faces and rejects ambiguous mesh mappings", () => {
     const body = geometry.bodies?.[0]
     if (!body) throw new Error("Fixture requires a body.")
     const pick = selection()
@@ -192,7 +192,7 @@ describe("current viewer selection to durable Press Pull intent", () => {
         report({ ...geometry, bodies: [{ ...body, topologyCandidates: candidates }] }),
         pick,
       ),
-    ).toBeNull()
+    ).toMatchObject({ face: { signature: { geometryClass: "CYLINDRE" } } })
     const selected = body.topologyCandidates.find(
       (candidate) => candidate.meshFaceId === pick.faceId,
     )

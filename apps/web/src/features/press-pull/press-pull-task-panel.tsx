@@ -8,6 +8,7 @@ import {
   createBrowserFeatureId,
   type DocumentControllerState,
 } from "../../document/document-controller"
+import { previewedTaskStatusCopy } from "../../shell/feature-task-copy"
 import { featureTaskFormProps } from "../../shell/feature-task-form-props"
 import type { ActivePartDesignTool } from "../part-design/part-design-tool"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
@@ -62,14 +63,7 @@ export function PressPullTaskPanel(props: Props) {
     parameters: t("parameters"),
     distance: t("distance"),
     lengthDescription: t("lengthDescription"),
-    unavailable: t("unavailable"),
-    validationSummary: t("validationSummary"),
-    invalidExpression: t("invalidExpression"),
-    invalidDimension: t("invalidDimension"),
-    invalidRange: t("invalidRange"),
-    staleRevision: t("staleRevision"),
-    saveFailed: t("saveFailed"),
-    previewFailed: t("previewFailed"),
+    ...previewedTaskStatusCopy(t),
   }
   if (!mode) return null
   return (

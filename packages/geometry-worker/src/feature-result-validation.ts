@@ -15,6 +15,7 @@ export type GeometryFeatureKind =
   | "placement"
   | "scale"
   | "draft"
+  | "thicken"
   | "mirror"
   | "press-pull"
   | "shell"

@@ -263,7 +263,12 @@ async function savedFeatureType(
   actor: CommandActor,
   operation: Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
 ): Promise<FeatureRecord["type"] | null> {
-  if (operation.tool !== "update_cone" && operation.tool !== "update_hole") return null
+  if (
+    operation.tool !== "update_cone" &&
+    operation.tool !== "update_hole" &&
+    operation.tool !== "update_press_pull"
+  )
+    return null
   const input = operation.arguments
   const result = await session.host.inspectDraft(actor, {
     schemaVersion: 1,

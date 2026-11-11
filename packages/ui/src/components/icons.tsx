@@ -244,6 +244,7 @@ export {
   TangentArcIcon,
   TextIcon,
   TextIcon as Type,
+  ThickenIcon,
   ThreadIcon,
   ThreePointArcIcon,
   ThreePointCircleIcon,
