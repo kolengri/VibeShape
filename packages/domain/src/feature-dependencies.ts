@@ -16,6 +16,7 @@ import {
   readUnionFeatureParameters,
 } from "./part-design-body-combination"
 import { readChamferFeatureParametersV3 } from "./part-design-chamfer"
+import { readDraftFeatureParameters } from "./part-design-draft"
 import { readFdmFeatureParameters } from "./part-design-fdm"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { readImportedFeatureParameters } from "./part-design-import"
@@ -30,6 +31,7 @@ import {
 import { readPatternFeatureParameters, readPatternFeatureParametersV2 } from "./part-design-pattern"
 import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readPressPullFeatureParameters } from "./part-design-press-pull"
+import { readScaleFeatureParameters } from "./part-design-scale"
 import { readShellFeatureParameters } from "./part-design-shell"
 import { readSplitFeatureParameters, readSplitFeatureParametersV2 } from "./part-design-split"
 import { booleanBodyDependencyIds, readBooleanFeatureParametersV2 } from "./part-design-subtract"
@@ -67,10 +69,13 @@ const exactTargetReaders = [
   (feature: FeatureRecord) => readPatternFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readPatternFeatureParametersV2(feature)?.targetBody,
   (feature: FeatureRecord) => readShellFeatureParameters(feature)?.targetBody,
+  (feature: FeatureRecord) => readDraftFeatureParameters(feature)?.targetBody,
+  (feature: FeatureRecord) => readScaleFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readSplitFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readSplitFeatureParametersV2(feature)?.targetBody,
 ]
 const supportAwareTargetReaders = [
+  readDraftFeatureParameters,
   readMirrorFeatureParametersV3,
   readChamferFeatureParametersV3,
   readSplitFeatureParametersV2,

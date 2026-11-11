@@ -24,6 +24,7 @@ import {
 } from "./part-design-body-combination"
 import { readChamferFeatureParametersV3 } from "./part-design-chamfer"
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
+import { readDraftFeatureParameters } from "./part-design-draft"
 import { readFdmFeatureParameters } from "./part-design-fdm"
 import { readHoleBodyTarget, readHoleFeatureParameters } from "./part-design-hole"
 import { importedBodyOutputRole, readImportedFeatureParameters } from "./part-design-import"
@@ -43,6 +44,7 @@ import {
 } from "./part-design-pattern"
 import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readPressPullFeatureParameters } from "./part-design-press-pull"
+import { readScaleFeatureParameters } from "./part-design-scale"
 import { readShellFeatureParameters } from "./part-design-shell"
 import {
   readSplitFeatureParameters,
@@ -154,6 +156,8 @@ function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation
     readThreadFeatureParameters,
     readPressPullFeatureParameters,
     readShellFeatureParameters,
+    readDraftFeatureParameters,
+    readScaleFeatureParameters,
     readChamferFeatureParametersV3,
     readPlacementFeatureParameters,
   ]

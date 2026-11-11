@@ -1,7 +1,10 @@
 import { z } from "zod"
 import { bodyReferenceSchema } from "./body-reference"
-import { bodyFaceRefSchema, bodyTopoRefSchema } from "./body-topology-reference"
-import { canonicalJson } from "./canonical-json"
+import {
+  bodyFaceRefSchema,
+  bodyTopoRefIdentityKeys,
+  bodyTopoRefSchema,
+} from "./body-topology-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
@@ -27,15 +30,6 @@ const angleSchema = angleQuantitySchema.refine(
   ({ value }) => value > 0 && value < Math.PI / 2,
   "Chamfer angles must be strictly between zero and 90 degrees.",
 )
-
-function referenceKeys(reference: z.infer<typeof bodyTopoRefSchema>) {
-  const prefix = `${reference.kind}:${reference.outputRole}:`
-  const keys = [
-    reference.semanticRole && `${prefix}role:${reference.semanticRole}`,
-    reference.lineageToken && `${prefix}lineage:${reference.lineageToken}`,
-  ].filter((value) => value !== undefined)
-  return keys.length ? keys : [canonicalJson(reference)]
-}
 
 export const chamferFeatureParametersV3Schema = z
   .object({
@@ -78,7 +72,7 @@ export const chamferFeatureParametersV3Schema = z
     parameters.targets.forEach((target, index) => {
       const reference = target.kind === "edge" ? target.edge : target.face
       checkOwner(reference, ["targets", index])
-      const keys = referenceKeys(reference)
+      const keys = bodyTopoRefIdentityKeys(reference)
       if (keys.some((key) => targets.has(key)))
         issue(["targets", index], "Chamfer targets must be distinct.")
       for (const key of keys) targets.add(key)
@@ -93,7 +87,7 @@ export const chamferFeatureParametersV3Schema = z
     })
     parameters.directionOverrides.forEach((reference, index) => {
       checkOwner(reference, ["directionOverrides", index])
-      const keys = referenceKeys(reference)
+      const keys = bodyTopoRefIdentityKeys(reference)
       if (keys.some((key) => overrides.has(key)))
         issue(["directionOverrides", index], "Chamfer direction overrides must be distinct.")
       for (const key of keys) overrides.add(key)

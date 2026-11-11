@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { bodyOutputRoleSchema } from "./body-reference"
+import { canonicalJson } from "./canonical-json"
 import { featureIdSchema } from "./identifiers"
 import { topoRefContentSchema } from "./topology"
 
@@ -20,3 +21,13 @@ export const bodyTopoRefSchema = bodyTopoRefContentSchema.safeExtend({ featureId
 export const bodyFaceRefSchema = bodyTopoRefSchema.safeExtend({ kind: z.literal("face") })
 export type BodyTopoRef = Readonly<z.infer<typeof bodyTopoRefSchema>>
 export type BodyFaceRef = Readonly<z.infer<typeof bodyFaceRefSchema>>
+
+/** Durable identity keys; two references sharing any key name the same body topology. */
+export function bodyTopoRefIdentityKeys(reference: z.infer<typeof bodyTopoRefSchema>) {
+  const prefix = `${reference.kind}:${reference.outputRole}:`
+  const keys = [
+    reference.semanticRole && `${prefix}role:${reference.semanticRole}`,
+    reference.lineageToken && `${prefix}lineage:${reference.lineageToken}`,
+  ].filter((value) => value !== undefined)
+  return keys.length ? keys : [canonicalJson(reference)]
+}
