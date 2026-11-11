@@ -95,13 +95,15 @@ authoritative solve. Parallel, coplanar, degenerate, non-finite, and outside-seg
 keeps the projected identity and reuses the graphical 3D line picker. General surfaces, multi-curve results,
 curved Pierce, non-coplanar model-curve wake-up,
 and sketch-source repair UI are not
-implemented. B-spline, Bezier, and other non-analytical model edges are usable when their published
-cubic Bezier chain lies in a plane parallel to the active support: Use persists the stable
-`EdgeTopoRef` plus chained projected curve and point identities, and every authoritative solve
-projects the current chain, subdividing a coarser fit exactly to the persisted segment count. The
-fit is verified within 1e-4 mm with at most 64 segments. Tilted, spatial, over-budget, and unfitted
-edges fail closed with an actionable message and the ordinary repair path; spline candidates are
-offered in the normal view only and never wake passively
+implemented. B-spline and Bezier model edges are usable when their published cubic Bezier chain
+lies in a plane parallel to the active support: Use persists the stable `EdgeTopoRef` plus chained
+projected curve and point identities, and every authoritative solve projects the current chain,
+subdividing a coarser fit exactly to the persisted segment count. The fit carries a proven
+1e-4 mm bound with at most 64 segments, and its orientation does not depend on the source
+parameterization. Only the two chain ends are stable constraint targets. Tilted, spatial,
+over-budget, and uncertified edges, plus hyperbola, parabola, offset, and other curves, fail closed
+with an actionable message and the ordinary repair path, which offers only edges that fit the stored
+segments; spline candidates are offered in the normal view only and never wake passively
 ([ADR-0158](../adr/0158-interpolating-splines-and-model-spline-references.md)). Normal-view Select and Use
 provide the same bounded labeled chooser when candidates overlap, while orbit selection provides bounded
 closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and
