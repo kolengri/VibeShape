@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { featureBodyDependencies } from "./feature-dependencies"
-import { featureRecordSchema } from "./feature-graph"
+import { featureRecordSchema, featureRecordV1Schema } from "./feature-graph"
 import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
 import { createFeatureTypeRegistry } from "./feature-type-registry"
 import {
@@ -98,15 +98,20 @@ describe("path Pattern v3 intent", () => {
 
   it("names instances, consumes only the target and depends on the path sketch", () => {
     const record = feature(authored, [sourceId, supportId])
-    expect(featureBodyDependencies(record)).toEqual([
+    expect(featureBodyDependencies(record)).toEqual<unknown>([
       { featureId: sourceId, outputRole: "pattern.instance.1" },
     ])
-    expect(projectFirstPartyFeatureSemanticInputs(record)).toEqual({
+    expect(projectFirstPartyFeatureSemanticInputs(record)).toEqual<unknown>({
       recognized: true,
       ok: true,
       inputs: [{ kind: "sketch", id: sketchId }],
     })
-    expect(classifyPartOperation(record, 4)).toMatchObject({
+    const semantic = featureRecordV1Schema.parse({
+      ...record,
+      schemaVersion: 1,
+      semanticInputs: [{ kind: "sketch", id: sketchId }],
+    })
+    expect(classifyPartOperation(semantic, 4)).toMatchObject({
       kind: "fan-out",
       target: targetBody,
       continuation: { featureId: patternId, outputRole: "pattern.instance.0" },

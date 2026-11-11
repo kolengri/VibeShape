@@ -5,13 +5,7 @@ import type { FeatureRecordV1 } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
 import type { FeatureId } from "./identifiers"
 import { readUnionFeatureParameters } from "./part-design-body-combination"
-import {
-  patternCountSchema,
-  patternFeatureType,
-  patternFeatureTypeV2,
-  readPatternFeatureParameters,
-  readPatternFeatureParametersV2,
-} from "./part-design-pattern"
+import { patternCountSchema, patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
 import { patternFeatureTypeV3, readAnyPatternFeatureParameters } from "./part-design-pattern-path"
 import {
   classifyPartOperation,

@@ -79,7 +79,7 @@ test("patterns a body along a picked sketch path, applies once, undoes, redoes a
     (
       await start.locator("option").evaluateAll((options) =>
         options.map((option) => ({
-          value: (option as HTMLOptionElement).value,
+          value: option.getAttribute("value") ?? "",
           label: option.textContent ?? "",
         })),
       )

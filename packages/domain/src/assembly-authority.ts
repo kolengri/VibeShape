@@ -54,7 +54,6 @@ import {
   validateImportedFeatureAssets,
 } from "./part-design-import"
 import { meshImportOutputRole, readMeshImportFeatureParameters } from "./part-design-mesh-import"
-import { readPatternFeatureParameters, readPatternFeatureParametersV2 } from "./part-design-pattern"
 import { readAnyPatternFeatureParameters } from "./part-design-pattern-path"
 import type { PartOperation } from "./part-operation"
 import { classifyPartOperation, featureResultBody, sameBodyReference } from "./part-operation"

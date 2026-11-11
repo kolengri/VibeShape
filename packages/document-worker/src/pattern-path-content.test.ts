@@ -169,7 +169,9 @@ async function prepare(path: SketchRecord, feature = pattern([320, 321], 310), e
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-01T00:00:00.000Z",
   })
-  return createDocumentFeatureContentPreparer(solve)({ document, feature })
+  const result = await createDocumentFeatureContentPreparer(solve)({ document, feature })
+  if (!result) throw new Error("Path pattern content must always be prepared.")
+  return result
 }
 
 // A line from (0,0) to (5,0) continues tangentially into a quarter arc centered at (5,5).

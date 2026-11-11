@@ -38,12 +38,7 @@ import {
   readMirrorFeatureParameters,
   readMirrorFeatureParametersV3,
 } from "./part-design-mirror"
-import {
-  patternInstanceOutputRole,
-  patternOutputRoles,
-  readPatternFeatureParameters,
-  readPatternFeatureParametersV2,
-} from "./part-design-pattern"
+import { patternInstanceOutputRole, patternOutputRoles } from "./part-design-pattern"
 import { readAnyPatternFeatureParameters } from "./part-design-pattern-path"
 import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readPressPullFeatureParameters } from "./part-design-press-pull"
