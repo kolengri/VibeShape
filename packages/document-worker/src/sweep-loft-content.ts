@@ -3,6 +3,7 @@ import {
   expectedSketchFeatureDependencyIds,
   type FeatureGeometryRecord,
 } from "@vibeshape/application/feature-rebuild"
+import { resolveReferenceAxis } from "@vibeshape/application/reference-frame"
 import { type SupportFrame, sketchFrame } from "@vibeshape/application/support-frame"
 import type {
   DocumentSnapshot,
@@ -12,6 +13,7 @@ import type {
   SketchRecord,
 } from "@vibeshape/domain"
 import { featureTypeKey } from "@vibeshape/domain/feature-type-contracts"
+import { helixContentFields } from "@vibeshape/domain/part-design-helix"
 import {
   loftFeatureParametersSchema,
   loftFeatureParametersV2Schema,
@@ -31,9 +33,15 @@ import {
 } from "@vibeshape/domain/part-design-loft-v3"
 import {
   readSweepFeatureParameters,
+  readSweepFeatureParametersV2,
+  type SweepFeatureParametersV2,
   sweepFeatureParametersSchema,
+  sweepFeatureParametersV2Schema,
   sweepFeatureType,
+  sweepFeatureTypeV2,
+  sweepV2AxisOwnerIds,
 } from "@vibeshape/domain/part-design-sweep"
+import { referenceFrameSupportFeatureId } from "@vibeshape/domain/reference-frame"
 import { isSketchExternalModelReference } from "@vibeshape/domain/sketch"
 import type { SketchPathSelector } from "@vibeshape/domain/sketch-path-selector"
 import type { AnalyticalSweepPathContent } from "@vibeshape/protocol"
@@ -45,6 +53,7 @@ import {
   loftFeatureContentParametersV2Schema,
   loftFeatureContentParametersV3Schema,
   sweepFeatureContentParametersSchema,
+  sweepFeatureContentParametersV2Schema,
 } from "@vibeshape/protocol"
 import type { SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isError } from "is-what"
@@ -77,7 +86,8 @@ export function shouldPrepareSweepLoftFeatureContent(feature: FeatureRecord) {
     key === featureTypeKey(loftFeatureType.type) ||
     key === featureTypeKey(loftFeatureTypeV2.type) ||
     key === featureTypeKey(loftFeatureTypeV3.type) ||
-    key === featureTypeKey(sweepFeatureType.type)
+    key === featureTypeKey(sweepFeatureType.type) ||
+    key === featureTypeKey(sweepFeatureTypeV2.type)
   )
 }
 
@@ -90,11 +100,13 @@ function validateDependencies(
     ...input.feature.references.map(({ featureId }) => featureId),
     ...additionalOwners,
   ])
-  const limit = readLoftFeatureParametersV3(input.feature)
-    ? MAX_LOFT_V3_DEPENDENCIES
-    : readLoftFeatureParameters(input.feature)
-      ? MAX_LOFT_SECTIONS
-      : 8
+  const limit = readSweepFeatureParametersV2(input.feature)
+    ? 9
+    : readLoftFeatureParametersV3(input.feature)
+      ? MAX_LOFT_V3_DEPENDENCIES
+      : readLoftFeatureParameters(input.feature)
+        ? MAX_LOFT_SECTIONS
+        : 8
   if (expected.length > limit)
     return failure("dependency-budget-exceeded", { count: expected.length })
   if (
@@ -480,6 +492,37 @@ async function prepareSweep(
       })
 }
 
+/** The helix axis resolves against current geometry; the profile is never repositioned. */
+async function prepareHelicalSweep(
+  input: PreparationInput,
+  sweep: SweepFeatureParametersV2,
+): Promise<DocumentFeatureContentPreparationResult> {
+  const invalidDependencies = validateDependencies(
+    input,
+    [sweep.profile.sketchId],
+    sweepV2AxisOwnerIds(sweep),
+  )
+  if (invalidDependencies) return invalidDependencies
+  const profile = await prepareProfile(input, sweep.profile)
+  if (!profile.ok) return profile
+  if (profile.profile.holes.length) return failure("helical-sweep-holes-unsupported")
+  const axis = resolveReferenceAxis(sweep.path.axis, input)
+  if (!axis) return failure("helix-axis-unresolved")
+  const supportFeatureId = referenceFrameSupportFeatureId(sweep.path.axis)
+  const parsed = sweepFeatureContentParametersV2Schema.safeParse({
+    profile: profile.profile,
+    helix: { origin: axis.origin, direction: axis.direction, ...helixContentFields(sweep.path) },
+    ...(supportFeatureId
+      ? { supportInputIndex: input.feature.dependencies.indexOf(supportFeatureId) }
+      : {}),
+  })
+  return parsed.success
+    ? { ok: true, parameters: parsed.data }
+    : failure("invalid-materialized-helical-sweep", {
+        issue: parsed.error.issues[0]?.message ?? "unknown-schema-issue",
+      })
+}
+
 export async function prepareSweepLoftFeatureContent(
   input: PreparationInput,
 ): Promise<DocumentFeatureContentPreparationResult | null> {
@@ -490,6 +533,8 @@ export async function prepareSweepLoftFeatureContent(
   if (loft) return prepareLoft(input, loft)
   const sweep = readSweepFeatureParameters(input.feature)
   if (sweep) return prepareSweep(input, sweep)
+  const helicalSweep = readSweepFeatureParametersV2(input.feature)
+  if (helicalSweep) return prepareHelicalSweep(input, helicalSweep)
   const key = featureTypeKey(input.feature.type)
   const schema =
     key === featureTypeKey(loftFeatureTypeV3.type)
@@ -498,7 +543,9 @@ export async function prepareSweepLoftFeatureContent(
         ? loftFeatureParametersV2Schema
         : key === featureTypeKey(loftFeatureType.type)
           ? loftFeatureParametersSchema
-          : sweepFeatureParametersSchema
+          : key === featureTypeKey(sweepFeatureTypeV2.type)
+            ? sweepFeatureParametersV2Schema
+            : sweepFeatureParametersSchema
   const invalid = schema.safeParse(input.feature.parameters)
   return failure("invalid-authored-parameters", {
     issue: invalid.success

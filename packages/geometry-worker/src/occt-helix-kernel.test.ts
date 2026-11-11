@@ -322,3 +322,50 @@ describe("helical Sweep v2 with installed OCCT 0.23.0", () => {
     ).toThrow("Adjacent helical Sweep turns would intersect")
   })
 })
+
+/** Tracks every native wrapper constructed through `new`, including those created on failure. */
+function trackedKernel() {
+  const created: { deleted: number; name: string }[] = []
+  const kernel = new Proxy(occt, {
+    get(target, key) {
+      const value = Reflect.get(target, key)
+      if (typeof value !== "function" || typeof key !== "string" || !/^[A-Z]/.test(key))
+        return value
+      return new Proxy(value, {
+        construct(constructor, args) {
+          const instance = Reflect.construct(constructor, args)
+          const record = { deleted: 0, name: key }
+          created.push(record)
+          const release = instance.delete.bind(instance)
+          instance.delete = () => {
+            record.deleted += 1
+            return release()
+          }
+          return instance
+        },
+      })
+    },
+  })
+  return { kernel, created }
+}
+
+describe("helix native temporary disposal", () => {
+  it("releases every constructed wrapper exactly once on success and failure", () => {
+    const success = trackedKernel()
+    const shape = createOcctCoil(success.kernel, coil({ turns: 9 }))
+    shape.delete()
+    expect(success.created.length).toBeGreaterThan(10)
+    expect(success.created.filter(({ deleted }) => deleted !== 1)).toEqual([])
+
+    const failure = trackedKernel()
+    const tight = { ...zHelix, pitch: 1.9 }
+    expect(() =>
+      createOcctHelicalSweep(failure.kernel, {
+        profile: startProfile(tight, "circle", 1) as never,
+        helix: tight,
+      }),
+    ).toThrow("Adjacent helical Sweep turns would intersect")
+    expect(failure.created.length).toBeGreaterThan(3)
+    expect(failure.created.filter(({ deleted }) => deleted !== 1)).toEqual([])
+  })
+})

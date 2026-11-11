@@ -1,12 +1,15 @@
 import type { DocumentFeatureContentPreparationPort } from "@vibeshape/application/feature-rebuild"
 import { resolveReferenceAxis, resolveReferencePlane } from "@vibeshape/application/reference-frame"
 import type { FeatureRecord } from "@vibeshape/domain"
+import { readCoilFeatureParameters } from "@vibeshape/domain/part-design-coil"
 import { draftContentFace, readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
+import { helixContentFields } from "@vibeshape/domain/part-design-helix"
 import { readMirrorFeatureParametersV3 } from "@vibeshape/domain/part-design-mirror"
 import { readPatternFeatureParametersV2 } from "@vibeshape/domain/part-design-pattern"
 import { readSplitFeatureParametersV2 } from "@vibeshape/domain/part-design-split"
 import { referenceFrameSupportFeatureId } from "@vibeshape/domain/reference-frame"
 import {
+  coilFeatureContentParametersSchema,
   draftFeatureContentParametersSchema,
   mirrorFeatureContentParametersV3Schema,
   patternFeatureContentParametersV2Schema,
@@ -18,7 +21,8 @@ export function shouldPrepareReferenceFrameFeatureContent(feature: FeatureRecord
     readDraftFeatureParameters(feature) ||
       readMirrorFeatureParametersV3(feature) ||
       readSplitFeatureParametersV2(feature) ||
-      readPatternFeatureParametersV2(feature),
+      readPatternFeatureParametersV2(feature) ||
+      readCoilFeatureParameters(feature),
   )
 }
 export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparationPort = (
@@ -38,6 +42,36 @@ export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparat
       code: "org.vibeshape.feature.reference-frame-unresolved",
       values: { reason: "missing-or-ambiguous-support" },
     },
+  }
+  const coil = readCoilFeatureParameters(input.feature)
+  if (coil) {
+    const axis = resolveReferenceAxis(coil.axis, context)
+    if (!axis) return missing
+    const supportFeatureId = referenceFrameSupportFeatureId(coil.axis)
+    const parsed = coilFeatureContentParametersSchema.safeParse({
+      helix: { origin: axis.origin, direction: axis.direction, ...helixContentFields(coil) },
+      section:
+        coil.section.kind === "circular"
+          ? { kind: "circular", diameter: coil.section.diameter.value }
+          : {
+              kind: "rectangular",
+              width: coil.section.width.value,
+              height: coil.section.height.value,
+            },
+      operation: coil.operation,
+      ...(supportFeatureId
+        ? { supportInputIndex: input.feature.dependencies.indexOf(supportFeatureId) }
+        : {}),
+    })
+    return parsed.success
+      ? { ok: true, parameters: parsed.data }
+      : {
+          ok: false,
+          diagnostic: {
+            code: "org.vibeshape.feature.coil-invalid",
+            values: { reason: parsed.error.issues[0]?.message ?? "invalid-resolved-coil" },
+          },
+        }
   }
   if (pattern) {
     const axis = resolveReferenceAxis(pattern.axis, context)
