@@ -96,12 +96,16 @@ English source catalog.
   (HIDDEN line type), DIMENSIONS, TITLE and FRAME. Lines, circles and arcs stay exact; arrows are
   SOLID entities. Text writes `%%%` only for a `%` next to another `%` or before a generated `%%c` (a lone
   `%` stays literal for readers that ignore control codes), writes `\` as `\U+005C` only before
-  `U+` or `M+`, writes Ø as `%%c`, other
+  `U+` or `M+`, writes Ø as `%%c`, writes group 40 as the Helvetica cap height (0.718 em) because
+  DXF text height is a cap height, other
   non-ASCII characters as `\U+XXXX` and characters beyond the Basic Multilingual Plane as `?`. R12
   cannot carry line weights.
 - PDF 1.4, one vector page, standard Helvetica with WinAnsi encoding (not embedded); characters
   outside WinAnsi become `?` on the page. The document `/Title` is UTF-16BE hex with a byte order
   mark, so metadata keeps every character.
+
+Text is measured with Helvetica AFM advances; characters outside WinAnsi count a full em, because
+SVG draws their real glyphs, so truncation and clearance never under-measure them.
 
 No dependency was added. All writers emit fixed decimals and fixed object order without dates, so
 identical input yields identical bytes.

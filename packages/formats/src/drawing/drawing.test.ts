@@ -210,6 +210,20 @@ describe("drawing sheet composition", () => {
     expect(title?.kind === "text" && title.text.endsWith("…")).toBe(true)
   })
 
+  it("measures characters outside WinAnsi at a full em so SVG titles never overflow", () => {
+    const sheet = sheetFor({
+      titleBlock: { title: "Ж".repeat(40), drawingNumber: "", author: "", date: "", material: "" },
+    })
+    const title = sheet.groups
+      .find(({ id }) => id === "title-block")
+      ?.primitives.find((item) => item.kind === "text" && item.text.startsWith("Ж"))
+    if (title?.kind !== "text") throw new Error("Missing the Cyrillic title.")
+    expect(title.text.endsWith("…")).toBe(true)
+    // Ж renders about 0.9 em wide in common SVG fonts; the title cell is 120 mm minus 3 mm padding.
+    const glyphs = [...title.text].length - 1
+    expect(glyphs * 0.9 * title.height + title.height).toBeLessThanOrEqual(117)
+  })
+
   it("fits wide title block values to their cells by measured glyph advances", () => {
     const sheet = sheetFor({
       titleBlock: {
@@ -380,6 +394,25 @@ describe("drawing writers", () => {
     expect(dxf).toContain("\r\n1\r\n50% %%%%%%c \\U+005CU+0041 \\U+005CM+1 %%%%%c a\\b ?\r\n")
     expect(dxf).toContain("\r\n1\r\n%%c10\r\n")
     expect([...dxf].every((character) => character.charCodeAt(0) < 128)).toBe(true)
+  })
+
+  it("writes DXF text heights as Helvetica cap heights, not em sizes", () => {
+    const sheet = sheetFor()
+    const parsed = new DxfParser().parseSync(writeDrawingDxf(sheet)) as {
+      entities: { type: string; text?: string; textHeight?: number }[]
+    }
+    const ems = new Set(
+      sheet.groups.flatMap(({ primitives }) =>
+        primitives.flatMap((item) => (item.kind === "text" ? [item.height] : [])),
+      ),
+    )
+    expect([...ems].sort()).toEqual([1.8, 3.5, 5])
+    const texts = parsed.entities.filter(({ type }) => type === "TEXT")
+    expect(texts.length).toBeGreaterThan(10)
+    for (const entity of texts)
+      expect([...ems].some((em) => Math.abs((entity.textHeight ?? 0) - em * 0.718) < 1e-6)).toBe(
+        true,
+      )
   })
 
   it("leaves a lone percent sign literal for readers that ignore control codes", () => {

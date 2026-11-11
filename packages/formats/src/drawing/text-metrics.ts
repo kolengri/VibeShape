@@ -30,14 +30,22 @@ export function encodeHelveticaCharacter(
 }
 
 /**
- * Estimated advance of `text` at `height` mm. WinAnsi characters use Helvetica metrics; wide
- * East Asian characters count one em so layout clearance stays conservative in SVG and DXF.
+ * Helvetica cap height as a fraction of the em (AFM CapHeight 718). Sheet text heights are em
+ * sizes; DXF group 40 is the cap height, so the DXF writer scales by this ratio.
+ */
+export const HELVETICA_CAP_HEIGHT = 0.718
+
+/**
+ * Estimated advance of `text` at an em size of `height` mm. WinAnsi characters use Helvetica
+ * metrics. Any other character counts one full em: SVG draws its real glyph (Cyrillic such as
+ * Ж or Ш is about 0.83–0.9 em) even though PDF falls back to a narrower "?", so truncation and
+ * clearance never under-measure it.
  */
 export function textWidthMm(text: string, height: number) {
   let units = 0
   for (const character of text) {
-    const code = character.codePointAt(0) ?? 63
-    units += code >= 0x2e80 ? 1000 : encodeHelveticaCharacter(character)[1]
+    const [code, width] = encodeHelveticaCharacter(character)
+    units += code === 63 && character !== "?" ? 1000 : width
   }
   return (units / 1000) * height
 }

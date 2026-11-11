@@ -6,6 +6,7 @@ import {
   sheetNumber,
   writePrimitive,
 } from "./sheet"
+import { HELVETICA_CAP_HEIGHT } from "./text-metrics"
 
 /** Sheet layers as DXF layers with ACI colours and R12 line types. */
 const DXF_LAYERS: Readonly<
@@ -100,7 +101,7 @@ const ENTITY_WRITERS: PrimitiveWriters<(layer: string) => string[]> = {
       [0, "TEXT"],
       [8, layer],
       ...point3(10, item.position),
-      [40, item.height],
+      [40, item.height * HELVETICA_CAP_HEIGHT],
       [1, dxfText(item.text)],
       [50, item.rotation],
       [72, String(alignment)],
