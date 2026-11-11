@@ -3270,6 +3270,7 @@ test.describe("full sketch editor", () => {
     await exactTransform.getByRole("combobox", { name: "Translation X" }).fill("5 mm")
     await exactTransform.getByRole("combobox", { name: "Rotation" }).fill("15 deg")
     await exactTransform.getByRole("combobox", { name: "Scale" }).fill("1.1")
+    await expectUncoveredControl(exactTransform.getByRole("button", { name: "Apply transform" }))
     await exactTransform.getByRole("button", { name: "Apply transform" }).click()
 
     await expect(drawing.locator("[data-sketch-transform-manipulator]")).toHaveCount(0)
@@ -3326,6 +3327,7 @@ test.describe("full sketch editor", () => {
     await pattern.getByRole("checkbox", { name: "Add second direction" }).check()
     await pattern.getByRole("combobox", { name: "Second spacing" }).fill("10 mm")
     await expect(drawing.locator("[data-sketch-linear-pattern-preview] > g")).toHaveCount(5)
+    await expectUncoveredControl(pattern.getByRole("button", { name: "Apply linear pattern" }))
     await pattern.getByRole("button", { name: "Apply linear pattern" }).click()
 
     await expect(lines).toHaveCount(9)
@@ -3361,6 +3363,7 @@ test.describe("full sketch editor", () => {
     await pattern.getByRole("combobox", { name: "Center X" }).fill("10 mm")
     await pattern.getByRole("combobox", { name: "Instance count" }).fill("4")
     await expect(drawing.locator("[data-sketch-circular-pattern-preview] > g")).toHaveCount(4)
+    await expectUncoveredControl(pattern.getByRole("button", { name: "Apply circular pattern" }))
     await pattern.getByRole("button", { name: "Apply circular pattern" }).click()
 
     await expect(lines).toHaveCount(7)

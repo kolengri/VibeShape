@@ -344,3 +344,34 @@ export async function expectUncoveredControl(control: Locator) {
 export function constraintManager(page: Page) {
   return page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })
 }
+
+/** Clicks the first sampled point of a sketch entity that is not covered by floating chrome. */
+export async function clickUncoveredSketchEntity(page: Page, entity: Locator) {
+  const position = await entity.evaluate((element) => {
+    type ScreenPoint = Readonly<{
+      x: number
+      y: number
+      matrixTransform: (matrix: unknown) => ScreenPoint
+    }>
+    const geometry = element as unknown as {
+      getPointAtLength?: (length: number) => ScreenPoint
+      getScreenCTM?: () => unknown
+      getTotalLength?: () => number
+      ownerSVGElement?: Element | null
+    }
+    if (!geometry.getPointAtLength || !geometry.getScreenCTM || !geometry.getTotalLength) {
+      throw new TypeError("Sketch entity selection requires SVG geometry.")
+    }
+    const matrix = geometry.getScreenCTM()
+    const drawing = geometry.ownerSVGElement
+    if (!matrix || !drawing) throw new Error("Sketch entity is detached from the viewport.")
+    const length = geometry.getTotalLength()
+    for (const fraction of [0.5, 0.37, 0.63, 0.25, 0.75, 0.15, 0.85]) {
+      const point = geometry.getPointAtLength(length * fraction).matrixTransform(matrix)
+      const hit = element.ownerDocument.elementFromPoint(point.x, point.y)
+      if (hit && drawing.contains(hit)) return { x: point.x, y: point.y }
+    }
+    throw new Error("Floating chrome covers the whole sketch entity.")
+  })
+  await page.mouse.click(position.x, position.y)
+}
