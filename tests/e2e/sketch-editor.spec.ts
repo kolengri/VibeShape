@@ -555,6 +555,11 @@ test.describe("full sketch editor", () => {
       .getByRole("alert")
       .filter({ hasText: "Missing references — open this item to select replacement inputs." })
     await expect(repairSketch).toBeVisible()
+    // The model browser flags the same repair intent instead of leaving the sketch looking healthy.
+    const browserRepairCue = page
+      .getByRole("complementary", { name: "Model tree", exact: true })
+      .getByRole("button", { name: "Open Sketch 1 to select replacement references", exact: true })
+    await expect(browserRepairCue).toBeVisible()
     await expect(
       page
         .getByRole("status", { name: "Project save status", exact: true })
@@ -576,6 +581,7 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await expect(repairSketch).toHaveCount(0)
+    await expect(browserRepairCue).toHaveCount(0)
 
     await page.reload()
     await expect(repairSketch).toHaveCount(0)

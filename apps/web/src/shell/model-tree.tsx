@@ -68,6 +68,7 @@ import { AuthoredPartsGroup } from "./authored-parts-group"
 import {
   authoredBodyKey,
   authoredBodyKeys,
+  authoredHistoryRepairKeys,
   authoredHistoryTreeState,
   currentAuthoredParts,
   currentAuthoredSnapshot,
@@ -708,6 +709,7 @@ function SketchTreeItem({
   onSketchPreselectionChange,
   onVisibilityChange,
   renameBlocked,
+  repairRequired,
   row,
   unnamedSketch,
   visible,
@@ -727,6 +729,7 @@ function SketchTreeItem({
   onSketchRename: SketchRenameHandler
   onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   renameBlocked: boolean
+  repairRequired: boolean
   row: HistoryViewRow
   unnamedSketch: string
   visible: boolean
@@ -760,6 +763,7 @@ function SketchTreeItem({
       <BrokenSketchReferenceAction
         referenceHealth={row.referenceHealth}
         supportHealth={row.supportHealth}
+        repairRequired={repairRequired}
         label={label}
         onActivate={activateSketch}
         onSupportRepair={() => onSketchSupportRepair(sketch.id)}
@@ -800,6 +804,7 @@ const sketchSupportRepairLabels = {
 function BrokenSketchReferenceAction({
   referenceHealth,
   supportHealth,
+  repairRequired,
   label,
   onActivate,
   onSupportRepair,
@@ -807,6 +812,7 @@ function BrokenSketchReferenceAction({
 }: {
   referenceHealth: HistoryViewRow["referenceHealth"]
   supportHealth: HistoryViewRow["supportHealth"]
+  repairRequired: boolean
   label: string
   onActivate: () => void
   onSupportRepair: () => void
@@ -815,10 +821,13 @@ function BrokenSketchReferenceAction({
   const { detailed } = useContext(HistoryPresentation)
   const supportBroken = supportHealth?.status === "missing" || supportHealth?.status === "ambiguous"
   const count = brokenReferenceCount(referenceHealth) + (supportBroken ? 1 : 0)
-  if (count === 0 || !detailed) return null
+  if ((count === 0 && !repairRequired) || !detailed) return null
+  // A retained repair intent has no broken live reference to count; opening the sketch repairs it.
   const repairLabel = supportBroken
     ? t(sketchSupportRepairLabels[supportHealth.status], { sketch: label })
-    : t("repairBrokenSketchReferences", { sketch: label, count })
+    : count === 0
+      ? t("repairSketchIntent", { sketch: label })
+      : t("repairBrokenSketchReferences", { sketch: label, count })
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -1647,6 +1656,7 @@ function SketchHistoryRow({
           onSketchPreselectionChange={props.onSketchPreselectionChange}
           onVisibilityChange={props.onSketchVisibilityChange}
           renameBlocked={row.ref.id === props.sketchRenameBlockedId}
+          repairRequired={Boolean(props.repairRequired)}
           row={row}
           unnamedSketch={t("unnamedSketch")}
           visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
@@ -2224,6 +2234,11 @@ function BodiesGroup({
 function SketchesGroup(props: ModelTreeHistoryBranchProps) {
   const [sketchesExpanded, setSketchesExpanded] = useState(true)
   const sketches = props.view.rows.filter((row) => row.kind === "sketch")
+  // History's repair intents, so a retained recipe is flagged here as well as in History.
+  const repairIds = useMemo(
+    () => authoredHistoryRepairKeys(currentAuthoredSnapshot(props.controller)),
+    [props.controller],
+  )
   if (sketches.length === 0) return null
   return (
     <div role="none">
@@ -2268,6 +2283,7 @@ function SketchesGroup(props: ModelTreeHistoryBranchProps) {
                   onSketchRename={props.onSketchRename}
                   onVisibilityChange={props.onSketchVisibilityChange}
                   renameBlocked={row.ref.id === props.sketchRenameBlockedId}
+                  repairRequired={repairIds.has(historyRefKey(row.ref))}
                   row={row}
                   unnamedSketch={props.t("unnamedSketch")}
                   visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
