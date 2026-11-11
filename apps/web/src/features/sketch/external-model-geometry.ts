@@ -1,4 +1,8 @@
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
+import {
+  projectWorldBezierChainToSupport,
+  sampleBezierChain,
+} from "@vibeshape/application/model-spline-projection"
 import { intersectBoundedLineWithSupportPlane } from "@vibeshape/application/pierce-point"
 import {
   type ProjectedSketchCurve,
@@ -21,6 +25,7 @@ import type {
   FeatureRecord,
   PlanarFaceTopoRef,
   SketchEntityId,
+  SketchExternalModelReference,
   SketchExternalReferenceId,
   SketchRecord,
   VertexTopoRef,
@@ -30,6 +35,7 @@ import {
   featureIdSchema,
   isOrphanedModelReference,
   isSketchExternalModelReference,
+  NON_ANALYTICAL_MODEL_EDGE_CLASSES,
   projectedExternalCurvePointCount,
   replaceSketchExternalReference,
 } from "@vibeshape/domain"
@@ -87,18 +93,39 @@ export type ExternalModelCurveCandidate = Readonly<{
 
 export type ExternalModelCurveSourceType = "arc" | "circle" | "ellipse" | "elliptical-arc"
 
+/**
+ * A non-analytical model edge whose published Bezier chain lies in a plane parallel to the sketch.
+ * `points` are disposable display samples; Use persists only the topology reference and identities.
+ */
+export type ExternalModelSplineCandidate = Readonly<{
+  candidateId: string
+  /** Sketch-local start and end of the projected chain; persisted as the end-identity anchors. */
+  endpointAnchors: readonly [readonly [number, number], readonly [number, number]]
+  featureId: FeatureId
+  kind: "model-spline"
+  label: string
+  points: readonly ProjectedModelPoint[]
+  reference: EdgeTopoRef
+  segmentCount: number
+}>
+
 export type ExternalModelGeometryCandidate =
   | ExternalModelPointCandidate
   | ExternalModelLineCandidate
   | ExternalModelCurveCandidate
+  | ExternalModelSplineCandidate
 
 export type ExternalModelGeometryLabels = Readonly<{
-  curve: (featureLabel: string, kind: ExternalModelCurveSourceType, ordinal: number) => string
+  curve: (
+    featureLabel: string,
+    kind: ExternalModelCurveSourceType | "spline",
+    ordinal: number,
+  ) => string
   line: (featureLabel: string, ordinal: number) => string
   point: (featureLabel: string, ordinal: number) => string
 }>
 
-export function externalModelCurveLabelKind(kind: ExternalModelCurveSourceType) {
+export function externalModelCurveLabelKind(kind: ExternalModelCurveSourceType | "spline") {
   return kind === "elliptical-arc" ? "ellipticalArc" : kind
 }
 
@@ -153,18 +180,20 @@ const EDGE_DISPLAY_BY_REFERENCE_KIND = {
   "arc-edge": { displayKind: "curve", geometryClass: "CIRCLE" },
   "ellipse-edge": { displayKind: "curve", geometryClass: "ELLIPSE" },
   "elliptical-arc-edge": { displayKind: "curve", geometryClass: "ELLIPSE" },
+  "bezier-chain-edge": { displayKind: "curve", geometryClass: NON_ANALYTICAL_MODEL_EDGE_CLASSES },
 } as const satisfies Record<
   ProtocolReferenceGeometry["kind"],
-  Readonly<{ displayKind: CandidateDisplayKind; geometryClass: string }> | null
+  Readonly<{ displayKind: CandidateDisplayKind; geometryClass: string | readonly string[] }> | null
 >
 
 function edgeDisplayKind(candidate: ProtocolTopologyCandidate): CandidateDisplayKind | null {
   const geometry = candidate.referenceGeometry
   if (candidate.kind !== "edge" || !geometry) return null
   const display = EDGE_DISPLAY_BY_REFERENCE_KIND[geometry.kind]
-  return display && candidate.signature.geometryClass === display.geometryClass
-    ? display.displayKind
-    : null
+  if (!display) return null
+  const classes: readonly string[] =
+    typeof display.geometryClass === "string" ? [display.geometryClass] : display.geometryClass
+  return classes.includes(candidate.signature.geometryClass) ? display.displayKind : null
 }
 
 function candidateDisplayKind(candidate: ProtocolTopologyCandidate): CandidateDisplayKind | null {
@@ -242,6 +271,24 @@ function referenceContexts(records: readonly ExternalModelGeometryRecord[]) {
   )
 }
 
+type ProjectedModelTopologyReference = Extract<
+  NonNullable<SketchRecord["externalReferences"]>[number],
+  { kind: "model-point" | "model-line" | "model-curve" | "model-spline" }
+>
+
+const projectedModelTopologyKinds: ReadonlySet<string> = new Set([
+  "model-point",
+  "model-line",
+  "model-curve",
+  "model-spline",
+])
+
+function isProjectedModelTopologyReference(
+  reference: NonNullable<SketchRecord["externalReferences"]>[number],
+): reference is ProjectedModelTopologyReference {
+  return projectedModelTopologyKinds.has(reference.kind ?? "point")
+}
+
 function referencedCandidateKeys(
   records: readonly ExternalModelGeometryRecord[],
   draft: SketchRecord,
@@ -258,13 +305,7 @@ function referencedCandidateKeys(
   )
   const keys = new Set<string>()
   for (const external of draft.externalReferences ?? []) {
-    if (
-      external.kind !== "model-point" &&
-      external.kind !== "model-line" &&
-      external.kind !== "model-curve"
-    ) {
-      continue
-    }
+    if (!isProjectedModelTopologyReference(external)) continue
     const context = recordsByFeatureId.get(external.reference.featureId)
     if (!context) continue
     const resolution = context.resolve(external.reference)
@@ -463,6 +504,50 @@ function createExternalModelCurveCandidate(
   }
 }
 
+function bezierChainGeometry(candidate: ProtocolTopologyCandidate) {
+  const geometry = candidate.referenceGeometry
+  return candidate.kind === "edge" &&
+    geometry?.kind === "bezier-chain-edge" &&
+    NON_ANALYTICAL_MODEL_EDGE_CLASSES.includes(candidate.signature.geometryClass)
+    ? geometry
+    : null
+}
+
+function createExternalModelSplineCandidate(
+  featureId: FeatureId,
+  featureLabel: string,
+  candidate: ProtocolTopologyCandidate,
+  targetFrame: SupportFrame,
+  ordinal: number,
+  labels: ExternalModelGeometryLabels,
+): ExternalModelSplineCandidate | null {
+  const geometry = bezierChainGeometry(candidate)
+  if (!geometry) return null
+  // Tilted and spatial edges are not offered; persisted references to them fail closed.
+  const projection = projectWorldBezierChainToSupport(targetFrame, geometry.poles)
+  if (!projection.ok) return null
+  // Anchors are sketch-local, so a support frame that turns with the edge keeps the pairing.
+  const start = projection.poles[0]
+  const end = projection.poles.at(-1)
+  if (!start || !end) return null
+  return {
+    candidateId: candidate.candidateId,
+    endpointAnchors: [
+      [start.x, start.y],
+      [end.x, end.y],
+    ],
+    featureId,
+    kind: "model-spline",
+    label: labels.curve(featureLabel, "spline", ordinal),
+    points: sampleBezierChain(projection.poles).map((point) => ({
+      ...point,
+      world: supportPointToWorld(targetFrame, point),
+    })),
+    reference: stableEdgeReference(featureId, candidate),
+    segmentCount: projection.segmentCount,
+  }
+}
+
 function candidatesForRecord(
   record: ExternalModelGeometryRecord,
   featureId: FeatureId,
@@ -504,6 +589,18 @@ function candidatesForRecord(
       result.push(line)
       continue
     }
+    const spline = createExternalModelSplineCandidate(
+      featureId,
+      featureLabel,
+      candidate,
+      targetFrame,
+      ordinal,
+      labels,
+    )
+    if (spline) {
+      result.push(spline)
+      continue
+    }
     const curve = createExternalModelCurveCandidate(
       featureId,
       featureLabel,
@@ -534,6 +631,7 @@ function resolvedModelReferenceLabel(
   if (displayKind === "line") return labels.line(featureLabel, ordinal)
   if (displayKind === "face") return labels.face(featureLabel, ordinal)
   if (displayKind !== "curve") return null
+  if (bezierChainGeometry(candidate)) return labels.curve(featureLabel, "spline", ordinal)
   const geometry = modelCurveGeometry(candidate)
   return geometry ? labels.curve(featureLabel, modelCurveSourceType(geometry), ordinal) : null
 }
@@ -714,22 +812,41 @@ export function repairExternalModelGeometryCandidates(
   if (!referenceId) return candidates
   const reference = draft.externalReferences?.find(({ id }) => id === referenceId)
   if (!reference || !isSketchExternalModelReference(reference)) return []
-  return candidates.filter((candidate) => {
-    if (
-      !isOrphanedModelReference(reference) &&
-      candidate.featureId !== reference.reference.featureId
-    ) {
-      return false
-    }
-    if (reference.kind === "model-point") return candidate.kind === "model-point"
-    if (reference.kind === "model-line" || reference.kind === "model-pierce-point")
-      return candidate.kind === "model-line"
-    if (reference.kind !== "model-curve" || candidate.kind !== "model-curve") return false
-    return (
-      candidate.sourceType === reference.sourceType &&
-      candidate.projectedType === reference.projectedType
-    )
-  })
+  return candidates.filter(
+    (candidate) =>
+      (isOrphanedModelReference(reference) ||
+        candidate.featureId === reference.reference.featureId) &&
+      repairCandidateMatches(reference, candidate),
+  )
+}
+
+const repairCandidateKinds = {
+  "model-point": "model-point",
+  "model-line": "model-line",
+  "model-pierce-point": "model-line",
+  "model-curve": "model-curve",
+  "model-spline": "model-spline",
+  "model-intersection": null,
+} as const satisfies Record<
+  SketchExternalModelReference["kind"],
+  ExternalModelGeometryCandidate["kind"] | null
+>
+
+/** Repair keeps the projected identity layout, so a curve also keeps its source and projection. */
+function repairCandidateMatches(
+  reference: SketchExternalModelReference,
+  candidate: ExternalModelGeometryCandidate,
+) {
+  if (repairCandidateKinds[reference.kind] !== candidate.kind) return false
+  // Repair keeps the projected identities, so the replacement must fit in the stored segments.
+  if (reference.kind === "model-spline" && candidate.kind === "model-spline") {
+    return candidate.segmentCount <= reference.projectedCurveIds.length
+  }
+  if (reference.kind !== "model-curve" || candidate.kind !== "model-curve") return true
+  return (
+    candidate.sourceType === reference.sourceType &&
+    candidate.projectedType === reference.projectedType
+  )
 }
 
 export function externalModelGeometryCandidates(
@@ -840,6 +957,12 @@ export type MaterializedExternalModelCandidate =
       projectedPointIds: readonly SketchEntityId[]
       sketch: SketchRecord
     }>
+  | Readonly<{
+      kind: "model-spline"
+      projectedCurveIds: readonly SketchEntityId[]
+      projectedPointIds: readonly SketchEntityId[]
+      sketch: SketchRecord
+    }>
 
 function modelTopologyReferenceMatchesCandidate(
   reference: NonNullable<SketchRecord["externalReferences"]>[number],
@@ -900,6 +1023,14 @@ function existingModelMaterialization(
       sketch: draft,
     }
   }
+  if (existing.kind === "model-spline") {
+    return {
+      kind: "model-spline",
+      projectedCurveIds: existing.projectedCurveIds,
+      projectedPointIds: existing.projectedPointIds,
+      sketch: draft,
+    }
+  }
   if (existing.kind !== "model-curve") return null
   return {
     kind: "model-curve",
@@ -916,6 +1047,34 @@ export function materializeExternalModelCandidate(
   const existing = existingModelMaterialization(draft, candidate)
   if (existing) return existing
   const references = draft.externalReferences ?? []
+  if (candidate.kind === "model-spline") {
+    const projectedCurveIds = Array.from({ length: candidate.segmentCount }, () =>
+      createBrowserSketchEntityId(),
+    )
+    const projectedPointIds = Array.from({ length: candidate.segmentCount * 3 + 1 }, () =>
+      createBrowserSketchEntityId(),
+    )
+    return {
+      kind: "model-spline",
+      projectedCurveIds,
+      projectedPointIds,
+      sketch: {
+        ...draft,
+        externalReferences: [
+          ...references,
+          {
+            schemaVersion: 0,
+            id: createBrowserSketchExternalReferenceId(),
+            kind: "model-spline",
+            reference: candidate.reference,
+            endpointAnchors: splineRepair(candidate).endpointAnchors,
+            projectedCurveIds,
+            projectedPointIds,
+          },
+        ],
+      },
+    }
+  }
   if (candidate.kind === "model-curve") {
     const projectedEntityId = createBrowserSketchEntityId()
     const projectedPointIds = Array.from(
@@ -1005,9 +1164,25 @@ export function applyExternalModelCandidateSelection(
       })
     }
   }
-  return repairReferenceId
-    ? replaceSketchExternalReference(draft, repairReferenceId, candidate)
-    : applyExternalModelCandidate(draft, candidate, selectedEntityIds)
+  if (!repairReferenceId) return applyExternalModelCandidate(draft, candidate, selectedEntityIds)
+  return replaceSketchExternalReference(
+    draft,
+    repairReferenceId,
+    candidate.kind === "model-spline" ? splineRepair(candidate) : candidate,
+  )
+}
+
+/** Repair re-anchors the end identities on the chosen edge's current ends. */
+function splineRepair(candidate: ExternalModelSplineCandidate) {
+  const [start, end] = candidate.endpointAnchors
+  return {
+    kind: "model-spline" as const,
+    reference: candidate.reference,
+    endpointAnchors: [
+      [start[0], start[1]],
+      [end[0], end[1]],
+    ] as [[number, number], [number, number]],
+  }
 }
 
 export function applyExternalModelIntersection(

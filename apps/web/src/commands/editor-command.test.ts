@@ -352,7 +352,7 @@ describe("editor command registry", () => {
     ).toMatchObject({ ok: false, diagnostic: { code: "invalid-presentation" } })
   })
 
-  it("exposes Spline through the ordinary sketch command eligibility and trusted handler", () => {
+  it("exposes Spline and Bezier curve through the ordinary sketch command eligibility and trusted handlers", () => {
     const unavailable = resolveBuiltInEditorCommands(commandContext()).find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchSpline,
     )
@@ -371,7 +371,21 @@ describe("editor command registry", () => {
     })
     command?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledTimes(1)
-    expect(context.actions.setSketchTool).toHaveBeenCalledWith("cubic-bezier")
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("spline")
+    const bezier = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchBezier,
+    )
+    expect(command?.descriptor.sketchPresentation).toMatchObject({
+      family: "spline",
+      familyDefault: true,
+    })
+    expect(bezier?.descriptor).toMatchObject({
+      id: "org.vibeshape.editor.sketch.tool.cubic-bezier",
+      labelKey: "sketchBezier",
+      sketchPresentation: { family: "spline" },
+    })
+    bezier?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenLastCalledWith("cubic-bezier")
   })
 
   it("resolves eligibility and invokes the same trusted handler used by every surface", () => {

@@ -122,6 +122,7 @@ import {
   availableExternalModelGeometryCandidates,
   availableExternalModelPierceCandidates,
   type ExternalModelGeometryCandidate,
+  type ExternalModelLineCandidate,
   type ExternalModelGeometryRecord,
   externalModelCurveLabelKind,
   planarFaceCanIntersectSketch,
@@ -1097,7 +1098,7 @@ function viewerReferenceCandidate(
 }
 
 function viewerModelReferenceCandidate(
-  candidate: ExternalModelGeometryCandidate,
+  candidate: Exclude<ExternalModelGeometryCandidate, { kind: "model-spline" }>,
 ): ViewerSketchReferenceCandidate {
   if (candidate.kind === "model-line") {
     return {
@@ -1700,7 +1701,7 @@ function useWorkspaceReferenceSelection({
 }: Readonly<{
   externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   modelGeometryRecords: readonly ExternalModelGeometryRecord[]
-  modelPierceCandidates: readonly ExternalModelGeometryCandidate[]
+  modelPierceCandidates: readonly ExternalModelLineCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   pierceCandidates: readonly ExternalSketchPierceCandidate[]
   frame: SupportFrame | null
@@ -1718,7 +1719,10 @@ function useWorkspaceReferenceSelection({
   const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
     () => [
       ...externalPointCandidates.map(viewerReferenceCandidate),
-      ...modelUseCandidates.map(viewerModelReferenceCandidate),
+      // Model splines are offered in the plane-normal sketch view only.
+      ...modelUseCandidates.flatMap((candidate) =>
+        candidate.kind === "model-spline" ? [] : [viewerModelReferenceCandidate(candidate)],
+      ),
     ],
     [externalPointCandidates, modelUseCandidates],
   )

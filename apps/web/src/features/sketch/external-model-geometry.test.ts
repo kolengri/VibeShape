@@ -36,7 +36,7 @@ const selectedPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-0000
 const labels = {
   curve: (
     feature: string,
-    kind: "arc" | "circle" | "ellipse" | "elliptical-arc",
+    kind: "arc" | "circle" | "ellipse" | "elliptical-arc" | "spline",
     ordinal: number,
   ) => `${feature} · ${kind} ${ordinal}`,
   face: (feature: string, ordinal: number) => `${feature} · Face ${ordinal}`,
@@ -117,6 +117,26 @@ function circleCandidate(candidateId: string): TopologyCandidate {
       normal: [0, 0, 1],
       radius: 5,
     },
+  }
+}
+
+function splineCandidate(candidateId: string, lift = 0, tilt = 0): TopologyCandidate {
+  const poles = [
+    [0, 0],
+    [3, 4],
+    [7, 4],
+    [10, 0],
+    [13, -4],
+    [17, -4],
+    [20, 0],
+  ].map(([x = 0, y = 0]): [number, number, number] => [x, y, lift + x * tilt])
+  return {
+    candidateId,
+    kind: "edge",
+    semanticRole: `edge:${candidateId}`,
+    lineageTokens: [],
+    signature: signature("edge", "BSPLINE_CURVE", [10, 0, lift]),
+    referenceGeometry: { kind: "bezier-chain-edge", poles, maxDeviation: 1e-5 },
   }
 }
 
@@ -417,6 +437,79 @@ describe("external model geometry candidates", () => {
       }),
     )
     expect(candidates[0]?.kind === "model-curve" ? candidates[0].points : []).toHaveLength(65)
+  })
+
+  it("offers spline edges only in a plane parallel to the sketch and persists chain identities", () => {
+    const candidates = externalModelGeometryCandidates(
+      [
+        geometryRecord(featureId, [
+          splineCandidate("spline-offset", 12),
+          splineCandidate("spline-tilted", 0, 0.01),
+        ]),
+      ],
+      features as never,
+      [featureId],
+      draft(),
+      targetFrame,
+      labels,
+    )
+    expect(candidates).toHaveLength(1)
+    const [candidate] = candidates
+    if (candidate?.kind !== "model-spline") throw new Error("Expected one spline candidate.")
+    expect(candidate).toMatchObject({
+      candidateId: "spline-offset",
+      label: "Mount · spline 1",
+      segmentCount: 2,
+    })
+    expect(candidate.points[0]).toMatchObject({ x: 0, y: 0, world: [0, 0, 0] })
+    expect(candidate.points.at(-1)).toMatchObject({ x: 20, y: 0 })
+
+    const used = applyExternalModelCandidate(draft(), candidate, [])
+    const reference = used.externalReferences?.[0]
+    if (reference?.kind !== "model-spline") throw new Error("Expected a model spline reference.")
+    expect(reference.reference).toEqual(candidate.reference)
+    expect(reference.projectedCurveIds).toHaveLength(2)
+    expect(reference.projectedPointIds).toHaveLength(7)
+    // The edge's current sketch-local ends anchor the projected end identities.
+    expect(reference.endpointAnchors).toEqual([
+      [0, 0],
+      [20, 0],
+    ])
+    // Transient candidate IDs and fitted poles never persist.
+    expect(JSON.stringify(reference)).not.toMatch(/candidateId|poles|"x"/)
+    // Using the same edge again reuses the existing identities.
+    expect(applyExternalModelCandidate(used, candidate, [])).toBe(used)
+    expect(
+      availableExternalModelGeometryCandidates(
+        candidates,
+        [geometryRecord(featureId, [splineCandidate("spline-offset", 12)])],
+        used,
+      ),
+    ).toEqual([])
+    expect(repairExternalModelGeometryCandidates(candidates, used, reference.id)).toEqual([
+      candidate,
+    ])
+    // Repair re-anchors the ends on the replacement edge while keeping every identity.
+    const moved = {
+      ...candidate,
+      endpointAnchors: [
+        [5, 1],
+        [25, 1],
+      ] as const,
+    }
+    const repaired = applyExternalModelCandidateSelection(used, moved, [], reference.id)
+    expect(repaired.externalReferences?.[0]).toMatchObject({
+      endpointAnchors: [
+        [5, 1],
+        [25, 1],
+      ],
+      projectedPointIds: reference.projectedPointIds,
+    })
+    // Repair keeps the two stored segments, so a replacement needing more is not offered.
+    const larger = { ...candidate, candidateId: "spline-larger", segmentCount: 4 }
+    expect(repairExternalModelGeometryCandidates([candidate, larger], used, reference.id)).toEqual([
+      candidate,
+    ])
   })
 
   it("offers exact projected candidates for full and bounded elliptical model edges", () => {

@@ -3,7 +3,7 @@ export type ViewerSketchReferenceIdentity =
   | Readonly<{ kind: "line"; sourceLineId: string; sourceSketchId: string }>
   | Readonly<{ kind: "curve"; sourceEntityId: string; sourceSketchId: string }>
   | Readonly<{
-      kind: "model-point" | "model-line" | "model-curve"
+      kind: "model-point" | "model-line" | "model-curve" | "model-spline"
       candidateId: string
       featureId: string
     }>

@@ -190,6 +190,8 @@ Constrain relationships and driving dimensions without redundantly fixing the sa
 
 Horizontal/vertical distance constraints are signed: the first point's coordinate minus the second point's coordinate equals the specified value. For a positive X offset from an origin anchor, the positive point is `firstPointId` and the anchor is `secondPointId`. XY coordinates map to world X/Y; preview bounds confirm placement on other planes.
 
+For interpolating splines (`tangent-join` chains) and `model-spline` references to B-spline or Bezier model edges, read [splines and spline model edges](splines.md).
+
 Extrude/Revolve profiles identify the sketch and its boundary entity IDs. Boundary ID arrays must be unique and sorted as required by the schema; polygon winding or storage order is not an identity contract. Discover solved profile selectors with `model_sketch_solution` or `draft_sketch_solution` at the exact revision. Discover exact body faces separately with `model_body_topology` or `draft_body_topology`; use the returned selectors and durable references rather than arbitrary edge order.
 
 ## Extrude and Revolve
