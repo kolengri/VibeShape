@@ -349,9 +349,11 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     await expect(
       page.getByText("AI access on · Approve each change", { exact: true }),
     ).toBeVisible()
+    // The cancelled commit published nothing: the source revision is unchanged.
     expect(
-      success(localToolOutputs.model_info.parse(await call(local, "model_info", {}))).summary.name,
-    ).not.toBe("Metadata awaiting project switch")
+      success(localToolOutputs.model_info.parse(await call(local, "model_info", {}))).summary
+        .revision,
+    ).toBe(reopened.summary.revision)
     expect(
       localToolOutputs.list_projects.parse(await call(local, "list_projects", {})),
     ).toMatchObject({ ok: false, diagnostic: { code: "project-management-disabled" } })
