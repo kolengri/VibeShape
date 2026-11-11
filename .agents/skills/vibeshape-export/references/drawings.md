@@ -12,6 +12,7 @@ parts. Optional `partId` limits it to one authored Part; obtain it from `model_p
 |---|---|---|
 | `part-not-found` | No | `partId` does not name a Part with a body at that revision; read `model_parts` again |
 | `no-drawable-bodies` | No | The selected Part is a triangle mesh, or the model has no exact body |
+| `rebuild-failed` | No | The committed revision did not rebuild; drawings never fall back to an earlier revision's geometry. Repair the model first |
 | `drawing-too-complex` | No | A view exceeds the projected edge or curve-sample budget; draw fewer parts or views |
 | `stale-revision` | Yes | The revision is stale, changed while projecting or the session was replaced; read the current revision and prepare again |
 | `drawing-failed` | Kernel flag | Other projection failures |

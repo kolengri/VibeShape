@@ -61,6 +61,11 @@ sized from the view's density, registered only along the piece, and circles and 
 grid, so dense views stay near-linear. Output contains only coordinates, never OCCT
 indices.
 
+Drawings and geometry exports only use geometry of the captured revision: before projecting, the
+document report must be at that revision and its rebuild must have succeeded (a lagging report is
+a retryable `stale-revision`, a failed rebuild a final `rebuild-failed`), and the revision the
+worker actually projected or exported, which is its last successful rebuild, must equal it.
+
 Without an explicit body selection the projection draws every exact terminal body and skips
 triangle meshes, failing only when none remains; an explicit selection containing a mesh fails.
 Title-block fields reject C0 control characters and DEL.

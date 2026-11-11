@@ -4,7 +4,11 @@ import type {
   PersistentDocumentSessionReport,
 } from "@vibeshape/application/persistent-document-session"
 import type { DrawingProjection, DrawingViewId } from "@vibeshape/protocol"
-import { prepareDocumentGeometryExport } from "./document-geometry-export"
+import {
+  currentGeometryFailure,
+  prepareDocumentGeometryExport,
+  producedRevisionFailure,
+} from "./document-geometry-export"
 
 export type ActiveDocumentDrawingResult =
   | Readonly<{
@@ -55,6 +59,8 @@ export async function projectSessionDrawing(input: {
 }): Promise<ActiveDocumentDrawingResult> {
   const { session } = input
   const { id, revision, name } = session.snapshot
+  const notCurrent = currentGeometryFailure(input.report, revision)
+  if (notCurrent) return { ok: false, diagnostic: notCurrent }
   // Without a Part the worker draws every exact terminal body and skips triangle meshes. With one,
   // the shared body plan reports part-not-found or a retryable stale revision.
   const plan = input.partId
@@ -67,5 +73,8 @@ export async function projectSessionDrawing(input: {
   )
   if (!input.isCurrent() || session.snapshot.revision !== revision) return staleDrawing
   if (!result.ok) return result
+  // The worker projects its last successful rebuild; it must be the captured revision itself.
+  const older = producedRevisionFailure(result.revision, revision)
+  if (older) return { ok: false, diagnostic: older }
   return { ok: true, projection: result.projection, documentId: id, revision, documentName: name }
 }

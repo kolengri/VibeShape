@@ -205,7 +205,11 @@ import {
   projectSessionDrawing,
   unavailableDrawing,
 } from "./document-drawing"
-import { prepareDocumentGeometryExport } from "./document-geometry-export"
+import {
+  currentGeometryFailure,
+  prepareDocumentGeometryExport,
+  producedRevisionFailure,
+} from "./document-geometry-export"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { reconcileHistoryInsertion } from "./history-insertion"
 import { captureLibrarySource } from "./library-source"
@@ -258,6 +262,29 @@ export type ActiveDocumentExportResult =
       printPreparation?: PrintPreparationResult
     }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+
+/**
+ * Maps a worker export to the active-document result. The worker exports its last successful
+ * rebuild, so geometry from an earlier revision than the captured one is rejected.
+ */
+function exportedAt(
+  result: Awaited<ReturnType<PersistentDocumentSession["exportDocument"]>>,
+  revision: number,
+  documentName: string,
+): ActiveDocumentExportResult {
+  if (!result.ok) return result
+  const older = producedRevisionFailure(result.response.revision, revision)
+  if (older) return { ok: false, diagnostic: older }
+  const { format, file, bodyCount, printPreparation } = result.response
+  return {
+    ok: true,
+    format,
+    file,
+    bodyCount,
+    documentName,
+    ...(printPreparation ? { printPreparation } : {}),
+  }
+}
 
 export type ActiveAutomationInfo = Readonly<{
   summary: ReturnType<typeof documentSummaryViewSchema.parse>
@@ -3282,6 +3309,8 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     }
     const active = session
     const { revision, name } = active.snapshot
+    const notCurrent = currentGeometryFailure(state.report, revision)
+    if (notCurrent) return { ok: false, diagnostic: notCurrent }
     const prepared = prepareDocumentGeometryExport(
       active.authoredSnapshot,
       state.report,
@@ -3302,18 +3331,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
         },
       }
     }
-    return result.ok
-      ? {
-          ok: true,
-          format: result.response.format,
-          file: result.response.file,
-          bodyCount: result.response.bodyCount,
-          documentName: name,
-          ...(result.response.printPreparation
-            ? { printPreparation: result.response.printPreparation }
-            : {}),
-        }
-      : result
+    return exportedAt(result, revision, name)
   }
 
   /** Exact HLR projection of the committed revision for the Drawing dialog and automation. */

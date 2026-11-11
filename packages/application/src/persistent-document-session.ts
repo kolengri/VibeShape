@@ -330,7 +330,12 @@ export type PersistentDocumentExportResult =
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 export type PersistentDrawingProjectionResult =
-  | { ok: true; projection: DrawingProjection }
+  | {
+      ok: true
+      projection: DrawingProjection
+      /** Revision of the rebuilt snapshot the worker projected; may trail a failed newer rebuild. */
+      revision: number
+    }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 export type PersistentSketchSolveResult =
@@ -980,7 +985,7 @@ export class PersistentDocumentSession {
       try {
         // Call through the port so session implementations keep their `this` binding.
         const response = await port.projectDrawing(views, options)
-        return { ok: true, projection: response.projection }
+        return { ok: true, projection: response.projection, revision: response.revision }
       } catch (error) {
         return documentExportFailure(error, "The current document geometry could not be drawn.")
       }

@@ -28,6 +28,37 @@ function selectedBodies(
   return partId ? null : undefined
 }
 
+const staleReport: PersistentDocumentSessionDiagnostic = {
+  code: "export-failed",
+  message:
+    "The active project changed before its geometry was current. Prepare the current revision again.",
+  retryable: true,
+  sourceCode: "stale-revision",
+}
+
+/**
+ * Exports and drawings use the worker's last successful rebuild, so the report must describe the
+ * captured revision and that revision's rebuild must have succeeded. A lagging report is a
+ * retryable race; a failed rebuild of the captured revision is not retried.
+ */
+export function currentGeometryFailure(
+  report: PersistentDocumentSessionReport,
+  revision: number,
+): PersistentDocumentSessionDiagnostic | null {
+  if (report.snapshot.revision !== revision) return staleReport
+  if (!report.rebuild.ok)
+    return { ...report.rebuild.diagnostic, retryable: false, sourceCode: "rebuild-failed" }
+  return null
+}
+
+/** Geometry a worker returns must come from the captured revision, never an earlier rebuild. */
+export function producedRevisionFailure(
+  produced: number,
+  revision: number,
+): PersistentDocumentSessionDiagnostic | null {
+  return produced === revision ? null : staleReport
+}
+
 /**
  * Why a requested Part has no export bodies. While a rebuild runs after a commit the report lags
  * the authority and parts cannot resolve: a retryable revision race. Once they resolve, a missing

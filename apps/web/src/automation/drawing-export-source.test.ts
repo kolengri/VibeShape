@@ -179,7 +179,23 @@ describe("prepare_drawing_export", () => {
         diagnostic: { code: "drawing-too-complex", retryable: false },
       },
     )
-    expect(project).toHaveBeenCalledTimes(4)
+    project.mockResolvedValueOnce({
+      ok: false,
+      diagnostic: {
+        code: "rebuild-failed",
+        message:
+          "The committed document could not be rebuilt. Its semantic revision remains saved.",
+        retryable: false,
+        sourceCode: "rebuild-failed",
+      },
+    })
+    expect(await f.session.execute(actor, operation({ revision: 4, format: "svg" }))).toMatchObject(
+      {
+        ok: false,
+        diagnostic: { code: "rebuild-failed", retryable: false },
+      },
+    )
+    expect(project).toHaveBeenCalledTimes(5)
   })
 
   it("rejects stale revisions and projections of another revision", async () => {

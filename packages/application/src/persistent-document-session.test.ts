@@ -1257,6 +1257,8 @@ describe("persistent document session", () => {
     await expect(created.session.projectDrawing(["front", "top"])).resolves.toMatchObject({
       ok: true,
       projection: { bodyCount: 1, views: [{ view: "front" }, { view: "top" }] },
+      // The worker's projected revision is passed through so callers can reject older geometry.
+      revision: state.rebuildPorts[0]?.revisions.at(-1),
     })
     expect(state.rebuildPorts[0]?.drawnViews).toEqual([["front", "top"]])
     await created.session.close()
