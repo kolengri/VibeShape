@@ -61,8 +61,9 @@ test("undoes saved feature edits and deletion, then reopens and copies replayabl
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
   await page.reload()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
-  await expect(undo).toBeDisabled()
-  await expect(redo).toBeDisabled()
+  // ADR-0125: saved Undo/Redo navigation survives reload.
+  await expect(undo).toBeEnabled()
+  await expect(redo).toBeEnabled()
   await box.click()
   await expect(edit.getByRole("combobox", { name: "Width", exact: true })).toHaveValue("30 mm")
   await edit.getByRole("button", { name: "Cancel", exact: true }).click()

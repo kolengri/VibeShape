@@ -14,6 +14,7 @@ test("checks current CAD placement and a rotated print copy against a persistent
   ).toBeVisible()
   await openApplicationMenuItem(page, "Settings…")
   const settings = page.getByRole("dialog", { name: "Settings", exact: true })
+  await settings.getByRole("tab", { name: "Printer build volume", exact: true }).click()
   await settings.getByLabel("Bed width X (mm)").fill("30")
   await settings.getByLabel("Bed depth Y (mm)").fill("30")
   await settings.getByLabel("Maximum print height Z (mm)").fill("25")
