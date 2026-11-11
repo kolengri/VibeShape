@@ -4,7 +4,12 @@ import {
   assemblyDraftStateSchema,
 } from "../../packages/automation-api/src/assembly-tools"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
-import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
+import {
+  enableLocalAi,
+  expectLocalAiReconnected,
+  openAiConnections,
+  openAutoApplySetup,
+} from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b260-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -382,9 +387,7 @@ test("authors owned assembly and library drafts through paired MCP, exact previe
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
+    await expectLocalAiReconnected(page)
     const reloaded = success(
       localToolOutputs.model_info.parse(await call("model_info", {})),
     ).summary
