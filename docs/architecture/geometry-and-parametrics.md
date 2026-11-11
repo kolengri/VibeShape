@@ -235,6 +235,11 @@ SPK-003 implements policy version `1` with a `0.22` maximum score and `0.035` am
 - Signed offset and support-local angular datum planes are implemented. Mid-plane, arbitrary line-at-angle and axis reference modes remain future work; see [ADR-0114](../adr/0114-versioned-angular-datum-planes.md). Datum Points are implemented by coordinates, stable vertex or circular-edge center; see [ADR-0154](../adr/0154-truncated-cones-drill-points-and-datum-points.md).
 - Face attachment is allowed, but the UI shows reference stability.
 - Pattern and mirror operations preserve semantic IDs from source elements.
+- Path patterns reuse the Sweep sketch-path selector. The document worker resolves the solved path
+  into directed analytical curves; the geometry worker measures arc length by adaptive Gauss–Legendre
+  integration over OCCT curve adaptors and turns stations into rigid placements, using the planar
+  rotation-minimizing frame for follow orientation. See
+  [ADR-0156](../adr/0156-path-pattern.md).
 - Fillet and chamfer select edge sets through reference collections, never positional indices.
 
 ## Dirty propagation and partial rebuild
