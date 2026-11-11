@@ -3,7 +3,7 @@ import { z } from "zod"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { createLengthQuantity } from "../../packages/domain/src/units"
-import { enableLocalAi } from "./application-menu-support"
+import { enableLocalAi, expectLocalAiReconnected } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 import {
   expectPlateGeometry,
@@ -272,10 +272,7 @@ test("prints an editable MCP mounting plate while preserving a manual browser di
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
+    await expectLocalAiReconnected(page)
     const restored = await modelInfo()
     expect(restored.summary.revision).toBe(redone.summary.revision)
     expectPlateGeometry(restored.measurements?.data.features, 90, 5.4)

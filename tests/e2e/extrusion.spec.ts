@@ -164,7 +164,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "2")
     await expect(form.getByRole("radio", { name: "New body", exact: true })).toBeEnabled()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
-    await form.getByRole("button", { name: "Create extrusion" }).click()
+    await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
     await expect(form).toHaveCount(0, { timeout: 30_000 })
 
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
@@ -225,7 +225,7 @@ test.describe("selector-backed extrusion", () => {
         form.getByRole("button", { name: "Select Target body in 3D", exact: true }),
       ).toHaveText("Box 1 · result")
       await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
-      await form.getByRole("button", { name: "Create extrusion" }).click()
+      await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
       await expect(form).toHaveCount(0, { timeout: 30_000 })
 
       await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
@@ -330,7 +330,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toHaveCount(0)
     await expectSecondCreateRetained("24 mm")
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
-    await form.getByRole("button", { name: "Create extrusion" }).click()
+    await form.getByRole("button", { name: "Create extrusion", exact: true }).click()
     await expect(form).toHaveCount(0, { timeout: 30_000 })
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
 
@@ -349,7 +349,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toHaveCount(0)
     await expectEditRetained("26 mm")
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
-    await editForm.getByRole("button", { name: "Update extrusion" }).click()
+    await editForm.getByRole("button", { name: "Update extrusion", exact: true }).click()
     await expect(editForm).toHaveCount(0, { timeout: 30_000 })
 
     await page.getByRole("treeitem", { name: "Variables", exact: true }).click()
@@ -527,7 +527,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "1")
     await expect(page.getByText("Unsaved feature preview", { exact: true })).toBeVisible()
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).not.toBeVisible()
-    await createForm.getByRole("button", { name: "Create extrusion" }).dblclick()
+    await createForm.getByRole("button", { name: "Create extrusion", exact: true }).dblclick()
     await expect(createForm).toHaveCount(0, { timeout: 30_000 })
 
     await expect(page.getByRole("treeitem", { name: "Extrusion 1", exact: true })).toBeVisible()
@@ -737,7 +737,7 @@ test.describe("selector-backed extrusion", () => {
       .click()
     const extrusionForm = page.getByRole("form", { name: "Extrude profile" })
     await expect(extrusionForm).toBeVisible()
-    await extrusionForm.getByRole("button", { name: "Create extrusion" }).click()
+    await extrusionForm.getByRole("button", { name: "Create extrusion", exact: true }).click()
     await expect(extrusionForm).toHaveCount(0, { timeout: 30_000 })
 
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
@@ -807,7 +807,7 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Finish sketch" }).click()
     await extrudeCommand(page).click()
     const extrusion = page.getByRole("form", { name: "Extrude profile" })
-    await extrusion.getByRole("button", { name: "Create extrusion" }).click()
+    await extrusion.getByRole("button", { name: "Create extrusion", exact: true }).click()
     await expect(extrusion).toHaveCount(0, { timeout: 30_000 })
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -860,7 +860,7 @@ test.describe("selector-backed extrusion", () => {
     await extrudeCommand(page).click()
     await page
       .getByRole("form", { name: "Extrude profile" })
-      .getByRole("button", { name: "Create extrusion" })
+      .getByRole("button", { name: "Create extrusion", exact: true })
       .click()
     await expect(page.getByRole("form", { name: "Extrude profile" })).toHaveCount(0, {
       timeout: 30_000,
@@ -933,7 +933,7 @@ test.describe("selector-backed extrusion", () => {
     await extrudeCommand(page).click()
     await page
       .getByRole("form", { name: "Extrude profile" })
-      .getByRole("button", { name: "Create extrusion" })
+      .getByRole("button", { name: "Create extrusion", exact: true })
       .click()
     await expect(page.getByRole("form", { name: "Extrude profile" })).toHaveCount(0, {
       timeout: 30_000,
@@ -947,7 +947,7 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("treeitem", { name: "Extrusion 1", exact: true }).click()
     const editForm = page.getByRole("form", { name: "Edit extrusion" })
     await editForm.getByRole("combobox", { name: "Distance" }).fill("20 mm")
-    await editForm.getByRole("button", { name: "Update extrusion" }).click()
+    await editForm.getByRole("button", { name: "Update extrusion", exact: true }).click()
     await expect(editForm).toHaveCount(0, { timeout: 30_000 })
     await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
@@ -992,7 +992,7 @@ test.describe("selector-backed extrusion", () => {
     await extrudeCommand(page).click()
     await page
       .getByRole("form", { name: "Extrude profile" })
-      .getByRole("button", { name: "Create extrusion" })
+      .getByRole("button", { name: "Create extrusion", exact: true })
       .click()
     await expect(page.getByRole("form", { name: "Extrude profile" })).toHaveCount(0, {
       timeout: 30_000,
