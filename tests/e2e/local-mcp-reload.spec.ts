@@ -1,7 +1,12 @@
 import { test as recoveryTest } from "@playwright/test"
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
-import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
+import {
+  enableLocalAi,
+  openAiConnections,
+  openAutoApplySetup,
+  openLocalAiApprovalMenu,
+} from "./application-menu-support"
 import { createEditorProject, expect, test } from "./fixtures"
 
 test("restores local MCP and auto-apply after reload and respects Stop AI", async ({
@@ -86,9 +91,7 @@ test("remembers local AI access and approval mode across a fresh browser session
       ).toMatchObject({ ok: true })
       await fresh.reload()
       await expect(fresh.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
-      await fresh
-        .getByRole("button", { name: "AI connection and approval mode", exact: true })
-        .click()
+      await openLocalAiApprovalMenu(fresh)
       await fresh.getByRole("menuitemradio", { name: "Approve each change", exact: true }).click()
       await fresh.reload()
       await expect(

@@ -1,7 +1,7 @@
 import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { generateUuidV7 } from "../../packages/domain/src/identifiers"
-import { enableLocalAi } from "./application-menu-support"
+import { enableLocalAi, openLocalAiApprovalMenu } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 function success<T>(
@@ -78,7 +78,7 @@ test("creates two projects, authors each, and returns to their saved models over
     await enableLocalAi(page)
     const denied = localToolOutputs.list_projects.parse(await call("list_projects", {}))
     expect(denied).toMatchObject({ ok: false, diagnostic: { code: "project-management-disabled" } })
-    await page.getByRole("button", { name: "AI connection and approval mode", exact: true }).click()
+    await openLocalAiApprovalMenu(page)
     await page
       .getByRole("menuitemcheckbox", { name: "Allow project management", exact: true })
       .click()

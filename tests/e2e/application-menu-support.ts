@@ -22,8 +22,15 @@ export async function enableLocalAi(page: Page) {
   await expect(footer.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
 }
 
-export async function openAutoApplySetup(page: Page) {
+/** Opens the local MCP approval menu; the remote connection has its own separate trigger. */
+export async function openLocalAiApprovalMenu(page: Page) {
   const footer = await openAiConnections(page)
-  await footer.getByRole("button", { name: "AI connection and approval mode", exact: true }).click()
+  await footer
+    .getByRole("button", { name: "Local MCP connection and approval mode", exact: true })
+    .click()
+}
+
+export async function openAutoApplySetup(page: Page) {
+  await openLocalAiApprovalMenu(page)
   await page.getByRole("menuitemradio", { name: "Apply automatically", exact: true }).click()
 }
