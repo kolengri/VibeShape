@@ -9,8 +9,9 @@ intersection with the neutral plane. Faces that touch a selected face tangential
 The pull direction follows the plane normal, or points into the part for a planar neutral face. Faces
 narrow along the pull direction, so drafting the walls of a box about its base face tapers the box
 toward its top. **Flip pull direction** inverts the taper. The angle accepts unit-aware expressions
-and `#variables` and must be at least 0.01 degrees and less than 89 degrees; OCCT leaves faces
-unchanged at smaller angles, so they are rejected rather than silently skipped.
+and `#variables` and must be at least 0.01 degrees and less than 89 degrees. OCCT leaves faces
+unchanged at or below 1e-4 rad (about 0.0057 degrees); the 0.01 degree minimum keeps a margin above
+that, so tiny angles are rejected rather than silently skipped.
 
 The disposable preview contains one valid solid. Apply replaces the current body of the same authored
 part and retains its history; Apply is disabled while the preview evaluates and runs once per click.
@@ -20,8 +21,10 @@ ordinary feature lifecycle.
 Draft accepts 1–256 faces of one exact solid. Every selected face must be drafted: when OCCT cannot
 tilt a face, the preview fails and the task panel names that face's position in the selection. No
 face is skipped. Faces tangent to a selected face are drafted with it, so the failure can come from a
-tangent neighbour. Curved blends such as fillets and faces perpendicular to the pull direction cannot
-be drafted, so on filleted parts draft before filleting.
+tangent neighbour. Blends that run across the pull direction, such as fillets around a top or bottom
+face, and faces perpendicular to the pull direction cannot be drafted, so add those fillets after the
+draft. Fillets that run along the pull direction, such as rounded vertical corners, are drafted with
+their walls.
 Faces are stored as body-bound face references; native face indices are never persisted. A face lost
 after a source edit requires explicit reselection.
 

@@ -137,6 +137,39 @@ function rebuiltResponse(
   }
 }
 
+function draftCandidate() {
+  return featureRecordSchema.parse({
+    ...feature(candidateId, [baseId]),
+    type: draftFeatureType.type,
+    parameters: {
+      targetBody: { schemaVersion: 0, featureId: baseId, outputRole: "result" },
+      faces: [
+        {
+          schemaVersion: 1,
+          featureId: baseId,
+          outputRole: "result",
+          kind: "face",
+          lineageToken: "face-1",
+          signature: {
+            kind: "face",
+            geometryClass: "PLANE",
+            measure: 200,
+            centroid: [1, 0, 5],
+            bounds: { min: [0, 0, 0], max: [20, 0, 10] },
+            boundaryCount: 4,
+            adjacentGeometryClasses: ["PLANE", "PLANE", "PLANE", "PLANE"],
+            direction: [1, 0, 0],
+            directionMode: "oriented",
+          },
+        },
+      ],
+      neutralPlane: { kind: "origin-plane", plane: "XY" },
+      angle: createAngleQuantity(5, "deg"),
+      flip: false,
+    },
+  })
+}
+
 describe("feature preview worker lifetime", () => {
   it("retains the last exact Placement pose while rebuilding and clears it when the draft is invalidated", async () => {
     const response = rebuiltResponse([
@@ -363,36 +396,7 @@ describe("feature preview worker lifetime", () => {
 
   it("forwards the exact Draft face diagnostic", async () => {
     const message = "Draft cannot tilt selected face 1 or a face tangent to it."
-    const candidate = featureRecordSchema.parse({
-      ...feature(candidateId, [baseId]),
-      type: draftFeatureType.type,
-      parameters: {
-        targetBody: { schemaVersion: 0, featureId: baseId, outputRole: "result" },
-        faces: [
-          {
-            schemaVersion: 1,
-            featureId: baseId,
-            outputRole: "result",
-            kind: "face",
-            lineageToken: "face-1",
-            signature: {
-              kind: "face",
-              geometryClass: "PLANE",
-              measure: 200,
-              centroid: [1, 0, 5],
-              bounds: { min: [0, 0, 0], max: [20, 0, 10] },
-              boundaryCount: 4,
-              adjacentGeometryClasses: ["PLANE", "PLANE", "PLANE", "PLANE"],
-              direction: [1, 0, 0],
-              directionMode: "oriented",
-            },
-          },
-        ],
-        neutralPlane: { kind: "origin-plane", plane: "XY" },
-        angle: createAngleQuantity(5, "deg"),
-        flip: false,
-      },
-    })
+    const candidate = draftCandidate()
     createSession.mockReturnValue({
       rebuild: vi.fn(async ({ document }: { document: typeof snapshot }) => ({
         ...rebuiltResponse([]),
@@ -422,6 +426,44 @@ describe("feature preview worker lifetime", () => {
     expect(result.current.status).toBe("error")
     expect(result.current.diagnostic).toBe(message)
   })
+
+  it.each(["no worker message", "a rejected rebuild"] as const)(
+    "keeps the localized Draft advice when the preview fails with %s",
+    async (failure) => {
+      const candidate = draftCandidate()
+      createSession.mockReturnValue({
+        rebuild: vi.fn(async ({ document }: { document: typeof snapshot }) => {
+          if (failure === "a rejected rebuild") throw new Error("Document worker terminated.")
+          return {
+            ...rebuiltResponse([]),
+            documentId: document.id,
+            revision: document.revision,
+            evaluation: {
+              records: document.features.map(({ id }) => ({
+                featureId: id,
+                status: "failed" as const,
+                diagnostics: [
+                  {
+                    code: "org.vibeshape.feature.geometry-failed",
+                    values: { reason: "invalid-feature-geometry" },
+                  },
+                ],
+              })),
+              dirtyFeatureIds: [],
+              evaluatedFeatureIds: [],
+              reusedFeatureIds: [],
+            },
+          }
+        }),
+        terminate: vi.fn(),
+      })
+      const committedGeometry = [] as const
+      const { result } = renderHook(() => useFeaturePreview(snapshot, candidate, committedGeometry))
+      await act(async () => {})
+      expect(result.current.status).toBe("error")
+      expect(result.current.diagnostic).toBeUndefined()
+    },
+  )
 
   it("forwards the exact fillet diagnostic without changing the requested radius", async () => {
     const message =

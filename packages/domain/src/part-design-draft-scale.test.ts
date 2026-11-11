@@ -172,6 +172,22 @@ describe("Draft feature contract", () => {
       ok: false,
       diagnostic: { code: "invalid-draft-angle" },
     })
+    // 0.005 degrees is below the minimum OCCT actually applies.
+    expect(
+      resolve(
+        new Map<string, ExpressionValue>([
+          ["taper", { dimension: "angle", value: (0.005 * Math.PI) / 180 }],
+        ]),
+      ),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-draft-angle",
+        issues: [
+          { message: "The angle must resolve to at least 0.01 degrees and less than 89 degrees." },
+        ],
+      },
+    })
   })
 
   it("excludes document UUIDs from content parameters", () => {

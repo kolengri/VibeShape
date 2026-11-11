@@ -2707,7 +2707,7 @@
       "cancel": "Cancel",
       "staleRevision": "The document changed. Reopen Draft and select the current faces.",
       "saveFailed": "Draft could not be saved. Your values remain available to retry.",
-      "previewFailed": "Draft could not be built. Faces tangent to a selected face are drafted with it, and curved blends such as fillets, or faces perpendicular to the pull direction, cannot be drafted. Draft before filleting, choose other faces, or reduce the angle. Apply requires a successful preview."
+      "previewFailed": "Draft could not be built. Faces tangent to a selected face are drafted with it. Blends that run across the pull direction, such as fillets around a top face, and faces perpendicular to it cannot be drafted; fillets along the pull direction are drafted with their walls. Draft before adding those fillets, choose other faces, or reduce the angle. Apply requires a successful preview."
     },
     "scale": {
       "title": "Scale",

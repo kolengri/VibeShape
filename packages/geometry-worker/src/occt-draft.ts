@@ -72,9 +72,9 @@ export function draftOcctShape(
       builder.Add(face.wrapped, pull, parameters.angle, plane, true)
       if (!builder.AddDone())
         throw new DraftError(
-          `Draft cannot tilt selected face ${index + 1} or a face tangent to it. Curved blends ` +
-            "such as fillets and faces perpendicular to the pull direction cannot be drafted; " +
-            "draft before filleting, or choose faces whose tangent neighbours can tilt too.",
+          `Draft cannot tilt selected face ${index + 1} or a face tangent to it. Blends that ` +
+            "run across the pull direction, such as fillets around a top face, and faces " +
+            "perpendicular to it cannot be drafted; draft before adding those fillets.",
         )
     })
     const progress = own(new occt.Message_ProgressRange_1())

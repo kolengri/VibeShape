@@ -213,7 +213,7 @@ function assertCandidatePreviewSucceeded(
       )
     : []
   throw new FeaturePreviewFailure(
-    typeof diagnostic === "string" ? diagnostic : "The feature preview could not be evaluated.",
+    "The feature preview could not be evaluated.",
     diagnostics,
     typeof diagnostic === "string" ? diagnostic : undefined,
   )

@@ -102,7 +102,7 @@ export const draftFeatureTypeHandler: TrustedFeatureTypeHandler = {
             {
               path: "angle",
               message: expression.ok
-                ? "The angle must resolve to more than 0 and less than 89 degrees."
+                ? "The angle must resolve to at least 0.01 degrees and less than 89 degrees."
                 : expression.diagnostic.message,
             },
           ],
