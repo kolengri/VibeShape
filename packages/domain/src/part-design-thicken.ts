@@ -40,7 +40,7 @@ export const thickenFeatureParametersSchema = z
       (path, message) => context.addIssue({ code: "custom", path, message }),
     )
     const check = distinct("Thicken faces must be unique.")
-    parameters.faces.forEach((face, index) => check(face, ["faces", index]))
+    for (const [index, face] of parameters.faces.entries()) check(face, ["faces", index])
   })
 export type ThickenFeatureParameters = Readonly<z.infer<typeof thickenFeatureParametersSchema>>
 
