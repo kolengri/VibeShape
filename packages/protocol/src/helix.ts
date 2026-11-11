@@ -140,8 +140,11 @@ function coilMeridianAxial(radius: number, pitch: number, n: number, b: number) 
   )
 }
 
-/** Maximizes a function on [low, high] by dense sampling then golden-section refinement. */
-function maximizeOnInterval(f: (value: number) => number, low: number, high: number) {
+/**
+ * Maximizes a function on [low, high] by dense sampling then golden-section refinement. The Coil
+ * schema and the helical Sweep profile check in the geometry worker share it.
+ */
+export function maximizeOnInterval(f: (value: number) => number, low: number, high: number) {
   const samples = 96
   let best = low
   for (let index = 1; index <= samples; index += 1) {
