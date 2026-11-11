@@ -167,7 +167,8 @@ describe("Coil task panel", () => {
     await waitFor(() => expect(preview.mock.calls.some(([feature]) => feature !== null)).toBe(true))
     const created = preview.mock.calls
       .map(([feature]) => feature)
-      .findLast(Boolean) as FeatureRecord
+      .filter(Boolean)
+      .at(-1) as FeatureRecord
     cleanup()
     const user = userEvent.setup()
     const view = setup({ kind: "edit", feature: created })
