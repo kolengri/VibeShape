@@ -152,7 +152,10 @@ describe("Draft engine evaluation", () => {
         draftInput(source, [...faces(source, isSide), ...faces(source, isTop)]),
         vi.fn(),
       )
-      expect(result).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-geometry" } })
+      expect(result).toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-feature-geometry", userActionable: true },
+      })
       if (result.ok) throw new Error("Expected Draft to fail.")
       expect(result.diagnostic.message).toContain("Draft cannot tilt selected face 5")
       expect(engine.getHealth().ownedShapeCount).toBe(owned)
@@ -174,6 +177,7 @@ describe("Draft engine evaluation", () => {
       expect(result).toMatchObject({ ok: false })
       if (result.ok) throw new Error("Expected Draft to fail.")
       expect(result.diagnostic.message).toContain("Draft face 1 is missing")
+      expect(result.diagnostic.userActionable).toBe(true)
     } finally {
       engine.disposeDocument(documentId)
     }

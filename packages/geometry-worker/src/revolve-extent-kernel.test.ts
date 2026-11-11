@@ -324,6 +324,33 @@ describe("Revolve v8 dynamic endpoints", () => {
     expect(result.shape.volume).toBeCloseTo(pappus(179 * DEG, 2, 5, 4), 5)
   })
 
+  // A plate spanning the axis whose z = 0 face holds the start cap of a profile touching the axis:
+  // after a half turn the sweep returns to that face, and OCCT merges the start cap and the contact
+  // into one face centred on the axis.
+  const plate = () => blocker([0, 2.5, 0], [20, 15, 1])
+  const halfProfile = () => [rectangle(0, 5, 0, 4, 100)]
+
+  it("revolves a profile touching the axis up to the plate holding its start cap", async () => {
+    await evaluate(plate())
+    const result = await evaluate(
+      revolveInput(revolveContent({ profiles: halfProfile(), endCondition: bodyEnd }), [
+        boxDependency,
+      ]),
+    )
+    expect(result.shape.volume).toBeCloseTo(pappus(Math.PI, 0, 5, 4), 5)
+    expect(result.shape.bounds.max[2]).toBeLessThan(TOLERANCE)
+    expect(result.shape.bounds.min[0]).toBeCloseTo(-5, 6)
+  })
+
+  it("revolves a profile touching the axis up to the plate face holding its start cap", async () => {
+    const box = await evaluate(plate())
+    const endCondition = { ...bodyEnd, kind: "up-to-face", face: face(box, [0, 0, -1], 0) }
+    const result = await evaluate(
+      revolveInput(revolveContent({ profiles: halfProfile(), endCondition }), [boxDependency]),
+    )
+    expect(result.shape.volume).toBeCloseTo(pappus(Math.PI, 0, 5, 4), 5)
+  })
+
   it("fails clearly when the endpoint body is unreachable", async () => {
     await evaluate(blocker([-5, 22.5, -10], [10, 5, 9]))
     const diagnostic = await failure(

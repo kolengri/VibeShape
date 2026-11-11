@@ -41,12 +41,18 @@ mock.module("../../document/document-controller", () => ({
   commitAuthoredTransaction: ports.apply,
 }))
 const mockDependency1 = await import("react")
+/** Receives the readiness callback of the next mounted result preview; see `analyze`. */
+const previewMounts: { next: ((report: (ready: boolean) => void) => void) | null } = {
+  next: null,
+}
 mock.module("../import/import-preview", () => {
   const { useEffect } = mockDependency1
   return {
     ImportPreview: ({ onReady, label }: { onReady: (ready: boolean) => void; label: string }) => {
       useEffect(() => {
         onReady(true)
+        previewMounts.next?.(onReady)
+        previewMounts.next = null
         return () => onReady(false)
       }, [onReady])
       return <div role="img" aria-label={label} />
@@ -55,9 +61,8 @@ mock.module("../import/import-preview", () => {
 })
 
 const { webcrypto } = await import("node:crypto")
-const { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } = await import(
-  "@testing-library/react"
-)
+const { act, cleanup, fireEvent, getConfig, render, renderHook, screen, waitFor, within } =
+  await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
 const { I18nProvider } = await import("@vibeshape/i18n/provider")
 const { useCallback, useState } = await import("react")
@@ -228,14 +233,23 @@ async function fill() {
   await userEvent.click(screen.getByRole("button", { name: "Reverse direction for case 1" }))
   await pickFaces()
 }
+/**
+ * Runs one analysis to an applicable result. Completion is a chain of real asynchronous work
+ * (jsdom FileReader immediates, a WebCrypto digest, several panel renders and the preview's
+ * readiness effect), so a 1 s `waitFor` deadline raced it on loaded CI runners, where wall-clock
+ * time passes without blocking this event loop. Synchronize on the completion event instead: the
+ * result preview mounts only after a current analysis committed its result, and its readiness
+ * report is then flushed inside `act`.
+ */
 async function analyze() {
+  const mounted = deferred<(ready: boolean) => void>()
+  previewMounts.next = mounted.resolve
   await userEvent.click(screen.getByRole("button", { name: "Analyze and optimize" }))
-  await waitFor(() =>
-    expect(
-      (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false),
-  )
+  const report = await getConfig().asyncWrapper(() => mounted.promise)
+  act(() => report(true))
+  expect(
+    (screen.getByRole("button", { name: "Apply as new mesh Part" }) as HTMLButtonElement).disabled,
+  ).toBe(false)
 }
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -605,6 +619,7 @@ describe("Generative Design workflow", () => {
   })
 })
 afterEach(() => {
+  previewMounts.next = null
   cleanup()
   vi.resetAllMocks()
   vi.unstubAllGlobals()

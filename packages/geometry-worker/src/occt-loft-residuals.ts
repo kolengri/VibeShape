@@ -1,6 +1,13 @@
 import type { Edge, Face, SimplePoint } from "replicad"
 import type { Extrema_ExtAlgo, OpenCascadeInstance } from "replicad-opencascadejs"
 
+/**
+ * A constrained Loft failure the user can fix by changing sections, guides, rails, supports or
+ * continuity; its message is safe to show as a feature diagnostic. Every other Loft exception is
+ * internal and keeps the catalog advice.
+ */
+export class LoftFillingError extends Error {}
+
 type Jet = {
   du: SimplePoint
   dv: SimplePoint
@@ -118,7 +125,7 @@ function compareJets(occt: OpenCascadeInstance, first: Jet, second: Jet, order: 
     n2: SimplePoint = [rawN2[0] * sign, rawN2[1] * sign, rawN2[2] * sign]
   const angle = Math.asin(Math.min(1, Math.hypot(...cross(occt, n1, n2))))
   if (!(angle <= 1e-5))
-    throw new Error(`A Loft end exceeded its geometric G1 tolerance (angle=${angle}).`)
+    throw new LoftFillingError(`A Loft end exceeded its geometric G1 tolerance (angle=${angle}).`)
   if (order !== "G2") return
   const d1 = unit(second.du),
     d2 = unit(cross(occt, n2, d1)),
@@ -129,7 +136,9 @@ function compareJets(occt: OpenCascadeInstance, first: Jet, second: Jet, order: 
     ),
   )
   if (!(residual <= 1e-4))
-    throw new Error(`A Loft end exceeded its geometric G2 tolerance (curvature=${residual}).`)
+    throw new LoftFillingError(
+      `A Loft end exceeded its geometric G2 tolerance (curvature=${residual}).`,
+    )
 }
 /** Native closest projection and D2 verify geometric constraints independently of filling error reports. */
 export function requireLoftEdgeResiduals(
@@ -148,7 +157,7 @@ export function requireLoftEdgeResiduals(
       nativePoint.delete()
       const actual = surfaceJet(occt, face, sample)
       if (!(actual.distance <= 1e-7) || !(trimmedDistance(occt, face, sample) <= 1e-7))
-        throw new Error(
+        throw new LoftFillingError(
           `A Loft guide or section exceeded its geometric C0 tolerance (distance=${actual.distance}).`,
         )
       if (support)

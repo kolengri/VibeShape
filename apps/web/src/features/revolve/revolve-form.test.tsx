@@ -726,6 +726,33 @@ describe("RevolveForm v8 extents and endpoints", () => {
     )
   })
 
+  it("keeps only the literal of a hidden expression angle behind an endpoint", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderExtentForm()
+    const angle = screen.getByRole("combobox", { name: copy.angle })
+    await user.clear(angle)
+    await user.type(angle, "#sweep / 2")
+    await user.selectOptions(screen.getByLabelText("End condition"), "up-to-body")
+    await user.click(screen.getByRole("combobox", { name: "End body" }))
+    await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Wall")
+    await user.click(screen.getByRole("option", { name: "Wall · result" }))
+    await user.click(submit())
+    // The saved record keeps no hidden reference to #sweep, so a later out-of-range #sweep value
+    // cannot break the rebuild through a field the user cannot see.
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        parameters: expect.objectContaining({
+          angle: expect.objectContaining({
+            value: Math.PI / 2,
+            source: expect.objectContaining({ expression: null }),
+          }),
+          endCondition: expect.objectContaining({ kind: "up-to-body" }),
+        }),
+      }),
+    )
+  })
+
   it("retains a supported angle behind an endpoint and restores an out-of-range one", async () => {
     const user = userEvent.setup()
     const { onSave, onPreviewChange } = renderExtentForm()

@@ -1770,18 +1770,29 @@ export function expectedRevolveDependencyIds(
   return ordered.filter((featureId, index) => ordered.indexOf(featureId) === index)
 }
 
-function resolveRevolveV8Parameters(parameters: unknown, variables: VariableValues) {
-  const parsed = revolveFeatureParametersV8Schema.safeParse(parameters)
-  if (!parsed.success) return { ok: true as const, parameters }
-  const resolved = { ...parsed.data }
+/** Resolves the authored angle expressions of an angle-bounded Revolve v8 extent. */
+function resolveRevolveV8Angles(parameters: RevolveFeatureParametersV8, variables: VariableValues) {
+  const resolved = { ...parameters }
   for (const key of ["angle", "secondAngle"] as const) {
-    const quantity = parsed.data[key]
+    const quantity = parameters[key]
     if (quantity === null) continue
     const value = resolveQuantityExpression(quantity, variables)
     if (!value.ok) return expressionFailure(key, value.diagnostic.message, value.diagnostic.code)
     Object.assign(resolved, { [key]: value.quantity })
   }
-  const valid = revolveFeatureParametersV8Schema.safeParse(resolved)
+  return { ok: true as const, parameters: resolved }
+}
+
+function resolveRevolveV8Parameters(parameters: unknown, variables: VariableValues) {
+  const parsed = revolveFeatureParametersV8Schema.safeParse(parameters)
+  if (!parsed.success) return { ok: true as const, parameters }
+  // A dynamic endpoint hides and ignores the angle, so a stale expression there must not fail the
+  // rebuild; the endpoint revolve is one-directional, so it has no second angle either.
+  if (parsed.data.endCondition.kind !== "angle")
+    return { ok: true as const, parameters: parsed.data }
+  const resolved = resolveRevolveV8Angles(parsed.data, variables)
+  if (!resolved.ok) return resolved
+  const valid = revolveFeatureParametersV8Schema.safeParse(resolved.parameters)
   return valid.success
     ? { ok: true as const, parameters: valid.data }
     : expressionFailure(
