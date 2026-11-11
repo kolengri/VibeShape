@@ -39,11 +39,11 @@ function retainedFeatureRepairIntent(controller: DocumentControllerState, featur
   )
 }
 
-function retainedFeatureBodyTask(controller: DocumentControllerState, tool: Props["tool"]) {
-  if (!tool || !("featureId" in tool) || !tool.featureId) return null
-  const intent = retainedFeatureRepairIntent(controller, tool.featureId)
+function retainedFeatureBodyTask(controller: DocumentControllerState, featureId?: FeatureId) {
+  if (!featureId) return null
+  const intent = retainedFeatureRepairIntent(controller, featureId)
   if (intent?.kind !== "feature") return null
-  const feature = historyFeatureForEditing(controller, tool.featureId)
+  const feature = historyFeatureForEditing(controller, featureId)
   if (!feature || !missingHistoryFeatureBody(feature, intent.missingInputs)) return null
   return { feature, intent }
 }
@@ -73,8 +73,17 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
   const t = useTranslations("app.historyFeatureRepair")
   const [selectedBodyId, setSelectedBodyId] = useState("")
   const selectId = useId()
-  const task = retainedFeatureBodyTask(controller, tool)
-  const formController = historyRepairTaskContext(controller, tool)
+  // Both derivations parse and spread fresh records. Children key effects and memoized evidence
+  // on report identity, so a new object on every render would re-run them in a loop.
+  const featureId = tool && "featureId" in tool ? tool.featureId : undefined
+  const task = useMemo(
+    () => retainedFeatureBodyTask(controller, featureId),
+    [controller, featureId],
+  )
+  const formController = useMemo(
+    () => historyRepairTaskContext(controller, featureId),
+    [controller, featureId],
+  )
   const report = controller.report
   const hasRepairTask = task !== null
   const parts = useMemo(
@@ -94,15 +103,21 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
     () => bodyOptions.flatMap((option) => (option.body ? [{ ...option, body: option.body }] : [])),
     [bodyOptions],
   )
-  if (!task || !report) return children(formController)
-  const { feature, intent } = task
   const selected = options.find(({ id }) => id === selectedBodyId)
-  const replacement = selected
-    ? replaceHistoryFeatureBody(feature, intent.missingInputs, selected.body)
-    : null
-  const adaptedController = replacement
-    ? replacementTaskContext(formController, replacement.feature)
-    : formController
+  const selectedBody = selected?.body
+  const repair = useMemo(() => {
+    const replacement =
+      task && selectedBody
+        ? replaceHistoryFeatureBody(task.feature, task.intent.missingInputs, selectedBody)
+        : null
+    return replacement
+      ? { replacement, controller: replacementTaskContext(formController, replacement.feature) }
+      : null
+  }, [formController, selectedBody, task])
+  if (!task || !report) return children(formController)
+  const { feature } = task
+  const replacement = repair?.replacement ?? null
+  const adaptedController = repair?.controller ?? formController
   const controls = (
     <RepairBodyControls
       t={t}

@@ -7,7 +7,6 @@ import {
 } from "@vibeshape/domain"
 import { authoredHistoryFeature, authoredHistorySketch } from "@vibeshape/domain/history-repair"
 import type { DocumentControllerState } from "../document/document-controller"
-import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
 
 export function historyFeatureForEditing(
   controller: DocumentControllerState,
@@ -45,19 +44,12 @@ export function historySketchForEditing(controller: DocumentControllerState, ske
 /** Form values use the retained recipe; viewport and kernel keep the disconnected active record. */
 export function historyRepairTaskContext(
   controller: DocumentControllerState,
-  tool: ActivePartDesignTool | null,
+  id: FeatureId | undefined,
 ) {
   const report = controller.report
   const authority = controller.authoredSnapshot
-  if (
-    !report ||
-    (authority?.schemaVersion !== 5 && authority?.schemaVersion !== 6) ||
-    !tool ||
-    !("featureId" in tool) ||
-    !tool.featureId
-  )
+  if (!report || (authority?.schemaVersion !== 5 && authority?.schemaVersion !== 6) || !id)
     return controller
-  const id = tool.featureId
   if (
     !authority.repairIntents.some(
       (intent) => intent.kind === "feature" && intent.authored.id === id,

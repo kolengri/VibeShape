@@ -2,6 +2,7 @@ import "../../../../tests/unit/support/dom"
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import type { FeatureRecord } from "@vibeshape/domain"
+import { useCallback, useEffect, useState } from "react"
 import { vi } from "../../../../tests/unit/support/bun-test"
 import type { DocumentControllerState } from "../document/document-controller"
 import { bodyCatalogueFixture } from "../features/part-design/exact-body-catalogue.test-fixtures"
@@ -241,5 +242,61 @@ describe("explicit retained body input repair", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it("keeps the repair context stable while descendants publish state upward", async () => {
+    // Viewport picking publishes its context from an effect keyed on the task report and stores it
+    // above the task panel. A report rebuilt on every render turned that into an update loop.
+    const unrelated = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f9904")
+    const repairWithoutBody = {
+      ...controller,
+      authoredSnapshot: {
+        ...authority,
+        repairIntents: [
+          { ...authority.repairIntents[0], missingInputs: [{ kind: "feature", id: unrelated }] },
+        ],
+      },
+    } as unknown as DocumentControllerState
+    for (const [state, choose] of [
+      [controller, true],
+      [repairWithoutBody, false],
+    ] as const) {
+      let publications = 0
+      function ReportPublisher(props: { report: unknown; onPublish: () => void }) {
+        const { report, onPublish } = props
+        useEffect(() => onPublish(), [report, onPublish])
+        return <p>Repair form</p>
+      }
+      function Workspace() {
+        const [, setPublished] = useState(0)
+        const publish = useCallback(() => {
+          publications += 1
+          // Bounded so a regression fails the assertion instead of hanging the runner.
+          if (publications < 25) setPublished((count) => count + 1)
+        }, [])
+        return (
+          <I18nProvider i18n={i18n} initialLocale="en">
+            <HistoryFeatureRepair
+              controller={state}
+              tool={{ kind: "edit-placement", featureId }}
+              onClose={() => undefined}
+              renderDelete={() => null}
+            >
+              {(context) => <ReportPublisher report={context.report} onPublish={publish} />}
+            </HistoryFeatureRepair>
+          </I18nProvider>
+        )
+      }
+      render(<Workspace />)
+      if (choose)
+        await userEvent.selectOptions(
+          screen.getByRole("combobox", { name: "Replacement body" }),
+          option.id,
+        )
+      await screen.findByText("Repair form")
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(publications).toBe(1)
+      cleanup()
+    }
   })
 })
