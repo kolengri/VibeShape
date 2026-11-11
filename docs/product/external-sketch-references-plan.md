@@ -94,8 +94,15 @@ Coincident, and recomputes the exact crossing from the current solved source or 
 authoritative solve. Parallel, coplanar, degenerate, non-finite, and outside-segment inputs fail closed. Repair
 keeps the projected identity and reuses the graphical 3D line picker. General surfaces, multi-curve results,
 curved Pierce, non-coplanar model-curve wake-up,
-spline and other non-analytical model edges, and sketch-source repair UI are not
-implemented. Normal-view Select and Use
+and sketch-source repair UI are not
+implemented. B-spline, Bezier, and other non-analytical model edges are usable when their published
+cubic Bezier chain lies in a plane parallel to the active support: Use persists the stable
+`EdgeTopoRef` plus chained projected curve and point identities, and every authoritative solve
+projects the current chain, subdividing a coarser fit exactly to the persisted segment count. The
+fit is verified within 1e-4 mm with at most 64 segments. Tilted, spatial, over-budget, and unfitted
+edges fail closed with an actionable message and the ordinary repair path; spline candidates are
+offered in the normal view only and never wake passively
+([ADR-0158](../adr/0158-interpolating-splines-and-model-spline-references.md)). Normal-view Select and Use
 provide the same bounded labeled chooser when candidates overlap, while orbit selection provides bounded
 closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.
@@ -224,6 +231,6 @@ cannot alter evaluation order.
 
 - Cross-document or cross-Part-Studio Derived links.
 - Assembly in-context references and context snapshots.
-- Arbitrary NURBS/spline projection or mesh-derived reference geometry.
+- Projection of non-planar or tilted NURBS/spline edges, or mesh-derived reference geometry.
 - Automatic repair that rewrites a reference selector.
 - A public extension or MCP mutation surface before this first-party command path is stable.

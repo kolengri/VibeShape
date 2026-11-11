@@ -133,7 +133,12 @@ export function PendingSplineShape({
   sketch,
 }: Readonly<{ cursor: SketchPoint2; pending: PendingSpline; sketch: SketchRecord }>) {
   const picked = pending.points.map((target) => targetPoint(sketch, target))
-  const path = previewPath([...picked, cursor])
+  const last = picked.at(-1)
+  // Right after a pick the cursor rests on it; preview the committed picks alone.
+  const resting =
+    last !== undefined &&
+    Math.hypot(cursor.x - last.x, cursor.y - last.y) <= MIN_SPLINE_POINT_SPACING_MM
+  const path = previewPath(resting ? picked : [...picked, cursor])
   const first = picked[0]
   return (
     <>
