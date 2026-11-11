@@ -47,7 +47,9 @@ export async function openConstraintManager(page: Page) {
     .getByRole("toolbar", { name: "Model commands" })
     .getByRole("button", { name: "Open constraint manager", exact: true })
   if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click()
-  await expect(page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })).toBeVisible()
+  const manager = page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })
+  await expect(manager).toBeVisible()
+  return manager
 }
 
 export async function selectOriginPlaneInViewport(page: Page, plane: "xy" | "xz" | "yz") {
@@ -321,4 +323,24 @@ export async function addDimension(
   await input.fill(expression)
   await editor.getByRole("button", { name: "Apply dimension" }).click()
   await openConstraintManager(page)
+}
+
+/** Proves that no other viewport chrome covers the control's center. */
+export async function expectUncoveredControl(control: Locator) {
+  await expect(control).toBeVisible()
+  expect(
+    await control.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      const hit = element.ownerDocument.elementFromPoint(
+        bounds.x + bounds.width / 2,
+        bounds.y + bounds.height / 2,
+      )
+      return hit !== null && element.contains(hit)
+    }),
+  ).toBe(true)
+}
+
+/** The applied-constraint list lives in the Constraint manager dialog, not the task panel. */
+export function constraintManager(page: Page) {
+  return page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })
 }
