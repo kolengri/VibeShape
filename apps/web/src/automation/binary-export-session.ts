@@ -5,6 +5,7 @@ import {
   type BinaryExportDescriptor,
   binaryExportChunkSchema,
   binaryExportDescriptorSchema,
+  binaryExportFilename,
   binaryExportMimeType,
   type LocalBinaryExportOperation,
 } from "@vibeshape/automation-api/binary-exports"
@@ -152,7 +153,7 @@ export function createBinaryExportSession(
         documentId: options.documentId,
         revision,
         format,
-        filename: `model.${format}`,
+        filename: binaryExportFilename(format),
         mimeType: binaryExportMimeType(format),
         byteLength: bytes.byteLength,
         sha256,

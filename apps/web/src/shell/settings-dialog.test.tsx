@@ -100,6 +100,36 @@ describe("coherent browser and project settings", () => {
     expect(applyUnits).not.toHaveBeenCalled()
   })
 
+  it("keeps a GLB or OBJ format chosen in an export dialog selectable in Settings", async () => {
+    localStorage.setItem(
+      "vibeshape.viewer-preferences.v1",
+      JSON.stringify({
+        version: 1,
+        theme: "dark",
+        autoHideConsumedSketches: true,
+        preferredExportFormat: "glb",
+        lastExportFormat: "glb",
+      }),
+    )
+    setup()
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }))
+    await userEvent.click(screen.getByRole("tab", { name: "Export preferences" }))
+    const field = screen.getByRole("combobox", { name: "Preferred export format" })
+    expect(field.textContent).toContain("glTF binary (GLB)")
+    fireEvent.keyDown(field, { key: "Enter" })
+    expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual([
+      "3MF",
+      "STEP",
+      "Binary STL",
+      "glTF binary (GLB)",
+      "OBJ with materials (ZIP)",
+    ])
+    await userEvent.click(screen.getByRole("option", { name: "OBJ with materials (ZIP)" }))
+    expect(
+      JSON.parse(localStorage.getItem("vibeshape.viewer-preferences.v1") ?? "null"),
+    ).toMatchObject({ preferredExportFormat: "obj", lastExportFormat: "obj" })
+  })
+
   it("changes browser preferences without committing project units and restores focus on close", async () => {
     setup()
     const trigger = screen.getByRole("button", { name: "Settings" })

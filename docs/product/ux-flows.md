@@ -726,7 +726,7 @@ without opening a panel. See [UI plugins](ui-plugins.md) for the supported profi
 ## Assembly and reusable components
 
 [Assembly workspace](assembly-workspace.md) describes frozen definitions, independently placed
-occurrences, constraint-solved joint motion preview, exact interference and scoped STEP/STL/3MF export. The
+occurrences, constraint-solved joint motion preview, exact interference, a bill of materials and scoped STEP/STL/3MF/GLB/OBJ export. The
 [local component library](local-component-library.md) provides immutable local versions and explicit
 copy/reference insertion, update and detach. These workflows use ordinary document History and
 portable native source closure.

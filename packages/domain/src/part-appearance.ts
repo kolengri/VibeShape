@@ -66,3 +66,16 @@ export const setPartAppearanceChangeSchema = z
   })
   .strict()
 export type SetPartAppearanceChange = Readonly<z.infer<typeof setPartAppearanceChangeSchema>>
+
+/** Display color without a preset uses neutral dielectric shading; it is not a material claim. */
+const customColorMaterial = { roughness: 0.6, metalness: 0, opacity: 1 } as const
+
+/** Resolves the displayed appearance of a part; null keeps the host's default body display. */
+export function resolvePartAppearanceMaterial(
+  appearance: PartAppearanceValue | null | undefined,
+): AppearanceMaterial | null {
+  if (!appearance) return null
+  const preset = appearance.presetId ? appearancePresets[appearance.presetId] : null
+  if (preset) return appearance.color ? { ...preset, color: appearance.color } : preset
+  return appearance.color ? { ...customColorMaterial, color: appearance.color } : null
+}

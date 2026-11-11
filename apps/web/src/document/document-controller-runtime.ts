@@ -191,6 +191,7 @@ import { createBrowserSurfaceTextureAutomationSession } from "../automation/surf
 import { createAssemblyTransaction } from "../features/assembly/assembly-model"
 import { lightweightingSource } from "../features/lightweighting/lightweighting-model"
 import { prepareDocumentPrint } from "../printing/prepare-document-print"
+import { withAssemblySourceAppearances } from "./assembly-export-appearance"
 import { AssemblyInspectionSession } from "./assembly-inspection-session"
 import { AssistantCheckpointBaselines } from "./assistant-checkpoint-baselines"
 import type { AssistantCheckpointPresentation } from "./assistant-checkpoint-presentation"
@@ -2380,7 +2381,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
             mesh: PRODUCT_MESH_POLICY,
             interferencePairs: [],
           },
-          settings,
+          settings: withAssemblySourceAppearances(settings, active.authoredSnapshot, authority),
         },
         authority.revision,
       )

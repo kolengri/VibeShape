@@ -329,13 +329,27 @@
         "description": "Triangulated geometry for broad slicer compatibility.",
         "action": "Export STL"
       },
+      "glb": {
+        "title": "glTF binary (GLB)",
+        "description": "Colored meshes in meters with Y up for web viewers, AR and game engines.",
+        "action": "Export GLB"
+      },
+      "obj": {
+        "title": "OBJ with materials (ZIP)",
+        "description": "Millimeter OBJ with an MTL color library, packaged as a ZIP archive.",
+        "action": "Export OBJ"
+      },
       "status": {
         "exportingThreeMf": "Exporting 3MF…",
         "exportingStep": "Exporting STEP…",
         "exportingStl": "Exporting STL…",
+        "exportingGlb": "Exporting GLB…",
+        "exportingObj": "Exporting OBJ…",
         "exportedThreeMf": "3MF download started",
         "exportedStep": "STEP download started",
         "exportedStl": "STL download started",
+        "exportedGlb": "GLB download started",
+        "exportedObj": "OBJ archive download started",
         "failed": "Export failed"
       },
       "parts": {
@@ -344,7 +358,7 @@
         "description": "Includes hidden parts. 3MF keeps body names and relative positions."
       },
       "textureExportHint": "STL and 3MF include surface relief. STEP exports the original CAD geometry.",
-      "meshStepError": "STEP export requires exact solids. Export mesh parts as STL or 3MF.",
+      "meshStepError": "STEP export requires exact solids. Export mesh parts as 3MF, STL, GLB or OBJ.",
       "meshQuality": {
         "label": "Mesh quality",
         "default": "Default",
@@ -3145,7 +3159,7 @@
       "exportScope": "Instances to export",
       "exportAll": "All assembly instances",
       "exportGeometryExplanation": "STEP preserves separate exact solids. STL contains the selected triangles in one file; 3MF retains separate geometry objects. Coincident or interfering instances are not fused.",
-      "exportMeshStep": "STEP is unavailable for selections containing triangle meshes. Choose STL or 3MF, or select an exact instance.",
+      "exportMeshStep": "STEP is unavailable for selections containing triangle meshes. Choose 3MF, STL, GLB or OBJ, or select an exact instance.",
       "exportFormat": {
         "step": "Download STEP",
         "stl": "Download STL",
@@ -3292,7 +3306,33 @@
       "asBuiltFailed": "The assembled placement could not be connected. Check grounding, existing joints and selected members, then retry. The design is unchanged.",
       "selectedItemActions": "Actions for {name}",
       "editJointWith": "Edit {kind} joint with {instance}",
-      "choiceSource": "{number} · {source}"
+      "choiceSource": "{number} · {source}",
+      "bom": "Bill of materials",
+      "bomOpen": "Show bill of materials",
+      "bomTitle": "Bill of materials",
+      "bomDescription": "One row per frozen definition used in this assembly, with its occurrence count. Choose a catalog material to compute mass from the exact solid volume.",
+      "bomCaption": "Assembly bill of materials",
+      "bomItem": "Item",
+      "bomPart": "Part",
+      "bomQuantity": "Qty",
+      "bomAppearance": "Appearance",
+      "bomMaterial": "Material",
+      "bomMaterialFor": "Material for {name}",
+      "bomMaterialNone": "Not set",
+      "bomUnitMass": "Unit mass",
+      "bomTotalMass": "Total mass",
+      "bomMass": "{value, number, :: .## } g",
+      "bomUnknown": "—",
+      "bomMeasuring": "Measuring exact volumes…",
+      "bomVolumesUnavailable": "Exact volumes are unavailable, so mass cannot be shown: {reason}",
+      "bomEmpty": "The assembly has no instances to list.",
+      "bomMassNote": "Mass is shown only when you choose a material and every source is an exact solid. It is the solid-body mass at the catalog density; appearance presets are display-only, and printed parts with partial infill weigh less. Material choices are not saved with the project.",
+      "bomDownloadCsv": "Download CSV",
+      "bomClose": "Close",
+      "bomCsvDensity": "Density (kg/m³)",
+      "bomCsvUnitVolume": "Unit volume (mm³)",
+      "bomCsvUnitMass": "Unit mass (g)",
+      "bomCsvTotalMass": "Total mass (g)"
     },
     "import": {
       "trigger": "Import…",
