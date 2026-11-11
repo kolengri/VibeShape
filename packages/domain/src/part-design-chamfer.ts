@@ -1,11 +1,10 @@
 import { z } from "zod"
 import { bodyReferenceSchema } from "./body-reference"
 import {
-  type BodyTopoRef,
   bodyEdgeRefSchema,
   bodyFaceRefSchema,
+  bodyTopoRefChecks,
   bodyTopoRefContent,
-  bodyTopoRefDurableKeys,
 } from "./body-topology-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
@@ -59,38 +58,26 @@ export const chamferFeatureParametersV3Schema = z
       (parameters.flip || parameters.directionOverrides.length)
     )
       issue(["flip"], "Equal-distance Chamfer has no direction to flip.")
-    const targets = new Set<string>()
-    const overrides = new Set<string>()
-    const checkOwner = (reference: BodyTopoRef, path: (string | number)[]) => {
-      if (
-        reference.featureId !== parameters.targetBody.featureId ||
-        reference.outputRole !== parameters.targetBody.outputRole
-      )
-        issue(path, "Chamfer references must belong to the exact target body.")
-    }
+    const checks = bodyTopoRefChecks(
+      parameters.targetBody,
+      "Chamfer references must belong to the exact target body.",
+      issue,
+    )
+    const checkTarget = checks.distinct("Chamfer targets must be distinct.")
+    const checkOverride = checks.distinct("Chamfer direction overrides must be distinct.")
     parameters.targets.forEach((target, index) => {
-      const reference = target.kind === "edge" ? target.edge : target.face
-      checkOwner(reference, ["targets", index])
-      const keys = bodyTopoRefDurableKeys(reference)
-      if (keys.some((key) => targets.has(key)))
-        issue(["targets", index], "Chamfer targets must be distinct.")
-      for (const key of keys) targets.add(key)
+      checkTarget(target.kind === "edge" ? target.edge : target.face, ["targets", index])
       if (target.kind === "edge") {
         if (parameters.mode !== "equal-distance" && !target.sideFace)
           issue(
             ["targets", index, "sideFace"],
             "Directional Chamfer requires an explicit adjacent face.",
           )
-        if (target.sideFace) checkOwner(target.sideFace, ["targets", index, "sideFace"])
+        if (target.sideFace) checks.owned(target.sideFace, ["targets", index, "sideFace"])
       }
     })
-    parameters.directionOverrides.forEach((reference, index) => {
-      checkOwner(reference, ["directionOverrides", index])
-      const keys = bodyTopoRefDurableKeys(reference)
-      if (keys.some((key) => overrides.has(key)))
-        issue(["directionOverrides", index], "Chamfer direction overrides must be distinct.")
-      for (const key of keys) overrides.add(key)
-    })
+    for (const [index, reference] of parameters.directionOverrides.entries())
+      checkOverride(reference, ["directionOverrides", index])
   })
 export type ChamferFeatureParametersV3 = Readonly<z.infer<typeof chamferFeatureParametersV3Schema>>
 

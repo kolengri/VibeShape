@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { bodyOutputRoleSchema } from "./body-reference"
+import { type BodyReference, bodyOutputRoleSchema } from "./body-reference"
 import { canonicalJson } from "./canonical-json"
 import { featureIdSchema } from "./identifiers"
 import { topoRefContentSchema } from "./topology"
@@ -31,6 +31,37 @@ export function bodyTopoRefDurableKeys(reference: BodyTopoRef): string[] {
     reference.lineageToken && `${prefix}lineage:${reference.lineageToken}`,
   ].filter((value) => value !== undefined)
   return keys.length ? keys : [canonicalJson(reference)]
+}
+
+type BodyTopoRefIssue = (path: (string | number)[], message: string) => void
+
+/**
+ * Shared ownership and distinctness checks for body-bound feature references. `owned` requires
+ * the exact target body and output role; each `distinct` group also rejects a repeated durable
+ * identity. Callers keep their own messages, so diagnostics stay feature-specific.
+ */
+export function bodyTopoRefChecks(
+  targetBody: Pick<BodyReference, "featureId" | "outputRole">,
+  ownerMessage: string,
+  issue: BodyTopoRefIssue,
+) {
+  const owned = (reference: BodyTopoRef, path: (string | number)[]) => {
+    if (
+      reference.featureId !== targetBody.featureId ||
+      reference.outputRole !== targetBody.outputRole
+    )
+      issue(path, ownerMessage)
+  }
+  const distinct = (message: string) => {
+    const seen = new Set<string>()
+    return (reference: BodyTopoRef, path: (string | number)[]) => {
+      owned(reference, path)
+      const keys = bodyTopoRefDurableKeys(reference)
+      if (keys.some((key) => seen.has(key))) issue(path, message)
+      for (const key of keys) seen.add(key)
+    }
+  }
+  return { owned, distinct }
 }
 
 /** Content identity omits the owning feature ID; the dependency edge already binds it. */

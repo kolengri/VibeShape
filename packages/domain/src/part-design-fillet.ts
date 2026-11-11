@@ -1,11 +1,10 @@
 import { z } from "zod"
 import { bodyReferenceSchema } from "./body-reference"
 import {
-  type BodyTopoRef,
   bodyEdgeRefSchema,
   bodyFaceRefSchema,
+  bodyTopoRefChecks,
   bodyTopoRefContent,
-  bodyTopoRefDurableKeys,
 } from "./body-topology-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
@@ -66,22 +65,11 @@ export const filletFeatureParametersV3Schema = z
   })
   .strict()
   .superRefine((parameters, context) => {
-    const seen = new Set<string>()
-    const check = (reference: BodyTopoRef, path: (string | number)[]) => {
-      if (
-        reference.featureId !== parameters.targetBody.featureId ||
-        reference.outputRole !== parameters.targetBody.outputRole
-      )
-        context.addIssue({
-          code: "custom",
-          path,
-          message: "Fillet references must belong to the exact target body.",
-        })
-      const keys = bodyTopoRefDurableKeys(reference)
-      if (keys.some((key) => seen.has(key)))
-        context.addIssue({ code: "custom", path, message: "Fillet targets must be distinct." })
-      for (const key of keys) seen.add(key)
-    }
+    const check = bodyTopoRefChecks(
+      parameters.targetBody,
+      "Fillet references must belong to the exact target body.",
+      (path, message) => context.addIssue({ code: "custom", path, message }),
+    ).distinct("Fillet targets must be distinct.")
     for (const [index, target] of parameters.targets.entries())
       check(target.kind === "edge" ? target.edge : target.face, ["targets", index])
   })
