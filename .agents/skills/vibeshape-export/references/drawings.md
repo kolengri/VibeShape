@@ -3,11 +3,14 @@
 Use `prepare_drawing_export` on local or paired remote MCP with the exact committed `revision` and
 `format: "svg" | "dxf" | "pdf"`. It is read-only: it projects the committed terminal solids with
 exact hidden-line removal, composes one sheet and writes it, without a draft, History entry, Undo
-entry, filesystem write, browser download or saved setting. Mesh-only parts cannot be projected and
-fail with `drawing-failed`; a stale revision fails with `stale-revision`.
+entry, filesystem write, browser download or saved setting.
 
-Optional `partId` limits the drawing to one authored Part with an exact body; obtain it from
-`model_parts`. Optional `settings` accepts:
+Without `partId` the drawing contains every exact terminal body and silently skips triangle-mesh
+parts. Optional `partId` limits it to one authored Part; obtain it from `model_parts`. A mesh
+`partId`, or a model with no exact body, fails with non-retryable `no-drawable-bodies`. A revision
+that is stale or changes while projecting fails with retryable `stale-revision`: read the current
+revision and prepare again. Other projection failures return `drawing-failed` with the kernel's
+`retryable` flag. Optional `settings` accepts:
 
 | Field | Default | Values |
 |---|---|---|
@@ -19,7 +22,7 @@ Optional `partId` limits the drawing to one authored Part with an exact body; ob
 | `units` | `"mm"` | `"mm"` or `"in"` for dimension text only |
 | `hiddenLines` | `true` | Dashed hidden edges in orthographic views |
 | `dimensions` | `true` | Overall dimensions and diameter callouts |
-| `titleBlock` | empty strings | `title` (≤80, empty uses the project name), `drawingNumber` (≤40), `author` (≤60), `date` (≤20), `material` (≤60) |
+| `titleBlock` | empty strings | `title` (≤80, empty uses the project name), `drawingNumber` (≤40), `author` (≤60), `date` (≤20), `material` (≤60); control characters are rejected |
 
 Front looks along +Y with Z up, top looks down −Z with Y up, right looks along −X; the isometric
 view is seen from +X, −Y, +Z. Automatic scale picks the largest ISO 5455 scale that fits; an

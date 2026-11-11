@@ -32,8 +32,8 @@ const staleDrawing: ActiveDocumentDrawingResult = {
 }
 
 /**
- * Projects the committed terminal bodies (all, or one authored Part) at the captured revision. Part
- * selection reuses the geometry-export body plan, so drawings and exports always agree.
+ * Projects the committed terminal bodies (all exact bodies, or one authored Part) at the captured
+ * revision. Part selection reuses the geometry-export body plan, so drawings and exports agree.
  */
 export async function projectSessionDrawing(input: {
   session: DrawingSession
@@ -44,12 +44,10 @@ export async function projectSessionDrawing(input: {
 }): Promise<ActiveDocumentDrawingResult> {
   const { session } = input
   const { id, revision, name } = session.snapshot
-  const plan = prepareDocumentGeometryExport(
-    session.authoredSnapshot,
-    input.report,
-    "step",
-    input.partId,
-  )
+  // Without a Part the worker draws every exact terminal body and skips triangle meshes.
+  const plan = input.partId
+    ? prepareDocumentGeometryExport(session.authoredSnapshot, input.report, "step", input.partId)
+    : { ok: true as const, options: {} }
   if (!plan.ok) return plan
   const result = await session.projectDrawing(
     input.views,

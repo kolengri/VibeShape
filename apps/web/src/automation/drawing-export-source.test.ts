@@ -41,11 +41,7 @@ function fixture(project = vi.fn(async (views: readonly DrawingViewId[]) => draw
     currentRevision: () => revision,
     isActive: () => true,
     prepare: vi.fn(),
-    prepareDrawing: createDrawingExportPreparer({
-      documentId: id(1),
-      currentRevision: () => revision,
-      project,
-    }),
+    prepareDrawing: createDrawingExportPreparer({ project }),
     hash: async () => "b".repeat(64),
     now: () => Date.parse("2026-11-11T00:00:00Z"),
     createExportId: () => id(9),
@@ -105,7 +101,7 @@ describe("prepare_drawing_export", () => {
       ok: false,
       diagnostic: {
         code: "export-failed",
-        message: "Drawings require exact solids; triangle-mesh parts cannot be projected.",
+        message: "The exact kernel could not project the body.",
         retryable: true,
         sourceCode: "export-failed",
       },
@@ -113,9 +109,50 @@ describe("prepare_drawing_export", () => {
     expect(await f.session.execute(actor, operation({ revision: 4, format: "pdf" }))).toMatchObject(
       {
         ok: false,
-        diagnostic: { code: "drawing-failed", message: expect.stringContaining("triangle-mesh") },
+        diagnostic: {
+          code: "drawing-failed",
+          message: expect.stringContaining("kernel"),
+          retryable: true,
+        },
       },
     )
+  })
+
+  it("keeps the session's retryable stale revision and names models without exact bodies", async () => {
+    const project = vi.fn(async (views: readonly DrawingViewId[]) => drawn(views))
+    const f = fixture(project)
+    project.mockResolvedValueOnce({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message:
+          "The model has no exact solid body to draw; triangle-mesh parts cannot be projected.",
+        retryable: false,
+        sourceCode: "no-exportable-bodies",
+      },
+    })
+    expect(await f.session.execute(actor, operation({ revision: 4, format: "pdf" }))).toMatchObject(
+      {
+        ok: false,
+        diagnostic: { code: "no-drawable-bodies", retryable: false },
+      },
+    )
+    project.mockResolvedValueOnce({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "The active project changed while drawing. Prepare the current revision again.",
+        retryable: true,
+        sourceCode: "stale-revision",
+      },
+    })
+    expect(await f.session.execute(actor, operation({ revision: 4, format: "pdf" }))).toMatchObject(
+      {
+        ok: false,
+        diagnostic: { code: "stale-revision", retryable: true },
+      },
+    )
+    expect(project).toHaveBeenCalledTimes(2)
   })
 
   it("rejects stale revisions and projections of another revision", async () => {
@@ -126,13 +163,16 @@ describe("prepare_drawing_export", () => {
         ok: false,
       },
     )
+    expect(project).toHaveBeenCalledTimes(1)
     f.setRevision(6)
     expect(await f.session.execute(actor, operation({ revision: 4, format: "dxf" }))).toMatchObject(
       {
         ok: false,
-        diagnostic: { code: "stale-revision" },
+        diagnostic: { code: "stale-revision", retryable: true },
       },
     )
+    // The session rejects the stale request before projecting.
+    expect(project).toHaveBeenCalledTimes(1)
   })
 
   it("validates arguments before preparation", () => {

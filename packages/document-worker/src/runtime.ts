@@ -63,6 +63,7 @@ import {
 } from "./extrusion-content"
 import {
   collectDocumentPrintMeshes,
+  drawingFeatures,
   exportDocumentMeshStl,
   exportIncludesMesh,
 } from "./mesh-source-export"
@@ -634,18 +635,16 @@ export class DocumentWorkerRuntime {
       return
     }
     try {
-      const { features } = selectExportBodies(terminalExportFeatures(current.state), request.bodies)
-      if (features.length === 0) {
-        this.#postFailure(
-          request,
-          "no-exportable-bodies",
-          "The current document does not contain a terminal solid body to draw.",
-          false,
-        )
+      const selected = selectExportBodies(
+        terminalExportFeatures(current.state),
+        request.bodies,
+      ).features
+      const drawable = drawingFeatures(current.state, selected, request.bodies !== undefined)
+      if (!drawable.ok) {
+        this.#postFailure(request, "no-exportable-bodies", drawable.message, false)
         return
       }
-      if (exportIncludesMesh(current.state, features))
-        throw new Error("Drawings require exact solids; triangle-mesh parts cannot be projected.")
+      const { features } = drawable
       if (!this.engine.projectDrawing) throw new Error("Exact drawing projection is unavailable.")
       const projection = await this.engine.projectDrawing({
         documentId: request.documentId,

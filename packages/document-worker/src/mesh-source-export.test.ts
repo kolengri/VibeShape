@@ -9,7 +9,7 @@ const { terminalBodyGeometry } = await import("@vibeshape/application/model-bodi
 const { featureIdSchema } = await import("@vibeshape/domain")
 const { ReplicadGeometryEngine } = await import("@vibeshape/geometry-worker/engine")
 const { surfaceTextureMeshLayerSchema } = await import("@vibeshape/protocol")
-const { collectDocumentPrintMeshes } = await import("./mesh-source-export")
+const { collectDocumentPrintMeshes, drawingFeatures } = await import("./mesh-source-export")
 
 const state: FeatureRebuildState = {
   documentId: "mixed-export",
@@ -177,5 +177,32 @@ describe("mixed exact and imported mesh export", () => {
     )
     expect(result.meshes[0]?.vertices).toEqual(Array.from(mesh.mesh.positions))
     expect(exported).not.toHaveBeenCalled()
+  })
+})
+
+describe("drawing body selection", () => {
+  beforeEach(() => vi.mocked(terminalBodyGeometry).mockReturnValue([exact, mesh]))
+
+  it("draws the exact bodies of the whole model and skips triangle meshes", () => {
+    expect(drawingFeatures(state, [selection(exact), selection(mesh)], false)).toEqual({
+      ok: true,
+      features: [selection(exact)],
+    })
+  })
+
+  it("rejects an explicit mesh part and a model without exact bodies with specific messages", () => {
+    expect(drawingFeatures(state, [selection(mesh)], true)).toEqual({
+      ok: false,
+      message: "The selected part is a triangle mesh; drawings need exact solid bodies.",
+    })
+    expect(drawingFeatures(state, [selection(mesh)], false)).toEqual({
+      ok: false,
+      message:
+        "The model has no exact solid body to draw; triangle-mesh parts cannot be projected.",
+    })
+    expect(drawingFeatures(state, [selection(exact)], true)).toEqual({
+      ok: true,
+      features: [selection(exact)],
+    })
   })
 })

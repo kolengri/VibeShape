@@ -6,7 +6,8 @@
       "description": "Lay out projected views of the committed model on a sheet and download SVG, DXF or PDF. Drawings are derived from the current model and do not change your project.",
       "parts": {
         "label": "Parts",
-        "all": "All parts"
+        "all": "All parts",
+        "meshSkipped": "Mesh parts cannot be drawn. All parts draws the solid parts only."
       },
       "views": {
         "legend": "Views",
@@ -78,7 +79,7 @@
       "presetNote": "Drawing settings are remembered for this project on this device.",
       "downloaded": "Drawing downloaded.",
       "errors": {
-        "empty": "The model has no exact solid body to draw.",
+        "empty": "The model has no exact solid body to draw. Mesh parts cannot be projected.",
         "failed": "The drawing could not be created. Try again after the model finishes rebuilding."
       },
       "sheet": {

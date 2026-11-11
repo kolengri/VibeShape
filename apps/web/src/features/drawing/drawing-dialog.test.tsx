@@ -8,6 +8,12 @@ import type { ActiveDocumentDrawingResult } from "../../document/document-drawin
 const downloads = vi.fn()
 const fileModule = { ...(await import("./drawing-file")) }
 mock.module("./drawing-file", () => ({ ...fileModule, downloadDrawing: downloads }))
+const authoredParts = vi.fn((): unknown[] | null => null)
+const partsModule = { ...(await import("@vibeshape/application/authored-parts")) }
+mock.module("@vibeshape/application/authored-parts", () => ({
+  ...partsModule,
+  resolveAuthoredParts: authoredParts,
+}))
 
 const { cleanup, render, screen, waitFor } = await import("@testing-library/react")
 const { default: userEvent } = await import("@testing-library/user-event")
@@ -32,6 +38,8 @@ afterAll(() => vi.unstubAllGlobals())
 beforeEach(() => {
   vi.stubGlobal("localStorage", createTestBrowserStorage())
   downloads.mockReset()
+  authoredParts.mockReset()
+  authoredParts.mockReturnValue(null)
 })
 afterEach(() => cleanup())
 
@@ -154,7 +162,9 @@ describe("Create Drawing dialog", () => {
       },
     }))
     const empty = render(dialog(controller(0), project))
-    expect(screen.getByRole("alert").textContent).toBe("The model has no exact solid body to draw.")
+    expect(screen.getByRole("alert").textContent).toBe(
+      "The model has no exact solid body to draw. Mesh parts cannot be projected.",
+    )
     expect(project).not.toHaveBeenCalled()
     empty.unmount()
     render(dialog(controller(), project))
@@ -166,5 +176,56 @@ describe("Create Drawing dialog", () => {
     expect(
       (screen.getByRole("button", { name: "Download PDF" }) as HTMLButtonElement).disabled,
     ).toBe(true)
+  })
+
+  it("keeps the Part choice when mesh parts exist and draws the solid parts for All parts", async () => {
+    const solidPart = "0195b5ac-b220-7a2c-8c33-67a36a7f0101"
+    authoredParts.mockReturnValue([
+      { part: { id: solidPart, name: "Bracket" }, body: { representation: "exact-solid" } },
+      {
+        part: { id: "0195b5ac-b220-7a2c-8c33-67a36a7f0102", name: "Scan" },
+        body: { representation: "triangle-mesh" },
+      },
+    ])
+    const project = vi.fn(async (views: readonly DrawingViewId[]) => projection(views))
+    const user = userEvent.setup()
+    render(
+      dialog(
+        { ...controller(), authoredSnapshot: { schemaVersion: 6 } } as DocumentControllerState,
+        project,
+      ),
+    )
+    await waitFor(() =>
+      expect(project).toHaveBeenCalledWith(["front", "top", "right", "isometric"], undefined),
+    )
+    const parts = screen.getByRole("combobox", { name: "Parts" })
+    expect(
+      screen.getByText("Mesh parts cannot be drawn. All parts draws the solid parts only."),
+    ).toBeTruthy()
+    await user.click(parts)
+    expect(screen.queryByRole("option", { name: "Scan" })).toBeNull()
+    await user.click(screen.getByRole("option", { name: "Bracket" }))
+    await waitFor(() =>
+      expect(project).toHaveBeenLastCalledWith(["front", "top", "right", "isometric"], solidPart),
+    )
+  })
+
+  it("shows the no-solid message when the worker finds only mesh bodies", async () => {
+    const project = vi.fn(async () => ({
+      ok: false as const,
+      diagnostic: {
+        code: "export-failed" as const,
+        message:
+          "The model has no exact solid body to draw; triangle-mesh parts cannot be projected.",
+        retryable: false,
+        sourceCode: "no-exportable-bodies",
+      },
+    }))
+    render(dialog(controller(), project))
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe(
+        "The model has no exact solid body to draw. Mesh parts cannot be projected.",
+      ),
+    )
   })
 })

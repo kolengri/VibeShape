@@ -37,6 +37,34 @@ export function exportIncludesMesh(
   )
   return features.some((feature) => meshes.has(key(feature)))
 }
+/**
+ * Bodies a drawing projects. An explicit selection must be exact; the whole model draws its exact
+ * bodies and skips triangle meshes, failing only when no exact body remains.
+ */
+export function drawingFeatures(
+  state: FeatureRebuildState,
+  selected: readonly FeatureEvaluationDependency[],
+  explicit: boolean,
+): { ok: true; features: FeatureEvaluationDependency[] } | { ok: false; message: string } {
+  const meshes = new Set(
+    (terminalBodyGeometry(state) ?? [])
+      .filter((body) => body.representation === "triangle-mesh")
+      .map(key),
+  )
+  const exact = selected.filter((feature) => !meshes.has(key(feature)))
+  if (explicit && exact.length < selected.length)
+    return {
+      ok: false,
+      message: "The selected part is a triangle mesh; drawings need exact solid bodies.",
+    }
+  if (exact.length === 0)
+    return {
+      ok: false,
+      message:
+        "The model has no exact solid body to draw; triangle-mesh parts cannot be projected.",
+    }
+  return { ok: true, features: exact }
+}
 /** Keeps native tessellation and authored mesh occurrences in the caller's exact selection order. */
 export async function collectDocumentPrintMeshes(
   engine: GeometryKernelEngine,

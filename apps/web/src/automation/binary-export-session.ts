@@ -23,6 +23,7 @@ export class BinaryExportPreparationError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly retryable = false,
   ) {
     super(message)
   }
@@ -206,7 +207,7 @@ export function createBinaryExportSession(
   }
   function preparationFailure(error: unknown) {
     if (error instanceof BinaryExportPreparationError)
-      return localFailure(error.code, error.message)
+      return localFailure(error.code, error.message, error.retryable)
     return localFailure("export-failed", "The file could not be prepared.", true)
   }
   function stillCurrent(operationEpoch: number, revision: number, signal?: AbortSignal) {

@@ -61,13 +61,20 @@ function PartField({
   const t = useTranslations("app.drawing.parts")
   const authority = controller.authoredSnapshot
   if (!authority || authority.schemaVersion === 1 || !controller.report) return null
-  const parts =
-    resolveAuthoredParts(authority, controller.report)?.filter(
-      ({ body }) => body !== null && body.representation !== "triangle-mesh",
-    ) ?? []
-  if (parts.length < 2) return null
+  const bodies = resolveAuthoredParts(authority, controller.report)?.filter(
+    ({ body }) => body !== null,
+  )
+  const parts = bodies?.filter(({ body }) => body?.representation !== "triangle-mesh") ?? []
+  const hasMesh = (bodies?.length ?? 0) > parts.length
+  // Mesh parts are skipped by "All parts"; keep the choice visible so that is explained.
+  if (parts.length < 2 && !hasMesh) return null
   return (
-    <SelectField label={t("label")} value={value} onValueChange={onChange}>
+    <SelectField
+      label={t("label")}
+      {...(hasMesh ? { description: t("meshSkipped") } : {})}
+      value={value}
+      onValueChange={onChange}
+    >
       <SelectOption value="all">{t("all")}</SelectOption>
       {parts.map(({ part }) => (
         <SelectOption key={part.id} value={part.id}>

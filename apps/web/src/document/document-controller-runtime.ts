@@ -1484,8 +1484,6 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     const exports = createBinaryExportSession({
       preparePicture: pictureRender.prepare,
       prepareDrawing: createDrawingExportPreparer({
-        documentId: capturedDocumentId,
-        currentRevision: () => active.snapshot.revision,
         project: (views, partId) =>
           currentReport() ? projectActiveDocumentDrawing(views, partId) : Promise.reject(),
       }),

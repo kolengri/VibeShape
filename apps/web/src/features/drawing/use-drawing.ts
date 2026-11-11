@@ -20,7 +20,7 @@ type ProjectionState =
   | Readonly<{ status: "idle" }>
   | Readonly<{ status: "loading"; key: string }>
   | Readonly<{ status: "ready"; key: string; projection: DrawingProjection; documentName: string }>
-  | Readonly<{ status: "failed"; key: string }>
+  | Readonly<{ status: "failed"; key: string; empty: boolean }>
 
 /** The model offers at least one exact solid; mesh-only models cannot be projected. */
 function documentHasDrawableSolid(controller: DocumentControllerState) {
@@ -82,11 +82,15 @@ export function useDrawing(input: {
                 projection: result.projection,
                 documentName: result.documentName,
               }
-            : { status: "failed", key },
+            : {
+                status: "failed",
+                key,
+                empty: result.diagnostic.sourceCode === "no-exportable-bodies",
+              },
         )
       })
       .catch(() => {
-        if (current) setState({ status: "failed", key })
+        if (current) setState({ status: "failed", key, empty: false })
       })
     return () => {
       current = false
@@ -131,6 +135,7 @@ function drawingStatus(
   ready: boolean,
 ) {
   if (!key) return controller.status === "ready" ? ("empty" as const) : ("loading" as const)
-  if (state.status === "failed" && state.key === key) return "failed" as const
+  if (state.status === "failed" && state.key === key)
+    return state.empty ? ("empty" as const) : ("failed" as const)
   return ready ? ("ready" as const) : ("loading" as const)
 }
