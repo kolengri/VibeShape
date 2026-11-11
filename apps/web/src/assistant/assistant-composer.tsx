@@ -612,73 +612,84 @@ export function AssistantComposer({
   useReportActivity(pendingFiles)
   useComposerFocus(composer, submission.pending, answering, focusOnMount)
   return (
-    <div className={cn("min-h-0 shrink-0 space-y-2 p-3", answering && "max-h-3/5 overflow-y-auto")}>
-      {props.feedback}
-      <AssistantQueue {...props} />
-      <section {...drop.handlers} aria-label={t("prompt")} className="isolate min-w-0">
-        <div
-          className={cn(
-            "relative z-10 min-w-0 overflow-hidden rounded-xl border bg-background transition-colors focus-within:border-ring",
-            drop.active && "border-ring ring-2 ring-ring/50",
-          )}
-        >
-          {question}
-          <div hidden={answering}>
-            <AssistantAttachments
-              attachments={draft.attachments}
-              disabled={submission.pending}
-              onRemove={admissions.remove}
-            />
-            <AssistantImageAttachmentFeedback
-              capabilities={props.attachmentCapabilities}
-              attachments={draft.attachments}
-            />
-            <AssistantComposerFeedback
-              dropActive={drop.active}
-              canAttach={canAttach}
-              captureFailed={capture.failed}
-              selectionIssue={admissions.selectionIssue}
-            />
-            <label htmlFor={id} className="sr-only">
-              {t("prompt")}
-            </label>
-            <Textarea
-              id={id}
-              ref={composer}
-              className="field-sizing-content min-h-16 max-h-40 resize-none rounded-none border-0 bg-transparent py-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
-              value={draft.text}
-              rows={2}
-              maxLength={16_000}
-              placeholder={t("placeholder")}
-              disabled={!props.canSend || submission.pending}
-              onChange={(event) => {
-                const text = event.currentTarget.value
-                onDraftChange((current) => ({ ...current, text }))
-              }}
-              onKeyDown={(event) => {
-                if (
-                  event.key === "Enter" &&
-                  (event.metaKey || event.ctrlKey) &&
-                  !event.nativeEvent.isComposing
-                ) {
-                  event.preventDefault()
-                  void submission.submit()
-                }
-              }}
-            />
-            <AssistantComposerActions
-              {...props}
-              submitting={submission.pending}
-              capturing={capture.pending}
-              canSubmit={submission.canSubmit}
-              onSubmit={submission.submit}
-              onSelectFiles={admissions.selectFiles}
-              onCapture={capture.capture}
-            />
+    <div
+      data-slot="assistant-composer-column"
+      className={cn(
+        "min-h-0 overflow-y-auto",
+        // A short sheet (compact chat at 200%) scrolls the column instead of clipping it. The
+        // reversed single-child column stays anchored to its end, so Send and the session tray
+        // (including connection Retry) remain visible; a question keeps its start in view.
+        answering ? "max-h-3/5 shrink-0" : "flex flex-col-reverse",
+      )}
+    >
+      <div className="space-y-2 p-3">
+        {props.feedback}
+        <AssistantQueue {...props} />
+        <section {...drop.handlers} aria-label={t("prompt")} className="isolate min-w-0">
+          <div
+            className={cn(
+              "relative z-10 min-w-0 overflow-hidden rounded-xl border bg-background transition-colors focus-within:border-ring",
+              drop.active && "border-ring ring-2 ring-ring/50",
+            )}
+          >
+            {question}
+            <div hidden={answering}>
+              <AssistantAttachments
+                attachments={draft.attachments}
+                disabled={submission.pending}
+                onRemove={admissions.remove}
+              />
+              <AssistantImageAttachmentFeedback
+                capabilities={props.attachmentCapabilities}
+                attachments={draft.attachments}
+              />
+              <AssistantComposerFeedback
+                dropActive={drop.active}
+                canAttach={canAttach}
+                captureFailed={capture.failed}
+                selectionIssue={admissions.selectionIssue}
+              />
+              <label htmlFor={id} className="sr-only">
+                {t("prompt")}
+              </label>
+              <Textarea
+                id={id}
+                ref={composer}
+                className="field-sizing-content min-h-16 max-h-40 resize-none rounded-none border-0 bg-transparent py-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
+                value={draft.text}
+                rows={2}
+                maxLength={16_000}
+                placeholder={t("placeholder")}
+                disabled={!props.canSend || submission.pending}
+                onChange={(event) => {
+                  const text = event.currentTarget.value
+                  onDraftChange((current) => ({ ...current, text }))
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    (event.metaKey || event.ctrlKey) &&
+                    !event.nativeEvent.isComposing
+                  ) {
+                    event.preventDefault()
+                    void submission.submit()
+                  }
+                }}
+              />
+              <AssistantComposerActions
+                {...props}
+                submitting={submission.pending}
+                capturing={capture.pending}
+                canSubmit={submission.canSubmit}
+                onSubmit={submission.submit}
+                onSelectFiles={admissions.selectFiles}
+                onCapture={capture.capture}
+              />
+            </div>
           </div>
-        </div>
-        <AssistantSessionControls controls={props.sessionControls} />
-      </section>
+          <AssistantSessionControls controls={props.sessionControls} />
+        </section>
+      </div>
     </div>
   )
 }

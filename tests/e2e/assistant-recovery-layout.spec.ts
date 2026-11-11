@@ -101,6 +101,11 @@ test("keeps recovery copy and retry in the session tray below message actions in
       for (const zoom of [1, 2]) {
         // A 200% equivalent viewport; CSS zoom does not scale the viewport units the shell uses.
         await page.setViewportSize({ width: width / zoom, height: 900 / zoom })
+        // The viewport grid re-measures in an animation frame; read every box from that layout.
+        await page.evaluate(
+          () =>
+            new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        )
         const bounds = await composer.boundingBox()
         const copyBounds = await status.boundingBox()
         const recoveryBounds = await status.locator("..").boundingBox()
@@ -124,6 +129,8 @@ test("keeps recovery copy and retry in the session tray below message actions in
   await retry.focus()
   await page.keyboard.press("Enter")
   await expect(retry).toHaveCount(0)
+  // A manual retry restarts the backoff sequence, so its first attempt runs after 5 s.
+  await page.clock.runFor(5_000)
   await expect(message).toBeEnabled()
   await expect(message).toHaveValue("Keep this draft through recovery")
 })
