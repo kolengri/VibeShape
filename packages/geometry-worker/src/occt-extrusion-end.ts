@@ -40,7 +40,8 @@ function faceCorners(occt: OpenCascadeInstance, face: Face): Point[] {
     try {
       const corners: Point[] = []
       for (const x of [min.X(), max.X()])
-        for (const y of [min.Y(), max.Y()]) for (const z of [min.Z(), max.Z()]) corners.push([x, y, z])
+        for (const y of [min.Y(), max.Y()])
+          for (const z of [min.Z(), max.Z()]) corners.push([x, y, z])
       return corners
     } finally {
       min.delete()
