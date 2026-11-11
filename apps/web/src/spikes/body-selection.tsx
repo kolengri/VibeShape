@@ -182,6 +182,7 @@ function FixtureTree({
       activeWorkspace={"modeling" as EditorWorkspaceName}
       activeFeatureId={null}
       activeSketchId={null}
+      sketchOperationActive={false}
       controller={controller}
       hiddenFeatureIds={[]}
       hiddenSketchIds={[]}

@@ -351,6 +351,7 @@ type RenderTreeOptions = Partial<
     ModelTreeProps,
     | "origin"
     | "activeSketchId"
+    | "sketchOperationActive"
     | "activeFeatureId"
     | "selectedResultFeatureId"
     | "modelTreeSelection"
@@ -521,6 +522,7 @@ function renderTree(options: RenderTreeOptions = {}, detailed = true) {
   const props: ModelTreeProps = {
     activeFeatureId: featureId,
     activeSketchId: null,
+    sketchOperationActive: false,
     activeWorkspace: "model",
     controller,
     hiddenFeatureIds: [],
@@ -2592,6 +2594,49 @@ describe("ModelTree visibility and deletion", () => {
     expect(onFeatureDeleted).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("alertdialog")).toBeNull()
   })
+
+  it.each([
+    { session: "finished and still selected", sketchOperationActive: false },
+    { session: "being edited", sketchOperationActive: true },
+  ])(
+    "gates History delete, move and reorder on a sketch $session",
+    async ({ sketchOperationActive }) => {
+      const user = userEvent.setup()
+      const onHistoryMove = vi.fn().mockResolvedValue({ ok: true })
+      const semanticController = {
+        ...controller,
+        report: {
+          ...controllerReport,
+          historyItems: [
+            { kind: "sketch" as const, id: sketchId },
+            { kind: "feature" as const, id: featureId },
+          ],
+        },
+      } as unknown as DocumentControllerState
+      // Both cases keep the sketch selected outside a rollback so only the session state differs.
+      renderTree({
+        activeFeatureId: null,
+        activeSketchId: sketchId,
+        activeWorkspace: "model",
+        controller: semanticController,
+        onHistoryMove,
+        sketchOperationActive,
+      })
+
+      const reorderDisabled = timeline()
+        .getByRole("treeitem", { name: "Edit Profile" })
+        .closest("[data-history-id]")
+        ?.getAttribute("data-history-reorder-disabled")
+      expect(reorderDisabled ?? null).toBe(sketchOperationActive ? "true" : null)
+
+      dragHistoryRow(`feature:${featureId}`, 1, `sketch:${sketchId}`, 0)
+      expect(onHistoryMove).toHaveBeenCalledTimes(sketchOperationActive ? 0 : 1)
+
+      await user.click(timeline().getByRole("button", { name: "Actions for Box 1" }))
+      const deleteItem = screen.getByRole("menuitem", { name: "Delete Box 1…" })
+      expect(deleteItem.getAttribute("aria-disabled")).toBe(sketchOperationActive ? "true" : null)
+    },
+  )
 
   it("uses the retained-dependent removal command when a feature has dependents", async () => {
     const dependent = featureRecordSchema.parse({

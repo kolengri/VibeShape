@@ -165,7 +165,7 @@ function historyDragContextIsCurrent(
 
 function historyMoveIsAvailable(
   controller: DocumentControllerState,
-  activeSketchId: SketchId | null,
+  sketchOperationActive: boolean,
   activeFeatureId: FeatureRecord["id"] | null,
   completeGraph: boolean,
 ) {
@@ -173,7 +173,7 @@ function historyMoveIsAvailable(
     completeGraph &&
     controller.status === "ready" &&
     controller.report?.mode === "read-write" &&
-    activeSketchId === null &&
+    !sketchOperationActive &&
     activeFeatureId === null
   )
 }
@@ -1006,7 +1006,13 @@ type ModelTreeProps = {
   onSourceProfilePreview?: ((profile: SketchProfileSelector | null) => void) | undefined
   sourcePreviewSketchId?: SketchId | null | undefined
   activeFeatureId: FeatureRecord["id"] | null
+  /** Selected sketch; a finished sketch stays selected for profile picking. */
   activeSketchId: SketchId | null
+  /**
+   * A sketch is being created or edited. History writes stay blocked only while this is true,
+   * not merely because a finished sketch remains selected.
+   */
+  sketchOperationActive: boolean
   activeWorkspace: EditorWorkspaceName
   controller: DocumentControllerState
   onFeatureActivate: (featureId: FeatureRecord["id"]) => void
@@ -1324,7 +1330,7 @@ function useHistoryRowSortable({
   const sortable = useSortable({
     id: historyRefKey(row.ref),
     index,
-    disabled: locked || !historyMoveIsAvailable(controller, null, null, true),
+    disabled: locked || !historyMoveIsAvailable(controller, false, null, true),
     plugins: [],
   })
   const dropMove = historyRowDropPreview(
@@ -1341,14 +1347,14 @@ function useHistoryRowSortable({
 function historyRowReorderIsLocked(
   rolledBack: boolean,
   busy: boolean,
-  activeSketchId: SketchId | null,
+  sketchOperationActive: boolean,
   activeFeatureId: FeatureRecord["id"] | null,
   view: ModelTreeHistoryBranchProps["view"],
 ) {
   return (
     rolledBack ||
     busy ||
-    activeSketchId !== null ||
+    sketchOperationActive ||
     activeFeatureId !== null ||
     view.reorderUnavailable
   )
@@ -1371,7 +1377,7 @@ type HistoryRowFrameProps = Pick<
   details?: ReactNode
   sourcePresentation: { summary: ReactNode; highlighted: boolean }
   controller: DocumentControllerState
-  activeSketchId: SketchId | null
+  sketchOperationActive: boolean
   activeFeatureId: FeatureRecord["id"] | null
 }
 
@@ -1551,10 +1557,10 @@ function HistoryRowPresentation({
 }
 
 function HistoryRowFrame(props: HistoryRowFrameProps) {
-  const { busy, rolledBack, view, controller, activeSketchId, activeFeatureId } = props
+  const { busy, rolledBack, view, controller, sketchOperationActive, activeFeatureId } = props
   const reorderLocked =
-    historyRowReorderIsLocked(rolledBack, busy, activeSketchId, activeFeatureId, view) ||
-    !historyMoveIsAvailable(controller, activeSketchId, activeFeatureId, true)
+    historyRowReorderIsLocked(rolledBack, busy, sketchOperationActive, activeFeatureId, view) ||
+    !historyMoveIsAvailable(controller, sketchOperationActive, activeFeatureId, true)
   const { sortable, dropMove, insertionClass } = useHistoryRowSortable({
     controller,
     dragDestinationIndex: props.dragDestinationIndex,
@@ -1611,7 +1617,7 @@ function SketchHistoryRow({
         summary: undefined,
       }}
       activeFeatureId={props.activeFeatureId}
-      activeSketchId={props.activeSketchId}
+      sketchOperationActive={props.sketchOperationActive}
       busy={busy}
       controller={props.controller}
       dragDestinationIndex={dragDestinationIndex}
@@ -1693,7 +1699,7 @@ function historyFeatureDeleteIsUnavailable(
     busy ||
     rolledBack ||
     authoredTreeWriteBlocked(props) ||
-    props.activeSketchId !== null ||
+    props.sketchOperationActive ||
     view.graphFailed ||
     view.reorderUnavailable
   )
@@ -1746,7 +1752,7 @@ function FeatureHistoryRow({
     <HistoryRowFrame
       repairRequired={props.repairRequired}
       activeFeatureId={props.activeFeatureId}
-      activeSketchId={props.activeSketchId}
+      sketchOperationActive={props.sketchOperationActive}
       busy={busy}
       controller={props.controller}
       dragDestinationIndex={dragDestinationIndex}
@@ -1919,7 +1925,7 @@ function HistoryGroup({
       destinationIndex,
       historyMoveIsAvailable(
         props.controller,
-        props.activeSketchId,
+        props.sketchOperationActive,
         props.activeFeatureId,
         completeGraph,
       ),
@@ -2908,7 +2914,7 @@ function useModelBrowserDeletion(props: ModelTreeProps) {
     disabled: Boolean(
       props.authoredMetadataBlocked ||
         props.activeFeatureId ||
-        props.activeSketchId ||
+        props.sketchOperationActive ||
         deleteTargets.length !== (props.modelTreeSelection?.length ?? 0),
     ),
     onDeleted: () => props.onModelTreeSelectionChange?.([]),

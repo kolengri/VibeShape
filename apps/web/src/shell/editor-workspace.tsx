@@ -2219,6 +2219,9 @@ function EditorModelTree({
 }) {
   const { actions, activeSketchId, activeSketchTool, activeTool, controller, workspace } = props
   const metadataBlocked = Boolean(activeTool || activeSketchTool)
+  // Finish sketch keeps the sketch selected for profile picking; only an editing session blocks
+  // History writes.
+  const sketchOperationActive = activeSketchTool !== null || props.sketchDraft !== null
   const repairSketchSupport = async (sketchId: SketchId) => {
     if ((await actions.editSketch(sketchId)) === false) return
     actions.beginSketchSupportReplacement()
@@ -2251,6 +2254,7 @@ function EditorModelTree({
       activeWorkspace={workspace}
       activeFeatureId={activeFeatureId(activeTool)}
       activeSketchId={activeSketchId}
+      sketchOperationActive={sketchOperationActive}
       controller={controller}
       hiddenFeatureIds={props.hiddenFeatureIds}
       hiddenSketchIds={props.hiddenSketchIds}

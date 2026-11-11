@@ -547,20 +547,23 @@ test.describe("full sketch editor", () => {
       .dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toHaveCount(0)
-    await expect(
-      page.getByRole("button", { name: "Open Sketch 1 to repair 1 broken reference" }),
-    ).toBeVisible()
+    // ADR-0103: the retained sketch becomes a typed repair intent shown on its History item.
+    const history = page.getByRole("region", { name: "Feature history" })
+    const repairSketch = history
+      .locator("[data-history-id]")
+      .filter({ has: page.getByRole("treeitem", { name: "Edit Sketch 1", exact: true }) })
+      .getByRole("alert")
+      .filter({ hasText: "Missing references — open this item to select replacement inputs." })
+    await expect(repairSketch).toBeVisible()
     await expect(
       page
         .getByRole("status", { name: "Project save status", exact: true })
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await page.reload()
-    const repairSketch = page.getByRole("button", {
-      name: "Open Sketch 1 to repair 1 broken reference",
-    })
+    await expandHistoryDetails(page)
     await expect(repairSketch).toBeVisible()
-    await repairSketch.click()
+    await history.getByRole("treeitem", { name: "Edit Sketch 1", exact: true }).click()
     await taskPanel.getByRole("button", { name: "Replace reference" }).click()
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const orphanReplacementLabel = await selectModelEdgeInViewport(page, "Box 2")
