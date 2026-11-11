@@ -108,15 +108,28 @@ function hullBound(coefficients: readonly Homogeneous[]) {
   return numerator / minimumWeight
 }
 
+/** Exact error at a Bernstein end coefficient, where the polynomial interpolates its value. */
+function endpointError([x, y, z, w]: Homogeneous) {
+  return Math.hypot(x, y, z) / w
+}
+
 /**
  * Certifies an upper bound on the error polynomial over `[0, 1]`: the convex-hull bound of each
- * de Casteljau sub-interval is refined until it proves the tolerance or the depth runs out.
+ * de Casteljau sub-interval is refined until it proves the tolerance or the depth runs out. Only
+ * "within tolerance" matters to callers, so an exact end error above the tolerance, or a failed
+ * first half, returns at once with a value that already exceeds it.
  */
 function certifiedBound(coefficients: readonly Homogeneous[], depth: number): number {
+  const ends = Math.max(
+    endpointError(coefficients[0] as Homogeneous),
+    endpointError(coefficients.at(-1) as Homogeneous),
+  )
+  if (!(ends <= TOLERANCE_MM)) return ends
   const bound = hullBound(coefficients)
   if (bound <= TOLERANCE_MM || depth === 0 || !Number.isFinite(bound)) return bound
   const { left, right } = splitBezier(coefficients, 0.5)
-  return Math.max(certifiedBound(left, depth - 1), certifiedBound(right, depth - 1))
+  const first = certifiedBound(left, depth - 1)
+  return first > TOLERANCE_MM ? first : Math.max(first, certifiedBound(right, depth - 1))
 }
 
 /**
@@ -179,25 +192,6 @@ function fitSubdivision(pieces: readonly RationalBezierPiece[], subdivisions: nu
   return { poles, maxDeviation }
 }
 
-function lexicographicallyBefore(a: Point, b: Point) {
-  for (const axis of [0, 1, 2] as const) {
-    if (Math.abs(a[axis] - b[axis]) > 1e-9) return a[axis] < b[axis]
-  }
-  return false
-}
-
-/**
- * Orients a chain independently of the source parameterization: an open chain starts at its
- * lexicographically smaller end, and a closed chain leaves its seam toward the smaller neighbor.
- */
-function canonicalChainOrientation(poles: readonly Point[]): Point[] {
-  const start = poles[0] as Point
-  const end = poles.at(-1) as Point
-  const closed = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]) <= 1e-9
-  const [a, b] = closed ? [poles.at(-2) as Point, poles[1] as Point] : [end, start]
-  return lexicographicallyBefore(a, b) ? [...poles].reverse() : [...poles]
-}
-
 /**
  * Fits the coarsest uniform refinement of the exact Bezier pieces whose proven deviation bound
  * stays within the published tolerance, using at most the published segment budget.
@@ -211,7 +205,7 @@ export function fitRationalBezierChain(
     const fitted = fitSubdivision(pieces, subdivisions)
     if (!fitted) continue
     if (!fitted.poles.every((pole) => pole.every(Number.isFinite))) return undefined
-    return { poles: canonicalChainOrientation(fitted.poles), maxDeviation: fitted.maxDeviation }
+    return { poles: fitted.poles, maxDeviation: fitted.maxDeviation }
   }
   return undefined
 }

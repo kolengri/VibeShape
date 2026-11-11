@@ -318,17 +318,89 @@ describe("fitted Bezier chains for non-analytical OCCT edges", () => {
       if (!chain || !flipped) throw new Error("The milder excursion must fit within 64 segments.")
       expect(chain.maxDeviation).toBeLessThanOrEqual(1e-4)
       expect(denseDeviation(forward, chain.poles)).toBeLessThanOrEqual(chain.maxDeviation)
-      // A reversed parameterization publishes the same oriented poles, so end identities hold.
+      // Chains follow the oriented edge from its topological start vertex, so the reversed edge
+      // publishes the same curve backwards; sketch references pair ends with stored anchors.
       expect(chain.poles[0]).toEqual([0, 0, 2])
-      expect(flipped.poles).toHaveLength(chain.poles.length)
+      expect(flipped.poles[0]?.[0]).toBeCloseTo(20, 9)
+      const backwards = [...flipped.poles].reverse()
+      expect(backwards).toHaveLength(chain.poles.length)
       for (const [index, pole] of chain.poles.entries()) {
         for (const axis of [0, 1, 2] as const) {
-          expect(flipped.poles[index]?.[axis]).toBeCloseTo(pole[axis], 9)
+          expect(backwards[index]?.[axis]).toBeCloseTo(pole[axis], 9)
         }
       }
     } finally {
       forward.delete()
       reversed.delete()
+    }
+  })
+
+  it("leaves a periodic source curve trimmed across its seam untouched", () => {
+    // A periodic cubic through six hexagon poles, trimmed across its seam at parameter 6.
+    const owned: { delete(): void }[] = []
+    const poles = new occt.TColgp_Array1OfPnt_2(1, 6)
+    const knots = new occt.TColStd_Array1OfReal_2(1, 7)
+    const multiplicities = new occt.TColStd_Array1OfInteger_2(1, 7)
+    owned.push(poles, knots, multiplicities)
+    for (let index = 0; index < 6; index += 1) {
+      const angle = (index * Math.PI) / 3
+      const point = new occt.gp_Pnt_3(10 * Math.cos(angle), 10 * Math.sin(angle), 3)
+      poles.SetValue(index + 1, point)
+      point.delete()
+    }
+    for (let index = 0; index < 7; index += 1) {
+      knots.SetValue(index + 1, index)
+      multiplicities.SetValue(index + 1, 1)
+    }
+    const curve = new occt.Geom_BSplineCurve_1(poles, knots, multiplicities, 3, true)
+    const handle = new occt.Handle_Geom_Curve_2(curve)
+    owned.push(handle)
+    const builder = new occt.BRepBuilderAPI_MakeEdge_25(handle, 5.5, 8.5)
+    owned.push(builder)
+    const edge = cast(builder.Edge()) as Edge
+    const state = () => {
+      const adaptor = new occt.BRepAdaptor_Curve_2(edge.wrapped)
+      const bspline = adaptor.BSpline()
+      const analyzer = new occt.BRepCheck_Analyzer(edge.wrapped, true, false)
+      try {
+        const source = bspline.get()
+        const samples = Array.from({ length: 13 }, (_, index) => {
+          const point = adaptor.Value(5.5 + index * 0.25)
+          try {
+            return [point.X(), point.Y(), point.Z()]
+          } finally {
+            point.delete()
+          }
+        })
+        return {
+          periodic: source.IsPeriodic(),
+          knots: Array.from({ length: source.NbKnots() }, (_, index) => source.Knot(index + 1)),
+          samples,
+          valid: analyzer.IsValid_2(),
+        }
+      } finally {
+        analyzer.delete()
+        bspline.delete()
+        adaptor.delete()
+      }
+    }
+    try {
+      expect(edge.geomType).toBe("BSPLINE_CURVE")
+      const before = state()
+      expect(before.periodic).toBe(true)
+      expect(before.valid).toBe(true)
+      // Unclamped periodic knots publish no chain, and capture must not open the shared curve.
+      expect(fitEdgeBezierChain(edge)).toBeUndefined()
+      const snapshot = captureReplicadTopologySnapshot(edge as unknown as Shape3D)
+      expect(
+        snapshot.candidates.some(
+          ({ referenceGeometry }) => referenceGeometry?.kind === "bezier-chain-edge",
+        ),
+      ).toBe(false)
+      expect(state()).toEqual(before)
+    } finally {
+      edge.delete()
+      for (const value of owned.reverse()) value.delete()
     }
   })
 

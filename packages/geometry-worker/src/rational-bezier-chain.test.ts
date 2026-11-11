@@ -96,7 +96,7 @@ describe("proven Bezier chain fitting", () => {
     ])
     if (!chain) throw new Error("A smooth polynomial edge must fit within 64 segments.")
     const segments = (chain.poles.length - 1) / 3
-    // A single Hermite segment is the straight line y = 0, 0.01 mm away from the curve.
+    // A single Hermite segment is the straight line y = 0, 0.001 mm away from the curve.
     expect(segments).toBeGreaterThan(1)
     expect(chain.maxDeviation).toBeLessThanOrEqual(1e-4)
     // One piece, uniformly subdivided: segment i covers [i / N, (i + 1) / N] of the curve.
@@ -108,6 +108,22 @@ describe("proven Bezier chain fitting", () => {
       measured = Math.max(measured, Math.hypot(fitted[0] - u, fitted[1] - bernsteinValue(y, u)))
     }
     expect(measured).toBeLessThanOrEqual(chain.maxDeviation)
+  })
+
+  it("refuses an uncertifiable edge quickly", () => {
+    const { poles } = gridInvisibleCurve(0.01)
+    const piece = bezierCurvePiece(
+      poles,
+      poles.map(() => 1),
+      0,
+      1,
+    )
+    const started = performance.now()
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect(fitRationalBezierChain([piece])).toBeUndefined()
+    }
+    // Generous guard: early exits keep each refusal far below the old 20-55 ms.
+    expect((performance.now() - started) / 5).toBeLessThan(40)
   })
 
   it("decomposes a rational clamped B-spline into exact Bezier pieces", () => {
@@ -167,7 +183,7 @@ describe("proven Bezier chain fitting", () => {
     expect(chain?.poles.at(-1)).toEqual([14, 3, 0])
   })
 
-  it("publishes the same oriented chain for a reversed parameterization", () => {
+  it("fits the same curve, traversed backwards, for a reversed parameterization", () => {
     const { poles } = gridInvisibleCurve(0.001)
     const lifted = poles.map(([x, y]): Point => [x * 20, y + x * 3, 1])
     const ones = lifted.map(() => 1)
@@ -175,8 +191,10 @@ describe("proven Bezier chain fitting", () => {
     const reversed = fitRationalBezierChain([bezierCurvePiece([...lifted].reverse(), ones, 0, 1)])
     expect(forward?.poles[0]).toEqual([0, 0, 1])
     expect(reversed?.poles.length).toBe(forward?.poles.length)
+    // Fits follow the parameterization; consumers pair ends with stored anchors instead.
+    const backwards = [...(reversed?.poles ?? [])].reverse()
     for (const [index, pole] of (forward?.poles ?? []).entries()) {
-      const other = reversed?.poles[index] as Point
+      const other = backwards[index] as Point
       for (const axis of [0, 1, 2] as const) expect(other[axis]).toBeCloseTo(pole[axis], 9)
     }
   })

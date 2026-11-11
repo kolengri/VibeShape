@@ -37,15 +37,17 @@ type OcctBSpline = OcctPoles &
   Readonly<{
     Degree(): number
     IsPeriodic(): boolean
-    SetNotPeriodic(): void
     NbKnots(): number
     Knot(index: number): number
     Multiplicity(index: number): number
   }>
 
+/**
+ * Reads, never mutates: for an untransformed edge the adaptor returns the edge's own shared curve.
+ * Periodic curves have unclamped knots, so they publish no chain and fail closed.
+ */
 function bsplinePieces(curve: OcctBSpline) {
-  // The adaptor returns a transformed copy, so opening a periodic curve leaves the edge intact.
-  if (curve.IsPeriodic()) curve.SetNotPeriodic()
+  if (curve.IsPeriodic()) return undefined
   const knots = Array.from({ length: curve.NbKnots() }, (_, index) =>
     Array.from({ length: curve.Multiplicity(index + 1) }, () => curve.Knot(index + 1)),
   ).flat()
@@ -85,11 +87,34 @@ function edgeBezierPieces(edge: Edge): RationalBezierPiece[] | undefined {
   }
 }
 
+function distance(a: Point, b: Point) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+}
+
+/**
+ * Orients the fitted chain along the oriented edge, from its topological start vertex, rather
+ * than along the curve parameterization. Consumers still pair ends with their stored anchors.
+ */
+function alongEdge(edge: Edge, chain: FittedBezierChain): FittedBezierChain {
+  const point = edge.startPoint
+  try {
+    const start = point.toTuple()
+    const first = chain.poles[0] as Point
+    const last = chain.poles.at(-1) as Point
+    return distance(last, start) < distance(first, start)
+      ? { ...chain, poles: [...chain.poles].reverse() }
+      : chain
+  } finally {
+    point.delete()
+  }
+}
+
 /** Fits a non-analytical OCCT edge; the native edge stays the geometric authority. */
 export function fitEdgeBezierChain(edge: Edge): FittedBezierChain | undefined {
   try {
     const pieces = edgeBezierPieces(edge)
-    return pieces ? fitRationalBezierChain(pieces) : undefined
+    const chain = pieces ? fitRationalBezierChain(pieces) : undefined
+    return chain ? alongEdge(edge, chain) : undefined
   } catch {
     return undefined
   }
