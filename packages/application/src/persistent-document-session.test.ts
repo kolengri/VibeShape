@@ -178,7 +178,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
   }
 
   readonly drawnViews: unknown[] = []
-  async projectDrawing(views: readonly ("front" | "top")[]) {
+  async projectDrawing(views: Parameters<NonNullable<DocumentRebuildPort["projectDrawing"]>>[0]) {
     // Reads instance state, so an unbound call through the session would fail.
     this.drawnViews.push([...views])
     return {

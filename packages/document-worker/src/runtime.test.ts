@@ -35,6 +35,7 @@ import {
   type DocumentWorkerRequest,
   type DocumentWorkerResponse,
   DRAWING_CHORD_TOLERANCE_MM,
+  type DrawingProjection,
   documentRebuildSnapshotSchema,
   documentWorkerResponseSchema,
   type FeatureContentEnvironment,
@@ -294,7 +295,9 @@ class FakeEngine implements GeometryKernelEngine {
   }
 
   readonly drawnFeatures: unknown[] = []
-  async projectDrawing(input: Parameters<NonNullable<GeometryKernelEngine["projectDrawing"]>>[0]) {
+  async projectDrawing(
+    input: Parameters<NonNullable<GeometryKernelEngine["projectDrawing"]>>[0],
+  ): Promise<DrawingProjection> {
     this.drawnFeatures.push({ features: [...input.features], views: [...input.views] })
     return {
       chordTolerance: DRAWING_CHORD_TOLERANCE_MM,

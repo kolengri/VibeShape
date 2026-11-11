@@ -54,7 +54,12 @@ function fixture(project = vi.fn(async (views: readonly DrawingViewId[]) => draw
 }
 
 function operation(argumentsValue: unknown) {
-  return localOperationSchema.parse({ tool: "prepare_drawing_export", arguments: argumentsValue })
+  const parsed = localOperationSchema.parse({
+    tool: "prepare_drawing_export",
+    arguments: argumentsValue,
+  })
+  if (parsed.tool !== "prepare_drawing_export") throw new Error("Expected a drawing export.")
+  return parsed
 }
 
 describe("prepare_drawing_export", () => {
