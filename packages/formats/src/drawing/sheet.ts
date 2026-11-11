@@ -52,6 +52,8 @@ export type DrawingSheet = Readonly<{
   scale: Readonly<{ numerator: number; denominator: number }>
   /** False when an explicit scale makes the views exceed the drawing area. */
   fits: boolean
+  /** Diameter callouts omitted because no position kept every label readable. */
+  omittedCallouts: number
   views: readonly PlacedView[]
   groups: readonly SheetGroup[]
 }>

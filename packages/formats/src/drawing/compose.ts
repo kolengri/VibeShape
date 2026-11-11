@@ -117,6 +117,10 @@ export function composeDrawingSheet(input: ComposeDrawingInput): DrawingSheet {
     width,
     height,
     title: settings.titleBlock.title,
+    omittedCallouts: layout.placements.reduce(
+      (sum, placement) => sum + annotate(placement, factor).omitted,
+      0,
+    ),
     scale: layout.scale,
     fits: layout.fits,
     views: layout.placements.map(({ projection, rect }) => ({ view: projection.view, ...rect })),
@@ -160,25 +164,33 @@ function sheetCurve(
   }
 }
 
-type ViewAnnotations = Readonly<{ dimensions: SheetPrimitive[]; label: SheetPrimitive }>
+type ViewAnnotations = Readonly<{
+  dimensions: SheetPrimitive[]
+  label: SheetPrimitive
+  /** Diameter callouts left out because no readable position was free. */
+  omitted: number
+}>
 
-/** The dimensions, callouts and label drawn for one placed view; also used to measure margins. */
+/**
+ * The dimensions, callouts and label drawn for one placed view; also used to measure margins.
+ * Callouts are placed last, around the overall dimensions and the label.
+ */
 function viewAnnotations(
   placement: ViewPlacement,
   settings: DrawingSettings,
   copy: DrawingSheetCopy,
   factor: number,
 ): ViewAnnotations {
-  return {
-    dimensions:
-      settings.dimensions && placement.orthographic
-        ? [
-            ...overallDimensions(placement, settings.units),
-            ...diameterCallouts(placement, settings.units, factor),
-          ]
-        : [],
-    label: viewLabel(placement, settings, copy),
-  }
+  const label = viewLabel(placement, settings, copy)
+  if (!settings.dimensions || !placement.orthographic) return { dimensions: [], label, omitted: 0 }
+  const overall = overallDimensions(placement, settings.units)
+  const callouts = diameterCallouts(
+    placement,
+    settings.units,
+    factor,
+    [...overall, label].map(primitiveBox),
+  )
+  return { dimensions: [...overall, ...callouts.primitives], label, omitted: callouts.omitted }
 }
 
 /**

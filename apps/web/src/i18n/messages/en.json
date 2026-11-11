@@ -68,7 +68,8 @@
         "alt": "Preview of the drawing sheet",
         "loading": "Projecting views…",
         "scale": "Scale {scale}",
-        "notFits": "The views do not fit this sheet at the chosen scale. Choose a smaller scale or a larger sheet."
+        "notFits": "The views do not fit this sheet at the chosen scale. Choose a smaller scale or a larger sheet.",
+        "omittedCallouts": "{count, plural, one {# diameter callout was} other {# diameter callouts were}} left out to keep labels readable."
       },
       "download": {
         "svg": "Download SVG",

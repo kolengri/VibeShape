@@ -77,7 +77,13 @@ boxes) beyond its rectangle, and neighbouring envelopes keep 6 mm apart. Automat
 largest ISO 5455 scale whose arrangement, annotations included, fits the area above the title block;
 an explicit ratio is honoured and reported as not fitting when any annotation would leave that area.
 Each orthographic view gets overall width and height dimensions and one diameter callout per
-distinct visible full-circle diameter (`n× Ø d` when repeated, at most eight). Isometric views omit
+distinct visible full-circle diameter (`n× Ø d` when repeated, at most eight). Callouts are placed
+after the dimensions and view label, greedily in a fixed order (by centre, then radius, so
+concentric rings are placed in turn). Each tries five leader shelves (8 to 28 mm) in four
+directions and takes the first whose label and shoulder keep 0.5 mm clear of every text and line
+box placed so far, and whose label does not cross a visible circle. A callout that fits nowhere is
+omitted and counted, never drawn over other text; the dialog reports the count. Clearance measures
+the final placed boxes, so scale choice and `fits` include callouts. Isometric views omit
 hidden lines. Sheet text is supplied by the host from the localized catalog; MCP output uses the
 English source catalog.
 

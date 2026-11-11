@@ -270,6 +270,11 @@ function PreviewMessages({ view }: { view: DrawingView }) {
         </p>
       )}
       {sheet && !sheet.fits && <Alert role="alert">{t("preview.notFits")}</Alert>}
+      {sheet && sheet.omittedCallouts > 0 && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t("preview.omittedCallouts", { count: sheet.omittedCallouts })}
+        </p>
+      )}
       {error && <Alert role="alert">{error}</Alert>}
     </>
   )
