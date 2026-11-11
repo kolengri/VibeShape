@@ -4,7 +4,7 @@ import type { OpenCascadeInstance } from "replicad-opencascadejs"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { compareFilletEndpoints, filletOcctShapeV3 } from "./occt-fillet-v3"
 
-type Failure = "add" | "contour" | "build" | "done" | "chain" | "points"
+type Failure = "add" | "contour" | "build" | "done" | "chain" | "points" | "pnt"
 
 function fixture(failure: Failure) {
   const wrappers: Array<{ delete: ReturnType<typeof vi.fn> }> = []
@@ -51,7 +51,10 @@ function fixture(failure: Failure) {
     },
     ChFi3d_FilletShape: { ChFi3d_Rational: 0 },
     BRep_Tool: {
-      Pnt: () => ({ ...deletable(), X: () => 0, Y: () => 0, Z: () => 0 }),
+      Pnt: () => {
+        if (failure === "pnt") throw new Error("Native point read failed")
+        return { ...deletable(), X: () => 0, Y: () => 0, Z: () => 0 }
+      },
     },
     Message_ProgressRange_1: function Progress() {
       return deletable()
@@ -60,11 +63,11 @@ function fixture(failure: Failure) {
   return { source, occt, wrappers, builder }
 }
 
-it.each(["add", "contour", "build", "done", "chain", "points"] as const)(
+it.each(["add", "contour", "build", "done", "chain", "points", "pnt"] as const)(
   "releases every V3 Fillet native temporary when %s fails",
   (failure) => {
     const value = fixture(failure)
-    const variable = failure === "chain" || failure === "points"
+    const variable = failure === "chain" || failure === "points" || failure === "pnt"
     expect(() =>
       filletOcctShapeV3(
         value.occt as unknown as OpenCascadeInstance,

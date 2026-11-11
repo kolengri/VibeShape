@@ -89,11 +89,14 @@ function acquireSeeds(
 }
 
 function vertexPoint(occt: OpenCascadeInstance, vertex: TopoDS_Vertex) {
-  const point = occt.BRep_Tool.Pnt(vertex)
   try {
-    return [point.X(), point.Y(), point.Z()] as const
+    const point = occt.BRep_Tool.Pnt(vertex)
+    try {
+      return [point.X(), point.Y(), point.Z()] as const
+    } finally {
+      point.delete()
+    }
   } finally {
-    point.delete()
     vertex.delete()
   }
 }
