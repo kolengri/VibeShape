@@ -246,6 +246,15 @@ const drivingSketchConstraintSchema = z.discriminatedUnion("type", [
       at: z.enum(["start", "end"]).optional(),
     })
     .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("tangent-join"),
+      incomingCurveId: sketchEntityIdSchema,
+      outgoingCurveId: sketchEntityIdSchema,
+    })
+    .strict()
+    .refine((constraint) => constraint.incomingCurveId !== constraint.outgoingCurveId),
   z.object({ ...constraintEnvelope, type: z.literal("concentric"), ...entityPair }).strict(),
   z
     .object({
@@ -840,6 +849,7 @@ const wireConstraintEntityReferenceRules = {
   parallel: { firstEntityId: ["line"], secondEntityId: ["line"] },
   perpendicular: { firstEntityId: ["line"], secondEntityId: ["line"] },
   tangent: { arcId: ["arc"], lineId: ["line"] },
+  "tangent-join": { incomingCurveId: ["cubic-bezier"], outgoingCurveId: ["cubic-bezier"] },
   concentric: {
     firstEntityId: ["circle", "arc"],
     secondEntityId: ["circle", "arc"],
@@ -945,6 +955,15 @@ function wireConstraintReferencesAreValid(
 ) {
   if (constraint.type === "offset") return offsetTargetsAreValid(constraint, entities)
   if (constraint.type === "equal") return equalTargetsAreValid(constraint, entities)
+  if (constraint.type === "tangent-join") {
+    const incoming = entities.get(constraint.incomingCurveId)
+    const outgoing = entities.get(constraint.outgoingCurveId)
+    return (
+      incoming?.type === "cubic-bezier" &&
+      outgoing?.type === "cubic-bezier" &&
+      incoming.endPointId === outgoing.startPointId
+    )
+  }
   const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
   const rules: WireEntityReferenceRules = wireConstraintEntityReferenceRules[constraint.type]
   return Object.entries(rules).every(([field, entityTypes]) => {
@@ -1038,6 +1057,7 @@ function nativeWireConstraintContribution(constraint: z.infer<typeof sketchConst
     return constraint.linePairs.length * 2 + constraint.endpointPairs.length
   }
   if (constraint.type === "arc-midpoint") return 2
+  if (constraint.type === "tangent-join") return 4
   if (constraint.type === "ellipse-quadrant") return 6
   if (constraint.type === "point-on-ellipse") return 5
   return constraint.type === "point-on-elliptical-arc" ? 6 : 1
@@ -1098,6 +1118,9 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
   const auxiliaryEllipseLocusCount = sketch.constraints.filter(
     ({ type }) => type === "point-on-ellipse" || type === "point-on-elliptical-arc",
   ).length
+  const auxiliaryTangentJoinCount = sketch.constraints.filter(
+    ({ type }) => type === "tangent-join",
+  ).length
   return {
     entities:
       authored.entities +
@@ -1108,7 +1131,8 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
       projectionCount * 3 +
       auxiliaryArcMidpointLineCount +
       auxiliaryEllipseQuadrantCount * 4 +
-      auxiliaryEllipseLocusCount * 4,
+      auxiliaryEllipseLocusCount * 4 +
+      auxiliaryTangentJoinCount,
     parameters:
       authored.parameters +
       wireProjectedExternalGeometry(sketch).reduce(
@@ -1117,7 +1141,8 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
       ) +
       projectionCount * 4 +
       auxiliaryEllipseQuadrantCount * 4 +
-      auxiliaryEllipseLocusCount * 4,
+      auxiliaryEllipseLocusCount * 4 +
+      auxiliaryTangentJoinCount * 2,
   }
 }
 

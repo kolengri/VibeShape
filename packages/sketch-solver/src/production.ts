@@ -812,6 +812,13 @@ class ProductionSketchBuilder {
     return { handle, index }
   }
 
+  /** Adds an auxiliary point that the solver keeps at its initial coordinates. */
+  addPinnedAuxiliaryPoint(point: { x: number; y: number }) {
+    const handle = this.#addAuxiliaryPoint(point)
+    this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.whereDragged, { pointA: handle })
+    return handle
+  }
+
   #addAuxiliaryPoint(point: { x: number; y: number }) {
     const x = this.#addParameter(point.x).handle
     const y = this.#addParameter(point.y).handle
@@ -899,6 +906,45 @@ function initialPointValues(
     values.set(target.entityId, { x: target.x, y: target.y })
   }
   return values
+}
+
+/**
+ * Dragging the shared through-point of a tangent join carries both adjacent handles rigidly, so
+ * the join keeps its tangent direction instead of letting least-movement collapse a handle.
+ */
+function withTangentJoinHandleDrags(
+  sketch: SketchRecord,
+  currentValues: ReadonlyMap<SketchEntityId, { x: number; y: number }> | null,
+  draggedPoints: readonly SketchDragTarget[],
+): readonly SketchDragTarget[] {
+  if (!currentValues || draggedPoints.length === 0) return draggedPoints
+  const curves = new Map(
+    sketch.entities.flatMap((entity) =>
+      entity.type === "cubic-bezier" ? [[entity.id, entity] as const] : [],
+    ),
+  )
+  const dragged = new Map(draggedPoints.map((target) => [target.entityId, target]))
+  const carried: SketchDragTarget[] = []
+  for (const constraint of sketch.constraints) {
+    if (constraint.type !== "tangent-join") continue
+    const incoming = curves.get(constraint.incomingCurveId)
+    const outgoing = curves.get(constraint.outgoingCurveId)
+    const target = incoming ? dragged.get(incoming.endPointId) : undefined
+    const current = incoming ? currentValues.get(incoming.endPointId) : undefined
+    if (!incoming || !outgoing || !target || !current) continue
+    for (const handleId of [incoming.control2PointId, outgoing.control1PointId]) {
+      const handle = currentValues.get(handleId)
+      if (!handle || dragged.has(handleId)) continue
+      const carriedTarget = {
+        entityId: handleId,
+        x: handle.x + target.x - current.x,
+        y: handle.y + target.y - current.y,
+      }
+      dragged.set(handleId, carriedTarget)
+      carried.push(carriedTarget)
+    }
+  }
+  return carried.length === 0 ? draggedPoints : [...draggedPoints, ...carried]
 }
 
 function initialCircleRadii(
@@ -1523,6 +1569,10 @@ function addConstraint(
   if (constraint.type === "point-on-elliptical-arc") {
     return builder.addEllipticalArcPointLocusConstraint(constraint, pointValues)
   }
+  if (constraint.type === "tangent-join") {
+    addTangentJoinConstraint(builder, sketch, constraint, pointValues)
+    return true
+  }
   if (isPointConstraint(constraint)) {
     addPointConstraint(builder, constraint)
     return true
@@ -1532,6 +1582,79 @@ function addConstraint(
     return true
   }
   return addDimensionConstraint(builder, sketch, constraint, variables)
+}
+
+/**
+ * Compiles a G1 join as SolveSpace curve-curve tangency plus strict handle ordering. Tangency alone
+ * also admits a cusp where both handles point the same way, so a pinned auxiliary point on the
+ * current join normal defines a separating line through the moving join point; the two handles
+ * must stay on opposite sides of it. The slack-variable half-plane equations add no freedom.
+ */
+function addTangentJoinConstraint(
+  builder: ProductionSketchBuilder,
+  sketch: SketchRecord,
+  constraint: Extract<SketchConstraint, { type: "tangent-join" }>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.curveCurveTangent, {
+    entityA: builder.entity(constraint.incomingCurveId),
+    entityB: builder.entity(constraint.outgoingCurveId),
+    other: 1,
+    other2: 0,
+  })
+  const handles = tangentJoinHandles(sketch, constraint, pointValues)
+  if (!handles) return
+  const { incomingControlId, joinId, outgoingControlId, normal, join, scale } = handles
+  const separator = builder.addPinnedAuxiliaryPoint({
+    x: join.x + normal.x * scale,
+    y: join.y + normal.y * scale,
+  })
+  for (const [controlId, ahead] of [
+    [outgoingControlId, true],
+    [incomingControlId, false],
+  ] as const) {
+    const control = pointValues.get(controlId)
+    if (!control) continue
+    // h = cross(separator - join, control - join) = -scale * dot(tangent, control - join).
+    const cross = scale * (normal.x * (control.y - join.y) - normal.y * (control.x - join.x))
+    builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointInOrientedChordHalfPlane, {
+      pointA: builder.entity(controlId),
+      pointB: builder.entity(joinId),
+      entityA: separator,
+      other: ahead ? 1 : 0,
+      value: Math.sqrt(Math.max(ahead ? -cross : cross, 0)),
+    })
+  }
+}
+
+function tangentJoinHandles(
+  sketch: SketchRecord,
+  constraint: Extract<SketchConstraint, { type: "tangent-join" }>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  const incoming = sketch.entities.find(({ id }) => id === constraint.incomingCurveId)
+  const outgoing = sketch.entities.find(({ id }) => id === constraint.outgoingCurveId)
+  if (incoming?.type !== "cubic-bezier" || outgoing?.type !== "cubic-bezier") return null
+  const join = pointValues.get(incoming.endPointId)
+  const before = pointValues.get(incoming.control2PointId)
+  const after = pointValues.get(outgoing.control1PointId)
+  if (!join || !before || !after) return null
+  const incomingLength = Math.hypot(join.x - before.x, join.y - before.y)
+  const outgoingLength = Math.hypot(after.x - join.x, after.y - join.y)
+  const [dx, dy, length] =
+    incomingLength > 1e-9
+      ? [join.x - before.x, join.y - before.y, incomingLength]
+      : [after.x - join.x, after.y - join.y, outgoingLength]
+  // A zero-length handle pair has no orientation to preserve; tangency remains authoritative.
+  if (length <= 1e-9) return null
+  return {
+    incomingControlId: incoming.control2PointId,
+    joinId: incoming.endPointId,
+    outgoingControlId: outgoing.control1PointId,
+    join,
+    normal: { x: -dy / length, y: dx / length },
+    scale: Math.max(incomingLength, outgoingLength),
+  }
 }
 
 function addSketchPointEntity(
@@ -1678,16 +1801,18 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
   if (!variables.ok) {
     return compilationFailure("invalid-variables", variables.diagnostic.message, "variables")
   }
-  const pointValues = initialPointValues(
-    [
-      ...input.data.sketch.entities,
-      ...input.data.externalPoints,
-      ...input.data.externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
-      ...input.data.externalCurves.flatMap(({ points }) => points),
-    ],
-    input.data.continuation,
+  const solveEntities = [
+    ...input.data.sketch.entities,
+    ...input.data.externalPoints,
+    ...input.data.externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
+    ...input.data.externalCurves.flatMap(({ points }) => points),
+  ]
+  const draggedPoints = withTangentJoinHandleDrags(
+    input.data.sketch,
+    initialPointValues(solveEntities, input.data.continuation, []),
     input.data.draggedPoints,
   )
+  const pointValues = initialPointValues(solveEntities, input.data.continuation, draggedPoints)
   const circleRadii = initialCircleRadii(
     [...input.data.sketch.entities, ...input.data.externalCurves.map(({ curve }) => curve)],
     input.data.continuation,
@@ -1734,7 +1859,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     compiled: {
       sketch: input.data.sketch,
       revision: input.data.revision,
-      system: builder.build(input.data.draggedPoints.map((target) => target.entityId)),
+      system: builder.build(draggedPoints.map((target) => target.entityId)),
       bindings: builder.bindings(),
       boundedEllipticalArcLoci: boundedEllipticalArcLoci(
         input.data.sketch,

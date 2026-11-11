@@ -28,6 +28,7 @@ import {
   sketchRecordSchema,
 } from "./sketch"
 import { retainSketchSourceImport } from "./sketch-source-import"
+import { interpolatingSplineControls } from "./sketch-spline"
 import type { AngleQuantity, LengthQuantity } from "./units"
 
 export type SketchPoint2 = Readonly<{ x: number; y: number }>
@@ -1239,6 +1240,81 @@ export function appendSketchCubicBezier(
   return {
     sketch: parsedSketch(sketch, [...sketch.entities, ...additions]),
     createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
+export type SketchSplineAppendResult = SketchAppendResult &
+  Readonly<{ createdConstraintIds: readonly SketchConstraintId[] }>
+
+/**
+ * Appends an interpolating spline as a chain of cubic Beziers that share their through-point
+ * identities. Every interior join, and the closing join of a closed spline, receives a
+ * `tangent-join` constraint so the solver preserves G1 continuity while points and handles move.
+ */
+export function appendSketchSpline(
+  sketch: SketchRecord,
+  input: {
+    points: readonly SketchPointTarget[]
+    closed?: boolean
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+  },
+): SketchSplineAppendResult {
+  const closed = input.closed ?? false
+  const construction = input.construction ?? false
+  const throughPoints = input.points.map((target) =>
+    resolvePointTarget(sketch, target, construction, input.createEntityId),
+  )
+  const controls = interpolatingSplineControls(
+    throughPoints.map(({ point }) => point),
+    closed,
+  )
+  const additions: SketchEntity[] = throughPoints.flatMap(({ entity }) => (entity ? [entity] : []))
+  const curveIds = controls.map((segment, index) => {
+    const start = throughPoints[index]
+    const end = throughPoints[(index + 1) % throughPoints.length]
+    if (!start || !end || start.id === end.id)
+      throw new RangeError("Consecutive spline through-points must be distinct entities.")
+    const [control1Id, control2Id, curveId] = [
+      input.createEntityId(),
+      input.createEntityId(),
+      input.createEntityId(),
+    ]
+    additions.push(
+      { schemaVersion: 0, id: control1Id, type: "point", ...segment.control1, construction },
+      { schemaVersion: 0, id: control2Id, type: "point", ...segment.control2, construction },
+      {
+        schemaVersion: 0,
+        id: curveId,
+        type: "cubic-bezier",
+        construction,
+        startPointId: start.id,
+        control1PointId: control1Id,
+        control2PointId: control2Id,
+        endPointId: end.id,
+      },
+    )
+    return curveId
+  })
+  const joinCount = closed ? curveIds.length : curveIds.length - 1
+  const joins: SketchConstraint[] = Array.from({ length: joinCount }, (_, index) => ({
+    schemaVersion: 0,
+    id: input.createConstraintId(),
+    type: "tangent-join",
+    incomingCurveId: curveIds[index] as SketchEntityId,
+    outgoingCurveId: curveIds[(index + 1) % curveIds.length] as SketchEntityId,
+  }))
+  return {
+    sketch: sketchRecordSchema.parse(
+      retainSketchSourceImport({
+        ...sketch,
+        entities: [...sketch.entities, ...additions],
+        constraints: [...sketch.constraints, ...joins],
+      }),
+    ),
+    createdEntityIds: additions.map(({ id }) => id),
+    createdConstraintIds: joins.map(({ id }) => id),
   }
 }
 

@@ -576,6 +576,20 @@ const tangentConstraintSchema = sketchConstraintEnvelopeSchema
     at: z.enum(["start", "end"]).optional(),
   })
   .strict()
+/**
+ * G1 continuity where the incoming cubic Bezier ends at the shared through-point where the outgoing
+ * cubic Bezier starts. The adjacent control handles stay collinear with that point.
+ */
+const tangentJoinConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("tangent-join"),
+    incomingCurveId: sketchEntityIdSchema,
+    outgoingCurveId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine((constraint) => constraint.incomingCurveId !== constraint.outgoingCurveId, {
+    message: "A tangent join requires two distinct curves.",
+  })
 const concentricConstraintSchema = entityPairSchema
   .extend({ type: z.literal("concentric") })
   .strict()
@@ -743,6 +757,7 @@ const drivingSketchConstraintSchema = z.discriminatedUnion("type", [
   perpendicularConstraintSchema,
   equalConstraintSchema,
   tangentConstraintSchema,
+  tangentJoinConstraintSchema,
   concentricConstraintSchema,
   pointOnLineConstraintSchema,
   pointOnCurveConstraintSchema,
@@ -962,6 +977,7 @@ const constraintEntityReferenceRules = {
   parallel: { firstEntityId: ["line"], secondEntityId: ["line"] },
   perpendicular: { firstEntityId: ["line"], secondEntityId: ["line"] },
   tangent: { arcId: ["arc"], lineId: ["line"] },
+  "tangent-join": { incomingCurveId: ["cubic-bezier"], outgoingCurveId: ["cubic-bezier"] },
   concentric: {
     firstEntityId: ["circle", "arc"],
     secondEntityId: ["circle", "arc"],
@@ -1005,6 +1021,19 @@ function validateEqualConstraintReferences(
   return roundTypes.includes(first.type) && roundTypes.includes(second.type)
 }
 
+function validateTangentJoinReferences(
+  constraint: Extract<SketchConstraint, { type: "tangent-join" }>,
+  entities: ReadonlyMap<string, SketchEntity>,
+) {
+  const incoming = entities.get(constraint.incomingCurveId)
+  const outgoing = entities.get(constraint.outgoingCurveId)
+  return (
+    incoming?.type === "cubic-bezier" &&
+    outgoing?.type === "cubic-bezier" &&
+    incoming.endPointId === outgoing.startPointId
+  )
+}
+
 function validateConstraintReferences(
   constraint: SketchConstraint,
   entities: ReadonlyMap<string, SketchEntity>,
@@ -1024,6 +1053,9 @@ function validateConstraintReferences(
           entityIs(entities, offsetPointId, ["point"]),
       )
     )
+  }
+  if (constraint.type === "tangent-join") {
+    return validateTangentJoinReferences(constraint, entities)
   }
   const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
   const rules: EntityReferenceRules = constraintEntityReferenceRules[constraint.type]
@@ -1075,6 +1107,8 @@ function nativeConstraintContribution(constraint: SketchConstraint) {
     return constraint.linePairs.length * 2 + constraint.endpointPairs.length
   }
   if (constraint.type === "arc-midpoint") return 2
+  // Tangency, a pinned separator point and two handle-ordering half-planes.
+  if (constraint.type === "tangent-join") return 4
   if (constraint.type === "ellipse-quadrant") return 6
   if (constraint.type === "point-on-ellipse") return 5
   return constraint.type === "point-on-elliptical-arc" ? 6 : 1
@@ -1141,6 +1175,9 @@ function nativeSketchCapacity(structure: SketchStructure) {
   const auxiliaryEllipseLocusCount = structure.constraints.filter(
     ({ type }) => type === "point-on-ellipse" || type === "point-on-elliptical-arc",
   ).length
+  const auxiliaryTangentJoinCount = structure.constraints.filter(
+    ({ type }) => type === "tangent-join",
+  ).length
   return {
     entities:
       authored.entities +
@@ -1151,7 +1188,8 @@ function nativeSketchCapacity(structure: SketchStructure) {
       projectionCount * 3 +
       auxiliaryArcMidpointLineCount +
       auxiliaryEllipseQuadrantCount * 4 +
-      auxiliaryEllipseLocusCount * 4,
+      auxiliaryEllipseLocusCount * 4 +
+      auxiliaryTangentJoinCount,
     parameters:
       authored.parameters +
       projectedExternalSketchEntities(structure.externalReferences ?? []).reduce(
@@ -1160,7 +1198,8 @@ function nativeSketchCapacity(structure: SketchStructure) {
       ) +
       projectionCount * 4 +
       auxiliaryEllipseQuadrantCount * 4 +
-      auxiliaryEllipseLocusCount * 4,
+      auxiliaryEllipseLocusCount * 4 +
+      auxiliaryTangentJoinCount * 2,
   }
 }
 
