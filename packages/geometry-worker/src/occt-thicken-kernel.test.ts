@@ -2,9 +2,17 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { type Face, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
 import { inspectOcctBody } from "./occt-body-validation"
+import { offsetOcctFace } from "./occt-face-offset"
+import { trackNativeWrappers } from "./occt-native-tracking.test-support"
 import { pressPullOcctShape } from "./occt-press-pull"
-import { createOcctBox, createOcctCone, createOcctCylinder, createOcctSphere } from "./occt-shapes"
-import { offsetOcctFace, ThickenError, thickenOcctShape } from "./occt-thicken"
+import {
+  createOcctBox,
+  createOcctCone,
+  createOcctCylinder,
+  createOcctSphere,
+  createOcctTorus,
+} from "./occt-shapes"
+import { ThickenError, thickenOcctShape } from "./occt-thicken"
 
 let occt: OpenCascadeInstance
 beforeAll(async () => {
@@ -209,6 +217,110 @@ describe("OCCT Thicken", () => {
   })
 })
 
+describe("OCCT Thicken native ownership", () => {
+  it("releases every native wrapper it creates on success and on failure", () => {
+    const tracked = trackNativeWrappers(occt)
+    const cylinder = keep(createOcctCylinder(occt, RADIUS, HEIGHT, [0, 0, 0]))
+    const side = faceKeys(cylinder, isCylinder)
+    keep(
+      thickenOcctShape(tracked.kernel, cylinder, side, {
+        thickness: 2,
+        side: "symmetric",
+        operation: "add",
+      }),
+    )
+    expect(tracked.leaks()).toEqual([])
+    failure(() =>
+      thickenOcctShape(tracked.kernel, cylinder, side, {
+        thickness: 1,
+        side: "inward",
+        operation: "add",
+      }),
+    )
+    expect(tracked.leaks()).toEqual([])
+    // Faces meeting at a sharp edge take the joined construction.
+    const box = keep(createOcctBox(occt, [10, 20, 5]))
+    const sharp = faceKeys(
+      box,
+      (face) => atTop(5)(face) || (face.geomType === "PLANE" && Math.abs(face.center.x - 5) < 1e-6),
+    )
+    keep(
+      thickenOcctShape(tracked.kernel, box, sharp, {
+        thickness: 2,
+        side: "outward",
+        operation: "new",
+      }),
+    )
+    expect(tracked.leaks()).toEqual([])
+    const plate = keep(createOcctBox(occt, [40, 40, 5]))
+    const boss = keep(plate.fuse(keep(createOcctCylinder(occt, RADIUS, HEIGHT, [0, 0, 5]))))
+    keep(withFace(boss, isCylinder, (face) => offsetOcctFace(tracked.kernel, boss, face, 1)))
+    expect(tracked.leaks()).toEqual([])
+    const sphere = keep(createOcctSphere(occt, RADIUS, [0, 0, HEIGHT]))
+    const capsule = keep(keep(createOcctCylinder(occt, RADIUS, HEIGHT, [0, 0, 0])).fuse(sphere))
+    failure(() =>
+      withFace(capsule, isCylinder, (face) => offsetOcctFace(tracked.kernel, capsule, face, 1)),
+    )
+    expect(tracked.leaks()).toEqual([])
+  })
+})
+
+describe("OCCT Thicken closed selections", () => {
+  const closedMessage = "enclose a closed region with no free boundary edge"
+  const expectClosedRejection = (
+    source: Shape3D,
+    keys: readonly number[],
+    side: "outward" | "inward",
+    operation: "new" | "remove" = "new",
+  ) => {
+    const error = failure(() =>
+      thickenOcctShape(occt, source, keys, { thickness: 1, side, operation }),
+    )
+    expect(error).toBeInstanceOf(ThickenError)
+    expect((error as Error).message).toContain(closedMessage)
+    expect((error as Error).message).toContain("Shell")
+  }
+  const everyFace = (body: Shape3D) => faceKeys(body, () => true)
+
+  it("rejects a whole sphere instead of returning the offset ball", () => {
+    const sphere = keep(createOcctSphere(occt, RADIUS, [0, 0, 0]))
+    expect(everyFace(sphere)).toHaveLength(1)
+    expectClosedRejection(sphere, everyFace(sphere), "outward")
+    expectClosedRejection(sphere, everyFace(sphere), "inward", "remove")
+  })
+
+  it("rejects a whole torus on either side", () => {
+    const torus = keep(createOcctTorus(occt, 10, 3, [0, 0, 0]))
+    expectClosedRejection(torus, everyFace(torus), "outward")
+    expectClosedRejection(torus, everyFace(torus), "inward")
+  })
+
+  it("rejects every face of a cylinder and of a box", () => {
+    const cylinder = keep(createOcctCylinder(occt, RADIUS, HEIGHT, [0, 0, 0]))
+    expect(everyFace(cylinder)).toHaveLength(3)
+    expectClosedRejection(cylinder, everyFace(cylinder), "outward")
+    expectClosedRejection(cylinder, everyFace(cylinder), "inward", "remove")
+    const box = keep(createOcctBox(occt, [10, 20, 5]))
+    expectClosedRejection(box, everyFace(box), "outward")
+  })
+
+  it("rejects the closed wall of an internal void but thickens an open subset", () => {
+    const block = keep(createOcctBox(occt, [30, 30, 30], false, [0, 0, 0]))
+    const voided = keep(block.cut(keep(createOcctSphere(occt, RADIUS, [0, 0, 15]))))
+    const cavity = faceKeys(voided, (face) => face.geomType === "SPHERE")
+    expect(cavity).toHaveLength(1)
+    expectClosedRejection(voided, cavity, "outward")
+    // Five of six box faces leave a free rim, so they still thicken.
+    const box = keep(createOcctBox(occt, [10, 20, 5]))
+    const open = faceKeys(box, (face) => !atTop(5)(face))
+    expect(open).toHaveLength(5)
+    const result = keep(
+      thickenOcctShape(occt, box, open, { thickness: 1, side: "inward", operation: "new" }),
+    )
+    expect(inspectOcctBody(occt, result)).toMatchObject({ valid: true, solidCount: 1 })
+  })
+})
+
 describe("OCCT curved-face offset", () => {
   const plateWithBoss = () => {
     const plate = keep(createOcctBox(occt, [40, 40, 5]))
@@ -271,6 +383,40 @@ describe("OCCT curved-face offset", () => {
     )
     expect(error).toBeInstanceOf(ThickenError)
     expect((error as Error).message).toContain("keeping its neighbouring faces attached")
+  })
+
+  it("rejects a moved boss that leaves its chamfer behind and merges into a neighbour", () => {
+    const plate = keep(createOcctBox(occt, [40, 40, 5]))
+    const bossA = keep(createOcctCylinder(occt, RADIUS, 8, [-5.25, 0, 5]))
+    const bossB = keep(createOcctCylinder(occt, RADIUS, 8, [5.25, 0, 5]))
+    const chamfer = keep(createOcctCone(occt, RADIUS, 2, [5.25, 0, 13], 3))
+    const body = keep(keep(keep(plate.fuse(bossA)).fuse(bossB)).fuse(chamfer))
+    expect(inspectOcctBody(occt, body).solidCount).toBe(1)
+    const error = failure(() =>
+      withFace(
+        body,
+        (face) => isCylinder(face) && face.center.x > 0,
+        (face) => offsetOcctFace(occt, body, face, 1),
+      ),
+    )
+    expect(error).toBeInstanceOf(ThickenError)
+    expect((error as Error).message).toContain("keeping its neighbouring faces attached")
+  })
+
+  it("rejects a counterbore hole offset that consumes the bore floor", () => {
+    const plate = keep(createOcctBox(occt, [40, 40, 10]))
+    const through = keep(plate.cut(keep(createOcctCylinder(occt, 3, 10, [0, 0, 0]))))
+    const counterbore = keep(through.cut(keep(createOcctCylinder(occt, RADIUS, 4, [0, 0, 6]))))
+    const smallHole = (face: Face) => isCylinder(face) && face.center.z < 6
+    const error = failure(() =>
+      withFace(counterbore, smallHole, (face) => offsetOcctFace(occt, counterbore, face, -2.5)),
+    )
+    expect(error).toBeInstanceOf(ThickenError)
+    // A smaller move keeps the floor and is exact.
+    const widened = keep(
+      withFace(counterbore, smallHole, (face) => offsetOcctFace(occt, counterbore, face, -1)),
+    )
+    expectSolid(widened, volumeOf(counterbore) - Math.PI * (4 ** 2 - 3 ** 2) * 6)
   })
 
   it("matches planar Press Pull for a planar face slab", () => {

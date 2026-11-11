@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { featureEvaluationInputSchema } from "@vibeshape/protocol"
+import { featureEvaluationInputSchema, featureForwardsDiagnosticMessage } from "@vibeshape/protocol"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { type FeatureEvaluationInput, ReplicadGeometryEngine } from "./engine"
 
@@ -198,6 +198,44 @@ describe("Thicken engine evaluation", () => {
 })
 
 describe("Press Pull v2 engine evaluation", () => {
+  it("fails a planar Press Pull authored as version 1 with a typed message and catalog advice", async () => {
+    try {
+      const source = await cylinder()
+      const top = (source.bodies?.[0]?.topologyCandidates ?? []).find(
+        ({ kind, signature }) =>
+          kind === "face" &&
+          signature.geometryClass === "PLANE" &&
+          Math.abs(signature.centroid[2] - HEIGHT) < 1e-6,
+      )
+      if (!top) throw new Error("The cylinder top face is missing.")
+      const face = {
+        schemaVersion: 1,
+        kind: "face",
+        outputRole: "result",
+        signature: top.signature,
+      }
+      const owned = engine.getHealth().ownedShapeCount
+      // Planar faces are authored as version 1; cutting through the whole height collapses it.
+      const input = featureInput({
+        id: featureId,
+        typeId: "press-pull",
+        schemaVersion: 1,
+        dependency,
+        parameters: { distance: -HEIGHT, sourceContentHash: sourceHash, face },
+      })
+      const result = await engine.evaluateFeature(input, vi.fn())
+      expect(result).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-geometry" } })
+      if (result.ok) throw new Error("Expected Press Pull to fail.")
+      expect(result.diagnostic.message).toContain("collapses, splits, or misses the body")
+      // Version 1 keeps catalog advice: the document worker does not forward this message.
+      expect(featureForwardsDiagnosticMessage(input.content.feature.type)).toBe(false)
+      expect(engine.getHealth().ownedShapeCount).toBe(owned)
+    } finally {
+      engine.disposeDocument(documentId)
+      expect(engine.getHealth().ownedShapeCount).toBe(0)
+    }
+  })
+
   it("offsets a curved face only in version 2", async () => {
     try {
       const source = await cylinder()

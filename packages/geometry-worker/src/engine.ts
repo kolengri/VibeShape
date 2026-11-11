@@ -187,6 +187,7 @@ import {
   terminateExtrusionAtFace,
   terminateExtrusionAtPlane,
 } from "./occt-extrusion-end"
+import { offsetOcctFace } from "./occt-face-offset"
 import { createOcctFdmFeature } from "./occt-fdm"
 import { FilletV3Error, filletOcctShapeV3, type ResolvedFilletTarget } from "./occt-fillet-v3"
 import { createOcctCoil, createOcctHelicalSweep } from "./occt-helix"
@@ -200,7 +201,7 @@ import { PathPatternError, samplePathPatternPlacements } from "./occt-path-sampl
 import { patternOcctShape } from "./occt-pattern"
 import { placeOcctShape } from "./occt-placement"
 import { splitOcctShape } from "./occt-plane-split"
-import { pressPullOcctShape } from "./occt-press-pull"
+import { PressPullError, pressPullOcctShape } from "./occt-press-pull"
 import { reconstructOcctPrintOptimization } from "./occt-print-optimization"
 import { splitOcctShapeByReferencePlane } from "./occt-reference-plane"
 import { scaleOcctShape } from "./occt-scale"
@@ -222,7 +223,7 @@ import {
 import { shellOcctShape } from "./occt-shell"
 import { inspectOcctSourceImport, rebuildOcctSourceImport } from "./occt-source-import"
 import { createOcctSweep } from "./occt-sweep"
-import { offsetOcctFace, ThickenError, thickenOcctShape } from "./occt-thicken"
+import { ThickenError, thickenOcctShape } from "./occt-thicken"
 import { threadOcctShape } from "./occt-thread"
 import { revolveProfileCrossesAxis } from "./revolve-profile"
 import { resolveSelectedEdgeKeys } from "./selected-edge-resolver"
@@ -4875,7 +4876,8 @@ function featureGeometryFailure(error: unknown, cleanupSucceeded: boolean) {
     error instanceof FilletV3Error ||
     error instanceof ConstrainedLoftError ||
     error instanceof DraftError ||
-    error instanceof ThickenError
+    error instanceof ThickenError ||
+    error instanceof PressPullError
   )
     return featureFailure("invalid-feature-geometry", error.message)
   return featureFailure("invalid-feature-geometry", "Feature geometry evaluation failed.")
@@ -5338,20 +5340,32 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     const snapshot = target ? this.#topologySnapshots.get(target) : undefined
     const dependency = input.dependencies[0]
     const resolve = this.resolveShellOpenings
+    const reselect =
+      "The Press Pull face is missing or ambiguous on the current body. Reselect the face."
     if (!target || !snapshot || !dependency?.outputRole || !resolve)
-      throw new Error("Exact Press Pull body-face topology is unavailable.")
-    const face = takeResolvedBodyFace(
-      target,
-      snapshot,
-      feature.parameters.face,
-      { featureId: dependency.featureId, outputRole: dependency.outputRole },
-      (references, candidates, scope) =>
-        resolve(references, candidates, scope, "exact", { allowSemanticRebinding: false }),
-    )
+      throw new PressPullError(reselect)
+    let face: ReturnType<typeof takeResolvedBodyFace>
+    try {
+      face = takeResolvedBodyFace(
+        target,
+        snapshot,
+        feature.parameters.face,
+        { featureId: dependency.featureId, outputRole: dependency.outputRole },
+        (references, candidates, scope) =>
+          resolve(references, candidates, scope, "exact", { allowSemanticRebinding: false }),
+      )
+    } catch {
+      throw new PressPullError(reselect)
+    }
     try {
       return feature.allowCurved && face.geomType !== "PLANE"
         ? offsetOcctFace(occt, target, face, feature.parameters.distance)
         : pressPullOcctShape(occt, target, face, feature.parameters.distance)
+    } catch (error) {
+      if (error instanceof PressPullError || error instanceof ThickenError) throw error
+      throw new PressPullError(
+        "OCCT could not move the face by this distance. Adjust the distance.",
+      )
     } finally {
       face.delete()
     }
