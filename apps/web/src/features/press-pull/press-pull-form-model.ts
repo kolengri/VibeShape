@@ -10,8 +10,8 @@ import type { ModelBodyTopologyEvidence } from "@vibeshape/domain/model-body-top
 import {
   type PressPullFeatureParameters,
   pressPullDistanceSchema,
-  pressPullFeatureParametersSchema,
-  pressPullFeatureType,
+  pressPullFeatureParametersV2Schema,
+  pressPullFeatureTypeV2,
   readPressPullFeatureParameters,
 } from "@vibeshape/domain/part-design-press-pull"
 import { defaultLengthExpression } from "../../document/document-display-units"
@@ -52,7 +52,7 @@ export function pressPullSourceIsCurrent(
 }
 export function pressPullInitialDistance(mode: PressPullFormMode, units: DocumentDisplayUnits) {
   return mode.kind === "edit"
-    ? quantityExpression(pressPullFeatureParametersSchema.parse(mode.feature.parameters).distance)
+    ? quantityExpression(pressPullFeatureParametersV2Schema.parse(mode.feature.parameters).distance)
     : defaultLengthExpression(1, units.length)
 }
 export function pressPullFormFeature(
@@ -74,7 +74,7 @@ export function pressPullFormFeature(
   )
   if (!parsed.ok) return null
   const source = pressPullSource(mode)
-  const parameters = pressPullFeatureParametersSchema.parse({
+  const parameters = pressPullFeatureParametersV2Schema.parse({
     targetBody: source.targetBody,
     face: source.face,
     sourceContentHash: source.sourceContentHash,
@@ -86,7 +86,8 @@ export function pressPullFormFeature(
       : {
           schemaVersion: 0,
           id: featureId,
-          type: pressPullFeatureType.type,
+          // New features use version 2, which also offsets curved faces; edits keep their type.
+          type: pressPullFeatureTypeV2.type,
           label: mode.featureLabel,
           parameters,
           dependencies: [source.targetBody.featureId],

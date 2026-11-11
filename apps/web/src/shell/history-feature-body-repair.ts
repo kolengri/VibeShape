@@ -18,6 +18,7 @@ import {
   readSplitFeatureParameters,
   readSplitFeatureParametersV2,
 } from "@vibeshape/domain/part-design-split"
+import { readThickenFeatureParameters } from "@vibeshape/domain/part-design-thicken"
 import { readThreadFeatureParameters } from "@vibeshape/domain/part-design-thread"
 import {
   type ReferenceAxis,
@@ -64,8 +65,8 @@ function bodyRecipe(feature: FeatureRecord): BodyRecipe | null {
     }
   const shell = readShellFeatureParameters(feature)
   if (shell) return { parameters: shell, shellClosed: shell.openings.length === 0 }
-  const draft = readDraftFeatureParameters(feature)
-  if (draft) return { parameters: draft, reselectFaces: true }
+  const faceBound = readDraftFeatureParameters(feature) ?? readThickenFeatureParameters(feature)
+  if (faceBound) return { parameters: faceBound, reselectFaces: true }
   return simpleBodyRecipe(feature)
 }
 
@@ -107,7 +108,7 @@ export function replaceHistoryFeatureBody(
     return null
   const recipe = bodyRecipe(feature)
   if (!recipe) return null
-  // Draft faces and a planar-face neutral plane belong to the missing body, so the saved record
+  // Draft and Thicken faces, and a planar-face neutral plane, belong to the missing body, so the saved record
   // stays unchanged and the form starts on the replacement with an explicit face selection.
   if (recipe.reselectFaces) return { feature, faceTarget: body.data }
   const support: ReferencePlane | ReferenceAxis | undefined = recipe.support

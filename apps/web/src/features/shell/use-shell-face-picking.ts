@@ -33,6 +33,8 @@ const facePickingToolKinds = new Set<ActivePartDesignTool["kind"]>([
   "edit-shell",
   "create-draft",
   "edit-draft",
+  "create-thicken",
+  "edit-thicken",
 ])
 
 export function useShellFacePicking(
@@ -77,7 +79,9 @@ export function useShellFacePicking(
     [body, targetFeatureId, outputRole],
   )
   const editingId =
-    activeTool?.kind === "edit-shell" || activeTool?.kind === "edit-draft"
+    activeTool?.kind === "edit-shell" ||
+    activeTool?.kind === "edit-draft" ||
+    activeTool?.kind === "edit-thicken"
       ? activeTool.featureId
       : null
   const excludedFeatureIds = useMemo(() => {

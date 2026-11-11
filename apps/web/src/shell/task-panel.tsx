@@ -154,6 +154,7 @@ import { ScaleTaskPanel } from "./scale-task-panel"
 import { ShellTaskPanel } from "./shell-task-panel"
 import { SplitTaskPanel } from "./split-task-panel"
 import { SweepLoftTaskPanel } from "./sweep-loft-task-panel"
+import { ThickenTaskPanel } from "./thicken-task-panel"
 import { ThreadTaskPanel } from "./thread-task-panel"
 import type { EditorWorkspaceName } from "./workspace"
 
@@ -1914,6 +1915,9 @@ function ShellToolTaskPanel(props: ActiveTaskPanelProps) {
 function DraftToolTaskPanel(props: ActiveTaskPanelProps) {
   return <DraftTaskPanel {...props} renderDelete={() => null} />
 }
+function ThickenToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <ThickenTaskPanel {...props} renderDelete={() => null} />
+}
 function ScaleToolTaskPanel(props: ActiveTaskPanelProps) {
   return <ScaleTaskPanel {...props} renderDelete={() => null} />
 }
@@ -2001,6 +2005,8 @@ const activeTaskPanelByKind = {
   "edit-shell": ShellToolTaskPanel,
   "create-draft": DraftToolTaskPanel,
   "edit-draft": DraftToolTaskPanel,
+  "create-thicken": ThickenToolTaskPanel,
+  "edit-thicken": ThickenToolTaskPanel,
   "create-scale": ScaleToolTaskPanel,
   "edit-scale": ScaleToolTaskPanel,
   "create-thread": ThreadToolTaskPanel,

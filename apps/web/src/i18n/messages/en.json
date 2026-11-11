@@ -431,7 +431,7 @@
         "selectSolid": "Create an eligible solid first.",
         "selectHolePoints": "Create and finish a sketch with at least one point first.",
         "selectTwoSolids": "Create at least two eligible solids first.",
-        "selectPlanarFace": "Select a current planar face of an exact solid."
+        "selectPlanarFace": "Select a current face of an exact solid."
       },
       "items": {
         "openShortcutHelp": {
@@ -775,6 +775,10 @@
           "label": "Draft",
           "keywords": "taper|draft angle|mold|pull direction|faces|part"
         },
+        "thickenPart": {
+          "label": "Thicken",
+          "keywords": "thicken|offset faces|wall|sheet|solid from faces|surface thickness|part"
+        },
         "scalePart": {
           "label": "Scale",
           "keywords": "resize|enlarge|shrink|uniform scale|factor|part"
@@ -817,7 +821,7 @@
         },
         "pressPull": {
           "label": "Press Pull",
-          "keywords": "offset face|push|pull|extend|cut|planar face"
+          "keywords": "offset face|push|pull|extend|cut|planar face|curved face|cylinder radius"
         },
         "createConnectMounts": {
           "label": "Connect Mounts",
@@ -2786,6 +2790,42 @@
       "saveFailed": "Draft could not be saved. Your values remain available to retry.",
       "previewFailed": "Draft could not be built. Faces tangent to a selected face are drafted with it. Blends that run across the pull direction, such as fillets around a top face, and faces perpendicular to it cannot be drafted; fillets along the pull direction are drafted with their walls. Draft before adding those fillets, choose other faces, or reduce the angle. Apply requires a successful preview."
     },
+    "thicken": {
+      "title": "Thicken",
+      "editTitle": "Edit thicken",
+      "featureLabel": "Thicken {number}",
+      "description": "Build a solid of uniform thickness from selected faces of this part. The faces must form one connected patch.",
+      "parameters": "Thicken parameters",
+      "faces": "Faces to thicken",
+      "facesDescription": "Select 1\u2013256 connected faces in 3D, or expand the list below. Planar and curved faces are supported.",
+      "faceCount": "{selected} / {total} faces selected",
+      "faceName": "Face {number}",
+      "face": "Face {number}: area {area} mm\u00b2; center ({x}, {y}, {z}) mm",
+      "thickness": "Thickness",
+      "thicknessDescription": "Length expression from 0.001 to 10,000 mm. On a curved face it must stay below the curvature radius on the concave side.",
+      "side": "Side",
+      "sideDescription": "Direction relative to the outward face normals.",
+      "outward": "Outward",
+      "inward": "Inward",
+      "symmetric": "Both sides, split evenly",
+      "operation": "Result",
+      "operationDescription": "New keeps this part and adds a separate solid. Add joins the thickened region to the part; Remove cuts it away.",
+      "operationNew": "New body",
+      "operationAdd": "Add to part",
+      "operationRemove": "Remove from part",
+      "repair": "A thickened face is missing or ambiguous. Reselect the faces on the current body before applying.",
+      "unavailable": "Exact source geometry is unavailable. Repair or enable the source feature before selecting faces.",
+      "validationSummary": "Select 1\u2013256 connected faces and a valid thickness.",
+      "invalidExpression": "Enter a valid length expression.",
+      "invalidDimension": "The thickness must be a length.",
+      "invalidRange": "The thickness must be between 0.001 and 10,000 mm.",
+      "create": "Apply thicken",
+      "update": "Update thicken",
+      "cancel": "Cancel",
+      "staleRevision": "The document changed. Reopen Thicken and select the current faces.",
+      "saveFailed": "Thicken could not be saved. Your values remain available to retry.",
+      "previewFailed": "Thicken could not be built. Reduce the thickness, choose the convex side of curved faces, or thicken sharp-edged faces separately. Apply requires a successful preview."
+    },
     "scale": {
       "title": "Scale",
       "editTitle": "Edit scale",
@@ -4470,21 +4510,21 @@
     "pressPull": {
       "title": "Press Pull",
       "editTitle": "Edit Press Pull",
-      "description": "Extend or cut an exact body using its selected planar face.",
+      "description": "Move the selected planar or curved face of an exact body along its normals, extending or cutting the body.",
       "create": "Apply Press Pull",
       "update": "Update Press Pull",
       "cancel": "Cancel",
       "parameters": "Parameters",
       "distance": "Distance",
-      "lengthDescription": "Positive distances extend outward; negative distances cut inward. The complete trimmed face, including holes, is swept along its normal.",
-      "unavailable": "The selected face is unavailable or the source body changed. Cancel and reselect a planar face.",
-      "validationSummary": "Enter a nonzero distance and select a current planar face.",
+      "lengthDescription": "Positive distances extend outward; negative distances cut inward. The complete trimmed face, including holes, moves along its normals. A curved face moves only while its neighbouring faces stay attached.",
+      "unavailable": "The selected face is unavailable or the source body changed. Cancel and reselect the face.",
+      "validationSummary": "Enter a nonzero distance and select a current face.",
       "invalidExpression": "Enter a valid length expression.",
       "invalidDimension": "Distance must be a length.",
       "invalidRange": "Distance magnitude must be between 0.001 and 100000 mm.",
       "staleRevision": "The document changed. Reopen Press Pull and try again.",
       "saveFailed": "Press Pull could not be saved.",
-      "previewFailed": "Press Pull could not produce one valid solid. Adjust the distance.",
+      "previewFailed": "Press Pull could not produce one valid solid. Adjust the distance. A curved face needs neighbouring faces that meet it at right angles or extend along their own surfaces.",
       "featureLabel": "Press Pull {number}"
     },
     "viewportContext": {
@@ -4497,6 +4537,7 @@
       "datumPoint": "Datum Point",
       "shell": "Shell",
       "draft": "Draft",
+      "thicken": "Thicken",
       "scale": "Scale",
       "editFeature": "Edit Feature",
       "editProfileSketch": "Edit Profile Sketch",
