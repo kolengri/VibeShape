@@ -504,6 +504,60 @@ describe("feature preview worker lifetime", () => {
     expect(candidate.parameters.radius).toEqual(createLengthQuantity(40))
   })
 
+  describe.each([
+    ["Loft v3", "loft", 3],
+    ["Fillet V3", "fillet", 3],
+    ["Draft", "draft", 1],
+    ["Scale", "scale", 1],
+    ["Thicken", "thicken", 1],
+    ["Press Pull v2", "press-pull", 2],
+  ] as const)("%s preview diagnostics", (_label, name, schemaVersion) => {
+    const candidate = featureRecordSchema.parse({
+      ...feature(candidateId, [baseId]),
+      type: {
+        moduleId: "org.vibeshape.core.part-design",
+        moduleVersion: "0.1.0",
+        typeId: `org.vibeshape.feature.part-design.${name}`,
+        schemaVersion,
+      },
+    })
+
+    async function previewFailure(values: Readonly<Record<string, string>>) {
+      createSession.mockReturnValue({
+        rebuild: vi.fn(async ({ document }: { document: typeof snapshot }) => ({
+          ...rebuiltResponse([]),
+          documentId: document.id,
+          revision: document.revision,
+          evaluation: {
+            records: document.features.map(({ id }) => ({
+              featureId: id,
+              status: "failed" as const,
+              diagnostics: [{ code: "org.vibeshape.feature.geometry-failed", values }],
+            })),
+            dirtyFeatureIds: [],
+            evaluatedFeatureIds: [],
+            reusedFeatureIds: [],
+          },
+        })),
+        terminate: vi.fn(),
+      })
+      const committedGeometry = [] as const
+      const { result } = renderHook(() => useFeaturePreview(snapshot, candidate, committedGeometry))
+      await act(async () => {})
+      expect(result.current.status).toBe("error")
+      return result.current.diagnostic
+    }
+
+    it("keeps the localized advice when the worker forwards no typed message", async () => {
+      expect(await previewFailure({ reason: "invalid-feature-geometry" })).toBeUndefined()
+    })
+
+    it("shows a forwarded typed kernel message", async () => {
+      const message = "Selected face 1 cannot be moved; adjust the distance."
+      expect(await previewFailure({ reason: "invalid-feature-geometry", message })).toBe(message)
+    })
+  })
+
   it("keeps only the latest pending rebuild while the kernel evaluates a previous candidate", async () => {
     let complete!: (response: DocumentWorkerResponse) => void
     const response = rebuiltResponse([

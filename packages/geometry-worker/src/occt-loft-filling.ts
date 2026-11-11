@@ -8,7 +8,7 @@ import {
   createAnalyticalFace,
   validateOcctProfileSolid,
 } from "./occt-loft"
-import { requireLoftEdgeResiduals } from "./occt-loft-residuals"
+import { LoftFillingError, requireLoftEdgeResiduals } from "./occt-loft-residuals"
 import type { AnalyticalSweepPath } from "./occt-sweep"
 
 type Owned = { delete(): void }
@@ -171,7 +171,7 @@ function onSupportEdge(occt: OpenCascadeInstance, edge: Edge, support: Face, own
     properties = own(new occt.GProp_GProps_1())
   occt.BRepGProp.LinearProperties(shared, properties, false, false)
   if (Math.abs(properties.Mass() - linearMeasure(occt, edge)) > 1e-6)
-    throw new Error("A Loft end edge does not lie on its support face.")
+    throw new LoftFillingError("A Loft end edge does not lie on its support face.")
   if (support.geomType === "PLANE") {
     occt.BRepLib.BuildPCurveForEdgeOnPlane_1(edge.wrapped, support.wrapped)
     return edge
@@ -191,7 +191,7 @@ function onSupportEdge(occt: OpenCascadeInstance, edge: Edge, support: Face, own
     )
   })
   if (matches.length !== 1)
-    throw new Error("A Loft end edge has no unique existing support pcurve.")
+    throw new LoftFillingError("A Loft end edge has no unique existing support pcurve.")
   return required(matches[0])
 }
 function requireResiduals(
@@ -208,7 +208,7 @@ function requireResiduals(
     !(angle <= ANGLE_TOLERANCE) ||
     !(curvature <= CURVATURE_TOLERANCE)
   )
-    throw new Error(
+    throw new LoftFillingError(
       `OCCT Loft filling exceeded continuity tolerances (distance=${distance}, angle=${angle}, curvature=${curvature}).`,
     )
 }
@@ -358,7 +358,7 @@ export function createOcctLoftPatchNetwork(
     sewing.Add(own(createAnalyticalFace(occt, required(network.sections.at(-1)))).wrapped)
     sewing.Perform(own(new occt.Message_ProgressRange_1()))
     if (sewing.NbFreeEdges() || sewing.NbMultipleEdges())
-      throw new Error("A constrained Loft did not form a closed manifold shell.")
+      throw new LoftFillingError("A constrained Loft did not form a closed manifold shell.")
     const shell = own(sewing.SewedShape())
     if (shell.ShapeType() !== (occt.TopAbs_ShapeEnum.TopAbs_SHELL as TopAbs_ShapeEnum))
       throw new Error("A constrained Loft must form one shell.")

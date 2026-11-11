@@ -6,6 +6,7 @@ import {
   helixContentSchema,
   helixMeridianAxial,
   helixStart,
+  maximizeOnInterval,
   type SweepFeatureContentParametersV2,
   sweepFeatureContentParametersV2Schema,
 } from "@vibeshape/protocol"
@@ -174,28 +175,12 @@ export function createOcctCoil(
 
 type CurveScalar = (parameter: number) => number
 
-/** Dense sampling then golden-section refinement of the smallest and largest value. */
+/** Smallest and largest value of a scalar along one curve parameter range. */
 function curveExtremes(f: CurveScalar, first: number, last: number) {
-  const samples = 64
-  const step = (last - first) / samples
-  let [low, high] = [first, first]
-  for (let index = 1; index <= samples; index += 1) {
-    const parameter = first + step * index
-    if (f(parameter) < f(low)) low = parameter
-    if (f(parameter) > f(high)) high = parameter
+  return {
+    minimum: -maximizeOnInterval((parameter) => -f(parameter), first, last),
+    maximum: maximizeOnInterval(f, first, last),
   }
-  const refine = (center: number, sign: 1 | -1) => {
-    let [left, right] = [Math.max(first, center - step), Math.min(last, center + step)]
-    const golden = (Math.sqrt(5) - 1) / 2
-    for (let iteration = 0; iteration < 50; iteration += 1) {
-      const a = right - golden * (right - left)
-      const b = left + golden * (right - left)
-      if (sign * f(a) < sign * f(b)) left = a
-      else right = b
-    }
-    return sign * Math.max(sign * f(center), sign * f((left + right) / 2))
-  }
-  return { minimum: refine(low, -1), maximum: refine(high, 1) }
 }
 
 /**
