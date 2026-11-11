@@ -6,7 +6,7 @@ import {
   type ImportUploadInspection,
 } from "../../packages/automation-api/src/imports"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
-import { enableLocalAi } from "./application-menu-support"
+import { enableLocalAi, expectLocalAiReconnected } from "./application-menu-support"
 import { createSolids, openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { exportGeometry, requireSourceSnapshot } from "./source-import-ui-support"
@@ -168,7 +168,7 @@ test("imports authentic native files through paired chunks, manual preview, atom
       const restored = await saveProject(page)
       expect(restored.project.snapshot.features).toEqual(snapshot.features)
       expect(restored.project.snapshot.parts).toEqual(snapshot.parts)
-      await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
+      await expectLocalAiReconnected(page)
       revision = restored.project.snapshot.revision
     }
     const portable = await saveProject(page)

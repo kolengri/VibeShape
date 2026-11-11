@@ -5,6 +5,7 @@ import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { readVShapeV3 } from "../../packages/formats/src/vshape"
 import {
   enableLocalAi,
+  expectLocalAiReconnected,
   openAiConnections,
   openApplicationMenuItem,
   openAutoApplySetup,
@@ -277,9 +278,7 @@ test("lists and manually edits authored metadata through real MCP, preserving ge
     await expect(
       page.getByRole("treeitem", { name: "Folder Reviewed assembly", exact: true }),
     ).toBeVisible()
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
+    await expectLocalAiReconnected(page)
     const reopened = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     expect(reopened.summary.revision).toBe(final.summary.revision)
     expect(

@@ -2,7 +2,7 @@ import { createMcpTestClient } from "../../apps/mcp-server/test/client"
 import type { AutomationDraftInspectionView } from "../../packages/automation-api/src/draft-inspection"
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { createLengthQuantity, createScalarQuantity } from "../../packages/domain/src/units"
-import { enableLocalAi } from "./application-menu-support"
+import { enableLocalAi, expectLocalAiReconnected } from "./application-menu-support"
 import { expect, test } from "./fixtures"
 
 const id = (n: number) => `0195b5ac-b280-7a2c-8c33-${String(n).padStart(12, "0")}`
@@ -235,9 +235,7 @@ test("creates and updates reference frames from unsaved exact topology through o
     await expect(page.getByRole("treeitem", { name: "Reference MCP 5", exact: true })).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
+    await expectLocalAiReconnected(page)
     const reopened = success(localToolOutputs.model_info.parse(await call("model_info", {})))
     expect(reopened.summary.revision).toBe(committed.revision)
     const sourcePart = parts.parts.find(

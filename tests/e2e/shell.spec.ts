@@ -29,7 +29,11 @@ test.describe("foundation CAD shell", () => {
     ).toBeVisible()
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Task panel" })).toBeVisible()
-    await expect(page.locator("main > footer")).toContainText("Ready")
+    await expect(
+      page
+        .locator("main footer")
+        .filter({ has: page.getByRole("status").filter({ hasText: /^Selection: / }) }),
+    ).toContainText("Ready")
   })
 
   test("orbits the 3D viewport with primary drag without accepting a sketch plane", async ({
@@ -44,8 +48,8 @@ test.describe("foundation CAD shell", () => {
       timeout: 30_000,
     })
     await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -84,7 +88,9 @@ test.describe("foundation CAD shell", () => {
 
     const xzPick = await selectIdleOriginPlaneInViewport(page, "xz")
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await expect(page.locator("main > footer")).toContainText("Selection: XZ plane")
+    await expect(page.getByRole("status").filter({ hasText: /^Selection: / })).toContainText(
+      "Selection: XZ plane",
+    )
     await viewport.getByRole("button", { name: "Hide XZ plane" }).click()
     await expect(viewport).not.toHaveAttribute("data-origin-plane-selection")
     await page.mouse.click(xzPick.x, xzPick.y)
@@ -93,7 +99,7 @@ test.describe("foundation CAD shell", () => {
     await selectIdleOriginPlaneInViewport(page, "xz")
     await page
       .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("button", { name: "Create sketch", exact: true })
       .click()
 
     await expect(page.getByRole("heading", { name: "Select a sketch plane" })).toHaveCount(0)
@@ -118,7 +124,7 @@ test.describe("foundation CAD shell", () => {
     await invokeModelCommand(page, "Primitives", "Box")
     await page
       .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
       .click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })

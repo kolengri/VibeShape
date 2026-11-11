@@ -145,7 +145,7 @@ test.describe("Boolean subtraction", () => {
     await page.getByRole("combobox", { name: "Search options…", exact: true }).fill("Cylinder 2")
     await page.getByRole("option", { name: "Cylinder 2", exact: true }).click()
     await editForm.getByRole("checkbox", { name: "Keep tool solid" }).check()
-    await editForm.getByRole("button", { name: "Update subtraction" }).dblclick()
+    await editForm.getByRole("button", { name: "Update subtraction", exact: true }).dblclick()
     await expect(editForm).not.toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
 
@@ -165,7 +165,7 @@ test.describe("Boolean subtraction", () => {
 
     await expect(reopenedForm.getByRole("checkbox", { name: "Keep tool solid" })).toBeChecked()
     await reopenedForm.getByRole("checkbox", { name: "Keep tool solid" }).uncheck()
-    await reopenedForm.getByRole("button", { name: "Update subtraction" }).click()
+    await reopenedForm.getByRole("button", { name: "Update subtraction", exact: true }).click()
     await expect(reopenedForm).not.toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
     await toolbar.getByRole("button", { name: "Undo", exact: true }).click()
