@@ -4862,6 +4862,34 @@ class ShellOpeningRepairError extends Error {
 }
 class ConstrainedLoftError extends Error {}
 
+/** Moves a resolved face; every failure is a typed, user-actionable Press Pull diagnostic. */
+function movePressPullFace(
+  occt: OpenCascadeInstance,
+  target: Shape3D | undefined,
+  face: Face,
+  feature: Extract<ParsedFeature, { kind: "press-pull" }>,
+) {
+  try {
+    if (!target) throw new PressPullError("The Press Pull source body is unavailable.")
+    return feature.allowCurved && face.geomType !== "PLANE"
+      ? offsetOcctFace(occt, target, face, feature.parameters.distance)
+      : pressPullOcctShape(occt, target, face, feature.parameters.distance)
+  } catch (error) {
+    if (error instanceof PressPullError || error instanceof ThickenError) throw error
+    throw new PressPullError("OCCT could not move the face by this distance. Adjust the distance.")
+  }
+}
+
+/** Kernel failures whose messages name the failing input and a fix; they are shown verbatim. */
+const actionableGeometryErrors = [
+  ChamferV3Error,
+  FilletV3Error,
+  ConstrainedLoftError,
+  DraftError,
+  ThickenError,
+  PressPullError,
+]
+
 function featureGeometryFailure(error: unknown, cleanupSucceeded: boolean) {
   if (!cleanupSucceeded)
     return featureFailure(
@@ -4871,14 +4899,7 @@ function featureGeometryFailure(error: unknown, cleanupSucceeded: boolean) {
   if (error instanceof ShellOpeningRepairError)
     return featureFailure("invalid-feature-parameters", error.message)
   if (error instanceof LegacyEdgeTreatmentError) return featureFailure(error.code, error.message)
-  if (
-    error instanceof ChamferV3Error ||
-    error instanceof FilletV3Error ||
-    error instanceof ConstrainedLoftError ||
-    error instanceof DraftError ||
-    error instanceof ThickenError ||
-    error instanceof PressPullError
-  )
+  if (error instanceof Error && actionableGeometryErrors.some((Kind) => error instanceof Kind))
     return featureFailure("invalid-feature-geometry", error.message)
   return featureFailure("invalid-feature-geometry", "Feature geometry evaluation failed.")
 }
@@ -5337,16 +5358,27 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     target: Shape3D | undefined,
     input: FeatureEvaluationInput,
   ) {
+    const face = this.#takePressPullFace(feature, target, input)
+    try {
+      return movePressPullFace(occt, target, face, feature)
+    } finally {
+      face.delete()
+    }
+  }
+
+  /** Resolves the saved Press Pull face; a failure always asks for reselection. */
+  #takePressPullFace(
+    feature: Extract<ParsedFeature, { kind: "press-pull" }>,
+    target: Shape3D | undefined,
+    input: FeatureEvaluationInput,
+  ) {
     const snapshot = target ? this.#topologySnapshots.get(target) : undefined
     const dependency = input.dependencies[0]
     const resolve = this.resolveShellOpenings
-    const reselect =
-      "The Press Pull face is missing or ambiguous on the current body. Reselect the face."
-    if (!target || !snapshot || !dependency?.outputRole || !resolve)
-      throw new PressPullError(reselect)
-    let face: ReturnType<typeof takeResolvedBodyFace>
     try {
-      face = takeResolvedBodyFace(
+      if (!target || !snapshot || !dependency?.outputRole || !resolve)
+        throw new Error("Exact Press Pull body-face topology is unavailable.")
+      return takeResolvedBodyFace(
         target,
         snapshot,
         feature.parameters.face,
@@ -5355,19 +5387,9 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           resolve(references, candidates, scope, "exact", { allowSemanticRebinding: false }),
       )
     } catch {
-      throw new PressPullError(reselect)
-    }
-    try {
-      return feature.allowCurved && face.geomType !== "PLANE"
-        ? offsetOcctFace(occt, target, face, feature.parameters.distance)
-        : pressPullOcctShape(occt, target, face, feature.parameters.distance)
-    } catch (error) {
-      if (error instanceof PressPullError || error instanceof ThickenError) throw error
       throw new PressPullError(
-        "OCCT could not move the face by this distance. Adjust the distance.",
+        "The Press Pull face is missing or ambiguous on the current body. Reselect the face.",
       )
-    } finally {
-      face.delete()
     }
   }
 
