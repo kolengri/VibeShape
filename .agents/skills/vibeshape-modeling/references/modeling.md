@@ -85,7 +85,13 @@ Author sketches, primitive origins and feature axes in their intended locations 
 
 The editor also offers saved part **Material and Color** through viewport selection actions. It
 currently has no named MCP authoring tool; do not invent tool names. **Press Pull** is available
-through ## Connect mounting points
+through `create_press_pull`/`update_press_pull` (see [face operations](face-operations.md)); do not
+substitute extrusion-distance editing for direct face editing. Existing MCP geometry/history edits
+preserve V6 part appearance by authored PartId, and native backups retain it. Appearance presets are
+visual metadata, not structural material or density assignments. Inspect the live schemas before
+claiming a new transport capability.
+
+## Connect mounting points
 
 Use `create_connect_mounts` to build a geometric starting solid between 2–16 distinct mounting
 locations, or `update_connect_mounts` to edit the same feature ID. These named tools are available
@@ -373,8 +379,6 @@ Use `model_body_measurements` or `draft_body_measurements` to select the exact f
 Shell create/update authors version 2 with explicit inward/outward direction and positive thickness. Use `openings: []` for a closed cavity. For an open cavity, obtain exact body-bound opening references and the source content hash from `model_body_topology` or `draft_body_topology`. For a new enclosure, create its exterior, inspect the current draft body and opening faces, create Shell in the same draft, then preview before one commit. A save solely to discover opening faces is unnecessary. After source edits, restart stale topology discovery; unique durable face identities can preserve existing v2 openings within the same exact body. Missing, ambiguous or unsupported identity requires inspecting and reselecting faces. For modifying Extrude targets, omit inferred `semanticRole` values from opening references; only native history permits automatic retention there. Existing version 1 features retain their conservative stale-source behavior until explicitly updated.
 
 Face Draft, Thicken, Press Pull and uniform Scale have their own contracts in [face operations](face-operations.md).
-
-`create_press_pull`/`update_press_pull` move one exact body-bound face along its outward normals by a signed `distance` (positive extends, negative cuts; magnitude 0.001–100,000 mm), with `sourceContentHash` and the face from the same `draft_body_topology` evidence, the sole matching dependency and empty references. Creation authors version 1 for a planar face (sweeps the trimmed face) and version 2 for a curved face; updates keep the saved version. A curved face moves exactly only when every neighbour is planar: perpendicular ones (boss caps, the plate around a hole) grow with it, slanted ones (frustum caps) extend along their plane. Chamfers, fillets and other curved neighbours fail preview, as does a move that consumes another face (a counterbore floor) or merges into a face other than its own neighbour; Boolean history is checked, not only the face count. Use Thicken with Add or Remove there. Concave curvature limits apply as for Thicken.
 
 The legacy `create_mirror`/`update_mirror` tools retain v1/v2 contracts. Mirror plane-only parameters preserve the v1 replacement behavior. For v2, supply both a signed typed length `offset` and `preserveSource`. XY offset follows +Z, XZ follows +Y and YZ follows +X; absolute offset is at most 100,000 mm. `preserveSource: true` keeps the original part and creates a separately selectable reflected part under the Mirror feature's `result` role. Join source and reflected bodies explicitly through Union when one connected solid is intended. `false` replaces the source part. Preserve the full v2 parameters and offset expression on update; a schema upgrade retains ordinary review rules.
 

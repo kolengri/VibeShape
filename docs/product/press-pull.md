@@ -11,19 +11,20 @@ behaviour and its preview advice unchanged.
 
 **Curved faces** (cylindrical, conical, spherical, toroidal or freeform) move exactly along their
 normals, so a cylindrical boss or hole changes radius and a spherical dome grows or shrinks. They are
-saved as version 2. The faces next to the moved face must stay attached, and only **planar**
-neighbours can follow it:
+saved as version 2. The faces next to the moved face must stay attached:
 
 - a planar neighbour that meets the face at a right angle, such as the cap of a boss or the plate
   around a hole, grows or shrinks with it;
-- a planar neighbour at another angle, such as a cap of a cone frustum, extends or trims along its
-  own plane to meet the moved face.
+- a slanted planar neighbour, such as a cap of a cone frustum, extends or trims along its own plane
+  only when the moved face and its neighbours make up the whole body (an isolated frustum). A
+  frustum or a slanted-top boss standing on a plate is rejected.
 
-A curved neighbour cannot follow. A chamfer (a conical neighbour), a fillet, a cylinder blending into a
+A curved neighbour never follows. A chamfer (a conical neighbour), a fillet, a cylinder blending into a
 dome, or any other curved neighbour makes the preview fail with that reason and suggests Thicken with
 **Add to part** or **Remove from part** instead. The move also fails when it would consume another
-face of the part, for example the floor of a counterbore, or when the moved face would merge into a
-face other than its own neighbour. Every result is checked against the operation history, not only
+face of the part, for example the floor of a counterbore. When the moved face would reach another
+feature, such as a nearby slot, the side of the plate or another boss, the preview says so with a
+separate message. Every result is checked against the operation history, not only
 its face count. On the concave side of a curved face the distance must stay below its curvature
 radius.
 

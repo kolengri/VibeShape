@@ -4535,7 +4535,7 @@
       "cancel": "Cancel",
       "parameters": "Parameters",
       "distance": "Distance",
-      "lengthDescription": "Positive distances extend outward; negative distances cut inward. The complete trimmed face, including holes, moves along its normals. A curved face moves only while its neighbours are planar and stay attached.",
+      "lengthDescription": "Positive distances extend outward; negative distances cut inward. The complete trimmed face, including holes, moves along its normals. A curved face moves only while its neighbours are planar faces that stay attached.",
       "unavailable": "The selected face is unavailable or the source body changed. Cancel and reselect the face.",
       "validationSummary": "Enter a nonzero distance and select a current face.",
       "invalidExpression": "Enter a valid length expression.",
@@ -4543,7 +4543,7 @@
       "invalidRange": "Distance magnitude must be between 0.001 and 100000 mm.",
       "staleRevision": "The document changed. Reopen Press Pull and try again.",
       "saveFailed": "Press Pull could not be saved.",
-      "previewFailed": "Press Pull could not produce one valid solid. Adjust the distance. A curved face moves only when every neighbour is planar; chamfers, fillets and other curved neighbours cannot follow it.",
+      "previewFailed": "Press Pull could not produce one valid solid. Adjust the distance. A curved face moves when its neighbours are planar faces at right angles to it; slanted caps extend only on an isolated body, and chamfers, fillets and other curved neighbours cannot follow it.",
       "featureLabel": "Press Pull {number}"
     },
     "viewportContext": {

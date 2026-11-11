@@ -703,7 +703,7 @@ Draft targets one selected part. Faces are toggled by clicking them in 3D or thr
 
 Thicken targets one selected part. Faces are toggled in 3D or through the collapsed, keyboard-accessible face list and must form one connected patch with a free boundary; a closed selection such as a whole sphere or every face of a part points to Shell. The thickness field accepts expressions and `#variables`; Side offers Outward, Inward and Both sides; Result offers New body (the part stays), Add to part and Remove from part. A failed preview shows the worker reason, such as a thickness that reaches a concave curvature radius, and blocks Apply. Lost faces after a source edit or a missing source body require reselection. See [Thicken](thicken.md).
 
-Press Pull accepts planar and curved faces. A curved face moves only while every neighbour is planar and stays attached; a chamfer, fillet or other curved neighbour makes the preview explain why and suggest Thicken. See [Press Pull](press-pull.md).
+Press Pull accepts planar and curved faces. A curved face moves only while its neighbours are planar faces at right angles to it (slanted caps only on an isolated body) and stay attached; a move that reaches another feature gets its own message, and a chamfer, fillet or other curved neighbour makes the preview explain why and suggest Thicken. See [Press Pull](press-pull.md).
 
 Scale targets one selected part with a unitless factor and a fixed center: bounding-box center (default), world origin, or an explicit point whose X/Y/Z fields appear only for that choice. Apply, Cancel, edit, Undo/Redo, native reopening, and export use ordinary part and history authority for both tasks. See [Scale](scale.md).
 

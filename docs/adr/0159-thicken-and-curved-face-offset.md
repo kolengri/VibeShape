@@ -51,8 +51,10 @@ was written. Volumes are compared with analytic values.
    continue along the slab's side walls. The simple slab has walls along the boundary normals, which
    coincide with neighbours that meet the face at right angles: boss radius 5 → 6, 4 and 0.5; a hole
    narrowed by 1 mm; a hemispherical dome on a plate grown by 1 mm. The joined slab has walls on the
-   extended neighbour surfaces, which covers neighbours that extend along their own surfaces: the
-   frustum cone offset by ±0.5 mm matches the analytic frustum. When neither holds, the Boolean leaves
+   extended neighbour surfaces, which covers slanted planar neighbours of an isolated body: the
+   frustum cone offset by ±0.5 mm matches the analytic frustum. On realistic bodies the joined
+   construction fails ("not done") and the simple slab leaves a step, so the same frustum standing on
+   a plate, or a cylinder with a 15° slanted top on a plate, is rejected. When neither holds, the Boolean leaves
    a step: the unified face count of the result differs from the source (frustum cone with the simple
    slab: 3 → 5 faces; a cylinder blending tangentially into a hemisphere: no accepted slab).
 
@@ -86,9 +88,9 @@ The worker resolves each face through the shared exact/durable body-face resolve
 Draft) and then:
 
 - requires one edge-connected patch and names the first detached face;
-- rejects a closed selection: counting the selected faces' boundary edges with multiplicity, ignoring
-  degenerate edges and seams a face shares only with itself, at least one edge must belong to exactly
-  one selected face. Otherwise the message points to Shell;
+- rejects a closed selection: a shell of the selected faces must not be closed according to
+  `BRep_Tool::IsClosed`, which pairs edge occurrences (cancelling shared edges and same-face seams)
+  and ignores degenerate, INTERNAL and EXTERNAL edges. Otherwise the message points to Shell;
 - rejects an offset that reaches the smallest principal curvature radius on the concave side, sampled
   on a 9 × 9 parameter grid of every selected curved face from `BRepAdaptor_Surface::D2`;
 - builds each signed offset slab from its own deep copy, trying the simple thick solid first (walls
@@ -108,8 +110,9 @@ version. A curved face is moved by adding or cutting the simple or joined slab, 
 accepted only when Boolean history proves attachment: no body face other than the moved one is
 deleted, and across every boundary edge each slab face touching that edge is either internal to the
 result (coincident with the body, hence deleted) or merges into the image of that edge's own
-neighbour. The unified face count must also be unchanged. In practice only planar neighbours can
-follow: perpendicular ones grow with the face and slanted ones extend along their plane; chamfers,
+neighbour. The unified face count must also be unchanged. In practice planar neighbours at right
+angles grow with the face; slanted planar neighbours extend only when the moved face and its
+neighbours make up the whole body (an isolated frustum); chamfers,
 fillets and other curved neighbours fail closed with a message that suggests Thicken. The same
 concave curvature guard applies. Every Press Pull kernel failure is a typed, user-actionable error;
 version 2 forwards it to the task panel, while version 1 keeps the catalog advice.
@@ -128,7 +131,9 @@ over the ordinary draft path.
 - Sharp-edged Thicken selections use the joined construction, whose free walls follow the
   neighbouring body faces instead of the boundary normals. For neighbours perpendicular to the
   selection the two coincide.
-- Curved Press Pull covers planar neighbours only. Chamfers, fillets, tangent blends and other curved
+- Curved Press Pull covers planar neighbours at right angles; slanted planar neighbours only on an
+  isolated body. A move whose slab touches a face that does not border the moved face (a slot, the
+  side of a plate, another boss) fails with a distinct "reaches another feature" message. Chamfers, fillets, tangent blends and other curved
   neighbours are rejected; Thicken with Add or Remove is the alternative. Closed Thicken selections
   are rejected in favour of Shell. Curvature sampling can miss a sharp local peak on a freeform
   face; OCCT validity checks remain the final guard.
@@ -151,4 +156,7 @@ reopen. Review follow-up tests reject a whole sphere (outward and inward Remove)
 face of a cylinder and of a box, and the wall of an internal void; reject the chamfered-boss and
 counterbore counterexamples while the exact cases stay accepted; assert zero live native wrappers,
 including explorer- and list-returned handles, after Thicken and face offset success and failure; and
-cover a failing planar Press Pull authored as version 1.
+cover a failing planar Press Pull authored as version 1. A second review round pins a frustum boss and a slanted-top
+cylinder on a plate as rejected while an isolated widening frustum is exact, distinguishes a widened
+hole that reaches an adjacent slot or the plate side ("reaches another feature"), and checks that the
+`BRep_Tool::IsClosed` predicate ignores an INTERNAL edge.
