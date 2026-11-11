@@ -91,7 +91,7 @@ import {
   type ReferencePlane,
   referenceFrameDependencyIds,
 } from "@vibeshape/domain/reference-frame"
-import { sketchRecordSchema } from "@vibeshape/domain/sketch"
+import { sketchRecordInputSchema } from "@vibeshape/domain/sketch"
 import { lengthQuantitySchema } from "@vibeshape/domain/units"
 import { z } from "zod"
 
@@ -108,7 +108,7 @@ const feature = {
   references: featureRecordSchema.shape.references.max(1),
   suppressed: z.boolean(),
 }
-const sketch = z.object({ ...command, sketch: sketchRecordSchema }).strict()
+const sketch = z.object({ ...command, sketch: sketchRecordInputSchema }).strict()
 const fdm = z
   .object({ ...feature, parameters: fdmFeatureParametersSchema })
   .strict()

@@ -120,6 +120,7 @@ function constraintName(
     perpendicular: copy.perpendicular,
     equal: copy.equal,
     tangent: copy.tangent,
+    "tangent-join": copy.tangent,
     symmetric: copy.symmetric,
     concentric: copy.concentric,
     "point-on-line": copy.pointOnLine,

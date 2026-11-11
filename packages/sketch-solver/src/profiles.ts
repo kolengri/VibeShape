@@ -721,6 +721,15 @@ function traceHalfEdgeCycle(
   return current?.id === start.id ? cycle : []
 }
 
+/**
+ * A half-edge cycle that uses every edge in both directions walks out along a tree and back. It
+ * bounds no region: its exact area is zero, but rounding in a long chain can leave it just above the
+ * area tolerance. A boundary with a dangling spur still uses its closing edges once, so it is kept.
+ */
+function isOutAndBackCycle(cycle: readonly HalfEdge[]) {
+  return new Set(cycle.map(({ edgeIndex }) => edgeIndex)).size * 2 === cycle.length
+}
+
 function extractGraphLoops(edges: readonly GraphEdge[], tolerance: number) {
   const { halfEdges, outgoing } = createHalfEdges(edges)
   const visited = new Set<number>()
@@ -729,7 +738,7 @@ function extractGraphLoops(edges: readonly GraphEdge[], tolerance: number) {
   for (const start of halfEdges) {
     if (visited.has(start.id)) continue
     const cycle = traceHalfEdgeCycle(start, visited, outgoing)
-    if (cycle.length === 0) continue
+    if (cycle.length === 0 || isOutAndBackCycle(cycle)) continue
     const loop = rawLoopFromHalfEdges(cycle, edges)
     if (loop.signedArea <= tolerance ** 2) continue
     loops.push(loop)

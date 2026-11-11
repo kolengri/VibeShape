@@ -40,6 +40,7 @@ export type SketchEditorTool =
   | "circle"
   | "ellipse"
   | "cubic-bezier"
+  | "spline"
   | "elliptical-arc"
   | "three-point-circle"
   | "inscribed-polygon"

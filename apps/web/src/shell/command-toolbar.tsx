@@ -136,6 +136,10 @@ const sketchGeometryFamilies = [
     id: "polygon",
     labelKey: "polygonToolsLabel",
   },
+  {
+    id: "spline",
+    labelKey: "splineToolsLabel",
+  },
 ] as const satisfies readonly {
   id: EditorCommandSketchFamilyId
   labelKey:
@@ -145,6 +149,7 @@ const sketchGeometryFamilies = [
     | "polygonToolsLabel"
     | "arcToolsLabel"
     | "slotToolsLabel"
+    | "splineToolsLabel"
 }[]
 
 const sketchConstraintFamily = {
