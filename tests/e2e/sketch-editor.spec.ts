@@ -1418,15 +1418,22 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(2)
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
+    // Compact History names the diagnostic on an icon; Details shows its text and repair action.
+    await expandHistoryDetails(page)
     await expect(
       page.getByText("Needs repair: 1 direct failure; no chained failures.", { exact: true }),
     ).toBeVisible()
-    await page.getByRole("button", { name: "Open Sketch 2 to repair 1 broken reference" }).click()
+    await page
+      .getByRole("region", { name: "Feature history" })
+      .getByRole("button", { name: "Open Sketch 2 to repair 1 broken reference" })
+      .click()
     const brokenReference = taskPanel.getByText("Sketch 1 · Missing line", { exact: true })
     await expect(brokenReference).toBeVisible()
     const brokenReferenceRow = brokenReference.locator("..")
     await expect(brokenReferenceRow).toHaveAttribute("data-external-reference-status", "missing")
     await brokenReferenceRow.getByRole("button", { name: "Replace reference" }).click()
+    // The reopened sketch starts in the orbit context; the 2D candidates belong to the normal view.
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     const replacementLines = drawing.locator(
       "[data-sketch-available-external-geometry-id]:has(line.stroke-transparent)",
     )
