@@ -332,8 +332,8 @@ function trackedKernel() {
       if (typeof value !== "function" || typeof key !== "string" || !/^[A-Z]/.test(key))
         return value
       return new Proxy(value, {
-        construct(constructor, args): object {
-          const instance: { delete(): void } = Reflect.construct(constructor, args)
+        construct(target, args): object {
+          const instance: { delete(): void } = Reflect.construct(target, args)
           const record = { deleted: 0, name: key }
           created.push(record)
           const release = instance.delete.bind(instance)
