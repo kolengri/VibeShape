@@ -156,12 +156,16 @@ closed. See [ADR-0079](../adr/0079-exact-sweep-hollow-loft-and-sketch-corners.md
 ## Parametric 3D features
 
 The Primitives toolbar and command palette provide Box, Cylinder, Sphere, Cone, Torus, and Pyramid.
-Sphere uses a radius and center; Cone uses a base radius, height, and optional centered height;
+Sphere uses a radius and center; Cone uses a base radius, an optional top radius, height, and
+optional centered height;
 Torus uses a major radius and a smaller tube radius, centered on its placement origin with a Z axis.
 Pyramid uses 3 to 64 regular base sides, a circumradius, height, and optional centered height.
 All six support expression-aware dimensions and signed placement, disposable exact preview,
 create/edit, committed undo/redo, and persisted reopening through the existing Part Design owner.
-Cone currently produces a pointed cone; truncated cones and horn or spindle tori are not supported.
+Cone v2 adds a top radius: 0 keeps the pointed apex, any other bounded value that differs from
+the base builds an exact truncated cone, and a larger top radius inverts the taper. Saved pointed
+cones keep Cone v1 ([ADR-0154](../adr/0154-truncated-cones-drill-points-and-datum-points.md)).
+Horn and spindle tori are not supported.
 
 Dedicated sketch-point Hole is implemented under [ADR-0048](../adr/0048-sketch-point-holes.md).
 Create/edit supports graphical and keyboard center selection, one explicit solid target,
@@ -170,7 +174,19 @@ exact preview, and explicit missing-point repair. Apply uses ordinary committed 
 Named `create_hole` / `update_hole` MCP tools share the same intent and draft/review path.
 Native backup/reopen and STEP/STL/3MF export are covered by the Hole delivery evidence.
 Hole v3 adds counterbore and countersink geometry on an exact constituent body; modeled Thread
-uses its separate custom-groove contract. Drill-tip geometry remains open.
+uses its separate custom-groove contract. Hole v4 adds an opt-in drill point to blind holes: an
+expression-aware included tip angle from 60 to 180 degrees (118 by default, 180 flat). Depth stays
+the full-diameter depth to the shoulder, and the cone of height diameter / 2 / tan(angle / 2) is
+added beyond it; counterbore and countersink are unchanged, and through-all holes take no tip
+([ADR-0154](../adr/0154-truncated-cones-drill-points-and-datum-points.md)).
+
+Datum Point places a reference point by expression-aware coordinates, at a stable model vertex, or
+at the center of a circular edge. Vertex and circle-center points persist only body-bound semantic
+references, follow their producer, and fail with an explicit repair diagnostic instead of rebinding
+when the reference is missing or ambiguous. Points render as small selectable reference markers
+with independent visibility, support create/edit, exact preview, undo/redo, native persistence and
+the `create_datum_point`/`update_datum_point` MCP tools, and stay out of bodies, measurements and
+export. Using a datum point as an explicit Pattern or Placement center is not yet supported.
 
 Fillet and Chamfer schema version 1 treat all edges of one explicit solid target. The task panel
 accepts a variable-aware radius or equal chamfer distance, requires the latest exact preview before
@@ -393,7 +409,8 @@ Extension rules:
 See [Extension architecture](../architecture/extensions.md), [Automation and MCP architecture](../architecture/automation-and-mcp.md), [ADR-0012](../adr/0012-capability-based-extension-platform.md), and [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md).
 
 Registered Box, Cylinder, Cone, Sphere, Torus and Pyramid primitives have named MCP create/update
-tools with authored quantities and placement; legacy Box creation keeps its millimeter shorthand.
+tools with authored quantities and placement (Cone accepts an optional top radius); legacy Box
+creation keeps its millimeter shorthand.
 Feature/sketch removal, explicit feature suppression and project rename use their existing
 registered domain commands in owned drafts. Dependencies block removal without cascading;
 supported CAD lifecycle changes use an existing explicit auto-apply grant; project rename retains

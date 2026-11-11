@@ -738,7 +738,8 @@ exposure, offline installation, and full command/resource coverage remain releas
 
 ## Expanded exact feature authoring
 
-Local stdio and paired remote MCP expose create/update tools for Datum Plane, Boolean subtraction,
+Local stdio and paired remote MCP expose create/update tools for Datum Plane, Datum Point
+([ADR-0154](../adr/0154-truncated-cones-drill-points-and-datum-points.md)), Boolean subtraction,
 Union, Compound, Mirror, body Pattern, Shell, Split, Sweep, Loft and custom Thread through shared
 schemas and descriptions. Datum Plane create/update writes feature schema v2 with explicit
 origin/planar-face support, signed offset and optional support-local X/Y rotation. Strict offset-only

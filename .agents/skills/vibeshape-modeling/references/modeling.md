@@ -199,6 +199,12 @@ indices. Local and paired remote transports use ordinary owned draft preview, re
 
 Union takes ordered `bodies`, requires one connected positive-volume solid and keeps the first selected PartId while consuming the other selected parts. Compound takes ordered `slots`, each with a unique UUIDv7 `slotId` and `targetBody`; it retains separate solids and exposes `body.<slotId>`. Preserve slot IDs on edit to retain output and part identities. Missing roles fail exact preview; they never fall back to another body. An explicit update can upgrade saved v1 Union/Compound intent to v2. Creation, updates and supported schema upgrades follow the [session approval policy](../../vibeshape-use/references/session.md#model-write-approval).
 
+## Datum Point
+
+`create_datum_point`/`update_datum_point` author a reference point on local and paired remote MCP. `mode: "coordinates"` takes `position: { x, y, z }` length quantities in model millimeters (each within ±100,000 mm; keep variable expressions) with empty dependencies. `mode: "circle-center"` takes a stable body-bound CIRCLE edge reference (schema version 1 with `featureId`, `outputRole`, `kind: "edge"`) copied from `model_body_topology` or `draft_body_topology`; the point is the analytical center of the circle or arc. `mode: "vertex"` takes a body-bound vertex reference (`kind: "vertex"`, POINT signature); body topology inspection lists only edges and faces, so obtain vertex references from an existing feature or prefer coordinates or a circle center. Reference modes depend on exactly the reference's producer, and `references` stays empty.
+
+The point renders as a reference marker only: it is not a body, cannot be measured or exported, and does not appear in body topology. A missing or ambiguous reference fails preview with `org.vibeshape.feature.datum-point-reference-unresolved`; repair it with `update_datum_point` and an explicit replacement, never by guessing. Pattern, Placement and other features do not yet accept a datum point as an explicit center or origin; use its coordinates or the source geometry directly.
+
 ## Hole
 
 Use 1–256 stable point IDs from an inspected sketch, a positive typed diameter, and the schema's forward/reverse direction and blind/through-all extent. Supply the target first and, where needed, one distinct sketch-support dependency with its exact support reference.

@@ -362,11 +362,9 @@ export function DatumPointForm({
           </form.AppField>
           <form.Subscribe selector={(state) => state.values.mode}>
             {(pointMode) =>
-              pointMode === "coordinates" ? (
-                <>{(["x", "y", "z"] as const).map(coordinateField)}</>
-              ) : (
-                referenceField(pointMode === "vertex" ? "vertexKey" : "circleKey")
-              )
+              pointMode === "coordinates"
+                ? (["x", "y", "z"] as const).map(coordinateField)
+                : referenceField(pointMode === "vertex" ? "vertexKey" : "circleKey")
             }
           </form.Subscribe>
         </ParameterPanel>

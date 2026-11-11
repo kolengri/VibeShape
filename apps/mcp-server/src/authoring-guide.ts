@@ -790,7 +790,7 @@ Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on 
 
 Tools currently cover registered Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update;
 sketch, Extrude, Revolve and Hole create/update;
-Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
+Fillet/Chamfer, Datum Plane, Datum Point, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
 Split, Sweep, Loft, custom Thread and FDM create/update;
 variables; bounded inspection; draft lifecycle and export; feature/sketch removal,
 explicit feature suppression and project rename; Placement and editable sketch text;

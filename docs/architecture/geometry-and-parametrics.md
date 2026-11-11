@@ -85,6 +85,13 @@ its existing format. Sketch support on the same producer is supported only for `
 support dependency remains a whole-result input. Resolving a constituent target and whole support
 through one dependency slot fails closed.
 
+Hole version 4 adds a blind-only included `tipAngle` (60–180 degrees, radians in content). Depth is
+measured to the full-diameter shoulder and the worker revolves one exact cylinder-plus-cone
+meridian of total height `depth + diameter / 2 / tan(tipAngle / 2)` per center; a flat 180-degree
+point keeps the version-3 cylinder cutter. Cone version 2 adds `topRadius` and revolves an exact
+trapezoid meridian; a zero top radius keeps the version-1 triangle. See
+[ADR-0154](../adr/0154-truncated-cones-drill-points-and-datum-points.md).
+
 Successful geometry carries a derived body catalog. A single-solid producer publishes one `result`
 entry sharing its root mesh buffers; Datum Planes and legacy multi-solid aggregates publish an empty
 catalog. Nonempty catalogs contain at most 256 unique roles, each a valid positive-volume single
@@ -225,7 +232,7 @@ SPK-003 implements policy version `1` with a `0.22` maximum score and `0.035` am
 ### Robust-modeling rules
 
 - By default, attach sketches to origin or datum planes, not arbitrary faces.
-- Signed offset and support-local angular datum planes are implemented. Mid-plane, arbitrary line-at-angle, axis and point reference modes remain future work; see [ADR-0114](../adr/0114-versioned-angular-datum-planes.md).
+- Signed offset and support-local angular datum planes are implemented. Mid-plane, arbitrary line-at-angle and axis reference modes remain future work; see [ADR-0114](../adr/0114-versioned-angular-datum-planes.md). Datum Points are implemented by coordinates, stable vertex or circular-edge center; see [ADR-0154](../adr/0154-truncated-cones-drill-points-and-datum-points.md).
 - Face attachment is allowed, but the UI shows reference stability.
 - Pattern and mirror operations preserve semantic IDs from source elements.
 - Fillet and chamfer select edge sets through reference collections, never positional indices.
@@ -313,6 +320,14 @@ Protocol v8 implements the dependency-aware geometry consumer without importing 
 The accepted `org.vibeshape.core.reference-geometry` module owns first-class Datum Plane features. Strict offset-only feature schema v1 remains registered; v2 adds an optional angle around the support-local X or Y axis. New planes and explicit updates use v2; reading or previewing a legacy plane does not rewrite its persisted version. Semantic support is either an origin plane or one stable planar-face `TopoRef`; the latter declares exactly one matching evaluation dependency but never a body dependency. Offset and angle expressions resolve through the same Quantity boundary as solid features, with canonical millimeters and radians and an inclusive ±360-degree angle bound.
 
 The document worker resolves an exact right-handed support frame, translates its origin along the original normal by the offset, then rotates its basis around the selected support-local axis through that translated origin. Positive angles follow the right-hand rule; absent and zero rotations preserve the exact prior frame. Both feature versions use the existing orthonormal frame protocol and a bounded ultra-thin OCCT display plate. Reference geometry shares native cache, topology, tessellation, selection and disposal contracts while remaining outside body-terminal traversal, thumbnails and STEP/STL/3MF export. The viewport renders translucent selectable geometry with independent visibility. Downstream sketches use the logical frame; changing its normal can invalidate an authored oriented `datum.plane` cap reference and require explicit reselection. Neither transient face order nor plate thickness repairs that reference. [ADR-0114](../adr/0114-versioned-angular-datum-planes.md) supersedes the offset-only frame contract from [ADR-0025](../adr/0025-first-class-offset-datum-planes.md) and retains its ownership and support-health rules.
+
+Datum Point v1 (`datum-point`) persists coordinates or one body-bound vertex/CIRCLE-edge reference
+and depends only on that reference's producer. The document worker resolves the reference against
+the producer's current exact topology through the application reference resolver; missing,
+ambiguous or non-circular evidence fails as `org.vibeshape.feature.datum-point-reference-unresolved`
+without rebinding. The geometry worker receives only the resolved position and draws a 4 mm marker
+sphere with role `datum.point`. Reference features never contribute bodies, measurements,
+inspection topology or export bodies.
 
 ## Tessellation
 
