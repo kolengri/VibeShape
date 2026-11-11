@@ -773,6 +773,10 @@ export function createLocalAutomationConnection(
       if (pair === current) current.timer = setTimeout(() => void poll(current), 500)
     }
   }
+  function rememberManualApproval(current: Pair) {
+    if (!writePreference(current.credential.client, false) || !saveResume(current)) void disable()
+    return true
+  }
   // A shown review or running commit can refuse the remembered mode when a session starts.
   // The handle refuses again until the project is idle, so retrying on each poll is enough.
   function resumeRememberedAutoApply(current: Pair) {
@@ -1271,20 +1275,14 @@ export function createLocalAutomationConnection(
       return true
     },
     disableAutoApply() {
-      if (nativeProjectAccess) return false
-      const current = pair
+      const current = nativeProjectAccess ? null : pair
       if (!current) return false
       // Already manual (for example while a shown review refuses the remembered mode): the
       // person's explicit choice still replaces the remembered one.
-      if (!snapshot.autoApply) {
-        if (!writePreference(current.credential.client, false) || !saveResume(current))
-          void disable()
-        return true
-      }
+      if (!snapshot.autoApply) return rememberManualApproval(current)
       if (snapshot.busy || reviews.getSnapshot() || !current.handle.disableAutoApply()) return false
       publish({ ...snapshot, autoApply: false })
-      if (!writePreference(current.credential.client, false) || !saveResume(current)) void disable()
-      return true
+      return rememberManualApproval(current)
     },
     disable,
     status,
