@@ -1,3 +1,5 @@
+import type { EdgeTopoRef } from "@vibeshape/domain"
+import type { BodyTopoRef } from "@vibeshape/domain/body-topology-reference"
 import { useTranslations } from "@vibeshape/i18n"
 import { FieldError } from "@vibeshape/ui/components/field"
 import type { ComponentProps } from "react"
@@ -11,6 +13,8 @@ type FilletEdgeRadiusProps = Readonly<{
   values: TreatmentValues
   onChange: (values: TreatmentValues) => void
   candidate: EdgeTreatmentCandidate | undefined
+  /** The row's stored reference: drafts follow authored intent, not the current signature. */
+  reference: EdgeTopoRef | BodyTopoRef
   label: string
   index: number
   disabled: boolean
@@ -19,17 +23,17 @@ type FilletEdgeRadiusProps = Readonly<{
   suggestions: ComponentProps<typeof LengthExpressionField>["suggestions"]
 }>
 
-/** Per-edge linear radius law. Enabling it routes the Fillet to body-bound V3. */
+/**
+ * Per-edge linear radius law. Enabling it routes the Fillet to body-bound V3. The draft is keyed
+ * by the stored row reference, which is what targets and the route match, so a drifted signature
+ * still finds its saved law.
+ */
 export function FilletEdgeRadius(props: FilletEdgeRadiusProps) {
   const t = useTranslations("app.shell.taskPanel.edgeTreatment.fillet")
-  const reference = props.candidate?.reference
-  if (
-    props.candidate?.resolveStatus() !== "resolved" ||
-    reference?.schemaVersion !== 1 ||
-    reference.kind !== "edge"
-  )
-    return null
-  const edge = { ...reference, kind: "edge" as const }
+  const current = props.candidate?.reference
+  // Variable radius needs a body-bound catalogue for the resolved current edge.
+  if (props.candidate?.resolveStatus() !== "resolved" || current?.schemaVersion !== 1) return null
+  const edge = props.reference
   const draft = variableRadiusFor(props.values, edge)
   const update = (patch: Partial<NonNullable<typeof draft>>) => {
     if (draft) props.onChange(setVariableRadius(props.values, edge, { ...draft, ...patch }))

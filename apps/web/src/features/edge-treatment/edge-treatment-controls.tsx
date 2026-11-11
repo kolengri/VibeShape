@@ -329,7 +329,7 @@ function SelectedRow({
         v3={v3}
         label={label}
         candidate={candidate}
-        edge={reference.kind === "edge"}
+        reference={reference}
       />
     </div>
   )
@@ -342,25 +342,26 @@ function SelectedRowDetails({
   v3,
   label,
   candidate,
-  edge,
+  reference,
 }: {
   props: PreparedTreatmentControlsProps
   index: number
   v3: boolean
   label: string
   candidate: EdgeTreatmentCandidate | undefined
-  edge: boolean
+  reference: ReturnType<typeof treatmentReferences>[number]
 }) {
   if (props.operation === "chamfer")
     return v3 ? (
       <SelectedEdgeDirection props={props} index={index} label={label} candidate={candidate} />
     ) : null
-  if (!edge) return null
+  if (reference.kind !== "edge") return null
   return (
     <FilletEdgeRadius
       values={props.values}
       onChange={props.onChange}
       candidate={candidate}
+      reference={reference}
       label={label}
       index={index}
       disabled={props.disabled}

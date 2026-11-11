@@ -12,7 +12,8 @@ import { type EdgeTreatmentTargetOption, edgeTreatmentRequiresV3 } from "./edge-
 
 /** Draft linear radius law for one edge target; expressions are parsed only when authoring. */
 export type FilletVariableRadiusDraft = Readonly<{
-  edge: BodyTopoRef
+  /** The stored row reference: legacy while the feature is V2, body-bound once promoted. */
+  edge: EdgeTopoRef | BodyTopoRef
   startRadius: string
   endRadius: string
   reverse: boolean
@@ -42,10 +43,10 @@ export function withoutVariableRadius(
   return values.variableRadii.filter((entry) => !sameTreatmentReference(entry.edge, edge))
 }
 
-/** Adds or replaces the law for one body-bound edge, or removes it when `draft` is null. */
+/** Adds or replaces the law for one stored edge reference, or removes it when `draft` is null. */
 export function setVariableRadius(
   values: TreatmentValues,
-  edge: BodyTopoRef,
+  edge: EdgeTopoRef | BodyTopoRef,
   draft: Omit<FilletVariableRadiusDraft, "edge"> | null,
 ): TreatmentValues {
   const rest = withoutVariableRadius(values, edge)

@@ -65,6 +65,27 @@ function savedFillet(type: typeof filletFeatureTypeV2.type, parameters: unknown,
     suppressed: false,
   })
 }
+/** The persisted per-edge law, asserted by value rather than only by feature type. */
+function persistedLaw(start: number, end: number, reverse: boolean) {
+  return {
+    kind: "edge",
+    variableRadius: { startRadius: { value: start }, endRadius: { value: end }, reverse },
+  }
+}
+/** An authored reference whose anonymous signature drifted after an upstream edit. */
+function drifted<T extends { signature: { measure: number; centroid: readonly number[] } }>(
+  reference: T,
+): T {
+  const [x = 0, y = 0, z = 0] = reference.signature.centroid
+  return {
+    ...reference,
+    signature: {
+      ...reference.signature,
+      measure: reference.signature.measure + 0.05,
+      centroid: [x + 0.02, y, z],
+    },
+  }
+}
 function exactEdge(options = [option()]) {
   const selected = edgeTreatmentCandidates(options, geometry(options), (kind) => kind)[0]
   if (selected?.reference.schemaVersion !== 1) throw new Error("An exact edge is required.")
@@ -187,7 +208,11 @@ it("keeps a saved V2 fillet on V2 after its variable radius is enabled and disab
   const toggle = screen.getByRole("checkbox", { name: "Variable radius for Edge 1" })
   await userEvent.click(toggle)
   await submit()
-  expect(saved(onSave).type).toEqual(filletFeatureTypeV3.type)
+  expect(saved(onSave)).toMatchObject({
+    type: filletFeatureTypeV3.type,
+    references: [],
+    parameters: { radius: { value: 2 }, targets: [persistedLaw(2, 4, false)] },
+  })
   await userEvent.click(screen.getByRole("checkbox", { name: "Variable radius for Edge 1" }))
   await submit()
   expect(saved(onSave)).toMatchObject({
@@ -223,4 +248,57 @@ it("restores saved V3 variable-radius intent and keeps All edges on V1 for a sin
   await userEvent.click(screen.getByRole("radio", { name: copy.allEdges }))
   await submit()
   expect(saved(onSave)).toMatchObject({ type: filletFeatureType.type, references: [] })
+})
+
+it("restores and edits a saved V3 law whose stored edge signature drifted", async () => {
+  const options = [option()]
+  const edge = drifted({ ...exactEdge(options), featureId: sourceId })
+  const feature = savedFillet(filletFeatureTypeV3.type, {
+    targetBody: { schemaVersion: 0, featureId: sourceId, outputRole: "result" },
+    radius: createLengthQuantity(2, "mm", "2 mm"),
+    targets: [
+      {
+        kind: "edge",
+        edge,
+        variableRadius: {
+          startRadius: createLengthQuantity(1, "mm", "1 mm"),
+          endRadius: createLengthQuantity(4, "mm", "4 mm"),
+          reverse: true,
+        },
+      },
+    ],
+  })
+  const { onSave } = setup({ options, mode: { kind: "edit", feature } })
+  const toggle = screen.getByRole<HTMLInputElement>("checkbox", {
+    name: "Variable radius for Edge 1",
+  })
+  expect(toggle.checked).toBe(true)
+  fireEvent.change(screen.getByRole("combobox", { name: "End radius for Edge 1" }), {
+    target: { value: "5 mm" },
+  })
+  await submit()
+  const parameters = saved(onSave).parameters
+  expect(parameters).toMatchObject({ targets: [{ ...persistedLaw(1, 5, true), edge }] })
+  expect((parameters as { targets: unknown[] }).targets).toHaveLength(1)
+})
+
+it("routes a drifted saved V2 edge to V3 when its variable radius is enabled", async () => {
+  const options = [option()]
+  const reference = legacyEdgeReference(drifted(exactEdge(options)))
+  if (!reference) throw new Error("A legacy fixture reference is required.")
+  const feature = savedFillet(filletFeatureTypeV2.type, { radius: createLengthQuantity(2) }, [
+    reference,
+  ] as never)
+  const { onSave } = setup({ options, mode: { kind: "edit", feature } })
+  expect(screen.queryByText(copy.missingEdge)).toBeNull()
+  await userEvent.click(screen.getByRole("checkbox", { name: "Variable radius for Edge 1" }))
+  await submit()
+  expect(saved(onSave)).toMatchObject({
+    type: filletFeatureTypeV3.type,
+    references: [],
+    parameters: {
+      radius: { value: 2 },
+      targets: [{ ...persistedLaw(2, 4, false), edge: { signature: reference.signature } }],
+    },
+  })
 })
