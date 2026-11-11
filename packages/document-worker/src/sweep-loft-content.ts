@@ -65,7 +65,7 @@ import {
 type Solution = Extract<SolveSketchRecordResult, { ok: true }>["solution"]
 type Failure = Extract<DocumentFeatureContentPreparationResult, { ok: false }>
 type SolvedSketch = Readonly<{ ok: true; solution: Solution }> | Failure
-type PreparationInput = Readonly<{
+export type PreparationInput = Readonly<{
   document: DocumentSnapshot
   feature: FeatureRecord
   features: readonly FeatureRecord[]
@@ -73,7 +73,10 @@ type PreparationInput = Readonly<{
   solveSketch: (sketch: SketchRecord) => Promise<SolvedSketch>
 }>
 
-function failure(reason: string, values: Readonly<Record<string, string | number>> = {}): Failure {
+function sweepLoftFailure(
+  reason: string,
+  values: Readonly<Record<string, string | number>> = {},
+): Failure {
   return {
     ok: false,
     diagnostic: { code: "org.vibeshape.feature.sweep-loft-invalid", values: { reason, ...values } },
@@ -108,32 +111,32 @@ function validateDependencies(
         ? MAX_LOFT_SECTIONS
         : 8
   if (expected.length > limit)
-    return failure("dependency-budget-exceeded", { count: expected.length })
+    return sweepLoftFailure("dependency-budget-exceeded", { count: expected.length })
   if (
     expected.length !== input.feature.dependencies.length ||
     expected.some((id, index) => id !== input.feature.dependencies[index])
   )
-    return failure("dependency-owners-mismatch")
+    return sweepLoftFailure("dependency-owners-mismatch")
   const unavailableOwner = expected.find(
     (id) => !input.features.some((feature) => feature.id === id && !feature.suppressed),
   )
   return unavailableOwner
-    ? failure("dependency-owner-unavailable", { featureId: unavailableOwner })
+    ? sweepLoftFailure("dependency-owner-unavailable", { featureId: unavailableOwner })
     : null
 }
 
-async function solvedSketch(
+export async function solvedSketch(
   input: PreparationInput,
   sketchId: string,
   visiting = new Set<string>(),
 ): Promise<
   Failure | Readonly<{ ok: true; sketch: SketchRecord; frame: SupportFrame; solution: Solution }>
 > {
-  if (visiting.has(sketchId)) return failure("external-source-cycle", { sketchId })
+  if (visiting.has(sketchId)) return sweepLoftFailure("external-source-cycle", { sketchId })
   const sketch = input.document.sketches.find(({ id }) => id === sketchId)
-  if (!sketch) return failure("sketch-not-found", { sketchId })
+  if (!sketch) return sweepLoftFailure("sketch-not-found", { sketchId })
   const frame = sketchFrame(sketch, input.document, input.features, new Set(), input.geometry)
-  if (!frame) return failure("sketch-support-unresolved", { sketchId })
+  if (!frame) return sweepLoftFailure("sketch-support-unresolved", { sketchId })
   // The legacy external resolver can fall back to authored source points. Validate every source first.
   for (const reference of sketch.externalReferences ?? []) {
     if (isSketchExternalModelReference(reference)) continue
@@ -156,14 +159,17 @@ function validateSolvedSketch(
 ): SolvedSketch {
   if (!solved.ok) return solved
   if (solved.solution.sketchId !== sketchId)
-    return failure("solution-sketch-mismatch", { sketchId })
+    return sweepLoftFailure("solution-sketch-mismatch", { sketchId })
   if (solved.solution.sourceRevision !== revision)
-    return failure("solution-revision-mismatch", { sketchId })
+    return sweepLoftFailure("solution-revision-mismatch", { sketchId })
   if (
     solved.solution.status !== "fully-constrained" &&
     solved.solution.status !== "under-constrained"
   )
-    return failure("solution-status-unsupported", { sketchId, status: solved.solution.status })
+    return sweepLoftFailure("solution-status-unsupported", {
+      sketchId,
+      status: solved.solution.status,
+    })
   return solved
 }
 
@@ -174,7 +180,7 @@ async function solveCurrentSketch(
   try {
     return validateSolvedSketch(await input.solveSketch(sketch), sketch.id, input.document.revision)
   } catch (error) {
-    return failure("sketch-solve-or-external-reference-failed", {
+    return sweepLoftFailure("sketch-solve-or-external-reference-failed", {
       sketchId: sketch.id,
       message: isError(error) ? error.message : String(error),
     })
@@ -197,7 +203,7 @@ async function prepareProfile(input: PreparationInput, selector: SketchProfileSe
   })
   return parsed.success
     ? { ok: true as const, profile: parsed.data }
-    : failure("invalid-materialized-profile", {
+    : sweepLoftFailure("invalid-materialized-profile", {
         issue: parsed.error.issues[0]?.message ?? "unknown-schema-issue",
       })
 }
@@ -220,14 +226,14 @@ function invalidPathCurve(
   points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
 ) {
   if (Math.hypot(curve.end[0] - curve.start[0], curve.end[1] - curve.start[1]) <= 1e-6)
-    return failure("path-curve-degenerate", { entityId: entity.id })
+    return sweepLoftFailure("path-curve-degenerate", { entityId: entity.id })
   if (entity.type !== "arc") return null
   const center = points.get(entity.centerPointId)
-  if (!center) return failure("path-curve-unsolved", { entityId: entity.id })
+  if (!center) return sweepLoftFailure("path-curve-unsolved", { entityId: entity.id })
   const startRadius = Math.hypot(curve.start[0] - center.x, curve.start[1] - center.y)
   const endRadius = Math.hypot(curve.end[0] - center.x, curve.end[1] - center.y)
   return startRadius <= 1e-6 || Math.abs(startRadius - endRadius) > 1e-6
-    ? failure("path-arc-radius-mismatch", { entityId: entity.id })
+    ? sweepLoftFailure("path-arc-radius-mismatch", { entityId: entity.id })
     : null
 }
 
@@ -247,9 +253,9 @@ function selectedPathCurves(
         entity.type !== "cubic-bezier" &&
         entity.type !== "elliptical-arc")
     )
-      return failure("path-curve-unavailable", { entityId: id })
+      return sweepLoftFailure("path-curve-unavailable", { entityId: id })
     const curve = materializeDirectedSketchCurve(entity, false, points)
-    if (!curve) return failure("path-curve-unsolved", { entityId: id })
+    if (!curve) return sweepLoftFailure("path-curve-unsolved", { entityId: id })
     const invalid = invalidPathCurve(curve, entity, points)
     if (invalid) return invalid
     curves.push(curve)
@@ -257,7 +263,13 @@ function selectedPathCurves(
   return { ok: true as const, curves }
 }
 
-function pathEndpoints(curves: readonly PathSegment[], startPointId: string) {
+/** Closed loops have no terminals; their start leaves along the curve authored from that point. */
+function closedPathStart(endpoints: readonly Endpoint[], startPointId: string) {
+  const candidates = endpoints.filter(({ pointId }) => pointId === startPointId)
+  return candidates.find(({ start }) => start) ?? candidates[0]
+}
+
+function pathEndpoints(curves: readonly PathSegment[], startPointId: string, allowClosed: boolean) {
   const endpoints: Endpoint[] = curves.flatMap((curve, segmentIndex) => [
     { segmentIndex, start: true, pointId: curve.startPointId, point: curve.start },
     { segmentIndex, start: false, pointId: curve.endPointId, point: curve.end },
@@ -266,13 +278,19 @@ function pathEndpoints(curves: readonly PathSegment[], startPointId: string) {
     endpoints.filter((other) => endpointsNear(endpoint, other)),
   )
   if (neighbors.some((joined) => joined.length > 2))
-    return failure("path-branch-or-revisited-endpoint")
+    return sweepLoftFailure("path-branch-or-revisited-endpoint")
   const terminals = endpoints.filter((_, index) => neighbors[index]?.length === 1)
-  if (terminals.length !== 2) return failure("path-disconnected-or-closed")
+  if (allowClosed && terminals.length === 0) {
+    const start = closedPathStart(endpoints, startPointId)
+    return start
+      ? { ok: true as const, start, endpoints, closed: true }
+      : sweepLoftFailure("path-start-not-on-loop", { startPointId })
+  }
+  if (terminals.length !== 2) return sweepLoftFailure("path-disconnected-or-closed")
   const start = terminals.find(({ pointId }) => pointId === startPointId)
   return start
-    ? { ok: true as const, start, endpoints }
-    : failure("path-start-not-terminal", { startPointId })
+    ? { ok: true as const, start, endpoints, closed: false }
+    : sweepLoftFailure("path-start-not-terminal", { startPointId })
 }
 
 function reversePathCurve(curve: PathSegment): PathSegment {
@@ -316,38 +334,44 @@ function traversePath(
   let endpoint: Endpoint | undefined = start
   while (endpoint) {
     const curve = curves[endpoint.segmentIndex]
-    if (!curve || used.has(endpoint.segmentIndex)) return failure("path-curve-revisited")
+    if (!curve || used.has(endpoint.segmentIndex)) return sweepLoftFailure("path-curve-revisited")
     used.add(endpoint.segmentIndex)
     segments.push(endpoint.start ? curve : reversePathCurve(curve))
     const end: Endpoint | undefined =
       endpoints[endpoint.segmentIndex * 2 + (endpoint.start ? 1 : 0)]
-    if (!end) return failure("path-endpoint-unavailable")
+    if (!end) return sweepLoftFailure("path-endpoint-unavailable")
     const next: Endpoint[] = endpoints.filter(
       (other) => !used.has(other.segmentIndex) && endpointsNear(end, other),
     )
-    if (next.length > 1) return failure("path-branch-or-revisited-endpoint")
+    if (next.length > 1) return sweepLoftFailure("path-branch-or-revisited-endpoint")
     endpoint = next[0]
   }
   return used.size === curves.length
     ? { ok: true as const, segments }
-    : failure("path-disconnected-or-closed")
+    : sweepLoftFailure("path-disconnected-or-closed")
 }
 
-/** Solved coincident endpoints may have distinct authored point IDs. No polyline is introduced. */
+/**
+ * Solved coincident endpoints may have distinct authored point IDs. No polyline is introduced.
+ * Only consumers that define closed-path semantics opt into closed loops.
+ */
 export function materializeSelectedPath(
   sketch: SketchRecord,
   solution: Solution,
   selector: SketchPathSelector,
+  allowClosed = false,
 ) {
-  if (selector.sketchId !== sketch.id) return failure("path-sketch-mismatch")
+  if (selector.sketchId !== sketch.id) return sweepLoftFailure("path-sketch-mismatch")
   if (new Set(selector.entityIds).size !== selector.entityIds.length)
-    return failure("path-curve-duplicate")
+    return sweepLoftFailure("path-curve-duplicate")
   const selected = selectedPathCurves(sketch, solution, selector)
   if (!selected.ok) return selected
-  const endpoints = pathEndpoints(selected.curves, selector.startPointId)
+  const endpoints = pathEndpoints(selected.curves, selector.startPointId, allowClosed)
   if (!endpoints.ok) return endpoints
   const directed = traversePath(selected.curves, endpoints.endpoints, endpoints.start)
-  return directed.ok ? { ...directed, sourceEntityIds: [...selector.entityIds] } : directed
+  return directed.ok
+    ? { ...directed, closed: endpoints.closed, sourceEntityIds: [...selector.entityIds] }
+    : directed
 }
 
 async function preparePath(input: PreparationInput, selector: SketchPathSelector) {
@@ -367,7 +391,7 @@ async function preparePath(input: PreparationInput, selector: SketchPathSelector
   })
   return parsed.success
     ? { ok: true as const, path: parsed.data }
-    : failure("invalid-materialized-path", {
+    : sweepLoftFailure("invalid-materialized-path", {
         issue: parsed.error.issues[0]?.message ?? "unknown-schema-issue",
       })
 }
@@ -399,13 +423,13 @@ async function prepareLoft(
     const section = await prepareProfile(input, selector)
     if (!section.ok) return section
     if (section.profile.holes.length && !("holeCorrespondence" in loft))
-      return failure("loft-holes-unsupported")
+      return sweepLoftFailure("loft-holes-unsupported")
     sections.push(section.profile)
   }
   const parsed = parseLoftContent(loft, sections)
   return parsed.success
     ? { ok: true, parameters: parsed.data }
-    : failure("invalid-materialized-loft", {
+    : sweepLoftFailure("invalid-materialized-loft", {
         issue: parsed.error.issues[0]?.message ?? "unknown-schema-issue",
       })
 }
@@ -463,7 +487,7 @@ async function prepareConstrainedLoft(
   })
   return parsed.success
     ? { ok: true, parameters: parsed.data }
-    : failure("invalid-materialized-constrained-loft", {
+    : sweepLoftFailure("invalid-materialized-constrained-loft", {
         issue: parsed.error.issues[0]?.message ?? "unknown-schema-issue",
       })
 }
@@ -487,7 +511,7 @@ async function prepareSweep(
   })
   return parsed.success
     ? { ok: true, parameters: parsed.data }
-    : failure("invalid-materialized-sweep", {
+    : sweepLoftFailure("invalid-materialized-sweep", {
         issue: parsed.error.issues[0]?.message ?? "unknown-schema-issue",
       })
 }
@@ -505,9 +529,9 @@ async function prepareHelicalSweep(
   if (invalidDependencies) return invalidDependencies
   const profile = await prepareProfile(input, sweep.profile)
   if (!profile.ok) return profile
-  if (profile.profile.holes.length) return failure("helical-sweep-holes-unsupported")
+  if (profile.profile.holes.length) return sweepLoftFailure("helical-sweep-holes-unsupported")
   const axis = resolveReferenceAxis(sweep.path.axis, input)
-  if (!axis) return failure("helix-axis-unresolved")
+  if (!axis) return sweepLoftFailure("helix-axis-unresolved")
   const supportFeatureId = referenceFrameSupportFeatureId(sweep.path.axis)
   const parsed = sweepFeatureContentParametersV2Schema.safeParse({
     profile: profile.profile,
@@ -518,7 +542,7 @@ async function prepareHelicalSweep(
   })
   return parsed.success
     ? { ok: true, parameters: parsed.data }
-    : failure("invalid-materialized-helical-sweep", {
+    : sweepLoftFailure("invalid-materialized-helical-sweep", {
         issue: parsed.error.issues[0]?.message ?? "unknown-schema-issue",
       })
 }
@@ -553,7 +577,7 @@ export async function prepareSweepLoftFeatureContent(
   const schema =
     authoredSchemas.get(featureTypeKey(input.feature.type)) ?? sweepFeatureParametersSchema
   const invalid = schema.safeParse(input.feature.parameters)
-  return failure("invalid-authored-parameters", {
+  return sweepLoftFailure("invalid-authored-parameters", {
     issue: invalid.success
       ? "unknown-schema-issue"
       : (invalid.error?.issues[0]?.message ?? "unknown-schema-issue"),

@@ -5,7 +5,7 @@ import { id, paths, snapshot } from "./sweep-loft-test-fixtures"
 
 const copy = {
   profile: (sketch: string, number: number) => `${sketch} · Profile ${number}`,
-  curve: (kind: "line" | "arc" | "cubic-bezier" | "elliptical-arc", number: number) =>
+  curve: (kind: "line" | "arc" | "circle" | "cubic-bezier" | "elliptical-arc", number: number) =>
     `${kind} ${number}`,
   point: (number: number) => `Point ${number}`,
 }

@@ -2,17 +2,21 @@ import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
 import { inspectOcctBody } from "./occt-body-validation"
 import { adoptOcctShape, castOcctShape } from "./occt-cast"
+import type { PatternPlacement } from "./occt-path-sampling"
 import { placeOcctShape } from "./occt-placement"
 
 type Axis = "X" | "Y" | "Z"
 type Vector3 = readonly [number, number, number]
 type Bounds = Readonly<{ min: Vector3; max: Vector3 }>
 type Metrics = Readonly<{ valid: boolean; solidCount: number; volume: number }>
-export type PatternKernelParameters = Readonly<{ count: number; axis: Axis | Vector3 }> &
-  (
-    | Readonly<{ kind: "linear"; spacing: number }>
-    | Readonly<{ kind: "circular"; angle: number; center: Vector3 }>
-  )
+export type PatternKernelParameters =
+  | (Readonly<{ count: number; axis: Axis | Vector3 }> &
+      (
+        | Readonly<{ kind: "linear"; spacing: number }>
+        | Readonly<{ kind: "circular"; angle: number; center: Vector3 }>
+      ))
+  /** Precomputed rigid placements, one per instance with instance zero as the identity. */
+  | Readonly<{ kind: "placements"; count: number; placements: readonly PatternPlacement[] }>
 export type OwnedBodyPattern = readonly Readonly<{ role: string; shape: Shape3D }>[]
 type NativeOperations = Readonly<{
   copy: (occt: OpenCascadeInstance, source: Shape3D, translation: Vector3) => Shape3D
@@ -23,6 +27,7 @@ type NativeOperations = Readonly<{
     axis: Axis | Vector3,
     angle: number,
   ) => Shape3D
+  place: (occt: OpenCascadeInstance, source: Shape3D, placement: PatternPlacement) => Shape3D
   bounds: (occt: OpenCascadeInstance, shape: Shape3D) => Bounds
   inspect: (occt: OpenCascadeInstance, shape: Shape3D) => Metrics
 }>
@@ -104,6 +109,54 @@ function rotateCopy(
     point.delete()
   }
 }
+/** Row-major rotation about a unit axis through `origin`, followed by the translation. */
+function placementMatrix({ translation, rotation }: PatternPlacement) {
+  const [nx, ny, nz] = rotation ? axisVector(rotation.axis) : [0, 0, 1]
+  const angle = rotation?.angle ?? 0
+  const [c, s, t] = [Math.cos(angle), Math.sin(angle), 1 - Math.cos(angle)]
+  const matrix = [
+    [c + nx * nx * t, nx * ny * t - nz * s, nx * nz * t + ny * s],
+    [ny * nx * t + nz * s, c + ny * ny * t, ny * nz * t - nx * s],
+    [nz * nx * t - ny * s, nz * ny * t + nx * s, c + nz * nz * t],
+  ] as const
+  const origin = rotation?.origin ?? [0, 0, 0]
+  return matrix.map((row, index) => {
+    const rotatedOrigin = row[0] * origin[0] + row[1] * origin[1] + row[2] * origin[2]
+    return [...row, (translation[index] ?? 0) + (origin[index] ?? 0) - rotatedOrigin] as const
+  })
+}
+function placeCopy(
+  occt: OpenCascadeInstance,
+  source: Shape3D,
+  placement: PatternPlacement,
+): Shape3D {
+  const [first, second, third] = placementMatrix(placement)
+  if (!first || !second || !third || ![...first, ...second, ...third].every(Number.isFinite))
+    throw new Error("Pattern placement is invalid.")
+  const transform = new occt.gp_Trsf_1()
+  try {
+    transform.SetValues(...first, ...second, ...third)
+    const builder = new occt.BRepBuilderAPI_Transform_2(source.wrapped, transform, true)
+    try {
+      if (!builder.IsDone()) throw new Error("OCCT pattern placement did not complete.")
+      return adoptOcctShape(builder.Shape(), castOcctShape)
+    } finally {
+      builder.delete()
+    }
+  } finally {
+    transform.delete()
+  }
+}
+function validatePlacements(parameters: Extract<PatternKernelParameters, { kind: "placements" }>) {
+  if (!Array.isArray(parameters.placements) || parameters.placements.length !== parameters.count)
+    throw new Error("Pattern placements must match the instance count.")
+  for (const { translation, rotation } of parameters.placements) {
+    if (!translation.every(withinWorkspace)) throw new Error("Pattern placement is invalid.")
+    if (rotation && (!Number.isFinite(rotation.angle) || !rotation.origin.every(withinWorkspace)))
+      throw new Error("Pattern placement is invalid.")
+    if (rotation) axisVector(rotation.axis)
+  }
+}
 function validateLinearParameters(
   parameters: Extract<PatternKernelParameters, { kind: "linear" }>,
 ) {
@@ -136,6 +189,7 @@ function validateCircularParameters(
 function validateParameters(parameters: PatternKernelParameters) {
   if (!Number.isInteger(parameters.count) || parameters.count < 2 || parameters.count > 256)
     throw new Error("Pattern count must be an integer between 2 and 256.")
+  if (parameters.kind === "placements") return validatePlacements(parameters)
   axisVector(parameters.axis)
   if (parameters.kind === "linear") return validateLinearParameters(parameters)
   if (parameters.kind === "circular") return validateCircularParameters(parameters)
@@ -199,6 +253,11 @@ function createInstance(
   parameters: PatternKernelParameters,
   index: number,
 ) {
+  if (parameters.kind === "placements") {
+    const placement = parameters.placements[index]
+    if (!placement) throw new Error("Pattern placement is unavailable.")
+    return operations.place(occt, source, placement)
+  }
   if (parameters.kind === "linear")
     return operations.copy(occt, source, displacement(parameters, index))
   if (index === 0) return operations.copy(occt, source, [0, 0, 0])
@@ -243,6 +302,7 @@ export function createOcctPatternOperations(overrides: Partial<NativeOperations>
     copy: (occt, source, translation) =>
       placeOcctShape(occt, source, { translation: [...translation], rotation: [0, 0, 0] }),
     rotate: rotateCopy,
+    place: placeCopy,
     bounds: nativeBounds,
     inspect: inspectOcctBody,
     ...overrides,

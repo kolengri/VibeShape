@@ -39,12 +39,8 @@ import {
   readMirrorFeatureParameters,
   readMirrorFeatureParametersV3,
 } from "./part-design-mirror"
-import {
-  patternInstanceOutputRole,
-  patternOutputRoles,
-  readPatternFeatureParameters,
-  readPatternFeatureParametersV2,
-} from "./part-design-pattern"
+import { patternInstanceOutputRole, patternOutputRoles } from "./part-design-pattern"
+import { readAnyPatternFeatureParameters } from "./part-design-pattern-path"
 import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readPressPullFeatureParameters } from "./part-design-press-pull"
 import { readScaleFeatureParameters } from "./part-design-scale"
@@ -109,7 +105,7 @@ function classifyFanOutOperation(
   feature: FeatureRecordV1,
   resolvedPatternCount?: number,
 ): PartOperation | null {
-  const pattern = readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature)
+  const pattern = readAnyPatternFeatureParameters(feature)
   if (pattern) {
     const count =
       resolvedPatternCount ??

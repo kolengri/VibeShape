@@ -45,6 +45,7 @@ import {
   mirrorFeatureTypeV3,
 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
+import { patternFeatureTypeV3 } from "@vibeshape/domain/part-design-pattern-path"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { scaleFeatureType } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
@@ -180,15 +181,27 @@ function cadFeatureType(
     return profileFeatureType(operation)
   return directCadFeatureTypes[operation.tool]
 }
-/** Loft and Sweep select their schema version from the submitted parameters. */
+/** Loft, Sweep and reference Pattern select their schema version from the submitted parameters. */
 function versionedCadFeatureType(
   operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
 ) {
-  if (operation.tool.endsWith("_loft")) return loftCadFeatureType(operation.arguments.parameters)
-  if (operation.tool !== "create_sweep" && operation.tool !== "update_sweep") return null
-  return "kind" in operation.arguments.parameters.path
-    ? sweepFeatureTypeV2.type
-    : sweepFeatureType.type
+  switch (operation.tool) {
+    case "create_loft":
+    case "update_loft":
+      return loftCadFeatureType(operation.arguments.parameters)
+    case "create_sweep":
+    case "update_sweep":
+      return "kind" in operation.arguments.parameters.path
+        ? sweepFeatureTypeV2.type
+        : sweepFeatureType.type
+    case "create_reference_body_pattern":
+    case "update_reference_body_pattern":
+      return operation.arguments.parameters.kind === "path"
+        ? patternFeatureTypeV3.type
+        : patternFeatureTypeV2.type
+    default:
+      return null
+  }
 }
 function isFaceExtentExtrudeOperation(
   operation: CadOperation,

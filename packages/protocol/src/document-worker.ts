@@ -515,6 +515,13 @@ export const documentSketchDisplaySchema = z
       .array(documentSketchSolvedPointSchema)
       .max(MAX_SKETCH_DISPLAY_SAMPLE_POINTS)
       .optional(),
+    /** Solved circle radii; a radius constraint or variable can differ from the authored value. */
+    solvedCircles: z
+      .array(
+        z.object({ entityId: sketchWireIdSchema, radius: z.number().finite().positive() }).strict(),
+      )
+      .max(MAX_SKETCH_DISPLAY_SAMPLE_POINTS)
+      .optional(),
     frame: extrusionFrameSchema,
     profiles: z.array(sketchDisplayProfileSchema).max(MAX_SKETCH_DISPLAY_PROFILES),
   })
@@ -533,6 +540,13 @@ export const documentSketchDisplaySchema = z
       new Set(sketch.solvedPoints.map(({ entityId }) => entityId)).size ===
         sketch.solvedPoints.length,
     { message: "Sketch display solved points must have unique entity IDs." },
+  )
+  .refine(
+    (sketch) =>
+      !sketch.solvedCircles ||
+      new Set(sketch.solvedCircles.map(({ entityId }) => entityId)).size ===
+        sketch.solvedCircles.length,
+    { message: "Sketch display solved circles must have unique entity IDs." },
   )
 
 const responseEnvelopeSchema = requestEnvelopeSchema
