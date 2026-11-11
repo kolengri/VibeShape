@@ -5,10 +5,12 @@ import {
 } from "@vibeshape/application/feature-rebuild"
 import {
   boxFeatureType,
+  createAngleQuantity,
   createFeatureTypeRegistry,
   createLengthQuantity,
   createModuleRegistry,
   createRectangleSketch,
+  createScalarQuantity,
   datumPlaneFeatureType,
   documentCoreModule,
   documentSnapshotSchema,
@@ -24,12 +26,17 @@ import {
 } from "@vibeshape/domain"
 import { createFeatureContentIdentity } from "@vibeshape/domain/feature-content-identity"
 import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
-import { sweepFeatureParametersSchema, sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
+import {
+  sweepFeatureParametersSchema,
+  sweepFeatureType,
+  sweepFeatureTypeV2,
+} from "@vibeshape/domain/part-design-sweep"
 import { sketchPathSelectorSchema } from "@vibeshape/domain/sketch-path-selector"
 import {
   loftFeatureContentParametersSchema,
   loftFeatureContentParametersV2Schema,
   sweepFeatureContentParametersSchema,
+  sweepFeatureContentParametersV2Schema,
 } from "@vibeshape/protocol"
 import {
   createSketchProfileSelector,
@@ -1150,4 +1157,84 @@ it("materializes Loft v3 guide sketches and named end supports into canonical de
   expect(prepared.start[0]?.support.outputRole).toBe("result")
   expect(prepared.start[0]?.support).not.toHaveProperty("featureId")
   expect(JSON.stringify(doc)).toBe(before)
+})
+
+describe("helical Sweep v2 preparation", () => {
+  // A helix whose start tangent is +Z at the XY origin: axis (c, 0, s), start radial +Y.
+  const radius = 20
+  const pitch = 10
+  const lead = Math.atan2(pitch, 2 * Math.PI * radius)
+  const axis = {
+    kind: "explicit-axis",
+    origin: [0, -radius, 0],
+    direction: [Math.cos(lead), 0, Math.sin(lead)],
+  }
+  function helicalFixture(path: Record<string, unknown> = {}) {
+    const profile = rectangle(300, "xy", 2)
+    const feature = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: id(901),
+      type: sweepFeatureTypeV2.type,
+      parameters: {
+        profile: selector(profile),
+        path: {
+          kind: "helix",
+          axis,
+          handedness: "right",
+          radius: createLengthQuantity(radius),
+          pitch: createLengthQuantity(pitch),
+          extent: { kind: "turns", turns: createScalarQuantity(2) },
+          startAngle: createAngleQuantity(0),
+          ...path,
+        },
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    })
+    return { feature, document: document([profile], [feature]) }
+  }
+
+  it("materializes the solved profile and resolved helix without repositioning", async () => {
+    const source = helicalFixture()
+    expect(shouldPrepareSweepLoftFeatureContent(source.feature)).toBe(true)
+    const prepared = await createDocumentFeatureContentPreparer(solve)(source)
+    if (!prepared?.ok) throw new Error(JSON.stringify(prepared))
+    const content = sweepFeatureContentParametersV2Schema.parse(prepared.parameters)
+    expect(content.helix).toEqual({
+      origin: [0, -radius, 0],
+      direction: axis.direction as [number, number, number],
+      handedness: "right",
+      radius,
+      pitch,
+      turns: 2,
+      startAngle: 0,
+    })
+    expect(content.profile.frame.normal).toEqual([0, 0, 1])
+    expect(content.supportInputIndex).toBeUndefined()
+  })
+
+  it("fails closed when the profile plane is not normal to the helix start tangent", async () => {
+    const source = helicalFixture({ handedness: "left" })
+    expect(await createDocumentFeatureContentPreparer(solve)(source)).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "org.vibeshape.feature.sweep-loft-invalid",
+        values: {
+          reason: "invalid-materialized-helical-sweep",
+          issue: expect.stringContaining("normal to its tangent"),
+        },
+      },
+    })
+  })
+
+  it("requires a scheduled helix-axis producer", async () => {
+    const source = helicalFixture({
+      axis: { kind: "datum-axis", featureId: id(800), axis: "normal" },
+    })
+    expect(await createDocumentFeatureContentPreparer(solve)(source)).toMatchObject({
+      ok: false,
+      diagnostic: { values: { reason: "dependency-owners-mismatch" } },
+    })
+  })
 })
