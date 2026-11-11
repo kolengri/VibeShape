@@ -2195,8 +2195,12 @@ test.describe("full sketch editor", () => {
 
     const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
-    await expect(taskPanel.getByText("Vertical distance · 30 mm", { exact: true })).toBeVisible()
+    await expect(
+      constraintManager(page).getByText("Horizontal distance · 80 mm", { exact: true }),
+    ).toBeVisible()
+    await expect(
+      constraintManager(page).getByText("Vertical distance · 30 mm", { exact: true }),
+    ).toBeVisible()
 
     await taskPanel.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeVisible()
@@ -2208,8 +2212,12 @@ test.describe("full sketch editor", () => {
     ).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
-    await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
-    await expect(taskPanel.getByText("Vertical distance · 30 mm", { exact: true })).toBeVisible()
+    await expect(
+      constraintManager(page).getByText("Horizontal distance · 80 mm", { exact: true }),
+    ).toBeVisible()
+    await expect(
+      constraintManager(page).getByText("Vertical distance · 30 mm", { exact: true }),
+    ).toBeVisible()
   })
 
   test("keeps optional creation precision inside the viewport at both vertical edges", async ({
@@ -2282,10 +2290,11 @@ test.describe("full sketch editor", () => {
     ).toHaveCount(0)
     await editor.getByRole("button", { name: "Apply dimension" }).click()
 
-    const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
     await expect(
-      taskPanel.getByRole("listitem").filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
+      constraintManager(page)
+        .getByRole("listitem")
+        .filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
     ).toBeVisible()
     const annotation = page
       .getByRole("region", { name: "2D sketch workspace" })
@@ -2311,7 +2320,9 @@ test.describe("full sketch editor", () => {
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
     await expect(
-      taskPanel.getByRole("listitem").filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
+      constraintManager(page)
+        .getByRole("listitem")
+        .filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
     ).toBeVisible()
     await expect(
       page
@@ -2351,9 +2362,9 @@ test.describe("full sketch editor", () => {
       .getByRole("region", { name: "2D sketch workspace" })
       .getByRole("button", { name: "Edit dimension 30 mm" })
     await dimensionAnnotation.dblclick()
-    const panelExpression = page
-      .getByRole("complementary", { name: "Sketch task panel" })
-      .getByRole("combobox", { name: "Driving expression" })
+    const panelExpression = constraintManager(page).getByRole("combobox", {
+      name: "Driving expression",
+    })
     await expect(panelExpression).toHaveValue("30 mm")
     await canvasExpression.fill("35 mm")
     await page.getByRole("button", { name: "Apply dimension" }).click()
@@ -2857,9 +2868,8 @@ test.describe("full sketch editor", () => {
     const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
     await precisionTools.getByRole("button", { name: "Point on curve" }).click()
 
-    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    const constraintRow = sketchPanel
+    const constraintRow = constraintManager(page)
       .getByRole("listitem")
       .getByRole("button", { name: "Point on curve" })
     await expect(constraintRow).toBeVisible()
