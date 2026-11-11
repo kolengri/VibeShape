@@ -43,6 +43,8 @@ const PANEL_RELATIVE_TOLERANCE = 1e-12
 const MAX_PANELS = 16_384
 const MAX_PANEL_DEPTH = 40
 const LENGTH_TOLERANCE = 1e-6
+/** Enclosed area below this fraction of length² leaves a closed chain without an orientation. */
+const MIN_ENCLOSED_AREA_RATIO = 1e-6
 const INVERSION_TOLERANCE = 1e-10
 
 function gauss(evaluate: (u: number) => number, a: number, b: number) {
@@ -187,9 +189,27 @@ function measurePath(path: Path, curves: readonly SampledCurve[]): MeasuredPath 
     panels,
     length,
     startShift: 0,
-    winding: closed && loopArea(curves, panels, path) < 0 ? -1 : 1,
+    winding: closed ? loopWinding(curves, panels, path, length) : 1,
     closed,
   }
+}
+
+/**
+ * The enclosed area's sign orients a closed chain. A near-zero area, as for a symmetric figure
+ * eight, would flip the direction under tiny edits, so it fails closed instead.
+ */
+function loopWinding(
+  curves: readonly SampledCurve[],
+  panels: readonly Panel[],
+  path: Path,
+  length: number,
+): 1 | -1 {
+  const area = loopArea(curves, panels, path) / 2
+  if (Math.abs(area) <= MIN_ENCLOSED_AREA_RATIO * length * length)
+    throw new PathPatternError(
+      "A closed pattern path must enclose an area so its direction is defined; figure-eight and self-overlapping loops are ambiguous.",
+    )
+  return area < 0 ? -1 : 1
 }
 
 function findPanel(panels: readonly Panel[], abscissa: number) {

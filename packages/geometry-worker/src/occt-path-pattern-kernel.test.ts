@@ -358,6 +358,36 @@ describe("path pattern on closed paths", () => {
     }
   })
 
+  it("rejects a symmetric figure eight whose enclosed area cancels", () => {
+    // Two G1 Beziers cross at the origin: one lobe runs counterclockwise, the other clockwise.
+    const cubic = (entity: number, from: Point2, c1: Point2, c2: Point2, to: Point2) => ({
+      entityId: id(entity),
+      type: "cubic-bezier" as const,
+      startPointId: id(entity + 100),
+      control1PointId: id(entity + 200),
+      control2PointId: id(entity + 300),
+      endPointId: id(entity + 400),
+      start: from,
+      control1: c1,
+      control2: c2,
+      end: to,
+    })
+    const eight = chain(
+      [
+        cubic(1, [40, 0], [40, 40], [-40, -40], [-40, 0]),
+        {
+          ...cubic(2, [-40, 0], [-40, 40], [40, -40], [40, 0]),
+          startPointId: id(501),
+          endPointId: id(101),
+        },
+      ],
+      true,
+    )
+    expect(() => samplePathPatternPlacements(occt, parameters(eight, { count: 4 }))).toThrow(
+      "A closed pattern path must enclose an area",
+    )
+  })
+
   it("rejects fixed spacing that would wrap onto the seed", () => {
     expect(() =>
       samplePathPatternPlacements(
@@ -388,31 +418,47 @@ describe("path pattern arc length on a cubic Bezier", () => {
     },
   ])
 
-  /** Independent dense-polyline arc-length station for the analytic Bezier. */
-  function polylineStation(fraction: number): Point3 {
-    const steps = 200_000
-    const at = (t: number): Point2 => {
-      const u = 1 - t
-      return [0, 1].map(
+  function at(t: number): Point2 {
+    const u = 1 - t
+    return [0, 1].map(
+      (axis) =>
+        u * u * u * (start[axis] ?? 0) +
+        3 * u * u * t * (control1[axis] ?? 0) +
+        3 * u * t * t * (control2[axis] ?? 0) +
+        t * t * t * (end[axis] ?? 0),
+    ) as Point2
+  }
+  function speed(t: number) {
+    const u = 1 - t
+    return Math.hypot(
+      ...[0, 1].map(
         (axis) =>
-          u * u * u * (start[axis] ?? 0) +
-          3 * u * u * t * (control1[axis] ?? 0) +
-          3 * u * t * t * (control2[axis] ?? 0) +
-          t * t * t * (end[axis] ?? 0),
-      ) as Point2
+          3 * u * u * ((control1[axis] ?? 0) - (start[axis] ?? 0)) +
+          6 * u * t * ((control2[axis] ?? 0) - (control1[axis] ?? 0)) +
+          3 * t * t * ((end[axis] ?? 0) - (control2[axis] ?? 0)),
+      ),
+    )
+  }
+  /** Composite Simpson on [0, t]; with 20,000 intervals its error is far below 1e-9 mm. */
+  function simpsonLength(t: number) {
+    const intervals = 20_000
+    const h = t / intervals
+    let total = speed(0) + speed(t)
+    for (let index = 1; index < intervals; index += 1)
+      total += (index % 2 === 1 ? 4 : 2) * speed(index * h)
+    return (total * h) / 3
+  }
+  /** Independent Simpson-and-bisection arc-length station for the analytic Bezier. */
+  function referenceStation(fraction: number): Point3 {
+    const target = simpsonLength(1) * fraction
+    let low = 0
+    let high = 1
+    for (let iteration = 0; iteration < 60; iteration += 1) {
+      const middle = (low + high) / 2
+      if (simpsonLength(middle) < target) low = middle
+      else high = middle
     }
-    const lengths = [0]
-    let previous = at(0)
-    for (let step = 1; step <= steps; step += 1) {
-      const point = at(step / steps)
-      lengths.push(
-        (lengths[step - 1] ?? 0) + Math.hypot(point[0] - previous[0], point[1] - previous[1]),
-      )
-      previous = point
-    }
-    const target = (lengths[steps] ?? 0) * fraction
-    const index = lengths.findIndex((length) => length >= target)
-    const point = at(index / steps)
+    const point = at((low + high) / 2)
     return [point[0], point[1], 0]
   }
 
@@ -420,8 +466,8 @@ describe("path pattern arc length on a cubic Bezier", () => {
     const placements = samplePathPatternPlacements(occt, parameters(bezier, { count: 3 }))
     expectPoints(
       placements.map(({ translation }) => translation as Point3),
-      [[0, 0, 0], polylineStation(0.5), [100, 0, 0]],
-      1e-3,
+      [[0, 0, 0], referenceStation(0.5), [100, 0, 0]],
+      1e-7,
     )
   })
 })

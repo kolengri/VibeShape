@@ -75,13 +75,13 @@ async function evaluate(input: FeatureEvaluationInput) {
   return result.result
 }
 
-const boxInput = () =>
+const boxInput = ({ origin = [50, 0, 0] }: { origin?: number[] } = {}) =>
   featureInput({
     id: boxId,
     typeId: "box",
     schemaVersion: 1,
     contentHash: boxHash,
-    parameters: { width: 4, depth: 4, height: 4, centered: true, origin: [50, 0, 0] },
+    parameters: { width: 4, depth: 4, height: 4, centered: true, origin },
   })
 
 function pathPattern(spacing: unknown) {
@@ -109,6 +109,66 @@ function pathPattern(spacing: unknown) {
       startOffset: 0,
       orientation: "follow",
       reverse: false,
+    },
+  })
+}
+
+const datumId = "0195b5ac-b220-7a2c-8c33-67a36a7f3404"
+const datumHash = "d".repeat(64)
+// The datum is the XZ plane lifted 8 mm in Z; local +Y runs along world +Z.
+const datumFrame = { origin: [0, 0, 8], xAxis: [1, 0, 0], yAxis: [0, 0, 1], normal: [0, -1, 0] }
+
+function datumInput(): FeatureEvaluationInput {
+  const environment = engine.getFeatureContentEnvironment()
+  if (!environment) throw new Error("Expected exact kernel environment.")
+  return featureEvaluationInputSchema.parse({
+    documentId,
+    featureId: datumId,
+    contentHash: datumHash,
+    dependencies: [],
+    mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+    content: {
+      schemaVersion: 0,
+      environment,
+      feature: {
+        schemaVersion: 0,
+        type: {
+          moduleId: "org.vibeshape.core.reference-geometry",
+          moduleVersion: "0.1.0",
+          typeId: "org.vibeshape.feature.reference-geometry.datum-plane",
+          schemaVersion: 2,
+        },
+        parameters: { size: 64, frame: datumFrame },
+        inputs: [],
+        references: [],
+      },
+    },
+  })
+}
+
+/** The path sketch lies on the datum, so the datum producer follows the target as input two. */
+function supportedPathPattern(): FeatureEvaluationInput {
+  const base = pathPattern({ mode: "equal" })
+  if (base.content.schemaVersion !== 1) throw new Error("Expected a body-bound input.")
+  const parameters = base.content.feature.parameters as Record<string, unknown> & {
+    path: Record<string, unknown>
+  }
+  return featureEvaluationInputSchema.parse({
+    ...base,
+    dependencies: [...base.dependencies, { featureId: datumId, contentHash: datumHash }],
+    content: {
+      ...base.content,
+      feature: {
+        ...base.content.feature,
+        parameters: {
+          ...parameters,
+          count: 4,
+          orientation: "translate",
+          path: { ...parameters.path, supportFeatureId: datumId, frame: datumFrame },
+        },
+        inputs: [boxHash, datumHash],
+        inputRoles: ["result", null],
+      },
     },
   })
 }
@@ -162,6 +222,31 @@ describe("path Pattern engine evaluation", () => {
       if (result.ok) throw new Error("Expected the path pattern to fail.")
       expect(result.diagnostic.message).toContain("wraps a closed path")
       expect(engine.getHealth().ownedShapeCount).toBe(owned)
+    } finally {
+      engine.disposeDocument(documentId)
+      expect(engine.getHealth().ownedShapeCount).toBe(0)
+    }
+  })
+
+  it("evaluates a path sketched on a Datum Plane listed as the second dependency", async () => {
+    try {
+      await evaluate(datumInput())
+      await evaluate(boxInput({ origin: [50, 0, 8] }))
+      const result = await evaluate(supportedPathPattern())
+      expect(result.bodies?.map(({ outputRole }) => outputRole)).toEqual([
+        "pattern.instance.0",
+        "pattern.instance.1",
+        "pattern.instance.2",
+        "pattern.instance.3",
+      ])
+      // A quarter turn along the datum circle moves the seed from +X to +Z in world space.
+      const second = result.bodies?.[1]?.shape.bounds
+      const center = [0, 1, 2].map(
+        (axis) => ((second?.min[axis] ?? 0) + (second?.max[axis] ?? 0)) / 2,
+      )
+      expect(center[0]).toBeCloseTo(0, 6)
+      expect(center[1]).toBeCloseTo(0, 6)
+      expect(center[2]).toBeCloseTo(58, 6)
     } finally {
       engine.disposeDocument(documentId)
       expect(engine.getHealth().ownedShapeCount).toBe(0)
