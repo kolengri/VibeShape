@@ -71,7 +71,7 @@ function coil(parameters: CoilFeatureContentParameters, hash = "b"): FeatureEval
   const feature = {
     schemaVersion: 0 as const,
     type: type("org.vibeshape.feature.part-design.coil"),
-    parameters,
+    parameters: JSON.parse(JSON.stringify(parameters)),
     references: [],
   }
   const modifying = parameters.operation !== "new"
