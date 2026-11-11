@@ -103,6 +103,8 @@ describe("real OCCT fillet failure diagnostics", () => {
         diagnostic: {
           code: "invalid-feature-geometry",
           message: expect.stringContaining("This tested radius is not a maximum."),
+          // The document worker forwards only marked messages over the catalog advice.
+          userActionable: true,
         },
       })
       expect(engine.getHealth().ownedShapeCount).toBe(1)
