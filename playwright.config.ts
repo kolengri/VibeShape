@@ -12,9 +12,12 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 }
 const baseURL = `http://127.0.0.1:${port}`
 // The dev:e2e script ends with Vite, whose last --port flag wins over the script default.
+// Locally, fail at once when the port is taken by a server Playwright cannot reuse instead of
+// letting Vite move to another port that Playwright never polls.
 const devServerArgs = [
   ...(controlledOcctMode ? ["--mode", "controlled-occt"] : []),
   ...(portOverride === undefined ? [] : ["--port", String(port)]),
+  ...(reuseExistingServer ? ["--strictPort"] : []),
 ]
 
 export default defineConfig({
