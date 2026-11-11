@@ -29,12 +29,23 @@ for (const theme of ["dark", "light"] as const) {
       for (const name of ["Width", "Depth", "Origin X"]) {
         const input = form.getByRole("combobox", { name, exact: true })
         const field = input.locator("xpath=ancestor::*[@data-slot='field']")
-        const label = await field.locator("label").boundingBox()
-        const control = await input.boundingBox()
-        if (!label || !control)
-          throw new Error("The field label or control has no measurable bounds.")
-        const row = await field.boundingBox()
-        if (!row) throw new Error("The field row has no measurable bounds.")
+        // Measure in one frame: a transient preview status above the rows can shift them.
+        const { label, control, row } = await field.evaluate((element) => {
+          const box = (
+            node: {
+              getBoundingClientRect: () => { x: number; y: number; width: number; height: number }
+            } | null,
+          ) => {
+            if (!node) throw new Error("The field label or control has no measurable bounds.")
+            const { x, y, width, height } = node.getBoundingClientRect()
+            return { x, y, width, height }
+          }
+          return {
+            label: box(element.querySelector("label")),
+            control: box(element.querySelector('[role="combobox"]')),
+            row: box(element),
+          }
+        })
         expect(row.height).toBeLessThanOrEqual(40)
         expect(label.x + label.width).toBeLessThan(control.x)
         expect(Math.abs(label.y + label.height / 2 - control.y - control.height / 2)).toBeLessThan(
@@ -91,11 +102,13 @@ test("assembly pose controls remain readable in a narrow task panel", async ({ p
     .getByRole("button", { name: "Assembly", exact: true })
     .click()
   const panel = page.getByRole("region", { name: "Assembly task", exact: true })
-  await panel.getByRole("button", { name: "Create definition", exact: true }).click()
+  // Assembly commands live in the Assembly actions toolbar; the task region holds the forms.
+  const actions = page.getByRole("toolbar", { name: "Assembly actions", exact: true })
+  await actions.getByRole("button", { name: "Create definition", exact: true }).click()
   await panel.getByRole("textbox", { name: "Name", exact: true }).fill("Compact bracket")
   await panel.getByRole("button", { name: "Apply", exact: true }).click()
   await saved(page)
-  await panel.getByRole("button", { name: "Add instance", exact: true }).click()
+  await actions.getByRole("button", { name: "Add instance", exact: true }).click()
   for (const axis of ["X", "Y", "Z"]) {
     const control = panel.getByRole("spinbutton", { name: `${axis} (mm)`, exact: true })
     await expect(control).toBeVisible()

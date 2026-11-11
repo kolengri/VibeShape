@@ -123,7 +123,20 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     const details = page.getByRole("region", { name: "Set up auto-apply", exact: true })
     await details.focus()
     await details.press("End")
-    await expect.poll(() => details.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    // Since the standardized dialog layout, the dialog body around the region is the scroller.
+    const scrollerTop = () =>
+      details.evaluate((element) => {
+        type ScrollNode = {
+          scrollHeight: number
+          clientHeight: number
+          scrollTop: number
+          parentElement: ScrollNode | null
+        }
+        for (let node = element as unknown as ScrollNode | null; node; node = node.parentElement)
+          if (node.scrollHeight > node.clientHeight && node.scrollTop > 0) return node.scrollTop
+        return 0
+      })
+    await expect.poll(scrollerTop).toBeGreaterThan(0)
     await details.press("Home")
     await expect(
       page.getByRole("button", { name: "Enable auto-apply", exact: true }),
@@ -301,15 +314,7 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     ).toMatchObject({ ok: true })
     const pendingSwitch = call(local, "commit_draft", { draftId: switching.draftId })
     await expect(review).toBeVisible()
-    await openApplicationMenuItem(page, "Projects")
-    await expect(
-      page.getByRole("heading", { level: 1, name: "Projects", exact: true }),
-    ).toHaveCount(0)
-    await expect(
-      page.getByRole("alert").filter({ hasText: /Finish or cancel the current edit/ }),
-    ).toBeVisible()
-    await expect(review).toBeVisible()
-    await page.getByRole("button", { name: "Dismiss notification", exact: true }).click()
+    // A project-owned agent review no longer blocks project navigation (#357); discard it here.
     await review.getByRole("button", { name: "Discard", exact: true }).click()
     expect(await pendingSwitch).toMatchObject({ ok: false })
     await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()

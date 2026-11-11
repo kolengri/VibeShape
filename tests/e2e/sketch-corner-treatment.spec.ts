@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures"
-import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
+import { clickUncoveredSketchEntity, confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 for (const kind of ["fillet", "chamfer"] as const) {
   test(`previews, cancels, applies and undoes sketch ${kind} as one draft edit`, async ({
@@ -28,11 +28,8 @@ for (const kind of ["fillet", "chamfer"] as const) {
       })
       .click()
     const lines = drawing.locator('[data-sketch-entity-type="line"]')
-    for (const index of [0, 1]) {
-      const bounds = await lines.nth(index).boundingBox()
-      if (!bounds) throw new Error("The selected corner line is not visible.")
-      await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
-    }
+    // The operation panel may cover part of the rectangle, so pick each line where it is visible.
+    for (const index of [0, 1]) await clickUncoveredSketchEntity(page, lines.nth(index))
     const form = page.getByRole("form", {
       name: kind === "fillet" ? "Sketch fillet" : "Sketch chamfer",
       exact: true,

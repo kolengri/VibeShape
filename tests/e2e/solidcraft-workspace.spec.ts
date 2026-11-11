@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises"
 import { createSolids, saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand, openModelCommand } from "./model-command-support"
-import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
+import { confirmSketchPlane, drawRectangle, unobscuredDrawingBounds } from "./sketch-helpers"
 
 test.setTimeout(60_000)
 
@@ -58,16 +58,16 @@ test("separates objects and feature order while preserving the mounted task and 
 
   const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
-  const [objectBounds, sceneBounds, historyBounds, centerBounds] = await Promise.all([
+  const [objectBounds, historyBounds, centerBounds] = await Promise.all([
     browser.boundingBox(),
-    viewport.boundingBox(),
     history.boundingBox(),
-    page.locator("#workspace-center").boundingBox(),
+    // The workspace publishes the canvas region left free by floating windows.
+    unobscuredDrawingBounds(page, viewport),
   ])
-  if (!objectBounds || !sceneBounds || !historyBounds || !centerBounds)
-    throw new Error("Workspace regions must be visible")
+  if (!objectBounds || !historyBounds) throw new Error("Workspace regions must be visible")
   expect(objectBounds.x + objectBounds.width).toBeLessThanOrEqual(centerBounds.x)
-  expect(historyBounds.y).toBeGreaterThanOrEqual(sceneBounds.y + sceneBounds.height)
+  // History floats over the canvas, below the region left free for modeling.
+  expect(historyBounds.y).toBeGreaterThanOrEqual(centerBounds.y + centerBounds.height - 1)
   const canvas = viewport.locator("canvas")
   const originalCanvas = await canvas.elementHandle()
   await history.getByRole("treeitem", { name: "Box 1", exact: true }).click()

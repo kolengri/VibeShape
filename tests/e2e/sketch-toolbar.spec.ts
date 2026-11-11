@@ -35,17 +35,16 @@ async function expectAssistantBesideToolbar(page: Page, toolbar: Locator) {
   await page.getByRole("button", { name: "AI chat", exact: true }).click()
   const assistant = page.getByRole("complementary", { name: "AI chat", exact: true })
   await expect(assistant).toBeVisible()
-  const [barBounds, panelBounds, workspaceBounds] = await Promise.all([
+  const [barBounds, panelBounds] = await Promise.all([
     toolbar.boundingBox(),
     assistant.boundingBox(),
-    page.getByTestId("workspace-center").boundingBox(),
   ])
-  if (!barBounds || !panelBounds || !workspaceBounds) {
-    throw new Error("The toolbar, assistant, and workspace must remain measurable.")
+  if (!barBounds || !panelBounds) {
+    throw new Error("The toolbar and assistant must remain measurable.")
   }
-  expect(panelBounds.y).toBe(barBounds.y)
-  expect(barBounds.x + barBounds.width).toBeLessThanOrEqual(panelBounds.x)
-  expect(workspaceBounds.y).toBeGreaterThanOrEqual(barBounds.y + barBounds.height)
+  // Chat occupies the body lane below the full-width toolbar (#449).
+  expect(panelBounds.y).toBeGreaterThanOrEqual(barBounds.y + barBounds.height)
+  expect(panelBounds.x + panelBounds.width).toBeLessThanOrEqual(barBounds.x + barBounds.width + 1)
   await assistant.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
   await expect(assistant).toHaveCount(0)
 }

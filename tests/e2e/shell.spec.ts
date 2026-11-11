@@ -19,16 +19,24 @@ test.describe("foundation CAD shell", () => {
     await expect(page.getByRole("toolbar", { name: "Model commands" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Model tree" })).toBeVisible()
     await expect(page.getByRole("tree", { name: "Project features" })).toBeVisible()
+    // Variables, Planes and Parts; the empty Sketches group stays hidden (#408).
     await expect(
       page.getByRole("tree", { name: "Project features", exact: true }).getByRole("treeitem"),
-    ).toHaveCount(4)
+    ).toHaveCount(3)
     await expect(
       page
         .getByRole("tree", { name: "Feature history", exact: true })
         .getByRole("button", { name: "Details", exact: true }),
     ).toBeVisible()
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
-    await expect(page.getByRole("complementary", { name: "Task panel" })).toBeVisible()
+    // The idle onboarding panel is gone (#357); an active task opens the Task panel landmark.
+    await expect(page.getByRole("complementary", { name: "Task panel" })).toHaveCount(0)
+    await invokeModelCommand(page, "Primitives", "Box")
+    await expect(
+      page
+        .getByRole("complementary", { name: "Task panel" })
+        .getByRole("form", { name: "Create box", exact: true }),
+    ).toBeVisible()
     await expect(
       page
         .locator("main footer")
@@ -55,7 +63,6 @@ test.describe("foundation CAD shell", () => {
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-origin-plane-selection", "xy")
     await expect(viewport.getByRole("img", { name: "World axes" })).toBeVisible()
-    await expect(viewport.getByText("XYZ · mm", { exact: true })).toBeVisible()
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
     if (!bounds) throw new Error("The 3D viewport canvas is not visible.")
@@ -91,11 +98,15 @@ test.describe("foundation CAD shell", () => {
     await expect(page.getByRole("status").filter({ hasText: /^Selection: / })).toContainText(
       "Selection: XZ plane",
     )
-    await viewport.getByRole("button", { name: "Hide XZ plane" }).click()
+    // Per-plane visibility lives in the expanded Planes group of the model tree.
+    const modelTree = page.getByRole("complementary", { name: "Model tree" })
+    const planes = modelTree.getByRole("treeitem", { name: "Planes", exact: true })
+    if ((await planes.getAttribute("aria-expanded")) !== "true") await planes.click()
+    await modelTree.getByRole("button", { name: "Hide XZ", exact: true }).click()
     await expect(viewport).not.toHaveAttribute("data-origin-plane-selection")
     await page.mouse.click(xzPick.x, xzPick.y)
     await expect(viewport).not.toHaveAttribute("data-origin-plane-selection", "xz")
-    await viewport.getByRole("button", { name: "Show XZ plane" }).click()
+    await modelTree.getByRole("button", { name: "Show XZ", exact: true }).click()
     await selectIdleOriginPlaneInViewport(page, "xz")
     await page
       .getByRole("toolbar", { name: "Model commands" })
@@ -155,12 +166,13 @@ test.describe("foundation CAD shell", () => {
     const lastHeaderButton = page
       .getByRole("group", { name: "Geometry workspace", exact: true })
       .getByRole("button", { name: "Assembly", exact: true })
-    const modelButton = page
+    // Workspace switches left the toolbar; it starts with its creation commands.
+    const createSketchButton = page
       .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Model", exact: true })
-    const sketchButton = page
+      .getByRole("button", { name: "Create sketch", exact: true })
+    const extrudeButton = page
       .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Sketch", exact: true })
+      .getByRole("button", { name: "Extrude", exact: true })
     // Safari uses Option+Tab to include every control in keyboard navigation.
     const enterToolbar = browserName === "webkit" ? "Alt+Tab" : "Tab"
 
@@ -168,10 +180,9 @@ test.describe("foundation CAD shell", () => {
     await lastHeaderButton.focus()
     await expect(lastHeaderButton).toBeFocused()
     await page.keyboard.press(enterToolbar)
-    await expect(modelButton).toBeFocused()
-    await expect(modelButton).toHaveAttribute("aria-pressed", "true")
+    await expect(createSketchButton).toBeFocused()
     await page.keyboard.press("ArrowRight")
-    await expect(sketchButton).toBeFocused()
+    await expect(extrudeButton).toBeFocused()
   })
 
   test("discovers and runs registered commands from the palette and shortcuts", async ({
@@ -229,10 +240,15 @@ test.describe("foundation CAD shell", () => {
     await page.goto("/")
 
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
-    await expect(page.getByRole("complementary", { name: "Task panel" })).toBeHidden()
-    await expect(page.getByRole("button", { name: "Open task panel" })).toBeVisible()
+    // Without the idle onboarding panel (#357), an active task owns the compact Task panel.
+    await invokeModelCommand(page, "Primitives", "Box")
+    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
+    await expect(taskPanel).toBeVisible()
+    await page.getByRole("button", { name: "Collapse task panel" }).click()
+    await expect(taskPanel).toBeHidden()
+    await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
     await page.getByRole("button", { name: "Open task panel" }).click()
-    await expect(page.getByRole("complementary", { name: "Task panel" })).toBeVisible()
+    await expect(taskPanel).toBeVisible()
     await expect(page.getByRole("button", { name: "Collapse task panel" })).toBeVisible()
     await expect
       .poll(() =>

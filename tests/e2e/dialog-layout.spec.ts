@@ -54,11 +54,12 @@ test("native AI settings retain their footer and form association after a failed
     .getByRole("complementary", { name: "AI chat", exact: true })
     .boundingBox()
   const toolbarBounds = await page.locator("nav[data-sketch-mode]").boundingBox()
-  const statusBounds = await page.locator(".editor-workbench > footer").boundingBox()
-  if (!chatBounds || !toolbarBounds || !statusBounds)
+  const historyBounds = await page.locator("[data-feature-timeline]").boundingBox()
+  if (!chatBounds || !toolbarBounds || !historyBounds)
     throw new Error("The editor column and chat must have bounds.")
-  expect(chatBounds.y).toBe(toolbarBounds.y)
-  expect(chatBounds.y + chatBounds.height).toBe(statusBounds.y + statusBounds.height)
+  // Chat occupies only the body region between the full-width toolbar and History.
+  expect(chatBounds.y).toBeGreaterThanOrEqual(toolbarBounds.y + toolbarBounds.height)
+  expect(chatBounds.y + chatBounds.height).toBeLessThanOrEqual(historyBounds.y)
   await page.getByRole("button", { name: "AI settings", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "AI settings", exact: true })
   await dialog.getByRole("combobox", { name: "Agent", exact: true }).click()
@@ -114,16 +115,17 @@ for (const theme of ["dark", "light"] as const) {
         await invokeModelCommand(page, "Primitives", "Box")
         await expect(page.getByRole("heading", { name: "Create box", exact: true })).toHaveCSS(
           "font-size",
-          "16px",
+          "14px",
         )
         await page.screenshot({ path: test.info().outputPath(`windows-${theme}-${width}.png`) })
       }
+      // Dialogs keep 16 px titles; the compact floating workspace windows share 14 px titles.
       const titleSizes = await page
         .locator("[data-window-title]:visible")
         .evaluateAll((nodes) =>
           nodes.map((node) => node.ownerDocument.defaultView?.getComputedStyle(node).fontSize),
         )
-      expect([...new Set(titleSizes)]).toEqual(["16px"])
+      expect([...new Set(titleSizes)]).toEqual(["14px"])
       await page.getByRole("button", { name: "Collapse AI chat", exact: true }).click()
       await expect(page.getByRole("button", { name: "AI chat", exact: true })).toHaveAttribute(
         "aria-expanded",

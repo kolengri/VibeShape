@@ -145,8 +145,7 @@ test("authors an explicit reference axis through the thread preview and persists
   test.setTimeout(120_000)
   await page.goto("/")
   await saved(page)
-  const commands = page.getByRole("toolbar", { name: "Model commands" })
-  await commands.getByRole("button", { name: "Model", exact: true }).click()
+  // The editor opens in the Model workspace; the toolbar no longer has a workspace switch.
   await invokeModelCommand(page, "Primitives", "Cylinder")
   const cylinder = page.getByRole("form", { name: "Create cylinder", exact: true })
   await cylinder.getByRole("combobox", { name: "Radius", exact: true }).fill("5 mm")
