@@ -2,6 +2,7 @@ import { type DrawingSettings, drawingSheetExtent } from "@vibeshape/domain/draw
 import type { DrawingCurve, DrawingProjection } from "@vibeshape/protocol"
 import { diameterCallouts, overallDimensions, TEXT_HEIGHT_MM } from "./annotations"
 import {
+  type AnnotationMargins,
   layoutViews,
   SHEET_BORDER_MM,
   TITLE_BLOCK_HEIGHT_MM,
@@ -15,6 +16,7 @@ import type {
   SheetLayer,
   SheetPrimitive,
 } from "./sheet"
+import { primitiveBox, unionBoxes } from "./text-metrics"
 import { titleBlock } from "./title-block"
 
 const TITLE_BLOCK_CLEARANCE_MM = 4
@@ -57,7 +59,11 @@ export function composeDrawingSheet(input: ComposeDrawingInput): DrawingSheet {
   }
   const requested = new Set(settings.views)
   const views = input.projection.views.filter(({ view }) => requested.has(view))
-  const layout = layoutViews(views, settings, area)
+  const annotate = (placement: ViewPlacement, factor: number) =>
+    viewAnnotations(placement, settings, input.copy, factor)
+  const layout = layoutViews(views, settings, area, (projection, orthographic, factor) =>
+    measureAnnotations(projection, orthographic, factor, annotate),
+  )
   const factor = layout.scale.numerator / layout.scale.denominator
   const scaleText = `${layout.scale.numerator}:${layout.scale.denominator}`
   const groups: SheetGroup[] = [
@@ -83,18 +89,11 @@ export function composeDrawingSheet(input: ComposeDrawingInput): DrawingSheet {
     })),
     {
       id: "dimensions",
-      primitives: layout.placements.flatMap((placement) =>
-        settings.dimensions && placement.orthographic
-          ? [
-              ...overallDimensions(placement, settings.units),
-              ...diameterCallouts(placement, settings.units, factor),
-            ]
-          : [],
-      ),
+      primitives: layout.placements.flatMap((placement) => annotate(placement, factor).dimensions),
     },
     {
       id: "labels",
-      primitives: layout.placements.map((placement) => viewLabel(placement, settings, input.copy)),
+      primitives: layout.placements.map((placement) => annotate(placement, factor).label),
     },
     {
       id: "title-block",
@@ -150,6 +149,58 @@ function sheetCurve(
     radius: curve.radius * factor,
     startAngle: curve.startAngle,
     endAngle: curve.endAngle,
+  }
+}
+
+type ViewAnnotations = Readonly<{ dimensions: SheetPrimitive[]; label: SheetPrimitive }>
+
+/** The dimensions, callouts and label drawn for one placed view; also used to measure margins. */
+function viewAnnotations(
+  placement: ViewPlacement,
+  settings: DrawingSettings,
+  copy: DrawingSheetCopy,
+  factor: number,
+): ViewAnnotations {
+  return {
+    dimensions:
+      settings.dimensions && placement.orthographic
+        ? [
+            ...overallDimensions(placement, settings.units),
+            ...diameterCallouts(placement, settings.units, factor),
+          ]
+        : [],
+    label: viewLabel(placement, settings, copy),
+  }
+}
+
+/**
+ * Margins of a view's annotations beyond its rectangle, measured on a provisional placement with
+ * the rectangle at the sheet origin. Annotations are positioned relative to the rectangle, so the
+ * margins hold wherever the layout later places the view.
+ */
+function measureAnnotations(
+  projection: ViewPlacement["projection"],
+  orthographic: boolean,
+  factor: number,
+  annotate: (placement: ViewPlacement, factor: number) => ViewAnnotations,
+): AnnotationMargins {
+  const { min, max } = projection.bounds
+  const width = (max[0] - min[0]) * factor
+  const height = (max[1] - min[1]) * factor
+  const placement: ViewPlacement = {
+    projection,
+    orthographic,
+    origin: [-min[0] * factor, -min[1] * factor],
+    rect: { x: 0, y: 0, width, height },
+  }
+  const { dimensions, label } = annotate(placement, factor)
+  const box = unionBoxes([...dimensions, label].map(primitiveBox))
+  if (!box) return { left: 0, right: 0, bottom: 0, top: 0 }
+  return {
+    left: Math.max(0, -box[0]),
+    bottom: Math.max(0, -box[1]),
+    right: Math.max(0, box[2] - width),
+    top: Math.max(0, box[3] - height),
   }
 }
 

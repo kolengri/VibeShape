@@ -7,6 +7,7 @@ import {
   sheetNumber,
   writePrimitive,
 } from "./sheet"
+import { encodeHelveticaCharacter } from "./text-metrics"
 
 const POINTS_PER_MM = 72 / 25.4
 /** Line width (mm) and dash pattern per layer, matching the SVG writer. */
@@ -18,33 +19,6 @@ const LAYER_STYLE: Readonly<Record<SheetLayer, Readonly<{ width: number; dash: s
   frame: { width: 0.7, dash: "[] 0 d" },
 }
 
-/** Helvetica advance widths (1/1000 em) for printable ASCII, from the standard AFM metrics. */
-const HELVETICA_ASCII = [
-  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
-  556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667,
-  611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
-  667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500,
-  222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
-]
-const WIN_ANSI_EXTRA: Readonly<Record<string, readonly [code: number, width: number]>> = {
-  "…": [0x85, 1000],
-  "–": [0x96, 556],
-  "—": [0x97, 1000],
-  "€": [0x80, 556],
-}
-/** Helvetica advances for the Latin-1 characters drawings use; others take the digit width. */
-const LATIN_WIDTHS: Readonly<Record<number, number>> = { 176: 400, 215: 584, 216: 778 }
-
-/** WinAnsi code and Helvetica advance of one character; unsupported characters become "?". */
-function encodeCharacter(character: string): readonly [code: number, width: number] {
-  const extra = WIN_ANSI_EXTRA[character]
-  if (extra) return extra
-  const code = character.codePointAt(0) ?? 63
-  if (code >= 32 && code < 127) return [code, HELVETICA_ASCII[code - 32] ?? 556]
-  if (code >= 160 && code <= 255) return [code, LATIN_WIDTHS[code] ?? 556]
-  return [63, 556]
-}
-
 function literalCharacter(code: number) {
   if (code === 40 || code === 41 || code === 92) return `\\${String.fromCharCode(code)}`
   if (code < 32 || code > 126) return `\\${code.toString(8).padStart(3, "0")}`
@@ -53,7 +27,7 @@ function literalCharacter(code: number) {
 
 /** Encodes text for the standard WinAnsi Helvetica font as a PDF literal and its em width. */
 function winAnsi(value: string) {
-  const encoded = [...value].map(encodeCharacter)
+  const encoded = [...value].map(encodeHelveticaCharacter)
   return {
     literal: `(${encoded.map(([code]) => literalCharacter(code)).join("")})`,
     width: encoded.reduce((sum, [, width]) => sum + width, 0) / 1000,

@@ -62,8 +62,11 @@ Sheets use ISO A4–A0 or US Letter/Tabloid in either orientation, a 10 mm frame
 ISO 7200-style title block. Orthographic views occupy projection-aligned cells: first-angle
 places top below and right to the left of front; third-angle places top above and right to the
 right. Views sharing a column or row share one coordinate mapping, so features line up. The
-isometric view takes the free corner cell that leaves the largest scale. Automatic scale picks the
-largest ISO 5455 scale that fits; an explicit ratio is honoured and reported when it does not fit.
+isometric view takes the free corner cell that leaves the largest scale. Each view reserves the
+measured extents of its own annotations (dimension rows, callouts and label, with Helvetica text
+boxes) beyond its rectangle, and neighbouring envelopes keep 6 mm apart. Automatic scale picks the
+largest ISO 5455 scale whose arrangement, annotations included, fits the area above the title block;
+an explicit ratio is honoured and reported as not fitting when any annotation would leave that area.
 Each orthographic view gets overall width and height dimensions and one diameter callout per
 distinct visible full-circle diameter (`n× Ø d` when repeated, at most eight). Isometric views omit
 hidden lines. Sheet text is supplied by the host from the localized catalog; MCP output uses the

@@ -1,12 +1,11 @@
 import { DRAWING_STANDARD_SCALES, type DrawingSettings } from "@vibeshape/domain/drawing"
-import type { DrawingBounds, DrawingViewId, DrawingViewProjection } from "@vibeshape/protocol"
+import type { DrawingViewId, DrawingViewProjection } from "@vibeshape/protocol"
 
 export const SHEET_BORDER_MM = 10
 export const TITLE_BLOCK_WIDTH_MM = 180
 export const TITLE_BLOCK_HEIGHT_MM = 32
-/** Space between view cells and around the area, sized for one dimension row plus a label. */
-const CELL_GAP_MM = 24
-const AREA_MARGIN_MM = 14
+/** Clear space between the annotation envelopes of neighbouring views. */
+const ENVELOPE_SEPARATION_MM = 6
 
 type Cell = readonly [column: number, row: number]
 type Rect = Readonly<{ x: number; y: number; width: number; height: number }>
@@ -47,9 +46,28 @@ export type ViewPlacement = Readonly<{
 
 export type SheetLayout = Readonly<{
   scale: Readonly<{ numerator: number; denominator: number }>
+  /** True when every view and its annotation envelope lies inside the drawing area. */
   fits: boolean
   placements: readonly ViewPlacement[]
 }>
+
+/** Sheet millimetres that a view's annotations extend beyond its projected rectangle. */
+export type AnnotationMargins = Readonly<{
+  left: number
+  right: number
+  bottom: number
+  top: number
+}>
+
+/**
+ * Measures the annotations (dimensions, callouts, label) of one view placed at `factor`. Margins
+ * depend only on the view and scale, never on the view's position on the sheet.
+ */
+export type MeasureAnnotations = (
+  projection: DrawingViewProjection,
+  orthographic: boolean,
+  factor: number,
+) => AnnotationMargins
 
 type Span = { min: number; max: number }
 function grow(spans: Map<number, Span>, key: number, min: number, max: number) {
@@ -59,24 +77,50 @@ function grow(spans: Map<number, Span>, key: number, min: number, max: number) {
     span ? { min: Math.min(span.min, min), max: Math.max(span.max, max) } : { min, max },
   )
 }
-const size = (bounds: DrawingBounds, axis: 0 | 1) => bounds.max[axis] - bounds.min[axis]
 
-function viewCells(
+type CellView = Readonly<{
+  projection: DrawingViewProjection
+  cell: Cell
+  orthographic: boolean
+  /** Coordinate ranges shared with the view's column and row; the isometric view uses its own. */
+  reference: Readonly<{ x: Span; y: Span }>
+}>
+
+function cellViews(
   views: readonly DrawingViewProjection[],
   projection: DrawingSettings["projection"],
   isoCell: Cell,
-) {
+): CellView[] {
   const ortho = views.flatMap((view) =>
     view.view === "isometric" ? [] : [{ view, cell: ORTHOGRAPHIC_CELLS[projection][view.view] }],
   )
-  const iso = views.find((view) => view.view === "isometric")
   const columns = new Map<number, Span>()
   const rows = new Map<number, Span>()
   for (const { view, cell } of ortho) {
     grow(columns, cell[0], view.bounds.min[0], view.bounds.max[0])
     grow(rows, cell[1], view.bounds.min[1], view.bounds.max[1])
   }
-  return { ortho, iso, isoCell: iso ? isoCell : null, columns, rows }
+  const placed: CellView[] = ortho.map(({ view, cell }) => ({
+    projection: view,
+    cell,
+    orthographic: true,
+    reference: {
+      x: columns.get(cell[0]) ?? { min: 0, max: 0 },
+      y: rows.get(cell[1]) ?? { min: 0, max: 0 },
+    },
+  }))
+  const iso = views.find((view) => view.view === "isometric")
+  if (iso)
+    placed.push({
+      projection: iso,
+      cell: isoCell,
+      orthographic: false,
+      reference: {
+        x: { min: iso.bounds.min[0], max: iso.bounds.max[0] },
+        y: { min: iso.bounds.min[1], max: iso.bounds.max[1] },
+      },
+    })
+  return placed
 }
 
 /**
@@ -107,116 +151,91 @@ function isometricCandidates(
   )
 }
 
-/** Per-cell content extent in model millimetres; scaling is linear, gaps are fixed sheet millimetres. */
-function extents(cells: ReturnType<typeof viewCells>) {
-  const widths = new Map<number, number>()
-  const heights = new Map<number, number>()
-  for (const [column, span] of cells.columns) widths.set(column, span.max - span.min)
-  for (const [row, span] of cells.rows) heights.set(row, span.max - span.min)
-  if (cells.iso && cells.isoCell) {
-    const [column, row] = cells.isoCell
-    widths.set(column, Math.max(widths.get(column) ?? 0, size(cells.iso.bounds, 0)))
-    heights.set(row, Math.max(heights.get(row) ?? 0, size(cells.iso.bounds, 1)))
-  }
-  const sortedColumns = [...widths.keys()].sort((a, b) => a - b)
-  const sortedRows = [...heights.keys()].sort((a, b) => b - a)
-  const modelWidth = sortedColumns.reduce((sum, column) => sum + (widths.get(column) ?? 0), 0)
-  const modelHeight = sortedRows.reduce((sum, row) => sum + (heights.get(row) ?? 0), 0)
-  return { widths, heights, sortedColumns, sortedRows, modelWidth, modelHeight }
+type Band = { size: number; before: number; after: number }
+const NO_MARGINS: AnnotationMargins = { left: 0, right: 0, bottom: 0, top: 0 }
+
+/** Model span plus annotation margins before and after the view along one axis. */
+function axisExtent(view: CellView, axis: 0 | 1, margins: AnnotationMargins): Band {
+  const span = axis === 0 ? view.reference.x : view.reference.y
+  return axis === 0
+    ? { size: span.max - span.min, before: margins.left, after: margins.right }
+    : { size: span.max - span.min, before: margins.bottom, after: margins.top }
 }
 
-function chooseScale(scale: DrawingSettings["scale"], maximum: number) {
-  if (scale.mode === "explicit") {
-    const value = scale.numerator / scale.denominator
-    return {
-      numerator: scale.numerator,
-      denominator: scale.denominator,
-      fits: value <= maximum * (1 + 1e-9),
-    }
+/** Bands along one axis (columns or rows) with model size and annotation margins on each side. */
+function bands(
+  views: readonly CellView[],
+  axis: 0 | 1,
+  margins: ReadonlyMap<CellView, AnnotationMargins>,
+) {
+  const result = new Map<number, Band>()
+  for (const view of views) {
+    const extent = axisExtent(view, axis, margins.get(view) ?? NO_MARGINS)
+    const band = result.get(view.cell[axis]) ?? { size: 0, before: 0, after: 0 }
+    result.set(view.cell[axis], {
+      size: Math.max(band.size, extent.size),
+      before: Math.max(band.before, extent.before),
+      after: Math.max(band.after, extent.after),
+    })
   }
-  const standard = DRAWING_STANDARD_SCALES.find(
-    ([numerator, denominator]) => numerator / denominator <= maximum * (1 + 1e-9),
-  )
-  const [numerator, denominator] = standard ?? DRAWING_STANDARD_SCALES.at(-1) ?? [1, 1]
-  return { numerator, denominator, fits: standard !== undefined }
+  return result
 }
 
-/** Places views in projection-aligned cells and centres the arrangement in the drawing area. */
-export function layoutViews(
-  views: readonly DrawingViewProjection[],
-  settings: Pick<DrawingSettings, "projection" | "scale">,
-  area: Rect,
-): SheetLayout {
-  let best: { cells: ReturnType<typeof viewCells>; maximum: number } | null = null
-  for (const candidate of isometricCandidates(views, settings.projection)) {
-    const cells = viewCells(views, settings.projection, candidate)
-    const maximum = maximumScale(cells, area)
-    if (!best || maximum > best.maximum * (1 + 1e-9)) best = { cells, maximum }
-  }
-  if (!best) throw new Error("A drawing needs at least one view.")
-  return placeViews(best.cells, best.maximum, settings.scale, area, views)
-}
-
-function maximumScale(cells: ReturnType<typeof viewCells>, area: Rect) {
-  const { sortedColumns, sortedRows, modelWidth, modelHeight } = extents(cells)
-  const availableWidth =
-    area.width - 2 * AREA_MARGIN_MM - CELL_GAP_MM * Math.max(0, sortedColumns.length - 1)
-  const availableHeight =
-    area.height - 2 * AREA_MARGIN_MM - CELL_GAP_MM * Math.max(0, sortedRows.length - 1)
-  return Math.max(
-    0,
-    Math.min(
-      modelWidth > 0 ? availableWidth / modelWidth : Number.POSITIVE_INFINITY,
-      modelHeight > 0 ? availableHeight / modelHeight : Number.POSITIVE_INFINITY,
-    ),
+/** Sheet length of the bands at `factor`, including annotation margins and separations. */
+function bandLength(bandMap: ReadonlyMap<number, Band>, factor: number) {
+  const values = [...bandMap.values()]
+  return (
+    values.reduce((sum, band) => sum + band.before + band.size * factor + band.after, 0) +
+    ENVELOPE_SEPARATION_MM * Math.max(0, values.length - 1)
   )
 }
 
-function placeViews(
-  cells: ReturnType<typeof viewCells>,
-  maximum: number,
-  scale: DrawingSettings["scale"],
+type Arrangement = Readonly<{
+  factor: number
+  fits: boolean
+  placements: ViewPlacement[]
+}>
+
+function arrange(
+  views: readonly CellView[],
+  factor: number,
   area: Rect,
-  views: readonly DrawingViewProjection[],
-): SheetLayout {
-  const { widths, heights, sortedColumns, sortedRows, modelWidth, modelHeight } = extents(cells)
-  const chosen = chooseScale(scale, maximum)
-  const factor = chosen.numerator / chosen.denominator
-  const totalWidth = modelWidth * factor + CELL_GAP_MM * Math.max(0, sortedColumns.length - 1)
-  const totalHeight = modelHeight * factor + CELL_GAP_MM * Math.max(0, sortedRows.length - 1)
+  measure: (view: CellView) => AnnotationMargins,
+): Arrangement {
+  const margins = new Map(views.map((view) => [view, measure(view)]))
+  const columns = bands(views, 0, margins)
+  const rows = bands(views, 1, margins)
+  const width = bandLength(columns, factor)
+  const height = bandLength(rows, factor)
   const columnLeft = new Map<number, number>()
-  let cursor = area.x + (area.width - totalWidth) / 2
-  for (const column of sortedColumns) {
-    columnLeft.set(column, cursor)
-    cursor += (widths.get(column) ?? 0) * factor + CELL_GAP_MM
+  let cursor = area.x + (area.width - width) / 2
+  for (const column of [...columns.keys()].sort((a, b) => a - b)) {
+    const band = columns.get(column)
+    if (!band) continue
+    columnLeft.set(column, cursor + band.before)
+    cursor += band.before + band.size * factor + band.after + ENVELOPE_SEPARATION_MM
   }
   const rowBottom = new Map<number, number>()
-  cursor = area.y + (area.height + totalHeight) / 2
-  for (const row of sortedRows) {
-    cursor -= (heights.get(row) ?? 0) * factor
+  cursor = area.y + (area.height + height) / 2
+  for (const row of [...rows.keys()].sort((a, b) => b - a)) {
+    const band = rows.get(row)
+    if (!band) continue
+    cursor -= band.after + band.size * factor
     rowBottom.set(row, cursor)
-    cursor -= CELL_GAP_MM
+    cursor -= band.before + ENVELOPE_SEPARATION_MM
   }
-  const place = (
-    projection: DrawingViewProjection,
-    cell: Cell,
-    reference: { x: Span; y: Span },
-    orthographic: boolean,
-  ): ViewPlacement => {
-    const [column, row] = cell
-    const cellWidth = (widths.get(column) ?? 0) * factor
-    const cellHeight = (heights.get(row) ?? 0) * factor
-    const left =
-      (columnLeft.get(column) ?? area.x) +
-      (cellWidth - (reference.x.max - reference.x.min) * factor) / 2
-    const bottom =
-      (rowBottom.get(row) ?? area.y) +
-      (cellHeight - (reference.y.max - reference.y.min) * factor) / 2
-    const origin = [left - reference.x.min * factor, bottom - reference.y.min * factor] as const
-    const { min, max } = projection.bounds
+  const placements = views.map((view): ViewPlacement => {
+    const [column, row] = view.cell
+    const { x, y } = view.reference
+    const cellWidth = (columns.get(column)?.size ?? 0) * factor
+    const cellHeight = (rows.get(row)?.size ?? 0) * factor
+    const left = (columnLeft.get(column) ?? area.x) + (cellWidth - (x.max - x.min) * factor) / 2
+    const bottom = (rowBottom.get(row) ?? area.y) + (cellHeight - (y.max - y.min) * factor) / 2
+    const origin = [left - x.min * factor, bottom - y.min * factor] as const
+    const { min, max } = view.projection.bounds
     return {
-      projection,
-      orthographic,
+      projection: view.projection,
+      orthographic: view.orthographic,
       origin,
       rect: {
         x: origin[0] + min[0] * factor,
@@ -225,32 +244,66 @@ function placeViews(
         height: (max[1] - min[1]) * factor,
       },
     }
-  }
-  const placements = cells.ortho.map(({ view, cell }) =>
-    place(
-      view,
-      cell,
-      {
-        x: cells.columns.get(cell[0]) ?? { min: 0, max: 0 },
-        y: cells.rows.get(cell[1]) ?? { min: 0, max: 0 },
-      },
-      true,
-    ),
-  )
-  if (cells.iso && cells.isoCell) {
-    const { min, max } = cells.iso.bounds
-    placements.push(
-      place(
-        cells.iso,
-        cells.isoCell,
-        { x: { min: min[0], max: max[0] }, y: { min: min[1], max: max[1] } },
-        false,
-      ),
-    )
-  }
+  })
+  const tolerance = 1e-9
   return {
-    scale: { numerator: chosen.numerator, denominator: chosen.denominator },
-    fits: chosen.fits,
-    placements: views.flatMap((view) => placements.filter((item) => item.projection === view)),
+    factor,
+    fits: width <= area.width + tolerance && height <= area.height + tolerance,
+    placements,
+  }
+}
+
+/**
+ * Places views in projection-aligned cells and centres the arrangement in the drawing area. Each
+ * view reserves its measured annotation margins, so a layout reported as fitting keeps every view,
+ * dimension, callout and label inside the area. Automatic scale takes the largest ISO 5455 scale
+ * that fits for the best isometric cell; an explicit scale reports `fits: false` when it does not.
+ */
+export function layoutViews(
+  views: readonly DrawingViewProjection[],
+  settings: Pick<DrawingSettings, "projection" | "scale">,
+  area: Rect,
+  measureAnnotations: MeasureAnnotations,
+): SheetLayout {
+  const cache = new Map<string, AnnotationMargins>()
+  const measured = (factor: number) => (view: CellView) => {
+    const key = `${view.projection.view}:${factor}`
+    const cached = cache.get(key)
+    if (cached) return cached
+    const margins = measureAnnotations(view.projection, view.orthographic, factor)
+    cache.set(key, margins)
+    return margins
+  }
+  const scales: readonly (readonly [number, number])[] =
+    settings.scale.mode === "explicit"
+      ? [[settings.scale.numerator, settings.scale.denominator]]
+      : DRAWING_STANDARD_SCALES
+  const candidates = isometricCandidates(views, settings.projection).map((cell) =>
+    cellViews(views, settings.projection, cell),
+  )
+  for (const scale of scales) {
+    const factor = scale[0] / scale[1]
+    for (const cells of candidates) {
+      const arrangement = arrange(cells, factor, area, measured(factor))
+      if (arrangement.fits) return result(arrangement, scale, views)
+    }
+  }
+  // Nothing fits: keep the explicit scale, or the smallest standard scale, and say so.
+  const scale = scales.at(-1) ?? [1, 1]
+  const factor = scale[0] / scale[1]
+  return result(arrange(candidates[0] ?? [], factor, area, measured(factor)), scale, views)
+}
+
+function result(
+  arrangement: Arrangement,
+  scale: readonly [number, number],
+  views: readonly DrawingViewProjection[],
+): SheetLayout {
+  return {
+    scale: { numerator: scale[0], denominator: scale[1] },
+    fits: arrangement.fits,
+    placements: views.flatMap((view) =>
+      arrangement.placements.filter((item) => item.projection === view),
+    ),
   }
 }
