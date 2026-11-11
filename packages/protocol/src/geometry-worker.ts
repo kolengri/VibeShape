@@ -1666,6 +1666,69 @@ export const shellOpeningContentSchema = z
     message: "Shell opening signature must identify a face.",
     path: ["signature", "kind"],
   })
+
+const revolveEndBodyContentFields = {
+  inputIndex: z.number().int().min(0).max(3),
+  sourceContentHash: sha256Schema,
+  outputRole: bodyOutputRoleSchema,
+}
+/** Prepared angular extent or dynamic endpoint of Revolve v8. */
+export const revolveEndConditionContentSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("angle") }).strict(),
+  z.object({ kind: z.literal("up-to-body"), ...revolveEndBodyContentFields }).strict(),
+  z
+    .object({
+      kind: z.literal("up-to-face"),
+      ...revolveEndBodyContentFields,
+      face: shellOpeningContentSchema,
+    })
+    .strict(),
+])
+const revolveAngleContentSchema = finiteNumberSchema.min(Number.EPSILON).max(Math.PI * 2)
+/** Revolve v8: one-sided, symmetric, or two-sided angles, or an exact body/face endpoint. */
+export const revolveFeatureContentParametersV8Schema = revolveMultiProfileFeatureContentBaseSchema
+  .extend({
+    operation: z.enum(["new", "add", "remove", "intersect"]),
+    symmetric: z.boolean(),
+    reversed: z.boolean(),
+    secondAngleRadians: revolveAngleContentSchema.nullable(),
+    endCondition: revolveEndConditionContentSchema,
+    /** Named output role of each profile's separate solid, aligned with `profiles`. */
+    profileOutputRoles: z.array(bodyOutputRoleSchema).min(1).max(64),
+  })
+  .refine(({ axisDirection }) => isNormalized(axisDirection), {
+    message: "Revolve axis direction must be normalized.",
+    path: ["axisDirection"],
+  })
+  .refine(
+    ({ symmetric, reversed, secondAngleRadians }) =>
+      !symmetric || (!reversed && secondAngleRadians === null),
+    {
+      message: "A symmetric revolve has neither a second angle nor a reversed direction.",
+      path: ["symmetric"],
+    },
+  )
+  .refine(
+    ({ angleRadians, secondAngleRadians }) =>
+      angleRadians + (secondAngleRadians ?? 0) <= Math.PI * 2 + 1e-12,
+    { message: "The total revolve angle must be at most 360 degrees.", path: ["angleRadians"] },
+  )
+  .refine(
+    ({ endCondition, symmetric, secondAngleRadians }) =>
+      endCondition.kind === "angle" || (!symmetric && secondAngleRadians === null),
+    {
+      message: "Dynamic revolve endpoints require one directional extent.",
+      path: ["endCondition"],
+    },
+  )
+  .refine(({ profiles, profileOutputRoles }) => profiles.length === profileOutputRoles.length, {
+    message: "Every revolve profile requires one output role.",
+    path: ["profileOutputRoles"],
+  })
+  .superRefine(validateRevolveAxisContent)
+export type RevolveFeatureContentParametersV8 = z.infer<
+  typeof revolveFeatureContentParametersV8Schema
+>
 export const pressPullFeatureContentParametersSchema = z
   .object({
     distance: finiteNumberSchema.refine(

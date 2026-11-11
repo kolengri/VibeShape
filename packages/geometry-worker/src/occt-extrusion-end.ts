@@ -67,7 +67,10 @@ function solids(occt: OpenCascadeInstance, shape: Shape3D): Shape3D[] {
     explorer.delete()
   }
 }
-/** The unique bounded component must retain the complete start cap and lose the overrun cap. */
+/**
+ * The unique bounded component must retain the complete start cap and lose the overrun cap.
+ * A swept tool whose overrun cap is not parallel to its start cap supplies `endNormal`.
+ */
 export function terminateExtrusionAtBody(
   occt: OpenCascadeInstance,
   tool: Shape3D,
@@ -75,10 +78,11 @@ export function terminateExtrusionAtBody(
   start: Point,
   end: Point,
   normal: Point,
+  endNormal: Point = normal,
 ) {
   const cut = cutOcctShapes(occt, tool, target)
   try {
-    return takeBoundedExtrusionPart(occt, tool, cut, start, end, normal)
+    return takeBoundedExtrusionPart(occt, tool, cut, start, end, normal, endNormal)
   } finally {
     cut.delete()
   }
@@ -90,6 +94,7 @@ function takeBoundedExtrusionPart(
   start: Point,
   end: Point,
   normal: Point,
+  endNormal: Point,
 ) {
   const expected = capArea(occt, tool, start, normal)
   if (expected <= 0) throw new Error("Extrusion start cap is unavailable.")
@@ -104,7 +109,7 @@ function takeBoundedExtrusionPart(
         metrics.volume > 0 &&
         Math.abs(capArea(occt, part, start, normal) - expected) <=
           Math.max(1e-7, expected * 1e-7) &&
-        capArea(occt, part, end, normal) <= 1e-7
+        capArea(occt, part, end, endNormal) <= 1e-7
       )
     })
     if (candidates.length !== 1)
@@ -128,6 +133,7 @@ export function terminateExtrusionAtFace(
   start: Point,
   end: Point,
   normal: Point,
+  endNormal: Point = normal,
 ) {
   const resources: { delete(): void }[] = []
   const own = <T extends { delete(): void }>(value: T) => {
@@ -149,7 +155,7 @@ export function terminateExtrusionAtFace(
     if (!cutter.IsDone()) throw new Error("OCCT could not build the extrusion face endpoint.")
     const cut = own(adoptOcctShape(cutter.Shape(), castOcctShape))
     const originalBoundary = prismBoundaryDescendants(cutter, tool, own)
-    const result = takeBoundedExtrusionPart(occt, tool, cut, start, end, normal)
+    const result = takeBoundedExtrusionPart(occt, tool, cut, start, end, normal, endNormal)
     try {
       validateNewFaceCoverage(occt, result, support, originalBoundary, progress)
       return result
