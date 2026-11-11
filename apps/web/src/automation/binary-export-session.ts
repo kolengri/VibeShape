@@ -13,6 +13,7 @@ import {
   pictureRenderReceiptSchema,
   type preparePictureRenderArgumentsSchema,
 } from "@vibeshape/automation-api/derived-reads"
+import type { PrepareDrawingExportArguments } from "@vibeshape/automation-api/drawing-export-arguments"
 import { localFailure } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema } from "@vibeshape/domain/commands"
 import type { MeshExportQuality } from "@vibeshape/protocol"
@@ -27,6 +28,7 @@ export class BinaryExportPreparationError extends Error {
   }
 }
 type Format = Exclude<BinaryExportDescriptor["format"], "png">
+type ModelFormat = Exclude<Format, "svg" | "dxf" | "pdf">
 export type PreparedPictureFile = {
   ok: true
   documentId: string
@@ -39,6 +41,7 @@ export type PreparedPictureFile = {
 type PreparedFile =
   | { ok: true; documentId: string; revision: number; format: Format; file: Uint8Array }
   | { ok: false }
+export type PreparedDrawingFile = PreparedFile
 export type BinaryExportSourcePort = Readonly<{
   documentId: string
   currentRevision: () => number
@@ -47,15 +50,26 @@ export type BinaryExportSourcePort = Readonly<{
     request: z.infer<typeof preparePictureRenderArgumentsSchema>,
     signal: AbortSignal,
   ) => Promise<PreparedPictureFile | { ok: false }>
+  /** Derived drawing sheet produced by the same projection and writers as the Drawing dialog. */
+  prepareDrawing?: (
+    request: PrepareDrawingExportArguments,
+    signal: AbortSignal,
+  ) => Promise<PreparedDrawingFile>
   prepare: (
-    format: Format,
+    format: ModelFormat,
     revision: number,
     meshQuality?: MeshExportQuality,
   ) => Promise<PreparedFile>
 }>
 type PrepareOperation = Extract<
   LocalBinaryExportOperation,
-  { tool: "prepare_model_export" | "prepare_project_backup" | "prepare_picture_render" }
+  {
+    tool:
+      | "prepare_model_export"
+      | "prepare_project_backup"
+      | "prepare_picture_render"
+      | "prepare_drawing_export"
+  }
 >
 async function prepareExportSource(
   source: BinaryExportSourcePort,
@@ -66,6 +80,13 @@ async function prepareExportSource(
     return {
       format: "png" as const,
       prepared: (await source.preparePicture?.(operation.arguments, signal)) ?? {
+        ok: false as const,
+      },
+    }
+  if (operation.tool === "prepare_drawing_export")
+    return {
+      format: operation.arguments.format,
+      prepared: (await source.prepareDrawing?.(operation.arguments, signal)) ?? {
         ok: false as const,
       },
     }
@@ -219,6 +240,8 @@ export function createBinaryExportSession(
       ![137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => source.file[index] === value)
     )
       return localFailure("export-invalid-type", "The picture renderer did not return PNG bytes.")
+    if (!hasDrawingSignature(format, source.file))
+      return localFailure("export-invalid-type", "The drawing writer returned unexpected bytes.")
     return null
   }
   function read(operation: Extract<LocalBinaryExportOperation, { tool: "read_export_chunk" }>) {
@@ -305,4 +328,17 @@ function encodeBytes(bytes: Uint8Array) {
   for (let i = 0; i < bytes.byteLength; i += 0x8000)
     text += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   return btoa(text)
+}
+
+const DRAWING_SIGNATURES: Partial<Record<BinaryExportDescriptor["format"], string>> = {
+  svg: "<?xml",
+  pdf: "%PDF-",
+  dxf: "0\r\nSECTION",
+}
+function hasDrawingSignature(format: BinaryExportDescriptor["format"], file: Uint8Array) {
+  const signature = DRAWING_SIGNATURES[format]
+  return (
+    signature === undefined ||
+    [...signature].every((character, index) => file[index] === character.charCodeAt(0))
+  )
 }

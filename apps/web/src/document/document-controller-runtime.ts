@@ -165,6 +165,7 @@ import {
 import { createBinaryExportSession } from "../automation/binary-export-session"
 import { createConnectedAssistantReviews } from "../automation/connected-assistant-reviews"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
+import { createDrawingExportPreparer } from "../automation/drawing-export-source"
 import { createBrowserHistoryAutomationSession } from "../automation/history-automation-session"
 import {
   createHistoryMoveAutomationSession,
@@ -1482,6 +1483,12 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     })
     const exports = createBinaryExportSession({
       preparePicture: pictureRender.prepare,
+      prepareDrawing: createDrawingExportPreparer({
+        documentId: capturedDocumentId,
+        currentRevision: () => active.snapshot.revision,
+        project: (views, partId) =>
+          currentReport() ? projectActiveDocumentDrawing(views, partId) : Promise.reject(),
+      }),
       documentId: capturedDocumentId,
       currentRevision: () => active.snapshot.revision,
       isActive: () => currentReport() !== null,

@@ -410,6 +410,7 @@ export function createLocalToolExecutor(
       {
         tool:
           | "prepare_picture_render"
+          | "prepare_drawing_export"
           | "prepare_model_export"
           | "prepare_project_backup"
           | "read_export_chunk"
