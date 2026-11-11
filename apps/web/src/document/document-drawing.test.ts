@@ -3,11 +3,11 @@ import type { PersistentDocumentSessionReport } from "@vibeshape/application/per
 import { DRAWING_CHORD_TOLERANCE_MM } from "@vibeshape/protocol"
 import { vi } from "../../../../tests/unit/support/bun-test"
 
-const parts = vi.fn((): unknown[] | null => null)
-const partsModule = { ...(await import("@vibeshape/application/authored-parts")) }
-mock.module("@vibeshape/application/authored-parts", () => ({
-  ...partsModule,
-  resolveAuthoredParts: parts,
+const plan = vi.fn((): unknown => ({ ok: true, options: {} }))
+const planModule = { ...(await import("./document-geometry-export")) }
+mock.module("./document-geometry-export", () => ({
+  ...planModule,
+  prepareDocumentGeometryExport: plan,
 }))
 const { projectSessionDrawing } = await import("./document-drawing")
 
@@ -54,32 +54,25 @@ describe("projectSessionDrawing", () => {
     ).toMatchObject({ ok: false, diagnostic: { retryable: true, sourceCode: "stale-revision" } })
   })
 
-  it("reports an unknown or bodiless part as non-retryable part-not-found", async () => {
-    const solid = "0195b5ac-b220-7a2c-8c33-67a36a7f0101"
-    const empty = "0195b5ac-b220-7a2c-8c33-67a36a7f0102"
-    parts.mockReturnValue([
-      { part: { id: solid }, body: { featureId: "a" } },
-      { part: { id: empty }, body: null },
-    ])
-    const active = { ...session(), authoredSnapshot: { schemaVersion: 6 } }
-    for (const partId of ["0195b5ac-b220-7a2c-8c33-67a36a7f0199", empty])
+  it.each([
+    ["part-not-found", false, "The requested part does not exist or has no current body."],
+    ["stale-revision", true, "The requested parts do not have current exportable geometry."],
+  ] as const)(
+    "passes the shared body plan's %s outcome through without projecting",
+    async (sourceCode, retryable, message) => {
+      const diagnostic = { code: "export-failed" as const, message, retryable, sourceCode }
+      plan.mockReturnValueOnce({ ok: false, diagnostic })
+      const active = session()
       expect(
         await projectSessionDrawing({
           session: active as never,
           report: {} as PersistentDocumentSessionReport,
           views: ["front"],
-          partId,
+          partId: "0195b5ac-b220-7a2c-8c33-67a36a7f0101",
           isCurrent: () => true,
         }),
-      ).toEqual({
-        ok: false,
-        diagnostic: {
-          code: "export-failed",
-          message: "The requested part does not exist or has no body to draw.",
-          retryable: false,
-          sourceCode: "part-not-found",
-        },
-      })
-    expect(active.projectDrawing).not.toHaveBeenCalled()
-  })
+      ).toEqual({ ok: false, diagnostic })
+      expect(active.projectDrawing).not.toHaveBeenCalled()
+    },
+  )
 })

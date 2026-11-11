@@ -145,3 +145,35 @@ describe("V5 independent textured export", () => {
     },
   )
 })
+
+describe("requested part availability", () => {
+  it("reports a report that lags the authority as a retryable stale revision", () => {
+    const f = fixture()
+    const lagging = {
+      ...f.report,
+      snapshot: { ...f.report.snapshot, revision: f.report.snapshot.revision - 1 },
+    }
+    expect(prepareDocumentGeometryExport(f.authority, lagging, "step", f.part.id)).toEqual({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "The requested parts do not have current exportable geometry.",
+        retryable: true,
+        sourceCode: "stale-revision",
+      },
+    })
+  })
+
+  it("reports an unknown part at a current revision as non-retryable part-not-found", () => {
+    const f = fixture()
+    expect(prepareDocumentGeometryExport(f.authority, f.report, "step", repairId(599))).toEqual({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "The requested part does not exist or has no current body.",
+        retryable: false,
+        sourceCode: "part-not-found",
+      },
+    })
+  })
+})

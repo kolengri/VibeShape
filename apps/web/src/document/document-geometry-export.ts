@@ -1,4 +1,7 @@
-import { authoredPartExportBodies } from "@vibeshape/application/authored-parts"
+import {
+  authoredPartExportBodies,
+  resolveAuthoredParts,
+} from "@vibeshape/application/authored-parts"
 import type {
   PersistentDocumentSessionDiagnostic,
   PersistentDocumentSessionReport,
@@ -25,6 +28,32 @@ function selectedBodies(
   return partId ? null : undefined
 }
 
+/**
+ * Why a requested Part has no export bodies. While a rebuild runs after a commit the report lags
+ * the authority and parts cannot resolve: a retryable revision race. Once they resolve, a missing
+ * or bodiless Part is deterministic and must not be retried.
+ */
+function unavailablePart(
+  authority: DocumentAuthoritySnapshot | null,
+  report: PersistentDocumentSessionReport,
+): PersistentDocumentSessionDiagnostic {
+  const current =
+    authority && authority.schemaVersion !== 1 && resolveAuthoredParts(authority, report)
+  return current
+    ? {
+        code: "export-failed",
+        message: "The requested part does not exist or has no current body.",
+        retryable: false,
+        sourceCode: "part-not-found",
+      }
+    : {
+        code: "export-failed",
+        message: "The requested parts do not have current exportable geometry.",
+        retryable: true,
+        sourceCode: "stale-revision",
+      }
+}
+
 /** Authoritative layers are resolved at the same captured revision as the exact export bodies. */
 export function prepareDocumentGeometryExport(
   authority: DocumentAuthoritySnapshot | null,
@@ -34,16 +63,7 @@ export function prepareDocumentGeometryExport(
   meshQuality?: MeshExportQuality,
 ): GeometryExportPlan {
   const bodies = selectedBodies(authority, report, partId)
-  if (bodies === null)
-    return {
-      ok: false,
-      diagnostic: {
-        code: "export-failed",
-        message: "The requested parts do not have current exportable geometry.",
-        retryable: true,
-        sourceCode: "stale-revision",
-      },
-    }
+  if (bodies === null) return { ok: false, diagnostic: unavailablePart(authority, report) }
   try {
     const surfaceTextures =
       authority &&
