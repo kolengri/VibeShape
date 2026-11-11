@@ -299,6 +299,14 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
       true,
     )
     await enableAutoApply(page)
+    await openLocalAiApprovalMenu(page)
+    await page
+      .getByRole("menuitemcheckbox", { name: "Allow project management", exact: true })
+      .click()
+    await page.keyboard.press("Escape")
+    expect(
+      localToolOutputs.list_projects.parse(await call(local, "list_projects", {})),
+    ).toMatchObject({ ok: true })
     const switching = success(
       localToolOutputs.create_draft.parse(
         await call(local, "create_draft", { baseRevision: reopened.summary.revision }),
@@ -314,10 +322,39 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     ).toMatchObject({ ok: true })
     const pendingSwitch = call(local, "commit_draft", { draftId: switching.draftId })
     await expect(review).toBeVisible()
-    // A project-owned agent review no longer blocks project navigation (#357); discard it here.
-    await review.getByRole("button", { name: "Discard", exact: true }).click()
+    // A project-owned agent review does not block manual navigation (#357). Leaving the project
+    // releases the external client's document scope (ADR-0097), which ends the pending commit.
+    const sourceProject = new URL(page.url()).searchParams.get("project")
+    await openApplicationMenuItem(page, "Projects")
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Projects", exact: true }),
+    ).toBeVisible()
     expect(await pendingSwitch).toMatchObject({ ok: false })
-    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
+    // ADR-0100: the remembered local client reconnects to the destination project through ordinary
+    // status discovery with its remembered approval mode, but never regains project management.
+    const pairedProject = async () => {
+      const info = localToolOutputs.model_info.parse(await call(local, "model_info", {}))
+      return info.ok ? info.value.summary.documentId : null
+    }
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: /^Open Untitled project, revision / })
+      .click()
+    await expect.poll(() => new URL(page.url()).searchParams.get("project")).toBe(sourceProject)
+    await expect.poll(pairedProject, { timeout: 15_000 }).toBe(sourceProject)
+    // The cancelled review stays readable, and while it is shown auto-apply cannot resume here.
+    await expect(
+      review.getByText("This review was cancelled because its session or calculation ended."),
+    ).toBeVisible()
+    await expect(
+      page.getByText("AI access on · Approve each change", { exact: true }),
+    ).toBeVisible()
+    expect(
+      success(localToolOutputs.model_info.parse(await call(local, "model_info", {}))).summary.name,
+    ).not.toBe("Metadata awaiting project switch")
+    expect(
+      localToolOutputs.list_projects.parse(await call(local, "list_projects", {})),
+    ).toMatchObject({ ok: false, diagnostic: { code: "project-management-disabled" } })
     await openApplicationMenuItem(page, "Projects")
     await expect(page.getByRole("button", { name: "New project", exact: true })).toBeEnabled()
     await page.getByRole("button", { name: "New project", exact: true }).click()
@@ -328,8 +365,15 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     ).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toHaveCount(0)
-    await openAiConnections(page)
+    const newProject = new URL(page.url()).searchParams.get("project")
+    expect(newProject).not.toBe(sourceProject)
+    await expect.poll(pairedProject, { timeout: 15_000 }).toBe(newProject)
+    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
+    expect(
+      localToolOutputs.list_projects.parse(await call(local, "list_projects", {})),
+    ).toMatchObject({ ok: false, diagnostic: { code: "project-management-disabled" } })
+    // Stop AI still revokes the remembered access for the new project.
+    await page.getByRole("button", { name: "Stop AI", exact: true }).click()
     expect(await call(local, "model_info", {})).toMatchObject({
       ok: false,
       diagnostic: { code: "not-paired" },

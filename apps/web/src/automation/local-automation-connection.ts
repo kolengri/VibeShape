@@ -868,9 +868,12 @@ export function createLocalAutomationConnection(
     pair = current
     recoveryOwner.authorize(saved?.token, credential, info)
     current.executor = createExecutor(current)
-    publishConnection(current, preferredAutoApply(credential.client, saved?.autoApply === true))
+    const rememberedAutoApply = preferredAutoApply(credential.client, saved?.autoApply === true)
+    publishConnection(current, rememberedAutoApply)
     observeNumericalJobs(current)
-    if (!writePreference(credential.client, snapshot.autoApply))
+    // The session may refuse to restore auto-apply while the project still shows a review. That
+    // refusal is not the person's choice to return to manual approval, so keep the remembered mode.
+    if (!writePreference(credential.client, rememberedAutoApply))
       publish({ ...snapshot, error: true })
     saveResume(current)
     void poll(current)

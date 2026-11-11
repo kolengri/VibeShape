@@ -327,6 +327,18 @@ describe("unpaired local client discovery", () => {
     expect(connection.getSnapshot().client).toBeNull()
   })
 
+  it("keeps the remembered auto-apply choice when a fresh pairing cannot restore it yet", async () => {
+    const remembered = JSON.stringify({ client, autoApply: true })
+    window.localStorage.setItem("vibeshape-local-ai-preferences", remembered)
+    // The destination project still shows a review, so its session refuses auto-apply.
+    enableAutoApply.mockReturnValue(false)
+    await ready()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(connection.getSnapshot()).toMatchObject({ connected: true, autoApply: false })
+    expect(enableAutoApply).toHaveBeenCalled()
+    expect(window.localStorage.getItem("vibeshape-local-ai-preferences")).toBe(remembered)
+  })
+
   it("coalesces slow status reads and stops discovery on disposal", async () => {
     const pending = deferred<ReturnType<typeof ok>>()
     mocks.request.mockReturnValueOnce(pending.promise)
