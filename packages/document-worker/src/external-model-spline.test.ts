@@ -234,6 +234,18 @@ describe("model spline references", () => {
       [50, 4],
       [57, 13],
     ])
+    // Rotating the same cubic from 80 to 90 degrees about its start flips lexicographic order.
+    const at = (degrees: number): Point => [
+      10 * Math.cos((degrees * Math.PI) / 180),
+      10 * Math.sin((degrees * Math.PI) / 180),
+      5,
+    ]
+    const rotatedFrom = sketch("xy", 1, [[0, 0, 5], at(80)])
+    const rotated = cubic(at(90), [0, 0, 5])
+    const [start, end] = await endsOf(rotatedFrom, rotated)
+    expect(start).toEqual([0, 0])
+    expect(end?.[0]).toBeCloseTo(0, 9)
+    expect(end?.[1]).toBeCloseTo(10, 9)
     // Reload: the anchors persist with the reference, so a reopened sketch pairs identically.
     const reopened = sketchRecordSchema.parse(JSON.parse(JSON.stringify(anchored)))
     expect(await endsOf(reopened, flipped)).toEqual([

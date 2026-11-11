@@ -140,14 +140,13 @@ describe("spline tangent joins in the pinned SolveSpace solver", () => {
     }
   })
 
-  it("fails a join closed instead of reversing it when a handle is pushed through", () => {
+  it("never forms a cusp when a handle is pushed through its join in streamed steps", () => {
     const { sketch } = spline()
     const [incoming, outgoing] = cubics(sketch)
     if (!incoming || !outgoing) throw new Error("The fixture must contain two segments.")
     let continuation: SketchSolveContinuation | null = null
-    // The outgoing handle starts near (13.6, 5.0); drag it back past the join at (10, 6). Once the
-    // handle collapses onto the join, the solve fails that join instead of accepting a cusp.
-    let failedSteps = 0
+    // The outgoing handle starts near (13.6, 5.0); drag it back past the join at (10, 6). Near the
+    // join the short handle fails closed; behind it the opposite handle turns with it (still G1).
     for (let step = 1; step <= 12; step += 1) {
       const pointer = { x: 13.6 - step * 0.5, y: 5 + step * 0.05 }
       const solution = solved(
@@ -156,17 +155,8 @@ describe("spline tangent joins in the pinned SolveSpace solver", () => {
         continuation,
       )
       expectStrictG1OrFailedJoins(sketch, solution)
-      if (solution.status === "failed") {
-        failedSteps += 1
-        continue
-      }
-      continuation = continuationFrom(sketch, solution)
-      const [first] = joinTangents(sketch, solvedPointMap(solution))
-      expect(first?.outgoingAhead).toBeGreaterThan(0)
+      if (solution.status !== "failed") continuation = continuationFrom(sketch, solution)
     }
-    // Early steps converge; the collapse steps fail closed instead of producing a cusp.
-    expect(failedSteps).toBeGreaterThan(0)
-    expect(failedSteps).toBeLessThan(12)
   })
 
   it("keeps the opposite handle collinear while one tangent handle is dragged", () => {
@@ -324,15 +314,20 @@ describe("tangent joins under large single solves", () => {
     }
   })
 
-  it("fails the join closed when one drag step pushes a handle through it", () => {
+  it("turns the join instead of forming a cusp when one drag step pushes a handle through it", () => {
     const { sketch } = spline()
     const outgoing = cubics(sketch)[1]
     if (!outgoing) throw new Error("The fixture must contain a middle segment.")
+    const before = joinTangents(sketch, solvedPointMap(solved(sketch, [])))[0]
     // The outgoing handle starts near (13.6, 5.0), beyond the join at (10, 6).
     const solution = solved(sketch, [{ entityId: outgoing.control1PointId, x: 7, y: 7 }])
-    expect(solution.status).toBe("failed")
-    expect<readonly string[]>(solution.failedConstraintIds).toEqual([firstJoinId(sketch)])
+    expect(solution.failedConstraintIds).toEqual([])
     expectStrictG1OrFailedJoins(sketch, solution)
+    const [join] = joinTangents(sketch, solvedPointMap(solution))
+    if (!before || !join) throw new Error("The spline must keep its first join.")
+    // The opposite handle turns with the drag at its own length instead of collapsing.
+    expect(join.dot).toBeCloseTo(1, 6)
+    expect(join.incomingLength).toBeCloseTo(before.incomingLength, 3)
   })
 
   it("fails an authored cusp seed with the join constraint ID", () => {
@@ -365,5 +360,89 @@ describe("tangent joins under large single solves", () => {
     expect(after?.x).toBeCloseTo(before.x, 9)
     expect(after?.y).toBeCloseTo(before.y, 9)
     expectStrictG1OrFailedJoins(pinned, solution)
+  })
+
+  it("translates a join with both handles when a dimension slides it along its tangent", () => {
+    const { sketch } = spline()
+    const [first, , last] = cubics(sketch)
+    if (!first || !last) throw new Error("The fixture must contain three segments.")
+    const before = joinTangents(sketch, solvedPointMap(solved(sketch, [])))[0]
+    if (!before) throw new Error("The fixture must contain a first join.")
+    for (const offset of [15, 18, 40, 100]) {
+      const dimensioned = withConstraints(sketch, [
+        fixedPoint(first.startPointId, 0),
+        fixedPoint(last.endPointId, 1),
+        {
+          schemaVersion: 0,
+          id: sketchConstraintIdSchema.parse(id(3_400)),
+          type: "horizontal-distance",
+          firstPointId: first.endPointId,
+          secondPointId: first.startPointId,
+          value: createLengthQuantity(offset, "mm"),
+        },
+      ])
+      const solution = solved(dimensioned, [])
+      expect(solution.failedConstraintIds).toEqual([])
+      expect(solvedPointMap(solution).get(first.endPointId)).toMatchObject({
+        x: expect.closeTo(offset, 6),
+      })
+      const [join] = joinTangents(dimensioned, solvedPointMap(solution))
+      if (!join) throw new Error("The dimensioned spline must keep its first join.")
+      expect(join.dot).toBeCloseTo(1, 9)
+      expect(join.incomingLength).toBeCloseTo(before.incomingLength, 6)
+      expect(join.outgoingLength).toBeCloseTo(before.outgoingLength, 6)
+    }
+  })
+
+  it("keeps both handle lengths when a coincident point drags a join along its tangent", () => {
+    const { sketch } = spline()
+    const [first] = cubics(sketch)
+    if (!first) throw new Error("The fixture must contain a first segment.")
+    const driverId = sketchEntityIdSchema.parse(id(3_500))
+    const driven = {
+      ...sketch,
+      entities: [
+        ...sketch.entities,
+        { schemaVersion: 0, id: driverId, type: "point", construction: false, x: 10, y: 6 },
+      ],
+      constraints: [
+        ...sketch.constraints,
+        {
+          schemaVersion: 0,
+          id: sketchConstraintIdSchema.parse(id(3_501)),
+          type: "coincident",
+          firstPointId: driverId,
+          secondPointId: first.endPointId,
+        },
+      ],
+    } as SketchRecord
+    const before = joinTangents(driven, solvedPointMap(solved(driven, [])))[0]
+    // The join tangent at (10, 6) is horizontal; drag the coincident point 1 mm along it.
+    const solution = solved(driven, [{ entityId: driverId, x: 11, y: 6 }])
+    expect(solution.failedConstraintIds).toEqual([])
+    const [join] = joinTangents(driven, solvedPointMap(solution))
+    if (!before || !join) throw new Error("The spline must keep its first join.")
+    // The coincident drag carries the join handles, so the join reaches the target exactly.
+    expect(solvedPointMap(solution).get(first.endPointId)).toMatchObject({
+      x: expect.closeTo(11, 6),
+      y: expect.closeTo(6, 6),
+    })
+    expect(join.incomingLength).toBeCloseTo(before.incomingLength, 6)
+    expect(join.outgoingLength).toBeCloseTo(before.outgoingLength, 6)
+  })
+
+  it("follows a fast handle flick that turns the join tangent beyond a quarter turn", () => {
+    const { sketch } = spline()
+    const outgoing = cubics(sketch)[1]
+    if (!outgoing) throw new Error("The fixture must contain a middle segment.")
+    // The join at (10, 6) has a horizontal tangent; one step turns the outgoing handle to 120°.
+    const target = { x: 8, y: 6 + 3.5 }
+    const solution = solved(sketch, [{ entityId: outgoing.control1PointId, ...target }])
+    expect(solution.failedConstraintIds).toEqual([])
+    expectStrictG1OrFailedJoins(sketch, solution)
+    expect(solvedPointMap(solution).get(outgoing.control1PointId)).toMatchObject({
+      x: expect.closeTo(target.x, 3),
+      y: expect.closeTo(target.y, 3),
+    })
   })
 })

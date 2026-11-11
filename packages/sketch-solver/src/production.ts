@@ -440,6 +440,8 @@ class ProductionSketchBuilder {
   #nextEntity = 301
   #nextConstraint = 1
   #horizontalAxis = 0
+  /** Points the caller drags explicitly; a dragged handle orients its join for that solve. */
+  readonly draggedPointIds = new Set<string>()
   #verticalAxis = 0
 
   constructor() {
@@ -992,32 +994,58 @@ function cubicBezierEntities(sketch: SketchRecord): ReadonlyMap<string, CubicBez
 }
 
 /** Translates the free handles of one dragged join point by the drag displacement. */
+/** The drag displacement of a join point, directly or through a point coincident with it. */
+function joinDragDisplacement(
+  joinId: SketchEntityId,
+  currentValues: PointValues,
+  dragged: ReadonlyMap<string, SketchDragTarget>,
+  coincident: ReadonlyMap<string, readonly string[]>,
+) {
+  for (const pointId of [joinId, ...(coincident.get(joinId) ?? [])]) {
+    const target = dragged.get(pointId)
+    const current = currentValues.get(pointId as SketchEntityId)
+    if (target && current) return { x: target.x - current.x, y: target.y - current.y }
+  }
+  return null
+}
+
+function coincidentPartners(sketch: SketchRecord) {
+  const partners = new Map<string, string[]>()
+  for (const constraint of sketch.constraints) {
+    if (constraint.type !== "coincident") continue
+    const { firstPointId: first, secondPointId: second } = constraint
+    partners.set(first, [...(partners.get(first) ?? []), second])
+    partners.set(second, [...(partners.get(second) ?? []), first])
+  }
+  return partners
+}
+
 function carriedJoinHandles(
   join: Readonly<{ incoming: CubicBezierEntity; outgoing: CubicBezierEntity }>,
   currentValues: PointValues,
   dragged: ReadonlyMap<string, SketchDragTarget>,
   fixedPointIds: ReadonlySet<string>,
+  coincident: ReadonlyMap<string, readonly string[]>,
 ): SketchDragTarget[] {
-  const target = dragged.get(join.incoming.endPointId)
-  const current = currentValues.get(join.incoming.endPointId)
-  if (!target || !current) return []
+  const displacement = joinDragDisplacement(
+    join.incoming.endPointId,
+    currentValues,
+    dragged,
+    coincident,
+  )
+  if (!displacement) return []
   return [join.incoming.control2PointId, join.outgoing.control1PointId].flatMap((handleId) => {
     const handle = currentValues.get(handleId)
     // A fixed handle keeps its authored position; carrying it would rewrite its pin.
     if (!handle || dragged.has(handleId) || fixedPointIds.has(handleId)) return []
-    return [
-      {
-        entityId: handleId,
-        x: handle.x + target.x - current.x,
-        y: handle.y + target.y - current.y,
-      },
-    ]
+    return [{ entityId: handleId, x: handle.x + displacement.x, y: handle.y + displacement.y }]
   })
 }
 
 /**
- * Dragging the shared through-point of a tangent join carries both adjacent handles rigidly, so
- * the join keeps its tangent direction instead of letting least-movement collapse a handle.
+ * Dragging the shared through-point of a tangent join, or a point coincident with it, carries both
+ * adjacent handles rigidly, so the join keeps its tangent direction and handle lengths instead of
+ * letting least-movement collapse a handle.
  */
 function withTangentJoinHandleDrags(
   sketch: SketchRecord,
@@ -1032,14 +1060,133 @@ function withTangentJoinHandleDrags(
       constraint.type === "fixed" ? [constraint.pointId] : [],
     ),
   )
+  const coincident = coincidentPartners(sketch)
   for (const constraint of sketch.constraints) {
     const join = tangentJoinCurves(curves, constraint)
     if (!join) continue
-    for (const carried of carriedJoinHandles(join, currentValues, dragged, fixedPointIds)) {
+    const carriedHandles = carriedJoinHandles(
+      join,
+      currentValues,
+      dragged,
+      fixedPointIds,
+      coincident,
+    )
+    for (const carried of carriedHandles) {
       dragged.set(carried.entityId, carried)
     }
   }
   return dragged.size === draggedPoints.length ? draggedPoints : [...dragged.values()]
+}
+
+/**
+ * When exactly one handle of a join is dragged, seeds the free opposite handle on the mirrored
+ * tangent at its own length. Newton then starts from a G1 state, so a flick that turns the tangent
+ * by more than a quarter turn converges instead of stalling at the half-plane boundary.
+ */
+function mirrorOppositeHandleSeeds(
+  sketch: SketchRecord,
+  pointValues: Map<SketchEntityId, { x: number; y: number }>,
+  draggedPoints: readonly SketchDragTarget[],
+) {
+  const dragged = new Set<string>(draggedPoints.map(({ entityId }) => entityId))
+  const fixed = new Set<string>(
+    sketch.constraints.flatMap((constraint) =>
+      constraint.type === "fixed" ? [constraint.pointId] : [],
+    ),
+  )
+  const curves = cubicBezierEntities(sketch)
+  for (const constraint of sketch.constraints) {
+    const join = tangentJoinCurves(curves, constraint)
+    if (!join) continue
+    const pair = [join.incoming.control2PointId, join.outgoing.control1PointId] as const
+    const leadIndex = pair.findIndex((id) => dragged.has(id))
+    const lead = pair[leadIndex] as SketchEntityId | undefined
+    const follower = pair[1 - leadIndex] as SketchEntityId | undefined
+    if (!lead || !follower || dragged.has(follower) || fixed.has(follower)) continue
+    const at = pointValues.get(join.incoming.endPointId)
+    const leading = pointValues.get(lead)
+    const following = pointValues.get(follower)
+    if (!at || !leading || !following) continue
+    const leadLength = Math.hypot(leading.x - at.x, leading.y - at.y)
+    const length = Math.hypot(following.x - at.x, following.y - at.y)
+    if (leadLength <= 1e-9) continue
+    pointValues.set(follower, {
+      x: at.x - ((leading.x - at.x) / leadLength) * length,
+      y: at.y - ((leading.y - at.y) / leadLength) * length,
+    })
+  }
+}
+
+type HeldTangentJoin = Readonly<{
+  constraintId: SketchConstraintId
+  joinId: SketchEntityId
+  /** Free handles with their current offsets from the through-point. */
+  handles: readonly Readonly<{ id: SketchEntityId; dx: number; dy: number }>[]
+  /** True when both handles are held, which already implies the join's G1 constraint. */
+  complete: boolean
+}>
+
+/**
+ * Predictor intent: each free handle keeps its offset from its through-point, so a join that moves
+ * for any reason (a dimension, a coincident drag) translates rigidly with its handles. Explicitly
+ * dragged and fixed handles stay free so the user's intent is never overridden.
+ */
+function heldTangentJoins(
+  sketch: SketchRecord,
+  currentValues: PointValues,
+  draggedPoints: readonly SketchDragTarget[],
+): HeldTangentJoin[] {
+  const curves = cubicBezierEntities(sketch)
+  const pinned = new Set<string>([
+    ...draggedPoints.map(({ entityId }) => entityId),
+    ...sketch.constraints.flatMap((constraint) =>
+      constraint.type === "fixed" ? [constraint.pointId] : [],
+    ),
+  ])
+  return sketch.constraints.flatMap((constraint) => {
+    const join = tangentJoinCurves(curves, constraint)
+    const at = join ? currentValues.get(join.incoming.endPointId) : undefined
+    if (!join || !at) return []
+    const handleIds = [join.incoming.control2PointId, join.outgoing.control1PointId]
+    // A directly dragged handle turns its join; holding the opposite handle would fight the drag.
+    if (handleIds.some((id) => draggedPoints.some(({ entityId }) => entityId === id))) return []
+    const handles = handleIds.flatMap((id) => {
+      const handle = currentValues.get(id)
+      return handle && !pinned.has(id) ? [{ id, dx: handle.x - at.x, dy: handle.y - at.y }] : []
+    })
+    return [
+      {
+        constraintId: constraint.id,
+        joinId: join.incoming.endPointId,
+        handles,
+        complete: handles.length === handleIds.length,
+      },
+    ]
+  })
+}
+
+function withoutRedundantTangentJoins(sketch: SketchRecord, held: readonly HeldTangentJoin[]) {
+  const implied = new Set<string>(
+    held.flatMap((join) => (join.complete ? [join.constraintId] : [])),
+  )
+  if (implied.size === 0) return sketch
+  return { ...sketch, constraints: sketch.constraints.filter(({ id }) => !implied.has(id)) }
+}
+
+function holdJoinHandles(builder: ProductionSketchBuilder, held: HeldTangentJoin) {
+  for (const handle of held.handles) {
+    for (const [direction, value] of [
+      ["horizontal", handle.dx],
+      ["vertical", handle.dy],
+    ] as const) {
+      builder.addConstraint(held.constraintId, SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance, {
+        pointA: builder.entity(handle.id),
+        pointB: builder.entity(held.joinId),
+        entityA: builder.projectedAxis(direction),
+        value,
+      })
+    }
+  }
 }
 
 function initialCircleRadii(
@@ -1699,7 +1846,7 @@ function addTangentJoinConstraint(
     other: 1,
     other2: 0,
   })
-  const handles = tangentJoinHandles(sketch, constraint, pointValues)
+  const handles = tangentJoinHandles(sketch, constraint, pointValues, builder.draggedPointIds)
   if (!handles) return
   const { incomingControlId, joinId, outgoingControlId, normal, join, scale } = handles
   const offset = { x: normal.x * scale, y: normal.y * scale }
@@ -1732,6 +1879,7 @@ function tangentJoinHandles(
   sketch: SketchRecord,
   constraint: Extract<SketchConstraint, { type: "tangent-join" }>,
   pointValues: PointValues,
+  draggedPointIds: ReadonlySet<string>,
 ) {
   const curves = tangentJoinCurves(cubicBezierEntities(sketch), constraint)
   if (!curves) return null
@@ -1742,9 +1890,15 @@ function tangentJoinHandles(
   if (!join || !before || !after) return null
   const incomingLength = Math.hypot(join.x - before.x, join.y - before.y)
   const outgoingLength = Math.hypot(after.x - join.x, after.y - join.y)
-  // The incoming handle orients the join; a collapsed one defers to the outgoing handle.
-  const [from, to, length] =
-    incomingLength > 1e-9 ? [before, join, incomingLength] : [join, after, outgoingLength]
+  // The incoming handle orients the join unless the outgoing handle is the one being dragged, so a
+  // fast flick of either handle orients the separator from its drag target; a collapsed handle
+  // defers to the other one.
+  const outgoingLeads =
+    outgoingLength > 1e-9 &&
+    (incomingLength <= 1e-9 || draggedPointIds.has(outgoing.control1PointId))
+  const [from, to, length] = outgoingLeads
+    ? [join, after, outgoingLength]
+    : [before, join, incomingLength]
   // A zero-length handle pair has no orientation to preserve; tangency remains authoritative.
   if (length <= 1e-9) return null
   return {
@@ -1898,7 +2052,15 @@ function boundedEllipticalArcLoci(
   })
 }
 
-export function compileSketchSystem(inputValue: SketchCompilationInput): SketchCompilationResult {
+export type SketchCompilationOptions = Readonly<{
+  /** Holds every free tangent-join handle at its current offset from its through-point. */
+  holdTangentJoinHandles?: boolean
+}>
+
+export function compileSketchSystem(
+  inputValue: SketchCompilationInput,
+  options: SketchCompilationOptions = {},
+): SketchCompilationResult {
   const input = sketchCompilationInputSchema.safeParse(inputValue)
   if (!input.success) {
     const issue = input.error.issues[0]
@@ -1919,12 +2081,16 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     ...input.data.externalCurves.flatMap(({ points }) => points),
     ...input.data.externalCurveChains.flatMap(({ points }) => points),
   ]
+  const currentValues = initialPointValues(solveEntities, input.data.continuation, [])
   const draggedPoints = withTangentJoinHandleDrags(
     input.data.sketch,
-    initialPointValues(solveEntities, input.data.continuation, []),
+    currentValues,
     input.data.draggedPoints,
   )
   const pointValues = initialPointValues(solveEntities, input.data.continuation, draggedPoints)
+  if (pointValues) {
+    mirrorOppositeHandleSeeds(input.data.sketch, pointValues, input.data.draggedPoints)
+  }
   const circleRadii = initialCircleRadii(
     [...input.data.sketch.entities, ...input.data.externalCurves.map(({ curve }) => curve)],
     input.data.continuation,
@@ -1941,6 +2107,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
   selectEllipticalArcPointSeeds(input.data.sketch, input.data.externalCurves, pointValues)
 
   const builder = new ProductionSketchBuilder()
+  for (const { entityId } of input.data.draggedPoints) builder.draggedPointIds.add(entityId)
   addSketchEntities(
     builder,
     input.data.sketch,
@@ -1951,9 +2118,13 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     circleRadii,
   )
   addFixedExternalCurveChains(builder, input.data.externalCurveChains, pointValues)
+  const heldJoins =
+    options.holdTangentJoinHandles && currentValues
+      ? heldTangentJoins(input.data.sketch, currentValues, input.data.draggedPoints)
+      : []
   const invalidConstraintIndex = addSketchConstraints(
     builder,
-    input.data.sketch,
+    withoutRedundantTangentJoins(input.data.sketch, heldJoins),
     input.data.externalLines,
     input.data.externalCurves,
     variables,
@@ -1966,6 +2137,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
       `sketch.constraints.${invalidConstraintIndex}.value`,
     )
   }
+  for (const held of heldJoins) holdJoinHandles(builder, held)
 
   return {
     ok: true,
@@ -2096,7 +2268,52 @@ function invalidBoundedEllipticalArcConstraintIds(
   })
 }
 
+/**
+ * Solves once with every free tangent-join handle held to its through-point. When that converges
+ * cleanly, its points seed the ordinary solve, which then certifies the result and reports the true
+ * status, freedom and post-solve G1 validation; otherwise the ordinary solve runs unchanged.
+ */
+function tangentJoinPredictorContinuation(
+  module: NativeSketchSolverModule,
+  input: SketchCompilationInput,
+): SketchSolveContinuation | null {
+  if (!input.sketch.constraints.some(({ type }) => type === "tangent-join")) return null
+  const compilation = compileSketchSystem(input, { holdTangentJoinHandles: true })
+  if (!compilation.ok) return null
+  const { bindings, sketch } = compilation.compiled
+  const result = solveSketchSystem(module, compilation.compiled.system)
+  const converged = result.status === "fully-constrained" || result.status === "under-constrained"
+  if (!converged || result.failedConstraintHandles.length > 0) return null
+  const continuation = sketchSolveContinuationSchema.safeParse({
+    schemaVersion: 0,
+    sketchId: sketch.id,
+    sourceRevision: compilation.compiled.revision,
+    points: [...bindings.pointParameters].map(([entityId, binding]) => ({
+      entityId,
+      x: result.parameterValues[binding.xIndex],
+      y: result.parameterValues[binding.yIndex],
+    })),
+    circles: [...bindings.circleRadiusParameters].map(([entityId, index]) => ({
+      entityId,
+      radius: result.parameterValues[index],
+    })),
+  })
+  return continuation.success ? continuation.data : null
+}
+
 export function solveSketchRecord(
+  module: NativeSketchSolverModule,
+  input: SketchCompilationInput,
+): SolveSketchRecordResult {
+  const predicted = tangentJoinPredictorContinuation(module, input)
+  // The predictor already honored the drag; re-applying targets would nudge the converged joins.
+  return solveCompiledSketchRecord(
+    module,
+    predicted ? { ...input, continuation: predicted, draggedPoints: [] } : input,
+  )
+}
+
+function solveCompiledSketchRecord(
   module: NativeSketchSolverModule,
   input: SketchCompilationInput,
 ): SolveSketchRecordResult {
