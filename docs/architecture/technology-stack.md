@@ -13,6 +13,7 @@
 | Structural analysis | Pyodide 314.0.7, scikit-fem 12.0.2, SciPy 1.18.0, NumPy 2.4.6, trimesh 4.12.2 | Disposable separate worker with pinned same-origin assets; see [lightweighting](../product/lightweighting.md) |
 | Viewport | Raw Three.js with WebGL2 baseline | Full control of picking, buffers, clipping, and lifecycle |
 | Model pictures | Three.js raster plus three-gpu-pathtracer 0.0.24 | Disposable WebGL2 scenes; progressive quality reuses the existing Three.js and BVH dependencies |
+| Drawings | OCCT `HLRBRep_Algo` plus first-party SVG, R12 DXF and PDF writers | Exact hidden-line projection in the existing WASM; deterministic vector output without a new dependency |
 | UI state | Zustand with Immer middleware | Transient editor-session state with explicit actions, separate from committed domain state |
 | Transcript virtualization | `@tanstack/react-virtual` 3.14.23 | Measured variable-height chat groups with stable keys and end anchoring |
 | Form state | TanStack Form | Typed field and submission state behind adapters; base controls remain state-agnostic |

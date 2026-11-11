@@ -298,6 +298,13 @@ or custom properties, and the same exact reconstruction and reviewed publication
 Use the [operator workflow](../.agents/skills/vibeshape-modeling/references/print-optimization.md)
 and existing numerical-job controls; geometry/STEP bytes remain private to the browser.
 
+## Derived drawings
+
+Local and paired remote MCP expose read-only `prepare_drawing_export` for the exact committed
+revision. It projects terminal solids with exact hidden-line removal and returns an actor-bound
+`drawing.svg`, `drawing.dxf` or `drawing.pdf` descriptor for the ordinary chunk/discard workflow.
+See the [operator reference](../.agents/skills/vibeshape-export/references/drawings.md).
+
 ## Derived picture and sampled clearance reads
 
 Local and paired remote MCP share `prepare_picture_render` and `inspect_motion_clearance` with

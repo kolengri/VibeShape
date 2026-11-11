@@ -835,6 +835,13 @@ with resolution, minimum sampled distance/pair, pose receipts and positive-volum
 Incomplete/unsupported/failed evidence is not a pass and samples never prove clearance throughout
 the continuous range. See the bundled export/inspection operator references for limits and workflow.
 
+Both transports expose read-only \`prepare_drawing_export\` with exact committed \`revision\`,
+\`format\` svg, dxf (R12, sheet millimetres) or pdf, optional \`partId\` and optional \`settings\`
+(views, first/third-angle projection, sheet size/orientation, auto or explicit scale, mm/in
+dimension text, hidden lines, dimensions, title block). It uses exact hidden-line projection of
+terminal solids and returns a drawing.svg|dxf|pdf descriptor for read_export_chunk/discard_export.
+Mesh-only parts cannot be drawn; drawings are derived and never edit the project.
+
 Both transports support \`prepare_model_export\` with exact committed \`revision\` and geometry
 \`format\` (STEP, STL, 3MF, GLB in meters with Y up, or OBJ as a ZIP with its MTL), or \`prepare_project_backup\` for an editable \`.vshape\`. Follow \`read_export_chunk\`
 byte offsets, reconstruct base64 chunks with ordinary client file tools, verify descriptor byte

@@ -184,3 +184,4 @@ When a decision changes, do not rewrite its ADR retroactively. Create a new reco
 | [0155](0155-exact-helix-coil-and-helical-sweep.md) | Accepted | Exact helix, Coil feature and helical Sweep v2 path with Frenet pipe-shell construction |
 | [0156](0156-path-pattern.md) | Accepted | Pattern v3 along an exact sketch path with arc-length spacing and a planar rotation-minimizing follow frame |
 | [0157](0157-revolve-end-conditions-and-per-profile-outputs.md) | Accepted | Revolve v8 symmetric and two-sided angles, up-to-body/up-to-face endpoints and per-profile New outputs |
+| [0160](0160-derived-engineering-drawings.md) | Accepted | Derived 2D drawings from exact HLR projection with SVG, R12 DXF and PDF writers and a per-device preset |

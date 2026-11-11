@@ -1,6 +1,6 @@
 ---
 name: vibeshape-export
-description: Save editable VibeShape backups, export committed STEP/STL/3MF/GLB/OBJ files, or hand off a model to a desktop slicer. Use for CAD artifact delivery; printer operation, G-code production, and model publication require separate requested workflows.
+description: Save editable VibeShape backups, export committed STEP/STL/3MF/GLB/OBJ files or SVG/DXF/PDF engineering drawings, or hand off a model to a desktop slicer. Use for CAD artifact delivery; printer operation, G-code production, and model publication require separate requested workflows.
 ---
 
 # VibeShape export
@@ -13,6 +13,7 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for session setup. Establish the 
 | --- | --- |
 | Editable VibeShape project with authored history | Native `.vshape` through `prepare_project_backup` or the editor's project-file controls |
 | Presentation image of visible committed bodies | `prepare_picture_render`; see [picture rendering](references/picture-render.md) |
+| 2D engineering drawing (projected views, dimensions, title block) as SVG, DXF or PDF | `prepare_drawing_export`; see [drawings](references/drawings.md) |
 | Exact geometry for another CAD application | STEP |
 | Unit-aware mesh interchange for slicing | 3MF |
 | Mesh compatibility with an STL-only consumer | STL; explicitly state coordinates are mm |
@@ -31,6 +32,8 @@ Undo transaction, and record new History identities plus their dependency closur
 edits are not recorded. Script source is downloadable/session-only; applied results are ordinary
 features without associative source reruns. MCP exports source but does not run or apply it. See the
 [Scripts and macros workflow](https://github.com/kolengri/VibeShape/blob/main/docs/product/scripts-and-macros.md).
+
+Drawings are derived 2D sheets, not geometry exports: in the editor use **Create Drawing…**; over MCP use `prepare_drawing_export` as described in [drawings](references/drawings.md).
 
 STEP/STL/3MF/GLB/OBJ are geometry exports, not native editable backups. Browser autosave remains tied to that browser origin/profile. Native **Open project (.vshape)** imports a separate copy; use it for restoring/transferring authored intent, and inspect the resulting copy before editing. Do not substitute a mesh export for a requested editable project.
 

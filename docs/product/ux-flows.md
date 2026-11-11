@@ -268,7 +268,7 @@ failures retain their specific diagnostics.
 ## Application menu
 
 The VibeShape menu groups global actions into Project (New project, Rename project, Projects, local
-files, and geometry export),
+files, geometry export, Render Picture and Create Drawing),
 Workspace (settings and command palette), AI (connection and session controls when available), and
 Help (FAQ, MCP setup, and keyboard shortcuts). The header retains project tabs, save status, and the
 Model / Assembly mode switch. Create, open, and rename actions live in the application menu instead
@@ -737,6 +737,18 @@ release navigates once. The focused divider also supports Left/Right and Home/En
 opening another History item. A rejected edit keeps its draft and cursor. Moving the insertion boundary
 is transient: complete History and saved geometry authority remain intact, and navigation adds no Undo
 checkpoint. New features created while rolled back are inserted at that boundary.
+
+## Engineering drawings
+
+Create Drawing opens from Model → Inspect, the command palette or the application menu while the
+model is ready and no sketch or feature task is active. The dialog places settings beside a live
+sheet preview that shows a status while views are projected. View checkboxes keep at least one
+view selected. Sheet, scale, unit and title-block edits update the preview without reprojecting;
+Part and view changes reproject the committed revision. A sheet that overflows at an explicit
+scale shows a persistent alert; models without exact solids and failed projections show their own
+alerts and disable downloads. Download SVG, DXF and PDF save the previewed sheet and announce
+success in the footer; the dialog stays open for further formats. Settings persist per project on
+the device. Closing returns focus to the launching control. See [drawings](drawings.md).
 
 ## Local UI plugins
 
