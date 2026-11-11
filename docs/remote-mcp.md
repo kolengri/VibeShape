@@ -53,7 +53,7 @@ The server bundles the [application-use skill pack](agent-skills.md), including 
 ## Project management
 
 Both local stdio and paired remote HTTPS expose `list_projects`, `create_project` and `open_project`.
-The browser owner first enables **AI connection and approval mode → Allow project management**.
+The browser owner first enables **Allow project management** from the status bar's **Local MCP connection and approval mode** or **Remote AI connection and approval mode** menu.
 The separate live grant allows catalog access and create/open; it is never enabled through MCP or
 restored after recovery. Stop AI and manual project navigation revoke it.
 
