@@ -293,7 +293,8 @@ export function externalReferenceMatchesCandidate(
   if (
     candidate.kind === "model-point" ||
     candidate.kind === "model-line" ||
-    candidate.kind === "model-curve"
+    candidate.kind === "model-curve" ||
+    candidate.kind === "model-spline"
   ) {
     return false
   }

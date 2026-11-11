@@ -75,13 +75,13 @@ it("keeps gradients and masks local to each icon instance, including after a sib
       }
     }
   }
-  expect(container.querySelectorAll("svg")).toHaveLength(358)
+  expect(container.querySelectorAll("svg")).toHaveLength(360)
   verifyReferences()
   const survivingIds = [...container.querySelectorAll("span")].map(
     (span) => span.querySelector("[id]")?.id,
   )
   rerender(gallery(1))
-  expect(container.querySelectorAll("svg")).toHaveLength(179)
+  expect(container.querySelectorAll("svg")).toHaveLength(180)
   expect(
     [...container.querySelectorAll("span")].map((span) => span.querySelector("[id]")?.id),
   ).toEqual(survivingIds)
