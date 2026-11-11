@@ -1,4 +1,4 @@
-import { isArray, isNaNValue, isNumber, isPlainObject } from "is-what"
+import { isArray, isNaNValue, isNumber, isPlainObject, isString } from "is-what"
 import { z } from "zod"
 import {
   surfaceTextureMeshLayersSchema,
@@ -39,6 +39,20 @@ const meshToleranceSchema = finiteNumberSchema.min(0.001).max(10)
 const nonNegativeIntegerSchema = z.number().int().nonnegative().safe()
 const identifierSchema = z.string().trim().min(1).max(128)
 export const MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS = 65_536
+/** Aggregate pole budget for fitted non-analytical edge chains in one topology snapshot. */
+export const MAX_TOPOLOGY_BEZIER_CHAIN_POLES = 65_536
+/** Published chain fits never exceed this parametric deviation from the native edge. */
+export const TOPOLOGY_BEZIER_CHAIN_TOLERANCE_MM = 1e-4
+export const MAX_TOPOLOGY_BEZIER_CHAIN_SEGMENTS = 64
+/** OCCT edge classes without an exact sketch entity; they publish fitted Bezier chains. */
+export const NON_ANALYTICAL_EDGE_GEOMETRY_CLASSES = [
+  "BEZIER_CURVE",
+  "BSPLINE_CURVE",
+  "HYPERBOLA",
+  "PARABOLA",
+  "OFFSET_CURVE",
+  "OTHER_CURVE",
+] as const
 const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoordinateSchema])
 const vector2Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
@@ -1501,6 +1515,25 @@ const ellipticalArcEdgeReferenceGeometrySchema = z
     }
   })
 
+/**
+ * A world-space cubic Bezier chain fitted to one non-analytical edge on uniform refinements of its
+ * smooth pieces. Consumers decide planarity against their own support frame.
+ */
+const bezierChainEdgeReferenceGeometrySchema = z
+  .object({
+    kind: z.literal("bezier-chain-edge"),
+    poles: z
+      .array(topologyVector3Schema)
+      .min(4)
+      .max(MAX_TOPOLOGY_BEZIER_CHAIN_SEGMENTS * 3 + 1),
+    maxDeviation: finiteNumberSchema.min(0).max(TOPOLOGY_BEZIER_CHAIN_TOLERANCE_MM),
+  })
+  .strict()
+  .refine(({ poles }) => (poles.length - 1) % 3 === 0, {
+    message: "A Bezier chain requires 3N + 1 poles for N segments.",
+    path: ["poles"],
+  })
+
 export const topologyReferenceGeometrySchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -1548,6 +1581,7 @@ export const topologyReferenceGeometrySchema = z.discriminatedUnion("kind", [
   arcEdgeReferenceGeometrySchema,
   ellipseEdgeReferenceGeometrySchema,
   ellipticalArcEdgeReferenceGeometrySchema,
+  bezierChainEdgeReferenceGeometrySchema,
 ])
 
 const topologyCandidateBaseSchema = z
@@ -1573,18 +1607,28 @@ const REFERENCE_GEOMETRY_CANDIDATE_KIND = {
   "arc-edge": { geometryClass: "CIRCLE", topologyKind: "edge" },
   "ellipse-edge": { geometryClass: "ELLIPSE", topologyKind: "edge" },
   "elliptical-arc-edge": { geometryClass: "ELLIPSE", topologyKind: "edge" },
+  "bezier-chain-edge": {
+    geometryClass: NON_ANALYTICAL_EDGE_GEOMETRY_CLASSES,
+    topologyKind: "edge",
+  },
 } as const satisfies Record<
   z.infer<typeof topologyReferenceGeometrySchema>["kind"],
-  Readonly<{ geometryClass: string; topologyKind: z.infer<typeof topologyKindSchema> }>
+  Readonly<{
+    geometryClass: string | readonly string[]
+    topologyKind: z.infer<typeof topologyKindSchema>
+  }>
 >
 
 function referenceGeometryMatchesCandidate(candidate: z.infer<typeof topologyCandidateBaseSchema>) {
   const geometry = candidate.referenceGeometry
   if (!geometry) return true
   const expected = REFERENCE_GEOMETRY_CANDIDATE_KIND[geometry.kind]
+  const geometryClasses: readonly string[] = isString(expected.geometryClass)
+    ? [expected.geometryClass]
+    : expected.geometryClass
   return (
     candidate.kind === expected.topologyKind &&
-    candidate.signature.geometryClass === expected.geometryClass
+    geometryClasses.includes(candidate.signature.geometryClass)
   )
 }
 
@@ -1614,6 +1658,24 @@ export const topologyCandidatesSchema = z
       (total, candidate) => total + (candidate.edgePolyline?.length ?? 0),
       0,
     )
+    const chainPoleCount = candidates.reduce(
+      (total, candidate) =>
+        total +
+        (candidate.referenceGeometry?.kind === "bezier-chain-edge"
+          ? candidate.referenceGeometry.poles.length
+          : 0),
+      0,
+    )
+    if (chainPoleCount > MAX_TOPOLOGY_BEZIER_CHAIN_POLES) {
+      context.addIssue({
+        code: "too_big",
+        origin: "array",
+        maximum: MAX_TOPOLOGY_BEZIER_CHAIN_POLES,
+        type: "array",
+        inclusive: true,
+        message: "Topology Bezier chains exceed the aggregate pole budget.",
+      })
+    }
     if (pointCount > MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS) {
       context.addIssue({
         code: "too_big",

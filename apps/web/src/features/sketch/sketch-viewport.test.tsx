@@ -6136,6 +6136,138 @@ describe("SketchViewport", () => {
     expect(onDraftChange).toHaveBeenCalledTimes(1)
   })
 
+  it("previews an interpolating spline and finishes it open with a repeated pick", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "spline",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const instruction = () =>
+      document.querySelector("[data-sketch-interpolated-spline-instruction]")?.textContent
+    expect(instruction()).toContain("Click the first through-point")
+    fireEvent.pointerDown(drawing, { clientX: 300, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 200 })
+    expect(
+      document.querySelector("[data-sketch-interpolated-spline-preview]")?.getAttribute("d"),
+    ).toContain(" C ")
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 200 })
+    fireEvent.pointerDown(drawing, { clientX: 500, clientY: 300 })
+    expect(instruction()).toContain("3 through-points")
+    expect(document.querySelectorAll("[data-sketch-spline-through-point]")).toHaveLength(3)
+    expect(document.querySelector("[data-sketch-spline-close-target]")).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+    // The second press of a double-click repeats the last through-point and finishes.
+    fireEvent.pointerDown(drawing, { clientX: 500, clientY: 300 })
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
+    const placed = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const cubics = placed.entities.filter(({ type }) => type === "cubic-bezier")
+    expect(cubics).toHaveLength(2)
+    expect(placed.entities.filter(({ type }) => type === "point")).toHaveLength(3 + 2 * 2)
+    expect(placed.constraints.map(({ type }) => type)).toEqual(["tangent-join"])
+    expect(document.querySelector("[data-sketch-interpolated-spline-preview]")).toBeNull()
+    expect(instruction()).toContain("Click the first through-point")
+  })
+
+  it("keeps a pending spline usable when Undo removes a snapped existing through-point", () => {
+    const anchorId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-00000000a001")
+    const anchored = sketchRecordSchema.parse({
+      ...sketch,
+      entities: [
+        { schemaVersion: 0, id: anchorId, type: "point", construction: false, x: 10, y: 10 },
+      ],
+      constraints: [],
+    })
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
+      draft: anchored,
+      editorTool: "spline",
+      sketch: emptySketch,
+      solveSketch,
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    // The first pick snaps to the existing point; the second is a new point.
+    fireEvent.pointerDown(drawing, clientPointForSketch(drawing, { x: 10, y: 10 }))
+    fireEvent.pointerDown(drawing, clientPointForSketch(drawing, { x: 40, y: 30 }))
+    fireEvent.pointerMove(drawing, clientPointForSketch(drawing, { x: 50, y: 20 }))
+    expect(document.querySelectorAll("[data-sketch-spline-through-point]")).toHaveLength(2)
+    // Undo removes the snapped point while the gesture is still pending.
+    view.rerender(
+      viewportElement({
+        draft: emptySketch,
+        editorTool: "spline",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    fireEvent.pointerMove(drawing, clientPointForSketch(drawing, { x: 10, y: 10 }))
+    expect(document.querySelectorAll("[data-sketch-spline-through-point]")).toHaveLength(1)
+    fireEvent.keyDown(drawing, { key: "Enter" })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    fireEvent.pointerDown(drawing, clientPointForSketch(drawing, { x: 70, y: 10 }))
+    fireEvent.keyDown(drawing, { key: "Enter" })
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
+    const placed = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    expect(placed.entities.some(({ id }) => id === anchorId)).toBe(false)
+    expect(placed.entities.filter(({ type }) => type === "cubic-bezier")).toHaveLength(1)
+  })
+
+  it("closes a spline on the first through-point or with Shift+Enter and finishes with Enter", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "spline",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pickTriangle = () => {
+      fireEvent.pointerDown(drawing, { clientX: 300, clientY: 300 })
+      fireEvent.pointerDown(drawing, { clientX: 400, clientY: 150 })
+      fireEvent.pointerDown(drawing, { clientX: 500, clientY: 300 })
+    }
+    const lastDraft = () =>
+      sketchRecordSchema.parse(onDraftChange.mock.calls[onDraftChange.mock.calls.length - 1]?.[0])
+    const joins = () => lastDraft().constraints.filter(({ type }) => type === "tangent-join")
+
+    pickTriangle()
+    // A pick within the inference tolerance of the first through-point closes the loop.
+    fireEvent.pointerDown(drawing, { clientX: 302, clientY: 301 })
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
+    expect(lastDraft().entities.filter(({ type }) => type === "cubic-bezier")).toHaveLength(3)
+    expect(joins()).toHaveLength(3)
+
+    pickTriangle()
+    fireEvent.keyDown(drawing, { key: "Enter", shiftKey: true })
+    expect(onDraftChange).toHaveBeenCalledTimes(2)
+    expect(joins()).toHaveLength(3)
+
+    pickTriangle()
+    fireEvent.keyDown(drawing, { key: "Enter" })
+    expect(onDraftChange).toHaveBeenCalledTimes(3)
+    expect(joins()).toHaveLength(1)
+
+    // One through-point cannot finish, and Escape discards the pending picks.
+    fireEvent.pointerDown(drawing, { clientX: 300, clientY: 300 })
+    fireEvent.keyDown(drawing, { key: "Enter" })
+    fireEvent.keyDown(drawing, { key: "Escape" })
+    expect(document.querySelector("[data-sketch-spline-through-point]")).toBeNull()
+    expect(onDraftChange).toHaveBeenCalledTimes(3)
+  })
+
   it("previews and creates an exact center-point ellipse as one draft edit", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()

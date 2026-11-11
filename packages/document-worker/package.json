@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
+    "./external-sketch-references": "./src/external-sketch-references.ts",
     "./runtime": "./src/runtime.ts",
     "./session": "./src/session.ts"
   },

@@ -61,7 +61,7 @@ reflects points or analytical curves through shared pure domain operations. Offs
 preselected line set or expands one clicked line to its connected non-branching component, previews
 the signed side and miter intersections, and commits one compound constraint whose dimension drives
 every line pair plus both open-chain endpoints. Exact removable-span Trim preselection,
-ellipse-to-round and ellipse-to-ellipse modification boundaries, spline, free-end Extend,
+ellipse-to-round and ellipse-to-ellipse modification boundaries, spline modification, free-end Extend,
 round-curve Offset, associative pattern authoring, curve-chain slots, and projected
 external geometry remain follow-up work. Linear Pattern currently materializes independent copies
 and clones only constraints wholly internal to the seed selection; it intentionally omits crossing,
@@ -99,7 +99,16 @@ documentation.
 | Arc | Elliptical, Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
 | Modify | Delete, direct point manipulation, line/arc/circle/ellipse/elliptical-arc hover, click, and analytical drag-through Trim, the same curve family for Split, open line/arc/elliptical-arc Extend, point/line/arc/circle/ellipse Mirror and Transform, signed connected-line Offset, one/two-direction Linear Pattern, and center-based closed/open Circular Pattern | Exact removable-span Trim preselection, ellipse-to-round and ellipse-to-ellipse boundaries, free-end Extend, round-curve Offset, spline modification, draggable circular-pattern center, and associative pattern editing |
-| Curves | Analytical lines, circles, circular arcs, full ellipses, and elliptical arcs | Spline, other conics, and projected/external geometry |
+| Spline | Interpolating Spline through picked points with solver-enforced G1 joins, open or closed; four-click control-point Bezier curve | Curvature-continuous (G2) joins, through-point insertion and removal after creation, and free-form NURBS editing |
+| Curves | Analytical lines, circles, circular arcs, full ellipses, elliptical arcs, and cubic Bezier spline chains | Other conics and tilted projection of non-analytical model edges |
+
+**Spline** places through-points without changing the draft. Repeating the last pick (the second
+press of a double-click) or `Enter` finishes an open spline; picking the first through-point or
+`Shift+Enter` closes a spline of three or more points; `Escape` discards the pending picks. The
+completed chain is one schema-valid domain operation and one local undo entry. Each tangent handle
+starts on the bisector of its through-point's chord directions at one third of the chord, and every
+join receives a `tangent-join` constraint. **Bezier curve** keeps the four-click start, control,
+control, end placement.
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible
 stages: select the center, select the vertex radius or tangent-circle radius, then adjust the side
@@ -118,6 +127,7 @@ The completed polygon is one schema-valid domain operation and one local undo en
 | Perpendicular | Exactly two lines | `⊥` | Implemented |
 | Equal | Exactly two lines or two round curves | `=` | Implemented |
 | Tangent | Exactly one line and one arc | `T` | Implemented |
+| Tangent join | Created by Spline between consecutive cubic Bezier segments that share a through-point | `T` | Implemented |
 | Concentric | Exactly two circles/arcs | `◎` | Implemented |
 | Midpoint | Exactly one point and one line | `M` | Implemented |
 | Symmetric | Exactly two points and one symmetry line | `S` | Implemented |
@@ -245,13 +255,13 @@ active support plane and display unit.
 1. Extend remembered wake-up references with the remaining projected/external geometry
    inference. Circle and bounded-arc quadrant candidates, exact positive-sweep arc-length
    midpoints, and point-to-point horizontal/vertical alignment are implemented.
-2. Extend Slot from a single selected line to analytical arcs and validated curve chains, then add
-   splines through exact analytical or solver-backed entities.
+2. Extend Slot from a single selected line to analytical arcs and validated curve chains. Splines
+   are implemented as solver-backed cubic Bezier chains ([ADR-0158](../adr/0158-interpolating-splines-and-model-spline-references.md)).
 3. Add numeric point placement and coordinate editing, plus variable-aware Transform values and a
    relocatable manipulator origin.
 4. Add driving/reference conversion and the remaining ellipse-axis reference measurements.
 5. Extend ellipse Trim and Extend from bounded line intersections to round and ellipse boundaries,
-   refine Trim preselection to the exact removable span, then add future spline entities and explicit
-   free-end Extend behavior.
+   refine Trim preselection to the exact removable span, then add spline Trim, Split, and Extend and
+   explicit free-end Extend behavior.
 6. Add guided over-constraint repair that presents a bounded conflicting set without automatic
    deletion.

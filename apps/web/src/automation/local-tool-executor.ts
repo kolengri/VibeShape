@@ -83,6 +83,7 @@ import {
   executeModelMeasurementQuery,
   type MeasurementPreparationPort,
 } from "./local-measurement-query"
+import { anchorSketchModelSplines } from "./local-model-spline-anchors"
 import { createLocalPrimitiveCommand } from "./local-primitive-command"
 import { executePrintReadinessQuery } from "./local-print-readiness-query"
 import { executeSketchCornerCommand } from "./local-sketch-corner-command"
@@ -315,6 +316,25 @@ function draftCommandRequest(
   }
 }
 
+async function withAnchoredModelSplines<
+  Operation extends Extract<LocalOperation, { arguments: { commandId: string; draftId: string } }>,
+>(session: LocalSessionPort, actor: CommandActor, operation: Operation, signal?: AbortSignal) {
+  if (operation.tool !== "create_sketch" && operation.tool !== "update_sketch")
+    return { ok: true as const, operation }
+  const anchored = await anchorSketchModelSplines(
+    actor,
+    session.documentId,
+    operation.arguments,
+    session.faceAlignment,
+    signal,
+  )
+  if (!anchored.ok) return anchored
+  return {
+    ok: true as const,
+    operation: { ...operation, arguments: { ...operation.arguments, sketch: anchored.sketch } },
+  }
+}
+
 async function dispatchDraftCommand(
   session: LocalSessionPort,
   actor: CommandActor,
@@ -339,8 +359,10 @@ async function dispatchDraftCommand(
     return executeSketchCornerCommand(session.host, actor, session.documentId, operation, signal)
   if (isLocalSketchTextOperation(operation))
     return executeSketchTextCommand(session.host, actor, session.documentId, operation, signal)
-  const savedType = await savedFeatureType(session, actor, operation)
-  const request = draftCommandRequest(operation, actor, session.documentId, savedType)
+  const anchored = await withAnchoredModelSplines(session, actor, operation, signal)
+  if (!anchored.ok) return anchored
+  const savedType = await savedFeatureType(session, actor, anchored.operation)
+  const request = draftCommandRequest(anchored.operation, actor, session.documentId, savedType)
   const result = await session.host.applyCommand(actor, request)
   return result.ok ? { ok: true as const, value: result.value } : diagnostic(result)
 }

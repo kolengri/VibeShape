@@ -1,4 +1,4 @@
-import { isString } from "is-what"
+import { isArray, isPlainObject, isString } from "is-what"
 import { z } from "zod"
 import {
   featureIdSchema,
@@ -204,6 +204,77 @@ export const sketchExternalModelCurveReferenceSchema = z
     }
   })
 
+/** Model edge classes without an exact sketch entity; mirrors the geometry protocol list. */
+export const NON_ANALYTICAL_MODEL_EDGE_CLASSES: readonly string[] = [
+  "BEZIER_CURVE",
+  "BSPLINE_CURVE",
+  "HYPERBOLA",
+  "PARABOLA",
+  "OFFSET_CURVE",
+  "OTHER_CURVE",
+]
+export const MAX_MODEL_SPLINE_SEGMENTS = 64
+
+function validateProjectedSplineIdentities(
+  reference: {
+    projectedCurveIds: readonly string[]
+    projectedPointIds: readonly string[]
+    reference: { signature: { geometryClass: string } }
+  },
+  context: z.RefinementCtx,
+) {
+  if (reference.projectedPointIds.length !== reference.projectedCurveIds.length * 3 + 1) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedPointIds"],
+      message: "A projected model spline requires 3N + 1 point identities for N curves.",
+    })
+  }
+  const ids = [...reference.projectedCurveIds, ...reference.projectedPointIds]
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedCurveIds"],
+      message: "Projected model spline identities must be unique.",
+    })
+  }
+  if (!NON_ANALYTICAL_MODEL_EDGE_CLASSES.includes(reference.reference.signature.geometryClass)) {
+    context.addIssue({
+      code: "custom",
+      path: ["reference", "signature", "geometryClass"],
+      message: "A model spline reference requires a non-analytical model edge.",
+    })
+  }
+}
+
+const anchorPointSchema = z.tuple([coordinateSchema, coordinateSchema])
+
+const modelSplineReferenceShape = {
+  id: sketchExternalReferenceIdSchema,
+  kind: z.literal("model-spline"),
+  reference: edgeTopoRefSchema,
+  /**
+   * Sketch-local positions of the projected start and end at Use or repair. Each solve pairs the
+   * current projected ends with these anchors, so end identities never depend on the edge
+   * parameterization or on a support frame that turns with the edge.
+   */
+  endpointAnchors: z.tuple([anchorPointSchema, anchorPointSchema]),
+  projectedCurveIds: z.array(sketchEntityIdSchema).min(1).max(MAX_MODEL_SPLINE_SEGMENTS),
+  projectedPointIds: z
+    .array(sketchEntityIdSchema)
+    .min(4)
+    .max(MAX_MODEL_SPLINE_SEGMENTS * 3 + 1),
+}
+
+/**
+ * A read-only cubic Bezier chain fitted to one stable non-analytical model edge. Only the topology
+ * reference and the projected chain identities persist; the poles are recomputed on every solve.
+ */
+export const sketchExternalModelSplineReferenceSchema = z
+  .object({ schemaVersion: z.literal(0), ...modelSplineReferenceShape })
+  .strict()
+  .superRefine(validateProjectedSplineIdentities)
+
 /** A read-only bounded line created by intersecting one stable planar model face with the sketch. */
 export const sketchExternalModelIntersectionReferenceSchema = z
   .object({
@@ -313,6 +384,18 @@ const sketchExternalModelIntersectionOrphanSchema = z
     message: "An orphaned model reference must retain its source feature identity.",
   })
 
+const sketchExternalModelSplineOrphanSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    ...modelSplineReferenceShape,
+    orphanedSource: deletedFeatureSourceSchema,
+  })
+  .strict()
+  .superRefine(validateProjectedSplineIdentities)
+  .refine((reference) => reference.orphanedSource.featureId === reference.reference.featureId, {
+    message: "An orphaned model reference must retain its source feature identity.",
+  })
+
 const sketchExternalModelPiercePointOrphanSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -335,15 +418,31 @@ const sketchExternalReferenceSchemaV0 = z.union([
   sketchExternalModelPointReferenceSchema,
   sketchExternalModelLineReferenceSchema,
   sketchExternalModelCurveReferenceSchema,
+  sketchExternalModelSplineReferenceSchema,
   sketchExternalModelIntersectionReferenceSchema,
   sketchExternalModelPiercePointReferenceSchema,
 ])
+
+/**
+ * Automation input only: a model-spline reference may omit its anchors, which the automation
+ * session fills from the current projected chain ends before the sketch becomes a command.
+ * Persisted records and commands always carry anchors.
+ */
+const sketchExternalModelSplineReferenceInputSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    ...modelSplineReferenceShape,
+    endpointAnchors: modelSplineReferenceShape.endpointAnchors.optional(),
+  })
+  .strict()
+  .superRefine(validateProjectedSplineIdentities)
 
 export const sketchExternalReferenceSchema = z.union([
   sketchExternalReferenceSchemaV0,
   sketchExternalModelPointOrphanSchema,
   sketchExternalModelLineOrphanSchema,
   sketchExternalModelCurveOrphanSchema,
+  sketchExternalModelSplineOrphanSchema,
   sketchExternalModelIntersectionOrphanSchema,
   sketchExternalModelPiercePointOrphanSchema,
 ])
@@ -369,6 +468,12 @@ export type SketchExternalModelLineReference = Readonly<
 export type SketchExternalModelCurveReference = Readonly<
   z.infer<typeof sketchExternalModelCurveReferenceSchema>
 >
+export type SketchExternalModelSplineReference = Readonly<
+  z.infer<typeof sketchExternalModelSplineReferenceSchema>
+>
+export type SketchExternalModelSplineOrphanReference = Readonly<
+  z.infer<typeof sketchExternalModelSplineOrphanSchema>
+>
 export type SketchExternalModelIntersectionReference = Readonly<
   z.infer<typeof sketchExternalModelIntersectionReferenceSchema>
 >
@@ -391,16 +496,21 @@ export type SketchExternalModelPiercePointOrphanReference = Readonly<
   z.infer<typeof sketchExternalModelPiercePointOrphanSchema>
 >
 export type SketchExternalReference = Readonly<z.infer<typeof sketchExternalReferenceSchema>>
+export type SketchExternalModelSplineReferenceInput = Readonly<
+  z.infer<typeof sketchExternalModelSplineReferenceInputSchema>
+>
 export type SketchExternalOrphanedModelReference =
   | SketchExternalModelPointOrphanReference
   | SketchExternalModelLineOrphanReference
   | SketchExternalModelCurveOrphanReference
+  | SketchExternalModelSplineOrphanReference
   | SketchExternalModelIntersectionOrphanReference
   | SketchExternalModelPiercePointOrphanReference
 export type SketchExternalModelReference =
   | SketchExternalModelPointReference
   | SketchExternalModelLineReference
   | SketchExternalModelCurveReference
+  | SketchExternalModelSplineReference
   | SketchExternalModelIntersectionReference
   | SketchExternalModelPiercePointReference
   | SketchExternalOrphanedModelReference
@@ -413,6 +523,7 @@ export function isSketchExternalModelReference(
     reference.kind === "model-line" ||
     reference.kind === "model-pierce-point" ||
     reference.kind === "model-curve" ||
+    reference.kind === "model-spline" ||
     reference.kind === "model-intersection"
   )
 }
@@ -576,6 +687,20 @@ const tangentConstraintSchema = sketchConstraintEnvelopeSchema
     at: z.enum(["start", "end"]).optional(),
   })
   .strict()
+/**
+ * G1 continuity where the incoming cubic Bezier ends at the shared through-point where the outgoing
+ * cubic Bezier starts. The adjacent control handles stay collinear with that point.
+ */
+const tangentJoinConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("tangent-join"),
+    incomingCurveId: sketchEntityIdSchema,
+    outgoingCurveId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine((constraint) => constraint.incomingCurveId !== constraint.outgoingCurveId, {
+    message: "A tangent join requires two distinct curves.",
+  })
 const concentricConstraintSchema = entityPairSchema
   .extend({ type: z.literal("concentric") })
   .strict()
@@ -743,6 +868,7 @@ const drivingSketchConstraintSchema = z.discriminatedUnion("type", [
   perpendicularConstraintSchema,
   equalConstraintSchema,
   tangentConstraintSchema,
+  tangentJoinConstraintSchema,
   concentricConstraintSchema,
   pointOnLineConstraintSchema,
   pointOnCurveConstraintSchema,
@@ -870,9 +996,31 @@ function projectedExternalCurve(
   }
 }
 
+/** Segment `i` of a projected chain uses points `3i` through `3i + 3`; joints are shared. */
+export function projectedModelSplineEntities(
+  reference: Pick<SketchExternalModelSplineReference, "projectedCurveIds" | "projectedPointIds">,
+): SketchEntity[] {
+  const point = (index: number) => reference.projectedPointIds[index] as SketchEntityId
+  return [
+    ...reference.projectedPointIds.map(projectedExternalPoint),
+    ...reference.projectedCurveIds.map(
+      (id, index): SketchEntity => ({
+        schemaVersion: 0,
+        id,
+        type: "cubic-bezier",
+        construction: true,
+        startPointId: point(index * 3),
+        control1PointId: point(index * 3 + 1),
+        control2PointId: point(index * 3 + 2),
+        endPointId: point(index * 3 + 3),
+      }),
+    ),
+  ]
+}
+
 /** Materializes identity-only geometry for reference validation and UI selection. */
 export function projectedExternalSketchEntities(
-  references: readonly SketchExternalReference[],
+  references: readonly (SketchExternalReference | SketchExternalModelSplineReferenceInput)[],
 ): readonly SketchEntity[] {
   return references.flatMap((reference): SketchEntity[] => {
     if (reference.kind === "curve" || reference.kind === "model-curve") {
@@ -884,6 +1032,7 @@ export function projectedExternalSketchEntities(
     if (reference.kind === "model-pierce-point") {
       return [projectedExternalPoint(reference.projectedPointId)]
     }
+    if (reference.kind === "model-spline") return projectedModelSplineEntities(reference)
     if (
       reference.kind !== "line" &&
       reference.kind !== "model-line" &&
@@ -962,6 +1111,7 @@ const constraintEntityReferenceRules = {
   parallel: { firstEntityId: ["line"], secondEntityId: ["line"] },
   perpendicular: { firstEntityId: ["line"], secondEntityId: ["line"] },
   tangent: { arcId: ["arc"], lineId: ["line"] },
+  "tangent-join": { incomingCurveId: ["cubic-bezier"], outgoingCurveId: ["cubic-bezier"] },
   concentric: {
     firstEntityId: ["circle", "arc"],
     secondEntityId: ["circle", "arc"],
@@ -1005,6 +1155,19 @@ function validateEqualConstraintReferences(
   return roundTypes.includes(first.type) && roundTypes.includes(second.type)
 }
 
+function validateTangentJoinReferences(
+  constraint: Extract<SketchConstraint, { type: "tangent-join" }>,
+  entities: ReadonlyMap<string, SketchEntity>,
+) {
+  const incoming = entities.get(constraint.incomingCurveId)
+  const outgoing = entities.get(constraint.outgoingCurveId)
+  return (
+    incoming?.type === "cubic-bezier" &&
+    outgoing?.type === "cubic-bezier" &&
+    incoming.endPointId === outgoing.startPointId
+  )
+}
+
 function validateConstraintReferences(
   constraint: SketchConstraint,
   entities: ReadonlyMap<string, SketchEntity>,
@@ -1025,6 +1188,9 @@ function validateConstraintReferences(
       )
     )
   }
+  if (constraint.type === "tangent-join") {
+    return validateTangentJoinReferences(constraint, entities)
+  }
   const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
   const rules: EntityReferenceRules = constraintEntityReferenceRules[constraint.type]
   return Object.entries(rules).every(([field, entityTypes]) => {
@@ -1036,7 +1202,9 @@ function validateConstraintReferences(
 type SketchStructure = Readonly<{
   constraints: readonly SketchConstraint[]
   entities: readonly SketchEntity[]
-  externalReferences?: readonly SketchExternalReference[] | undefined
+  externalReferences?:
+    | readonly (SketchExternalReference | SketchExternalModelSplineReferenceInput)[]
+    | undefined
 }>
 
 function indexSketchEntities(sketch: SketchStructure, context: z.RefinementCtx) {
@@ -1075,6 +1243,8 @@ function nativeConstraintContribution(constraint: SketchConstraint) {
     return constraint.linePairs.length * 2 + constraint.endpointPairs.length
   }
   if (constraint.type === "arc-midpoint") return 2
+  // Tangency, two separator offsets and two handle-ordering half-planes.
+  if (constraint.type === "tangent-join") return 5
   if (constraint.type === "ellipse-quadrant") return 6
   if (constraint.type === "point-on-ellipse") return 5
   return constraint.type === "point-on-elliptical-arc" ? 6 : 1
@@ -1125,12 +1295,14 @@ function nativeSketchCapacity(structure: SketchStructure) {
   const projectionCount =
     Number(
       structure.constraints.some(
-        ({ type }) => type === "horizontal-distance" || type === "horizontal-points",
+        ({ type }) =>
+          type === "horizontal-distance" || type === "horizontal-points" || type === "tangent-join",
       ),
     ) +
     Number(
       structure.constraints.some(
-        ({ type }) => type === "vertical-distance" || type === "vertical-points",
+        ({ type }) =>
+          type === "vertical-distance" || type === "vertical-points" || type === "tangent-join",
       ),
     )
   const auxiliaryArcMidpointLineCount =
@@ -1140,6 +1312,9 @@ function nativeSketchCapacity(structure: SketchStructure) {
   ).length
   const auxiliaryEllipseLocusCount = structure.constraints.filter(
     ({ type }) => type === "point-on-ellipse" || type === "point-on-elliptical-arc",
+  ).length
+  const auxiliaryTangentJoinCount = structure.constraints.filter(
+    ({ type }) => type === "tangent-join",
   ).length
   return {
     entities:
@@ -1151,7 +1326,8 @@ function nativeSketchCapacity(structure: SketchStructure) {
       projectionCount * 3 +
       auxiliaryArcMidpointLineCount +
       auxiliaryEllipseQuadrantCount * 4 +
-      auxiliaryEllipseLocusCount * 4,
+      auxiliaryEllipseLocusCount * 4 +
+      auxiliaryTangentJoinCount,
     parameters:
       authored.parameters +
       projectedExternalSketchEntities(structure.externalReferences ?? []).reduce(
@@ -1160,7 +1336,8 @@ function nativeSketchCapacity(structure: SketchStructure) {
       ) +
       projectionCount * 4 +
       auxiliaryEllipseQuadrantCount * 4 +
-      auxiliaryEllipseLocusCount * 4,
+      auxiliaryEllipseLocusCount * 4 +
+      auxiliaryTangentJoinCount * 2,
   }
 }
 
@@ -1210,6 +1387,42 @@ function validateExternalReferenceIds(sketch: SketchStructure, context: z.Refine
   }
 }
 
+/**
+ * Interior projected model-spline identities are fit artifacts that move along the edge when its
+ * segment count changes; only the two chain ends identify stable source locations.
+ */
+function unstableModelSplineIds(sketch: SketchStructure) {
+  return new Set<string>(
+    (sketch.externalReferences ?? []).flatMap((reference) =>
+      reference.kind === "model-spline"
+        ? [...reference.projectedCurveIds, ...reference.projectedPointIds.slice(1, -1)]
+        : [],
+    ),
+  )
+}
+
+function constraintTargetIds(constraint: object): string[] {
+  return Object.entries(constraint).flatMap(([key, value]) => {
+    if (key !== "id" && key.endsWith("Id") && isString(value)) return [value]
+    if (!isArray(value)) return []
+    return value.flatMap((item) => (isPlainObject(item) ? constraintTargetIds(item) : []))
+  })
+}
+
+function validateModelSplineConstraintTargets(sketch: SketchStructure, context: z.RefinementCtx) {
+  const unstable = unstableModelSplineIds(sketch)
+  if (unstable.size === 0) return
+  for (const [index, constraint] of sketch.constraints.entries()) {
+    if (!constraintTargetIds(constraint).some((id) => unstable.has(id))) continue
+    context.addIssue({
+      code: "custom",
+      path: ["constraints", index],
+      message:
+        "Only the start and end points of a projected model spline are stable constraint targets.",
+    })
+  }
+}
+
 function validateSketchConstraintTable(
   sketch: SketchStructure,
   entities: ReadonlyMap<string, SketchEntity>,
@@ -1234,6 +1447,7 @@ function validateSketchConstraintTable(
       message: "A sketch constraint reference has an incompatible or missing target.",
     })
   }
+  validateModelSplineConstraintTargets(sketch, context)
   if (nativeConstraintCount(sketch) <= MAX_SKETCH_CONSTRAINTS) return
   context.addIssue({
     code: "custom",
@@ -1260,32 +1474,44 @@ function validateNativeSketchCapacity(sketch: SketchStructure, context: z.Refine
   }
 }
 
-export const sketchRecordSchema = z
-  .object({
-    schemaVersion: z.literal(0),
-    id: sketchIdSchema,
-    label: z
-      .string()
-      .min(1)
-      .max(120)
-      .refine((label) => label.trim() === label, "Sketch labels must be normalized."),
-    plane: z.enum(["xy", "xz", "yz"]),
-    support: sketchFeatureFaceSupportSchema.optional(),
-    entities: z.array(sketchEntitySchema).max(MAX_SKETCH_ENTITIES),
-    constraints: z.array(sketchConstraintSchema).max(MAX_SKETCH_CONSTRAINTS),
-    externalReferences: z.array(sketchExternalReferenceSchema).max(MAX_SKETCH_ENTITIES).optional(),
-    textGroups: z.array(sketchTextGroupSchema).max(64).optional(),
-    sourceImport: sketchSourceImportSchema.optional(),
-  })
-  .strict()
-  .superRefine((sketch, context) => {
-    const entities = indexSketchEntities(sketch, context)
-    validateSketchEntityTable(sketch, entities, context)
-    validateSketchConstraintTable(sketch, entities, context)
-    validateNativeSketchCapacity(sketch, context)
-    validateSketchTextGroups(sketch, context)
-    validateSketchSourceImportReferences(sketch, context)
-  })
+function sketchRecordSchemaWith<
+  Reference extends z.ZodType<SketchExternalReference | SketchExternalModelSplineReferenceInput>,
+>(externalReference: Reference) {
+  return z
+    .object({
+      schemaVersion: z.literal(0),
+      id: sketchIdSchema,
+      label: z
+        .string()
+        .min(1)
+        .max(120)
+        .refine((label) => label.trim() === label, "Sketch labels must be normalized."),
+      plane: z.enum(["xy", "xz", "yz"]),
+      support: sketchFeatureFaceSupportSchema.optional(),
+      entities: z.array(sketchEntitySchema).max(MAX_SKETCH_ENTITIES),
+      constraints: z.array(sketchConstraintSchema).max(MAX_SKETCH_CONSTRAINTS),
+      externalReferences: z.array(externalReference).max(MAX_SKETCH_ENTITIES).optional(),
+      textGroups: z.array(sketchTextGroupSchema).max(64).optional(),
+      sourceImport: sketchSourceImportSchema.optional(),
+    })
+    .strict()
+    .superRefine((sketch, context) => {
+      const entities = indexSketchEntities(sketch, context)
+      validateSketchEntityTable(sketch, entities, context)
+      validateSketchConstraintTable(sketch, entities, context)
+      validateNativeSketchCapacity(sketch, context)
+      validateSketchTextGroups(sketch, context)
+      validateSketchSourceImportReferences(sketch, context)
+    })
+}
+
+export const sketchRecordSchema = sketchRecordSchemaWith(sketchExternalReferenceSchema)
+
+/** Automation input: model-spline anchors may be omitted until the session fills them. */
+export const sketchRecordInputSchema = sketchRecordSchemaWith(
+  z.union([sketchExternalReferenceSchema, sketchExternalModelSplineReferenceInputSchema]),
+)
+export type SketchRecordInput = Readonly<z.infer<typeof sketchRecordInputSchema>>
 
 const structuralSketchRecordsSchema = z.array(sketchRecordSchema).max(MAX_SKETCHES_PER_DOCUMENT)
 

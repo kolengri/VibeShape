@@ -51,6 +51,7 @@
     "./sketch-pattern-edit": "./src/sketch-pattern-edit.ts",
     "./sketch-profile-selector": "./src/sketch-profile-selector.ts",
     "./sketch-reference-health": "./src/sketch-reference-health.ts",
+    "./sketch-spline": "./src/sketch-spline.ts",
     "./sketch-transform-edit": "./src/sketch-transform-edit.ts",
     "./surface-textures": "./src/surface-textures.ts",
     "./document-v3": "./src/document-v3.ts",

@@ -1,6 +1,6 @@
-import { isString } from "is-what"
+import { isArray, isPlainObject, isString } from "is-what"
 import { z } from "zod"
-import { topologySignatureSchema } from "./geometry-worker"
+import { NON_ANALYTICAL_EDGE_GEOMETRY_CLASSES, topologySignatureSchema } from "./geometry-worker"
 import {
   sketchSourceImportWireSchema,
   validateSketchSourceImportWireReferences,
@@ -246,6 +246,15 @@ const drivingSketchConstraintSchema = z.discriminatedUnion("type", [
       at: z.enum(["start", "end"]).optional(),
     })
     .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("tangent-join"),
+      incomingCurveId: sketchEntityIdSchema,
+      outgoingCurveId: sketchEntityIdSchema,
+    })
+    .strict()
+    .refine((constraint) => constraint.incomingCurveId !== constraint.outgoingCurveId),
   z.object({ ...constraintEnvelope, type: z.literal("concentric"), ...entityPair }).strict(),
   z
     .object({
@@ -641,6 +650,52 @@ const externalModelCurveReferenceWireSchema = z
     }
   })
 
+const NON_ANALYTICAL_EDGE_CLASSES: readonly string[] = NON_ANALYTICAL_EDGE_GEOMETRY_CLASSES
+
+function validateProjectedSplineWireIdentities(
+  reference: {
+    projectedCurveIds: readonly string[]
+    projectedPointIds: readonly string[]
+    reference: { signature: { geometryClass: string } }
+  },
+  context: z.RefinementCtx,
+) {
+  const ids = [...reference.projectedCurveIds, ...reference.projectedPointIds]
+  if (
+    reference.projectedPointIds.length !== reference.projectedCurveIds.length * 3 + 1 ||
+    new Set(ids).size !== ids.length
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedPointIds"],
+      message: "A projected model spline requires 3N + 1 unique point identities for N curves.",
+    })
+  }
+  if (!NON_ANALYTICAL_EDGE_CLASSES.includes(reference.reference.signature.geometryClass)) {
+    context.addIssue({
+      code: "custom",
+      path: ["reference", "signature", "geometryClass"],
+      message: "A model spline reference requires a non-analytical model edge.",
+    })
+  }
+}
+
+const anchorPointWireSchema = z.tuple([coordinateSchema, coordinateSchema])
+
+const externalModelSplineReferenceWireShape = {
+  id: sketchExternalReferenceIdSchema,
+  kind: z.literal("model-spline"),
+  reference: edgeTopoRefWireSchema,
+  endpointAnchors: z.tuple([anchorPointWireSchema, anchorPointWireSchema]),
+  projectedCurveIds: z.array(sketchEntityIdSchema).min(1).max(64),
+  projectedPointIds: z.array(sketchEntityIdSchema).min(4).max(193),
+}
+
+const externalModelSplineReferenceWireSchema = z
+  .object({ schemaVersion: z.literal(0), ...externalModelSplineReferenceWireShape })
+  .strict()
+  .superRefine(validateProjectedSplineWireIdentities)
+
 const externalModelIntersectionReferenceWireSchema = z
   .object({
     schemaVersion: z.literal(0),
@@ -749,6 +804,18 @@ const orphanedExternalModelCurveReferenceWireSchema = z
     }
   })
 
+const orphanedExternalModelSplineReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    ...externalModelSplineReferenceWireShape,
+    orphanedSource: deletedFeatureSourceWireSchema,
+  })
+  .strict()
+  .superRefine((reference, context) => {
+    validateProjectedSplineWireIdentities(reference, context)
+    validateOrphanedModelReference(reference, context)
+  })
+
 const orphanedExternalModelIntersectionReferenceWireSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -780,11 +847,13 @@ const externalReferenceWireSchema = z.union([
   externalModelLineReferenceWireSchema,
   externalModelPiercePointReferenceWireSchema,
   externalModelCurveReferenceWireSchema,
+  externalModelSplineReferenceWireSchema,
   externalModelIntersectionReferenceWireSchema,
   orphanedExternalModelPointReferenceWireSchema,
   orphanedExternalModelLineReferenceWireSchema,
   orphanedExternalModelPiercePointReferenceWireSchema,
   orphanedExternalModelCurveReferenceWireSchema,
+  orphanedExternalModelSplineReferenceWireSchema,
   orphanedExternalModelIntersectionReferenceWireSchema,
 ])
 
@@ -840,6 +909,7 @@ const wireConstraintEntityReferenceRules = {
   parallel: { firstEntityId: ["line"], secondEntityId: ["line"] },
   perpendicular: { firstEntityId: ["line"], secondEntityId: ["line"] },
   tangent: { arcId: ["arc"], lineId: ["line"] },
+  "tangent-join": { incomingCurveId: ["cubic-bezier"], outgoingCurveId: ["cubic-bezier"] },
   concentric: {
     firstEntityId: ["circle", "arc"],
     secondEntityId: ["circle", "arc"],
@@ -945,6 +1015,15 @@ function wireConstraintReferencesAreValid(
 ) {
   if (constraint.type === "offset") return offsetTargetsAreValid(constraint, entities)
   if (constraint.type === "equal") return equalTargetsAreValid(constraint, entities)
+  if (constraint.type === "tangent-join") {
+    const incoming = entities.get(constraint.incomingCurveId)
+    const outgoing = entities.get(constraint.outgoingCurveId)
+    return (
+      incoming?.type === "cubic-bezier" &&
+      outgoing?.type === "cubic-bezier" &&
+      incoming.endPointId === outgoing.startPointId
+    )
+  }
   const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
   const rules: WireEntityReferenceRules = wireConstraintEntityReferenceRules[constraint.type]
   return Object.entries(rules).every(([field, entityTypes]) => {
@@ -1020,6 +1099,24 @@ function wireProjectedExternalEntities(reference: WireExternalReference): readon
       },
     ]
   }
+  if (reference.kind === "model-spline") {
+    const point = (index: number) => reference.projectedPointIds[index] ?? ""
+    return [
+      ...reference.projectedPointIds.map(wireProjectedPoint),
+      ...reference.projectedCurveIds.map(
+        (id, index): WireEntity => ({
+          schemaVersion: 0,
+          id,
+          type: "cubic-bezier",
+          construction: true,
+          startPointId: point(index * 3),
+          control1PointId: point(index * 3 + 1),
+          control2PointId: point(index * 3 + 2),
+          endPointId: point(index * 3 + 3),
+        }),
+      ),
+    ]
+  }
   if (reference.kind !== "curve" && reference.kind !== "model-curve") {
     return [wireProjectedPoint(reference.projectedPointId)]
   }
@@ -1038,6 +1135,7 @@ function nativeWireConstraintContribution(constraint: z.infer<typeof sketchConst
     return constraint.linePairs.length * 2 + constraint.endpointPairs.length
   }
   if (constraint.type === "arc-midpoint") return 2
+  if (constraint.type === "tangent-join") return 5
   if (constraint.type === "ellipse-quadrant") return 6
   if (constraint.type === "point-on-ellipse") return 5
   return constraint.type === "point-on-elliptical-arc" ? 6 : 1
@@ -1082,12 +1180,14 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
   const projectionCount =
     Number(
       sketch.constraints.some(
-        ({ type }) => type === "horizontal-distance" || type === "horizontal-points",
+        ({ type }) =>
+          type === "horizontal-distance" || type === "horizontal-points" || type === "tangent-join",
       ),
     ) +
     Number(
       sketch.constraints.some(
-        ({ type }) => type === "vertical-distance" || type === "vertical-points",
+        ({ type }) =>
+          type === "vertical-distance" || type === "vertical-points" || type === "tangent-join",
       ),
     )
   const auxiliaryArcMidpointLineCount =
@@ -1097,6 +1197,9 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
   ).length
   const auxiliaryEllipseLocusCount = sketch.constraints.filter(
     ({ type }) => type === "point-on-ellipse" || type === "point-on-elliptical-arc",
+  ).length
+  const auxiliaryTangentJoinCount = sketch.constraints.filter(
+    ({ type }) => type === "tangent-join",
   ).length
   return {
     entities:
@@ -1108,7 +1211,8 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
       projectionCount * 3 +
       auxiliaryArcMidpointLineCount +
       auxiliaryEllipseQuadrantCount * 4 +
-      auxiliaryEllipseLocusCount * 4,
+      auxiliaryEllipseLocusCount * 4 +
+      auxiliaryTangentJoinCount,
     parameters:
       authored.parameters +
       wireProjectedExternalGeometry(sketch).reduce(
@@ -1117,7 +1221,8 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
       ) +
       projectionCount * 4 +
       auxiliaryEllipseQuadrantCount * 4 +
-      auxiliaryEllipseLocusCount * 4,
+      auxiliaryEllipseLocusCount * 4 +
+      auxiliaryTangentJoinCount * 2,
   }
 }
 
@@ -1159,6 +1264,45 @@ function validateWireExternalReferenceIds(sketch: SketchWireStructure, context: 
   }
 }
 
+/**
+ * Interior projected model-spline identities are fit artifacts that move along the edge when its
+ * segment count changes; only the two chain ends identify stable source locations.
+ */
+function unstableModelSplineIds(sketch: SketchWireStructure) {
+  return new Set<string>(
+    (sketch.externalReferences ?? []).flatMap((reference) =>
+      reference.kind === "model-spline"
+        ? [...reference.projectedCurveIds, ...reference.projectedPointIds.slice(1, -1)]
+        : [],
+    ),
+  )
+}
+
+function constraintTargetIds(constraint: object): string[] {
+  return Object.entries(constraint).flatMap(([key, value]) => {
+    if (key !== "id" && key.endsWith("Id") && isString(value)) return [value]
+    if (!isArray(value)) return []
+    return value.flatMap((item) => (isPlainObject(item) ? constraintTargetIds(item) : []))
+  })
+}
+
+function validateModelSplineConstraintTargets(
+  sketch: SketchWireStructure,
+  context: z.RefinementCtx,
+) {
+  const unstable = unstableModelSplineIds(sketch)
+  if (unstable.size === 0) return
+  for (const [index, constraint] of sketch.constraints.entries()) {
+    if (!constraintTargetIds(constraint).some((id) => unstable.has(id))) continue
+    context.addIssue({
+      code: "custom",
+      path: ["constraints", index],
+      message:
+        "Only the start and end points of a projected model spline are stable constraint targets.",
+    })
+  }
+}
+
 function validateWireConstraintTable(
   sketch: SketchWireStructure,
   entities: ReadonlyMap<string, WireEntity>,
@@ -1183,6 +1327,7 @@ function validateWireConstraintTable(
       message: "Sketch constraints must reference compatible entities.",
     })
   }
+  validateModelSplineConstraintTargets(sketch, context)
   if (nativeWireConstraintCount(sketch) <= 10_000) return
   context.addIssue({
     code: "custom",
