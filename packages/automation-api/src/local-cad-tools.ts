@@ -1,4 +1,8 @@
-import { datumPlaneParametersSchema } from "@vibeshape/domain"
+import {
+  datumPlaneParametersSchema,
+  datumPointParametersSchema,
+  datumPointSupportFeatureId,
+} from "@vibeshape/domain"
 import { type BodyReference, bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
@@ -34,6 +38,8 @@ import { draftFeatureParametersSchema } from "@vibeshape/domain/part-design-draf
 import { fdmDependencyIds, fdmFeatureParametersSchema } from "@vibeshape/domain/part-design-fdm"
 import {
   holeFeatureParametersV3Schema,
+  holeFeatureParametersV4Schema,
+  holeTipAngleSchema,
   holeTreatmentSchema,
 } from "@vibeshape/domain/part-design-hole"
 import {
@@ -258,16 +264,38 @@ const holeTreatmentParameters = z
       for (const issue of parsed.error.issues)
         context.addIssue({ code: "custom", path: issue.path, message: issue.message })
   })
+/** Treatment (v3) and drill-point (v4) holes carry explicit body-scoped dependencies. */
+function hasExactHoleScope(parameters: object) {
+  return "treatment" in parameters || "tipAngle" in parameters
+}
+
+// A tipAngle authors Hole v4; an omitted treatment is the simple drilled hole.
+const holeDrillPointParameters = holeBodyParameters.options[0]
+  .safeExtend({ treatment: holeTreatmentSchema.optional(), tipAngle: holeTipAngleSchema })
+  .superRefine((parameters, context) => {
+    const parsed = holeFeatureParametersV4Schema.safeParse({
+      treatment: { kind: "simple" },
+      ...parameters,
+    })
+    if (!parsed.success)
+      for (const issue of parsed.error.issues)
+        context.addIssue({ code: "custom", path: issue.path, message: issue.message })
+  })
 const hole = z
   .object({
     ...feature,
     dependencies: featureRecordSchema.shape.dependencies.min(1).max(2),
     references: featureRecordSchema.shape.references.max(1),
-    parameters: z.union([holeParameters, holeBodyParameters, holeTreatmentParameters]),
+    parameters: z.union([
+      holeParameters,
+      holeBodyParameters,
+      holeTreatmentParameters,
+      holeDrillPointParameters,
+    ]),
   })
   .strict()
   .superRefine((input, context) => {
-    if (!("treatment" in input.parameters)) return
+    if (!hasExactHoleScope(input.parameters)) return
     const target = input.parameters.targetBody
     const support = input.references[0]?.featureId ?? null
     const expected = [...new Set([target.featureId, ...(support ? [support] : [])])]
@@ -495,6 +523,31 @@ const datumPlane = z
       })
   })
 
+const datumPoint = z
+  .object({
+    ...feature,
+    dependencies: featureRecordSchema.shape.dependencies.max(1),
+    references: featureRecordSchema.shape.references.max(0),
+    parameters: datumPointParametersSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const owner = datumPointSupportFeatureId(input.parameters)
+    const matches =
+      owner === null
+        ? input.dependencies.length === 0
+        : owner !== input.featureId &&
+          input.dependencies.length === 1 &&
+          input.dependencies[0] === owner
+    if (!matches)
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Datum Point requires no inputs for coordinates, or exactly the producer of its body-bound reference.",
+      })
+  })
+
 const boolean = z
   .object({
     ...feature,
@@ -593,6 +646,8 @@ export const localCadInputs = {
   update_reference_mirror: referenceMirror,
   create_datum_plane: datumPlane,
   update_datum_plane: datumPlane,
+  create_datum_point: datumPoint,
+  update_datum_point: datumPoint,
   create_boolean: boolean,
   update_boolean: boolean,
   create_union: union,
@@ -654,6 +709,8 @@ export const localCadOperations = [
   z.object({ tool: z.literal("update_reference_mirror"), arguments: referenceMirror }).strict(),
   z.object({ tool: z.literal("create_datum_plane"), arguments: datumPlane }).strict(),
   z.object({ tool: z.literal("update_datum_plane"), arguments: datumPlane }).strict(),
+  z.object({ tool: z.literal("create_datum_point"), arguments: datumPoint }).strict(),
+  z.object({ tool: z.literal("update_datum_point"), arguments: datumPoint }).strict(),
   z.object({ tool: z.literal("create_boolean"), arguments: boolean }).strict(),
   z.object({ tool: z.literal("update_boolean"), arguments: boolean }).strict(),
   z.object({ tool: z.literal("create_union"), arguments: union }).strict(),

@@ -9,6 +9,7 @@ import {
   boxFeatureParametersSchema,
   canonicalJson,
   coneFeatureParametersSchema,
+  coneFeatureParametersV2Schema,
   cylinderFeatureParametersSchema,
   type DocumentSnapshot,
   type FeatureId,
@@ -232,6 +233,8 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-extrusion",
   "create-datum-plane",
   "edit-datum-plane",
+  "create-datum-point",
+  "edit-datum-point",
   "create-revolve",
   "edit-revolve",
   "create-box",
@@ -456,6 +459,7 @@ function primitiveManipulator(
   readOnly: boolean,
 ): PrimitiveManipulator | null {
   if (!isPrimitivePartDesignTool(activeTool) || !candidate || readOnly) return null
+  const coneSchema = coneFeatureParametersV2Schema.or(coneFeatureParametersSchema)
   const schemas = {
     "create-box": boxFeatureParametersSchema,
     "edit-box": boxFeatureParametersSchema,
@@ -463,9 +467,9 @@ function primitiveManipulator(
     "edit-cylinder": cylinderFeatureParametersSchema,
     "create-sphere": sphereFeatureParametersSchema,
     "edit-sphere": sphereFeatureParametersSchema,
-    "create-cone": coneFeatureParametersSchema,
+    "create-cone": coneSchema,
     "create-pyramid": pyramidFeatureParametersSchema,
-    "edit-cone": coneFeatureParametersSchema,
+    "edit-cone": coneSchema,
     "edit-pyramid": pyramidFeatureParametersSchema,
     "create-torus": torusFeatureParametersSchema,
     "edit-torus": torusFeatureParametersSchema,
@@ -1875,6 +1879,7 @@ export type EditorWorkspaceActions = Readonly<{
   createPyramid: () => void
   createTorus: () => void
   createDatumPlane: () => void
+  createDatumPoint: () => void
   createExtrusion: () => Promise<boolean>
   createRevolve: () => Promise<boolean>
   createLoft: () => void

@@ -28,8 +28,9 @@ const actor = commandActorSchema.parse({
 })
 const command = { draftId: id(2), baseRevision: 7, commandId: id(3) }
 const feature = { ...command, featureId: id(4), suppressed: false, label: "Authored primitive" }
-function setup(result = { ok: true, value: {} } as unknown) {
+function setup(result = { ok: true, value: {} } as unknown, inspected?: unknown) {
   const applyCommand = vi.fn().mockResolvedValue(result)
+  const inspectDraft = vi.fn().mockResolvedValue(inspected)
   const executor = createLocalToolExecutor(
     {
       documentId: id(5),
@@ -40,7 +41,7 @@ function setup(result = { ok: true, value: {} } as unknown) {
       host: {
         applyCommand,
         createDraft: vi.fn(),
-        inspectDraft: vi.fn(),
+        inspectDraft,
         previewDraft: vi.fn(),
         commitDraft: vi.fn(),
         discardDraft: vi.fn(),
@@ -48,7 +49,7 @@ function setup(result = { ok: true, value: {} } as unknown) {
     },
     actor,
   )
-  return { executor, applyCommand }
+  return { executor, applyCommand, inspectDraft }
 }
 
 describe("named primitive and lifecycle authority", () => {
@@ -191,6 +192,77 @@ describe("named primitive and lifecycle authority", () => {
             },
           },
         },
+      })
+    },
+  )
+
+  it.each([
+    ["truncated", createLengthQuantity(6, "mm", "#top"), 2],
+    ["literal zero", createLengthQuantity(0, "mm", "0 mm"), 1],
+  ] as const)(
+    "routes a %s cone top radius to the owning cone version",
+    async (_name, topRadius, schemaVersion) => {
+      const { executor, applyCommand } = setup()
+      const parameters = { ...primitiveParameters("cone"), topRadius }
+      await executor.execute(
+        localOperationSchema.parse({ tool: "create_cone", arguments: { ...feature, parameters } }),
+      )
+      const request = applyCommand.mock.calls[0]?.[1]
+      expect(parseDocumentCommand(request.command).ok).toBe(true)
+      const authored = request.command.payload.feature
+      expect(authored.type).toMatchObject({
+        typeId: "org.vibeshape.feature.part-design.cone",
+        schemaVersion,
+      })
+      if (schemaVersion === 2) expect(authored.parameters).toEqual(parameters)
+      else expect(authored.parameters).toEqual(primitiveParameters("cone"))
+    },
+  )
+
+  it.each([
+    ["omitted", undefined],
+    ["literal zero", createLengthQuantity(0, "mm", "0 mm")],
+  ] as const)(
+    "keeps a saved truncated cone on v2 when update_cone has an %s top radius",
+    async (_name, topRadius) => {
+      const saved = { moduleId: "org.vibeshape.core.part-design", moduleVersion: "0.1.0" }
+      const savedType = {
+        ...saved,
+        typeId: "org.vibeshape.feature.part-design.cone",
+        schemaVersion: 2,
+      }
+      const { executor, applyCommand, inspectDraft } = setup(undefined, {
+        ok: true,
+        value: {
+          view: {
+            kind: "org.vibeshape.cad.inspection.detail",
+            data: { entityKind: "feature", record: { type: savedType } },
+          },
+        },
+      })
+      const parameters = {
+        ...primitiveParameters("cone"),
+        ...(topRadius ? { topRadius } : {}),
+      }
+      await executor.execute(
+        localOperationSchema.parse({ tool: "update_cone", arguments: { ...feature, parameters } }),
+      )
+      expect(inspectDraft).toHaveBeenCalledWith(actor, {
+        schemaVersion: 1,
+        draftId: command.draftId,
+        query: {
+          kind: "org.vibeshape.cad.inspection.detail",
+          schemaVersion: 1,
+          documentId: id(5),
+          revision: 7,
+          entity: { kind: "feature", id: feature.featureId },
+        },
+      })
+      const request = applyCommand.mock.calls[0]?.[1]
+      expect(parseDocumentCommand(request.command).ok).toBe(true)
+      expect(request.command.payload.feature).toMatchObject({
+        type: savedType,
+        parameters: { topRadius: expect.objectContaining({ value: 0 }) },
       })
     },
   )

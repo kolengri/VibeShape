@@ -38,10 +38,12 @@ import { readSplitFeatureParameters, readSplitFeatureParametersV2 } from "./part
 import { booleanBodyDependencyIds, readBooleanFeatureParametersV2 } from "./part-design-subtract"
 import { readSweepFeatureParameters } from "./part-design-sweep"
 import { readThreadFeatureParameters } from "./part-design-thread"
-import { readDatumPlaneFeatureParameters } from "./reference-geometry"
+import { readDatumPointFeatureParameters } from "./datum-point"
+import { isReferenceGeometryFeature, readDatumPlaneFeatureParameters } from "./reference-geometry"
 
 const independentBodyReaders = [
   readDatumPlaneFeatureParameters,
+  readDatumPointFeatureParameters,
   readImportedFeatureParameters,
   readMeshImportFeatureParameters,
   readLoftFeatureParameters,
@@ -163,9 +165,7 @@ export function terminalFeatureIds(features: readonly FeatureRecord[]): Readonly
   const consumed = new Set(features.flatMap(featureBodyDependencyIds))
   return new Set(
     features
-      .filter(
-        (feature) => !consumed.has(feature.id) && readDatumPlaneFeatureParameters(feature) === null,
-      )
+      .filter((feature) => !consumed.has(feature.id) && !isReferenceGeometryFeature(feature))
       .map(({ id }) => id),
   )
 }

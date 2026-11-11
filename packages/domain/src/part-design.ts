@@ -54,6 +54,7 @@ import {
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
   holeFeatureTypeHandlerV3,
+  holeFeatureTypeHandlerV4,
 } from "./part-design-hole"
 import { importedFeatureTypeHandler } from "./part-design-import"
 import { loftFeatureTypeHandler, loftFeatureTypeHandlerV2 } from "./part-design-loft"
@@ -293,6 +294,84 @@ export const coneFeatureContentParametersSchema = z
       radialPrimitiveWithinWorkspace(origin, radius, minimumZ, minimumZ + height)
     )
   }, "Cone dimensions and placement must remain within the 100000 mm workspace.")
+
+const coneTopRadiusSchema = lengthQuantitySchema.refine(
+  ({ value }) => value === 0 || (value >= 0.001 && value <= MAX_PRIMITIVE_LENGTH_MM),
+  `A cone top radius must be zero or between 0.001 and ${MAX_PRIMITIVE_LENGTH_MM} mm.`,
+)
+const coneContentTopRadiusSchema = z
+  .number()
+  .finite()
+  .refine(
+    (value) => value === 0 || (value >= 0.001 && value <= MAX_PRIMITIVE_LENGTH_MM),
+    "A cone top radius must be zero or a bounded radial dimension.",
+  )
+
+function coneV2Issues(
+  radius: number,
+  topRadius: number,
+  height: number,
+  centered: boolean,
+  origin: readonly [number, number, number],
+  context: z.RefinementCtx,
+) {
+  if (topRadius === radius)
+    context.addIssue({
+      code: "custom",
+      path: ["topRadius"],
+      message: "A truncated cone requires a top radius that differs from its base radius.",
+    })
+  const minimumZ = origin[2] - (centered ? height / 2 : 0)
+  if (
+    height > MAX_PRIMITIVE_POSITION_MM ||
+    !radialPrimitiveWithinWorkspace(
+      origin,
+      Math.max(radius, topRadius),
+      minimumZ,
+      minimumZ + height,
+    )
+  )
+    context.addIssue({
+      code: "custom",
+      message: "Cone dimensions and placement must remain within the 100000 mm workspace.",
+    })
+}
+
+/** Version 2 adds an authored top radius; zero keeps a pointed apex and larger values invert. */
+export const coneFeatureParametersV2Schema = z
+  .object({
+    radius: radialPrimitiveLengthSchema,
+    topRadius: coneTopRadiusSchema,
+    height: radialPrimitiveLengthSchema,
+    centered: z.boolean(),
+    origin: primitiveOriginWithDefaultSchema,
+  })
+  .strict()
+  .superRefine((cone, context) =>
+    coneV2Issues(
+      cone.radius.value,
+      cone.topRadius.value,
+      cone.height.value,
+      cone.centered,
+      quantityOrigin(cone.origin),
+      context,
+    ),
+  )
+
+export const coneFeatureContentParametersV2Schema = z
+  .object({
+    radius: radialPrimitiveContentLengthSchema,
+    topRadius: coneContentTopRadiusSchema,
+    height: radialPrimitiveContentLengthSchema,
+    centered: z.boolean(),
+    origin: primitiveContentOriginSchema,
+  })
+  .strict()
+  .superRefine((cone, context) =>
+    coneV2Issues(cone.radius, cone.topRadius, cone.height, cone.centered, cone.origin, context),
+  )
+
+export type ConeFeatureParametersV2 = Readonly<z.infer<typeof coneFeatureParametersV2Schema>>
 
 export const pyramidFeatureContentParametersSchema = z
   .object({
@@ -965,9 +1044,10 @@ function resolveRadialPrimitiveParameters(
   schema:
     | typeof sphereFeatureParametersSchema
     | typeof coneFeatureParametersSchema
+    | typeof coneFeatureParametersV2Schema
     | typeof pyramidFeatureParametersSchema
     | typeof torusFeatureParametersSchema,
-  lengthParameters: readonly ("radius" | "height" | "majorRadius" | "minorRadius")[],
+  lengthParameters: readonly ("radius" | "topRadius" | "height" | "majorRadius" | "minorRadius")[],
 ) {
   return (parameters: unknown, variables: VariableValues) => {
     const parsed = schema.safeParse(parameters)
@@ -1091,6 +1171,53 @@ export const coneFeatureType = featureTypeDescriptorSchema.parse({
   dependencies: { min: 0, max: 0 },
   references: { min: 0, max: 0 },
 })
+
+export const coneFeatureTypeV2 = featureTypeDescriptorSchema.parse({
+  ...coneFeatureType,
+  type: { ...coneFeatureType.type, schemaVersion: 2 },
+})
+
+function hasConeType(feature: Pick<FeatureRecord, "type">, schemaVersion: 1 | 2) {
+  const { type } = feature
+  return (
+    type.moduleId === coneFeatureType.type.moduleId &&
+    type.moduleVersion === coneFeatureType.type.moduleVersion &&
+    type.typeId === coneFeatureType.type.typeId &&
+    type.schemaVersion === schemaVersion
+  )
+}
+
+/** Reads either cone version as a frustum; version 1 is the exact pointed-cone case. */
+export function readConeFeatureParameters(
+  feature: Pick<FeatureRecord, "type" | "parameters">,
+): ConeFeatureParametersV2 | null {
+  if (hasConeType(feature, 2)) {
+    const parsed = coneFeatureParametersV2Schema.safeParse(feature.parameters)
+    return parsed.success ? parsed.data : null
+  }
+  if (!hasConeType(feature, 1)) return null
+  const parsed = coneFeatureParametersSchema.safeParse(feature.parameters)
+  return parsed.success ? { ...parsed.data, topRadius: createLengthQuantity(0) } : null
+}
+
+const LITERAL_ZERO_LENGTH = /^[+-]?0*(?:\.0*)?\s*(?:um|mm|cm|m|in|ft)?$/
+
+/**
+ * Owns the cone version route. Version 2 is authored only for a top radius other than a literal
+ * zero (a variable that currently resolves to zero stays parametric), and a saved version 2 cone
+ * never migrates back to version 1.
+ */
+export function authoredConeFeatureType(
+  savedType: FeatureRecord["type"] | null,
+  topRadius: z.infer<typeof lengthQuantitySchema> | undefined,
+) {
+  const savedVersion2 = savedType !== null && hasConeType({ type: savedType }, 2)
+  const expression = topRadius?.source.expression ?? null
+  const literalZero =
+    topRadius === undefined ||
+    (topRadius.value === 0 && (expression === null || LITERAL_ZERO_LENGTH.test(expression)))
+  return savedVersion2 || !literalZero ? coneFeatureTypeV2.type : coneFeatureType.type
+}
 
 export const pyramidFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
@@ -1741,6 +1868,25 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     },
   },
   {
+    type: coneFeatureTypeV2.type,
+    parametersSchema: coneFeatureParametersV2Schema,
+    resolveParameters: resolveRadialPrimitiveParameters(coneFeatureParametersV2Schema, [
+      "radius",
+      "topRadius",
+      "height",
+    ]),
+    contentParameters(parameters) {
+      const cone = coneFeatureParametersV2Schema.parse(parameters)
+      return coneFeatureContentParametersV2Schema.parse({
+        radius: cone.radius.value,
+        topRadius: cone.topRadius.value,
+        height: cone.height.value,
+        centered: cone.centered,
+        origin: quantityOrigin(cone.origin),
+      })
+    },
+  },
+  {
     type: pyramidFeatureType.type,
     parametersSchema: pyramidFeatureParametersSchema,
     resolveParameters: resolveRadialPrimitiveParameters(pyramidFeatureParametersSchema, [
@@ -2040,6 +2186,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   holeFeatureTypeHandler,
   holeFeatureTypeHandlerV2,
   holeFeatureTypeHandlerV3,
+  holeFeatureTypeHandlerV4,
   placementFeatureTypeHandler,
   mirrorFeatureTypeHandler,
   mirrorFeatureTypeHandlerV2,

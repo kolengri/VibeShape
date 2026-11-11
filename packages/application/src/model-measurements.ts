@@ -1,4 +1,4 @@
-import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
+import { isReferenceGeometryFeature } from "@vibeshape/domain"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import { terminalBodyOutputs } from "@vibeshape/domain/model-bodies"
 import {
@@ -146,7 +146,7 @@ function projectBodyEntries(snapshot: DocumentSnapshot, response: RebuiltRespons
   for (const record of response.geometry) {
     const feature = features.get(record.featureId)
     if (!feature) return null
-    if (readDatumPlaneFeatureParameters(feature) || record.geometry.shape.solidCount === 0) continue
+    if (isReferenceGeometryFeature(feature) || record.geometry.shape.solidCount === 0) continue
     const catalog = featureBodyMetrics(record)
     if (bodies.length + catalog.length > 100_000) return null
     bodies.push(...catalog)

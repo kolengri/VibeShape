@@ -11,7 +11,7 @@ import type {
   AutomationHostDiagnosticCode,
   AutomationHostResult,
 } from "@vibeshape/automation-host/host"
-import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
+import { isReferenceGeometryFeature } from "@vibeshape/domain"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import type { ModelPreviewOptions, renderModelPreview } from "@vibeshape/viewer/model-preview"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
@@ -51,9 +51,7 @@ function previewMeshes(
     : terminalModelBodies(snapshot.features, rebuild)?.map(({ geometry }) => geometry)
   if (!bodies) return null
   const datumIds = new Set<string>(
-    snapshot.features
-      .filter((feature) => readDatumPlaneFeatureParameters(feature))
-      .map(({ id }) => id),
+    snapshot.features.filter(isReferenceGeometryFeature).map(({ id }) => id),
   )
   return bodies
     .filter(

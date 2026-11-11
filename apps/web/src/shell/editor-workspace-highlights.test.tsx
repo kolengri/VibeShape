@@ -251,6 +251,7 @@ function WorkspaceHarness({
     createPyramid: noop,
     createTorus: noop,
     createDatumPlane: noop,
+    createDatumPoint: noop,
     createExtrusion: async () => false,
     createRevolve: async () => false,
     createLoft: noop,

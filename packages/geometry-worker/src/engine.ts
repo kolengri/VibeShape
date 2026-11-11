@@ -8,11 +8,13 @@ import {
   chamferFeatureContentParametersV3Schema,
   compoundFeatureContentParametersSchema,
   coneFeatureContentParametersSchema,
+  coneFeatureContentParametersV2Schema,
   connectMountsFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   DEFAULT_SURFACE_TEXTURE_QUALITY,
   type DraftFeatureContentParameters,
   datumPlaneFeatureContentParametersSchema,
+  datumPointFeatureContentParametersSchema,
   draftFeatureContentParametersSchema,
   extrusionExtentBounds,
   extrusionFeatureContentParametersSchema,
@@ -39,6 +41,7 @@ import {
   type HoleFeatureContentParameters,
   holeFeatureContentParametersSchema,
   holeFeatureContentParametersV3Schema,
+  holeFeatureContentParametersV4Schema,
   type ImportedFeatureContentParameters,
   type InspectSourceImportInput,
   importedFeatureContentParametersSchema,
@@ -177,7 +180,7 @@ import {
 } from "./occt-extrusion-end"
 import { createOcctFdmFeature } from "./occt-fdm"
 import { FilletV3Error, filletOcctShapeV3, type ResolvedFilletTarget } from "./occt-fillet-v3"
-import { createOcctCountersink } from "./occt-hole-recess"
+import { createOcctCountersink, createOcctDrilledHole } from "./occt-hole-recess"
 import { measureOcctInterference } from "./occt-interference"
 import { createOcctLoft } from "./occt-loft"
 import { createOcctLoftPatchNetwork, type LoftEndSupport } from "./occt-loft-filling"
@@ -365,6 +368,8 @@ const CONNECT_MOUNTS_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.connect-mounts#1"
 const CONE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cone#1"
+const CONE_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cone#2"
 const PYRAMID_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.pyramid#1"
 const TORUS_FEATURE_TYPE_KEY =
@@ -1065,7 +1070,9 @@ type ChamferContentParameters = ReturnType<typeof chamferFeatureContentParameter
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
 type SphereContentParameters = ReturnType<typeof sphereFeatureContentParametersSchema.parse>
-type ConeContentParameters = ReturnType<typeof coneFeatureContentParametersSchema.parse>
+type ConeContentParameters =
+  | ReturnType<typeof coneFeatureContentParametersSchema.parse>
+  | ReturnType<typeof coneFeatureContentParametersV2Schema.parse>
 type PyramidContentParameters = ReturnType<typeof pyramidFeatureContentParametersSchema.parse>
 type TorusContentParameters = ReturnType<typeof torusFeatureContentParametersSchema.parse>
 type ExtrusionContentParameters = ReturnType<
@@ -1097,9 +1104,18 @@ type RevolveMultiProfileModifyingContentParameters = ReturnType<
   typeof revolveMultiProfileModifyingFeatureContentParametersSchema.parse
 >
 type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
+type DatumPointContentParameters = ReturnType<typeof datumPointFeatureContentParametersSchema.parse>
 type HoleContentParameters =
   | HoleFeatureContentParameters
   | ReturnType<typeof holeFeatureContentParametersV3Schema.parse>
+  | ReturnType<typeof holeFeatureContentParametersV4Schema.parse>
+
+function holeContentSchema(schemaVersion: number) {
+  if (schemaVersion === 4) return holeFeatureContentParametersV4Schema
+  return schemaVersion === 3
+    ? holeFeatureContentParametersV3Schema
+    : holeFeatureContentParametersSchema
+}
 
 function boxTopologyAxes(context: TopologyCandidateContext, parameters: BoxContentParameters) {
   const { centroid } = context.signature
@@ -1227,20 +1243,25 @@ function coneFeatureSemanticRole(
   context: TopologyCandidateContext,
   parameters: ConeContentParameters,
 ) {
+  const key = `${context.kind}:${context.signature.geometryClass}`
+  if (key === "face:CONE") return "primitive.cone.wall"
+  const end = coneEnd(context.signature.centroid[2], parameters)
+  return end ? coneEndRoles.get(key)?.[end] : undefined
+}
+
+const coneEndRoles = new Map<string, Partial<Record<"start" | "end" | "apex", string>>>([
+  ["face:PLANE", { start: "primitive.cone.cap.start", end: "primitive.cone.cap.end" }],
+  ["edge:CIRCLE", { start: "primitive.cone.edge.start", end: "primitive.cone.edge.end" }],
+  ["vertex:POINT", { apex: "primitive.cone.apex" }],
+])
+
+/** Classifies a Z level as the base, the truncated top, or the pointed apex of a cone. */
+function coneEnd(z: number, parameters: ConeContentParameters) {
   const minimumZ = parameters.origin[2] - (parameters.centered ? parameters.height / 2 : 0)
-  const z = context.signature.centroid[2]
-  switch (`${context.kind}:${context.signature.geometryClass}`) {
-    case "face:CONE":
-      return "primitive.cone.wall"
-    case "face:PLANE":
-      return nearlyEqual(z, minimumZ) ? "primitive.cone.cap.start" : undefined
-    case "edge:CIRCLE":
-      return nearlyEqual(z, minimumZ) ? "primitive.cone.edge.start" : undefined
-    case "vertex:POINT":
-      return nearlyEqual(z, minimumZ + parameters.height) ? "primitive.cone.apex" : undefined
-    default:
-      return undefined
-  }
+  if (nearlyEqual(z, minimumZ)) return "start"
+  if (!nearlyEqual(z, minimumZ + parameters.height)) return undefined
+  const topRadius = "topRadius" in parameters ? parameters.topRadius : 0
+  return topRadius > 0 ? "end" : "apex"
 }
 
 function pyramidAngularRoleIndex(
@@ -1304,6 +1325,7 @@ type ParsedFeature =
   | { kind: "pyramid"; parameters: PyramidContentParameters }
   | { kind: "torus"; parameters: TorusContentParameters }
   | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
+  | { kind: "datum-point"; parameters: DatumPointContentParameters }
   | { kind: "extrusion"; parameters: ExtrusionContentParameters }
   | { kind: "extent-extrusion"; parameters: ExtrusionExtentContentParameters }
   | { kind: "multi-extrusion"; parameters: ExtrusionMultiProfileContentParameters }
@@ -1395,19 +1417,28 @@ function parseConnectMountsFeature(input: FeatureEvaluationInput): FeatureParseR
       )
 }
 
+function parseConeParameters(
+  parameters: unknown,
+  kind: "cone" | "cone-v2",
+): PrimitiveFeature | null {
+  const parsed = (
+    kind === "cone-v2" ? coneFeatureContentParametersV2Schema : coneFeatureContentParametersSchema
+  ).safeParse(parameters)
+  return parsed.success ? { kind: "cone", parameters: parsed.data } : null
+}
+
 function parseRadialPrimitiveParameters(
   parameters: unknown,
-  kind: "sphere" | "cone" | "torus" | "pyramid",
+  kind: RadialPrimitiveParseKind,
 ): PrimitiveFeature | null {
   switch (kind) {
     case "sphere": {
       const parsed = sphereFeatureContentParametersSchema.safeParse(parameters)
       return parsed.success ? { kind, parameters: parsed.data } : null
     }
-    case "cone": {
-      const parsed = coneFeatureContentParametersSchema.safeParse(parameters)
-      return parsed.success ? { kind, parameters: parsed.data } : null
-    }
+    case "cone":
+    case "cone-v2":
+      return parseConeParameters(parameters, kind)
     case "torus": {
       const parsed = torusFeatureContentParametersSchema.safeParse(parameters)
       return parsed.success ? { kind, parameters: parsed.data } : null
@@ -1419,9 +1450,11 @@ function parseRadialPrimitiveParameters(
   }
 }
 
+type RadialPrimitiveParseKind = "sphere" | "cone" | "cone-v2" | "torus" | "pyramid"
+
 function parseRadialPrimitiveFeature(
   input: FeatureEvaluationInput,
-  kind: "sphere" | "cone" | "torus" | "pyramid",
+  kind: RadialPrimitiveParseKind,
 ): FeatureParseResult {
   const feature = input.content.feature
   if (
@@ -1430,7 +1463,7 @@ function parseRadialPrimitiveFeature(
     input.dependencies.length !== 0
   ) {
     return invalidInputCardinality(
-      `${kind} features cannot declare dependency inputs or references.`,
+      `${kind.replace("-v2", "")} features cannot declare dependency inputs or references.`,
     )
   }
   const parsed = parseRadialPrimitiveParameters(feature.parameters, kind)
@@ -1438,7 +1471,7 @@ function parseRadialPrimitiveFeature(
     ? { ok: true, feature: parsed }
     : featureFailure(
         "invalid-feature-parameters",
-        `${kind} content dimensions or placement are invalid.`,
+        `${kind.replace("-v2", "")} content dimensions or placement are invalid.`,
       )
 }
 
@@ -2070,13 +2103,32 @@ function parseDatumPlaneFeature(input: FeatureEvaluationInput): FeatureParseResu
   return { ok: true, feature: { kind: "datum-plane", parameters: parameters.data } }
 }
 
+function parseDatumPointFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = datumPointFeatureContentParametersSchema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success) {
+    return featureFailure("invalid-feature-parameters", "Datum point content is invalid.")
+  }
+  const supportFeatureId = parameters.data.supportFeatureId
+  const validDependencies = supportFeatureId
+    ? input.dependencies.length === 1 && input.dependencies[0]?.featureId === supportFeatureId
+    : input.dependencies.length === 0
+  if (
+    input.content.feature.inputs.length !== input.dependencies.length ||
+    input.content.feature.references.length !== 0 ||
+    !validDependencies
+  ) {
+    return invalidInputCardinality(
+      "A datum point may depend only on the producer of its resolved reference.",
+    )
+  }
+  return { ok: true, feature: { kind: "datum-point", parameters: parameters.data } }
+}
+
 function parseHoleFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
-  const parameters = (
-    feature.type.schemaVersion === 3
-      ? holeFeatureContentParametersV3Schema
-      : holeFeatureContentParametersSchema
-  ).safeParse(feature.parameters)
+  const parameters = holeContentSchema(feature.type.schemaVersion).safeParse(feature.parameters)
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Hole content parameters are invalid.")
   }
@@ -2102,11 +2154,9 @@ function parseHoleFeatureV2(input: FeatureEvaluationInput): FeatureParseResult {
       "A version-2 hole requires a named canonical target body role.",
     )
   }
-  const parameters = (
-    input.content.feature.type.schemaVersion === 3
-      ? holeFeatureContentParametersV3Schema
-      : holeFeatureContentParametersSchema
-  ).safeParse(input.content.feature.parameters)
+  const parameters = holeContentSchema(input.content.feature.type.schemaVersion).safeParse(
+    input.content.feature.parameters,
+  )
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Hole content parameters are invalid.")
   }
@@ -2620,6 +2670,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [SPHERE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "sphere")],
   [CONE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "cone")],
+  [CONE_FEATURE_TYPE_V2_KEY, (input) => parseRadialPrimitiveFeature(input, "cone-v2")],
   [PYRAMID_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "pyramid")],
   [TORUS_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "torus")],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
@@ -2639,10 +2690,18 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [REVOLVE_FEATURE_TYPE_V7_KEY, parseExactMultiRevolveFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
   [DATUM_PLANE_FEATURE_TYPE_V2_KEY, parseDatumPlaneFeature],
+  [
+    "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-point#1",
+    parseDatumPointFeature,
+  ],
   [HOLE_FEATURE_TYPE_KEY, parseHoleFeature],
   [HOLE_FEATURE_TYPE_V2_KEY, parseHoleFeatureV2],
   [
     "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.hole#3",
+    parseHoleFeatureV2,
+  ],
+  [
+    "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.hole#4",
     parseHoleFeatureV2,
   ],
 ])
@@ -3012,13 +3071,7 @@ function createHoleFeatureShape(
   try {
     for (const center of parameters.centers) {
       const cutter = holeCutterParameters(parameters, center, maxProjection, tolerance)
-      const tool = createOcctCylinder(
-        opencascade,
-        radius,
-        cutter.height,
-        cutter.origin,
-        cutter.direction,
-      )
+      const tool = createHoleCutter(opencascade, parameters, radius, cutter)
       try {
         const result = cutHoleOnce(opencascade, current, tool, currentVolume)
         if (current !== target) current.delete()
@@ -3044,6 +3097,37 @@ function createHoleFeatureShape(
     if (current !== target) current.delete()
     throw error
   }
+}
+
+/** A drill point shorter than this modeling tolerance is treated as a flat bottom. */
+const MIN_DRILL_TIP_HEIGHT_MM = 1e-6
+
+function drillTipHeight(diameter: number, tipAngle: number) {
+  const height = diameter / 2 / Math.tan(tipAngle / 2)
+  return height >= MIN_DRILL_TIP_HEIGHT_MM ? height : 0
+}
+
+function createHoleCutter(
+  opencascade: OpenCascadeInstance,
+  parameters: HoleContentParameters,
+  radius: number,
+  cutter: HoleCutterParameters,
+) {
+  // A flat (180 degree) drill point keeps the exact version-3 cylindrical cutter.
+  const tipHeight =
+    "tipAngle" in parameters && parameters.tipAngle !== undefined
+      ? drillTipHeight(parameters.diameter, parameters.tipAngle)
+      : 0
+  return tipHeight > 0
+    ? createOcctDrilledHole(
+        opencascade,
+        cutter.origin,
+        cutter.direction,
+        radius,
+        cutter.height,
+        tipHeight,
+      )
+    : createOcctCylinder(opencascade, radius, cutter.height, cutter.origin, cutter.direction)
 }
 
 function createHoleRecess(
@@ -3149,7 +3233,14 @@ function createPrimitiveFeatureShape(opencascade: OpenCascadeInstance, feature: 
       )
     case "cone": {
       const { radius, height } = feature.parameters
-      return createOcctCone(opencascade, radius, height, primitiveBaseOrigin(feature.parameters))
+      const topRadius = "topRadius" in feature.parameters ? feature.parameters.topRadius : 0
+      return createOcctCone(
+        opencascade,
+        radius,
+        height,
+        primitiveBaseOrigin(feature.parameters),
+        topRadius,
+      )
     }
     case "pyramid": {
       const { sides, radius, height } = feature.parameters
@@ -3162,6 +3253,19 @@ function createPrimitiveFeatureShape(opencascade: OpenCascadeInstance, feature: 
       )
     }
   }
+}
+
+type ReferenceFeature = Extract<ParsedFeature, { kind: "datum-plane" | "datum-point" }>
+
+function isReferenceFeature(feature: ParsedFeature): feature is ReferenceFeature {
+  return feature.kind === "datum-plane" || feature.kind === "datum-point"
+}
+
+/** Reference features evaluate to display-only shapes; consumers read their authored frames. */
+function createReferenceFeatureShape(opencascade: OpenCascadeInstance, feature: ReferenceFeature) {
+  return feature.kind === "datum-plane"
+    ? createDatumPlaneFeatureShape(opencascade, feature.parameters)
+    : createOcctSphere(opencascade, feature.parameters.size / 2, feature.parameters.position)
 }
 
 function createFeatureShape(
@@ -3192,13 +3296,12 @@ function createFeatureShape(
   dependencyShapes: readonly Shape3D[],
 ) {
   if (isPrimitiveFeature(feature)) return createPrimitiveFeatureShape(opencascade, feature)
+  if (isReferenceFeature(feature)) return createReferenceFeatureShape(opencascade, feature)
   switch (feature.kind) {
     case "connect-mounts":
       return createOcctConnectMounts(opencascade, feature.parameters)
     case "fdm":
       return createOcctFdmFeature(opencascade, feature.parameters, dependencyShapes[0])
-    case "datum-plane":
-      return createDatumPlaneFeatureShape(opencascade, feature.parameters)
     case "boolean": {
       return createBooleanFeatureShape(opencascade, dependencyShapes)
     }
@@ -3994,6 +4097,10 @@ function featureTopologySemanticRole(
   if (feature.kind === "datum-plane") {
     return datumPlaneTopologySemanticRole(context, feature.parameters)
   }
+  if (feature.kind === "datum-point")
+    return context.kind === "face" && context.signature.geometryClass === "SPHERE"
+      ? "datum.point"
+      : undefined
   return undefined
 }
 
@@ -4062,6 +4169,7 @@ function featureHasSingleBody(metrics: ReturnType<typeof measureShape>, feature:
   return (
     metrics.solidCount === 1 &&
     feature.kind !== "datum-plane" &&
+    feature.kind !== "datum-point" &&
     !independentBodyBundleKinds.has(feature.kind)
   )
 }

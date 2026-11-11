@@ -1,4 +1,4 @@
-import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
+import { isReferenceGeometryFeature } from "@vibeshape/domain"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
 import {
@@ -38,7 +38,7 @@ function projectEdgeEvidence(
   featureId: FeatureId,
 ): ModelEdgeEvidenceResult {
   const feature = snapshot.features.find((record) => record.id === featureId)
-  if (!feature || readDatumPlaneFeatureParameters(feature) !== null)
+  if (!feature || isReferenceGeometryFeature(feature))
     return { ok: false, code: "geometry-unavailable" }
   const record = response.evaluation.records.find((record) => record.featureId === featureId)
   if (record?.status !== "succeeded") return { ok: false, code: "geometry-unavailable" }

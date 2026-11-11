@@ -113,7 +113,7 @@ describe("feature type registry", () => {
         result.registry.descriptors
           .filter(({ type }) => type.typeId === holeFeatureType.type.typeId)
           .map(({ type }) => type.schemaVersion),
-      ).toEqual([1, 2, 3])
+      ).toEqual([1, 2, 3, 4])
       expect(result.registry.getDescriptor(holeFeatureType.type)).toEqual(holeFeatureType)
       expect(result.registry.getDescriptor(holeFeatureTypeV2.type)).toEqual(holeFeatureTypeV2)
       expect(result.registry.getDescriptor(holeFeatureTypeV3.type)).toEqual(holeFeatureTypeV3)

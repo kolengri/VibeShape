@@ -112,14 +112,19 @@ complete parameter record and the original feature ID. Verify the saved feature 
 ## Registered primitives
 
 Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete
-typed `parameters` record. Cylinder, pointed Cone, Sphere, ring Torus and regular Pyramid each
+typed `parameters` record. Cylinder, Cone, Sphere, ring Torus and regular Pyramid each
 have named create/update tools using their registered domain schemas. Supply quantity dimensions,
 quantity `{ x, y, z }` origin, applicable `centered`, explicit `suppressed`, the label to retain,
 stable feature ID, fresh command ID and current owned draft revision. These independent primitives
 accept no dependencies or topology references. Read the full existing feature before updating;
 preserve its identity and raw expressions. The live schemas define bounds and required fields.
 Torus requires major radius greater than minor radius; Pyramid takes 3–64 integer sides and a
-circumradius. Wedge and truncated Cone are not registered primitive contracts.
+circumradius. Cone takes an optional typed `topRadius`: omit it (or pass a literal zero) for the
+exact pointed Cone v1; any other value authors Cone v2, which accepts 0 or 0.001 mm and larger, must
+differ from the base `radius`, and inverts the taper when larger than the base. Resubmit `topRadius`
+with its expression on every update of a truncated cone; an update of a saved v2 cone that omits it
+(or passes a literal zero) stays v2 with a pointed apex. Wedge and horn/spindle Torus are not
+registered primitive contracts.
 
 Inspect exact preview volume, bounds and body count before commit. A valid matching CAD auto-apply
 grant covers all shipped first-party primitive families and supported feature versions, including
@@ -195,6 +200,12 @@ indices. Local and paired remote transports use ordinary owned draft preview, re
 
 Union takes ordered `bodies`, requires one connected positive-volume solid and keeps the first selected PartId while consuming the other selected parts. Compound takes ordered `slots`, each with a unique UUIDv7 `slotId` and `targetBody`; it retains separate solids and exposes `body.<slotId>`. Preserve slot IDs on edit to retain output and part identities. Missing roles fail exact preview; they never fall back to another body. An explicit update can upgrade saved v1 Union/Compound intent to v2. Creation, updates and supported schema upgrades follow the [session approval policy](../../vibeshape-use/references/session.md#model-write-approval).
 
+## Datum Point
+
+`create_datum_point`/`update_datum_point` author a reference point on local and paired remote MCP. `mode: "coordinates"` takes `position: { x, y, z }` length quantities in model millimeters (each within ±100,000 mm; keep variable expressions) with empty dependencies. `mode: "circle-center"` takes a stable body-bound CIRCLE edge reference (schema version 1 with `featureId`, `outputRole`, `kind: "edge"`) copied from `model_body_topology` or `draft_body_topology`; the point is the analytical center of the circle or arc. `mode: "vertex"` takes a body-bound vertex reference (`kind: "vertex"`, POINT signature); body topology inspection lists only edges and faces, so obtain vertex references from an existing feature or prefer coordinates or a circle center. Reference modes depend on exactly the reference's producer, and `references` stays empty.
+
+The point renders as a reference marker only: it is not a body, cannot be measured or exported, and does not appear in body topology. A missing or ambiguous reference fails preview with `org.vibeshape.feature.datum-point-reference-unresolved`; repair it with `update_datum_point` and an explicit replacement, never by guessing. Pattern, Placement and other features do not yet accept a datum point as an explicit center or origin; use its coordinates or the source geometry directly.
+
 ## Hole
 
 Use 1–256 stable point IDs from an inspected sketch, a positive typed diameter, and the schema's forward/reverse direction and blind/through-all extent. Supply the target first and, where needed, one distinct sketch-support dependency with its exact support reference.
@@ -202,6 +213,8 @@ Use 1–256 stable point IDs from an inspected sketch, a positive typed diameter
 `parameters.targetBody` selects an exact output role from `model_body_measurements` or `draft_body_measurements` and must match the first dependency. Preserve it when updating a v2 Hole; omitting it requests legacy whole-feature scope. A newly authored single-solid Extrude has role `result`; inspect other draft producers instead of inventing their output roles. A through-all cut still has a direction; exact preview must show it reaching the intended body.
 
 Adding `treatment` selects Hole v3 and requires `targetBody`: `{kind:"simple"}`, `{kind:"counterbore",diameter,depth}`, or `{kind:"countersink",diameter,angle}`. Recess dimensions are length quantities; countersink angle is the included angle quantity between 10 and 170 degrees. The recess diameter exceeds the hole diameter, and a blind recess must leave positive cylindrical depth. Preserve treatment and quantity expressions when updating. Preview the actual recess before committing.
+
+Adding `tipAngle` to a blind Hole with `targetBody` selects Hole v4 with a drill point; `treatment` then defaults to `{kind:"simple"}` when omitted. `tipAngle` is an included-angle quantity from 60 to 180 degrees: use 118 degrees for a standard twist drill and 180 degrees for a flat bottom. `depth` remains the full-diameter cylindrical depth measured to the shoulder; the conical tip of height `diameter / 2 / tan(tipAngle / 2)` is added beyond it, so a blind hole near the far face needs that extra material. Counterbore and countersink behave as in v3. Through-all holes reject `tipAngle`. Resubmit `tipAngle` with its expression on every update. `update_hole` keeps a saved v3 or v4 version while `targetBody` is present (omitting `targetBody` still requests legacy whole-result scope); omitted `treatment` is simple, and omitting `tipAngle` on a saved v4 blind hole writes a flat 180-degree point.
 
 ## Extrusion endpoints and body scope
 

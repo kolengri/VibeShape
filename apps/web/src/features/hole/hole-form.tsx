@@ -1,4 +1,5 @@
 import {
+  authoredHoleFeatureType,
   createAngleQuantity,
   evaluateExpression,
   evaluateVariableDefinitions,
@@ -9,9 +10,8 @@ import {
   holeFeatureParametersSchema,
   holeFeatureParametersV2Schema,
   holeFeatureParametersV3Schema,
-  holeFeatureType,
-  holeFeatureTypeV2,
-  holeFeatureTypeV3,
+  holeFeatureParametersV4Schema,
+  holeTipAngleSchema,
   readHoleBodyTarget,
   readHoleFeatureParameters,
   type SketchEntityId,
@@ -77,6 +77,12 @@ export type HoleFormCopy = ParameterPanelCopy &
     includedAngle: string
     angleDescription: string
     invalidRecess: string
+    depthDescription: string
+    drillPoint: string
+    drillPointDescription: string
+    tipAngle: string
+    tipAngleDescription: string
+    invalidTipAngle: string
     invalidExpression: string
     invalidDimension: string
     invalidRange: string
@@ -132,6 +138,8 @@ type Values = {
   recessDiameter: string
   recessDepth: string
   includedAngle: string
+  drillPoint: boolean
+  tipAngle: string
 }
 
 type ParseContext = Pick<HoleFormProps, "mode" | "sketches" | "options" | "variables" | "copy"> & {
@@ -165,6 +173,17 @@ function holeRecessValues(
         : "90 deg",
   }
 }
+const DEFAULT_TIP_ANGLE = "118 deg"
+
+function holeDrillPointValues(parsed: NonNullable<ReturnType<typeof readHoleFeatureParameters>>) {
+  if (!("tipAngle" in parsed)) return { drillPoint: false, tipAngle: DEFAULT_TIP_ANGLE }
+  const { source, value } = parsed.tipAngle
+  return {
+    // A saved flat (180 degree) point reopens unchecked and still saves as version 4.
+    drillPoint: Math.abs(value - Math.PI) > 1e-12 || source.expression !== null,
+    tipAngle: source.expression ?? `${source.value} ${source.unit}`,
+  }
+}
 function editInitialValues({ mode, displayUnit }: ParseContext): Values {
   if (mode.kind !== "edit") throw new Error("Expected edit mode")
   const parsed = readHoleFeatureParameters(mode.feature)
@@ -185,6 +204,7 @@ function editInitialValues({ mode, displayUnit }: ParseContext): Values {
     direction: parsed.direction,
     extent: parsed.extent,
     ...holeRecessValues(parsed, displayUnit),
+    ...holeDrillPointValues(parsed),
   }
 }
 
@@ -202,6 +222,8 @@ function createInitialValues({ sketches, options, displayUnit }: ParseContext): 
     recessDiameter: defaultLengthExpression(10, displayUnit),
     recessDepth: defaultLengthExpression(2, displayUnit),
     includedAngle: "90 deg",
+    drillPoint: false,
+    tipAngle: DEFAULT_TIP_ANGLE,
   }
 }
 
@@ -319,6 +341,49 @@ function parseHoleTreatment(values: Values, context: ParseContext) {
   }
 }
 
+const FLAT_TIP_ANGLE = createAngleQuantity(180, "deg")
+
+function savedHoleVersion(context: ParseContext) {
+  return context.mode.kind === "edit" ? context.mode.feature.type.schemaVersion : null
+}
+
+function parseTipAngle(raw: string, context: ParseContext) {
+  const expression = normalizeExpressionWithDisplayUnit(raw, context.angleUnit)
+  const variables = evaluateVariableDefinitions(context.variables)
+  const angle = variables.ok ? evaluateExpression(expression, variables.valuesByName) : null
+  if (!angle?.ok || angle.value.dimension !== "angle") return null
+  const parsed = holeTipAngleSchema.safeParse(
+    createAngleQuantity(angle.value.value, "rad", expression),
+  )
+  return parsed.success ? parsed.data : null
+}
+
+/** Returns the authored tip angle, a flat point for saved v4 holes, or null for older versions. */
+function parseDrillPoint(values: Values, context: ParseContext) {
+  const savedV4 = savedHoleVersion(context) === 4
+  const blind = values.extent === "blind"
+  if (!blind || !values.drillPoint)
+    return { ok: true as const, tipAngle: savedV4 && blind ? FLAT_TIP_ANGLE : null }
+  const tipAngle = parseTipAngle(values.tipAngle, context)
+  return tipAngle
+    ? { ok: true as const, tipAngle }
+    : { ok: false as const, issues: { tipAngle: context.copy.invalidTipAngle } }
+}
+
+/** The form's authored intent, routed through the domain's single Hole version owner. */
+function holeFormFeatureType(
+  values: Values,
+  context: ParseContext,
+  drillPoint: Extract<ReturnType<typeof parseDrillPoint>, { ok: true }>,
+  target: HoleTargetOption,
+) {
+  return authoredHoleFeatureType(context.mode.kind === "edit" ? context.mode.feature.type : null, {
+    ...(drillPoint.tipAngle ? { tipAngle: drillPoint.tipAngle } : {}),
+    ...(values.treatment !== "simple" ? { treatment: values.treatment } : {}),
+    ...(target.outputRole !== undefined ? { targetBody: target.outputRole } : {}),
+  })
+}
+
 function parseHoleVersion(
   values: Values,
   context: ParseContext,
@@ -326,46 +391,52 @@ function parseHoleVersion(
   sketch: SketchRecord,
   target: Extract<ReturnType<typeof holeSelection>, { ok: true }>["target"],
   treatment: Extract<ReturnType<typeof parseHoleTreatment>, { ok: true }>["treatment"],
+  drillPoint: Extract<ReturnType<typeof parseDrillPoint>, { ok: true }>,
 ) {
-  const advanced =
-    values.treatment !== "simple" ||
-    (context.mode.kind === "edit" && context.mode.feature.type.schemaVersion === 3)
-  const parameters = advanced
-    ? holeFeatureParametersV3Schema.safeParse({
-        sketchId: sketch.id,
-        pointIds: values.pointIds,
-        diameter: dimensions.diameter,
-        direction: values.direction,
-        extent: values.extent,
-        ...(values.extent === "blind" ? { depth: dimensions.depth } : {}),
-        targetBody: {
-          schemaVersion: 0,
-          featureId: target.featureId,
-          outputRole: target.outputRole ?? "result",
-        },
-        treatment: treatment,
-      })
-    : parseHoleParameters(values, dimensions, sketch.id, target)
-  const useNamedTarget = target.outputRole !== undefined
-  return {
-    parsed: parameters,
-    type: advanced
-      ? holeFeatureTypeV3.type
-      : useNamedTarget
-        ? holeFeatureTypeV2.type
-        : holeFeatureType.type,
+  const type = holeFormFeatureType(values, context, drillPoint, target)
+  const recessed = {
+    sketchId: sketch.id,
+    pointIds: values.pointIds,
+    diameter: dimensions.diameter,
+    direction: values.direction,
+    extent: values.extent,
+    ...(values.extent === "blind" ? { depth: dimensions.depth } : {}),
+    targetBody: {
+      schemaVersion: 0,
+      featureId: target.featureId,
+      outputRole: target.outputRole ?? "result",
+    },
+    treatment,
+    ...(drillPoint.tipAngle ? { tipAngle: drillPoint.tipAngle } : {}),
   }
+  const parsed =
+    type.schemaVersion === 4
+      ? holeFeatureParametersV4Schema.safeParse(recessed)
+      : type.schemaVersion === 3
+        ? holeFeatureParametersV3Schema.safeParse(recessed)
+        : parseHoleParameters(values, dimensions, sketch.id, target)
+  return { parsed, type }
 }
 function parseValues(values: Values, context: ParseContext) {
   const selection = holeSelection(values, context)
   const dimensions = holeDimensions(values, context)
   const treatment = parseHoleTreatment(values, context)
   if (!treatment.ok) return { ok: false as const, issues: treatment.issues }
+  const drillPoint = parseDrillPoint(values, context)
+  if (!drillPoint.ok) return { ok: false as const, issues: drillPoint.issues }
   if (!selection.ok || !dimensions.ok)
     return { ok: false as const, issues: { ...selection.issues, ...dimensions.issues } }
   const { sketch, target } = selection
   const { mode, featureId, copy } = context
-  const version = parseHoleVersion(values, context, dimensions, sketch, target, treatment.treatment)
+  const version = parseHoleVersion(
+    values,
+    context,
+    dimensions,
+    sketch,
+    target,
+    treatment.treatment,
+    drillPoint,
+  )
   if (!version.parsed.success)
     return { ok: false as const, issues: { treatment: copy.invalidRecess } }
   const feature = featureRecordSchema.parse({
@@ -849,19 +920,49 @@ export function HoleForm(props: HoleFormProps) {
               <form.Subscribe selector={(formState) => formState.values.extent}>
                 {(extent) =>
                   extent === "blind" ? (
-                    <form.AppField name="depth">
-                      {(field) => (
-                        <field.LengthExpressionField
-                          id="hole-depth"
-                          label={copy.depth}
-                          description={copy.expressionDescription}
-                          suggestions={suggestions}
-                          onValueChange={() => {
-                            clearSubmissionErrors()
-                          }}
-                        />
-                      )}
-                    </form.AppField>
+                    <>
+                      <form.AppField name="depth">
+                        {(field) => (
+                          <field.LengthExpressionField
+                            id="hole-depth"
+                            label={copy.depth}
+                            description={copy.depthDescription}
+                            suggestions={suggestions}
+                            onValueChange={() => {
+                              clearSubmissionErrors()
+                            }}
+                          />
+                        )}
+                      </form.AppField>
+                      <form.AppField name="drillPoint">
+                        {(field) => (
+                          <field.CheckboxField
+                            label={copy.drillPoint}
+                            description={copy.drillPointDescription}
+                            onValueChange={clearSubmissionErrors}
+                          />
+                        )}
+                      </form.AppField>
+                      <form.Subscribe selector={(formState) => formState.values.drillPoint}>
+                        {(drillPoint) =>
+                          drillPoint ? (
+                            <form.AppField name="tipAngle">
+                              {(field) => (
+                                <field.VariableExpressionField
+                                  id="hole-tip-angle"
+                                  label={copy.tipAngle}
+                                  description={copy.tipAngleDescription}
+                                  suggestions={suggestions}
+                                  onValueChange={() => {
+                                    clearSubmissionErrors()
+                                  }}
+                                />
+                              )}
+                            </form.AppField>
+                          ) : null
+                        }
+                      </form.Subscribe>
+                    </>
                   ) : null
                 }
               </form.Subscribe>

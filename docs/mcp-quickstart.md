@@ -131,7 +131,7 @@ entered persistence cannot be rolled back by disconnect. Inspect the actual save
 retrying an interrupted or unconfirmed commit.
 
 Both local and paired remote MCP expose `create_datum_plane`/`update_datum_plane`,
-`create_boolean`/`update_boolean`, `create_union`/`update_union`, and
+`create_datum_point`/`update_datum_point`, `create_boolean`/`update_boolean`, `create_union`/`update_union`, and
 `create_compound`/`update_compound`. Datum Planes retain explicit origin/face support and signed
 offset intent, with optional variable-aware rotation about support-local X or Y after offsetting.
 Rotation accepts signed typed angles within ±360 degrees, stored in radians. Boolean subtraction

@@ -30,6 +30,7 @@ export const editorCommandIds = {
   createPyramid: "org.vibeshape.editor.part-design.create-pyramid",
   createTorus: "org.vibeshape.editor.part-design.create-torus",
   createDatumPlane: "org.vibeshape.editor.reference-geometry.create-datum-plane",
+  createDatumPoint: "org.vibeshape.editor.reference-geometry.create-datum-point",
   createExtrusion: "org.vibeshape.editor.part-design.create-extrusion",
   createRevolve: "org.vibeshape.editor.part-design.create-revolve",
   createLoft: "org.vibeshape.editor.part-design.create-loft",
@@ -198,6 +199,7 @@ export type EditorCommandIcon =
   | "pyramid"
   | "torus"
   | "datum-plane"
+  | "datum-point"
   | "dimension"
   | "measure"
   | "extrude"
@@ -267,6 +269,7 @@ export type EditorCommandLabelKey =
   | "createPyramid"
   | "createTorus"
   | "createDatumPlane"
+  | "createDatumPoint"
   | "createExtrusion"
   | "createRevolve"
   | "createLoft"

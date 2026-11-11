@@ -54,6 +54,7 @@ const actions = {
   createPyramid: vi.fn(),
   createTorus: vi.fn(),
   createDatumPlane: vi.fn(),
+  createDatumPoint: vi.fn(),
   createLoft: vi.fn(),
   createSweep: vi.fn(),
   createExtrusion: vi.fn(),

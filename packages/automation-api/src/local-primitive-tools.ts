@@ -8,6 +8,7 @@ import {
 import {
   boxFeatureParametersSchema,
   coneFeatureParametersSchema,
+  coneFeatureParametersV2Schema,
   cylinderFeatureParametersSchema,
   pyramidFeatureParametersSchema,
   sphereFeatureParametersSchema,
@@ -27,14 +28,16 @@ const feature = {
 function primitive<Schema extends z.ZodType>(parameters: Schema) {
   return z.object({ ...feature, parameters }).strict()
 }
+// A supplied topRadius authors Cone v2; omitting it keeps the exact pointed Cone v1 contract.
+const coneParametersSchema = z.union([coneFeatureParametersV2Schema, coneFeatureParametersSchema])
 export const localPrimitiveInputs = {
   create_connect_mounts: primitive(connectMountsFeatureParametersSchema),
   update_connect_mounts: primitive(connectMountsFeatureParametersSchema),
   update_box: primitive(boxFeatureParametersSchema),
   create_cylinder: primitive(cylinderFeatureParametersSchema),
   update_cylinder: primitive(cylinderFeatureParametersSchema),
-  create_cone: primitive(coneFeatureParametersSchema),
-  update_cone: primitive(coneFeatureParametersSchema),
+  create_cone: primitive(coneParametersSchema),
+  update_cone: primitive(coneParametersSchema),
   create_sphere: primitive(sphereFeatureParametersSchema),
   update_sphere: primitive(sphereFeatureParametersSchema),
   create_torus: primitive(torusFeatureParametersSchema),

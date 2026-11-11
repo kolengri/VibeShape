@@ -1,4 +1,4 @@
-import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
+import { isReferenceGeometryFeature } from "@vibeshape/domain"
 import type { FeatureRecord } from "@vibeshape/domain/feature-graph"
 import { terminalBodyOutputs } from "@vibeshape/domain/model-bodies"
 import type { FeatureEvaluationEngineResult } from "@vibeshape/protocol"
@@ -18,7 +18,7 @@ type BodyState = Pick<FeatureRebuildState, "features" | "geometry" | "evaluation
 
 function featureBodies(feature: FeatureRecord, record: FeatureGeometryRecord): ModelBodyGeometry[] {
   if (
-    readDatumPlaneFeatureParameters(feature) ||
+    isReferenceGeometryFeature(feature) ||
     (record.geometry.shape.solidCount === 0 && record.geometry.representation !== "triangle-mesh")
   )
     return []

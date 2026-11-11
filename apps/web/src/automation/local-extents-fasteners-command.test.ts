@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { type LocalOperation, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, parseDocumentCommand } from "@vibeshape/domain"
 import { extrusionFeatureTypeV6, extrusionFeatureTypeV7 } from "@vibeshape/domain/part-design"
-import { holeFeatureTypeV3 } from "@vibeshape/domain/part-design-hole"
+import { holeFeatureTypeV3, holeFeatureTypeV4 } from "@vibeshape/domain/part-design-hole"
 import { threadFeatureTypeV2 } from "@vibeshape/domain/part-design-thread"
 import {
   createAngleQuantity,
@@ -189,6 +189,68 @@ describe("versioned extent and fastener MCP commands", () => {
         }).success,
       ).toBe(false)
     }
+  })
+
+  it("routes a blind drill point to Hole v4 and defaults an omitted treatment to simple", () => {
+    const { treatment: _treatment, ...plain } = hole
+    for (const [parameters, treatment] of [
+      [{ ...hole, tipAngle: createAngleQuantity(118, "deg", "#tip") }, hole.treatment],
+      [{ ...plain, tipAngle: createAngleQuantity(118, "deg") }, { kind: "simple" }],
+    ] as const) {
+      const request = advancedCommand(
+        localOperationSchema.parse({
+          tool: "create_hole",
+          arguments: { ...base, parameters },
+        }),
+      )
+      expect(parseDocumentCommand(request.command).ok).toBe(true)
+      expect(request.command).toMatchObject({
+        payload: {
+          feature: {
+            type: holeFeatureTypeV4.type,
+            parameters: { ...parameters, pointIds: [...parameters.pointIds].sort(), treatment },
+          },
+        },
+      })
+    }
+    const { depth: _depth, ...throughAll } = { ...hole, extent: "through-all" }
+    for (const parameters of [
+      { ...hole, tipAngle: createAngleQuantity(59, "deg") },
+      { ...hole, tipAngle: createAngleQuantity(181, "deg") },
+      { ...throughAll, tipAngle: createAngleQuantity(118, "deg") },
+      { ...hole, targetBody: undefined, tipAngle: createAngleQuantity(118, "deg") },
+    ])
+      expect(
+        localOperationSchema.safeParse({ tool: "create_hole", arguments: { ...base, parameters } })
+          .success,
+      ).toBe(false)
+  })
+
+  it("keeps a saved v3 or v4 hole version on update unless legacy scope is requested", () => {
+    const { treatment: _treatment, ...scoped } = hole
+    const { targetBody: _targetBody, ...legacy } = scoped
+    const update = (parameters: object, savedType: Parameters<typeof createLocalCadCommand>[3]) => {
+      const operation = localOperationSchema.parse({
+        tool: "update_hole",
+        arguments: { ...base, parameters },
+      })
+      if (operation.tool !== "update_hole") throw new Error("Expected a hole update.")
+      const request = createLocalCadCommand(operation, actor, id(60), savedType)
+      expect(parseDocumentCommand(request.command).ok).toBe(true)
+      return request.command.payload as { feature: { type: unknown; parameters: unknown } }
+    }
+    expect(update(scoped, holeFeatureTypeV3.type).feature).toMatchObject({
+      type: holeFeatureTypeV3.type,
+      parameters: { treatment: { kind: "simple" } },
+    })
+    expect(update(scoped, holeFeatureTypeV4.type).feature).toMatchObject({
+      type: holeFeatureTypeV4.type,
+      parameters: { treatment: { kind: "simple" }, tipAngle: { value: Math.PI } },
+    })
+    expect(update(legacy, holeFeatureTypeV4.type).feature).toMatchObject({
+      type: { schemaVersion: 1 },
+    })
+    expect(update(scoped, null).feature).toMatchObject({ type: { schemaVersion: 2 } })
   })
 
   it("fails closed for invalid recesses, dynamic extents and thread resource budgets", () => {

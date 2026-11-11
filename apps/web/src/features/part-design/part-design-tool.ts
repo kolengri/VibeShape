@@ -7,17 +7,18 @@ import {
   chamferFeatureTypeV2,
   chamferFeatureTypeV3,
   coneFeatureType,
+  coneFeatureTypeV2,
   cylinderFeatureType,
   datumPlaneFeatureType,
   datumPlaneFeatureTypeV1,
+  datumPointFeatureType,
   type FeatureId,
   type FeatureRecord,
   featureBodyDependencyIds,
   filletFeatureType,
   filletFeatureTypeV2,
   filletFeatureTypeV3,
-  holeFeatureType,
-  holeFeatureTypeV2,
+  isHoleFeatureRecord,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
   legacyRevolveFeatureTypeV3,
@@ -132,6 +133,8 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-subtract"; featureId: FeatureId }>
   | Readonly<{ kind: "create-datum-plane"; support?: SketchFeatureFaceSupport }>
   | Readonly<{ kind: "edit-datum-plane"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-datum-point" }>
+  | Readonly<{ kind: "edit-datum-point"; featureId: FeatureId }>
 
 export type ActivePrimitivePartDesignTool = Extract<
   ActivePartDesignTool,
@@ -227,7 +230,9 @@ export function isSphereFeature(feature: FeatureRecord) {
 }
 
 export function isConeFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, coneFeatureType.type)
+  return (
+    hasFeatureType(feature, coneFeatureType.type) || hasFeatureType(feature, coneFeatureTypeV2.type)
+  )
 }
 
 export function isPyramidFeature(feature: FeatureRecord) {
@@ -239,9 +244,7 @@ export function isTorusFeature(feature: FeatureRecord) {
 }
 
 export function isHoleFeature(feature: FeatureRecord) {
-  return (
-    hasFeatureType(feature, holeFeatureType.type) || hasFeatureType(feature, holeFeatureTypeV2.type)
-  )
+  return isHoleFeatureRecord(feature)
 }
 
 export function isFilletFeature(feature: FeatureRecord) {
@@ -288,6 +291,10 @@ export function isDatumPlaneFeature(feature: FeatureRecord) {
     hasFeatureType(feature, datumPlaneFeatureTypeV1.type) ||
     hasFeatureType(feature, datumPlaneFeatureType.type)
   )
+}
+
+export function isDatumPointFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, datumPointFeatureType.type)
 }
 
 function isPlacementFeature(feature: FeatureRecord) {
@@ -552,6 +559,7 @@ const editableFeatureTools = [
   [isChamferFeature, "edit-chamfer"],
   [isBooleanFeature, "edit-subtract"],
   [isDatumPlaneFeature, "edit-datum-plane"],
+  [isDatumPointFeature, "edit-datum-point"],
 ] as const satisfies readonly [
   (feature: FeatureRecord) => boolean,
   Extract<ActivePartDesignTool, { featureId: FeatureId }>["kind"],
@@ -567,7 +575,14 @@ export function editPartDesignTool(
   if (isDraftFeature(feature)) return { kind: "edit-draft", featureId: feature.id }
   if (isScaleFeature(feature)) return { kind: "edit-scale", featureId: feature.id }
   const kind = editableFeatureTools.find(([matches]) => matches(feature))?.[1]
-  return kind ? { kind, featureId: feature.id } : null
+  if (!kind) return null
+  // TypeScript stops distributing object literals over unions above 25 members; the tuple
+  // table above already constrains every kind to an edit tool that takes a feature ID.
+  const tool: Readonly<{ kind: typeof kind; featureId: FeatureId }> = {
+    kind,
+    featureId: feature.id,
+  }
+  return tool as Extract<ActivePartDesignTool, { featureId: FeatureId }>
 }
 
 const commandByToolKind = {
@@ -629,6 +644,8 @@ const commandByToolKind = {
   "edit-subtract": "subtract",
   "create-datum-plane": "datum-plane",
   "edit-datum-plane": "datum-plane",
+  "create-datum-point": "datum-point",
+  "edit-datum-point": "datum-point",
   measure: "measure",
 } as const satisfies Record<ActivePartDesignTool["kind"], string>
 

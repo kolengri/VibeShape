@@ -29,7 +29,7 @@ model; structured metadata alone cannot establish appearance. Read [visual inspe
 for exact body targeting, focused views, representation limits and complementary numeric checks.
 
 The shared tool catalog includes `create_datum_plane`/`update_datum_plane`,
-`create_boolean`/`update_boolean`, `create_union`/`update_union`, and
+`create_datum_point`/`update_datum_point`, `create_boolean`/`update_boolean`, `create_union`/`update_union`, and
 `create_compound`/`update_compound`. Datum Plane support/offset and optional support-local X/Y rotation
 (signed typed angles within ±360 degrees, canonical radians), legacy whole-result subtraction and v2
 exact-body selections follow the same [modeling contracts](../.agents/skills/vibeshape-modeling/references/modeling.md#datum-plane-and-body-combinations)

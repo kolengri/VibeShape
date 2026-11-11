@@ -4,6 +4,7 @@ import {
   boxFeatureType,
   chamferFeatureTypeV3,
   coneFeatureType,
+  coneFeatureTypeV2,
   createAngleQuantity,
   createLengthQuantity,
   createSketchProfileSet,
@@ -15,6 +16,9 @@ import {
   extrusionFeatureTypeV5,
   featureIdSchema,
   featureRecordSchema,
+  holeFeatureTypes,
+  holeFeatureTypeV3,
+  holeFeatureTypeV4,
   legacyRevolveFeatureType,
   multiProfileExtrusionFeatureType,
   multiProfileRevolveFeatureType,
@@ -37,6 +41,7 @@ import {
   activePartDesignCommand,
   booleanInputFeatures,
   editPartDesignTool,
+  eligibleHoleTargetFeatures,
   isBooleanFeature,
   isBoxFeature,
   isConeFeature,
@@ -416,6 +421,7 @@ describe("basic primitive tool eligibility", () => {
   it.each([
     ["sphere", sphereFeatureType.type, isSphereFeature],
     ["cone", coneFeatureType.type, isConeFeature],
+    ["cone", coneFeatureTypeV2.type, isConeFeature],
     ["pyramid", pyramidFeatureType.type, isPyramidFeature],
     ["torus", torusFeatureType.type, isTorusFeature],
   ] as const)(
@@ -430,7 +436,7 @@ describe("basic primitive tool eligibility", () => {
       expect(booleanInputFeatures([primitive])).toEqual([primitive])
       expect(modifyingSolidTargetFeatures([primitive])).toEqual([primitive])
       expect(
-        matches(featureRecordSchema.parse({ ...primitive, type: { ...type, schemaVersion: 2 } })),
+        matches(featureRecordSchema.parse({ ...primitive, type: { ...type, schemaVersion: 3 } })),
       ).toBe(false)
     },
   )
@@ -439,4 +445,25 @@ describe("basic primitive tool eligibility", () => {
 it("opens a saved V3 Chamfer through the ordinary edit command", () => {
   const feature = featureRecordSchema.parse({ ...box, type: chamferFeatureTypeV3.type })
   expect(editPartDesignTool(feature)).toEqual({ kind: "edit-chamfer", featureId: feature.id })
+})
+
+describe("hole editor eligibility across every registered version", () => {
+  it.each(
+    holeFeatureTypes.map((descriptor) => [descriptor.type.schemaVersion, descriptor] as const),
+  )("reopens a saved Hole v%i through the ordinary edit command", (_version, descriptor) => {
+    const hole = featureRecordSchema.parse({ ...box, type: descriptor.type })
+    expect(editPartDesignTool(hole)).toEqual({ kind: "edit-hole", featureId: hole.id })
+  })
+
+  it("offers the result body of a saved v3 or v4 hole as a target for a later hole", () => {
+    for (const type of [holeFeatureTypeV3.type, holeFeatureTypeV4.type]) {
+      const hole = featureRecordSchema.parse({
+        ...box,
+        id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2799"),
+        type,
+        dependencies: [box.id],
+      })
+      expect(eligibleHoleTargetFeatures([box, hole]).map(({ id }) => id)).toContain(hole.id)
+    }
+  })
 })

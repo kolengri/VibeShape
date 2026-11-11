@@ -14,6 +14,7 @@ import {
   chamferFeatureTypeV2,
   chamferFeatureTypeV3,
   coneFeatureType,
+  coneFeatureTypeV2,
   cylinderFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
@@ -46,7 +47,7 @@ import {
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import { draftFeatureType } from "./part-design-draft"
 import { fdmFeatureType } from "./part-design-fdm"
-import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
+import { holeFeatureTypes } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "./part-design-loft"
 import { loftFeatureTypeV3 } from "./part-design-loft-v3"
@@ -60,7 +61,11 @@ import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { sweepFeatureType } from "./part-design-sweep"
 import { threadFeatureType, threadFeatureTypeV2 } from "./part-design-thread"
-import { datumPlaneFeatureType, datumPlaneFeatureTypeV1 } from "./reference-geometry"
+import {
+  datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
+  datumPointFeatureType,
+} from "./reference-geometry"
 
 export const commandDescriptorSchema = z
   .object({
@@ -495,9 +500,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     unionFeatureType,
     unionFeatureTypeV2,
     fdmFeatureType,
-    holeFeatureType,
-    holeFeatureTypeV2,
-    holeFeatureTypeV3,
+    ...holeFeatureTypes,
     booleanFeatureType,
     booleanFeatureTypeV2,
     chamferFeatureType,
@@ -508,6 +511,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     sphereFeatureType,
     connectMountsFeatureType,
     coneFeatureType,
+    coneFeatureTypeV2,
     pyramidFeatureType,
     torusFeatureType,
     legacyExtrusionFeatureType,
@@ -537,7 +541,7 @@ export const referenceGeometryModule: ModuleDescriptor = moduleDescriptorSchema.
   dependencies: [featureCoreModule.id],
   commands: [],
   queries: [],
-  featureTypes: [datumPlaneFeatureTypeV1, datumPlaneFeatureType],
+  featureTypes: [datumPlaneFeatureTypeV1, datumPlaneFeatureType, datumPointFeatureType],
 })
 
 function registryFailure(

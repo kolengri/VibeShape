@@ -3,12 +3,15 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
+  createAngleQuantity,
   createLengthQuantity,
   type FeatureRecord,
   featureIdSchema,
   featureRecordSchema,
   holeFeatureType,
   holeFeatureTypeV2,
+  holeFeatureTypeV3,
+  holeFeatureTypeV4,
   sketchEntityIdSchema,
   sketchIdSchema,
   sketchRecordSchema,
@@ -94,6 +97,12 @@ const copy: HoleFormCopy = {
   angleDescription: "Enter an angle or a variable expression.",
   invalidRecess:
     "Use a larger recess diameter and leave cylindrical depth. Countersink angles must be between 10 and 170 degrees.",
+  depthDescription: "Depth to the shoulder",
+  drillPoint: "Drill point",
+  drillPointDescription: "Add a drill-point tip",
+  tipAngle: "Tip angle",
+  tipAngleDescription: "60 to 180 degrees",
+  invalidTipAngle: "Enter a tip angle from 60 to 180 degrees.",
   invalidExpression: "Invalid expression",
   invalidDimension: "Invalid dimension",
   invalidRange: "Invalid range",
@@ -288,6 +297,144 @@ describe("HoleForm", () => {
           targetBody: { schemaVersion: 0, featureId: target, outputRole: "pattern.instance.1" },
         }),
       }),
+    )
+  })
+
+  it("authors an opt-in 118 degree drill point on a blind hole as Hole schema v4", async () => {
+    const { onSave } = renderForm()
+    const user = await fillValidForm()
+    expect(screen.queryByRole("combobox", { name: copy.tipAngle })).toBeNull()
+    await user.click(screen.getByRole("checkbox", { name: copy.drillPoint }))
+    const tipAngle = screen.getByRole("combobox", { name: copy.tipAngle }) as HTMLInputElement
+    expect(tipAngle.value).toBe("118 deg")
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        type: holeFeatureTypeV4.type,
+        parameters: expect.objectContaining({
+          extent: "blind",
+          treatment: { kind: "simple" },
+          targetBody: { schemaVersion: 0, featureId: target, outputRole: "result" },
+          tipAngle: expect.objectContaining({ value: expect.closeTo((118 * Math.PI) / 180, 12) }),
+        }),
+      }),
+    )
+  })
+
+  it.each(["45 deg", "181 deg", "5 mm"])("rejects drill-point tip angle %s", async (angle) => {
+    const { onSave } = renderForm()
+    const user = await fillValidForm()
+    await user.click(screen.getByRole("checkbox", { name: copy.drillPoint }))
+    const tipAngle = screen.getByRole("combobox", { name: copy.tipAngle })
+    await user.clear(tipAngle)
+    await user.type(tipAngle, angle)
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(await screen.findByText(copy.invalidTipAngle)).toBeTruthy()
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it("ignores the drill point for a new through-all hole", async () => {
+    const { onSave } = renderForm()
+    const user = await fillValidForm()
+    await user.click(screen.getByRole("checkbox", { name: copy.drillPoint }))
+    await user.selectOptions(screen.getByRole("combobox", { name: copy.extent }), "through-all")
+    expect(screen.queryByRole("checkbox", { name: copy.drillPoint })).toBeNull()
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        type: holeFeatureType.type,
+        parameters: expect.not.objectContaining({ tipAngle: expect.anything() }),
+      }),
+    )
+  })
+
+  it("keeps a saved simple v3 hole on v3 through the domain version owner", async () => {
+    const feature = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: holeFeatureId,
+      type: holeFeatureTypeV3.type,
+      parameters: {
+        sketchId: sketch.id,
+        pointIds: [validPointId],
+        diameter: createLengthQuantity(5),
+        direction: "forward",
+        extent: "blind",
+        depth: createLengthQuantity(10),
+        targetBody: { schemaVersion: 0, featureId: target, outputRole: "result" },
+        treatment: { kind: "simple" },
+      },
+      dependencies: [target],
+      references: [],
+      suppressed: false,
+      label: "Simple v3",
+    })
+    const { onSave } = renderForm({
+      mode: { kind: "edit", feature },
+      options: [{ featureId: target, outputRole: "result", label: "Body · result" }],
+    })
+    await userEvent.setup().click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        type: holeFeatureTypeV3.type,
+        parameters: expect.objectContaining({ treatment: { kind: "simple" } }),
+      }),
+    )
+  })
+
+  it("keeps a saved v4 hole on v4 with a flat point when the drill point is cleared", async () => {
+    const feature = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: holeFeatureId,
+      type: holeFeatureTypeV4.type,
+      parameters: {
+        sketchId: sketch.id,
+        pointIds: [validPointId],
+        diameter: createLengthQuantity(5),
+        direction: "forward",
+        extent: "blind",
+        depth: createLengthQuantity(10),
+        targetBody: { schemaVersion: 0, featureId: target, outputRole: "result" },
+        treatment: { kind: "simple" },
+        tipAngle: createAngleQuantity(2, "rad", "#tip"),
+      },
+      dependencies: [target],
+      references: [],
+      suppressed: false,
+      label: "Drilled",
+    })
+    const { onSave } = renderForm({
+      mode: { kind: "edit", feature },
+      options: [{ featureId: target, outputRole: "result", label: "Body · result" }],
+      variables: [
+        {
+          schemaVersion: 0,
+          id: variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4811"),
+          name: "tip",
+          expression: "2 rad",
+        },
+      ],
+    })
+    const user = userEvent.setup()
+    expect((screen.getByRole("combobox", { name: copy.tipAngle }) as HTMLInputElement).value).toBe(
+      "#tip",
+    )
+    await user.click(screen.getByRole("checkbox", { name: copy.drillPoint }))
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        type: holeFeatureTypeV4.type,
+        parameters: expect.objectContaining({
+          tipAngle: expect.objectContaining({ value: Math.PI }),
+        }),
+      }),
+    )
+    expect(onSave).not.toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ type: holeFeatureTypeV3.type }),
     )
   })
 

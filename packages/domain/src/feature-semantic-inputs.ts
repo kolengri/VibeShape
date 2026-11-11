@@ -11,6 +11,7 @@ import {
   chamferFeatureTypeV2,
   chamferFeatureTypeV3,
   coneFeatureType,
+  coneFeatureTypeV2,
   cylinderFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
@@ -49,6 +50,7 @@ import {
   holeFeatureType,
   holeFeatureTypeV2,
   holeFeatureTypeV3,
+  holeFeatureTypeV4,
   readHoleFeatureParameters,
 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
@@ -69,7 +71,11 @@ import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
 import { threadFeatureType, threadFeatureTypeV2 } from "./part-design-thread"
-import { datumPlaneFeatureType, datumPlaneFeatureTypeV1 } from "./reference-geometry"
+import {
+  datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
+  datumPointFeatureType,
+} from "./reference-geometry"
 
 type VersionedFeatureRecord = FeatureRecord | FeatureRecordV1
 
@@ -106,12 +112,14 @@ const emptySemanticInputTypeKeys = new Set(
     sphereFeatureType,
     connectMountsFeatureType,
     coneFeatureType,
+    coneFeatureTypeV2,
     pyramidFeatureType,
     torusFeatureType,
     booleanFeatureType,
     booleanFeatureTypeV2,
     datumPlaneFeatureType,
     datumPlaneFeatureTypeV1,
+    datumPointFeatureType,
     filletFeatureType,
     chamferFeatureType,
     filletFeatureTypeV2,
@@ -233,6 +241,7 @@ const pointOrLineProjections = new Map([
   [featureTypeKey(holeFeatureType.type), holeSketchSemanticInputs],
   [featureTypeKey(holeFeatureTypeV2.type), holeSketchSemanticInputs],
   [featureTypeKey(holeFeatureTypeV3.type), holeSketchSemanticInputs],
+  [featureTypeKey(holeFeatureTypeV4.type), holeSketchSemanticInputs],
   [featureTypeKey(fdmFeatureType.type), fdmSketchSemanticInputs],
 ])
 
