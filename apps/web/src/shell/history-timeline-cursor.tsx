@@ -75,7 +75,28 @@ function readSegments(track: HTMLElement, items: readonly HistoryItemRef[]) {
     if (range && rect.width > 0 && rect.height > 0)
       segments.push({ ...range, left: rect.left - origin, right: rect.right - origin })
   }
+  widenToExpandedFolders(track, items, origin, segments)
   return segments.sort((a, b) => a.first - b.first)
+}
+// An expanded folder's header and actions can be wider than its rows. Its outer edges are the
+// boundaries before its first and after its last row, so the divider must not land on its actions.
+function widenToExpandedFolders(
+  track: HTMLElement,
+  items: readonly HistoryItemRef[],
+  origin: number,
+  segments: Segment[],
+) {
+  for (const folder of track.querySelectorAll<HTMLElement>(
+    '[data-history-expanded="true"][data-history-range-start]',
+  )) {
+    const range = folderRange(folder, items)
+    const rect = folder.getBoundingClientRect()
+    if (!range || rect.width <= 0 || rect.height <= 0) continue
+    for (const segment of segments) {
+      if (segment.first === range.first) segment.left = Math.min(segment.left, rect.left - origin)
+      if (segment.last === range.last) segment.right = Math.max(segment.right, rect.right - origin)
+    }
+  }
 }
 function completeAnchors(anchors: Anchor[], total: number) {
   if (!anchors.length) return [{ position: 0, x: 8 }]

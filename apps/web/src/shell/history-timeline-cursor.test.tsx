@@ -89,11 +89,13 @@ function Harness({
   source = controller,
   initial = null,
   collapsed = false,
+  expandedFolder = false,
   width = 600,
 }: {
   source?: DocumentControllerState
   initial?: number | null
   collapsed?: boolean
+  expandedFolder?: boolean
   width?: number
 }) {
   const [position, setPosition] = useState(initial)
@@ -139,38 +141,76 @@ function Harness({
             ref={(element) => trackGeometry(element, width)}
             onPointerDown={ports.bubble}
           >
-            {items.map((item, index) => {
-              if (collapsed && (index === 1 || index === 2))
-                return index === 1 ? (
+            {expandedFolder ? (
+              <ExpandedFolderRows />
+            ) : (
+              items.map((item, index) => {
+                if (collapsed && (index === 1 || index === 2))
+                  return index === 1 ? (
+                    <div
+                      key="folder"
+                      data-history-expanded="false"
+                      data-history-range-start="1"
+                      data-history-range-end="2"
+                      data-history-range-first={`${items[1]?.kind}:${items[1]?.id}`}
+                      data-history-range-last={`${items[2]?.kind}:${items[2]?.id}`}
+                      ref={(element) => rowGeometry(element, 108, 200)}
+                    >
+                      Collapsed folder
+                    </div>
+                  ) : null
+                return (
                   <div
-                    key="folder"
-                    data-history-expanded="false"
-                    data-history-range-start="1"
-                    data-history-range-end="2"
-                    data-history-range-first={`${items[1]?.kind}:${items[1]?.id}`}
-                    data-history-range-last={`${items[2]?.kind}:${items[2]?.id}`}
-                    ref={(element) => rowGeometry(element, 108, 200)}
+                    key={item.id}
+                    data-history-index={index}
+                    data-history-kind={item.kind}
+                    data-history-id={item.id}
+                    ref={(element) => rowGeometry(element, 8 + index * 100)}
                   >
-                    Collapsed folder
+                    Operation {index}
                   </div>
-                ) : null
-              return (
-                <div
-                  key={item.id}
-                  data-history-index={index}
-                  data-history-kind={item.kind}
-                  data-history-id={item.id}
-                  ref={(element) => rowGeometry(element, 8 + index * 100)}
-                >
-                  Operation {index}
-                </div>
-              )
-            })}
+                )
+              })
+            )}
             <HistoryTimelineCursor />
           </div>
         </HistoryNavigationProvider>
       </TooltipProvider>
     </I18nProvider>
+  )
+}
+function HistoryRow({ index }: { index: number }) {
+  const item = items[index]
+  return (
+    <div
+      data-history-index={index}
+      data-history-kind={item?.kind}
+      data-history-id={item?.id}
+      ref={(element) => rowGeometry(element, 8 + index * 100)}
+    >
+      Operation {index}
+    </div>
+  )
+}
+// The last two operations sit in an expanded folder whose header actions extend past its rows.
+function ExpandedFolderRows() {
+  return (
+    <>
+      <HistoryRow index={0} />
+      <HistoryRow index={1} />
+      <div
+        data-history-expanded="true"
+        data-history-range-start="2"
+        data-history-range-end="3"
+        data-history-range-first={`${items[2]?.kind}:${items[2]?.id}`}
+        data-history-range-last={`${items[3]?.kind}:${items[3]?.id}`}
+        ref={(element) => rowGeometry(element, 200, 260)}
+      >
+        <button type="button">Rename folder</button>
+        <HistoryRow index={2} />
+        <HistoryRow index={3} />
+      </div>
+    </>
   )
 }
 function cursor() {
@@ -358,6 +398,20 @@ describe("History rollback divider", () => {
     await waitFor(() => expect(ports.insert).toHaveBeenCalledTimes(1))
     expect(ports.insert.mock.calls[0]).toEqual([items[2], "below"])
     expect(cursor().getAttribute("aria-valuenow")).toBe("3")
+  })
+  it("places folder-edge boundaries at an expanded folder's outer edges, clear of its header actions", async () => {
+    render(<Harness expandedFolder />)
+    flushFrames()
+    // Rows end at 408 px, the folder (and its header actions) at 460 px.
+    await waitFor(() => expect(cursor().style.left).toBe("460px"))
+    expect(cursor().getAttribute("aria-valuenow")).toBe("4")
+    pointer("pointerdown", 560)
+    pointer("pointermove", 300)
+    expect(cursor().getAttribute("aria-valuenow")).toBe("2")
+    expect(cursor().style.left).toBe("204px")
+    pointer("pointerup", 300)
+    await waitFor(() => expect(ports.insert).toHaveBeenCalledTimes(1))
+    expect(ports.insert.mock.calls[0]).toEqual([items[1], "below"])
   })
   it("accounts for horizontal scroll offsets and stops edge autoscroll when the drag ends", async () => {
     render(<Harness width={200} />)
