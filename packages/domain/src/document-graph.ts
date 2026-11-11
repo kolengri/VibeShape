@@ -108,7 +108,9 @@ import { referenceFrameInvariant } from "./reference-frame"
 import {
   datumPlaneFeatureType,
   datumPlaneFeatureTypeV1,
+  datumPointFeatureType,
   hasCompleteDatumPlaneDependencyModel,
+  hasCompleteDatumPointDependencyModel,
 } from "./reference-geometry"
 import {
   isOrphanedModelReference,
@@ -372,6 +374,8 @@ function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   ) {
     return hasCompleteDatumPlaneDependencyModel(feature)
   }
+  if (typeKey === featureTypeKey(datumPointFeatureType.type))
+    return hasCompleteDatumPointDependencyModel(feature)
   return dependencyCompleteFeatureTypeKeys.has(typeKey)
 }
 

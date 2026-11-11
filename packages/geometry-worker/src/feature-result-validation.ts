@@ -23,6 +23,7 @@ export type GeometryFeatureKind =
   | "compound"
   | "union"
   | "datum-plane"
+  | "datum-point"
   | "extrusion"
   | "multi-extrusion"
   | "multi-extrusion-modifying"

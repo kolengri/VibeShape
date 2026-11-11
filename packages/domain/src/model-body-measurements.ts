@@ -4,7 +4,7 @@ import { sha256Schema } from "./feature-content-identity"
 import type { FeatureRecord } from "./feature-graph"
 import { documentIdSchema, revisionSchema } from "./identifiers"
 import { type ModelMeasurementEntry, modelMeasurementEntrySchema } from "./model-measurements"
-import { readDatumPlaneFeatureParameters } from "./reference-geometry"
+import { isReferenceGeometryFeature } from "./reference-geometry"
 
 const rootShapeSchema = modelMeasurementEntrySchema.options[0].shape.shape
 
@@ -145,7 +145,7 @@ function expectsBodyMeasurements(feature: FeatureRecord, entry: ModelMeasurement
   return (
     entry.status === "succeeded" &&
     entry.shape.solidCount > 0 &&
-    !readDatumPlaneFeatureParameters(feature)
+    !isReferenceGeometryFeature(feature)
   )
 }
 

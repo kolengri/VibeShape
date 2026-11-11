@@ -186,6 +186,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.hole",
+        "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.imported-mesh",
         "org.vibeshape.feature.part-design.imported",
         "org.vibeshape.feature.part-design.loft",

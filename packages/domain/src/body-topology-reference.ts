@@ -20,3 +20,19 @@ export const bodyTopoRefSchema = bodyTopoRefContentSchema.safeExtend({ featureId
 export const bodyFaceRefSchema = bodyTopoRefSchema.safeExtend({ kind: z.literal("face") })
 export type BodyTopoRef = Readonly<z.infer<typeof bodyTopoRefSchema>>
 export type BodyFaceRef = Readonly<z.infer<typeof bodyFaceRefSchema>>
+
+/** A stable vertex of one named body output; vertex evidence is derived from edge endpoints. */
+export const bodyVertexRefSchema = z
+  .object({
+    ...topoRefContentSchema.shape,
+    schemaVersion: z.literal(1),
+    featureId: featureIdSchema,
+    outputRole: bodyOutputRoleSchema,
+    kind: z.literal("vertex"),
+  })
+  .strict()
+  .refine(({ signature }) => signature.kind === "vertex" && signature.geometryClass === "POINT", {
+    message: "Body vertex references require a POINT vertex signature.",
+    path: ["signature"],
+  })
+export type BodyVertexRef = Readonly<z.infer<typeof bodyVertexRefSchema>>

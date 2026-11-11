@@ -1,10 +1,15 @@
+import type { DatumPointParameters } from "@vibeshape/domain"
 import {
   type DocumentSnapshot,
   type FeatureRecord,
   resolveTopologyReference,
   type TopologyCandidate,
 } from "@vibeshape/domain"
-import type { BodyFaceRef, BodyTopoRef } from "@vibeshape/domain/body-topology-reference"
+import type {
+  BodyFaceRef,
+  BodyTopoRef,
+  BodyVertexRef,
+} from "@vibeshape/domain/body-topology-reference"
 import {
   type ReferenceAxis,
   type ReferencePlane,
@@ -26,12 +31,14 @@ type Context = Readonly<{
 const axes = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] } as const
 const normals = { XY: axes.Z, XZ: axes.Y, YZ: axes.X } as const
 
-function currentBodyCandidate(reference: BodyTopoRef, context: Context) {
+/** Resolves one body-bound reference; missing or ambiguous evidence never rebinds silently. */
+function resolveBodyCandidate(reference: BodyTopoRef | BodyVertexRef, context: Context) {
   const record = context.geometry.find(({ featureId }) => featureId === reference.featureId)
   const body = record?.geometry.bodies?.find(
     ({ outputRole }) => outputRole === reference.outputRole,
   )
-  if (!body?.shape.valid || body.shape.solidCount !== 1) return null
+  if (!body?.shape.valid || body.shape.solidCount !== 1)
+    return { status: "missing" as const, candidate: null }
   const candidates = body.topologyCandidates.filter(({ kind }) => kind === reference.kind)
   const domainCandidates: TopologyCandidate[] = candidates.map(projectTopologyCandidate)
   const { outputRole: _outputRole, schemaVersion: _schemaVersion, ...legacyReference } = reference
@@ -39,9 +46,19 @@ function currentBodyCandidate(reference: BodyTopoRef, context: Context) {
     { ...legacyReference, schemaVersion: 0 },
     domainCandidates,
   )
-  return resolution.status === "resolved"
-    ? (candidates.find(({ candidateId }) => candidateId === resolution.candidateId) ?? null)
-    : null
+  const candidate =
+    resolution.status === "resolved"
+      ? (candidates.find(({ candidateId }) => candidateId === resolution.candidateId) ?? null)
+      : null
+  if (candidate) return { status: "resolved" as const, candidate }
+  return {
+    status: resolution.status === "ambiguous" ? ("ambiguous" as const) : ("missing" as const),
+    candidate: null,
+  }
+}
+
+function currentBodyCandidate(reference: BodyTopoRef, context: Context) {
+  return resolveBodyCandidate(reference, context).candidate
 }
 /** Resolves current finite face evidence inside exactly the authored body role. */
 export function resolveReferenceFace(reference: BodyFaceRef, context: Context) {
@@ -155,4 +172,34 @@ function orientedLineDirection(
   )
     return direction.map((value) => -value || 0) as [number, number, number]
   return direction
+}
+
+export type ResolvedDatumPoint =
+  | Readonly<{ ok: true; position: Vector }>
+  | Readonly<{ ok: false; reason: "missing" | "ambiguous" | "not-circular" }>
+
+/** Resolves a Datum Point to model coordinates against the current exact body topology. */
+export function resolveDatumPoint(
+  parameters: DatumPointParameters,
+  context: Context,
+): ResolvedDatumPoint {
+  if (parameters.mode === "coordinates") {
+    const { x, y, z } = parameters.position
+    return { ok: true, position: [x.value, y.value, z.value] }
+  }
+  const resolved = resolveBodyCandidate(parameters.reference, context)
+  if (!resolved.candidate)
+    return { ok: false, reason: resolved.status === "ambiguous" ? "ambiguous" : "missing" }
+  const geometry = resolved.candidate.referenceGeometry
+  const position =
+    parameters.mode === "vertex"
+      ? geometry?.kind === "vertex"
+        ? geometry.position
+        : null
+      : geometry?.kind === "circle-edge" || geometry?.kind === "arc-edge"
+        ? geometry.center
+        : null
+  const origin = referenceOriginSchema.safeParse(position)
+  if (origin.success) return { ok: true, position: origin.data }
+  return { ok: false, reason: parameters.mode === "vertex" ? "missing" : "not-circular" }
 }

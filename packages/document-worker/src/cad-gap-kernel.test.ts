@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import {
+  boxFeatureType,
   coneFeatureType,
   coneFeatureTypeV2,
   createLengthQuantity,
+  cylinderFeatureType,
   type DocumentSnapshot,
+  datumPointFeatureType,
   type FeatureRecord,
   featureRecordSchema,
 } from "@vibeshape/domain"
@@ -154,5 +157,127 @@ describe("truncated cone kernel evaluation", () => {
         rebuilt.geometry[0]?.geometry.topologyCandidates.map(({ semanticRole }) => semanticRole),
       ).toContain("primitive.cone.apex")
     }
+  })
+})
+
+function bodyReference(rebuilt: Rebuilt, suffix: number, kind: "vertex" | "edge", near: number[]) {
+  const record = rebuilt.geometry.find(({ featureId }) => featureId === id(suffix))
+  const body = record?.geometry.bodies?.[0]
+  const candidate = body?.topologyCandidates.find(
+    ({ kind: candidateKind, signature }) =>
+      candidateKind === kind &&
+      (kind === "vertex" || signature.geometryClass === "CIRCLE") &&
+      signature.centroid.every((value, index) => Math.abs(value - (near[index] ?? 0)) < 1e-6),
+  )
+  if (!body || !candidate) throw new Error(`Missing ${kind} near ${near.join(",")}.`)
+  return {
+    schemaVersion: 1,
+    featureId: id(suffix),
+    outputRole: body.outputRole,
+    kind,
+    ...(candidate.semanticRole ? { semanticRole: candidate.semanticRole } : {}),
+    signature: candidate.signature,
+  }
+}
+
+function markerCenter(rebuilt: Rebuilt, suffix: number) {
+  const shape = rebuilt.geometry.find(({ featureId }) => featureId === id(suffix))?.geometry.shape
+  if (!shape) throw new Error("The datum point marker is missing.")
+  return shape.bounds.min.map((value, index) => (value + (shape.bounds.max[index] ?? 0)) / 2)
+}
+
+describe("datum point kernel resolution", () => {
+  const box = feature(1, boxFeatureType.type, {
+    width: mm(20),
+    depth: mm(10),
+    height: mm(6),
+    centered: false,
+    origin: origin(3, 4, 5),
+  })
+  const cylinder = feature(1, cylinderFeatureType.type, {
+    radius: mm(6),
+    height: mm(10),
+    centered: false,
+    origin: origin(5, -3, 2),
+  })
+
+  it("places explicit coordinates without any body dependency", async () => {
+    const rebuilt = await rebuild([
+      feature(2, datumPointFeatureType.type, {
+        mode: "coordinates",
+        position: origin(-7, 12.5, 30),
+      }),
+    ])
+    expect(rebuilt.evaluation.records).toMatchObject([{ status: "succeeded" }])
+    markerCenter(rebuilt, 2).forEach((value, index) => {
+      expect(value).toBeCloseTo([-7, 12.5, 30][index] ?? 0, 6)
+    })
+  })
+
+  it("resolves a stable box vertex and follows it when the box moves", async () => {
+    const source = await rebuild([box])
+    const corner = source.geometry[0]?.geometry.shape.bounds.max ?? []
+    const reference = bodyReference(source, 1, "vertex", corner)
+    const point = feature(2, datumPointFeatureType.type, { mode: "vertex", reference }, [id(1)])
+    const rebuilt = await rebuild([box, point])
+    expect(rebuilt.evaluation.records.map(({ status }) => status)).toEqual([
+      "succeeded",
+      "succeeded",
+    ])
+    markerCenter(rebuilt, 2).forEach((value, index) => {
+      expect(value).toBeCloseTo(corner[index] ?? 0, 6)
+    })
+  })
+
+  it("resolves the analytical center of a circular edge", async () => {
+    const source = await rebuild([cylinder])
+    const reference = bodyReference(source, 1, "edge", [5, -3, 12])
+    const point = feature(2, datumPointFeatureType.type, { mode: "circle-center", reference }, [
+      id(1),
+    ])
+    const rebuilt = await rebuild([cylinder, point])
+    expect(rebuilt.evaluation.records.at(-1)).toMatchObject({ status: "succeeded" })
+    markerCenter(rebuilt, 2).forEach((value, index) => {
+      expect(value).toBeCloseTo([5, -3, 12][index] ?? 0, 6)
+    })
+  })
+
+  it("follows a semantic box corner when the box is resized and moved", async () => {
+    const source = await rebuild([box])
+    const corner = source.geometry[0]?.geometry.shape.bounds.max ?? []
+    const reference = bodyReference(source, 1, "vertex", corner)
+    expect(reference.semanticRole).toBeDefined()
+    const moved = feature(1, boxFeatureType.type, {
+      width: mm(40),
+      depth: mm(30),
+      height: mm(16),
+      centered: false,
+      origin: origin(300, 400, 500),
+    })
+    const point = feature(2, datumPointFeatureType.type, { mode: "vertex", reference }, [id(1)])
+    const rebuilt = await rebuild([moved, point])
+    const movedCorner = rebuilt.geometry[0]?.geometry.shape.bounds.max ?? []
+    markerCenter(rebuilt, 2).forEach((value, index) => {
+      expect(value).toBeCloseTo(movedCorner[index] ?? 0, 6)
+    })
+  })
+
+  it("fails clearly instead of rebinding a vertex its producer no longer has", async () => {
+    const source = await rebuild([box])
+    const corner = source.geometry[0]?.geometry.shape.bounds.max ?? []
+    const reference = bodyReference(source, 1, "vertex", corner)
+    const point = feature(2, datumPointFeatureType.type, { mode: "vertex", reference }, [id(1)])
+    const rebuilt = await rebuild([cylinder, point])
+    expect(rebuilt.evaluation.records.at(-1)).toMatchObject({
+      featureId: id(2),
+      status: "failed",
+      diagnostics: [
+        {
+          code: "org.vibeshape.feature.datum-point-reference-unresolved",
+          values: { reason: "missing" },
+        },
+      ],
+    })
+    expect(rebuilt.geometry.some(({ featureId }) => featureId === id(2))).toBe(false)
   })
 })

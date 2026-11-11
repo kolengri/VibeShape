@@ -68,7 +68,11 @@ import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
 import { threadFeatureType, threadFeatureTypeV2 } from "./part-design-thread"
-import { datumPlaneFeatureType, datumPlaneFeatureTypeV1 } from "./reference-geometry"
+import {
+  datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
+  datumPointFeatureType,
+} from "./reference-geometry"
 
 type VersionedFeatureRecord = FeatureRecord | FeatureRecordV1
 
@@ -110,6 +114,7 @@ const emptySemanticInputTypeKeys = new Set(
     booleanFeatureTypeV2,
     datumPlaneFeatureType,
     datumPlaneFeatureTypeV1,
+    datumPointFeatureType,
     filletFeatureType,
     chamferFeatureType,
     filletFeatureTypeV2,

@@ -13,6 +13,7 @@ import {
   cylinderFeatureContentParametersSchema,
   DEFAULT_SURFACE_TEXTURE_QUALITY,
   datumPlaneFeatureContentParametersSchema,
+  datumPointFeatureContentParametersSchema,
   extrusionExtentBounds,
   extrusionFeatureContentParametersSchema,
   extrusionFeatureContentParametersV5Schema,
@@ -1088,6 +1089,7 @@ type RevolveMultiProfileModifyingContentParameters = ReturnType<
   typeof revolveMultiProfileModifyingFeatureContentParametersSchema.parse
 >
 type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
+type DatumPointContentParameters = ReturnType<typeof datumPointFeatureContentParametersSchema.parse>
 type HoleContentParameters =
   | HoleFeatureContentParameters
   | ReturnType<typeof holeFeatureContentParametersV3Schema.parse>
@@ -1309,6 +1311,7 @@ type ParsedFeature =
   | { kind: "pyramid"; parameters: PyramidContentParameters }
   | { kind: "torus"; parameters: TorusContentParameters }
   | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
+  | { kind: "datum-point"; parameters: DatumPointContentParameters }
   | { kind: "extrusion"; parameters: ExtrusionContentParameters }
   | { kind: "extent-extrusion"; parameters: ExtrusionExtentContentParameters }
   | { kind: "multi-extrusion"; parameters: ExtrusionMultiProfileContentParameters }
@@ -2053,6 +2056,29 @@ function parseDatumPlaneFeature(input: FeatureEvaluationInput): FeatureParseResu
   return { ok: true, feature: { kind: "datum-plane", parameters: parameters.data } }
 }
 
+function parseDatumPointFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = datumPointFeatureContentParametersSchema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success) {
+    return featureFailure("invalid-feature-parameters", "Datum point content is invalid.")
+  }
+  const supportFeatureId = parameters.data.supportFeatureId
+  const validDependencies = supportFeatureId
+    ? input.dependencies.length === 1 && input.dependencies[0]?.featureId === supportFeatureId
+    : input.dependencies.length === 0
+  if (
+    input.content.feature.inputs.length !== input.dependencies.length ||
+    input.content.feature.references.length !== 0 ||
+    !validDependencies
+  ) {
+    return invalidInputCardinality(
+      "A datum point may depend only on the producer of its resolved reference.",
+    )
+  }
+  return { ok: true, feature: { kind: "datum-point", parameters: parameters.data } }
+}
+
 function parseHoleFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
   const parameters = holeContentSchema(feature.type.schemaVersion).safeParse(feature.parameters)
@@ -2586,6 +2612,10 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [REVOLVE_FEATURE_TYPE_V7_KEY, parseExactMultiRevolveFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
   [DATUM_PLANE_FEATURE_TYPE_V2_KEY, parseDatumPlaneFeature],
+  [
+    "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-point#1",
+    parseDatumPointFeature,
+  ],
   [HOLE_FEATURE_TYPE_KEY, parseHoleFeature],
   [HOLE_FEATURE_TYPE_V2_KEY, parseHoleFeatureV2],
   [
@@ -3167,6 +3197,9 @@ function createFeatureShape(
       return createOcctFdmFeature(opencascade, feature.parameters, dependencyShapes[0])
     case "datum-plane":
       return createDatumPlaneFeatureShape(opencascade, feature.parameters)
+    case "datum-point":
+      // The marker sphere is display geometry only; consumers read the authored position.
+      return createOcctSphere(opencascade, feature.parameters.size / 2, feature.parameters.position)
     case "boolean": {
       return createBooleanFeatureShape(opencascade, dependencyShapes)
     }
@@ -3962,6 +3995,10 @@ function featureTopologySemanticRole(
   if (feature.kind === "datum-plane") {
     return datumPlaneTopologySemanticRole(context, feature.parameters)
   }
+  if (feature.kind === "datum-point")
+    return context.kind === "face" && context.signature.geometryClass === "SPHERE"
+      ? "datum.point"
+      : undefined
   return undefined
 }
 
@@ -4029,6 +4066,7 @@ function featureHasSingleBody(metrics: ReturnType<typeof measureShape>, feature:
   return (
     metrics.solidCount === 1 &&
     feature.kind !== "datum-plane" &&
+    feature.kind !== "datum-point" &&
     !independentBodyBundleKinds.has(feature.kind)
   )
 }

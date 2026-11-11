@@ -1123,6 +1123,15 @@ export const datumPlaneFeatureContentParametersSchema = z
   })
   .strict()
 
+/** A resolved Datum Point; `size` is the display marker diameter, never body geometry. */
+export const datumPointFeatureContentParametersSchema = z
+  .object({
+    position: z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoordinateSchema]),
+    supportFeatureId: featureIdSchema.optional(),
+    size: cadLengthSchema,
+  })
+  .strict()
+
 const normalizedBuildVersionSchema = z
   .string()
   .min(1)

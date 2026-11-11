@@ -1,4 +1,4 @@
-import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
+import { isReferenceGeometryFeature } from "@vibeshape/domain"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import type { FeatureId } from "@vibeshape/domain/identifiers"
 import {
@@ -83,7 +83,7 @@ function validateFeatureSource(
   evaluation: RebuiltResponse["evaluation"]["records"][number] | undefined,
   geometry: RebuiltGeometry | undefined,
 ): SourceEvidence {
-  if (feature.suppressed || readDatumPlaneFeatureParameters(feature) !== null) {
+  if (feature.suppressed || isReferenceGeometryFeature(feature)) {
     return { ok: false, result: { ok: false, code: "geometry-unavailable" } }
   }
   if (evaluation?.status !== "succeeded") {

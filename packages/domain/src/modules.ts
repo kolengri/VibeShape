@@ -63,7 +63,11 @@ import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { sweepFeatureType } from "./part-design-sweep"
 import { threadFeatureType, threadFeatureTypeV2 } from "./part-design-thread"
-import { datumPlaneFeatureType, datumPlaneFeatureTypeV1 } from "./reference-geometry"
+import {
+  datumPlaneFeatureType,
+  datumPlaneFeatureTypeV1,
+  datumPointFeatureType,
+} from "./reference-geometry"
 
 export const commandDescriptorSchema = z
   .object({
@@ -539,7 +543,7 @@ export const referenceGeometryModule: ModuleDescriptor = moduleDescriptorSchema.
   dependencies: [featureCoreModule.id],
   commands: [],
   queries: [],
-  featureTypes: [datumPlaneFeatureTypeV1, datumPlaneFeatureType],
+  featureTypes: [datumPlaneFeatureTypeV1, datumPlaneFeatureType, datumPointFeatureType],
 })
 
 function registryFailure(

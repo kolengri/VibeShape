@@ -1,4 +1,4 @@
-import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
+import { isReferenceGeometryFeature } from "@vibeshape/domain"
 import { bodyOutputRoleSchema } from "@vibeshape/domain/body-reference"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import { documentIdSchema, featureIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
@@ -227,7 +227,7 @@ function requestedBodyFeature(snapshot: DocumentSnapshot, query: ModelBodyMeasur
       ok: false as const,
       result: failure("feature-not-found", "The requested feature does not exist."),
     }
-  if (feature && readDatumPlaneFeatureParameters(feature) !== null)
+  if (feature && isReferenceGeometryFeature(feature))
     return {
       ok: false as const,
       result: failure(

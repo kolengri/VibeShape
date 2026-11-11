@@ -45,7 +45,9 @@ function registry(legacyOnly = false) {
   const featureTypes = createFeatureTypeRegistry(
     modules.registry,
     referenceGeometryFeatureTypeHandlers.filter(
-      ({ type }) => !legacyOnly || type.schemaVersion === 1,
+      ({ type }) =>
+        !legacyOnly ||
+        (type.schemaVersion === 1 && type.typeId === datumPlaneFeatureTypeV1.type.typeId),
     ),
   )
   if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
@@ -129,7 +131,11 @@ function angleVariables(expression: string) {
 describe("datum plane feature", () => {
   it("registers strict legacy v1 and rotation-capable v2 without reclassifying old records", () => {
     const types = registry()
-    expect(types.descriptors.map(({ type }) => type.schemaVersion)).toEqual([1, 2])
+    expect(
+      types.descriptors
+        .filter(({ type }) => type.typeId === datumPlaneFeatureType.type.typeId)
+        .map(({ type }) => type.schemaVersion),
+    ).toEqual([1, 2])
     const legacy = { ...datum(originParameters), type: datumPlaneFeatureTypeV1.type }
     expect(datumPlaneParametersV1Schema.parse(originParameters)).toEqual(originParameters)
     expect(types.validateFeature(legacy)).toMatchObject({ ok: true, feature: legacy })
