@@ -90,6 +90,16 @@
     "legacy": ["ShellIcon"]
   },
   {
+    "id": "draft",
+    "label": "Draft",
+    "legacy": ["DraftIcon"]
+  },
+  {
+    "id": "scale",
+    "label": "Scale",
+    "legacy": ["ScaleIcon"]
+  },
+  {
     "id": "thread",
     "label": "Thread",
     "legacy": ["ThreadIcon"]

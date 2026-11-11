@@ -202,6 +202,10 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-mirror",
   "create-shell",
   "edit-shell",
+  "create-draft",
+  "edit-draft",
+  "create-scale",
+  "edit-scale",
   "create-press-pull",
   "edit-press-pull",
   "create-split",
@@ -1888,6 +1892,8 @@ export type EditorWorkspaceActions = Readonly<{
   combineParts?: (operation: "compound" | "union") => void
   placePart?: (partId: PartId) => void
   shellPart?: (partId: PartId) => void
+  draftPart?: (partId: PartId) => void
+  scalePart?: (partId: PartId) => void
   splitPart?: (partId: PartId) => void
   patternPart?: (partId: PartId) => void
   threadPart?: (partId: PartId) => void

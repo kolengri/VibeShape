@@ -48,6 +48,7 @@ import {
   unionFeatureTypeV2Handler,
 } from "./part-design-body-combination"
 import { connectMountsFeatureTypeHandler } from "./part-design-connect-mounts"
+import { draftFeatureTypeHandler } from "./part-design-draft"
 import { fdmFeatureTypeHandler } from "./part-design-fdm"
 import {
   holeFeatureTypeHandler,
@@ -66,6 +67,7 @@ import {
 import { patternFeatureTypeHandler, patternFeatureTypeHandlerV2 } from "./part-design-pattern"
 import { placementFeatureTypeHandler } from "./part-design-placement"
 import { pressPullFeatureTypeHandler } from "./part-design-press-pull"
+import { scaleFeatureTypeHandler } from "./part-design-scale"
 import { shellFeatureTypeHandler, shellFeatureTypeHandlerV2 } from "./part-design-shell"
 import { splitFeatureTypeHandler, splitFeatureTypeHandlerV2 } from "./part-design-split"
 import { sweepFeatureTypeHandler } from "./part-design-sweep"
@@ -2047,6 +2049,8 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   pressPullFeatureTypeHandler,
   shellFeatureTypeHandler,
   shellFeatureTypeHandlerV2,
+  draftFeatureTypeHandler,
+  scaleFeatureTypeHandler,
   splitFeatureTypeHandler,
   splitFeatureTypeHandlerV2,
   loftFeatureTypeHandler,

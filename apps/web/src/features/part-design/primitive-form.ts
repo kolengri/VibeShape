@@ -106,6 +106,17 @@ export function quantityExpression(quantity: LengthQuantity) {
   return quantity.source.expression ?? `${quantity.source.value} ${quantity.source.unit}`
 }
 
+/** Evaluates one normalized form expression against the committed variables, or returns null. */
+export function evaluateFormExpression(
+  expression: string,
+  variables: readonly VariableDefinition[],
+) {
+  const evaluatedVariables = evaluateVariableDefinitions(variables)
+  if (!evaluatedVariables.ok) return null
+  const evaluated = evaluateExpression(expression, evaluatedVariables.valuesByName)
+  return evaluated.ok ? evaluated.value : null
+}
+
 export function parsePrimitiveLengthExpression(
   rawExpression: string,
   variables: readonly VariableDefinition[],
@@ -114,14 +125,12 @@ export function parsePrimitiveLengthExpression(
   displayUnit: DocumentDisplayUnits["length"] = "mm",
 ) {
   const expression = normalizeExpressionWithDisplayUnit(rawExpression, displayUnit)
-  const evaluatedVariables = evaluateVariableDefinitions(variables)
-  if (!evaluatedVariables.ok) return { ok: false as const, message: copy.invalidExpression }
-  const evaluated = evaluateExpression(expression, evaluatedVariables.valuesByName)
-  if (!evaluated.ok) return { ok: false as const, message: copy.invalidExpression }
-  if (evaluated.value.dimension !== "length") {
+  const evaluated = evaluateFormExpression(expression, variables)
+  if (!evaluated) return { ok: false as const, message: copy.invalidExpression }
+  if (evaluated.dimension !== "length") {
     return { ok: false as const, message: copy.invalidDimension }
   }
-  const quantity = createLengthQuantity(evaluated.value.value, "mm", expression)
+  const quantity = createLengthQuantity(evaluated.value, "mm", expression)
   return accepts(quantity)
     ? { ok: true as const, quantity }
     : { ok: false as const, message: copy.invalidRange }
@@ -160,4 +169,16 @@ export async function submitFeatureMutation({
   const message = featureSubmissionMessage(result, copy)
   setMessage(message)
   if (!message) onSaved()
+}
+
+/** Saves one validated feature and reports an unexpected rejection without losing form values. */
+export async function submitFeatureOrReport(
+  input: Parameters<typeof submitFeatureMutation>[0] & Readonly<{ saveFailed: string }>,
+) {
+  input.setMessage(null)
+  try {
+    await submitFeatureMutation(input)
+  } catch {
+    input.setMessage(input.saveFailed)
+  }
 }

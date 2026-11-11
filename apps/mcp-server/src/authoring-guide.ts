@@ -64,7 +64,8 @@ retains manual browser review. These tools
 do not cascade, override reference intent, navigate saved-change History or execute generic commands.
 
 Named create/update tools cover Datum Plane, Boolean subtraction, Union, Compound, Mirror,
-linear/circular body Pattern, Shell, Split, Sweep, Loft and custom Thread. Choose exact
+linear/circular body Pattern, Shell, face Draft (\`create_face_draft\`), uniform Scale, Split,
+Sweep, Loft and custom Thread. Choose exact
 feature/output-role targets from \`model_body_measurements\` or \`draft_body_measurements\`.
 Use \`draft_body_topology\` to select openings on a new draft body and create Shell before
 one final Apply. Shell openings require current exact body topology references and their source content hash. Sweep
@@ -791,7 +792,7 @@ Extrude declares the body role \`result\`; preserve the exact \`targetBody\` on 
 Tools currently cover registered Box, Cylinder, Cone, Sphere, Torus and Pyramid create/update;
 sketch, Extrude, Revolve and Hole create/update;
 Fillet/Chamfer, Datum Plane, Boolean subtraction, Union, Compound, Mirror, body Pattern, Shell,
-Split, Sweep, Loft, custom Thread and FDM create/update;
+face Draft, uniform Scale, Split, Sweep, Loft, custom Thread and FDM create/update;
 variables; bounded inspection; draft lifecycle and export; feature/sketch removal,
 explicit feature suppression and project rename; Placement and editable sketch text;
 owned native/planar imports, assembly/library authoring, surface textures and saved-change Undo/Redo.

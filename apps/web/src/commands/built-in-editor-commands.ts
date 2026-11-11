@@ -43,6 +43,8 @@ export type BuiltInEditorCommandContext = Readonly<{
     placePart?: ((partId: PartId) => void) | undefined
     mirrorPart?: ((partId: PartId) => void) | undefined
     shellPart?: ((partId: PartId) => void) | undefined
+    draftPart?: ((partId: PartId) => void) | undefined
+    scalePart?: ((partId: PartId) => void) | undefined
     splitPart?: ((partId: PartId) => void) | undefined
     patternPart?: ((partId: PartId) => void) | undefined
     threadPart?: ((partId: PartId) => void) | undefined
@@ -139,6 +141,8 @@ const partCommandDescriptors = [
   ["placePart", "transform", "placement"],
   ["mirrorPart", "mirror", "mirror"],
   ["shellPart", "shell", "shell"],
+  ["draftPart", "draft", "draft"],
+  ["scalePart", "scale", "scale"],
   ["splitPart", "split", "split-body"],
   ["patternPart", "linear-pattern", "pattern"],
   ["threadPart", "thread", "thread"],

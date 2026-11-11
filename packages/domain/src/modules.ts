@@ -44,6 +44,7 @@ import {
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
+import { draftFeatureType } from "./part-design-draft"
 import { fdmFeatureType } from "./part-design-fdm"
 import { holeFeatureType, holeFeatureTypeV2, holeFeatureTypeV3 } from "./part-design-hole"
 import { importedFeatureType } from "./part-design-import"
@@ -54,6 +55,7 @@ import { mirrorFeatureType, mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "./p
 import { patternFeatureType, patternFeatureTypeV2 } from "./part-design-pattern"
 import { placementFeatureType } from "./part-design-placement"
 import { pressPullFeatureType } from "./part-design-press-pull"
+import { scaleFeatureType } from "./part-design-scale"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
 import { sweepFeatureType } from "./part-design-sweep"
@@ -476,6 +478,8 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     pressPullFeatureType,
     shellFeatureType,
     shellFeatureTypeV2,
+    draftFeatureType,
+    scaleFeatureType,
     splitFeatureType,
     splitFeatureTypeV2,
     loftFeatureType,

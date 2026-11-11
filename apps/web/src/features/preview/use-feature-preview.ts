@@ -10,10 +10,8 @@ import {
   readRevolveFeatureParameters,
 } from "@vibeshape/domain"
 import type { ModelDiagnosticsEvidence } from "@vibeshape/domain/model-diagnostics"
-import { readLoftFeatureParametersV3 } from "@vibeshape/domain/part-design-loft-v3"
-import type { DocumentWorkerResponse } from "@vibeshape/protocol"
+import { type DocumentWorkerResponse, featureForwardsDiagnosticMessage } from "@vibeshape/protocol"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
-import { isError } from "is-what"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   createBrowserDocumentId,
@@ -111,8 +109,9 @@ function failedPreview(candidate: FeatureRecord, error: unknown): FeaturePreview
     ...(error instanceof FeaturePreviewFailure && error.diagnostics.length > 0
       ? { diagnostics: error.diagnostics }
       : {}),
-    ...((readLoftFeatureParametersV3(candidate) || isFilletFeature(candidate)) && isError(error)
-      ? { diagnostic: error.message }
+    // Only a kernel message from the worker replaces the localized advice; generic failures do not.
+    ...(error instanceof FeaturePreviewFailure && error.workerMessage
+      ? { diagnostic: error.workerMessage }
       : {}),
   }
 }
@@ -189,6 +188,7 @@ class FeaturePreviewFailure extends Error {
   constructor(
     message: string,
     readonly diagnostics: ModelDiagnosticsEvidence["entries"],
+    readonly workerMessage?: string,
   ) {
     super(message)
   }
@@ -202,8 +202,7 @@ function assertCandidatePreviewSucceeded(
   const evaluation = response.evaluation.records.find(({ featureId }) => featureId === candidate.id)
   if (evaluation?.status === "succeeded") return
   const diagnostic =
-    evaluation?.status === "failed" &&
-    (readLoftFeatureParametersV3(candidate) || isFilletFeature(candidate))
+    evaluation?.status === "failed" && featureForwardsDiagnosticMessage(candidate.type)
       ? evaluation.diagnostics.find(({ values }) => typeof values.message === "string")?.values
           .message
       : null
@@ -214,8 +213,9 @@ function assertCandidatePreviewSucceeded(
       )
     : []
   throw new FeaturePreviewFailure(
-    typeof diagnostic === "string" ? diagnostic : "The feature preview could not be evaluated.",
+    "The feature preview could not be evaluated.",
     diagnostics,
+    typeof diagnostic === "string" ? diagnostic : undefined,
   )
 }
 

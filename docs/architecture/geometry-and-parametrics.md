@@ -546,6 +546,22 @@ maximum radius or monotonic feasibility. Invalid topology selections and ineligi
 contours do not trigger radius retries. The normal worker termination and native ownership paths
 remain authoritative for cancellation and cleanup.
 
+## Draft and uniform Scale
+
+[ADR-0152](../adr/0152-draft-and-uniform-scale-features.md) adds two body-modifying Part Design
+features. Draft persists 1–256 body-bound face references, a shared reference-plane neutral plane, an
+expression-aware angle and a flip flag. The document worker resolves the neutral plane into an origin,
+unit normal and pull direction (the reverse outward normal for a planar face, then flipped on
+request); the geometry worker resolves each face through the exact/durable body-face resolver and
+feeds `BRepOffsetAPI_DraftAngle` in authored order. The pinned WASM build leaves `Draft_ErrorStatus`
+unbound, so `AddDone`/`IsDone` are the only failure signals: a rejected face fails the feature with its
+selection index and is never skipped. Scale persists a unitless factor and an origin, bounding-box or
+explicit center; the worker copies the source through `gp_Trsf.SetScale` and
+`BRepBuilderAPI_Transform` and computes bounding-box centers with `BRepBndLib::AddOptimal`.
+`BRepBuilderAPI_GTransform` is absent from the build, so non-uniform scale is unavailable. Both
+operations validate one positive-volume input and result solid and release native temporaries on
+success and failure.
+
 ## FDM feature family and export mesh quality
 
 Part Design owns FDM feature v1 validation, dependencies, semantic inputs, and quantity resolution. The document worker resolves saved sketch lines/support and reference planes into bounded content; the geometry worker owns exact OCCT construction and disposal. All kinds return one exact connected solid or a diagnostic, copying borrowed target geometry before Boolean operations. See [Editable FDM features](../product/fdm-tools.md) for the supported constructions and explicit limitations.

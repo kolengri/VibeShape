@@ -17,6 +17,7 @@ export type BodyFeatureTaskPanelProps = {
   onCompleteTool: () => void
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   featurePreviewStatus: FeaturePreviewState["status"]
+  featurePreviewDiagnostic?: string | undefined
   selectedFace?: ViewerSelection | null | undefined
   renderDelete: (feature: FeatureRecord) => ReactNode
 }

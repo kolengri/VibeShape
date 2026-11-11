@@ -44,6 +44,7 @@ import {
   documentWorkerRequestSchema,
   documentWorkerResponseSchema,
   type FeatureEvaluationDependency,
+  featureForwardsDiagnosticMessage,
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
@@ -760,10 +761,7 @@ export class DocumentWorkerRuntime {
         : {
             ok: false,
             diagnosticCode: evaluated.diagnostic.code,
-            ...((evaluation.content.feature.type.typeId ===
-              "org.vibeshape.feature.part-design.loft" &&
-              evaluation.content.feature.type.schemaVersion === 3) ||
-            evaluation.content.feature.type.typeId === "org.vibeshape.feature.part-design.fillet"
+            ...(featureForwardsDiagnosticMessage(evaluation.content.feature.type)
               ? { diagnosticMessage: evaluated.diagnostic.message.slice(0, 1024) }
               : {}),
           }
