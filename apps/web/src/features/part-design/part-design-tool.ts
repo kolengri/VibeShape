@@ -43,6 +43,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
+import { readCoilFeatureParameters } from "@vibeshape/domain/part-design-coil"
 import { readConnectMountsFeatureParameters } from "@vibeshape/domain/part-design-connect-mounts"
 import { readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
 import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
@@ -61,7 +62,7 @@ import { readPressPullFeatureParameters } from "@vibeshape/domain/part-design-pr
 import { readScaleFeatureParameters } from "@vibeshape/domain/part-design-scale"
 import { readShellFeatureParameters } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
-import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
+import { sweepFeatureType, sweepFeatureTypeV2 } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureType } from "@vibeshape/domain/part-design-thread"
 import { terminalModelBodies } from "./model-bodies"
 import type { ModelEdgeSelection } from "./model-edge-selection"
@@ -69,6 +70,8 @@ import type { ModelEdgeSelection } from "./model-edge-selection"
 export type ActivePartDesignTool =
   | Readonly<{ kind: "inspect-imported"; featureId: FeatureId }>
   | Readonly<{ kind: "create-connect-mounts" }>
+  | Readonly<{ kind: "create-coil" }>
+  | Readonly<{ kind: "edit-coil"; featureId: FeatureId }>
   | Readonly<{ kind: "edit-connect-mounts"; featureId: FeatureId }>
   | Readonly<{ kind: "create-fdm" }>
   | Readonly<{ kind: "edit-fdm"; featureId: FeatureId }>
@@ -313,7 +316,10 @@ function isLoftFeature(feature: FeatureRecord) {
   )
 }
 function isSweepFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, sweepFeatureType.type)
+  return (
+    hasFeatureType(feature, sweepFeatureType.type) ||
+    hasFeatureType(feature, sweepFeatureTypeV2.type)
+  )
 }
 function isThreadFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, threadFeatureType.type)
@@ -347,6 +353,7 @@ function isUnionFeature(feature: FeatureRecord) {
 
 function isPartDesignSolidFeature(feature: FeatureRecord) {
   if (readConnectMountsFeatureParameters(feature)) return true
+  if (readCoilFeatureParameters(feature)) return true
   if (readFdmFeatureParameters(feature)) return true
   return [
     isBoxFeature,
@@ -563,6 +570,7 @@ export function editPartDesignTool(
   if (!feature) return null
   if (readConnectMountsFeatureParameters(feature))
     return { kind: "edit-connect-mounts", featureId: feature.id }
+  if (readCoilFeatureParameters(feature)) return { kind: "edit-coil", featureId: feature.id }
   if (isPressPullFeature(feature)) return { kind: "edit-press-pull", featureId: feature.id }
   if (isDraftFeature(feature)) return { kind: "edit-draft", featureId: feature.id }
   if (isScaleFeature(feature)) return { kind: "edit-scale", featureId: feature.id }
@@ -573,6 +581,8 @@ export function editPartDesignTool(
 const commandByToolKind = {
   "inspect-imported": "inspect-imported",
   "create-connect-mounts": "connect-mounts",
+  "create-coil": "coil",
+  "edit-coil": "coil",
   "edit-connect-mounts": "connect-mounts",
   "create-fdm": "fdm",
   "edit-fdm": "fdm",

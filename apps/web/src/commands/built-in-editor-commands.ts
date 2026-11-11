@@ -50,6 +50,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     threadPart?: ((partId: PartId) => void) | undefined
     combineParts?: ((operation: "compound" | "union") => void) | undefined
     createConnectMounts: () => void
+    createCoil?: (() => void) | undefined
     createFdm?: (() => void) | undefined
     createHole: () => void
     createFillet: () => void
@@ -208,6 +209,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.lightweighting,
     labelKey: "lightweighting",
     ownerModuleId: editorOwner,
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "coil",
+    id: editorCommandIds.createCoil,
+    labelKey: "createCoil",
+    ownerModuleId: partDesignOwner,
     toolbarGroup: "model-primary",
   },
   {
@@ -1182,6 +1191,14 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: canCreateSavedSketchFeature,
     id: editorCommandIds.createSweep,
     isActive: ({ state }) => state.activePartDesignCommand === "sweep",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createCoil?.(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createCoil,
+    isActive: ({ state }) => state.activePartDesignCommand === "coil",
     isToolbarVisible: ({ state }) => state.activeSketchTool === null,
     ownerModuleId: partDesignOwner,
   },

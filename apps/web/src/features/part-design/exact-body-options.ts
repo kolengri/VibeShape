@@ -8,6 +8,7 @@ import {
 } from "@vibeshape/domain"
 import { type BodyReference, bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { readRevolveFeatureParameters } from "@vibeshape/domain/part-design"
+import { readCoilFeatureParameters } from "@vibeshape/domain/part-design-coil"
 import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { readBooleanFeatureParametersV2 } from "@vibeshape/domain/part-design-subtract"
 import type { FeatureEvaluatedResponse } from "@vibeshape/protocol"
@@ -26,6 +27,8 @@ function savedBodies(feature: FeatureRecord | undefined): readonly BodyReference
   if (boolean) return [boolean.targetBody, boolean.toolBody]
   const revolve = readRevolveFeatureParameters(feature)
   if (revolve?.targetBody) return [revolve.targetBody]
+  const coil = readCoilFeatureParameters(feature)
+  if (coil) return coil.targetBody ? [coil.targetBody] : []
   return feature.dependencies.map((featureId) => ({
     schemaVersion: 0,
     featureId,

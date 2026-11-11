@@ -169,6 +169,7 @@ const modelCreateCommandIds = [
   editorCommandIds.createDatumPlane,
   editorCommandIds.createLoft,
   editorCommandIds.createSweep,
+  editorCommandIds.createCoil,
   editorCommandIds.createConnectMounts,
   editorCommandIds.generativeDesign,
 ] as const satisfies readonly EditorCommandId[]
@@ -476,6 +477,7 @@ const modelQuickCommands = [
   editorCommandIds.createLoft,
   editorCommandIds.createHole,
   editorCommandIds.createSweep,
+  editorCommandIds.createCoil,
   editorCommandIds.createConnectMounts,
 ] as const
 

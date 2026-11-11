@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { sketchEntityIdSchema, sketchProfileSelectorSchema } from "@vibeshape/domain"
+import { sweepFeatureType, sweepFeatureTypeV2 } from "@vibeshape/domain/part-design-sweep"
 import {
   reorderLoftSection,
   sweepLoftFeatureRecord,
@@ -120,5 +121,55 @@ describe("Sweep and Loft authoring contracts", () => {
         snapshot,
       ),
     ).toBeNull()
+  })
+  it("writes a helix path as Sweep v2 and reopens it as a helix path", () => {
+    const values = {
+      ...sweepLoftFormValues(mode("sweep")),
+      profileKey: profiles[0]?.key ?? "",
+      pathKind: "helix" as const,
+      handedness: "left" as const,
+      radius: "#missing",
+    }
+    expect(
+      sweepLoftFeatureRecord(mode("sweep"), featureId, values, profiles, paths, snapshot),
+    ).toBeNull()
+    const feature = sweepLoftFeatureRecord(
+      mode("sweep"),
+      featureId,
+      { ...values, radius: "15 mm", turns: "2.5" },
+      profiles,
+      paths,
+      snapshot,
+    )
+    expect(feature?.type).toEqual(sweepFeatureTypeV2.type)
+    expect(feature?.parameters.path).toMatchObject({
+      kind: "helix",
+      axis: { kind: "origin-axis", axis: "Z" },
+      handedness: "left",
+      radius: { value: 15 },
+      extent: { kind: "turns", turns: { value: 2.5 } },
+    })
+    if (!feature) throw new Error("Expected a helical Sweep.")
+    expect(sweepLoftFormValues({ kind: "edit", operation: "sweep", feature })).toMatchObject({
+      pathKind: "helix",
+      radius: "15 mm",
+      turns: "2.5",
+      handedness: "left",
+    })
+    const planar = sweepLoftFeatureRecord(
+      { kind: "edit", operation: "sweep", feature },
+      featureId,
+      {
+        ...values,
+        pathKind: "sketch",
+        pathSketchId: id(4),
+        entityIds: [sketchEntityIdSchema.parse(id(41)), sketchEntityIdSchema.parse(id(42))],
+        startPointId: id(32),
+      },
+      profiles,
+      paths,
+      snapshot,
+    )
+    expect(planar?.type).toEqual(sweepFeatureType.type)
   })
 })
