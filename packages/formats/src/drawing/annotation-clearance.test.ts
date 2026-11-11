@@ -177,7 +177,7 @@ describe("annotation clearance", () => {
           centred("front", 40, 8),
           holed,
           centred("right", 10, 8),
-          centred("isometric", 50 * 0.7071, 8 * 0.8165 + 50 * 0.4082),
+          centred("isometric", 50 * Math.SQRT1_2, 8 * 0.8165 + 50 * 0.4082),
         ],
       },
       { projection: "third-angle", sheetSize: "iso-a3", orientation: "landscape" },
