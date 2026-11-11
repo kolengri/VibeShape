@@ -44,6 +44,7 @@ import {
   mirrorFeatureTypeV3,
 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
+import { patternFeatureTypeV3 } from "@vibeshape/domain/part-design-pattern-path"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { scaleFeatureType } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
@@ -163,6 +164,13 @@ function cadFeatureType(
   if (isFaceExtentExtrudeOperation(operation))
     return faceExtentExtrusionType(operation.arguments.parameters)
   if (operation.tool.endsWith("_loft")) return loftCadFeatureType(operation.arguments.parameters)
+  if (
+    operation.tool === "create_reference_body_pattern" ||
+    operation.tool === "update_reference_body_pattern"
+  )
+    return operation.arguments.parameters.kind === "path"
+      ? patternFeatureTypeV3.type
+      : patternFeatureTypeV2.type
   if (isThreadOperation(operation)) return threadType(operation.arguments.parameters)
   if (isBodySelectionOperation(operation)) return bodySelectionFeatureType(operation)
   if (

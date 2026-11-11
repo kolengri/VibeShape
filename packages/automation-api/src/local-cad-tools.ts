@@ -60,6 +60,10 @@ import {
   patternFeatureParametersSchema,
   patternFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-pattern"
+import {
+  MAX_PATH_PATTERN_DEPENDENCIES,
+  patternFeatureParametersV3Schema,
+} from "@vibeshape/domain/part-design-pattern-path"
 import { placementFeatureParametersSchema } from "@vibeshape/domain/part-design-placement"
 import { scaleFeatureParametersSchema } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureParametersV2Schema } from "@vibeshape/domain/part-design-shell"
@@ -421,17 +425,32 @@ const referenceSplit = z
       context,
     ),
   )
+/** Version 2 reference-axis patterns or version 3 path patterns, selected by `kind`. */
 const referenceBodyPattern = z
-  .object({ ...referenceBodyFeature, parameters: patternFeatureParametersV2Schema })
+  .object({
+    ...referenceBodyFeature,
+    dependencies: featureRecordSchema.shape.dependencies.min(1).max(MAX_PATH_PATTERN_DEPENDENCIES),
+    parameters: z.union([patternFeatureParametersV2Schema, patternFeatureParametersV3Schema]),
+  })
   .strict()
-  .superRefine((input, context) =>
-    matchingReferenceDependencies(
-      input,
-      input.parameters.targetBody,
-      input.parameters.axis,
-      context,
-    ),
-  )
+  .superRefine((input, context) => {
+    const parameters = input.parameters
+    if (parameters.kind !== "path") {
+      matchingReferenceDependencies(input, parameters.targetBody, parameters.axis, context)
+      return
+    }
+    // Sketch support owners follow the target; preview verifies them against the path sketch.
+    if (
+      input.dependencies[0] !== parameters.targetBody.featureId ||
+      input.dependencies.includes(input.featureId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Path patterns require the target first, then the path sketch's support owners, with no self-dependency.",
+      })
+  })
 
 const thread = z
   .object({

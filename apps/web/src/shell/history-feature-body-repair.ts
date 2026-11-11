@@ -10,6 +10,7 @@ import {
   readPatternFeatureParameters,
   readPatternFeatureParametersV2,
 } from "@vibeshape/domain/part-design-pattern"
+import { readPatternFeatureParametersV3 } from "@vibeshape/domain/part-design-pattern-path"
 import { readPlacementFeatureParameters } from "@vibeshape/domain/part-design-placement"
 import { readScaleFeatureParameters } from "@vibeshape/domain/part-design-scale"
 import { readShellFeatureParameters, shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
@@ -30,6 +31,8 @@ type BodyRecipe = Readonly<{
   shellClosed?: boolean
   /** Body-bound faces cannot move to another body; the form keeps the saved record and re-picks. */
   reselectFaces?: true
+  /** Non-body owners after the target, such as a path sketch's supports, stay in place. */
+  retainedDependencies?: readonly FeatureRecord["dependencies"][number][]
 }>
 
 function simpleBodyRecipe(feature: FeatureRecord): BodyRecipe | null {
@@ -50,6 +53,9 @@ function bodyRecipe(feature: FeatureRecord): BodyRecipe | null {
   if (pattern) return { parameters: pattern, support: pattern.axis }
   const split = readSplitFeatureParametersV2(feature)
   if (split) return { parameters: split, support: split.plane }
+  const pathPattern = readPatternFeatureParametersV3(feature)
+  if (pathPattern)
+    return { parameters: pathPattern, retainedDependencies: feature.dependencies.slice(1) }
   const thread = readThreadFeatureParameters(feature)
   if (thread)
     return {
@@ -117,7 +123,7 @@ export function replaceHistoryFeatureBody(
     // Support references retain their owner and signature until explicit re-selection.
     dependencies: support
       ? referenceFrameDependencyIds(body.data.featureId, support)
-      : [body.data.featureId],
+      : [...new Set([body.data.featureId, ...(recipe.retainedDependencies ?? [])])],
   })
   if (!adapted.success || !bodyRecipe(adapted.data)) return null
   return {

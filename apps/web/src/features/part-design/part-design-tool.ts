@@ -57,6 +57,7 @@ import {
   mirrorFeatureTypeV3,
 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
+import { patternFeatureTypeV3 } from "@vibeshape/domain/part-design-pattern-path"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { readPressPullFeatureParameters } from "@vibeshape/domain/part-design-press-pull"
 import { readScaleFeatureParameters } from "@vibeshape/domain/part-design-scale"
@@ -328,7 +329,8 @@ function isThreadFeature(feature: FeatureRecord) {
 function isPatternFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, patternFeatureType.type) ||
-    hasFeatureType(feature, patternFeatureTypeV2.type)
+    hasFeatureType(feature, patternFeatureTypeV2.type) ||
+    hasFeatureType(feature, patternFeatureTypeV3.type)
   )
 }
 function isSplitFeature(feature: FeatureRecord) {
