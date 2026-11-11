@@ -116,18 +116,12 @@ async function storedValues(page: Page) {
   return z.string().parse(await page.evaluate(`Object.values(localStorage).join("\\n")`))
 }
 
-async function reviewBesideChat(page: Page) {
-  const review = page.getByRole("region", { name: "Review AI changes", exact: true })
-  const panel = page.getByRole("complementary", { name: "AI chat", exact: true })
-  const [reviewBounds, chatBounds] = await Promise.all([review.boundingBox(), panel.boundingBox()])
-  expect(reviewBounds).not.toBeNull()
-  expect(chatBounds).not.toBeNull()
-  if (!reviewBounds || !chatBounds) throw new Error("Missing review or chat bounds.")
-  expect(reviewBounds.x + reviewBounds.width).toBeLessThanOrEqual(chatBounds.x + 1)
-  expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true)
-}
-
-async function scriptedBoxApi(page: Page) {
+/**
+ * Scripts discovery, a draft box, its exact preview and commit. With `holdCommit`, the model
+ * response that would request `commit_draft` is held so the test can stop the turn first.
+ */
+async function scriptedBoxApi(page: Page, { holdCommit = false } = {}) {
+  let held: Route | undefined
   let calls = 0,
     draftId = "",
     draftRevision = 0
@@ -168,7 +162,7 @@ async function scriptedBoxApi(page: Page) {
             baseRevision: draftRevision,
             featureId,
             commandId,
-            label: "API review box",
+            label: "API box",
             widthMm: 10,
             depthMm: 20,
             heightMm: 30,
@@ -193,7 +187,7 @@ async function scriptedBoxApi(page: Page) {
         resultSchema.parse(previous)
         return {
           contentType: "text/event-stream",
-          body: finalStream("The reviewed API box was created."),
+          body: finalStream("The API box was created."),
         }
     }
     return {
@@ -217,12 +211,33 @@ async function scriptedBoxApi(page: Page) {
     const last = request.messages.at(-1)
     const previous: unknown = last?.role === "tool" ? JSON.parse(last.content ?? "null") : null
     if (previous) results.push(previous)
-    await route.fulfill({ status: 200, headers, ...nextResponse(previous) })
+    const response = nextResponse(previous)
+    if (holdCommit && calls === 6) {
+      held = route
+      return
+    }
+    await route.fulfill({ status: 200, headers, ...response })
   })
-  return { calls: () => calls, results }
+  return {
+    calls: () => calls,
+    results,
+    held: () => held,
+    async releaseHeldCommit() {
+      await held
+        ?.fulfill({
+          status: 200,
+          headers,
+          contentType: "application/json",
+          body: JSON.stringify(callCad("commit_draft", { draftId }, 5)),
+        })
+        .catch(() => undefined)
+    },
+  }
 }
 
-test("uses the user endpoint and existing CAD draft review before committing an API-authored box", async ({
+// ADR-0116: connecting built-in chat authorizes validated model writes through the exact preview
+// and revision-checked commit, without a per-stage review, and records a turn checkpoint.
+test("uses the user endpoint and commits an API-authored box behind an undoable turn checkpoint", async ({
   page,
 }) => {
   test.setTimeout(120_000)
@@ -234,64 +249,60 @@ test("uses the user endpoint and existing CAD draft review before committing an 
   expect(api.calls()).toBe(0)
   await panel
     .getByRole("textbox", { name: "Message", exact: true })
-    .fill("Create a 10 by 20 by 30 mm box and let me review it.")
+    .fill("Create a 10 by 20 by 30 mm box.")
   await panel.getByRole("button", { name: "Send", exact: true }).click()
-  const review = page.getByRole("region", { name: "Review AI changes", exact: true })
-  await expect(review).toBeVisible({ timeout: 60_000 })
-  await expect(review.getByText("6,000 mm³", { exact: true })).toBeVisible()
-  expect(await inspectProject(page)).toEqual(before)
-  expect(api.calls()).toBe(6)
-  await reviewBesideChat(page)
-  await page.screenshot({
-    path: "artifacts/native-assistant-workflows/direct-api-review.png",
-    animations: "disabled",
+  await expect(panel.getByRole("log")).toContainText("The API box was created.", {
+    timeout: 60_000,
   })
-  await page.setViewportSize({ width: 1024, height: 768 })
-  await reviewBesideChat(page)
-  await review.getByRole("button", { name: "Apply", exact: true }).click()
-  await expect(review).toHaveCount(0)
+  await expect(page.getByRole("region", { name: "Review AI changes", exact: true })).toHaveCount(0)
   await saved(page)
-  await expect(panel.getByRole("log")).toContainText("The reviewed API box was created.")
   expect(await inspectProject(page)).toEqual({
     ...before,
     revision: before.revision + 1,
-    features: [...before.features, { id: featureId, label: "API review box" }],
+    features: [...before.features, { id: featureId, label: "API box" }],
   })
-  await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
-    "data-rendered-feature-count",
-    "1",
-  )
+  const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+  expect(api.calls()).toBe(7)
+  await page.screenshot({
+    path: test.info().outputPath("direct-api-commit.png"),
+    animations: "disabled",
+  })
+
+  await panel.getByRole("button", { name: "Undo agent changes", exact: true }).click()
+  await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
+  await saved(page)
+  expect((await inspectProject(page)).features).toEqual(before.features)
   expect(api.calls()).toBe(7)
   const stored = await storedValues(page)
   expect(stored).not.toContain(key)
   expect(stored).toContain("fixture-model")
 })
 
-test("Stop discards a real pending CAD review and keeps credentials only in memory across project changes", async ({
+test("Stop before the commit request discards the private draft and keeps credentials only in memory across project changes", async ({
   page,
 }) => {
   test.setTimeout(120_000)
-  const api = await scriptedBoxApi(page)
+  const api = await scriptedBoxApi(page, { holdCommit: true })
   await page.setViewportSize({ width: 1024, height: 768 })
   await page.goto("/")
   await saved(page)
   const before = await inspectProject(page)
   const panel = await connect(page)
-  await panel
-    .getByRole("textbox", { name: "Message", exact: true })
-    .fill("Prepare a box for review.")
+  await panel.getByRole("textbox", { name: "Message", exact: true }).fill("Prepare a box.")
   await panel.getByRole("button", { name: "Send", exact: true }).click()
-  const review = page.getByRole("region", { name: "Review AI changes", exact: true })
-  await expect(review).toBeVisible({ timeout: 60_000 })
-  await reviewBesideChat(page)
+  // The draft and its exact preview exist privately; the model's commit request is in flight.
+  await expect.poll(() => Boolean(api.held()), { timeout: 60_000 }).toBe(true)
+  expect(api.calls()).toBe(6)
   await panel.getByRole("button", { name: "Stop", exact: true }).click()
-  await expect(review.getByRole("status")).toHaveText(
-    "This review was cancelled because its session or calculation ended.",
+  await api.releaseHeldCommit()
+  // The stopped turn ignores the late commit request; the composer is idle again.
+  await expect(panel.getByRole("button", { name: "Send", exact: true })).toBeVisible()
+  await saved(page)
+  await expect(page.getByRole("region", { name: "Review AI changes", exact: true })).toHaveCount(0)
+  await expect(panel.getByRole("button", { name: "Undo agent changes", exact: true })).toHaveCount(
+    0,
   )
-  await expect(review.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0)
-  expect(await inspectProject(page)).toEqual(before)
-  await review.getByRole("button", { name: "Close", exact: true }).click()
-  await expect(review).toHaveCount(0)
   expect(await inspectProject(page)).toEqual(before)
   expect(api.calls()).toBe(6)
   await openApplicationMenuItem(page, "New project")
