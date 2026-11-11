@@ -171,6 +171,7 @@ export function HistoryFolderSelection({
   disabled,
   rows,
   onCommit,
+  onItemsDeleted,
   children,
 }: {
   controller?: DocumentControllerState | undefined
@@ -178,6 +179,7 @@ export function HistoryFolderSelection({
   disabled: boolean
   rows: readonly HistoryViewRow[]
   onCommit: AuthoredMetadataCommit | undefined
+  onItemsDeleted?: ((removed: readonly HistoryItemRef[]) => void) | undefined
   children: ReactNode
 }) {
   if (!authority || !onCommit) return children
@@ -189,6 +191,7 @@ export function HistoryFolderSelection({
       disabled={disabled}
       rows={rows}
       onCommit={onCommit}
+      onItemsDeleted={onItemsDeleted}
     >
       {children}
     </HistoryFolderSelectionScope>
@@ -201,6 +204,7 @@ function HistoryFolderSelectionScope({
   disabled,
   rows,
   onCommit,
+  onItemsDeleted,
   children,
 }: {
   controller: DocumentControllerState | undefined
@@ -208,6 +212,7 @@ function HistoryFolderSelectionScope({
   disabled: boolean
   rows: readonly HistoryViewRow[]
   onCommit: AuthoredMetadataCommit
+  onItemsDeleted: ((removed: readonly HistoryItemRef[]) => void) | undefined
   children: ReactNode
 }) {
   const [selection, setSelection] = useState<FolderSelection>({ keys: [], anchor: null })
@@ -227,7 +232,10 @@ function HistoryFolderSelectionScope({
     controller,
     targets: authority.history.filter((item) => selectedKeys.has(historyItemKey(item))),
     disabled: locked || creation !== null,
-    onDeleted: clear,
+    onDeleted: (removed) => {
+      clear()
+      onItemsDeleted?.(removed)
+    },
   })
   const select = (key: string, gesture: SelectionGesture) => {
     setSelection((previous) => nextSelection(authority, previous, key, gesture))

@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
-import { confirmSketchPlane } from "./sketch-helpers"
+import { confirmSketchPlane, unobscuredDrawingBounds } from "./sketch-helpers"
 
 type ScreenMatrix = Readonly<{ a: number; b: number; c: number; d: number; e: number; f: number }>
 
@@ -197,8 +197,10 @@ test("blocks placement on an edge-on plane and recovers without losing the drawi
       { exact: true },
     ),
   ).toBeVisible()
-  await drawing.click({ position: { x: 100, y: 250 } })
-  await drawing.click({ position: { x: 200, y: 300 } })
+  // Click inside the canvas region the floating windows leave free.
+  const free = await unobscuredDrawingBounds(page, drawing)
+  await page.mouse.click(free.x + free.width * 0.3, free.y + free.height * 0.4)
+  await page.mouse.click(free.x + free.width * 0.6, free.y + free.height * 0.6)
   await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(0)
   await standardView(page, "Isometric")
   await expect(drawing).toHaveAttribute("data-sketch-plane-available", "true")

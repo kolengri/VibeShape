@@ -152,7 +152,8 @@ export function useHistorySelectionDelete({
   controller: DocumentControllerState | null | undefined
   targets: readonly HistorySelectionDeleteTarget[]
   disabled: boolean
-  onDeleted: () => void
+  /** Receives the History items the confirmed removal deleted. */
+  onDeleted: (removed: RemovalPlan["targets"]) => void
 }) {
   const t = useTranslations("app.shell.selectionDelete")
   const [request, setRequest] = useState<RemovalPlan | null>(null)
@@ -209,7 +210,7 @@ export function useHistorySelectionDelete({
       }
       requestRef.current = null
       setRequest(null)
-      onDeleted()
+      onDeleted(request.targets)
     } catch {
       setFailure(t("failed"))
     } finally {

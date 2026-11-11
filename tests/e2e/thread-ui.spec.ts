@@ -22,9 +22,13 @@ test("models a variable-pitch thread, blocks invalid and missed bands, cancels, 
   await page.getByRole("textbox", { name: "Variable name", exact: true }).fill("pitch")
   await page.getByRole("combobox", { name: "Variable expression", exact: true }).fill("2 mm")
   await page.getByRole("button", { name: "Apply variables", exact: true }).click()
+  // Variables is a modal dialog; the status bar behind it stays hidden until it closes.
+  await page
+    .getByRole("dialog", { name: "Variables", exact: true })
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole("button", { name: "Done", exact: true })
+    .click()
   await saved(page)
-  const commands = page.getByRole("toolbar", { name: "Model commands" })
-  await commands.getByRole("button", { name: "Model", exact: true }).click()
   await invokeModelCommand(page, "Primitives", "Cylinder")
   const cylinder = page.getByRole("form", { name: "Create cylinder", exact: true })
   await cylinder.getByRole("combobox", { name: "Radius", exact: true }).fill("5 mm")

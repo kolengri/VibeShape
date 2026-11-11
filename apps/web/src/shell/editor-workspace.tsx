@@ -75,6 +75,7 @@ import type {
   PartVisibilityControl,
   PartVisibilityOverrides,
 } from "../editor-session/part-visibility"
+import { sketchOperationActive } from "../editor-session/sketch-operation"
 import { useEdgeTreatmentPicking } from "../features/edge-treatment/use-edge-treatment-picking"
 import type { ExtrusionDistanceRequest } from "../features/extrusion/extrusion-distance-manipulator"
 import {
@@ -122,8 +123,8 @@ import {
   availableExternalModelGeometryCandidates,
   availableExternalModelPierceCandidates,
   type ExternalModelGeometryCandidate,
-  type ExternalModelLineCandidate,
   type ExternalModelGeometryRecord,
+  type ExternalModelLineCandidate,
   externalModelCurveLabelKind,
   planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
@@ -2255,6 +2256,10 @@ function EditorModelTree({
       activeWorkspace={workspace}
       activeFeatureId={activeFeatureId(activeTool)}
       activeSketchId={activeSketchId}
+      sketchOperationActive={sketchOperationActive({
+        activeSketchTool: props.activeSketchTool,
+        draft: props.sketchDraft,
+      })}
       controller={controller}
       hiddenFeatureIds={props.hiddenFeatureIds}
       hiddenSketchIds={props.hiddenSketchIds}

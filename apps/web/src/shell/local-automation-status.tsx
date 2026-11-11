@@ -206,7 +206,8 @@ function ExternalConnectionApproval({
               value="manual"
               disabled={current.busy}
               onSelect={() => {
-                if (current.autoApply) setFailed(!connection.disableAutoApply())
+                // Always persist an explicit Manual choice, even when manual is already shown.
+                setFailed(!connection.disableAutoApply())
               }}
             >
               {t("manualApproval")}

@@ -50,8 +50,11 @@ test.describe("document variables", () => {
     ).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
 
+    // Variables opens as a modal dialog titled by its heading.
     await expect(
-      page.getByRole("heading", { name: "Variables", exact: true, level: 1 }),
+      page
+        .getByRole("dialog", { name: "Variables", exact: true })
+        .getByRole("heading", { name: "Variables", exact: true }),
     ).toBeVisible()
     await expect(page.getByRole("table", { name: "Document variables" })).toBeVisible()
     await page.getByRole("button", { name: "Add variable" }).click()

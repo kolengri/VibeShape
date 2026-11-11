@@ -387,7 +387,7 @@ async function expectFailedAutomationCommit(
     await expect(toolbar.getByRole("button", { name: "Undo", exact: true })).toBeDisabled()
   if (mode === "failure") {
     const review = page.getByRole("region", { name: "Review AI changes", exact: true })
-    await expect(review.getByRole("status")).toContainText("save could not be confirmed")
+    await expect(review.getByRole("alert")).toContainText("save could not be confirmed")
     await review.getByRole("button", { name: "Close", exact: true }).click()
     await invokeModelCommand(page, "Primitives", "Box")
     await page
