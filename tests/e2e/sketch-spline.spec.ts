@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
-import { confirmSketchPlane } from "./sketch-helpers"
+import { confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
 
 async function screenPoint(drawing: Locator, x: number, y: number) {
   return drawing.locator("[data-sketch-plane-projection]").evaluate(
@@ -183,7 +183,7 @@ async function expectProjectionMoved(projection: Locator, before: readonly numbe
     .toBeGreaterThan(0.0001)
 }
 
-test("creates a four-click cubic Spline, cancels previews, drags a control and retains identities through Undo and reopening", async ({
+test("creates a four-click cubic Bezier curve, cancels previews, drags a control and retains identities through Undo and reopening", async ({
   page,
   browserName,
 }) => {
@@ -201,7 +201,7 @@ test("creates a four-click cubic Spline, cancels previews, drags a control and r
   await toolbar.getByRole("button", { name: "Create sketch", exact: true }).click()
   await confirmSketchPlane(page)
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  await toolbar.getByRole("button", { name: "Spline", exact: true }).click()
+  await selectSketchTool(page, "Spline tools", "Bezier curve")
   await clickPoint(page, drawing, 0, 0)
   await clickPoint(page, drawing, 0, 10)
   await moveToPoint(page, drawing, 20, 10)

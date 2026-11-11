@@ -69,7 +69,8 @@ export const editorCommandIds = {
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
   sketchEllipse: "org.vibeshape.editor.sketch.tool.ellipse",
   sketchText: "org.vibeshape.editor.sketch.text",
-  sketchSpline: "org.vibeshape.editor.sketch.tool.cubic-bezier",
+  sketchBezier: "org.vibeshape.editor.sketch.tool.cubic-bezier",
+  sketchSpline: "org.vibeshape.editor.sketch.tool.spline",
   sketchEllipticalArc: "org.vibeshape.editor.sketch.tool.elliptical-arc",
   sketchCircularPattern: "org.vibeshape.editor.sketch.modify.circular-pattern",
   sketchCircumscribedPolygon: "org.vibeshape.editor.sketch.tool.circumscribed-polygon",
@@ -127,6 +128,7 @@ export type EditorCommandSketchFamilyId =
   | "polygon"
   | "rectangle"
   | "slot"
+  | "spline"
 
 type EditorCommandSketchPresentationBase = Readonly<{
   compactToolbar?: "visible" | "overflow"
@@ -174,6 +176,7 @@ export type EditorCommandIcon =
   | "circle"
   | "ellipse"
   | "spline"
+  | "interpolated-spline"
   | "text"
   | "elliptical-arc"
   | "circular-pattern"
@@ -297,6 +300,7 @@ export type EditorCommandLabelKey =
   | "sketchCircle"
   | "sketchEllipse"
   | "sketchSpline"
+  | "sketchBezier"
   | "sketchText"
   | "sketchEllipticalArc"
   | "sketchCircularPattern"

@@ -130,6 +130,7 @@ export {
   IndicatorCheckIcon,
   InformationIcon,
   InscribedPolygonIcon,
+  InterpolatedSplineIcon,
   IntersectionCurveIcon,
   IntersectionIcon,
   KeyboardIcon as Keyboard,

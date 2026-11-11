@@ -13,12 +13,14 @@ import {
   type SketchRecord,
   sketchArcEntitySchema,
   sketchCircleEntitySchema,
+  sketchCubicBezierEntitySchema,
   sketchEllipseEntitySchema,
   sketchEllipticalArcEntitySchema,
   sketchLineEntitySchema,
   sketchPointEntitySchema,
   sketchRecordSchema,
 } from "@vibeshape/domain/sketch"
+import { sketchConstraintEntityIds, sketchCurvePointIds } from "@vibeshape/domain/sketch-edit"
 import {
   evaluateVariableDefinitions,
   resolveQuantityExpression,
@@ -137,6 +139,36 @@ const externalCurveSchema = z
     }
   })
 
+/**
+ * A fixed projected cubic Bezier chain: curve `i` uses points `3i` through `3i + 3`, so
+ * consecutive curves share their joint point.
+ */
+const externalCurveChainSchema = z
+  .object({
+    curves: z.array(sketchCubicBezierEntitySchema).min(1).max(64),
+    points: z.array(sketchPointEntitySchema).min(4).max(193),
+  })
+  .strict()
+  .superRefine(({ curves, points }, context) => {
+    const pointId = (index: number) => points[index]?.id
+    const chained =
+      points.length === curves.length * 3 + 1 &&
+      curves.every(
+        (curve, index) =>
+          curve.startPointId === pointId(index * 3) &&
+          curve.control1PointId === pointId(index * 3 + 1) &&
+          curve.control2PointId === pointId(index * 3 + 2) &&
+          curve.endPointId === pointId(index * 3 + 3),
+      )
+    if (!chained) {
+      context.addIssue({
+        code: "custom",
+        path: ["curves"],
+        message: "External curve chains must use their points in chained role order.",
+      })
+    }
+  })
+
 const sketchCompilationInputSchema = z
   .object({
     revision: revisionSchema,
@@ -144,6 +176,7 @@ const sketchCompilationInputSchema = z
     externalPoints: z.array(sketchPointEntitySchema).max(4_990).default([]),
     externalLines: z.array(externalLineSchema).max(1_663).default([]),
     externalCurves: z.array(externalCurveSchema).max(1_247).default([]),
+    externalCurveChains: z.array(externalCurveChainSchema).max(256).default([]),
     variables: variableDefinitionsSchema.default([]),
     continuation: sketchSolveContinuationSchema.nullable().default(null),
     draggedPoints: z.array(sketchDragTargetSchema).max(128).default([]),
@@ -211,11 +244,22 @@ function validateExternalGeometry(input: SketchCompilationSchemaInput, context: 
     entityIds,
     context,
   )
+  validateExternalEntityGroups(
+    input.externalCurveChains.map(({ points, curves }) => [...points, ...curves]),
+    "externalCurveChains",
+    "External sketch curve chain IDs cannot collide with other sketch entities.",
+    entityIds,
+    context,
+  )
   if (
     input.sketch.entities.length +
       input.externalPoints.length +
       input.externalLines.length * 3 +
-      input.externalCurves.reduce((count, curve) => count + curve.points.length + 1, 0) <=
+      input.externalCurves.reduce((count, curve) => count + curve.points.length + 1, 0) +
+      input.externalCurveChains.reduce(
+        (count, chain) => count + chain.points.length + chain.curves.length,
+        0,
+      ) <=
     4_990
   ) {
     return
@@ -229,7 +273,7 @@ function validateExternalGeometry(input: SketchCompilationSchemaInput, context: 
 
 function validateExternalEntityGroups(
   groups: readonly (readonly { id: string }[])[],
-  path: "externalCurves" | "externalLines" | "externalPoints",
+  path: "externalCurveChains" | "externalCurves" | "externalLines" | "externalPoints",
   message: string,
   entityIds: Set<string>,
   context: z.RefinementCtx,
@@ -271,6 +315,8 @@ export type CompiledSketchSystem = Readonly<{
   system: FlatSketchSystemInput
   bindings: SketchBindings
   boundedEllipticalArcLoci: readonly BoundedEllipticalArcLocus[]
+  /** Tangent joins whose handles the predictor holds; zero outside predictor compilation. */
+  heldTangentJoinCount: number
 }>
 
 export type SketchCompilationResult =
@@ -397,6 +443,8 @@ class ProductionSketchBuilder {
   #nextEntity = 301
   #nextConstraint = 1
   #horizontalAxis = 0
+  /** Points the caller drags explicitly; a dragged handle orients its join for that solve. */
+  readonly draggedPointIds = new Set<string>()
   #verticalAxis = 0
 
   constructor() {
@@ -812,6 +860,32 @@ class ProductionSketchBuilder {
     return { handle, index }
   }
 
+  /**
+   * Adds an auxiliary point held at a fixed sketch-axis offset from a moving anchor, so the pair
+   * translates together during a solve instead of staying at absolute coordinates.
+   */
+  addAnchoredAuxiliaryPoint(
+    id: SketchConstraintId,
+    anchor: number,
+    position: { x: number; y: number },
+    offset: { x: number; y: number },
+  ) {
+    const handle = this.#addAuxiliaryPoint(position)
+    for (const [direction, value] of [
+      ["horizontal", offset.x],
+      ["vertical", offset.y],
+    ] as const) {
+      // Projected distance is the auxiliary coordinate minus the anchor coordinate on that axis.
+      this.addConstraint(id, SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance, {
+        pointA: handle,
+        pointB: anchor,
+        entityA: this.projectedAxis(direction),
+        value,
+      })
+    }
+    return handle
+  }
+
   #addAuxiliaryPoint(point: { x: number; y: number }) {
     const x = this.#addParameter(point.x).handle
     const y = this.#addParameter(point.y).handle
@@ -899,6 +973,248 @@ function initialPointValues(
     values.set(target.entityId, { x: target.x, y: target.y })
   }
   return values
+}
+
+type CubicBezierEntity = Extract<SketchEntity, { type: "cubic-bezier" }>
+type PointValues = ReadonlyMap<SketchEntityId, { x: number; y: number }>
+
+function tangentJoinCurves(
+  curves: ReadonlyMap<string, CubicBezierEntity>,
+  constraint: SketchConstraint,
+) {
+  if (constraint.type !== "tangent-join") return null
+  const incoming = curves.get(constraint.incomingCurveId)
+  const outgoing = curves.get(constraint.outgoingCurveId)
+  return incoming && outgoing ? { incoming, outgoing } : null
+}
+
+function cubicBezierEntities(sketch: SketchRecord): ReadonlyMap<string, CubicBezierEntity> {
+  return new Map(
+    sketch.entities.flatMap((entity) =>
+      entity.type === "cubic-bezier" ? [[entity.id, entity] as const] : [],
+    ),
+  )
+}
+
+/** Translates the free handles of one dragged join point by the drag displacement. */
+/** The drag displacement of a join point, directly or through a point coincident with it. */
+function joinDragDisplacement(
+  joinId: SketchEntityId,
+  currentValues: PointValues,
+  dragged: ReadonlyMap<string, SketchDragTarget>,
+  coincident: ReadonlyMap<string, readonly string[]>,
+) {
+  for (const pointId of [joinId, ...(coincident.get(joinId) ?? [])]) {
+    const target = dragged.get(pointId)
+    const current = currentValues.get(pointId as SketchEntityId)
+    if (target && current) return { x: target.x - current.x, y: target.y - current.y }
+  }
+  return null
+}
+
+function coincidentPartners(sketch: SketchRecord) {
+  const partners = new Map<string, string[]>()
+  for (const constraint of sketch.constraints) {
+    if (constraint.type !== "coincident") continue
+    const { firstPointId: first, secondPointId: second } = constraint
+    partners.set(first, [...(partners.get(first) ?? []), second])
+    partners.set(second, [...(partners.get(second) ?? []), first])
+  }
+  return partners
+}
+
+function carriedJoinHandles(
+  join: Readonly<{ incoming: CubicBezierEntity; outgoing: CubicBezierEntity }>,
+  currentValues: PointValues,
+  dragged: ReadonlyMap<string, SketchDragTarget>,
+  fixedPointIds: ReadonlySet<string>,
+  coincident: ReadonlyMap<string, readonly string[]>,
+): SketchDragTarget[] {
+  const displacement = joinDragDisplacement(
+    join.incoming.endPointId,
+    currentValues,
+    dragged,
+    coincident,
+  )
+  if (!displacement) return []
+  return [join.incoming.control2PointId, join.outgoing.control1PointId].flatMap((handleId) => {
+    const handle = currentValues.get(handleId)
+    // A fixed handle keeps its authored position; carrying it would rewrite its pin.
+    if (!handle || dragged.has(handleId) || fixedPointIds.has(handleId)) return []
+    return [{ entityId: handleId, x: handle.x + displacement.x, y: handle.y + displacement.y }]
+  })
+}
+
+/**
+ * Dragging the shared through-point of a tangent join, or a point coincident with it, carries both
+ * adjacent handles rigidly, so the join keeps its tangent direction and handle lengths instead of
+ * letting least-movement collapse a handle.
+ */
+function withTangentJoinHandleDrags(
+  sketch: SketchRecord,
+  currentValues: PointValues | null,
+  draggedPoints: readonly SketchDragTarget[],
+): readonly SketchDragTarget[] {
+  if (!currentValues || draggedPoints.length === 0) return draggedPoints
+  const curves = cubicBezierEntities(sketch)
+  const dragged = new Map(draggedPoints.map((target) => [target.entityId as string, target]))
+  const fixedPointIds = new Set<string>(
+    sketch.constraints.flatMap((constraint) =>
+      constraint.type === "fixed" ? [constraint.pointId] : [],
+    ),
+  )
+  const coincident = coincidentPartners(sketch)
+  for (const constraint of sketch.constraints) {
+    const join = tangentJoinCurves(curves, constraint)
+    if (!join) continue
+    const carriedHandles = carriedJoinHandles(
+      join,
+      currentValues,
+      dragged,
+      fixedPointIds,
+      coincident,
+    )
+    for (const carried of carriedHandles) {
+      dragged.set(carried.entityId, carried)
+    }
+  }
+  return dragged.size === draggedPoints.length ? draggedPoints : [...dragged.values()]
+}
+
+/**
+ * When exactly one handle of a join is dragged, seeds the free opposite handle on the mirrored
+ * tangent at its own length. Newton then starts from a G1 state, so a flick that turns the tangent
+ * by more than a quarter turn converges instead of stalling at the half-plane boundary.
+ */
+function mirrorOppositeHandleSeeds(
+  sketch: SketchRecord,
+  pointValues: Map<SketchEntityId, { x: number; y: number }>,
+  draggedPoints: readonly SketchDragTarget[],
+) {
+  const dragged = new Set<string>(draggedPoints.map(({ entityId }) => entityId))
+  const fixed = new Set<string>(
+    sketch.constraints.flatMap((constraint) =>
+      constraint.type === "fixed" ? [constraint.pointId] : [],
+    ),
+  )
+  const curves = cubicBezierEntities(sketch)
+  for (const constraint of sketch.constraints) {
+    const join = tangentJoinCurves(curves, constraint)
+    const seed = join ? mirroredHandleSeed(join, pointValues, dragged, fixed) : null
+    if (seed) pointValues.set(seed.id, seed.point)
+  }
+}
+
+function mirroredHandleSeed(
+  join: Readonly<{ incoming: CubicBezierEntity; outgoing: CubicBezierEntity }>,
+  pointValues: PointValues,
+  dragged: ReadonlySet<string>,
+  fixed: ReadonlySet<string>,
+) {
+  const pair = [join.incoming.control2PointId, join.outgoing.control1PointId] as const
+  const leadIndex = pair.findIndex((id) => dragged.has(id))
+  const lead = pair[leadIndex]
+  const follower = pair[1 - leadIndex]
+  if (!lead || !follower || dragged.has(follower) || fixed.has(follower)) return null
+  const at = pointValues.get(join.incoming.endPointId)
+  const leading = pointValues.get(lead)
+  const following = pointValues.get(follower)
+  if (!at || !leading || !following) return null
+  const leadLength = Math.hypot(leading.x - at.x, leading.y - at.y)
+  if (leadLength <= 1e-9) return null
+  const length = Math.hypot(following.x - at.x, following.y - at.y)
+  return {
+    id: follower,
+    point: {
+      x: at.x - ((leading.x - at.x) / leadLength) * length,
+      y: at.y - ((leading.y - at.y) / leadLength) * length,
+    },
+  }
+}
+
+type HeldTangentJoin = Readonly<{
+  constraintId: SketchConstraintId
+  joinId: SketchEntityId
+  /** Both handles with their current offsets from the through-point. */
+  handles: readonly Readonly<{ id: SketchEntityId; dx: number; dy: number }>[]
+}>
+
+/**
+ * Points a driving constraint can move. A constraint on a curve (a horizontal construction line from
+ * a through-point to its handle, say) drives the curve's defining points, so those count too.
+ * Reference dimensions only measure, and tangent joins are what the predictor replaces.
+ */
+function drivenPointIds(
+  entitiesById: ReadonlyMap<string, SketchEntity>,
+  constraint: SketchConstraint,
+): readonly string[] {
+  if (constraint.type === "tangent-join" || isReferenceSketchDimension(constraint)) return []
+  return sketchConstraintEntityIds(constraint).flatMap((entityId) => {
+    const entity = entitiesById.get(entityId)
+    return entity && entity.type !== "point" ? sketchCurvePointIds(entity) : [entityId]
+  })
+}
+
+/**
+ * Predictor intent: each free handle keeps its offset from its through-point, so a join that moves
+ * for any reason (a dimension, a coincident drag) translates rigidly with its handles. Explicitly
+ * dragged handles and handles driven by any other constraint, directly or through a curve that
+ * shares them, stay free, so user intent is never overridden and the holds never duplicate a user
+ * constraint. Each hold only ties an otherwise
+ * unconstrained handle to its join, so it cannot conflict; the predictor still falls back to the
+ * ordinary solve as a whole when the sketch itself is over-constrained or does not converge.
+ */
+function heldTangentJoins(
+  sketch: SketchRecord,
+  currentValues: PointValues,
+  draggedPoints: readonly SketchDragTarget[],
+): HeldTangentJoin[] {
+  const curves = cubicBezierEntities(sketch)
+  const entitiesById = new Map<string, SketchEntity>(
+    sketch.entities.map((entity) => [entity.id, entity]),
+  )
+  const pinned = new Set<string>([
+    ...draggedPoints.map(({ entityId }) => entityId),
+    ...sketch.constraints.flatMap((constraint) => drivenPointIds(entitiesById, constraint)),
+  ])
+  return sketch.constraints.flatMap((constraint) => {
+    const join = tangentJoinCurves(curves, constraint)
+    const at = join ? currentValues.get(join.incoming.endPointId) : undefined
+    if (!join || !at) return []
+    const handleIds = [join.incoming.control2PointId, join.outgoing.control1PointId]
+    // Holding only one handle would lock the tangent direction, so a driven or dragged handle could
+    // turn the join only by moving its through-point. Such joins keep their ordinary constraint.
+    if (handleIds.some((id) => pinned.has(id))) return []
+    const handles = handleIds.flatMap((id) => {
+      const handle = currentValues.get(id)
+      return handle ? [{ id, dx: handle.x - at.x, dy: handle.y - at.y }] : []
+    })
+    if (handles.length !== handleIds.length) return []
+    return [{ constraintId: constraint.id, joinId: join.incoming.endPointId, handles }]
+  })
+}
+
+function withoutRedundantTangentJoins(sketch: SketchRecord, held: readonly HeldTangentJoin[]) {
+  // Both handles are held, which already implies each held join's G1 constraint.
+  const implied = new Set<string>(held.map((join) => join.constraintId))
+  if (implied.size === 0) return sketch
+  return { ...sketch, constraints: sketch.constraints.filter(({ id }) => !implied.has(id)) }
+}
+
+function holdJoinHandles(builder: ProductionSketchBuilder, held: HeldTangentJoin) {
+  for (const handle of held.handles) {
+    for (const [direction, value] of [
+      ["horizontal", handle.dx],
+      ["vertical", handle.dy],
+    ] as const) {
+      builder.addConstraint(held.constraintId, SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance, {
+        pointA: builder.entity(handle.id),
+        pointB: builder.entity(held.joinId),
+        entityA: builder.projectedAxis(direction),
+        value,
+      })
+    }
+  }
 }
 
 function initialCircleRadii(
@@ -1523,6 +1839,10 @@ function addConstraint(
   if (constraint.type === "point-on-elliptical-arc") {
     return builder.addEllipticalArcPointLocusConstraint(constraint, pointValues)
   }
+  if (constraint.type === "tangent-join") {
+    addTangentJoinConstraint(builder, sketch, constraint, pointValues)
+    return true
+  }
   if (isPointConstraint(constraint)) {
     addPointConstraint(builder, constraint)
     return true
@@ -1532,6 +1852,91 @@ function addConstraint(
     return true
   }
   return addDimensionConstraint(builder, sketch, constraint, variables)
+}
+
+/**
+ * Compiles a G1 join as SolveSpace curve-curve tangency plus strict handle ordering. Tangency alone
+ * also admits a cusp where both handles point the same way, so an auxiliary point held at a fixed
+ * offset along the initial join normal defines a separating line through the moving join point;
+ * the two handles must stay on opposite sides of it. Within one solve the join tangent therefore
+ * turns by less than a quarter turn. The slack-variable half-plane equations add no freedom, and
+ * `invalidTangentJoinConstraintIds` rejects any converged result that is not strictly G1.
+ */
+function addTangentJoinConstraint(
+  builder: ProductionSketchBuilder,
+  sketch: SketchRecord,
+  constraint: Extract<SketchConstraint, { type: "tangent-join" }>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.curveCurveTangent, {
+    entityA: builder.entity(constraint.incomingCurveId),
+    entityB: builder.entity(constraint.outgoingCurveId),
+    other: 1,
+    other2: 0,
+  })
+  const handles = tangentJoinHandles(sketch, constraint, pointValues, builder.draggedPointIds)
+  if (!handles) return
+  const { incomingControlId, joinId, outgoingControlId, normal, join, scale } = handles
+  const offset = { x: normal.x * scale, y: normal.y * scale }
+  // The separator moves with the join, so a large join translation cannot flip the half-planes.
+  const separator = builder.addAnchoredAuxiliaryPoint(
+    constraint.id,
+    builder.entity(joinId),
+    { x: join.x + offset.x, y: join.y + offset.y },
+    offset,
+  )
+  for (const [controlId, ahead] of [
+    [outgoingControlId, true],
+    [incomingControlId, false],
+  ] as const) {
+    const control = pointValues.get(controlId)
+    if (!control) continue
+    // h = cross(separator - join, control - join) = -scale * dot(tangent, control - join).
+    const cross = scale * (normal.x * (control.y - join.y) - normal.y * (control.x - join.x))
+    builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointInOrientedChordHalfPlane, {
+      pointA: builder.entity(controlId),
+      pointB: builder.entity(joinId),
+      entityA: separator,
+      other: ahead ? 1 : 0,
+      value: Math.sqrt(Math.max(ahead ? -cross : cross, 0)),
+    })
+  }
+}
+
+function tangentJoinHandles(
+  sketch: SketchRecord,
+  constraint: Extract<SketchConstraint, { type: "tangent-join" }>,
+  pointValues: PointValues,
+  draggedPointIds: ReadonlySet<string>,
+) {
+  const curves = tangentJoinCurves(cubicBezierEntities(sketch), constraint)
+  if (!curves) return null
+  const { incoming, outgoing } = curves
+  const join = pointValues.get(incoming.endPointId)
+  const before = pointValues.get(incoming.control2PointId)
+  const after = pointValues.get(outgoing.control1PointId)
+  if (!join || !before || !after) return null
+  const incomingLength = Math.hypot(join.x - before.x, join.y - before.y)
+  const outgoingLength = Math.hypot(after.x - join.x, after.y - join.y)
+  // The incoming handle orients the join unless the outgoing handle is the one being dragged, so a
+  // fast flick of either handle orients the separator from its drag target; a collapsed handle
+  // defers to the other one.
+  const outgoingLeads =
+    outgoingLength > 1e-9 &&
+    (incomingLength <= 1e-9 || draggedPointIds.has(outgoing.control1PointId))
+  const [from, to, length] = outgoingLeads
+    ? [join, after, outgoingLength]
+    : [before, join, incomingLength]
+  // A zero-length handle pair has no orientation to preserve; tangency remains authoritative.
+  if (length <= 1e-9) return null
+  return {
+    incomingControlId: incoming.control2PointId,
+    joinId: incoming.endPointId,
+    outgoingControlId: outgoing.control1PointId,
+    join,
+    normal: { x: -(to.y - from.y) / length, y: (to.x - from.x) / length },
+    scale: Math.max(incomingLength, outgoingLength),
+  }
 }
 
 function addSketchPointEntity(
@@ -1604,6 +2009,17 @@ function addFixedExternalPoints(
   }
 }
 
+function addFixedExternalCurveChains(
+  builder: ProductionSketchBuilder,
+  chains: readonly z.infer<typeof externalCurveChainSchema>[],
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  for (const { curves, points } of chains) {
+    addFixedExternalPoints(builder, points, pointValues)
+    for (const curve of curves) builder.addCubicBezier(curve)
+  }
+}
+
 function addFixedExternalCurves(
   builder: ProductionSketchBuilder,
   curves: readonly z.infer<typeof externalCurveSchema>[],
@@ -1664,7 +2080,15 @@ function boundedEllipticalArcLoci(
   })
 }
 
-export function compileSketchSystem(inputValue: SketchCompilationInput): SketchCompilationResult {
+export type SketchCompilationOptions = Readonly<{
+  /** Holds every free tangent-join handle at its current offset from its through-point. */
+  holdTangentJoinHandles?: boolean
+}>
+
+export function compileSketchSystem(
+  inputValue: SketchCompilationInput,
+  options: SketchCompilationOptions = {},
+): SketchCompilationResult {
   const input = sketchCompilationInputSchema.safeParse(inputValue)
   if (!input.success) {
     const issue = input.error.issues[0]
@@ -1678,16 +2102,23 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
   if (!variables.ok) {
     return compilationFailure("invalid-variables", variables.diagnostic.message, "variables")
   }
-  const pointValues = initialPointValues(
-    [
-      ...input.data.sketch.entities,
-      ...input.data.externalPoints,
-      ...input.data.externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
-      ...input.data.externalCurves.flatMap(({ points }) => points),
-    ],
-    input.data.continuation,
+  const solveEntities = [
+    ...input.data.sketch.entities,
+    ...input.data.externalPoints,
+    ...input.data.externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
+    ...input.data.externalCurves.flatMap(({ points }) => points),
+    ...input.data.externalCurveChains.flatMap(({ points }) => points),
+  ]
+  const currentValues = initialPointValues(solveEntities, input.data.continuation, [])
+  const draggedPoints = withTangentJoinHandleDrags(
+    input.data.sketch,
+    currentValues,
     input.data.draggedPoints,
   )
+  const pointValues = initialPointValues(solveEntities, input.data.continuation, draggedPoints)
+  if (pointValues) {
+    mirrorOppositeHandleSeeds(input.data.sketch, pointValues, input.data.draggedPoints)
+  }
   const circleRadii = initialCircleRadii(
     [...input.data.sketch.entities, ...input.data.externalCurves.map(({ curve }) => curve)],
     input.data.continuation,
@@ -1704,6 +2135,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
   selectEllipticalArcPointSeeds(input.data.sketch, input.data.externalCurves, pointValues)
 
   const builder = new ProductionSketchBuilder()
+  for (const { entityId } of input.data.draggedPoints) builder.draggedPointIds.add(entityId)
   addSketchEntities(
     builder,
     input.data.sketch,
@@ -1713,9 +2145,14 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     pointValues,
     circleRadii,
   )
+  addFixedExternalCurveChains(builder, input.data.externalCurveChains, pointValues)
+  const heldJoins =
+    options.holdTangentJoinHandles && currentValues
+      ? heldTangentJoins(input.data.sketch, currentValues, input.data.draggedPoints)
+      : []
   const invalidConstraintIndex = addSketchConstraints(
     builder,
-    input.data.sketch,
+    withoutRedundantTangentJoins(input.data.sketch, heldJoins),
     input.data.externalLines,
     input.data.externalCurves,
     variables,
@@ -1728,18 +2165,20 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
       `sketch.constraints.${invalidConstraintIndex}.value`,
     )
   }
+  for (const held of heldJoins) holdJoinHandles(builder, held)
 
   return {
     ok: true,
     compiled: {
       sketch: input.data.sketch,
       revision: input.data.revision,
-      system: builder.build(input.data.draggedPoints.map((target) => target.entityId)),
+      system: builder.build(draggedPoints.map((target) => target.entityId)),
       bindings: builder.bindings(),
       boundedEllipticalArcLoci: boundedEllipticalArcLoci(
         input.data.sketch,
         input.data.externalCurves,
       ),
+      heldTangentJoinCount: heldJoins.length,
     },
   }
 }
@@ -1785,6 +2224,59 @@ function profileResultForSolve(
   }
 }
 
+/** A handle shorter than this fraction of its segment chord is treated as collapsed. */
+const MIN_TANGENT_HANDLE_CHORD_RATIO = 1e-2
+const TANGENT_JOIN_COLLINEARITY_TOLERANCE = 1e-6
+
+function tangentJoinIsStrictlyG1(
+  incoming: CubicBezierEntity,
+  outgoing: CubicBezierEntity,
+  pointValues: PointValues,
+) {
+  const at = (id: SketchEntityId) => pointValues.get(id)
+  const [start, before, join, after, end] = [
+    at(incoming.startPointId),
+    at(incoming.control2PointId),
+    at(incoming.endPointId),
+    at(outgoing.control1PointId),
+    at(outgoing.endPointId),
+  ]
+  if (!start || !before || !join || !after || !end) return false
+  const a = { x: join.x - before.x, y: join.y - before.y }
+  const b = { x: after.x - join.x, y: after.y - join.y }
+  const incomingLength = Math.hypot(a.x, a.y)
+  const outgoingLength = Math.hypot(b.x, b.y)
+  const incomingChord = Math.hypot(join.x - start.x, join.y - start.y)
+  const outgoingChord = Math.hypot(end.x - join.x, end.y - join.y)
+  if (
+    incomingLength <= Math.max(1e-9, incomingChord * MIN_TANGENT_HANDLE_CHORD_RATIO) ||
+    outgoingLength <= Math.max(1e-9, outgoingChord * MIN_TANGENT_HANDLE_CHORD_RATIO)
+  ) {
+    return false
+  }
+  const scale = incomingLength * outgoingLength
+  const cross = (a.x * b.y - a.y * b.x) / scale
+  const dot = (a.x * b.x + a.y * b.y) / scale
+  return Math.abs(cross) <= TANGENT_JOIN_COLLINEARITY_TOLERANCE && dot > 0
+}
+
+/**
+ * Rejects a converged solve whose join is a cusp, kinked, or has a collapsed handle. Native
+ * residuals cannot express these inequalities exactly, so they are checked after the solve.
+ */
+function invalidTangentJoinConstraintIds(
+  sketch: SketchRecord,
+  points: readonly z.infer<typeof pointSolutionSchema>[],
+) {
+  const curves = cubicBezierEntities(sketch)
+  const pointValues = new Map(points.map((point) => [point.entityId, point] as const))
+  return sketch.constraints.flatMap((constraint) => {
+    const join = tangentJoinCurves(curves, constraint)
+    if (!join) return []
+    return tangentJoinIsStrictlyG1(join.incoming, join.outgoing, pointValues) ? [] : [constraint.id]
+  })
+}
+
 function invalidBoundedEllipticalArcConstraintIds(
   loci: readonly BoundedEllipticalArcLocus[],
   points: readonly z.infer<typeof pointSolutionSchema>[],
@@ -1805,7 +2297,54 @@ function invalidBoundedEllipticalArcConstraintIds(
   })
 }
 
+/**
+ * Solves once with every free tangent-join handle held to its through-point. When that converges
+ * cleanly, its points seed the ordinary solve, which then certifies the result and reports the true
+ * status, freedom and post-solve G1 validation; otherwise the ordinary solve runs unchanged.
+ */
+function tangentJoinPredictorContinuation(
+  module: NativeSketchSolverModule,
+  input: SketchCompilationInput,
+): SketchSolveContinuation | null {
+  if (!input.sketch.constraints.some(({ type }) => type === "tangent-join")) return null
+  const compilation = compileSketchSystem(input, { holdTangentJoinHandles: true })
+  if (!compilation.ok) return null
+  // Without held joins the predictor would only repeat the ordinary solve.
+  if (compilation.compiled.heldTangentJoinCount === 0) return null
+  const { bindings, sketch } = compilation.compiled
+  const result = solveSketchSystem(module, compilation.compiled.system)
+  const converged = result.status === "fully-constrained" || result.status === "under-constrained"
+  if (!converged || result.failedConstraintHandles.length > 0) return null
+  const continuation = sketchSolveContinuationSchema.safeParse({
+    schemaVersion: 0,
+    sketchId: sketch.id,
+    sourceRevision: compilation.compiled.revision,
+    points: [...bindings.pointParameters].map(([entityId, binding]) => ({
+      entityId,
+      x: result.parameterValues[binding.xIndex],
+      y: result.parameterValues[binding.yIndex],
+    })),
+    circles: [...bindings.circleRadiusParameters].map(([entityId, index]) => ({
+      entityId,
+      radius: result.parameterValues[index],
+    })),
+  })
+  return continuation.success ? continuation.data : null
+}
+
 export function solveSketchRecord(
+  module: NativeSketchSolverModule,
+  input: SketchCompilationInput,
+): SolveSketchRecordResult {
+  const predicted = tangentJoinPredictorContinuation(module, input)
+  // The predictor already honored the drag; re-applying targets would nudge the converged joins.
+  return solveCompiledSketchRecord(
+    module,
+    predicted ? { ...input, continuation: predicted, draggedPoints: [] } : input,
+  )
+}
+
+function solveCompiledSketchRecord(
   module: NativeSketchSolverModule,
   input: SketchCompilationInput,
 ): SolveSketchRecordResult {
@@ -1835,10 +2374,14 @@ export function solveSketchRecord(
     boundedEllipticalArcLoci,
     points,
   )
-  const failedConstraintIds = [
-    ...new Set([...nativeFailedConstraintIds, ...boundedArcFailedConstraintIds]),
+  const postSolveFailedConstraintIds = [
+    ...boundedArcFailedConstraintIds,
+    ...invalidTangentJoinConstraintIds(sketch, points),
   ]
-  const status = boundedArcFailedConstraintIds.length > 0 ? "failed" : result.status
+  const failedConstraintIds = [
+    ...new Set([...nativeFailedConstraintIds, ...postSolveFailedConstraintIds]),
+  ]
+  const status = postSolveFailedConstraintIds.length > 0 ? "failed" : result.status
   return {
     ok: true,
     solution: {
