@@ -148,14 +148,14 @@ so there are no nested sub-assemblies or patterned occurrences to expand. **Appe
 live display presets of the definition's source Parts. Choose a catalog **Material** per row to show
 unit and total mass from exact source solid volume × catalog density. Without a material, or when a
 source is a triangle mesh or exact volume evidence is unavailable, mass shows "—" (a failed
-inspection states its reason); display
-appearance never implies density, and catalog densities assume solid material, not print infill.
+inspection states its reason); display appearance never implies density, and catalog densities
+assume solid material, not print infill.
 Material choices are view state and are not saved with the project.
 
 **Download CSV** writes UTF-8 RFC 4180 CSV with a byte-order mark (CRLF records, quoted names
 containing commas, quotes or line breaks, and an apostrophe before text that a spreadsheet would
-otherwise evaluate as a formula) with item, part, quantity, appearance, material, density (kg/m³), unit volume (mm³) and unit
-and total mass (g); unknown values are empty. The table has column and row headers and keyboard
+otherwise evaluate as a formula) with item, part, quantity, appearance, material, density (kg/m³),
+unit volume (mm³) and unit and total mass (g); unknown values are empty. The table has column and row headers and keyboard
 reachable material selects. Paired MCP clients read the same rows with `model_assembly_bom`, passing
 explicit `materials` per definition. See
 [ADR-0153](../adr/0153-gltf-obj-export-and-assembly-bom.md).

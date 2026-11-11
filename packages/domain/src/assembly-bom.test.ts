@@ -150,6 +150,12 @@ describe("assembly bill of materials", () => {
     ["@", "@SUM(A1)"],
     ["tab", "\t=1+1"],
     ["CR", "\r=1+1"],
+    ["LF", "\n=1+1"],
+    ["NUL", "\0=1+1"],
+    ["full-width =", '\uFF1DHYPERLINK("http://example.invalid")'],
+    ["full-width +", "\uFF0B1-2"],
+    ["full-width -", "\uFF0D2+3"],
+    ["full-width @", "\uFF20SUM(A1)"],
   ])("prefixes an apostrophe to free text starting with %s", (_prefix, value) => {
     expect(spreadsheetText(value)).toBe(`'${value}`)
     const csv = formatAssemblyBomCsv(

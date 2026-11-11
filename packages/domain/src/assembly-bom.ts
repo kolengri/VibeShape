@@ -167,11 +167,12 @@ export function csvField(value: string) {
 
 /**
  * Neutralizes spreadsheet formula injection in a free-text cell. Excel and LibreOffice evaluate a
- * cell starting with `=`, `+`, `-` or `@` (and tab/CR variants) even when it is quoted, so such text
- * gets a leading apostrophe. Apply it only to text columns; numeric columns stay machine-readable.
+ * cell starting with `=`, `+`, `-` or `@` (and tab/CR/LF/NUL or full-width `＝＋－＠` variants, per
+ * OWASP CSV Injection) even when it is quoted, so such text gets a leading apostrophe. Apply it only
+ * to text columns; numeric columns stay machine-readable.
  */
 export function spreadsheetText(value: string) {
-  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+  return /^[=+\-@\t\r\n\0\uFF1D\uFF0B\uFF0D\uFF20]/.test(value) ? `'${value}` : value
 }
 
 /** UTF-8 byte-order mark so Excel on Windows decodes non-ASCII names and unit symbols. */
