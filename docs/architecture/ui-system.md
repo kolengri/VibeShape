@@ -292,6 +292,11 @@ command projections use the existing registered handler. Section parameters rema
 and render in a non-modal popover. The registered Rotate view toggle uses the transient `navigate` camera mode: the analytical overlay
 is inert, the current solved draft renders in the 3D viewer, and the canvas owns navigation without
 sketch reference picking. Selecting a sketch tool returns to orbit editing. Cleanup restores the canvas binding.
+Sketch operation panels (Precise transform, Linear and Circular pattern, corner fillet and chamfer)
+portal into a pass-through sketch operation layer beside the overlay section, so they stack above
+the view controls without the transparent section intercepting their clicks. The layer is hidden and
+inert with the section during navigation. Panels reserve the view-control row while at least 10rem
+of panel remains; a shorter canvas gives the panel its full height until it is applied or cancelled.
 Holding Space invokes the registered navigation command and enters transient `navigate-held` mode:
 mouse movement over the drawing rotates the camera without pressing a mouse button. Native pointer
 drags are suppressed during the hold, and movement over other UI regions does not rotate the camera.
