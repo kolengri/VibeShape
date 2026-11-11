@@ -26,6 +26,7 @@ import {
   compoundFeatureTypeV2,
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
+import { draftFeatureType } from "@vibeshape/domain/part-design-draft"
 import { fdmFeatureType } from "@vibeshape/domain/part-design-fdm"
 import {
   authoredHoleFeatureType,
@@ -44,6 +45,7 @@ import {
 } from "@vibeshape/domain/part-design-mirror"
 import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
+import { scaleFeatureType } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
@@ -80,6 +82,10 @@ type CadOperation = Extract<
       | "update_mirror"
       | "create_shell"
       | "update_shell"
+      | "create_face_draft"
+      | "update_face_draft"
+      | "create_scale"
+      | "update_scale"
       | "create_fdm"
       | "update_fdm"
       | "create_thread"
@@ -134,6 +140,10 @@ const directCadFeatureTypes = {
   update_compound: compoundFeatureTypeV2.type,
   create_shell: shellFeatureTypeV2.type,
   update_shell: shellFeatureTypeV2.type,
+  create_face_draft: draftFeatureType.type,
+  update_face_draft: draftFeatureType.type,
+  create_scale: scaleFeatureType.type,
+  update_scale: scaleFeatureType.type,
   create_hole: holeFeatureType.type,
   update_hole: holeFeatureType.type,
   create_mirror: mirrorFeatureType.type,

@@ -41,6 +41,7 @@
       "unnamedBody": "Unnamed body",
       "noBodies": "No earlier exact solid bodies are available. Create or restore an earlier body first.",
       "reselectOpenings": "Select the openings again on the replacement body. Previous face selections are cleared.",
+      "reselectFaces": "Select the faces again on the replacement body, and the neutral plane if it was a face of the missing body. Previous face selections are cleared.",
       "cancel": "Cancel"
     },
     "variableSuggestions": {
@@ -751,6 +752,14 @@
         "shellPart": {
           "label": "Shell",
           "keywords": "hollow|shell|wall|part"
+        },
+        "draftPart": {
+          "label": "Draft",
+          "keywords": "taper|draft angle|mold|pull direction|faces|part"
+        },
+        "scalePart": {
+          "label": "Scale",
+          "keywords": "resize|enlarge|shrink|uniform scale|factor|part"
         },
         "splitPart": {
           "label": "Split",
@@ -2727,6 +2736,64 @@
       "noProfile": "Set a printer profile in Settings to check placement.",
       "customName": "Custom printer"
     },
+    "draft": {
+      "title": "Draft",
+      "editTitle": "Edit draft",
+      "featureLabel": "Draft {number}",
+      "description": "Taper selected faces about a neutral plane so the part can release from a mold along the pull direction.",
+      "parameters": "Draft parameters",
+      "faces": "Faces to draft",
+      "facesDescription": "Select 1\u2013256 faces in 3D, or expand the list below. Tangent-connected faces are drafted with them.",
+      "faceCount": "{selected} / {total} faces selected",
+      "faceName": "Face {number}",
+      "face": "Face {number}: area {area} mm\u00b2; center ({x}, {y}, {z}) mm",
+      "angle": "Draft angle",
+      "angleDescription": "Angle expression from 0.01 degrees to less than 89 degrees.",
+      "flip": "Flip pull direction",
+      "flipDescription": "By default the pull direction follows the plane normal, or points into the body for a planar face. Faces narrow along the pull direction; flipping inverts the taper.",
+      "repair": "A drafted face is missing or ambiguous. Reselect the faces on the current body before applying.",
+      "unavailable": "Exact source geometry is unavailable. Repair or enable the source feature before selecting faces.",
+      "validationSummary": "Select 1\u2013256 faces, a neutral plane, and a valid angle.",
+      "invalidExpression": "Enter a valid angle expression.",
+      "invalidDimension": "The draft angle must be an angle.",
+      "invalidRange": "The draft angle must be at least 0.01 degrees and less than 89 degrees.",
+      "create": "Apply draft",
+      "update": "Update draft",
+      "cancel": "Cancel",
+      "staleRevision": "The document changed. Reopen Draft and select the current faces.",
+      "saveFailed": "Draft could not be saved. Your values remain available to retry.",
+      "previewFailed": "Draft could not be built. Faces tangent to a selected face are drafted with it. Blends that run across the pull direction, such as fillets around a top face, and faces perpendicular to it cannot be drafted; fillets along the pull direction are drafted with their walls. Draft before adding those fillets, choose other faces, or reduce the angle. Apply requires a successful preview."
+    },
+    "scale": {
+      "title": "Scale",
+      "editTitle": "Edit scale",
+      "featureLabel": "Scale {number}",
+      "description": "Scale this part uniformly about a fixed center. The result replaces the part and keeps its history.",
+      "parameters": "Scale parameters",
+      "factor": "Scale factor",
+      "factorDescription": "Unitless expression from 0.001 to 1000. Volume changes by the factor cubed.",
+      "center": "Scale center",
+      "centerDescription": "The center stays fixed while the part grows or shrinks around it.",
+      "boundingBoxCenter": "Bounding-box center",
+      "origin": "World origin",
+      "point": "Explicit point",
+      "centerX": "Center X",
+      "centerY": "Center Y",
+      "centerZ": "Center Z",
+      "coordinateDescription": "Length expression within \u00b1100,000 mm.",
+      "validationSummary": "Fix the highlighted scale values.",
+      "invalidExpression": "Enter a valid expression using supported units and existing variables.",
+      "invalidDimension": "Center coordinates must be lengths.",
+      "invalidRange": "Center coordinates must stay within \u00b1100,000 mm.",
+      "invalidFactorDimension": "The scale factor must be unitless.",
+      "invalidFactorRange": "The scale factor must be between 0.001 and 1000.",
+      "create": "Apply scale",
+      "update": "Update scale",
+      "cancel": "Cancel",
+      "staleRevision": "The document changed. Close this edit and reopen it before saving.",
+      "saveFailed": "Scale could not be saved. Your values remain available to retry.",
+      "previewFailed": "Scale could not be built with these values. Apply requires a successful preview."
+    },
     "shellOperation": {
       "title": "Shell",
       "editTitle": "Edit shell",
@@ -4296,6 +4363,8 @@
       "offsetPlane": "Offset Plane",
       "datumPoint": "Datum Point",
       "shell": "Shell",
+      "draft": "Draft",
+      "scale": "Scale",
       "editFeature": "Edit Feature",
       "editProfileSketch": "Edit Profile Sketch",
       "appearance": "Appearance",

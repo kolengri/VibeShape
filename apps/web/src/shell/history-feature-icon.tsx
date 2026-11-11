@@ -26,6 +26,8 @@ const featureIcons: Readonly<Record<string, EditorCommandIcon>> = {
   "org.vibeshape.feature.part-design.pattern": "linear-pattern",
   "org.vibeshape.feature.part-design.split": "split-body",
   "org.vibeshape.feature.part-design.shell": "shell",
+  "org.vibeshape.feature.part-design.draft": "draft",
+  "org.vibeshape.feature.part-design.scale": "scale",
   "org.vibeshape.feature.part-design.thread": "thread",
   "org.vibeshape.feature.part-design.fdm": "fdm-tools",
   "org.vibeshape.feature.part-design.connect-mounts": "union",

@@ -457,6 +457,8 @@ function ModelingActions({ props, menu }: { props: Props; menu: Menu }) {
       {command(editorCommandIds.createDatumPlane, t("offsetPlane"))}
       {command(editorCommandIds.createDatumPoint, t("datumPoint"))}
       {command(editorCommandIds.shellPart, t("shell"))}
+      {command(editorCommandIds.draftPart, t("draft"))}
+      {command(editorCommandIds.scalePart, t("scale"))}
       <MenuAction
         label={t("editFeature")}
         icon={PenLine}

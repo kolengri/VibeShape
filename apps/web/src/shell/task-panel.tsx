@@ -139,11 +139,13 @@ import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-s
 import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
 import { CadErrorPresentation } from "./cad-error-presentation"
 import { DatumPointTaskPanel } from "./datum-point-task-panel"
+import { DraftTaskPanel } from "./draft-task-panel"
 import { FdmTaskPanel } from "./fdm-task-panel"
 import { HistoryFeatureRepair } from "./history-feature-repair"
 import { MirrorTaskPanel } from "./mirror-task-panel"
 import { PatternTaskPanel } from "./pattern-task-panel"
 import { PlacementTaskPanel } from "./placement-task-panel"
+import { ScaleTaskPanel } from "./scale-task-panel"
 import { ShellTaskPanel } from "./shell-task-panel"
 import { SplitTaskPanel } from "./split-task-panel"
 import { SweepLoftTaskPanel } from "./sweep-loft-task-panel"
@@ -1900,6 +1902,12 @@ function PressPullToolTaskPanel(props: ActiveTaskPanelProps) {
 function ShellToolTaskPanel(props: ActiveTaskPanelProps) {
   return <ShellTaskPanel {...props} renderDelete={() => null} />
 }
+function DraftToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <DraftTaskPanel {...props} renderDelete={() => null} />
+}
+function ScaleToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <ScaleTaskPanel {...props} renderDelete={() => null} />
+}
 
 function SweepLoftToolTaskPanel(props: ActiveTaskPanelProps) {
   return <SweepLoftTaskPanel {...props} renderDelete={() => null} />
@@ -1977,6 +1985,10 @@ const activeTaskPanelByKind = {
   "edit-press-pull": PressPullToolTaskPanel,
   "create-shell": ShellToolTaskPanel,
   "edit-shell": ShellToolTaskPanel,
+  "create-draft": DraftToolTaskPanel,
+  "edit-draft": DraftToolTaskPanel,
+  "create-scale": ScaleToolTaskPanel,
+  "edit-scale": ScaleToolTaskPanel,
   "create-thread": ThreadToolTaskPanel,
   "edit-thread": ThreadToolTaskPanel,
   "create-pattern": PatternToolTaskPanel,

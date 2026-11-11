@@ -57,7 +57,7 @@ import {
 import { prepareExtrusionEndContent } from "./extrusion-end-content"
 import { prepareFdmContent } from "./fdm-content"
 import {
-  prepareReferenceFrameFeatureContent,
+  prepareReferenceSupportedFeatureContent,
   shouldPrepareReferenceFrameFeatureContent,
 } from "./reference-frame-content"
 import {
@@ -546,7 +546,7 @@ async function prepareFeatureContent(
   modelMaterializationCache: ExternalModelMaterializationCache,
 ) {
   if (shouldPrepareReferenceFrameFeatureContent(feature))
-    return prepareReferenceFrameFeatureContent({ document, feature, features, geometry })
+    return prepareReferenceSupportedFeatureContent({ document, feature, features, geometry })
   const parametric = await prepareNativeParametricContent(feature, {
     document,
     features,

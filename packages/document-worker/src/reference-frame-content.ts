@@ -9,12 +9,14 @@ import {
   type FeatureRecord,
   readDatumPointFeatureParameters,
 } from "@vibeshape/domain"
+import { draftContentFace, readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
 import { readMirrorFeatureParametersV3 } from "@vibeshape/domain/part-design-mirror"
 import { readPatternFeatureParametersV2 } from "@vibeshape/domain/part-design-pattern"
 import { readSplitFeatureParametersV2 } from "@vibeshape/domain/part-design-split"
 import { referenceFrameSupportFeatureId } from "@vibeshape/domain/reference-frame"
 import {
   datumPointFeatureContentParametersSchema,
+  draftFeatureContentParametersSchema,
   mirrorFeatureContentParametersV3Schema,
   patternFeatureContentParametersV2Schema,
   splitFeatureContentParametersV2Schema,
@@ -23,6 +25,7 @@ import {
 export function shouldPrepareReferenceFrameFeatureContent(feature: FeatureRecord) {
   return Boolean(
     readDatumPointFeatureParameters(feature) ||
+      readDraftFeatureParameters(feature) ||
       readMirrorFeatureParametersV3(feature) ||
       readSplitFeatureParametersV2(feature) ||
       readPatternFeatureParametersV2(feature),
@@ -118,5 +121,51 @@ export const prepareReferenceFrameFeatureContent: DocumentFeatureContentPreparat
           offset: mirror?.offset.value,
           preserveSource: mirror?.preserveSource,
         }),
+  }
+}
+
+/** Dispatches Draft neutral-plane preparation before the Mirror, Split and Pattern supports. */
+export const prepareReferenceSupportedFeatureContent: DocumentFeatureContentPreparationPort = (
+  input,
+) => {
+  const draft = readDraftFeatureParameters(input.feature)
+  return draft ? prepareDraftContent(draft, input) : prepareReferenceFrameFeatureContent(input)
+}
+
+/**
+ * Resolves the Draft neutral plane and pull direction. A planar neutral face pulls into the body
+ * (against its outward normal) so drafting walls about their base face narrows them away from it.
+ */
+function prepareDraftContent(
+  draft: NonNullable<ReturnType<typeof readDraftFeatureParameters>>,
+  input: Parameters<DocumentFeatureContentPreparationPort>[0],
+) {
+  const plane = resolveReferencePlane(draft.neutralPlane, {
+    document: input.document,
+    features: input.features ?? input.document.features,
+    geometry: input.geometry ?? [],
+  })
+  if (!plane)
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "org.vibeshape.feature.reference-frame-unresolved",
+        values: { reason: "missing-or-ambiguous-support" },
+      },
+    }
+  const sense = (draft.neutralPlane.kind === "planar-face" ? -1 : 1) * (draft.flip ? -1 : 1)
+  const supportFeatureId = referenceFrameSupportFeatureId(draft.neutralPlane)
+  return {
+    ok: true as const,
+    parameters: draftFeatureContentParametersSchema.parse({
+      faces: draft.faces.map(draftContentFace),
+      planeOrigin: plane.origin,
+      planeNormal: plane.normal,
+      pullDirection: plane.normal.map((value) => (value === 0 ? 0 : value * sense)),
+      angle: draft.angle.value,
+      ...(supportFeatureId
+        ? { supportInputIndex: input.feature.dependencies.indexOf(supportFeatureId) }
+        : {}),
+    }),
   }
 }

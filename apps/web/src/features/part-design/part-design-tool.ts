@@ -46,6 +46,7 @@ import {
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
 import { readConnectMountsFeatureParameters } from "@vibeshape/domain/part-design-connect-mounts"
+import { readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
 import { readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { importedFeatureType } from "@vibeshape/domain/part-design-import"
 import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
@@ -59,6 +60,7 @@ import {
 import { patternFeatureType, patternFeatureTypeV2 } from "@vibeshape/domain/part-design-pattern"
 import { placementFeatureType } from "@vibeshape/domain/part-design-placement"
 import { readPressPullFeatureParameters } from "@vibeshape/domain/part-design-press-pull"
+import { readScaleFeatureParameters } from "@vibeshape/domain/part-design-scale"
 import { readShellFeatureParameters } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
@@ -91,6 +93,10 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-press-pull"; featureId: FeatureId }>
   | Readonly<{ kind: "create-shell"; partId: PartId; targetBody: BodyReference }>
   | Readonly<{ kind: "edit-shell"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-draft"; partId: PartId; targetBody: BodyReference }>
+  | Readonly<{ kind: "edit-draft"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-scale"; partId: PartId; targetBody: BodyReference }>
+  | Readonly<{ kind: "edit-scale"; featureId: FeatureId }>
   | Readonly<{ kind: "create-split"; partId: PartId; targetBody: BodyReference }>
   | Readonly<{ kind: "edit-split"; featureId: FeatureId }>
   | Readonly<{ kind: "create-pattern"; partId: PartId; targetBody: BodyReference }>
@@ -303,6 +309,12 @@ function isPressPullFeature(feature: FeatureRecord) {
 function isShellFeature(feature: FeatureRecord) {
   return readShellFeatureParameters(feature) !== null
 }
+function isDraftFeature(feature: FeatureRecord) {
+  return readDraftFeatureParameters(feature) !== null
+}
+function isScaleFeature(feature: FeatureRecord) {
+  return readScaleFeatureParameters(feature) !== null
+}
 function isLoftFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, loftFeatureType.type) ||
@@ -363,6 +375,8 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
     isMirrorFeature,
     isPressPullFeature,
     isShellFeature,
+    isDraftFeature,
+    isScaleFeature,
     isLoftFeature,
     isSweepFeature,
     isThreadFeature,
@@ -561,6 +575,8 @@ export function editPartDesignTool(
   if (readConnectMountsFeatureParameters(feature))
     return { kind: "edit-connect-mounts", featureId: feature.id }
   if (isPressPullFeature(feature)) return { kind: "edit-press-pull", featureId: feature.id }
+  if (isDraftFeature(feature)) return { kind: "edit-draft", featureId: feature.id }
+  if (isScaleFeature(feature)) return { kind: "edit-scale", featureId: feature.id }
   const kind = editableFeatureTools.find(([matches]) => matches(feature))?.[1]
   if (!kind) return null
   // TypeScript stops distributing object literals over unions above 25 members; the tuple
@@ -591,6 +607,10 @@ const commandByToolKind = {
   "edit-press-pull": "press-pull",
   "create-shell": "shell",
   "edit-shell": "shell",
+  "create-draft": "draft",
+  "edit-draft": "draft",
+  "create-scale": "scale",
+  "edit-scale": "scale",
   "create-split": "split",
   "edit-split": "split",
   "create-pattern": "pattern",

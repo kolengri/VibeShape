@@ -215,11 +215,21 @@ contours.
 | Mirror feature/body |  | ✓ |  |
 | Linear/circular pattern |  | ✓ |  |
 | Shell |  | ✓ |  |
+| Draft faces about a neutral plane |  | ✓ |  |
+| Uniform scale |  | ✓ |  |
 | Sweep/pipe |  | ✓ |  |
 | Loft |  | ✓ |  |
-| Draft, split, replace face |  |  | ✓ |
+| Split, delete/replace face, non-uniform scale |  |  | ✓ |
 | Direct face move/delete |  |  | ✓ |
 | Surface modeling |  |  | ✓ |
+
+Draft tapers 1–256 body-bound faces of one exact solid about an origin, Datum, explicit or same-body
+planar neutral plane by an expression-aware angle below 89 degrees; a face OCCT cannot draft fails
+the feature instead of being skipped. Scale resizes one exact solid uniformly by a factor from 0.001
+to 1000 about its bounding-box center, the origin or an explicit point. Delete/replace face and
+non-uniform scale are blocked: the pinned OpenCascade WASM build lacks the face-removal modules and
+`BRepBuilderAPI_GTransform`. See [Draft](draft.md), [Scale](scale.md) and
+[ADR-0152](../adr/0152-draft-and-uniform-scale-features.md).
 
 Shell version 2 supports open or closed cavities with expression-aware thickness and inward/outward direction. Opening faces can be toggled in the viewport or selected from the task list. Unique durable face identities survive source edits within the same exact body; missing or ambiguous identities require explicit repair. Version 1 retains strict source binding until updated. See [ADR-0076](../adr/0076-closed-shells-and-durable-opening-identity.md).
 Sweep accepts exact open lines, circular arcs, cubic Bezier curves and bounded elliptical arcs with

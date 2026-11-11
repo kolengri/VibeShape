@@ -286,6 +286,8 @@ function useFeatureActivationActions(
         | "create-placement"
         | "create-mirror"
         | "create-shell"
+        | "create-draft"
+        | "create-scale"
         | "create-split"
         | "create-pattern"
         | "create-thread",
@@ -308,6 +310,15 @@ function useFeatureActivationActions(
   )
   const shellPart = useCallback(
     (partId: PartId) => startBodyOperation(partId, "create-shell"),
+    [startBodyOperation],
+  )
+
+  const draftPart = useCallback(
+    (partId: PartId) => startBodyOperation(partId, "create-draft"),
+    [startBodyOperation],
+  )
+  const scalePart = useCallback(
+    (partId: PartId) => startBodyOperation(partId, "create-scale"),
     [startBodyOperation],
   )
 
@@ -341,7 +352,17 @@ function useFeatureActivationActions(
     },
     [navigation, sessionActions, sessionStore],
   )
-  return { placePart, mirrorPart, shellPart, splitPart, patternPart, threadPart, editFeature }
+  return {
+    placePart,
+    mirrorPart,
+    shellPart,
+    draftPart,
+    scalePart,
+    splitPart,
+    patternPart,
+    threadPart,
+    editFeature,
+  }
 }
 
 function useSketchCreationActions(
@@ -485,8 +506,17 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     sessionActions,
   ])
 
-  const { placePart, mirrorPart, shellPart, splitPart, patternPart, threadPart, editFeature } =
-    useFeatureActivationActions(controller, sessionActions)
+  const {
+    placePart,
+    mirrorPart,
+    shellPart,
+    draftPart,
+    scalePart,
+    splitPart,
+    patternPart,
+    threadPart,
+    editFeature,
+  } = useFeatureActivationActions(controller, sessionActions)
   const setSketchEditorTool = useSketchEditorToolActivation(sessionActions)
   const createEdgeTreatment = useCallback(
     (kind: "create-fillet" | "create-chamfer") => {
@@ -564,6 +594,8 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         placePart,
         mirrorPart,
         shellPart,
+        draftPart,
+        scalePart,
         splitPart,
         patternPart,
         threadPart,
@@ -610,6 +642,8 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       placePart,
       mirrorPart,
       shellPart,
+      draftPart,
+      scalePart,
       splitPart,
       patternPart,
       threadPart,
@@ -818,6 +852,8 @@ function resolveEditorApplicationCommands(
       placePart: workspaceActions.placePart,
       mirrorPart: workspaceActions.mirrorPart,
       shellPart: workspaceActions.shellPart,
+      draftPart: workspaceActions.draftPart,
+      scalePart: workspaceActions.scalePart,
       splitPart: workspaceActions.splitPart,
       patternPart: workspaceActions.patternPart,
       threadPart: workspaceActions.threadPart,

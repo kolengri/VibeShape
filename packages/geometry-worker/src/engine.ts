@@ -12,8 +12,10 @@ import {
   connectMountsFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   DEFAULT_SURFACE_TEXTURE_QUALITY,
+  type DraftFeatureContentParameters,
   datumPlaneFeatureContentParametersSchema,
   datumPointFeatureContentParametersSchema,
+  draftFeatureContentParametersSchema,
   extrusionExtentBounds,
   extrusionFeatureContentParametersSchema,
   extrusionFeatureContentParametersV5Schema,
@@ -77,6 +79,7 @@ import {
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
+  type ScaleFeatureContentParameters,
   type ShellFeatureContentParameters,
   type SourceAssetMaterialization,
   type SourceImportInspection,
@@ -87,6 +90,7 @@ import {
   type SurfaceTextureMeshLayer,
   type SurfaceTextureQuality,
   type SweepFeatureContentParameters,
+  scaleFeatureContentParametersSchema,
   shellFeatureContentParametersSchema,
   shellFeatureContentParametersV2Schema,
   sourceImportInspectionSchema,
@@ -165,6 +169,7 @@ import { createOcctCompound } from "./occt-compound"
 import { createOcctConnectMounts } from "./occt-connect-mounts"
 import { makeOcctCubicBezierEdge } from "./occt-cubic-bezier"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
+import { DraftError, draftOcctShape } from "./occt-draft"
 import { FilletBuildError, treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
 import { exportOcctStep, importOcctStep } from "./occt-exchange"
 import {
@@ -187,6 +192,7 @@ import { splitOcctShape } from "./occt-plane-split"
 import { pressPullOcctShape } from "./occt-press-pull"
 import { reconstructOcctPrintOptimization } from "./occt-print-optimization"
 import { splitOcctShapeByReferencePlane } from "./occt-reference-plane"
+import { scaleOcctShape } from "./occt-scale"
 import {
   createOcctBox,
   createOcctCone,
@@ -332,6 +338,10 @@ const SHELL_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.shell#1"
 const SHELL_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.shell#2"
+const DRAFT_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.draft#1"
+const SCALE_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.scale#1"
 const MIRROR_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.mirror#1"
 const MIRROR_FEATURE_TYPE_V2_KEY =
@@ -1331,6 +1341,8 @@ type ParsedFeature =
     }
   | { kind: "hole"; parameters: HoleContentParameters }
   | { kind: "placement"; parameters: PlacementFeatureContentParameters }
+  | { kind: "scale"; parameters: ScaleFeatureContentParameters }
+  | { kind: "draft"; parameters: DraftFeatureContentParameters }
   | {
       kind: "press-pull"
       parameters: PressPullFeatureContentParameters
@@ -2247,6 +2259,34 @@ function hasExactSingleBodyInput(input: FeatureEvaluationInput): input is Featur
   )
 }
 
+function parseScaleFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  if (!hasExactSingleBodyInput(input))
+    return invalidInputCardinality(
+      "Scale requires one exact named body dependency and no topology references.",
+    )
+  const parameters = scaleFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  return parameters.success
+    ? { ok: true, feature: { kind: "scale", parameters: parameters.data } }
+    : featureFailure("invalid-feature-parameters", "Scale content parameters are invalid.")
+}
+
+function parseDraftFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = draftFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  if (!parameters.success)
+    return featureFailure("invalid-feature-parameters", "Draft content parameters are invalid.")
+  const role = input.dependencies[0]?.outputRole
+  if (!referenceBodyInputsAreValid(input, parameters.data.supportInputIndex))
+    return invalidInputCardinality(
+      "Draft requires its exact target body followed by an optional neutral-plane support.",
+    )
+  return parameters.data.faces.every((face) => face.outputRole === role)
+    ? { ok: true, feature: { kind: "draft", parameters: parameters.data } }
+    : featureFailure(
+        "invalid-feature-parameters",
+        "Draft faces must belong to the exact dependency output role.",
+      )
+}
+
 function parsePlacementFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
   if (!hasExactSingleBodyInput(input)) {
@@ -2596,6 +2636,8 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [COMPOUND_FEATURE_TYPE_V2_KEY, (input) => parseBodyCombinationFeature(input, "compound", 2)],
   [UNION_FEATURE_TYPE_V2_KEY, (input) => parseBodyCombinationFeature(input, "union", 2)],
   [PLACEMENT_FEATURE_TYPE_KEY, parsePlacementFeature],
+  [SCALE_FEATURE_TYPE_KEY, parseScaleFeature],
+  [DRAFT_FEATURE_TYPE_KEY, parseDraftFeature],
   [MIRROR_FEATURE_TYPE_KEY, parseMirrorFeature],
   [MIRROR_FEATURE_TYPE_V2_KEY, parseMirrorFeature],
   [MIRROR_FEATURE_TYPE_KEY.replace("#1", "#3"), parseMirrorFeatureV3],
@@ -3129,6 +3171,15 @@ function createPlacementFeatureShape(
   return placeOcctShape(opencascade, source, parameters)
 }
 
+function createScaleFeatureShape(
+  opencascade: OpenCascadeInstance,
+  feature: Extract<ParsedFeature, { kind: "scale" }>,
+  source: Shape3D | undefined,
+) {
+  if (!source) throw new Error("Scale target body is unavailable.")
+  return scaleOcctShape(opencascade, source, feature.parameters)
+}
+
 function createMirrorFeatureShape(
   opencascade: OpenCascadeInstance,
   parameters:
@@ -3229,6 +3280,8 @@ function createFeatureShape(
         | "selected-fillet"
         | "selected-chamfer"
         | "placement"
+        | "scale"
+        | "draft"
         | "mirror"
         | "press-pull"
         | "shell"
@@ -4140,6 +4193,8 @@ function evaluateFeatureGeometry(
   if (
     [
       "placement",
+      "scale",
+      "draft",
       "mirror",
       "press-pull",
       "shell",
@@ -4621,7 +4676,8 @@ function featureGeometryFailure(error: unknown, cleanupSucceeded: boolean) {
   if (
     error instanceof ChamferV3Error ||
     error instanceof FilletV3Error ||
-    error instanceof ConstrainedLoftError
+    error instanceof ConstrainedLoftError ||
+    error instanceof DraftError
   )
     return featureFailure("invalid-feature-geometry", error.message)
   return featureFailure("invalid-feature-geometry", "Feature geometry evaluation failed.")
@@ -4632,6 +4688,16 @@ function chamferFaceResolutionMode(reference: {
   lineageToken?: string | undefined
 }): "durable" | "exact" {
   return reference.semanticRole || reference.lineageToken ? "durable" : "exact"
+}
+
+/** The native key of a resolution that identified exactly one face of the snapshot. */
+function uniqueFaceShapeKey(
+  resolved: ReturnType<GeometryShellOpeningResolver>,
+  snapshot: TopologyCaptureSnapshot,
+) {
+  const id =
+    resolved.ok && resolved.candidateIds.length === 1 ? resolved.candidateIds[0] : undefined
+  return id?.startsWith("face:") ? snapshot.transientShapeKeys.get(id) : undefined
 }
 
 function shellOpeningShapeKeys(candidateIds: readonly string[], snapshot: TopologyCaptureSnapshot) {
@@ -4909,6 +4975,10 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       return this.#createFilletV3(opencascade, feature.parameters, dependencies[0], input)
     if (feature.kind === "press-pull")
       return this.#createPressPullFeature(opencascade, feature, dependencies[0], input)
+    if (feature.kind === "draft")
+      return this.#createDraftFeature(opencascade, feature.parameters, dependencies[0], input)
+    if (feature.kind === "scale")
+      return createScaleFeatureShape(opencascade, feature, dependencies[0])
     return this.#createUncachedStandardFeature(opencascade, feature, dependencies, input)
   }
 
@@ -4926,6 +4996,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           | "advanced-chamfer"
           | "advanced-fillet"
           | "press-pull"
+          | "draft"
+          | "scale"
       }
     >,
     dependencies: readonly Shape3D[],
@@ -5216,6 +5288,39 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       targets,
       parameters.directionOverrides.map(edgeKey),
     )
+  }
+
+  #createDraftFeature(
+    occt: OpenCascadeInstance,
+    parameters: DraftFeatureContentParameters,
+    target: Shape3D | undefined,
+    input: FeatureEvaluationInput,
+  ) {
+    const dependency = input.dependencies[0]
+    const snapshot = target ? this.#topologySnapshots.get(target) : undefined
+    const resolve = this.resolveShellOpenings
+    if (!target || !snapshot || !dependency?.outputRole || !resolve)
+      throw new DraftError("Exact Draft source topology is unavailable.")
+    const scope = { featureId: dependency.featureId, outputRole: dependency.outputRole }
+    const allowSemanticRebinding = !this.#modifierExtrusionShapes.has(target)
+    const faceKeys = parameters.faces.map((face, index) => {
+      const resolved = resolve(
+        [face],
+        snapshot.candidates,
+        scope,
+        chamferFaceResolutionMode(face),
+        {
+          allowSemanticRebinding,
+        },
+      )
+      const key = uniqueFaceShapeKey(resolved, snapshot)
+      if (key === undefined)
+        throw new DraftError(
+          `Draft face ${index + 1} is ${resolved.ok ? "missing" : resolved.reason}. Reselect the faces on the current body.`,
+        )
+      return key
+    })
+    return draftOcctShape(occt, target, faceKeys, parameters)
   }
 
   #createFilletV3(

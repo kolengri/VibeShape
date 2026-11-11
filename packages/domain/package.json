@@ -67,6 +67,8 @@
     "./body-topology-reference": "./src/body-topology-reference.ts",
     "./part-design-press-pull": "./src/part-design-press-pull.ts",
     "./part-design-shell": "./src/part-design-shell.ts",
+    "./part-design-draft": "./src/part-design-draft.ts",
+    "./part-design-scale": "./src/part-design-scale.ts",
     "./part-design-split": "./src/part-design-split.ts",
     "./part-design-loft": "./src/part-design-loft.ts",
     "./part-design-loft-v3": "./src/part-design-loft-v3.ts",

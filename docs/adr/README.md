@@ -178,4 +178,5 @@ When a decision changes, do not rewrite its ADR retroactively. Create a new reco
 | [0149](0149-rounded-opening-edge-treatments.md) | Accepted | Circular corner arcs and default tangent contours for rounded-opening edge treatments |
 | [0150](0150-chamfer-authoring-route.md) | Accepted | Single Chamfer schema route, legacy contour path for unmeasurable edges, lossless scope switching |
 | [0151](0151-body-bound-variable-radius-fillet.md) | Accepted | Body-bound Fillet V3 with face targets and a durable variable-radius direction rule |
+| [0152](0152-draft-and-uniform-scale-features.md) | Accepted | Body-bound face Draft about a neutral plane and uniform Scale about a fixed center |
 | [0154](0154-truncated-cones-drill-points-and-datum-points.md) | Accepted | Cone v2 top radius, Hole v4 blind drill points beyond the shoulder depth, and Datum Point v1 |
