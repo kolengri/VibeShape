@@ -18,8 +18,7 @@ import {
   filletFeatureType,
   filletFeatureTypeV2,
   filletFeatureTypeV3,
-  holeFeatureType,
-  holeFeatureTypeV2,
+  isHoleFeatureRecord,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
   legacyRevolveFeatureTypeV3,
@@ -245,9 +244,7 @@ export function isTorusFeature(feature: FeatureRecord) {
 }
 
 export function isHoleFeature(feature: FeatureRecord) {
-  return (
-    hasFeatureType(feature, holeFeatureType.type) || hasFeatureType(feature, holeFeatureTypeV2.type)
-  )
+  return isHoleFeatureRecord(feature)
 }
 
 export function isFilletFeature(feature: FeatureRecord) {

@@ -207,6 +207,19 @@ export const holeFeatureTypeV4 = featureTypeDescriptorSchema.parse({
   type: { ...holeFeatureTypeV2.type, schemaVersion: 4 },
 })
 
+/** Every registered Hole version; editor and registry consumers enumerate holes from this list. */
+export const holeFeatureTypes = [
+  holeFeatureType,
+  holeFeatureTypeV2,
+  holeFeatureTypeV3,
+  holeFeatureTypeV4,
+] as const
+
+/** True for any registered Hole version, independent of whether its parameters still parse. */
+export function isHoleFeatureRecord(feature: Pick<FeatureRecord, "type">) {
+  return holeFeatureTypes.some(({ type }) => isHoleType(feature, type))
+}
+
 function isHoleType(feature: Pick<FeatureRecord, "type">, expected = holeFeatureType.type) {
   const actual = feature.type
   return (
