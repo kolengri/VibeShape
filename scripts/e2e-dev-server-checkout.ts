@@ -14,6 +14,14 @@ async function fetchText(url: URL) {
   return response.text()
 }
 
+/** Root-relative app module paths, excluding Vite internals and pre-bundled dependencies. */
+function appModulePath(specifier: string) {
+  const path = specifier.split("?")[0] ?? ""
+  return path.startsWith("/") && !path.startsWith("/@") && !path.startsWith("/node_modules/")
+    ? path
+    : undefined
+}
+
 /**
  * Returns the first `/@fs` import Vite emits while transforming the app's own modules. Vite writes
  * files outside its root, such as workspace packages, as absolute `/@fs` paths of the serving
@@ -21,19 +29,18 @@ async function fetchText(url: URL) {
  */
 async function firstServedFsImport(baseURL: string) {
   const html = await fetchText(new URL("/", baseURL))
-  const queue = [...html.matchAll(entryScript)].map(([, source]) => source ?? "")
+  const queue = [...html.matchAll(entryScript)].map(([, source = ""]) => source)
   const seen = new Set<string>()
   while (queue.length > 0 && seen.size < MAX_MODULES) {
-    const path = queue.shift()?.split("?")[0]
-    if (!path?.startsWith("/") || path.startsWith("/@") || seen.has(path)) continue
+    const path = appModulePath(queue.shift() ?? "")
+    if (path === undefined || seen.has(path)) continue
     seen.add(path)
-    for (const [, specifier = ""] of (await fetchText(new URL(path, baseURL))).matchAll(
-      moduleSpecifier,
-    )) {
-      if (specifier.startsWith("/@fs/")) return specifier
-      if (specifier.startsWith("/") && !specifier.startsWith("/node_modules/"))
-        queue.push(specifier)
-    }
+    const specifiers = [...(await fetchText(new URL(path, baseURL))).matchAll(moduleSpecifier)].map(
+      ([, specifier = ""]) => specifier,
+    )
+    const fsImport = specifiers.find((specifier) => specifier.startsWith("/@fs/"))
+    if (fsImport !== undefined) return fsImport
+    queue.push(...specifiers)
   }
   return undefined
 }
