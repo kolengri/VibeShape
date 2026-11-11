@@ -361,8 +361,15 @@ export function createDocumentAutomationSession(
         reviews.clearDraftViewport(reviewOwner)
         // Drawing is disposable: a failed rebuild must not turn accepted private intent into a
         // failed command or save it. Explicit preview/commit still report validation diagnostics.
-        await presentDraftPreview(actor, { schemaVersion: 1, draftId: result.value.draftId }, epoch)
-        return result
+        const presented = await presentDraftPreview(
+          actor,
+          { schemaVersion: 1, draftId: result.value.draftId },
+          epoch,
+        )
+        // A successful exact preview renews the draft lease, so report the lease the actor holds.
+        return presented.ok && presented.value.draft.draftId === result.value.draftId
+          ? { ...result, value: presented.value.draft }
+          : result
       },
       async previewDraft(actor: unknown, request: unknown) {
         reviews.clearDraftViewport(reviewOwner)

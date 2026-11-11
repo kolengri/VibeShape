@@ -10185,7 +10185,7 @@ function SketchDrawingView({
         type="button"
         size="xs"
         variant="outline"
-        className={cn("absolute right-3 top-24 z-20 bg-background/90", SAFE_VIEWPORT_RIGHT)}
+        className={cn("absolute right-3 top-28 z-20 bg-background/90", SAFE_VIEWPORT_RIGHT)}
         aria-pressed={pointDimensions.showAll}
         onClick={() => pointDimensions.setShowAll((value) => !value)}
       >
@@ -13281,12 +13281,9 @@ function SketchViewportChrome({
 }>) {
   return (
     <>
+      {/* The viewport's view controls own the top-right corner in both sketch modes. */}
       <div
-        className={cn(
-          "absolute right-3 flex flex-col items-end gap-1",
-          spatial ? "top-14" : "top-3",
-          SAFE_VIEWPORT_RIGHT,
-        )}
+        className={cn("absolute right-3 top-14 flex flex-col items-end gap-1", SAFE_VIEWPORT_RIGHT)}
       >
         <SketchExternalReferenceToolbar
           draft={state.draft}

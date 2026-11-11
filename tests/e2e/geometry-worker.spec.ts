@@ -132,7 +132,8 @@ function requireAllocatorSnapshot(result: KernelResponse, stage: string) {
 function createExpectedEngine() {
   return {
     adapter: "replicad",
-    adapterVersion: controlledOcctMode ? "spike-controlled-1" : "spike-2",
+    // ADR-0139 bumped the adapter identities to invalidate older derived payloads.
+    adapterVersion: controlledOcctMode ? "spike-controlled-2" : "spike-3",
     replicadVersion: "0.23.1",
     opencascadePackageVersion: controlledOcctMode
       ? `controlled-${controlledOcctSourceRevision.slice(0, 12)}`

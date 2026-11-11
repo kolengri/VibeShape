@@ -10,12 +10,38 @@ export async function fitIsometricView(page: Page) {
 export async function drawRectangle(page: Page) {
   await selectSketchTool(page, "Rectangle tools", "Rectangle G")
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-  const bounds = await drawing.boundingBox()
-  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
-  await page.mouse.click(bounds.x + bounds.width * 0.35, bounds.y + bounds.height * 0.62)
-  await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.38)
+  const [first, second] = await uncoveredRectangleCorners(page, drawing)
+  await page.mouse.click(first.x, first.y)
+  await page.mouse.click(second.x, second.y)
   await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
   return drawing
+}
+
+/** Picks rectangle corners inside the free canvas whose corners all reach the drawing. */
+async function uncoveredRectangleCorners(page: Page, drawing: Locator) {
+  const bounds = await unobscuredDrawingBounds(page, drawing)
+  for (const [left, top, right, bottom] of [
+    [0.35, 0.38, 0.65, 0.62],
+    [0.2, 0.45, 0.45, 0.8],
+    [0.15, 0.25, 0.4, 0.6],
+    [0.55, 0.45, 0.8, 0.8],
+  ] as const) {
+    const point = (horizontal: number, vertical: number) => ({
+      x: bounds.x + bounds.width * horizontal,
+      y: bounds.y + bounds.height * vertical,
+    })
+    const corners = [point(left, top), point(right, top), point(right, bottom), point(left, bottom)]
+    const reachable = await drawing.evaluate(
+      (element, points) =>
+        points.every(({ x, y }) => {
+          const hit = element.ownerDocument.elementFromPoint(x, y)
+          return hit !== null && element.contains(hit)
+        }),
+      corners,
+    )
+    if (reachable) return [point(left, bottom), point(right, top)] as const
+  }
+  throw new Error("No uncovered rectangle fits in the free sketch canvas.")
 }
 
 export async function selectSketchTool(page: Page, family: string, tool: string | RegExp) {
@@ -47,7 +73,9 @@ export async function openConstraintManager(page: Page) {
     .getByRole("toolbar", { name: "Model commands" })
     .getByRole("button", { name: "Open constraint manager", exact: true })
   if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click()
-  await expect(page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })).toBeVisible()
+  const manager = page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })
+  await expect(manager).toBeVisible()
+  return manager
 }
 
 export async function selectOriginPlaneInViewport(page: Page, plane: "xy" | "xz" | "yz") {
@@ -321,4 +349,55 @@ export async function addDimension(
   await input.fill(expression)
   await editor.getByRole("button", { name: "Apply dimension" }).click()
   await openConstraintManager(page)
+}
+
+/** Proves that no other viewport chrome covers the control's center. */
+export async function expectUncoveredControl(control: Locator) {
+  await expect(control).toBeVisible()
+  expect(
+    await control.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      const hit = element.ownerDocument.elementFromPoint(
+        bounds.x + bounds.width / 2,
+        bounds.y + bounds.height / 2,
+      )
+      return hit !== null && element.contains(hit)
+    }),
+  ).toBe(true)
+}
+
+/** The applied-constraint list lives in the Constraint manager dialog, not the task panel. */
+export function constraintManager(page: Page) {
+  return page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })
+}
+
+/** Clicks the first sampled point of a sketch entity that is not covered by floating chrome. */
+export async function clickUncoveredSketchEntity(page: Page, entity: Locator) {
+  const position = await entity.evaluate((element) => {
+    type ScreenPoint = Readonly<{
+      x: number
+      y: number
+      matrixTransform: (matrix: unknown) => ScreenPoint
+    }>
+    const geometry = element as unknown as {
+      getPointAtLength?: (length: number) => ScreenPoint
+      getScreenCTM?: () => unknown
+      getTotalLength?: () => number
+      ownerSVGElement?: { contains: (node: unknown) => boolean } | null
+    }
+    if (!geometry.getPointAtLength || !geometry.getScreenCTM || !geometry.getTotalLength) {
+      throw new TypeError("Sketch entity selection requires SVG geometry.")
+    }
+    const matrix = geometry.getScreenCTM()
+    const drawing = geometry.ownerSVGElement
+    if (!matrix || !drawing) throw new Error("Sketch entity is detached from the viewport.")
+    const length = geometry.getTotalLength()
+    for (const fraction of [0.5, 0.37, 0.63, 0.25, 0.75, 0.15, 0.85]) {
+      const point = geometry.getPointAtLength(length * fraction).matrixTransform(matrix)
+      const hit = element.ownerDocument.elementFromPoint(point.x, point.y)
+      if (hit && drawing.contains(hit)) return { x: point.x, y: point.y }
+    }
+    throw new Error("Floating chrome covers the whole sketch entity.")
+  })
+  await page.mouse.click(position.x, position.y)
 }

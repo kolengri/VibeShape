@@ -20,7 +20,8 @@ async function createBox(page: Page, values: Record<string, string>) {
   ).toBeVisible()
 }
 async function renamePart(page: Page, from: string, to: string) {
-  await page.getByRole("button", { name: `Rename part ${from}`, exact: true }).click()
+  // The previous row's restored-focus tooltip can cover this action, so activate it by keyboard.
+  await page.getByRole("button", { name: `Rename part ${from}`, exact: true }).press("Enter")
   const dialog = page.getByRole("dialog", { name: "Rename item", exact: true })
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill(to)
   await dialog.getByRole("button", { name: "Rename", exact: true }).click()

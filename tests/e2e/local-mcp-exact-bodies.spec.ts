@@ -141,7 +141,10 @@ test("repairs and applies exact-body Subtract/Revolve through MCP and restores s
     await expect(subtract).toBeEnabled()
     await subtract.click()
     const form = page.getByRole("form", { name: "Subtract solids" })
-    await expect(form.locator('select[name="targetFeatureId"] option')).toHaveCount(3)
+    // The reference picker prepends an empty placeholder before the three exact bodies.
+    await expect(form.locator('select[name="targetFeatureId"] option:not([value=""])')).toHaveCount(
+      3,
+    )
     await expect(form.getByRole("button", { name: "Subtract", exact: true })).toBeEnabled({
       timeout: 30_000,
     })
@@ -241,19 +244,26 @@ test("repairs and applies exact-body Subtract/Revolve through MCP and restores s
     await page.reload()
     await page.getByRole("treeitem", { name: "Exact MCP 4", exact: true }).click()
     const edit = page.getByRole("form", { name: "Edit subtraction" })
-    await expect(edit.getByRole("combobox", { name: "Target solid" })).toHaveValue(
+    await expect(edit.locator('select[name="targetFeatureId"]')).toHaveValue(
       JSON.stringify([id(2), "pattern.instance.1"]),
     )
-    await expect(edit.getByRole("combobox", { name: "Tool solid" })).toHaveValue(
+    await expect(edit.locator('select[name="toolFeatureId"]')).toHaveValue(
       JSON.stringify([id(2), "pattern.instance.0"]),
     )
+    // The visible searchable controls show the labels of the restored backing selections.
+    for (const [name, field] of [
+      ["Target solid", "targetFeatureId"],
+      ["Tool solid", "toolFeatureId"],
+    ] as const) {
+      const selected = await edit.locator(`select[name="${field}"] option:checked`).textContent()
+      expect(selected).toBeTruthy()
+      await expect(edit.getByRole("combobox", { name, exact: true })).toHaveText(selected ?? "")
+    }
     await expect(edit.getByRole("checkbox", { name: "Keep tool solid" })).toBeChecked()
     await edit.getByRole("button", { name: "Cancel", exact: true }).click()
     await page.getByRole("treeitem", { name: "Exact MCP 5", exact: true }).click()
     await expect(
-      page
-        .getByRole("form", { name: "Edit revolve" })
-        .getByRole("combobox", { name: "Target body" }),
+      page.getByRole("form", { name: "Edit revolve" }).locator('select[name="targetFeatureId"]'),
     ).toHaveValue(JSON.stringify([id(2), "pattern.instance.0"]))
   } finally {
     await page.goto("about:blank").catch(() => undefined)

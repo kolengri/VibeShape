@@ -1,7 +1,7 @@
 import { createSolids, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
-import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
+import { confirmSketchPlane, drawRectangle, unobscuredDrawingBounds } from "./sketch-helpers"
 
 test("navigates the true History prefix without changing full authority and guards invalid edits", async ({
   page,
@@ -17,13 +17,16 @@ test("navigates the true History prefix without changing full authority and guar
   ])
   expect(baseline.project.snapshot.history).toHaveLength(2)
   const transport = page.getByRole("group", { name: "History navigation", exact: true })
-  const position = transport.getByRole("status", { name: "History position", exact: true })
+  // The status shows "n / total"; its button names the position and current item.
+  const position = transport
+    .getByRole("status", { name: "History position", exact: true })
+    .getByRole("button")
   const viewport = page.getByRole("region", { name: "3D viewport", exact: true })
   const rows = page.locator('[data-history-kind="feature"] [role="treeitem"]')
   const previous = transport.getByRole("button", { name: "Step back one item", exact: true })
   const next = transport.getByRole("button", { name: "Step forward one item", exact: true })
   const assertPosition = async (count: number) => {
-    await expect(position).toHaveText(new RegExp(`^${count} of 2: `))
+    await expect(position).toHaveAccessibleName(new RegExp(`^${count} of 2: `))
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", String(count))
     await expect(rows).toHaveText(["Box 1", "Cylinder 1"])
     await expect(transport).toHaveAttribute("aria-busy", "false")
@@ -48,7 +51,7 @@ test("navigates the true History prefix without changing full authority and guar
   await width.blur()
   await expect(edit.getByRole("button", { name: "Update box", exact: true })).toBeDisabled()
   await previous.click()
-  await expect(transport.getByRole("status", { name: "", exact: true })).toHaveText(
+  await expect(transport.getByRole("alert")).toHaveText(
     "Could not move through History. Resolve the active edit and try again.",
   )
   await assertPosition(2)
@@ -88,7 +91,10 @@ test("tracks early sketch rollback and saves its draft through guarded forward a
   await saved(page)
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
   const transport = page.getByRole("group", { name: "History navigation", exact: true })
-  const position = transport.getByRole("status", { name: "History position", exact: true })
+  // The status shows "n / total"; its button names the position and current item.
+  const position = transport
+    .getByRole("status", { name: "History position", exact: true })
+    .getByRole("button")
   const next = transport.getByRole("button", { name: "Step forward one item", exact: true })
   const last = transport.getByRole("button", { name: "Return to the full model", exact: true })
   const historyRows = page.locator("[data-history-id]")
@@ -96,7 +102,7 @@ test("tracks early sketch rollback and saves its draft through guarded forward a
   const lines = drawing.locator('[data-sketch-entity-type="line"]')
   const editProfile = async () => {
     await page.getByRole("treeitem", { name: "Edit Sketch 1", exact: true }).click()
-    await expect(position).toHaveText("1 of 3: Sketch 1")
+    await expect(position).toHaveAccessibleName("1 of 3: Sketch 1")
     await expect(page.locator("section[data-sketch-context-mode]")).toHaveAttribute(
       "data-rendered-feature-count",
       "0",
@@ -108,18 +114,11 @@ test("tracks early sketch rollback and saves its draft through guarded forward a
   const addLine = async (offset: number) => {
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await page.getByRole("button", { name: "Line", exact: true }).click()
-    const [bounds, center] = await Promise.all([
-      drawing.boundingBox(),
-      page.locator("#workspace-center").boundingBox(),
-    ])
-    if (!bounds || !center) throw new Error("Expected the visible sketch modeling area.")
-    const left = Math.max(bounds.x, center.x)
-    const top = Math.max(bounds.y, center.y)
-    const width = Math.min(bounds.x + bounds.width, center.x + center.width) - left
-    const height = Math.min(bounds.y + bounds.height, center.y + center.height) - top
-    if (width <= 0 || height <= 0) throw new Error("The sketch modeling area is obscured.")
-    await page.mouse.click(left + width * offset, top + height * 0.75)
-    await page.mouse.click(left + width * (offset + 0.1), top + height * 0.85)
+    // The workspace publishes the canvas region left free by floating windows.
+    const { x: left, y: top, width, height } = await unobscuredDrawingBounds(page, drawing)
+    // Stay above the bottom-centered "Final result" display bar.
+    await page.mouse.click(left + width * offset, top + height * 0.6)
+    await page.mouse.click(left + width * (offset + 0.1), top + height * 0.68)
     await page.keyboard.press("Escape")
   }
 
@@ -129,7 +128,7 @@ test("tracks early sketch rollback and saves its draft through guarded forward a
   await expect(lines).toHaveCount(5)
   await last.click()
   await expect(drawing).toHaveCount(0)
-  await expect(position).toHaveText("3 of 3: Full model")
+  await expect(position).toHaveAccessibleName("3 of 3: Full model")
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
   const returned = await saveProject(page)
   expect(
@@ -141,7 +140,7 @@ test("tracks early sketch rollback and saves its draft through guarded forward a
   await expect(lines).toHaveCount(6)
   await next.click()
   await expect(drawing).toHaveCount(0)
-  await expect(position).toHaveText("2 of 3: Extrusion 1")
+  await expect(position).toHaveAccessibleName("2 of 3: Extrusion 1")
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
   await expect(historyRows).toHaveCount(3)
   const stepped = await saveProject(page)
@@ -151,6 +150,6 @@ test("tracks early sketch rollback and saves its draft through guarded forward a
   expect(stepped.project.snapshot.features).toHaveLength(2)
   expect(stepped.project.snapshot.history).toEqual(returned.project.snapshot.history)
   await last.click()
-  await expect(position).toHaveText("3 of 3: Full model")
+  await expect(position).toHaveAccessibleName("3 of 3: Full model")
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
 })

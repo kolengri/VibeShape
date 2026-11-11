@@ -1,4 +1,4 @@
-import type { Page, Route } from "@playwright/test"
+import type { Locator, Page, Route } from "@playwright/test"
 import { z } from "zod"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect, test } from "./fixtures"
@@ -59,19 +59,32 @@ async function openChat(page: Page) {
   await expect(panel).toBeVisible()
   return panel
 }
+/** Connection fields live in the AI settings dialog opened from the chat panel. */
+async function openAiSettings(page: Page, panel: Locator) {
+  await panel.getByRole("button", { name: "AI settings", exact: true }).click()
+  const settings = page.getByRole("dialog", { name: "AI settings", exact: true })
+  await expect(settings).toBeVisible()
+  return settings
+}
+async function closeAiSettings(settings: Locator) {
+  await settings.getByRole("button", { name: "Close AI settings", exact: true }).click()
+  await expect(settings).toHaveCount(0)
+}
 async function connect(page: Page) {
   const panel = await openChat(page)
-  await panel.getByRole("combobox", { name: "Provider", exact: true }).click()
+  const settings = await openAiSettings(page, panel)
+  await settings.getByRole("combobox", { name: "Provider", exact: true }).click()
   await page.getByRole("option", { name: "Custom endpoint", exact: true }).click()
-  await panel
+  await settings
     .getByRole("textbox", { name: "Chat Completions endpoint URL", exact: true })
     .fill(endpoint)
-  await panel.getByRole("textbox", { name: "API model", exact: true }).fill("fixture-model")
-  await panel.getByLabel("API key (optional)", { exact: true }).fill(key)
-  await panel
+  await settings.getByRole("textbox", { name: "API model", exact: true }).fill("fixture-model")
+  await settings.getByLabel("API key (optional)", { exact: true }).fill(key)
+  await settings
     .getByRole("button", { name: "Connect and enable project access", exact: true })
     .click()
   await expect(panel.getByRole("textbox", { name: "Message", exact: true })).toBeEnabled()
+  if (await settings.isVisible()) await closeAiSettings(settings)
   return panel
 }
 async function inspectProject(page: Page) {
@@ -124,7 +137,9 @@ async function scriptedBoxApi(page: Page) {
     let response: unknown
     switch (step) {
       case 0:
-        response = completion("discover_cad_tools", { query: "create box", limit: 2 }, step)
+        // Discovery filters in catalog order; the default page holds create_box beside
+        // update_box and create_scale.
+        response = completion("discover_cad_tools", { query: "create box", limit: 4 }, step)
         break
       case 1:
         expect(
@@ -284,16 +299,17 @@ test("Stop discards a real pending CAD review and keeps credentials only in memo
   await saved(page)
   const next = await openChat(page)
   await expect(next.getByRole("textbox", { name: "Message", exact: true })).toBeEnabled()
-  await next.getByRole("button", { name: "AI settings", exact: true }).click()
-  await expect(next.getByLabel("API key (optional)", { exact: true })).toHaveValue(key)
-  await expect(next.getByRole("textbox", { name: "API model", exact: true })).toHaveValue(
+  const nextSettings = await openAiSettings(page, next)
+  await expect(nextSettings.getByLabel("API key (optional)", { exact: true })).toHaveValue(key)
+  await expect(nextSettings.getByRole("textbox", { name: "API model", exact: true })).toHaveValue(
     "fixture-model",
   )
+  await closeAiSettings(nextSettings)
   expect((await inspectProject(page)).features).toEqual([])
   expect(api.calls()).toBe(6)
   await page.reload()
   await saved(page)
-  const fresh = await openChat(page)
+  const fresh = await openAiSettings(page, await openChat(page))
   await expect(fresh.getByLabel("API key (optional)", { exact: true })).toHaveValue("")
   await expect(
     fresh.getByRole("textbox", { name: "Chat Completions endpoint URL", exact: true }),

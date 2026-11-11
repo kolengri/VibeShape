@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
 import { openApplicationMenuItem } from "./application-menu-support"
 import { expect } from "./fixtures"
-import { invokeModelCommand } from "./model-command-support"
+import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 
 export async function saved(page: Page, timeout = 30_000) {
   await expect(
@@ -66,8 +66,10 @@ export async function openProject(
 }
 
 export async function deleteFeatureAndUndo(page: Page, name: string) {
-  await page.getByRole("treeitem", { name, exact: true }).click()
-  const remove = page.getByRole("button", { name: "Delete feature", exact: true })
+  // Feature deletion lives in the History item's actions menu, not in the edit form.
+  await expandHistoryDetails(page)
+  await page.getByRole("button", { name: `Actions for ${name}`, exact: true }).click()
+  const remove = page.getByRole("menuitem", { name: `Delete ${name}…`, exact: true })
   await expect(remove).toBeEnabled()
   await remove.click()
   const confirmation = page.getByRole("alertdialog", { name: `Delete ${name}?`, exact: true })

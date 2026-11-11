@@ -195,7 +195,7 @@ selection across labels and trailing controls; child hover fills must not mask t
 
 - Use the bundled system UI stack initially; CAD operation must not depend on network fonts.
 - Default editor text is 13 px with a 18 px line height.
-- Window and editor-panel titles use 16 px semibold text with a 24 px line height and no decorative icons. Section headings use 12 px medium text. Dialog body text remains 14 px.
+- Window and dialog titles use 16 px semibold text with a 24 px line height and no decorative icons. The compact floating workspace windows (model tree, task panel, and AI chat) use 14 px semibold titles with a 20 px line height. Section headings use 12 px medium text. Dialog body text remains 14 px.
 - Show the active project name only in the top project navigation; panel headings identify their purpose without repeating that name.
 - Application and dialog titles use the same 16 px size; large display headings do not belong in the editor.
 - Labels use sentence case. Do not use all caps for navigation or section headings.

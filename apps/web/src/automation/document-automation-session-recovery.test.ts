@@ -1,5 +1,5 @@
 import "../../../../tests/unit/support/dom"
-import { afterEach, expect, it, mock } from "bun:test"
+import { afterEach, expect, it, mock, setSystemTime } from "bun:test"
 import {
   recoverableDraftsViewSchema,
   restoredDraftViewSchema,
@@ -21,23 +21,28 @@ import { createDraftRecoveryOwner } from "./draft-recovery-owner"
 import { createLocalToolExecutor } from "./local-tool-executor"
 
 const disposed = vi.fn()
+// Lets a test move the wall clock while the post-apply display preview rebuilds.
+let previewDelayMs = 0
 mock.module("@vibeshape/application/disposable-document-preview", () => ({
   createDisposableDocumentPreview: () => ({
     cancel: vi.fn(),
     dispose: disposed,
-    preview: async (snapshot: DocumentSnapshot) => ({
-      ok: true,
-      evidence: recoveryGeometry(snapshot),
-      diagnostics: {
-        schemaVersion: 1,
-        documentId: snapshot.id,
-        revision: snapshot.revision,
-        generation: 1,
-        status: "valid",
-        truncated: false,
-        entries: [],
-      },
-    }),
+    preview: async (snapshot: DocumentSnapshot) => {
+      if (previewDelayMs > 0) setSystemTime(new Date(Date.now() + previewDelayMs))
+      return {
+        ok: true,
+        evidence: recoveryGeometry(snapshot),
+        diagnostics: {
+          schemaVersion: 1,
+          documentId: snapshot.id,
+          revision: snapshot.revision,
+          generation: 1,
+          status: "valid",
+          truncated: false,
+          entries: [],
+        },
+      }
+    },
   }),
 }))
 const { createDocumentAutomationSession } = await import("./document-automation-session")
@@ -45,6 +50,8 @@ const closers: (() => void)[] = []
 afterEach(() => {
   for (const close of closers.splice(0)) close()
   vi.clearAllMocks()
+  previewDelayMs = 0
+  setSystemTime()
 })
 
 async function setup() {
@@ -309,4 +316,26 @@ it("reconciles a saved transaction with a lost receipt instead of offering it fo
     value: { revision: 2, items: [] },
   })
   expect(s.f.commits).toHaveLength(1)
+})
+
+it("reports the draft lease renewed by the post-apply display preview", async () => {
+  const s = await setup()
+  previewDelayMs = 5_000
+  const staged = await s.f.stage(s.current.host, s.credential.actor)
+  previewDelayMs = 0
+  // ADR-0047: inspection never renews, so it reads the lease the apply response must report.
+  const inspected = await s.current.host.inspectDraft(s.credential.actor, {
+    schemaVersion: 1,
+    draftId: staged.draft.draftId,
+    query: {
+      kind: "org.vibeshape.cad.inspection.list",
+      schemaVersion: 1,
+      documentId: s.f.saved.id,
+      revision: staged.draft.revision,
+      cursor: null,
+      limit: 1,
+    },
+  })
+  if (!inspected.ok) throw new Error(inspected.diagnostic.message)
+  expect(staged.draft.expiresAt).toBe(inspected.value.draft.expiresAt)
 })
