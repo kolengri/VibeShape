@@ -25,6 +25,7 @@ it("replaces pending project cards with the loaded empty state or a retryable er
         onPendingDeleteChange={() => undefined}
         onRenamed={() => undefined}
         onRetry={onRetry}
+        openDocumentIds={[]}
         switchingDocumentId={null}
       />
     </I18nProvider>

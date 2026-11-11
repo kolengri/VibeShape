@@ -117,7 +117,13 @@ test("opens saved cards and deep links, imports backups and deletes from the sha
     animations: "disabled",
     path: info.outputPath("project-chooser-light-mobile.png"),
   })
-  // An open project keeps its document session and cannot be deleted (#357); close its tab.
+  // An open project keeps its document session and cannot be deleted (#357). The chooser says
+  // so instead of offering a Delete that fails; close the project's tab first.
+  const retainedDelete = page.getByRole("button", { name: /^Delete Landing bracket, revision / })
+  await expect(retainedDelete).toBeDisabled()
+  await expect(retainedDelete).toHaveAccessibleDescription(
+    "This project is still open in this window. Open it and close its tab before deleting it.",
+  )
   await page.getByRole("button", { name: /^Open Landing bracket, revision / }).click()
   await saved(page)
   await page.getByRole("button", { name: "Close Landing bracket", exact: true }).click()

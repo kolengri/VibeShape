@@ -442,9 +442,17 @@ export function deleteLocalProject(
 ): ReturnType<DocumentControllerRuntime["deleteLocalProject"]> {
   if (typeof args[0] === "string" && runtimes.get(args[0]))
     return Promise.resolve(
-      unavailable("project-action-blocked", "An open project cannot be deleted."),
+      unavailable("project-open", "A project open in this window cannot be deleted.", false),
     )
   return runtimes.active().deleteLocalProject(...args)
+}
+/** Projects whose document session stays retained in this window; deleting them is refused. */
+export function useOpenProjectIds() {
+  return useSyncExternalStore(
+    runtimes.subscribeOpenProjects,
+    runtimes.openProjectIds,
+    runtimes.openProjectIds,
+  )
 }
 export function useProjectNavigationPending() {
   const owner = projectNavigation()

@@ -19,6 +19,7 @@ import {
   importProjectBackup,
   listLocalProjects,
   showProjectLibrary,
+  useOpenProjectIds,
 } from "./document-controller"
 import { formatProjectCopyName } from "./versioned-project-file"
 
@@ -228,6 +229,7 @@ export function DocumentProjectPage({
   const [activity, setActivity] = useState<ProjectActivity>("idle")
   const [feedback, setFeedback] = useState<ProjectFeedback | null>(null)
   const { library, loadProjects, retryProjects } = useProjectLibrary(controller.status)
+  const openDocumentIds = useOpenProjectIds()
   const [switchingDocumentId, setSwitchingDocumentId] = useState<string | null>(null)
   const [duplicatingDocumentId, setDuplicatingDocumentId] = useState<string | null>(null)
   useReportActivity(library.status === "loading")
@@ -382,6 +384,7 @@ export function DocumentProjectPage({
         onPendingDeleteChange={changeDeletePending}
         onRenamed={() => void loadProjects()}
         onRetry={retryProjects}
+        openDocumentIds={openDocumentIds}
         switchingDocumentId={switchingDocumentId}
       />
     </ProjectLibraryPageLayout>

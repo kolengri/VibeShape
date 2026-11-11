@@ -33,6 +33,7 @@ const controllerMocks = (() => ({
   showProjectLibrary: vi.fn(),
   renameActiveProject: vi.fn(),
   getProjectActionBlock: vi.fn().mockReturnValue(null),
+  useOpenProjectIds: vi.fn().mockReturnValue([]),
 }))()
 
 const originalModule1 = { ...(await import("./document-controller")) }
@@ -99,6 +100,7 @@ beforeEach(() => {
     removeEventListener: vi.fn(),
   }))
   controllerMocks.getProjectActionBlock.mockReturnValue(null)
+  controllerMocks.useOpenProjectIds.mockReturnValue([])
   controllerMocks.showProjectLibrary.mockResolvedValue({ ok: true })
   controllerMocks.activateLocalProject.mockResolvedValue({ ok: true })
   controllerMocks.createNewLocalProject.mockResolvedValue({ ok: true })
@@ -260,6 +262,41 @@ describe("DocumentProjectPage", () => {
     finish?.({ ok: true })
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
     expect(controllerMocks.listLocalProjects).toHaveBeenCalledTimes(2)
+  })
+
+  it("disables Delete for a project whose session this window still retains", async () => {
+    controllerMocks.useOpenProjectIds.mockReturnValue([otherDocumentId])
+    renderPage({ status: "library", saveStatus: "saved", diagnostic: null, report: null })
+    const retainedDelete = await screen.findByRole("button", {
+      name: "Delete Fixture, revision 2",
+    })
+    const reason =
+      "This project is still open in this window. Open it and close its tab before deleting it."
+
+    expect((retainedDelete as HTMLButtonElement).disabled).toBe(true)
+    const description = document.getElementById(
+      retainedDelete.getAttribute("aria-describedby") ?? "",
+    )
+    expect(description?.textContent).toBe(reason)
+    expect(
+      (screen.getByRole("button", { name: "Delete Bracket, revision 3" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false)
+  })
+
+  it("names this window, not another tab, when deletion races a retained session", async () => {
+    const user = userEvent.setup()
+    controllerMocks.deleteLocalProject.mockResolvedValue({
+      ok: false,
+      diagnostic: { code: "project-open", message: "Open in this window." },
+    })
+    renderPage()
+    await user.click(await screen.findByRole("button", { name: "Delete Fixture, revision 2" }))
+    await user.click(screen.getByRole("button", { name: "Delete project" }))
+
+    const alert = await screen.findByRole("alert")
+    expect(alert.textContent).toContain("still open in this window")
+    expect(alert.textContent).not.toContain("another tab")
   })
 
   it("keeps project deletion context visible after a storage conflict", async () => {

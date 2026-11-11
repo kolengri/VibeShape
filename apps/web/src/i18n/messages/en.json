@@ -82,6 +82,7 @@
           "action": "Delete",
           "actionLabel": "Delete {name}, revision {revision}",
           "currentBlocked": "Open another project before deleting this one.",
+          "openBlocked": "This project is still open in this window. Open it and close its tab before deleting it.",
           "title": "Delete {name}?",
           "description": "Permanently remove revision {revision} and its full history from this browser. Exported .vshape files are not deleted.",
           "confirm": "Delete project",
