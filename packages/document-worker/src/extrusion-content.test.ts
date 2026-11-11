@@ -1000,6 +1000,35 @@ describe("document extrusion content preparation", () => {
         axisDirection: [1, 0, 0],
       },
     })
+    const v8 = featureRecordSchema.parse({
+      ...feature,
+      type: revolveFeatureTypeV8.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [source.feature.parameters.profile] },
+        axis: { kind: "model-edge", reference },
+        angle: createAngleQuantity(180, "deg"),
+        symmetric: true,
+        reversed: false,
+        secondAngle: null,
+        operation: "new",
+        targetBody: null,
+        endCondition: { kind: "angle" },
+      },
+    })
+    // Multi-profile content shares one model-edge axis schema; parsing it must not throw.
+    await expect(
+      prepare({
+        document: documentSnapshotSchema.parse({
+          ...source.document,
+          features: [source.feature, v8],
+        }),
+        feature: v8,
+        geometry,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      parameters: { axis: { kind: "model-edge", reference }, symmetric: true },
+    })
 
     const noncoplanar = [
       {

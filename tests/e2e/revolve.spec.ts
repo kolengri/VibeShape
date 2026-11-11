@@ -179,7 +179,8 @@ test.describe("selector-backed revolve", () => {
     await expect(page.getByRole("treeitem", { name: "Revolve 1", exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-preview-status", "idle", { timeout: 30_000 })
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "0")
-    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+    // Revolve v8 publishes each separate profile solid as its own targetable body.
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
     await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
@@ -574,5 +575,106 @@ test.describe("selector-backed revolve", () => {
     await expect(
       page.getByRole("form", { name: "Edit revolve" }).getByText(selectedLabel, { exact: true }),
     ).toBeVisible()
+  })
+
+  test("authors symmetric and two-sided extents and restores them after reload", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.goto("/")
+    const saved = page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ })
+    await expect(saved).toBeVisible({ timeout: 120_000 })
+    await invokeModelCommand(page, "Create", "Create sketch")
+    await confirmSketchPlane(page, "xy")
+    await drawProfileAwayFromBothOriginAxes(page)
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
+    const form = page.getByRole("form", { name: "Revolve profile" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+
+    await form.getByLabel("Extent").selectOption("symmetric")
+    await form.getByRole("combobox", { name: "Total angle" }).fill("90 deg")
+    await expect(form.getByRole("checkbox", { name: "Reverse direction" })).toBeDisabled()
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+    await form.getByRole("button", { name: "Create revolve" }).click()
+    await expect(form).toHaveCount(0, { timeout: 30_000 })
+    await expect(saved).toBeVisible({ timeout: 30_000 })
+
+    await page.reload()
+    await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
+    const editForm = page.getByRole("form", { name: "Edit revolve" })
+    await expect(editForm.getByLabel("Extent")).toHaveValue("symmetric")
+    await expect(editForm.getByRole("combobox", { name: "Total angle" })).toHaveValue("90 deg")
+
+    await editForm.getByLabel("Extent").selectOption("two-sided")
+    await editForm.getByRole("combobox", { name: "First angle" }).fill("300 deg")
+    await editForm.getByRole("combobox", { name: "Second angle" }).fill("61 deg")
+    // More than one turn has no valid preview, so Apply stays blocked.
+    const update = editForm.getByRole("button", { name: "Update revolve" })
+    await expect(update).toBeDisabled()
+    await editForm.getByRole("combobox", { name: "Second angle" }).fill("45 deg")
+    await editForm.getByRole("checkbox", { name: "Reverse direction" }).check()
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+    await editForm.getByRole("button", { name: "Update revolve" }).click()
+    await expect(editForm).toHaveCount(0, { timeout: 30_000 })
+    await expect(saved).toBeVisible({ timeout: 30_000 })
+
+    await page.reload()
+    await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
+    const reopened = page.getByRole("form", { name: "Edit revolve" })
+    await expect(reopened.getByLabel("Extent")).toHaveValue("two-sided")
+    await expect(reopened.getByRole("combobox", { name: "Second angle" })).toHaveValue("45 deg")
+    await expect(reopened.getByRole("checkbox", { name: "Reverse direction" })).toBeChecked()
+  })
+
+  test("stops at the first contact with an exact end body", async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.goto("/")
+    const saved = page
+      .getByRole("status", { name: "Project save status", exact: true })
+      .filter({ hasText: /^Saved$/ })
+    await expect(saved).toBeVisible({ timeout: 120_000 })
+    // A blocker below the sketch plane on the negative X side: a profile in +X revolving about
+    // +Y first meets its x = 0 face after a quarter turn.
+    await invokeModelCommand(page, "Primitives", "Box")
+    const boxForm = page.getByRole("form", { name: "Create box" })
+    await boxForm.getByRole("combobox", { name: "Width", exact: true }).fill("2000 mm")
+    await boxForm.getByRole("combobox", { name: "Depth", exact: true }).fill("4000 mm")
+    await boxForm.getByRole("combobox", { name: "Height", exact: true }).fill("1999.5 mm")
+    await boxForm.getByRole("combobox", { name: "Origin X", exact: true }).fill("-1000 mm")
+    await boxForm.getByRole("combobox", { name: "Origin Z", exact: true }).fill("-2000 mm")
+    await boxForm.getByRole("button", { name: "Create box", exact: true }).click()
+    await expect(page.getByRole("treeitem", { name: "Box 1", exact: true })).toBeVisible()
+
+    await invokeModelCommand(page, "Create", "Create sketch")
+    await confirmSketchPlane(page, "xy")
+    await drawProfileAwayFromBothOriginAxes(page)
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
+    const form = page.getByRole("form", { name: "Revolve profile" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await form.getByRole("button", { name: "Vertical sketch axis (Y)" }).click()
+    await form.getByLabel("End condition").selectOption("up-to-body")
+    await expect(form.getByLabel("Extent")).toHaveCount(0)
+    await form.getByRole("combobox", { name: "End body" }).click()
+    await page.getByRole("combobox", { name: "Search options…" }).fill("Box 1")
+    await page.getByRole("option", { name: "Box 1 · result" }).click()
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+    await form.getByRole("button", { name: "Create revolve" }).click()
+    await expect(form).toHaveCount(0, { timeout: 30_000 })
+    await expect(saved).toBeVisible({ timeout: 30_000 })
+
+    await page.reload()
+    await page.getByRole("treeitem", { name: "Revolve 1", exact: true }).click()
+    const editForm = page.getByRole("form", { name: "Edit revolve" })
+    await expect(editForm.getByLabel("End condition")).toHaveValue("up-to-body")
+    await expect(
+      editForm.getByRole("button", { name: "Select End body in 3D", exact: true }),
+    ).toHaveText("Box 1 · result")
   })
 })

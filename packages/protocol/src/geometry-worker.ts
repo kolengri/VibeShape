@@ -955,7 +955,9 @@ const revolveMultiProfileFeatureContentBaseSchema = z
               kind: z.literal("edge"),
               semanticRole: z.string().min(1).max(256).optional(),
               lineageToken: z.string().min(1).max(256).optional(),
-              signature: z.lazy(() => topologySignatureSchema.extend({ kind: z.literal("edge") })),
+              signature: z.lazy(() =>
+                topologySignatureSchema.safeExtend({ kind: z.literal("edge") }),
+              ),
               intent: z.lazy(() => topologyIntentSchema).optional(),
             })
             .strict()
