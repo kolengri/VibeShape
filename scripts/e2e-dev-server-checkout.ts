@@ -8,6 +8,15 @@ export function fsUrlPrefix(directory: string) {
   return `/@fs/${directory.replaceAll("\\", "/").replace(/^\/+/, "").replace(/\/+$/, "")}/`
 }
 
+/**
+ * True when a served `/@fs` import is a workspace package of exactly this checkout. The path must
+ * continue with `packages/` directly below the root, so neither a checkout nested inside this one
+ * (`<root>/artifacts/nested/packages/…`) nor an ancestor whose workspace contains it passes.
+ */
+export function isServedByCheckout(served: string, checkoutRoot: string) {
+  return served.startsWith(`${fsUrlPrefix(checkoutRoot)}packages/`)
+}
+
 async function fetchText(url: URL) {
   const response = await fetch(url)
   if (!response.ok) throw new Error(`HTTP ${response.status} for ${url.pathname}`)
@@ -60,6 +69,6 @@ export async function verifyDevServerCheckout(baseURL: string, checkoutRoot: str
     throw new Error(
       `Could not identify the checkout served at ${baseURL}: no module imported a /@fs path. ${advice}`,
     )
-  if (!served.startsWith(fsUrlPrefix(checkoutRoot)))
+  if (!isServedByCheckout(served, checkoutRoot))
     throw new Error(`The dev server at ${baseURL} serves ${served}, not ${checkoutRoot}. ${advice}`)
 }

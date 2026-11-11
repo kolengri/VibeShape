@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
-import { fsUrlPrefix, verifyDevServerCheckout } from "./e2e-dev-server-checkout"
+import { fsUrlPrefix, isServedByCheckout, verifyDevServerCheckout } from "./e2e-dev-server-checkout"
 
 const vite = resolve(import.meta.dirname, "../apps/web/node_modules/vite/bin/vite.js")
 // Real paths: Vite reports resolved locations, and macOS temporary directories are symlinked.
@@ -103,6 +103,15 @@ it("rejects a sibling checkout and a server that is not a VibeShape editor", asy
   } finally {
     await foreign.stop(true)
   }
+})
+
+it("rejects a nested checkout's server when tests run from the ancestor checkout", () => {
+  // The nested checkout's package import still starts with the ancestor's /@fs prefix.
+  const nestedImport = `${fsUrlPrefix(nested)}packages/lib/index.ts`
+  expect(nestedImport.startsWith(fsUrlPrefix(ancestor))).toBe(true)
+  expect(isServedByCheckout(nestedImport, ancestor)).toBe(false)
+  expect(isServedByCheckout(nestedImport, nested)).toBe(true)
+  expect(isServedByCheckout(`${fsUrlPrefix(ancestor)}packages/lib/index.ts`, ancestor)).toBe(true)
 })
 
 it("writes Windows drive paths as Vite /@fs URLs", () => {
