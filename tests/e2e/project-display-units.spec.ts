@@ -64,6 +64,11 @@ test.describe("project display units", () => {
     await expect(page.getByText("Units: in · rad", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await expect(page.getByRole("cell", { name: "1 in" })).toBeVisible()
+    await variables
+      .getByRole("button", { name: "Done", exact: true })
+      .filter({ hasText: "Done" })
+      .click()
+    await expect(variables).toHaveCount(0)
     await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
     await expect(
       page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
