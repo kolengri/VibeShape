@@ -13,12 +13,14 @@ import { angleQuantitySchema } from "./units"
 import { resolveQuantityExpression } from "./variables"
 
 export const DRAFT_MAX_FACES = 256
+/** Inclusive lower bound; OCCT silently leaves faces untouched at or below 1e-4 rad (~0.0057°). */
+export const DRAFT_MIN_ANGLE_RADIANS = (0.01 * Math.PI) / 180
 /** Exclusive upper bound; OCCT draft geometry degenerates as the angle approaches 90 degrees. */
 export const DRAFT_MAX_ANGLE_RADIANS = (89 * Math.PI) / 180
 
 export const draftAngleSchema = angleQuantitySchema.refine(
-  ({ value }) => value > 0 && value < DRAFT_MAX_ANGLE_RADIANS,
-  "Draft angle must be greater than 0 and less than 89 degrees.",
+  ({ value }) => value >= DRAFT_MIN_ANGLE_RADIANS && value < DRAFT_MAX_ANGLE_RADIANS,
+  "Draft angle must be at least 0.01 degrees and less than 89 degrees.",
 )
 
 /** Content identity excludes document UUIDs; the dependency slot owns the body identity. */

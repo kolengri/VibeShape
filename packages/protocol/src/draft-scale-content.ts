@@ -1,6 +1,8 @@
 import { z } from "zod"
 import { shellOpeningContentSchema } from "./geometry-worker"
 
+/** Inclusive lower bound; OCCT silently leaves faces untouched at or below 1e-4 rad. */
+export const DRAFT_MIN_ANGLE_RADIANS = (0.01 * Math.PI) / 180
 /** Exclusive upper bound shared by the authored Draft angle and its worker content. */
 export const DRAFT_MAX_ANGLE_RADIANS = (89 * Math.PI) / 180
 export const SCALE_MIN_FACTOR = 0.001
@@ -20,7 +22,7 @@ export const draftFeatureContentParametersSchema = z
     planeOrigin: point,
     planeNormal: unitDirection,
     pullDirection: unitDirection,
-    angle: z.number().finite().positive().lt(DRAFT_MAX_ANGLE_RADIANS),
+    angle: z.number().finite().gte(DRAFT_MIN_ANGLE_RADIANS).lt(DRAFT_MAX_ANGLE_RADIANS),
     supportInputIndex: z.union([z.literal(0), z.literal(1)]).optional(),
   })
   .strict()

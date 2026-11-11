@@ -2683,7 +2683,7 @@
       "faceName": "Face {number}",
       "face": "Face {number}: area {area} mm\u00b2; center ({x}, {y}, {z}) mm",
       "angle": "Draft angle",
-      "angleDescription": "Angle expression greater than 0 and less than 89 degrees.",
+      "angleDescription": "Angle expression from 0.01 degrees to less than 89 degrees.",
       "flip": "Flip pull direction",
       "flipDescription": "By default the pull direction follows the plane normal, or points into the body for a planar face. Faces narrow along the pull direction; flipping inverts the taper.",
       "repair": "A drafted face is missing or ambiguous. Reselect the faces on the current body before applying.",
@@ -2691,13 +2691,13 @@
       "validationSummary": "Select 1\u2013256 faces, a neutral plane, and a valid angle.",
       "invalidExpression": "Enter a valid angle expression.",
       "invalidDimension": "The draft angle must be an angle.",
-      "invalidRange": "The draft angle must be greater than 0 and less than 89 degrees.",
+      "invalidRange": "The draft angle must be at least 0.01 degrees and less than 89 degrees.",
       "create": "Apply draft",
       "update": "Update draft",
       "cancel": "Cancel",
       "staleRevision": "The document changed. Reopen Draft and select the current faces.",
       "saveFailed": "Draft could not be saved. Your values remain available to retry.",
-      "previewFailed": "Draft could not be built. Faces tangent to a selected face are drafted with it, so a face perpendicular to the pull direction anywhere in that chain fails. Draft before filleting, choose other faces, or reduce the angle. Apply requires a successful preview."
+      "previewFailed": "Draft could not be built. Faces tangent to a selected face are drafted with it, and curved blends such as fillets, or faces perpendicular to the pull direction, cannot be drafted. Draft before filleting, choose other faces, or reduce the angle. Apply requires a successful preview."
     },
     "scale": {
       "title": "Scale",

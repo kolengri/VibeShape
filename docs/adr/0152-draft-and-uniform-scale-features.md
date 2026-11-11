@@ -24,8 +24,11 @@ same authored part and keep its history, like Shell and Placement.
 flag. The neutral plane reuses the shared reference-plane contract (origin plane, Datum Plane,
 explicit plane or planar face). A planar neutral face must belong to the target body and cannot also
 be drafted. A Datum Plane producer follows the target as the second dependency; body topology lives
-only in parameters. The angle is expression-capable and bounded to more than 0 and less than 89
-degrees.
+only in parameters. The angle is expression-capable, at least 0.01 degrees and less than 89 degrees.
+OCCT leaves faces untouched at or below 1e-4 rad, so smaller angles are rejected instead of
+producing an unchanged body. The kernel failure message names the failing face's position in the
+selection; the document worker forwards it and the task panel shows it, through one shared list of
+feature types whose kernel messages are shown verbatim.
 
 Document content preparation resolves the neutral plane to an origin and unit normal and derives the
 pull direction: the plane normal for origin, Datum and explicit planes, and the reverse of the

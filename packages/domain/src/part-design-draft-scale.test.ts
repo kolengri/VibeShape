@@ -112,7 +112,7 @@ describe("Draft feature contract", () => {
     ).toBe(false)
   })
 
-  it.each([0, 89, 90, -5])("rejects a %s degree angle", (degrees) => {
+  it.each([0, 0.005, 89, 90, -5])("rejects a %s degree angle", (degrees) => {
     expect(
       draftFeatureParametersSchema.safeParse(
         draftParameters({ angle: createAngleQuantity(degrees, "deg") }),

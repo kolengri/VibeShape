@@ -1,3 +1,4 @@
+import { DRAFT_MAX_ANGLE_RADIANS, DRAFT_MIN_ANGLE_RADIANS } from "@vibeshape/protocol"
 import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
 import { featureResultMetricsAreValid } from "./feature-result-validation"
@@ -14,16 +15,15 @@ export type DraftGeometryParameters = Readonly<{
   planeNormal: readonly [number, number, number]
   /** Unit pull direction; the selected faces narrow the body along it for a positive angle. */
   pullDirection: readonly [number, number, number]
-  /** Draft angle in radians, strictly between 0 and 89 degrees. */
+  /** Draft angle in radians, at least 0.01 degrees and less than 89 degrees. */
   angle: number
 }>
 
 type OwnedBinding = { delete(): unknown }
-const MAX_DRAFT_ANGLE = (89 * Math.PI) / 180
 // Draft_ErrorStatus is unbound in the pinned WASM build, so AddDone/IsDone are the only signals.
 function requireDraftParameters(parameters: DraftGeometryParameters, faceCount: number) {
-  if (!(parameters.angle > 0 && parameters.angle < MAX_DRAFT_ANGLE))
-    throw new DraftError("Draft angle must be greater than 0 and less than 89 degrees.")
+  if (!(parameters.angle >= DRAFT_MIN_ANGLE_RADIANS && parameters.angle < DRAFT_MAX_ANGLE_RADIANS))
+    throw new DraftError("Draft angle must be at least 0.01 degrees and less than 89 degrees.")
   if (faceCount < 1 || faceCount > 256) throw new DraftError("Draft requires 1 to 256 faces.")
   for (const vector of [parameters.planeNormal, parameters.pullDirection]) {
     if (Math.abs(Math.hypot(...vector) - 1) > 1e-6)
@@ -72,9 +72,9 @@ export function draftOcctShape(
       builder.Add(face.wrapped, pull, parameters.angle, plane, true)
       if (!builder.AddDone())
         throw new DraftError(
-          `Draft cannot tilt selected face ${index + 1} or a face tangent to it. Faces ` +
-            "perpendicular to the pull direction cannot be drafted; draft before filleting, or " +
-            "choose faces whose tangent neighbours can tilt too.",
+          `Draft cannot tilt selected face ${index + 1} or a face tangent to it. Curved blends ` +
+            "such as fillets and faces perpendicular to the pull direction cannot be drafted; " +
+            "draft before filleting, or choose faces whose tangent neighbours can tilt too.",
         )
     })
     const progress = own(new occt.Message_ProgressRange_1())
