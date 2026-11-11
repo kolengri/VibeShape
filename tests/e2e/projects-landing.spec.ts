@@ -117,6 +117,11 @@ test("opens saved cards and deep links, imports backups and deletes from the sha
     animations: "disabled",
     path: info.outputPath("project-chooser-light-mobile.png"),
   })
+  // An open project keeps its document session and cannot be deleted (#357); close its tab.
+  await page.getByRole("button", { name: /^Open Landing bracket, revision / }).click()
+  await saved(page)
+  await page.getByRole("button", { name: "Close Landing bracket", exact: true }).click()
+  await expect(chooser(page)).toBeVisible()
   await page.getByRole("button", { name: /^Delete Landing bracket, revision / }).click()
   const confirm = page.getByRole("alertdialog", { name: "Delete Landing bracket?", exact: true })
   await confirm.getByRole("button", { name: "Keep project", exact: true }).click()
