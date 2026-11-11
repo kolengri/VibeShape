@@ -161,6 +161,31 @@ describe("Revolve v8 endpoints and dependencies", () => {
     ).toBe(false)
   })
 
+  it("ignores a stale expression on the hidden angle of an endpoint revolve", () => {
+    const endpoint = { ...base, angle: deg(90, "#deleted"), endCondition: upToFace }
+    expect(handler().resolveParameters(endpoint, new Map())).toEqual({
+      ok: true,
+      parameters: revolveFeatureParametersV8Schema.parse(endpoint),
+    })
+    const outOfRange = evaluateVariableDefinitions([
+      { schemaVersion: 0, id: id(901), name: "turn", expression: "720 deg" },
+    ])
+    if (!outOfRange.ok) throw new Error(outOfRange.diagnostic.message)
+    const tooLarge = { ...endpoint, angle: deg(90, "#turn") }
+    expect(handler().resolveParameters(tooLarge, outOfRange.valuesByName)).toMatchObject({
+      ok: true,
+    })
+    // The same expressions still fail an angle-bounded revolve.
+    const angular = { ...tooLarge, endCondition: { kind: "angle" as const } }
+    expect(handler().resolveParameters(angular, outOfRange.valuesByName)).toMatchObject({
+      ok: false,
+      diagnostic: { issues: [{ path: "angle" }] },
+    })
+    expect(
+      handler().resolveParameters({ ...angular, angle: deg(90, "#deleted") }, new Map()),
+    ).toMatchObject({ ok: false, diagnostic: { issues: [{ path: "angle" }] } })
+  })
+
   it("orders target, axis owner, and endpoint owner and retains the endpoint as geometry input", () => {
     const modifying = {
       ...base,
