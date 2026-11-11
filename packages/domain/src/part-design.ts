@@ -910,6 +910,48 @@ export const revolveEndConditionSchema = z.discriminatedUnion("kind", [
 ])
 export type RevolveEndCondition = Readonly<z.infer<typeof revolveEndConditionSchema>>
 
+type RevolveV8Shape = Readonly<{
+  angle: { value: number }
+  symmetric: boolean
+  reversed: boolean
+  secondAngle: { value: number } | null
+  operation: string
+  targetBody: unknown
+  endCondition: { kind: string }
+}>
+function revolveV8Issue(path: string, message: string) {
+  return { code: "custom" as const, path: [path], message }
+}
+/** Target, angular-extent, and one-sided-endpoint rules shared by every Revolve v8 record. */
+function revolveV8ExtentIssues(parameters: RevolveV8Shape) {
+  const issues = []
+  if ((parameters.operation === "new") !== (parameters.targetBody === null))
+    issues.push(
+      revolveV8Issue(
+        "targetBody",
+        "Modifying revolve requires an exact body target; New must not consume one.",
+      ),
+    )
+  if (parameters.symmetric && (parameters.reversed || parameters.secondAngle !== null))
+    issues.push(
+      revolveV8Issue(
+        "symmetric",
+        "A symmetric revolve has neither a second angle nor a reversed direction.",
+      ),
+    )
+  if (parameters.angle.value + (parameters.secondAngle?.value ?? 0) > Math.PI * 2 + 1e-12)
+    issues.push(
+      revolveV8Issue("secondAngle", "The total revolve angle must be at most 360 degrees."),
+    )
+  return [...issues, ...revolveV8EndpointIssues(parameters)]
+}
+function revolveV8EndpointIssues(parameters: RevolveV8Shape) {
+  const twoSided = parameters.symmetric || parameters.secondAngle !== null
+  return parameters.endCondition.kind !== "angle" && twoSided
+    ? [revolveV8Issue("endCondition", "Dynamic revolve endpoints require one directional extent.")]
+    : []
+}
+
 /**
  * `angle` is the one-sided angle, the symmetric total, or the first of two sides. The second side
  * sweeps against the first direction; `reversed` flips the first direction.
@@ -928,33 +970,9 @@ export const revolveFeatureParametersV8Schema = z
   })
   .strict()
   .superRefine((parameters, context) => {
-    if ((parameters.operation === "new") !== (parameters.targetBody === null))
-      context.addIssue({
-        code: "custom",
-        path: ["targetBody"],
-        message: "Modifying revolve requires an exact body target; New must not consume one.",
-      })
-    if (parameters.symmetric && (parameters.reversed || parameters.secondAngle !== null))
-      context.addIssue({
-        code: "custom",
-        path: ["symmetric"],
-        message: "A symmetric revolve has neither a second angle nor a reversed direction.",
-      })
-    if (parameters.angle.value + (parameters.secondAngle?.value ?? 0) > Math.PI * 2 + 1e-12)
-      context.addIssue({
-        code: "custom",
-        path: ["secondAngle"],
-        message: "The total revolve angle must be at most 360 degrees.",
-      })
+    for (const issue of revolveV8ExtentIssues(parameters)) context.addIssue(issue)
     const end = parameters.endCondition
-    if (end.kind === "angle") return
-    if (parameters.symmetric || parameters.secondAngle !== null)
-      context.addIssue({
-        code: "custom",
-        path: ["endCondition"],
-        message: "Dynamic revolve endpoints require one directional extent.",
-      })
-    validateExtrusionEndOwnership(parameters.targetBody, end, context)
+    if (end.kind !== "angle") validateExtrusionEndOwnership(parameters.targetBody, end, context)
   })
 export type RevolveFeatureParametersV8 = Readonly<z.infer<typeof revolveFeatureParametersV8Schema>>
 

@@ -9,6 +9,7 @@ import {
   type FeatureRecord,
   featureIdSchema,
   featureRecordSchema,
+  type RevolveAuthoringIntent,
   type RevolveAuthoringRoute,
   type RevolveEndCondition,
   readRevolveFeatureParameters,
@@ -265,6 +266,30 @@ function targetBody(target: Extract<ReturnType<typeof parseTarget>, { ok: true }
     : null
 }
 
+type ParsedAngles = Extract<ReturnType<typeof parseAngles>, { ok: true }>
+
+/** Symmetric intent only applies to an angular end; it never carries a reversed direction. */
+function authoringIntent(
+  values: Values,
+  angles: ParsedAngles,
+  operation: ParsedRevolve["operation"],
+  target: Extract<ReturnType<typeof parseTarget>, { ok: true }>,
+  endCondition: RevolveEndCondition,
+): RevolveAuthoringIntent {
+  const symmetric = endCondition.kind === "angle" && values.extent === "symmetric"
+  return {
+    profiles: values.profiles,
+    axis: values.axis,
+    angle: angles.angle,
+    symmetric,
+    reversed: !symmetric && values.reversed,
+    secondAngle: angles.secondAngle,
+    operation,
+    targetBody: operation === "new" ? null : targetBody(target),
+    endCondition,
+  }
+}
+
 function parseValues(values: Values, context: ParseContext) {
   const { copy } = context
   const angles = parseAngles(values, context)
@@ -274,29 +299,16 @@ function parseValues(values: Values, context: ParseContext) {
   if (!target.ok) return target
   const end = parseRevolveEnd(values, context.endOptions)
   if (!end.ok) return { ok: false as const, issues: { [end.field]: copy.missingEnd } }
-  const dynamic = end.value.kind !== "angle"
-  const symmetric = !dynamic && values.extent === "symmetric"
   const route = routeRevolveAuthoring(
-    {
-      profiles: values.profiles,
-      axis: values.axis,
-      angle: angles.angle,
-      symmetric,
-      reversed: !symmetric && values.reversed,
-      secondAngle: angles.secondAngle,
-      operation,
-      targetBody: operation === "new" ? null : targetBody(target),
-      endCondition: end.value,
-    },
+    authoringIntent(values, angles, operation, target, end.value),
     context.mode.kind === "edit" ? context.mode.feature.type : null,
   )
-  if (!route)
-    return {
-      ok: false as const,
-      issues: angles.secondAngle
-        ? { secondAngle: copy.invalidTotal }
-        : { angle: copy.invalidRange },
-    }
+  if (!route) {
+    const issues = angles.secondAngle
+      ? { secondAngle: copy.invalidTotal }
+      : { angle: copy.invalidRange }
+    return { ok: false as const, issues }
+  }
   return {
     ok: true as const,
     route,

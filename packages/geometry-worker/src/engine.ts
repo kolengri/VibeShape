@@ -228,6 +228,7 @@ import { shellOcctShape } from "./occt-shell"
 import { inspectOcctSourceImport, rebuildOcctSourceImport } from "./occt-source-import"
 import { createOcctSweep } from "./occt-sweep"
 import { threadOcctShape } from "./occt-thread"
+import { revolveExtentInputsAreValid } from "./revolve-extent-inputs"
 import { revolveProfileCrossesAxis } from "./revolve-profile"
 import { resolveSelectedEdgeKeys } from "./selected-edge-resolver"
 import { DocumentFeatureShapeRegistry, OwnedShapeRegistry } from "./shape-registry"
@@ -2123,41 +2124,6 @@ function parseExactMultiRevolveFeature(input: FeatureEvaluationInput): FeaturePa
       "Exact modifying Revolve requires a named target body in input 0.",
     )
   return parseMultiRevolveModifyingFeature(input)
-}
-
-function revolveExtentInputsAreValid(
-  input: FeatureEvaluationInput,
-  parameters: RevolveFeatureContentParametersV8,
-) {
-  const roles =
-    input.content.schemaVersion === 1
-      ? input.content.feature.inputRoles
-      : input.dependencies.map(() => null)
-  if (input.content.feature.inputs.length !== input.dependencies.length) return false
-  if (
-    parameters.operation !== "new" &&
-    (roles[0] == null || roles[0] !== input.dependencies[0]?.outputRole)
-  )
-    return false
-  const end = parameters.endCondition
-  const endDependency = end.kind === "angle" ? undefined : input.dependencies[end.inputIndex]
-  if (
-    end.kind !== "angle" &&
-    (endDependency?.contentHash !== end.sourceContentHash ||
-      endDependency.outputRole !== end.outputRole ||
-      roles[end.inputIndex] !== end.outputRole)
-  )
-    return false
-  const expected = [
-    parameters.operation === "new" ? undefined : input.dependencies[0]?.featureId,
-    parameters.supportFeatureId,
-    parameters.axis.kind === "model-edge" ? parameters.axis.reference.featureId : undefined,
-    endDependency?.featureId,
-  ].flatMap((id, index, ids) => (id && ids.indexOf(id) === index ? [id] : []))
-  return (
-    expected.length === input.dependencies.length &&
-    input.dependencies.every(({ featureId }, index) => featureId === expected[index])
-  )
 }
 
 function parseRevolveExtentFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -4335,27 +4301,22 @@ function featureProfileCount(feature: ParsedFeature) {
     : 1
 }
 
-function featureSolidKind(feature: ParsedFeature): Parameters<typeof featureSolidCountLimit>[0] {
-  switch (feature.kind) {
-    case "extent-extrusion":
-      return feature.parameters.operation === "new"
-        ? "multi-extrusion"
-        : "multi-extrusion-modifying"
-    case "constrained-loft":
-      return "loft"
-    case "revolve-extent":
-      return feature.parameters.operation === "new" ? "multi-revolve" : "multi-revolve-modifying"
-    case "selected-fillet":
-    case "advanced-fillet":
-      return "fillet"
-    case "advanced-chamfer":
-    case "selected-chamfer":
-      return "chamfer"
-    case "hole":
-      return "boolean"
-    default:
-      return feature.kind
-  }
+type SolidKind = Parameters<typeof featureSolidCountLimit>[0]
+const solidKindAliases: Partial<Record<ParsedFeature["kind"], SolidKind>> = {
+  "constrained-loft": "loft",
+  "selected-fillet": "fillet",
+  "advanced-fillet": "fillet",
+  "advanced-chamfer": "chamfer",
+  "selected-chamfer": "chamfer",
+  hole: "boolean",
+}
+
+function featureSolidKind(feature: ParsedFeature): SolidKind {
+  if (feature.kind === "extent-extrusion")
+    return feature.parameters.operation === "new" ? "multi-extrusion" : "multi-extrusion-modifying"
+  if (feature.kind === "revolve-extent")
+    return feature.parameters.operation === "new" ? "multi-revolve" : "multi-revolve-modifying"
+  return solidKindAliases[feature.kind] ?? (feature.kind as SolidKind)
 }
 
 const independentBodyBundleKinds = new Set(["compound", "split", "pattern", "imported"])
@@ -4652,6 +4613,23 @@ async function bodyBundleForEvaluation(
     return { role, shape }
   })
   return { shape: source.shape, outputs }
+}
+
+function isBodyBundleFeature(
+  feature: ParsedFeature,
+): feature is Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }> {
+  return independentBodyBundleKinds.has(feature.kind)
+}
+
+/** New multi-profile Revolve v8 may publish one named output per profile solid. */
+function isRevolveProfileBundle(
+  feature: ParsedFeature,
+): feature is Extract<ParsedFeature, { kind: "revolve-extent" }> {
+  return (
+    feature.kind === "revolve-extent" &&
+    feature.parameters.operation === "new" &&
+    feature.parameters.profiles.length > 1
+  )
 }
 
 /** A cached bundle is either the merged result or the complete set of named profile solids. */
@@ -5033,12 +5011,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     }
 
     const feature = parsed.feature
-    if (
-      feature.kind === "compound" ||
-      feature.kind === "split" ||
-      feature.kind === "pattern" ||
-      feature.kind === "imported"
-    )
+    if (isBodyBundleFeature(feature))
       return this.#evaluateBodyBundle(
         input,
         feature,
@@ -5047,11 +5020,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         reportProgress,
         sourceAsset,
       )
-    if (
-      feature.kind === "revolve-extent" &&
-      feature.parameters.operation === "new" &&
-      feature.parameters.profiles.length > 1
-    )
+    if (isRevolveProfileBundle(feature))
       return this.#evaluateOwnedBundle(
         input,
         feature,

@@ -1,3 +1,4 @@
+import { readDatumPointFeatureParameters } from "./datum-point"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
 import type { FeatureId } from "./identifiers"
@@ -39,7 +40,6 @@ import { readSplitFeatureParameters, readSplitFeatureParametersV2 } from "./part
 import { booleanBodyDependencyIds, readBooleanFeatureParametersV2 } from "./part-design-subtract"
 import { readSweepFeatureParameters, readSweepFeatureParametersV2 } from "./part-design-sweep"
 import { readThreadFeatureParameters } from "./part-design-thread"
-import { readDatumPointFeatureParameters } from "./datum-point"
 import { isReferenceGeometryFeature, readDatumPlaneFeatureParameters } from "./reference-geometry"
 
 const independentBodyReaders = [

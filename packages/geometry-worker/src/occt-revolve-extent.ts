@@ -14,7 +14,7 @@ export class RevolveExtentError extends Error {}
  * Dynamic endpoints sweep one profile at most this far before the endpoint must have closed it.
  * The one-degree gap keeps the overrun cap geometrically distinct from the start cap.
  */
-export const REVOLVE_ENDPOINT_SWEEP_RADIANS = Math.PI * 2 - Math.PI / 180
+const REVOLVE_ENDPOINT_SWEEP_RADIANS = Math.PI * 2 - Math.PI / 180
 
 export type RevolveSweep = Readonly<{
   /** Signed rotation of the profile about the directed axis before sweeping. */

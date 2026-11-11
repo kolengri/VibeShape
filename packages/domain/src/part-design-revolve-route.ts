@@ -40,23 +40,38 @@ export function revolveIntentRequiresV8(intent: RevolveAuthoringIntent) {
   )
 }
 
-function legacyRevolveCandidate(intent: RevolveAuthoringIntent, schemaVersion: number) {
+type Candidate = Readonly<Record<string, unknown>> | null
+/** Each saved schema's parameter shape, or null when that version cannot hold the intent. */
+const legacyCandidates: Readonly<Record<number, (intent: RevolveAuthoringIntent) => Candidate>> = {
+  1: (intent) => originAxisCandidate(intent),
+  2: (intent) => originAxisCandidate(intent),
+  3: (intent) => singleProfileCandidate(intent),
+  4: (intent) => singleProfileCandidate(intent),
+  5: (intent) => ({ ...common(intent), profiles: intent.profiles }),
+  6: (intent) => (resultTarget(intent) ? { ...common(intent), profiles: intent.profiles } : null),
+  7: (intent) =>
+    intent.targetBody
+      ? { ...common(intent), profiles: intent.profiles, targetBody: intent.targetBody }
+      : null,
+}
+
+function common(intent: RevolveAuthoringIntent) {
+  return { axis: intent.axis, angle: intent.angle, operation: intent.operation }
+}
+function resultTarget(intent: RevolveAuthoringIntent) {
+  return intent.targetBody === null || intent.targetBody.outputRole === "result"
+}
+function singleProfileCandidate(intent: RevolveAuthoringIntent): Candidate {
   const [profile, ...rest] = intent.profiles.profiles
-  const single = rest.length === 0 ? profile : undefined
-  const common = { axis: intent.axis, angle: intent.angle, operation: intent.operation }
-  const resultTarget = intent.targetBody === null || intent.targetBody.outputRole === "result"
-  if (schemaVersion <= 4) {
-    if (!single || !resultTarget) return null
-    if (schemaVersion > 2) return { ...common, profile: single }
-    return intent.axis.kind === "origin-axis"
-      ? { ...common, profile: single, axis: intent.axis.axis }
-      : null
-  }
-  if (schemaVersion === 5) return { ...common, profiles: intent.profiles }
-  if (schemaVersion === 6) return resultTarget ? { ...common, profiles: intent.profiles } : null
-  if (schemaVersion === 7 && intent.targetBody)
-    return { ...common, profiles: intent.profiles, targetBody: intent.targetBody }
-  return null
+  return profile && rest.length === 0 && resultTarget(intent)
+    ? { ...common(intent), profile }
+    : null
+}
+function originAxisCandidate(intent: RevolveAuthoringIntent): Candidate {
+  const candidate = singleProfileCandidate(intent)
+  return candidate && intent.axis.kind === "origin-axis"
+    ? { ...candidate, axis: intent.axis.axis }
+    : null
 }
 
 /**
@@ -71,7 +86,7 @@ export function routeRevolveAuthoring(
   const v8 = revolveFeatureParametersV8Schema.safeParse(intent)
   if (!v8.success) return null
   if (saved && !revolveIntentRequiresV8(intent)) {
-    const candidate = legacyRevolveCandidate(intent, saved.schemaVersion)
+    const candidate = legacyCandidates[saved.schemaVersion]?.(intent) ?? null
     const parameters = candidate && jsonParameters(candidate)
     if (parameters && readRevolveFeatureParameters({ type: saved, parameters }))
       return { type: saved, parameters }
