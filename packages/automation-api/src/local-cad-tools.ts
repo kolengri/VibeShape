@@ -34,6 +34,7 @@ import {
   compoundFeatureParametersV2Schema,
   unionFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-body-combination"
+import { coilDependencyIds, coilFeatureParametersSchema } from "@vibeshape/domain/part-design-coil"
 import { draftFeatureParametersSchema } from "@vibeshape/domain/part-design-draft"
 import { fdmDependencyIds, fdmFeatureParametersSchema } from "@vibeshape/domain/part-design-fdm"
 import {
@@ -72,7 +73,11 @@ import {
   splitFeatureParametersV2Schema,
 } from "@vibeshape/domain/part-design-split"
 import { booleanFeatureParametersV2Schema } from "@vibeshape/domain/part-design-subtract"
-import { sweepFeatureParametersSchema } from "@vibeshape/domain/part-design-sweep"
+import {
+  sweepFeatureParametersSchema,
+  sweepFeatureParametersV2Schema,
+  sweepV2AxisOwnerIds,
+} from "@vibeshape/domain/part-design-sweep"
 import {
   threadFeatureParametersSchema,
   threadFeatureParametersV2Schema,
@@ -484,6 +489,27 @@ const thread = z
       })
   })
 
+const coil = z
+  .object({
+    ...feature,
+    dependencies: featureRecordSchema.shape.dependencies.max(2),
+    references: featureRecordSchema.shape.references.max(0),
+    parameters: coilFeatureParametersSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (
+      canonicalJson(coilDependencyIds(input.parameters)) !== canonicalJson(input.dependencies) ||
+      input.dependencies.includes(input.featureId)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Coil requires its exact target first when modifying, then any distinct axis producer, without self-dependencies.",
+      })
+  })
+
 const multiSketchFeature = {
   ...feature,
   dependencies: featureRecordSchema.shape.dependencies.max(8),
@@ -511,7 +537,32 @@ const loft = z
         message: "Loft v1/v2 permits at most twenty-four producers.",
       })
   })
-const sweep = z.object({ ...multiSketchFeature, parameters: sweepFeatureParametersSchema }).strict()
+const sweep = z
+  .object({
+    ...multiSketchFeature,
+    dependencies: featureRecordSchema.shape.dependencies.max(9),
+    parameters: z.union([sweepFeatureParametersSchema, sweepFeatureParametersV2Schema]),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const parameters = input.parameters
+    if (!("kind" in parameters.path)) {
+      if (input.dependencies.length > 8)
+        context.addIssue({
+          code: "custom",
+          path: ["dependencies"],
+          message: "Planar-path Sweep v1 permits at most eight producers.",
+        })
+      return
+    }
+    const owners = sweepV2AxisOwnerIds(parameters as never)
+    if (owners.some((owner) => !input.dependencies.includes(owner)))
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message: "A helical Sweep must schedule its helix-axis producer after its sketch owners.",
+      })
+  })
 
 const datumPlane = z
   .object({
@@ -701,6 +752,8 @@ export const localCadInputs = {
   update_loft: loft,
   create_sweep: sweep,
   update_sweep: sweep,
+  create_coil: coil,
+  update_coil: coil,
 } as const
 
 export const localCadOperations = [
@@ -768,4 +821,6 @@ export const localCadOperations = [
   z.object({ tool: z.literal("update_loft"), arguments: loft }).strict(),
   z.object({ tool: z.literal("create_sweep"), arguments: sweep }).strict(),
   z.object({ tool: z.literal("update_sweep"), arguments: sweep }).strict(),
+  z.object({ tool: z.literal("create_coil"), arguments: coil }).strict(),
+  z.object({ tool: z.literal("update_coil"), arguments: coil }).strict(),
 ] as const

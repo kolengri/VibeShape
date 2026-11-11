@@ -43,6 +43,7 @@ import {
   unionFeatureType,
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
+import { coilFeatureType } from "./part-design-coil"
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import { draftFeatureType } from "./part-design-draft"
 import { fdmFeatureType, readFdmFeatureParameters } from "./part-design-fdm"
@@ -70,7 +71,12 @@ import { pressPullFeatureType } from "./part-design-press-pull"
 import { scaleFeatureType } from "./part-design-scale"
 import { shellFeatureType, shellFeatureTypeV2 } from "./part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "./part-design-split"
-import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
+import {
+  readSweepFeatureParameters,
+  readSweepFeatureParametersV2,
+  sweepFeatureType,
+  sweepFeatureTypeV2,
+} from "./part-design-sweep"
 import { threadFeatureType, threadFeatureTypeV2 } from "./part-design-thread"
 import {
   datumPlaneFeatureType,
@@ -112,6 +118,7 @@ const emptySemanticInputTypeKeys = new Set(
     cylinderFeatureType,
     sphereFeatureType,
     connectMountsFeatureType,
+    coilFeatureType,
     coneFeatureType,
     coneFeatureTypeV2,
     pyramidFeatureType,
@@ -176,6 +183,13 @@ const sketchSolidInputReaders = new Map<
     (feature) => {
       const parameters = readSweepFeatureParameters(feature)
       return parameters ? [parameters.profile.sketchId, parameters.path.sketchId] : null
+    },
+  ],
+  [
+    featureTypeKey(sweepFeatureTypeV2.type),
+    (feature) => {
+      const parameters = readSweepFeatureParametersV2(feature)
+      return parameters ? [parameters.profile.sketchId] : null
     },
   ],
 ])

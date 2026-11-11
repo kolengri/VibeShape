@@ -7,6 +7,7 @@ import {
   documentSnapshotSchema,
   featureRecordSchema,
 } from "@vibeshape/domain"
+import { coilFeatureType } from "@vibeshape/domain/part-design-coil"
 import { draftFeatureType } from "@vibeshape/domain/part-design-draft"
 import { mirrorFeatureTypeV2, mirrorFeatureTypeV3 } from "@vibeshape/domain/part-design-mirror"
 import {
@@ -195,6 +196,71 @@ describe("Draft neutral-plane content preparation", () => {
       parameters: { planeNormal: [0, 0, -1], pullDirection: [0, 0, 1], supportInputIndex: 0 },
     })
     expect(await prepareReferenceSupportedFeatureContent({ document, feature })).toMatchObject({
+      ok: false,
+      diagnostic: { code: "org.vibeshape.feature.reference-frame-unresolved" },
+    })
+  })
+})
+
+describe("Coil reference axis content preparation", () => {
+  const coil = (overrides: Record<string, unknown>, dependencies: string[]) =>
+    featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-000000003304",
+      type: coilFeatureType.type,
+      parameters: {
+        axis: { kind: "explicit-axis", origin: [1, 2, 3], direction: [0, 1, 0] },
+        handedness: "left",
+        radius: createLengthQuantity(10),
+        pitch: createLengthQuantity(4),
+        extent: { kind: "height", height: createLengthQuantity(10) },
+        startAngle: createAngleQuantity(0.5),
+        section: {
+          kind: "rectangular",
+          width: createLengthQuantity(2),
+          height: createLengthQuantity(1),
+        },
+        operation: "new",
+        targetBody: null,
+        ...overrides,
+      },
+      dependencies,
+      references: [],
+      suppressed: false,
+    })
+
+  it("resolves the axis into UUID-free helix content with derived turns", async () => {
+    expect(await prepareReferenceFrameFeatureContent({ document, feature: coil({}, []) })).toEqual({
+      ok: true,
+      parameters: {
+        helix: {
+          origin: [1, 2, 3],
+          direction: [0, 1, 0],
+          handedness: "left",
+          radius: 10,
+          pitch: 4,
+          turns: 2.5,
+          startAngle: 0.5,
+        },
+        section: { kind: "rectangular", width: 2, height: 1 },
+        operation: "new",
+      },
+    })
+  })
+
+  it("indexes a datum-axis support after the exact target and fails closed when unresolved", async () => {
+    const modifying = coil(
+      {
+        axis: { kind: "datum-axis", featureId: supportId, axis: "normal" },
+        operation: "remove",
+        targetBody,
+      },
+      [sourceId, supportId],
+    )
+    expect(shouldPrepareReferenceFrameFeatureContent(modifying)).toBe(true)
+    expect(
+      await prepareReferenceFrameFeatureContent({ document, feature: modifying, geometry: [] }),
+    ).toMatchObject({
       ok: false,
       diagnostic: { code: "org.vibeshape.feature.reference-frame-unresolved" },
     })

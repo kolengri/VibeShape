@@ -216,6 +216,8 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-pattern",
   "create-connect-mounts",
   "edit-connect-mounts",
+  "create-coil",
+  "edit-coil",
   "create-fdm",
   "edit-fdm",
   "create-thread",
@@ -1869,6 +1871,7 @@ export type EditorWorkspaceActions = Readonly<{
   closeTool: () => void
   completeTool: () => void
   createConnectMounts: () => void
+  createCoil?: () => void
   createFdm?: () => void
   createHole: () => void
   createFillet: () => void

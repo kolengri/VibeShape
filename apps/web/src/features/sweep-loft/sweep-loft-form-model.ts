@@ -3,7 +3,9 @@ import {
   expectedSketchFeatureReferences,
 } from "@vibeshape/application/feature-rebuild"
 import {
+  type DocumentDisplayUnits,
   type DocumentSnapshot,
+  defaultDocumentDisplayUnits,
   type FeatureId,
   type FeatureRecord,
   featureRecordSchema,
@@ -31,10 +33,16 @@ import {
 } from "@vibeshape/domain/part-design-loft-v3"
 import {
   readSweepFeatureParameters,
+  readSweepFeatureParametersV2,
+  type SweepFeatureParametersV2,
   sweepFeatureParametersSchema,
+  sweepFeatureParametersV2Schema,
   sweepFeatureType,
+  sweepFeatureTypeV2,
+  sweepV2AxisOwnerIds,
 } from "@vibeshape/domain/part-design-sweep"
 import { sketchProfileSelectorKey } from "@vibeshape/domain/sketch-profile-selector"
+import { type HelixFormValues, helixFormValues, parseHelixForm } from "../coil/helix-form-model"
 import {
   type LoftConstraintValues,
   type LoftSupportOption,
@@ -68,33 +76,59 @@ export type SweepLoftFormMode =
       featureLabel: string
     }>
   | Readonly<{ kind: "edit"; operation: SweepLoftOperation; feature: FeatureRecord }>
-export type SweepLoftFormValues = LoftConstraintValues & {
-  sections: SketchProfileSelector[]
-  holeCorrespondence: { sectionBoundaryEntityIds: SketchEntityId[][] }[]
-  ruled: boolean
-  profileKey: string
-  pathSketchId: string
-  entityIds: SketchEntityId[]
-  startPointId: string
+export type SweepPathKind = "sketch" | "helix"
+export type SweepLoftFormValues = LoftConstraintValues &
+  HelixFormValues & {
+    pathKind: SweepPathKind
+    sections: SketchProfileSelector[]
+    holeCorrespondence: { sectionBoundaryEntityIds: SketchEntityId[][] }[]
+    ruled: boolean
+    profileKey: string
+    pathSketchId: string
+    entityIds: SketchEntityId[]
+    startPointId: string
+  }
+const helixDefaults = { radius: 20, pitch: 10, turns: 3 }
+const emptySketchPath = { pathSketchId: "", entityIds: [] as SketchEntityId[], startPointId: "" }
+/** Sweep v1 keeps its sketch path; Sweep v2 restores its helix fields. */
+function sweepPathFormValues(mode: SweepLoftFormMode, units: DocumentDisplayUnits) {
+  const feature = mode.kind === "edit" ? mode.feature : null
+  const sweep = feature ? readSweepFeatureParameters(feature) : null
+  if (sweep)
+    return {
+      ...helixFormValues(null, units, helixDefaults),
+      pathKind: "sketch" as const,
+      profileKey: sketchProfileSelectorKey(sweep.profile),
+      pathSketchId: sweep.path.sketchId,
+      entityIds: [...sweep.path.entityIds],
+      startPointId: sweep.path.startPointId,
+    }
+  const helical = feature ? readSweepFeatureParametersV2(feature) : null
+  return {
+    ...helixFormValues(helical?.path ?? null, units, helixDefaults),
+    ...emptySketchPath,
+    entityIds: [],
+    pathKind: helical ? ("helix" as const) : ("sketch" as const),
+    profileKey: helical ? sketchProfileSelectorKey(helical.profile) : "",
+  }
 }
-export function sweepLoftFormValues(mode: SweepLoftFormMode): SweepLoftFormValues {
+export function sweepLoftFormValues(
+  mode: SweepLoftFormMode,
+  units: DocumentDisplayUnits = defaultDocumentDisplayUnits,
+): SweepLoftFormValues {
   const loft =
     mode.kind === "edit"
       ? (readLoftFeatureParametersV3(mode.feature) ?? readLoftFeatureParameters(mode.feature))
       : null
-  const sweep = mode.kind === "edit" ? readSweepFeatureParameters(mode.feature) : null
   return {
     ...loftConstraintValues(mode),
+    ...sweepPathFormValues(mode, units),
     sections: [...(loft?.sections ?? [])],
     holeCorrespondence:
       loft && "holeCorrespondence" in loft
         ? loftHoleCorrespondenceSchema.parse(loft.holeCorrespondence)
         : [],
     ruled: loft?.ruled ?? false,
-    profileKey: sweep ? sketchProfileSelectorKey(sweep.profile) : "",
-    pathSketchId: sweep?.path.sketchId ?? "",
-    entityIds: [...(sweep?.path.entityIds ?? [])],
-    startPointId: sweep?.path.startPointId ?? "",
   }
 }
 export function reorderLoftSection(
@@ -143,6 +177,29 @@ function sweepParameters(
       entityIds: [...values.entityIds].sort(),
       startPointId: values.startPointId,
     },
+  })
+  return parsed.success ? parsed.data : null
+}
+const helixRecordCopy = {
+  invalidExpression: "",
+  invalidDimension: "",
+  invalidRange: "",
+  missingAxis: "",
+}
+/** Helical paths write Sweep v2; expressions resolve against the document variables. */
+function helicalSweepParameters(
+  values: SweepLoftFormValues,
+  profiles: readonly ProfileOption[],
+  snapshot: DocumentSnapshot,
+  units: DocumentDisplayUnits,
+): SweepFeatureParametersV2 | null {
+  const profile = profiles.find(({ key }) => key === values.profileKey)?.selector
+  if (!profile) return null
+  const helix = parseHelixForm(values, snapshot.variables ?? [], units, helixRecordCopy)
+  if (!helix.ok) return null
+  const parsed = sweepFeatureParametersV2Schema.safeParse({
+    profile,
+    path: { kind: "helix", ...helix.parameters },
   })
   return parsed.success ? parsed.data : null
 }
@@ -204,7 +261,10 @@ export function sweepLoftFeatureRecord(
   paths: readonly PathSketchOption[],
   snapshot: DocumentSnapshot,
   supports: readonly LoftSupportOption[] = [],
+  units: DocumentDisplayUnits = defaultDocumentDisplayUnits,
 ): FeatureRecord | null {
+  if (mode.operation === "sweep" && values.pathKind === "helix")
+    return helicalSweepRecord(mode, featureId, values, profiles, snapshot, units)
   const parameters =
     mode.operation === "loft"
       ? loftParameters(
@@ -229,6 +289,41 @@ export function sweepLoftFeatureRecord(
       : []),
   ])
   if (dependencies.length > maximumDependencies) return null
+  const parsed = featureRecordSchema.safeParse(
+    mode.kind === "edit"
+      ? { ...mode.feature, type, parameters, dependencies, references }
+      : {
+          schemaVersion: 0,
+          id: featureId,
+          type,
+          parameters,
+          dependencies,
+          references,
+          suppressed: false,
+          label: mode.featureLabel,
+        },
+  )
+  return parsed.success ? parsed.data : null
+}
+
+function helicalSweepRecord(
+  mode: SweepLoftFormMode,
+  featureId: FeatureId,
+  values: SweepLoftFormValues,
+  profiles: readonly ProfileOption[],
+  snapshot: DocumentSnapshot,
+  units: DocumentDisplayUnits,
+): FeatureRecord | null {
+  const parameters = helicalSweepParameters(values, profiles, snapshot, units)
+  if (!parameters) return null
+  const sketchIds = [parameters.profile.sketchId]
+  const references = expectedSketchFeatureReferences(snapshot, sketchIds)
+  const dependencies = expectedSketchFeatureDependencyIds(snapshot, sketchIds, [
+    ...references.map(({ featureId }) => featureId),
+    ...sweepV2AxisOwnerIds(parameters),
+  ])
+  if (dependencies.length > 9) return null
+  const type = sweepFeatureTypeV2.type
   const parsed = featureRecordSchema.safeParse(
     mode.kind === "edit"
       ? { ...mode.feature, type, parameters, dependencies, references }

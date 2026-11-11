@@ -40,6 +40,7 @@ export {
   CircumscribedPolygonIcon,
   CloseIcon,
   CloseIcon as X,
+  CoilIcon,
   CommandIcon,
   CompassIcon,
   CompassIcon as DraftingCompass,

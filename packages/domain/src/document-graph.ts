@@ -54,6 +54,7 @@ import {
   unionFeatureTypeV2,
 } from "./part-design-body-combination"
 import { chamferFeatureTypeV3, readChamferFeatureParametersV3 } from "./part-design-chamfer"
+import { coilFeatureType, readCoilFeatureParameters } from "./part-design-coil"
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import { draftFeatureType, readDraftFeatureParameters } from "./part-design-draft"
 import { filletFeatureTypeV3, readFilletFeatureParametersV3 } from "./part-design-fillet"
@@ -102,7 +103,12 @@ import {
   hasCompleteBooleanBodyDependencies,
   readBooleanFeatureParametersV2,
 } from "./part-design-subtract"
-import { readSweepFeatureParameters, sweepFeatureType } from "./part-design-sweep"
+import {
+  readSweepFeatureParameters,
+  readSweepFeatureParametersV2,
+  sweepFeatureType,
+  sweepFeatureTypeV2,
+} from "./part-design-sweep"
 import {
   readThreadFeatureParameters,
   threadFeatureType,
@@ -310,6 +316,7 @@ const sketchSolidFeatureTypeKeys = new Set([
   featureTypeKey(loftFeatureTypeV2.type),
   featureTypeKey(loftFeatureTypeV3.type),
   featureTypeKey(sweepFeatureType.type),
+  featureTypeKey(sweepFeatureTypeV2.type),
   featureTypeKey(patternFeatureTypeV3.type),
 ])
 
@@ -328,6 +335,8 @@ const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord)
   [featureTypeKey(loftFeatureTypeV2.type), readLoftFeatureParameters],
   [featureTypeKey(loftFeatureTypeV3.type), readLoftFeatureParametersV3],
   [featureTypeKey(sweepFeatureType.type), readSweepFeatureParameters],
+  [featureTypeKey(sweepFeatureTypeV2.type), readSweepFeatureParametersV2],
+  [featureTypeKey(coilFeatureType.type), readCoilFeatureParameters],
   [featureTypeKey(patternFeatureTypeV3.type), readPatternFeatureParametersV3],
   ...[...extrusionTypeKeys].map((typeKey) => [typeKey, readExtrusionFeatureParameters] as const),
   ...[...revolveTypeKeys].map((typeKey) => [typeKey, readRevolveFeatureParameters] as const),

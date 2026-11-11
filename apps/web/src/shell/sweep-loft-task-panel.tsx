@@ -1,7 +1,10 @@
 import type { FeatureRecord } from "@vibeshape/domain"
 import { readLoftFeatureParameters } from "@vibeshape/domain/part-design-loft"
 import { readLoftFeatureParametersV3 } from "@vibeshape/domain/part-design-loft-v3"
-import { readSweepFeatureParameters } from "@vibeshape/domain/part-design-sweep"
+import {
+  readSweepFeatureParameters,
+  readSweepFeatureParametersV2,
+} from "@vibeshape/domain/part-design-sweep"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import { type ReactNode, useMemo } from "react"
 import { TaskPanelSurface } from "../components/task-panel-layout"
@@ -9,9 +12,11 @@ import {
   createBrowserFeatureId,
   type DocumentControllerState,
 } from "../document/document-controller"
+import { useHelixFieldsCopy } from "../features/coil/use-helix-fields-copy"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
 import { ineligibleProfileSketchIds } from "../features/part-design/profile-feature-selection"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import { useReferenceFrameOptions } from "../features/reference-geometry/use-reference-frame-options"
 import { loftSupportCatalogue } from "../features/sweep-loft/loft-support-catalogue"
 import { sweepLoftCatalogue } from "../features/sweep-loft/sweep-loft-catalogue"
 import { SweepLoftForm, type SweepLoftFormCopy } from "../features/sweep-loft/sweep-loft-form"
@@ -35,7 +40,8 @@ type Props = {
 const parameterReaders = {
   loft: (feature: FeatureRecord) =>
     readLoftFeatureParametersV3(feature) ?? readLoftFeatureParameters(feature),
-  sweep: readSweepFeatureParameters,
+  sweep: (feature: FeatureRecord) =>
+    readSweepFeatureParameters(feature) ?? readSweepFeatureParametersV2(feature),
 }
 function createMode(
   operation: SweepLoftOperation,
@@ -82,7 +88,14 @@ function useFormCopy(mode: SweepLoftFormMode | null): SweepLoftFormCopy {
   const t = useTranslations("app.sweepLoft")
   const operation = mode?.operation ?? "sweep"
   const kind = mode?.kind ?? "create"
+  const helix = useHelixFieldsCopy()
   return {
+    ...helix,
+    pathKind: t("pathKind"),
+    sketchPath: t("sketchPath"),
+    helixPath: t("helixPath"),
+    helixPathDescription: t("helixPathDescription"),
+    leadAngle: (angle) => t("leadAngle", { angle }),
     title: t(titleKeys[operation][kind]),
     submit: t(submitKeys[kind]),
     description: t(descriptionKeys[operation]),
@@ -150,6 +163,7 @@ export function SweepLoftTaskPanel(props: Props) {
   const rebuild = report.rebuild
   const operation = mode?.operation
   const editingId = mode?.kind === "edit" ? mode.feature.id : null
+  const axisOptions = useReferenceFrameOptions(report.snapshot, rebuild, editingId ?? undefined)
   const catalogue = useMemo(() => {
     if (!operation) return null
     const displays =
@@ -210,6 +224,7 @@ export function SweepLoftTaskPanel(props: Props) {
         snapshot={report.snapshot}
         {...catalogue}
         supports={supports}
+        axisOptions={operation === "sweep" ? axisOptions : undefined}
         previewDiagnostic={props.featurePreviewDiagnostic}
         {...featureTaskFormProps(props, mode)}
         variables={report.snapshot.variables}

@@ -47,6 +47,7 @@ import {
   unionFeatureTypeHandler,
   unionFeatureTypeV2Handler,
 } from "./part-design-body-combination"
+import { coilFeatureTypeHandler } from "./part-design-coil"
 import { connectMountsFeatureTypeHandler } from "./part-design-connect-mounts"
 import { draftFeatureTypeHandler } from "./part-design-draft"
 import { fdmFeatureTypeHandler } from "./part-design-fdm"
@@ -72,7 +73,7 @@ import { pressPullFeatureTypeHandler } from "./part-design-press-pull"
 import { scaleFeatureTypeHandler } from "./part-design-scale"
 import { shellFeatureTypeHandler, shellFeatureTypeHandlerV2 } from "./part-design-shell"
 import { splitFeatureTypeHandler, splitFeatureTypeHandlerV2 } from "./part-design-split"
-import { sweepFeatureTypeHandler } from "./part-design-sweep"
+import { sweepFeatureTypeHandler, sweepFeatureTypeHandlerV2 } from "./part-design-sweep"
 import { threadFeatureTypeHandler, threadFeatureTypeHandlerV2 } from "./part-design-thread"
 import {
   createSketchProfileSet,
@@ -2206,6 +2207,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   loftFeatureTypeHandlerV2,
   loftFeatureTypeHandlerV3,
   sweepFeatureTypeHandler,
+  sweepFeatureTypeHandlerV2,
   importedFeatureTypeHandler,
   meshImportFeatureTypeHandler,
   threadFeatureTypeHandler,
@@ -2215,4 +2217,5 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   unionFeatureTypeHandler,
   unionFeatureTypeV2Handler,
   connectMountsFeatureTypeHandler,
+  coilFeatureTypeHandler,
 ]

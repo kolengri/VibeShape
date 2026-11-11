@@ -4,10 +4,17 @@ import { featureIdSchema } from "./identifiers"
 import {
   expectedSweepDependencyIds,
   readSweepFeatureParameters,
+  readSweepFeatureParametersV2,
   sweepFeatureParametersSchema,
+  sweepFeatureParametersV2Schema,
   sweepFeatureType,
   sweepFeatureTypeHandler,
+  sweepFeatureTypeHandlerV2,
+  sweepFeatureTypeV2,
+  sweepV2AxisOwnerIds,
 } from "./part-design-sweep"
+import { createAngleQuantity, createLengthQuantity } from "./units"
+import type { ExpressionValue } from "./variables"
 
 const id = (value: number) => `018f0000-0000-7000-8000-${String(value).padStart(12, "0")}`
 const parameters = {
@@ -49,5 +56,73 @@ describe("new-body Sweep contract", () => {
   it("retains first profile/path support owner occurrences", () => {
     const owners = [3, 1, 3, 2].map((value) => featureIdSchema.parse(id(value)))
     expect(expectedSweepDependencyIds(owners)).toEqual<unknown>([id(3), id(1), id(2)])
+  })
+})
+
+describe("helical Sweep v2 contract", () => {
+  const helixPath = {
+    kind: "helix",
+    axis: { kind: "datum-axis", featureId: id(20), axis: "normal" },
+    handedness: "left",
+    radius: createLengthQuantity(10, "mm", "#r"),
+    pitch: createLengthQuantity(4),
+    extent: { kind: "height", height: createLengthQuantity(20) },
+    startAngle: createAngleQuantity(0),
+  }
+  const v2 = { profile: parameters.profile, path: helixPath }
+  function record(dependencies: string[]) {
+    return featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: id(11),
+      type: sweepFeatureTypeV2.type,
+      parameters: v2,
+      dependencies,
+      references: [],
+      suppressed: false,
+    })
+  }
+
+  it("keeps version 1 planar records replaying unchanged and separate from version 2", () => {
+    const v1 = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: id(10),
+      type: sweepFeatureType.type,
+      parameters,
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    })
+    expect(sweepFeatureType.type.schemaVersion).toBe(1)
+    expect(readSweepFeatureParameters(v1)).toEqual<unknown>(parameters)
+    expect(readSweepFeatureParametersV2(v1)).toBeNull()
+    expect(sweepFeatureParametersV2Schema.safeParse(parameters).success).toBe(false)
+    expect(readSweepFeatureParameters(record([id(20)]))).toBeNull()
+    expect(readSweepFeatureParametersV2(record([id(20)]))).toEqual<unknown>(v2)
+  })
+
+  it("requires the helix-axis producer as a dependency", () => {
+    expect(sweepV2AxisOwnerIds(v2 as never)).toEqual<unknown>([id(20)])
+    expect(sweepFeatureTypeHandlerV2.validateFeature?.(record([id(20)]))).toEqual([])
+    expect(sweepFeatureTypeHandlerV2.validateFeature?.(record([]))).toHaveLength(1)
+  })
+
+  it("resolves helix expressions and bounds derived turns", () => {
+    const values = new Map<string, ExpressionValue>([["r", { dimension: "length", value: 15 }]])
+    expect(sweepFeatureTypeHandlerV2.resolveParameters?.(v2, values)).toMatchObject({
+      ok: true,
+      parameters: { path: { radius: { value: 15 } } },
+    })
+    expect(
+      sweepFeatureParametersV2Schema.safeParse({
+        ...v2,
+        path: { ...helixPath, extent: { kind: "height", height: createLengthQuantity(400) } },
+      }).success,
+    ).toBe(false)
+    expect(
+      sweepFeatureTypeHandlerV2.resolveParameters?.(
+        v2,
+        new Map([["r", { dimension: "angle", value: 1 }]]),
+      ),
+    ).toMatchObject({ ok: false, diagnostic: { issues: [{ path: "path.radius" }] } })
   })
 })

@@ -80,6 +80,11 @@
     "legacy": ["SweepIcon"]
   },
   {
+    "id": "coil",
+    "label": "Coil",
+    "legacy": ["CoilIcon"]
+  },
+  {
     "id": "hole",
     "label": "Hole",
     "legacy": ["HoleIcon"]

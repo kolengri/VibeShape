@@ -227,6 +227,7 @@ paths with corners are not accepted
 | Draft faces about a neutral plane |  | ✓ |  |
 | Uniform scale |  | ✓ |  |
 | Sweep/pipe |  | ✓ |  |
+| Coil/helix and helical sweep |  | ✓ |  |
 | Loft |  | ✓ |  |
 | Split, delete/replace face, non-uniform scale |  |  | ✓ |
 | Direct face move/delete |  |  | ✓ |
@@ -252,6 +253,14 @@ correspondence, named C0 guides, and independently measured G1/G2 support-face c
 kernel contract is exposed by the Loft task panel and named local/paired remote MCP create/update tools.
 Matching hole-free open-segment boundaries are required; unsupported seams, unavailable exact support
 faces and native convergence failures require explicit repair. Version 2 retains hollow correspondence.
+
+[Coil](coil.md) sweeps an expression-capable circular or rectangular section along an exact right- or
+left-handed helix (origin axis, datum axis, stable straight edge or explicit axis; turns or height up
+to 50 turns) as a new body or Add/Remove/Intersect on one exact target body. Sweep v2 accepts the same
+helix as its path for a hole-free profile placed at the helix start, normal to its tangent; planar
+paths keep writing Sweep v1. Overlapping turns and sections reaching the axis fail with the minimum
+pitch. Both are available in the editor and through local/paired remote MCP. See
+[ADR-0155](../adr/0155-exact-helix-coil-and-helical-sweep.md).
 
 
 Every feature requires:

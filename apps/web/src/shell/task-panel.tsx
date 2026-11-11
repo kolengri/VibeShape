@@ -39,6 +39,7 @@ import {
   type BooleanInputOption,
 } from "../features/boolean/boolean-form"
 import { BoxForm, type BoxFormMode } from "../features/box/box-form"
+import { CoilTaskPanel } from "../features/coil/coil-task-panel"
 import { ConnectMountsTaskPanel } from "../features/connect-mounts/connect-mounts-task-panel"
 import { CylinderForm, type CylinderFormMode } from "../features/cylinder/cylinder-form"
 import { readEdgeTreatmentPreselection } from "../features/edge-treatment/edge-treatment-activation"
@@ -1923,6 +1924,9 @@ function SweepLoftToolTaskPanel(props: ActiveTaskPanelProps) {
 function ThreadToolTaskPanel(props: ActiveTaskPanelProps) {
   return <ThreadTaskPanel {...props} renderDelete={() => null} />
 }
+function CoilToolTaskPanel(props: ActiveTaskPanelProps) {
+  return <CoilTaskPanel {...props} renderDelete={() => null} />
+}
 function ConnectMountsToolTaskPanel(props: ActiveTaskPanelProps) {
   return <ConnectMountsTaskPanel {...props} renderDelete={() => null} />
 }
@@ -1978,6 +1982,8 @@ function ImportedSourceTaskPanel(props: ActiveTaskPanelProps) {
 const activeTaskPanelByKind = {
   "inspect-imported": ImportedSourceTaskPanel,
   "create-connect-mounts": ConnectMountsToolTaskPanel,
+  "create-coil": CoilToolTaskPanel,
+  "edit-coil": CoilToolTaskPanel,
   "edit-connect-mounts": ConnectMountsToolTaskPanel,
   "create-fdm": FdmToolTaskPanel,
   "edit-fdm": FdmToolTaskPanel,

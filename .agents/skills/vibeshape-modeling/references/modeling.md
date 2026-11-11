@@ -111,6 +111,35 @@ Preview the owned draft, inspect exact solid count, bounds and volume, then `com
 connection's existing approval policy. Save corrections through `update_connect_mounts` with the
 complete parameter record and the original feature ID. Verify the saved feature after commit.
 
+## Coils and helical sweeps
+
+Use `create_coil`/`update_coil` for springs, wire coils and helical ribs or channels. `parameters`
+holds a helix and a section: `axis` (`origin-axis`, `datum-axis` x/y/normal, stable `linear-edge` or
+`explicit-axis`), `handedness` `right`|`left` (right turns counterclockwise about the axis
+direction), quantity `radius` and `pitch`, `extent` `{kind:"turns",turns}` (scalar, 0.05–50) or
+`{kind:"height",height}` (axial travel of the centerline), quantity `startAngle`, and `section`
+`{kind:"circular",diameter}` or `{kind:"rectangular",width,height}` (width radial, height axial).
+Every size accepts expressions. `operation` `new` uses `targetBody: null` and dependencies
+`[axisProducer?]`; `add`/`remove`/`intersect` require an exact `targetBody` with dependencies
+`[target, distinctAxisProducer?]`. References stay empty.
+
+Turns must not touch: the pitch must exceed the section's exact meridian span. Sections close to
+the axis climb faster than the centerline, so the span is larger than `s/cos(lead angle)`; do not
+estimate it, read the minimum pitch from the validation message and stay above it. The section must not reach the axis. Ends are flat
+cuts normal to the helix; do not claim ground spring ends, variable pitch, conical or multi-start
+coils. A helical solid's volume is section area × helix length; use it to sanity-check previews.
+
+For a custom profile along a helix, use `create_sweep` with `path: {kind:"helix", …same helix
+fields}` (Sweep v2). First create a datum plane through the helix start whose normal is the start
+tangent. For an origin Z helix with start angle 0 (start at +X), use an XZ datum plane (its frame is
+x = +X, y = +Z, normal = −Y) rotated about its x axis by **+**`atan(pitch/(2π·radius))` for a
+right-handed helix or **−**`atan(…)` for a left-handed one, then sketch a hole-free profile around the
+sketch point (radius, 0). Changing radius, pitch, start angle, handedness or axis later moves the
+start frame; re-orient the datum plane, because the profile is never moved automatically.
+Dependencies are the profile sketch owners, then any distinct helix-axis producer. Planar sketch
+paths keep Sweep v1. Preview before `commit_draft`; misaligned planes and overlapping turns fail
+closed.
+
 ## Registered primitives
 
 Box keeps its existing `create_box` millimeter shorthand and adds `update_box` with a complete
@@ -360,7 +389,7 @@ Obtain exact body-bound references from `model_body_topology` or `draft_body_top
 
 `create_reference_body_pattern`/`update_reference_body_pattern` with `kind: "path"` author Pattern v3. Supply the exact `targetBody`, scalar `count` 2–256 including the seed, and a `path` selector naming one saved sketch, its sorted unique `entityIds` and a `startPointId`. The curves form one connected tangent-continuous (G1) chain of lines, circular arcs, cubic Beziers or elliptical arcs, open or closed, or they are a single circle. Open paths start at the named endpoint; a closed chain starts at the named joint; a circle starts at sketch +X from its center when `startPointId` is the center point, or at a named point on the circle. Corners, branches and disconnected selections fail preview. `spacing` is `{ mode: "equal" }` (open paths place the last instance on the path end; closed paths divide the length by the count) or `{ mode: "fixed", distance }` with a positive arc-length distance. `startOffset` is a non-negative arc length from the path start. The seed body stays where it is: the path point at `startOffset` is its reference, and every instance keeps the seed's offset from that point. `orientation: "translate"` keeps the seed orientation; `"follow"` rotates each copy about the sketch normal by the tangent turn from the reference point. `reverse` starts open paths from the other end and runs closed paths clockwise (closed paths otherwise run counterclockwise about the sketch normal). Fixed spacing that runs past an open path end, wraps a closed path back onto the seed, or an offset at least the path length fails preview with a message giving the required and available length. Dependencies are the target producer first, then the path sketch's support/external owners in first-occurrence order (none for an origin-plane sketch); references are empty. Instances are `pattern.instance.0..count-1`, as for other patterns.
 
-Sweep uses one solved profile and an open connected tangent-continuous line, circular arc, cubic Bezier, or bounded elliptical arc path with sorted unique entity IDs and an explicit start point. The profile must already lie at the path start normal to its tangent; the tool does not reposition it. Preserve profile-before-path support/external dependencies and references, with at most eight deduplicated producers.
+Sweep uses one solved profile and an open connected tangent-continuous line, circular arc, cubic Bezier, or bounded elliptical arc path with sorted unique entity IDs and an explicit start point. The profile must already lie at the path start normal to its tangent; the tool does not reposition it. Preserve profile-before-path support/external dependencies and references, with at most eight deduplicated producers. A helix path writes Sweep v2; see Coils and helical sweeps.
 
 Loft v1 uses two to twenty-four ordered, unique, hole-free profile selectors. Loft v2 adds explicit durable hole correspondence: match each hole once across every ordered section, retain those stable boundary IDs on edit, and inspect exact preview for crossing or escaping hole tracks. Both use at most 2,000 aggregate outer/hole boundary entities, twenty-four deduplicated support/external producers, and an explicit ruled setting. Preserve section-order dependencies and references. Use v2 only when the advertised tool schema supports `holeCorrespondence`; guide curves and independent end continuity are outside v2.
 

@@ -2,10 +2,12 @@ import {
   booleanFeatureContentParametersSchema,
   boxFeatureContentParametersSchema,
   type ChamferFeatureContentParametersV3,
+  type CoilFeatureContentParameters,
   type CompoundFeatureContentParameters,
   type ConnectMountsFeatureContentParameters,
   chamferFeatureContentParametersSchema,
   chamferFeatureContentParametersV3Schema,
+  coilFeatureContentParametersSchema,
   compoundFeatureContentParametersSchema,
   coneFeatureContentParametersSchema,
   coneFeatureContentParametersV2Schema,
@@ -92,6 +94,7 @@ import {
   type SurfaceTextureMeshLayer,
   type SurfaceTextureQuality,
   type SweepFeatureContentParameters,
+  type SweepFeatureContentParametersV2,
   scaleFeatureContentParametersSchema,
   shellFeatureContentParametersSchema,
   shellFeatureContentParametersV2Schema,
@@ -100,6 +103,7 @@ import {
   splitFeatureContentParametersSchema,
   splitFeatureContentParametersV2Schema,
   sweepFeatureContentParametersSchema,
+  sweepFeatureContentParametersV2Schema,
   type ThreadGeometryParameters,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
@@ -182,6 +186,7 @@ import {
 } from "./occt-extrusion-end"
 import { createOcctFdmFeature } from "./occt-fdm"
 import { FilletV3Error, filletOcctShapeV3, type ResolvedFilletTarget } from "./occt-fillet-v3"
+import { createOcctCoil, createOcctHelicalSweep } from "./occt-helix"
 import { createOcctCountersink, createOcctDrilledHole } from "./occt-hole-recess"
 import { measureOcctInterference } from "./occt-interference"
 import { createOcctLoft } from "./occt-loft"
@@ -367,6 +372,10 @@ const CYLINDER_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cylinder#1"
 const SPHERE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.sphere#1"
+const COIL_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.coil#1"
+const SWEEP_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.sweep#2"
 const CONNECT_MOUNTS_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.connect-mounts#1"
 const CONE_FEATURE_TYPE_KEY =
@@ -1324,6 +1333,8 @@ type ParsedFeature =
   | { kind: "cylinder"; parameters: CylinderContentParameters }
   | { kind: "sphere"; parameters: SphereContentParameters }
   | { kind: "connect-mounts"; parameters: ConnectMountsFeatureContentParameters }
+  | { kind: "coil"; parameters: CoilFeatureContentParameters }
+  | { kind: "helical-sweep"; parameters: SweepFeatureContentParametersV2 }
   | { kind: "cone"; parameters: ConeContentParameters }
   | { kind: "pyramid"; parameters: PyramidContentParameters }
   | { kind: "torus"; parameters: TorusContentParameters }
@@ -1404,6 +1415,59 @@ type FeatureParseResult =
 
 function invalidInputCardinality(message: string) {
   return featureFailure("invalid-feature-parameters", message)
+}
+
+/** A modifying Coil names its exact target first; any distinct axis producer follows it. */
+function coilInputsAreValid(
+  input: FeatureEvaluationInput,
+  parameters: CoilFeatureContentParameters,
+) {
+  const content = input.content
+  const roles: readonly (string | null)[] =
+    content.schemaVersion === 1 ? content.feature.inputRoles : input.dependencies.map(() => null)
+  // Each expected slot records whether it must carry a named body role.
+  const named = parameters.operation === "new" ? [] : [true]
+  const support = parameters.supportInputIndex ?? -1
+  if (support >= named.length) named.push(false)
+  return (
+    support < input.dependencies.length &&
+    content.feature.references.length === 0 &&
+    content.feature.inputs.length === input.dependencies.length &&
+    roles.length === named.length &&
+    named.every((required, index) => required === (roles[index] != null))
+  )
+}
+
+function parseCoilFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parsed = coilFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  if (!parsed.success)
+    return featureFailure(
+      "invalid-feature-parameters",
+      parsed.error.issues[0]?.message ?? "Coil content parameters are invalid.",
+    )
+  return coilInputsAreValid(input, parsed.data)
+    ? { ok: true, feature: { kind: "coil", parameters: parsed.data } }
+    : invalidInputCardinality(
+        "Coil requires its exact target first when modifying and any distinct axis producer.",
+      )
+}
+
+function parseHelicalSweepFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parsed = sweepFeatureContentParametersV2Schema.safeParse(input.content.feature.parameters)
+  if (!parsed.success)
+    return featureFailure(
+      "invalid-feature-parameters",
+      parsed.error.issues[0]?.message ?? "Helical Sweep profile and helix are invalid.",
+    )
+  const support = parsed.data.supportInputIndex
+  if (
+    !analyticalSketchInputsAreValid(input, [parsed.data.profile], 9) ||
+    (support !== undefined && support >= input.dependencies.length)
+  )
+    return invalidInputCardinality(
+      "Helical Sweep requires the exact scheduled sketch and helix-axis owner inputs.",
+    )
+  return { ok: true, feature: { kind: "helical-sweep", parameters: parsed.data } }
 }
 
 function parseConnectMountsFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -2694,6 +2758,8 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [FILLET_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "fillet")],
   [CHAMFER_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "chamfer")],
   [CONNECT_MOUNTS_FEATURE_TYPE_KEY, parseConnectMountsFeature],
+  [COIL_FEATURE_TYPE_KEY, parseCoilFeature],
+  [SWEEP_FEATURE_TYPE_V2_KEY, parseHelicalSweepFeature],
   [BOX_FEATURE_TYPE_KEY, parseBoxFeature],
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [SPHERE_FEATURE_TYPE_KEY, (input) => parseRadialPrimitiveFeature(input, "sphere")],
@@ -2798,6 +2864,33 @@ function createExtrusionFeatureShape(
   }
 }
 
+function createHelicalFeatureShape(
+  opencascade: OpenCascadeInstance,
+  feature: Extract<ParsedFeature, { kind: "coil" | "helical-sweep" }>,
+  dependencyShapes: readonly Shape3D[],
+) {
+  return feature.kind === "coil"
+    ? createCoilFeatureShape(opencascade, feature.parameters, dependencyShapes)
+    : createOcctHelicalSweep(opencascade, feature.parameters)
+}
+
+function createCoilFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: CoilFeatureContentParameters,
+  dependencyShapes: readonly Shape3D[],
+) {
+  const target = parameters.operation === "new" ? undefined : dependencyShapes[0]
+  if (parameters.operation !== "new" && !target)
+    throw new Error("Coil target dependency shape is unavailable.")
+  const tool = createOcctCoil(opencascade, parameters)
+  if (!target) return tool
+  try {
+    return applyExtrusionOperation(opencascade, parameters, target, tool)
+  } finally {
+    tool.delete()
+  }
+}
+
 function createDatumPlaneFeatureShape(
   opencascade: OpenCascadeInstance,
   parameters: DatumPlaneContentParameters,
@@ -2887,10 +2980,13 @@ function createSketchGeneratedFeatureShape(
   opencascade: OpenCascadeInstance,
   feature:
     | Parameters<typeof createProfileFeatureShape>[1]
-    | Extract<ParsedFeature, { kind: "loft" | "sweep" }>,
+    | Extract<ParsedFeature, { kind: "loft" | "sweep" | "coil" | "helical-sweep" }>,
   dependencyShapes: readonly Shape3D[],
 ) {
   switch (feature.kind) {
+    case "coil":
+    case "helical-sweep":
+      return createHelicalFeatureShape(opencascade, feature, dependencyShapes)
     case "loft":
       return createOcctLoft(opencascade, feature.parameters.sections, {
         ruled: feature.parameters.ruled,
@@ -4233,6 +4329,8 @@ function evaluateFeatureGeometry(
       "loft",
       "constrained-loft",
       "sweep",
+      "helical-sweep",
+      "coil",
       "compound",
       "union",
     ].includes(feature.kind) &&

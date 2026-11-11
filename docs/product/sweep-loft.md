@@ -52,6 +52,18 @@ coincide with its start and the profile plane must be normal to the start tangen
 lists selected curve endpoints; an interior endpoint or the wrong end fails exact native preview.
 Construction curves and unsupported curve types are excluded from the path picker.
 
+### Helix path
+
+Set **Path type** to **Helix** to sweep along an exact helix instead of a sketch path. The helix uses
+the [Coil](coil.md) axis, handedness, radius, pitch, turns or height and start angle, all
+expression-capable. The profile must be hole-free and already lie in a plane through the helix start,
+normal to its starting tangent; the panel shows the required lead-angle tilt. Turns whose profile
+span would overlap fail preview. Changing the helix radius, pitch, start angle, handedness or axis
+of a saved helical Sweep moves its start frame; re-orient the profile plane, which is not moved
+automatically. Helix paths are stored as Sweep version 2; planar sketch paths keep
+writing version 1, and existing version 1 records replay unchanged. Switching an edited Sweep between
+path types changes its stored version accordingly.
+
 ## Lifecycle and automation
 
 The preview is disposable and Apply remains disabled until the complete exact native preview is ready.
@@ -67,6 +79,7 @@ strict schema-backed records in an owned draft. Local and paired remote Loft ada
 and `end`. Version 3 includes support body owners after the section/rail/guide sketch owners, within
 its 128-producer budget; v1/v2 remain limited to 24 producers. Sweep
 supplies `profile` and a durable `path` with its sketch ID, sorted unique entity IDs, and explicit start
-point ID. Sketch support and external-reference owners must match the authoritative dependency and
+point ID, or a `{ kind: "helix", … }` path (Sweep v2) whose distinct axis producer follows the sketch
+owners. Sketch support and external-reference owners must match the authoritative dependency and
 topology-reference order. Fresh command IDs and current draft revisions, preview, and ordinary commit
 are required; these tools add no document authority or automatic profile repositioning.
