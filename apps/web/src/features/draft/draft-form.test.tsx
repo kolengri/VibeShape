@@ -6,6 +6,7 @@ import { type FeatureRecord, featureIdSchema } from "@vibeshape/domain"
 import { bodyTopoRefSchema } from "@vibeshape/domain/body-topology-reference"
 import { modelBodyTopologyEvidenceSchema } from "@vibeshape/domain/model-body-topology"
 import { readDraftFeatureParameters } from "@vibeshape/domain/part-design-draft"
+import { referencePlaneSchema } from "@vibeshape/domain/reference-frame"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { vi } from "../../../../../tests/unit/support/bun-test"
@@ -263,7 +264,7 @@ describe("Draft task form", () => {
       mode,
       featureId,
       values: { faceIds: ["face:x-max"], angle: "3 deg", flip: false },
-      neutralPlane: { kind: "planar-face", reference: faceReference },
+      neutralPlane: referencePlaneSchema.parse({ kind: "planar-face", reference: faceReference }),
       evidence,
       variables: [],
       units,
