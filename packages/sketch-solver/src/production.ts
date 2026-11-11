@@ -1097,23 +1097,35 @@ function mirrorOppositeHandleSeeds(
   const curves = cubicBezierEntities(sketch)
   for (const constraint of sketch.constraints) {
     const join = tangentJoinCurves(curves, constraint)
-    if (!join) continue
-    const pair = [join.incoming.control2PointId, join.outgoing.control1PointId] as const
-    const leadIndex = pair.findIndex((id) => dragged.has(id))
-    const lead = pair[leadIndex] as SketchEntityId | undefined
-    const follower = pair[1 - leadIndex] as SketchEntityId | undefined
-    if (!lead || !follower || dragged.has(follower) || fixed.has(follower)) continue
-    const at = pointValues.get(join.incoming.endPointId)
-    const leading = pointValues.get(lead)
-    const following = pointValues.get(follower)
-    if (!at || !leading || !following) continue
-    const leadLength = Math.hypot(leading.x - at.x, leading.y - at.y)
-    const length = Math.hypot(following.x - at.x, following.y - at.y)
-    if (leadLength <= 1e-9) continue
-    pointValues.set(follower, {
+    const seed = join ? mirroredHandleSeed(join, pointValues, dragged, fixed) : null
+    if (seed) pointValues.set(seed.id, seed.point)
+  }
+}
+
+function mirroredHandleSeed(
+  join: Readonly<{ incoming: CubicBezierEntity; outgoing: CubicBezierEntity }>,
+  pointValues: PointValues,
+  dragged: ReadonlySet<string>,
+  fixed: ReadonlySet<string>,
+) {
+  const pair = [join.incoming.control2PointId, join.outgoing.control1PointId] as const
+  const leadIndex = pair.findIndex((id) => dragged.has(id))
+  const lead = pair[leadIndex]
+  const follower = pair[1 - leadIndex]
+  if (!lead || !follower || dragged.has(follower) || fixed.has(follower)) return null
+  const at = pointValues.get(join.incoming.endPointId)
+  const leading = pointValues.get(lead)
+  const following = pointValues.get(follower)
+  if (!at || !leading || !following) return null
+  const leadLength = Math.hypot(leading.x - at.x, leading.y - at.y)
+  if (leadLength <= 1e-9) return null
+  const length = Math.hypot(following.x - at.x, following.y - at.y)
+  return {
+    id: follower,
+    point: {
       x: at.x - ((leading.x - at.x) / leadLength) * length,
       y: at.y - ((leading.y - at.y) / leadLength) * length,
-    })
+    },
   }
 }
 
