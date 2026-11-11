@@ -4,6 +4,7 @@ import {
   assembleWire,
   cast,
   type Edge,
+  makeBezierCurve,
   makeBSplineApproximation,
   makeFace,
   measureShapeVolumeProperties,
@@ -17,6 +18,12 @@ import { type AnalyticalProfile, createAnalyticalWire } from "./occt-loft"
 import { captureReplicadTopologySnapshot } from "./topology-signatures"
 
 type Point = [number, number, number]
+
+function binomial(n: number, k: number) {
+  let result = 1
+  for (let index = 1; index <= k; index += 1) result = (result * (n - k + index)) / index
+  return result
+}
 
 let occt: OpenCascadeInstance
 beforeAll(async () => {
@@ -265,6 +272,63 @@ describe("fitted Bezier chains for non-analytical OCCT edges", () => {
       expect(planeSpread(chain.poles)).toBeGreaterThan(1e-3)
     } finally {
       edge.delete()
+    }
+  })
+
+  it("certifies or refuses a degree-19 edge whose excursion hides between fixed samples", () => {
+    // y = A·t²(1 − t)²·∏(t − k/16), k = 1…15: zero end slopes and zero at every 1/16 sample.
+    const product = (left: number[], right: number[]) =>
+      Array.from({ length: left.length + right.length - 1 }, (_, k) => {
+        const m = left.length - 1
+        const n = right.length - 1
+        let sum = 0
+        for (let i = Math.max(0, k - n); i <= Math.min(m, k); i += 1) {
+          sum +=
+            ((binomial(m, i) * binomial(n, k - i)) / binomial(m + n, k)) *
+            (left[i] as number) *
+            (right[k - i] as number)
+        }
+        return sum
+      })
+    let y = product([0, 0, 1], [1, 0, 0])
+    for (let k = 1; k <= 15; k += 1) y = product(y, [-k / 16, 1 - k / 16])
+    const degree = y.length - 1
+    const value = (t: number) =>
+      y.reduce((sum, c, i) => sum + c * binomial(degree, i) * t ** i * (1 - t) ** (degree - i), 0)
+    let peak = 0
+    for (let sample = 0; sample <= 20_000; sample += 1) {
+      peak = Math.max(peak, Math.abs(value(sample / 20_000)))
+    }
+    const edgeFor = (excursion: number, reversed: boolean) => {
+      const poles = y.map((c, i): Point => [(i / degree) * 20, (c * excursion) / peak, 2])
+      return makeBezierCurve(reversed ? [...poles].reverse() : poles)
+    }
+    const coarse = edgeFor(0.01, false)
+    try {
+      // The single Hermite line matches every grid sample, but 64 segments still miss by 2e-4 mm.
+      expect(fitEdgeBezierChain(coarse)).toBeUndefined()
+    } finally {
+      coarse.delete()
+    }
+    const forward = edgeFor(0.001, false)
+    const reversed = edgeFor(0.001, true)
+    try {
+      const chain = fitEdgeBezierChain(forward)
+      const flipped = fitEdgeBezierChain(reversed)
+      if (!chain || !flipped) throw new Error("The milder excursion must fit within 64 segments.")
+      expect(chain.maxDeviation).toBeLessThanOrEqual(1e-4)
+      expect(denseDeviation(forward, chain.poles)).toBeLessThanOrEqual(chain.maxDeviation)
+      // A reversed parameterization publishes the same oriented poles, so end identities hold.
+      expect(chain.poles[0]).toEqual([0, 0, 2])
+      expect(flipped.poles).toHaveLength(chain.poles.length)
+      for (const [index, pole] of chain.poles.entries()) {
+        for (const axis of [0, 1, 2] as const) {
+          expect(flipped.poles[index]?.[axis]).toBeCloseTo(pole[axis], 9)
+        }
+      }
+    } finally {
+      forward.delete()
+      reversed.delete()
     }
   })
 
