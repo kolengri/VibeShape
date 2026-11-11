@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { createFeatureContentIdentity } from "./feature-content-identity"
 import { featureGeometryDependencies } from "./feature-dependencies"
 import { featureRecordSchema } from "./feature-graph"
 import { createFeatureTypeRegistry } from "./feature-type-registry"
@@ -241,5 +242,81 @@ describe("Revolve authoring route", () => {
 
   it("returns no route for invalid intent", () => {
     expect(routeRevolveAuthoring({ ...intent, angle: deg(400) }, null)).toBeNull()
+  })
+})
+
+describe("Revolve v1–v7 replay compatibility", () => {
+  // A split body supports the sketch while one of its named outputs is the modifying target.
+  const supportReference = {
+    schemaVersion: 0 as const,
+    featureId: targetId,
+    kind: "face" as const,
+    signature: { ...face.signature, centroid: [0, 0, 10] as const },
+  }
+  const namedTarget = { schemaVersion: 0 as const, featureId: targetId, outputRole: "split.a" }
+  function supported(type: typeof revolveFeatureTypeV7.type, parameters: object) {
+    return featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: featureId,
+      type,
+      parameters,
+      dependencies: [targetId],
+      references: [supportReference],
+      suppressed: false,
+    })
+  }
+  const v7 = supported(revolveFeatureTypeV7.type, {
+    profiles,
+    axis: base.axis,
+    angle: deg(90),
+    operation: "add",
+    targetBody: namedTarget,
+  })
+  const environment = {
+    schemaVersion: 0,
+    hostApiVersion: "0.1.0",
+    provider: { kind: "built-in" },
+    modelingTolerancePolicyVersion: 1,
+    geometry: {
+      adapterId: "org.vibeshape.geometry.replicad",
+      adapterVersion: "test",
+      kernelId: "org.opencascade.occt",
+      kernelVersion: "7.8.1",
+      kernelSourceRevision: null,
+    },
+  } as const
+
+  it("keeps a v7 named target whose producer also supports the sketch valid and rebuildable", () => {
+    expect(registry().validateFeature(v7)).toMatchObject({ ok: true })
+    expect(
+      createFeatureContentIdentity(registry(), {
+        feature: v7,
+        environment,
+        dependencies: [{ featureId: targetId, contentHash: hash, outputRole: "split.a" }],
+      }),
+    ).toMatchObject({ ok: true })
+  })
+
+  it("keeps editing that v7 record on v7", () => {
+    const route = routeRevolveAuthoring(
+      { ...base, operation: "add", targetBody: namedTarget },
+      revolveFeatureTypeV7.type,
+    )
+    expect(route?.type).toEqual(revolveFeatureTypeV7.type)
+    expect(registry().validateFeature({ ...v7, ...route })).toMatchObject({ ok: true })
+  })
+
+  it("applies the whole-result support rule only to v8", () => {
+    const v8 = supported(revolveFeatureTypeV8.type, {
+      ...base,
+      operation: "add",
+      targetBody: namedTarget,
+    })
+    expect(registry().validateFeature(v8)).toMatchObject({
+      ok: false,
+      diagnostic: {
+        issues: expect.arrayContaining([expect.objectContaining({ path: "references" })]),
+      },
+    })
   })
 })

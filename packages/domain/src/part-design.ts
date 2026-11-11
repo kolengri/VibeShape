@@ -1796,9 +1796,11 @@ function resolveRevolveParameters(parameters: unknown, variables: VariableValues
 function revolveFeatureInvariant(feature: FeatureRecord) {
   const parameters = readRevolveFeatureParameters(feature)
   if (!parameters) return []
-  return [revolveSketchAxisIssue(parameters), revolveDependencyIssue(feature, parameters)].flatMap(
-    (issue) => (issue ? [issue] : []),
-  )
+  return [
+    revolveSketchAxisIssue(parameters),
+    revolveDependencyIssue(feature, parameters),
+    revolveV8SupportSlotIssue(feature, parameters),
+  ].flatMap((issue) => (issue ? [issue] : []))
 }
 
 function revolveSketchAxisIssue(
@@ -1834,9 +1836,6 @@ function revolveDependencyIssue(
   )
   const matches =
     (parameters.operation === "new" || feature.dependencies.length > 0) &&
-    !feature.references.some(({ featureId }) =>
-      revolveSupportUsesNamedBody(featureId, parameters),
-    ) &&
     feature.dependencies.length === expectedDependencies.length &&
     feature.dependencies.every(
       (dependencyId, index) => dependencyId === expectedDependencies[index],
@@ -1851,6 +1850,22 @@ function revolveDependencyIssue(
     }
   }
   return null
+}
+
+/**
+ * Revolve v8 sketch supports position the profile through their whole result slot, like Extrusion
+ * v6. Versions 1–7 never had this rule and keep replaying unchanged.
+ */
+function revolveV8SupportSlotIssue(
+  feature: FeatureRecord,
+  parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>,
+) {
+  if (feature.type.schemaVersion !== 8) return null
+  return feature.references.some(({ featureId }) =>
+    revolveSupportUsesNamedBody(featureId, parameters),
+  )
+    ? { path: "references", message: "A sketch support must retain its whole result slot." }
+    : null
 }
 
 /** A sketch support positions the profile through its whole result slot, never a named output. */
