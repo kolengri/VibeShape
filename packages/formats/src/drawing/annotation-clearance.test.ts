@@ -154,6 +154,39 @@ describe("annotation clearance", () => {
     expect(taller.fits).toBe(false)
   })
 
+  it("uses the centring slack of narrow views before reserving annotation margins", () => {
+    // A 40 × 10 × 8 mm part: the right and top views are much narrower than their bands.
+    const centred = (view: DrawingViewProjection["view"], width: number, height: number) =>
+      rectangleView(view, width, height)
+    const holed: DrawingViewProjection = {
+      ...centred("top", 40, 10),
+      edges: [
+        ...centred("top", 40, 10).edges,
+        {
+          visibility: "visible",
+          edgeClass: "sharp",
+          curve: { kind: "circle", center: [20, 5], radius: 2 },
+        },
+      ],
+    }
+    const sheet = compose(
+      {
+        chordTolerance: DRAWING_CHORD_TOLERANCE_MM,
+        bodyCount: 1,
+        views: [
+          centred("front", 40, 8),
+          holed,
+          centred("right", 10, 8),
+          centred("isometric", 50 * 0.7071, 8 * 0.8165 + 50 * 0.4082),
+        ],
+      },
+      { projection: "third-angle", sheetSize: "iso-a3", orientation: "landscape" },
+    )
+    expect(sheet.scale).toEqual({ numerator: 5, denominator: 1 })
+    expect(sheet.fits).toBe(true)
+    expect(annotationViolations(sheet)).toEqual([])
+  })
+
   const sizes = [
     [40, 40, 213],
     [300, 20, 20],

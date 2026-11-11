@@ -154,12 +154,24 @@ function isometricCandidates(
 type Band = { size: number; before: number; after: number }
 const NO_MARGINS: AnnotationMargins = { left: 0, right: 0, bottom: 0, top: 0 }
 
-/** Model span plus annotation margins before and after the view along one axis. */
-function axisExtent(view: CellView, axis: 0 | 1, margins: AnnotationMargins): Band {
-  const span = axis === 0 ? view.reference.x : view.reference.y
-  return axis === 0
-    ? { size: span.max - span.min, before: margins.left, after: margins.right }
-    : { size: span.max - span.min, before: margins.bottom, after: margins.top }
+/**
+ * Annotation margins a view still needs beyond its band once the band's spare space is used. A
+ * view is centred in its cell and may sit inside its shared column or row range, so its rectangle
+ * starts `slack` millimetres inside the band edge on each side.
+ */
+function axisMargins(
+  view: CellView,
+  axis: 0 | 1,
+  bandSize: number,
+  factor: number,
+  margins: AnnotationMargins,
+) {
+  const reference = axis === 0 ? view.reference.x : view.reference.y
+  const centring = ((bandSize - (reference.max - reference.min)) * factor) / 2
+  const slackBefore = centring + (view.projection.bounds.min[axis] - reference.min) * factor
+  const slackAfter = centring + (reference.max - view.projection.bounds.max[axis]) * factor
+  const [before, after] = axis === 0 ? [margins.left, margins.right] : [margins.bottom, margins.top]
+  return { before: Math.max(0, before - slackBefore), after: Math.max(0, after - slackAfter) }
 }
 
 /** Bands along one axis (columns or rows) with model size and annotation margins on each side. */
@@ -167,16 +179,21 @@ function bands(
   views: readonly CellView[],
   axis: 0 | 1,
   margins: ReadonlyMap<CellView, AnnotationMargins>,
+  factor: number,
 ) {
   const result = new Map<number, Band>()
   for (const view of views) {
-    const extent = axisExtent(view, axis, margins.get(view) ?? NO_MARGINS)
-    const band = result.get(view.cell[axis]) ?? { size: 0, before: 0, after: 0 }
-    result.set(view.cell[axis], {
-      size: Math.max(band.size, extent.size),
-      before: Math.max(band.before, extent.before),
-      after: Math.max(band.after, extent.after),
-    })
+    const reference = axis === 0 ? view.reference.x : view.reference.y
+    const key = view.cell[axis]
+    const size = Math.max(result.get(key)?.size ?? 0, reference.max - reference.min)
+    result.set(key, { size, before: 0, after: 0 })
+  }
+  for (const view of views) {
+    const band = result.get(view.cell[axis])
+    if (!band) continue
+    const needed = axisMargins(view, axis, band.size, factor, margins.get(view) ?? NO_MARGINS)
+    band.before = Math.max(band.before, needed.before)
+    band.after = Math.max(band.after, needed.after)
   }
   return result
 }
@@ -203,8 +220,8 @@ function arrange(
   measure: (view: CellView) => AnnotationMargins,
 ): Arrangement {
   const margins = new Map(views.map((view) => [view, measure(view)]))
-  const columns = bands(views, 0, margins)
-  const rows = bands(views, 1, margins)
+  const columns = bands(views, 0, margins, factor)
+  const rows = bands(views, 1, margins, factor)
   const width = bandLength(columns, factor)
   const height = bandLength(rows, factor)
   const columnLeft = new Map<number, number>()
