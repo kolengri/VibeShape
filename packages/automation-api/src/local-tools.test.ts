@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { localConnectResponseSchema, localResultRequestSchema } from "./local-session"
-import { localOperationSchema, localToolOutputs } from "./local-tools"
+import { localOperationSchema, localToolOutputs, mcpToolInputSchema } from "./local-tools"
 
 const id = "0195b5ac-b250-7a2c-8c33-000000000001"
 describe("local automation wire contracts", () => {
@@ -201,6 +201,60 @@ it("keeps metadata closed-world and separate from legacy CAD draft commands", as
       arguments: { revision: 4, cursor: -1 },
     }).success,
   ).toBe(false)
+})
+
+it("accepts strict versioned Fillet intent beside the legacy flat contract", () => {
+  const edge = {
+    schemaVersion: 1,
+    featureId: id,
+    outputRole: "split.positive",
+    kind: "edge",
+    signature: {
+      kind: "edge",
+      geometryClass: "LINE",
+      measure: 20,
+      centroid: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [20, 0, 0] },
+      boundaryCount: 2,
+      adjacentGeometryClasses: ["PLANE", "PLANE"],
+    },
+  }
+  const parameters = {
+    targetBody: { schemaVersion: 0, featureId: id, outputRole: "split.positive" },
+    radius: createLengthQuantity(2, "mm", "#round"),
+    targets: [
+      {
+        kind: "edge",
+        edge,
+        variableRadius: {
+          startRadius: createLengthQuantity(1),
+          endRadius: createLengthQuantity(3),
+          reverse: false,
+        },
+      },
+    ],
+  }
+  const base = { draftId: id, baseRevision: 0, commandId: id, featureId: id }
+  for (const tool of ["create_fillet", "update_fillet"] as const) {
+    const parse = (args: Record<string, unknown>) =>
+      localOperationSchema.safeParse({ tool, arguments: { ...base, ...args } }).success
+    expect(parse({ parameters })).toBe(true)
+    expect(parse({ targetFeatureId: id, radiusMm: 2 })).toBe(true)
+    expect(parse({ parameters, radiusMm: 2 })).toBe(false)
+    expect(parse({ parameters: { ...parameters, targets: [] } })).toBe(false)
+    expect(parse({ parameters: { ...parameters, tangentPropagation: true } })).toBe(false)
+    expect(
+      parse({
+        parameters: {
+          ...parameters,
+          targets: [{ kind: "edge", edge: { ...edge, outputRole: "split.negative" } }],
+        },
+      }),
+    ).toBe(false)
+    const input = mcpToolInputSchema(tool)
+    expect(input.safeParse({ ...base, parameters, projectId: id }).success).toBe(true)
+    expect(input.safeParse({ ...base, targetFeatureId: id, radiusMm: 2 }).success).toBe(true)
+  }
 })
 
 it("accepts versioned Chamfer intent while preserving legacy flat tool arguments", () => {

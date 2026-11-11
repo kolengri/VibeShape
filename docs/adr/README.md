@@ -177,4 +177,5 @@ When a decision changes, do not rewrite its ADR retroactively. Create a new reco
 | [0148](0148-sampled-motion-clearance.md) | Accepted | Exact clearance evidence at bounded solved motion samples |
 | [0149](0149-rounded-opening-edge-treatments.md) | Accepted | Circular corner arcs and default tangent contours for rounded-opening edge treatments |
 | [0150](0150-chamfer-authoring-route.md) | Accepted | Single Chamfer schema route, legacy contour path for unmeasurable edges, lossless scope switching |
+| [0151](0151-body-bound-variable-radius-fillet.md) | Accepted | Body-bound Fillet V3 with face targets and a durable variable-radius direction rule |
 | [0153](0153-gltf-obj-export-and-assembly-bom.md) | Accepted | Pure TypeScript glTF/OBJ export with display materials and an explicit-density assembly bill of materials |

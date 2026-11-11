@@ -16,7 +16,11 @@ import {
 import { fdmFeatureType, readFdmFeatureParameters } from "@vibeshape/domain/part-design-fdm"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
 import { bodyCatalogueFixture, catalogueHash } from "./exact-body-catalogue.test-fixtures"
-import { exactSolidBodyOptions, hasMultipleExactSolidBodies } from "./exact-body-options"
+import {
+  exactSolidBodyOptions,
+  hasExactSolidBody,
+  hasMultipleExactSolidBodies,
+} from "./exact-body-options"
 
 type Fixture = ReturnType<typeof bodyCatalogueFixture>
 function required<T>(value: T | undefined): T {
@@ -103,10 +107,13 @@ describe("exact solid body catalogue", () => {
     ])
     expect(options(changed).map(({ body }) => body?.outputRole)).toEqual(["pattern.instance.0"])
     expect(hasMultipleExactSolidBodies(changed.snapshot, changed.rebuild)).toBe(false)
+    // One named output is enough for body-bound Fillet and Chamfer eligibility.
+    expect(hasExactSolidBody(changed.snapshot, changed.rebuild)).toBe(true)
     const aggregate = withRecords(f, f.rebuild.response.evaluation.records, [
       { ...record, geometry: { ...record.geometry, bodies: undefined } },
     ])
     expect(options(aggregate)).toEqual([])
+    expect(hasExactSolidBody(aggregate.snapshot, aggregate.rebuild)).toBe(false)
   })
 
   it("keeps first geometry and any matching succeeded evaluation for retained edit inputs", () => {
@@ -166,6 +173,7 @@ describe("exact solid body catalogue", () => {
     for (const changed of cases) {
       expect(options(changed)).toEqual([])
       expect(hasMultipleExactSolidBodies(changed.snapshot, changed.rebuild)).toBe(false)
+      expect(hasExactSolidBody(changed.snapshot, changed.rebuild)).toBe(false)
     }
     expect(exactSolidBodyOptions(f.snapshot, undefined, undefined, [], "Unnamed")).toEqual([])
     expect(hasMultipleExactSolidBodies(f.snapshot, undefined)).toBe(false)
@@ -333,4 +341,5 @@ it("keeps malformed named-body validation equivalent for catalogue and eligibili
   ])
   expect(() => options(changed)).toThrow()
   expect(() => hasMultipleExactSolidBodies(changed.snapshot, changed.rebuild)).toThrow()
+  expect(() => hasExactSolidBody(changed.snapshot, changed.rebuild)).toThrow()
 })

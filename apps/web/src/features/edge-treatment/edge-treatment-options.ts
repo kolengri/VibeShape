@@ -46,7 +46,6 @@ export function edgeTreatmentTargetOptions(
   editingId: string | undefined,
   parts: readonly ResolvedAuthoredPart[],
   unnamed: string,
-  operation: "fillet" | "chamfer",
   kind?: "edge" | "face",
 ): readonly EdgeTreatmentTargetOption[] {
   if (!rebuild.ok) return []
@@ -56,7 +55,6 @@ export function edgeTreatmentTargetOptions(
     const body = option.body
     const source = rebuild.response.geometry.find(({ featureId }) => featureId === body.featureId)
     const legacy = body.outputRole === "result" && source?.geometry.bodies?.length === 1
-    if (operation === "fillet" && !legacy) return []
     return [
       {
         ...option,
