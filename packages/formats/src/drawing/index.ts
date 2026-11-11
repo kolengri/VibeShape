@@ -1,3 +1,4 @@
+import { strToU8 } from "fflate"
 import { composeDrawingSheet } from "./compose"
 import { writeDrawingDxf } from "./dxf"
 import { writeDrawingPdf } from "./pdf"
@@ -19,7 +20,5 @@ export const DRAWING_MEDIA_TYPES: Readonly<Record<DrawingFileFormat, string>> = 
 /** Encodes one composed sheet; SVG and DXF are UTF-8 text (DXF text is ASCII by construction). */
 export function writeDrawingFile(sheet: DrawingSheet, format: DrawingFileFormat): Uint8Array {
   if (format === "pdf") return writeDrawingPdf(sheet)
-  return new TextEncoder().encode(
-    format === "svg" ? writeDrawingSvg(sheet) : writeDrawingDxf(sheet),
-  )
+  return strToU8(format === "svg" ? writeDrawingSvg(sheet) : writeDrawingDxf(sheet))
 }

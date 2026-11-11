@@ -34,6 +34,7 @@ import {
   DOCUMENT_PROTOCOL_VERSION,
   type DocumentWorkerRequest,
   type DocumentWorkerResponse,
+  DRAWING_CHORD_TOLERANCE_MM,
   documentRebuildSnapshotSchema,
   documentWorkerResponseSchema,
   type FeatureContentEnvironment,
@@ -289,6 +290,30 @@ class FakeEngine implements GeometryKernelEngine {
     return {
       file: input.format === "step" ? new Uint8Array([1, 2, 3]) : new Uint8Array([4, 5]),
       bodyCount: input.features.length,
+    }
+  }
+
+  readonly drawnFeatures: unknown[] = []
+  async projectDrawing(input: Parameters<NonNullable<GeometryKernelEngine["projectDrawing"]>>[0]) {
+    this.drawnFeatures.push({ features: [...input.features], views: [...input.views] })
+    return {
+      chordTolerance: DRAWING_CHORD_TOLERANCE_MM,
+      bodyCount: input.features.length,
+      views: input.views.map((view) => ({
+        view,
+        bounds: { min: [0, 0] as [number, number], max: [10, 5] as [number, number] },
+        edges: [
+          {
+            visibility: "visible" as const,
+            edgeClass: "sharp" as const,
+            curve: {
+              kind: "line" as const,
+              start: [0, 0] as [number, number],
+              end: [10, 5] as [number, number],
+            },
+          },
+        ],
+      })),
     }
   }
 
@@ -1521,6 +1546,65 @@ describe("DocumentWorkerRuntime", () => {
       harness.messages.find(({ requestId }) => requestId === "future-continuation"),
     ).toMatchObject({ type: "failure", diagnostic: { code: "sketch-solve-invalid" } })
     expect(module.solveFlatSystem).not.toHaveBeenCalled()
+  })
+
+  it("projects drawing views of the exported terminal bodies at the rebuilt revision", async () => {
+    const { engine, messages, runtime } = createHarness()
+    await runtime.handle(request("rebuild-for-drawing"))
+    const operation = {
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "draw",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "projectDrawing",
+      views: ["front", "isometric"],
+    } as const
+    await runtime.handle(operation)
+    const booleanRecord = rebuilt(messages, "rebuild-for-drawing").evaluation.records.find(
+      ({ featureId }) => featureId === featureIds.boolean,
+    )
+    if (booleanRecord?.status !== "succeeded") throw new Error("Expected successful Boolean.")
+    expect(engine.drawnFeatures).toEqual([
+      {
+        features: [{ featureId: featureIds.boolean, contentHash: booleanRecord.contentHash }],
+        views: ["front", "isometric"],
+      },
+    ])
+    expect(messages.at(-1)).toMatchObject({
+      type: "drawingProjected",
+      projection: { bodyCount: 1, views: [{ view: "front" }, { view: "isometric" }] },
+    })
+    await runtime.handle({ ...operation, requestId: "stale-draw", revision: 2 })
+    expect(messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "export-state-unavailable", retryable: true },
+    })
+    await runtime.handle({ ...operation, requestId: "duplicate-view", views: ["top", "top"] })
+    expect(messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "invalid-request" },
+    })
+    expect(engine.drawnFeatures).toHaveLength(1)
+  })
+
+  it("reports an engine without exact drawing projection as a failed drawing", async () => {
+    const { engine, messages, runtime } = createHarness()
+    await runtime.handle(request("rebuild-without-drawing"))
+    Object.defineProperty(engine, "projectDrawing", { value: undefined })
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "unsupported-draw",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "projectDrawing",
+      views: ["top"],
+    })
+    expect(messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "export-failed", message: "Exact drawing projection is unavailable." },
+    })
   })
 
   it("rejects stale and empty export revisions without invoking the engine", async () => {

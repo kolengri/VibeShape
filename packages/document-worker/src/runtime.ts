@@ -481,6 +481,7 @@ export class DocumentWorkerRuntime {
     if (request.type === "reconstructPrintOptimization")
       return this.#reconstructPrintOptimization(request)
     if (request.type === "exportDocument") return this.#exportDocument(request)
+    if (request.type === "projectDrawing") return this.#projectDrawing(request)
     if (request.type === "solveSketch") return this.#solveSketch(request)
     const ownedShapeCount = this.engine.disposeDocument(request.documentId)
     this.#assemblyCache.clear()
@@ -554,7 +555,9 @@ export class DocumentWorkerRuntime {
     this.#post({ ...requestEnvelope(request), type: "sourceImportInspected", inspection })
   }
 
-  #exportState(request: Extract<DocumentWorkerRequest, { type: "exportDocument" }>) {
+  #exportState(
+    request: Extract<DocumentWorkerRequest, { type: "exportDocument" | "projectDrawing" }>,
+  ) {
     const state = this.#states.get(request.documentId)
     const document = this.#documents.get(request.documentId)
     if (
@@ -613,6 +616,43 @@ export class DocumentWorkerRuntime {
         bodyCount: exported.bodyCount,
         ...("printPreparation" in exported ? { printPreparation: exported.printPreparation } : {}),
       })
+    } catch (error) {
+      this.#postFailure(request, "export-failed", errorMessage(error), true)
+    }
+  }
+
+  /** Projects the same terminal-body selection as export; drawings never accept mesh bodies. */
+  async #projectDrawing(request: Extract<DocumentWorkerRequest, { type: "projectDrawing" }>) {
+    const current = this.#exportState(request)
+    if (!current) {
+      this.#postFailure(
+        request,
+        "export-state-unavailable",
+        "The requested document revision does not have current rebuilt geometry.",
+        true,
+      )
+      return
+    }
+    try {
+      const { features } = selectExportBodies(terminalExportFeatures(current.state), request.bodies)
+      if (features.length === 0) {
+        this.#postFailure(
+          request,
+          "no-exportable-bodies",
+          "The current document does not contain a terminal solid body to draw.",
+          false,
+        )
+        return
+      }
+      if (exportIncludesMesh(current.state, features))
+        throw new Error("Drawings require exact solids; triangle-mesh parts cannot be projected.")
+      if (!this.engine.projectDrawing) throw new Error("Exact drawing projection is unavailable.")
+      const projection = await this.engine.projectDrawing({
+        documentId: request.documentId,
+        features,
+        views: request.views,
+      })
+      this.#post({ ...requestEnvelope(request), type: "drawingProjected", projection })
     } catch (error) {
       this.#postFailure(request, "export-failed", errorMessage(error), true)
     }

@@ -26,6 +26,8 @@ import {
   type DocumentExportOptions,
   type DocumentWorkerRequest,
   type DocumentWorkerTerminalResponse,
+  type DrawingProjection,
+  type DrawingViewId,
   documentWorkerResponseSchema,
   type FeatureMeshPolicy,
   featureMeshPolicySchema,
@@ -273,6 +275,10 @@ export type DocumentRebuildPort = Readonly<{
     format: GeometryExportFormat,
     options?: DocumentExportOptions,
   ) => Promise<DocumentExportResponse>
+  projectDrawing?: (
+    views: readonly DrawingViewId[],
+    options?: Pick<DocumentExportOptions, "bodies">,
+  ) => Promise<Extract<DocumentWorkerTerminalResponse, { type: "drawingProjected" }>>
   inspectMeshImport?: (
     input: InspectMeshImportInput,
   ) => Promise<Extract<DocumentWorkerTerminalResponse, { type: "meshImportInspected" }>>
@@ -321,6 +327,10 @@ export type DocumentRebuildOutcome =
 
 export type PersistentDocumentExportResult =
   | { ok: true; response: DocumentExportResponse }
+  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+
+export type PersistentDrawingProjectionResult =
+  | { ok: true; projection: DrawingProjection }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 export type PersistentSketchSolveResult =
@@ -943,6 +953,27 @@ export class PersistentDocumentSession {
     options: DocumentExportOptions = {},
   ): Promise<PersistentDocumentExportResult> {
     return this.#enqueue(() => this.#exportDocument(format, options))
+  }
+
+  /** Exact HLR projection of the rebuilt revision; serialized with exports on the session queue. */
+  projectDrawing(
+    views: readonly DrawingViewId[],
+    options: Pick<DocumentExportOptions, "bodies"> = {},
+  ): Promise<PersistentDrawingProjectionResult> {
+    return this.#enqueue(async () => {
+      const port = this.#rebuildPort.projectDrawing
+      if (this.#closed || !port)
+        return {
+          ok: false,
+          diagnostic: diagnostic("session-closed", "The document session is closed."),
+        }
+      try {
+        const response = await port(views, options)
+        return { ok: true, projection: response.projection }
+      } catch (error) {
+        return documentExportFailure(error, "The current document geometry could not be drawn.")
+      }
+    })
   }
 
   inspectSourceImport(input: unknown): Promise<SessionPortResult<SourceImportInspection>> {

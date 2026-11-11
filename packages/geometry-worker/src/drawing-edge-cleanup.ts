@@ -9,13 +9,14 @@ export function straightenPolyline(points: readonly Point[]): DrawingCurve | nul
   const end = points.at(-1)
   if (!start || !end) return null
   const length = Math.hypot(end[0] - start[0], end[1] - start[1])
-  if (length <= 1e-9) return points.length > 2 ? { kind: "polyline", points: [...points] } : null
+  const copied = points.map((point): [number, number] => [point[0], point[1]])
+  if (length <= 1e-9) return points.length > 2 ? { kind: "polyline", points: copied } : null
   const straight = points.every(
     (point) => segmentDistance(point, start, end) <= COINCIDENCE_TOLERANCE_MM * 1e-2,
   )
   return straight
     ? { kind: "line", start: [start[0], start[1]], end: [end[0], end[1]] }
-    : { kind: "polyline", points: points.map((point) => [point[0], point[1]]) }
+    : { kind: "polyline", points: copied }
 }
 
 /**
@@ -24,17 +25,22 @@ export function straightenPolyline(points: readonly Point[]): DrawingCurve | nul
  * dropped when all of its samples lie on visible geometry or on an earlier identical hidden edge.
  */
 export function suppressCoincidentEdges(edges: readonly DrawingEdge[]): DrawingEdge[] {
-  const extent = edges.reduce(
+  const extent = edges.reduce<[number, number, number, number]>(
     (total, { curve }) => {
-      const box = curveBox(curve)
+      const [minX, minY, maxX, maxY] = curveBox(curve)
       return [
-        Math.min(total[0], box[0]),
-        Math.min(total[1], box[1]),
-        Math.max(total[2], box[2]),
-        Math.max(total[3], box[3]),
+        Math.min(total[0], minX),
+        Math.min(total[1], minY),
+        Math.max(total[2], maxX),
+        Math.max(total[3], maxY),
       ]
     },
-    [Infinity, Infinity, -Infinity, -Infinity],
+    [
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ],
   )
   const span = Math.max(extent[2] - extent[0], extent[3] - extent[1])
   // About 32 cells across the view keeps buckets small without exploding long diagonal lines.
