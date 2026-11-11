@@ -48,7 +48,10 @@ unitless expression-capable factor bounded to 0.001–1000, and a center: the wo
 axis-aligned bounding-box center of the source body (computed in the worker), or an explicit point
 of three length quantities within ±100,000 mm. The worker copies the source through
 `gp_Trsf.SetScale` and `BRepBuilderAPI_Transform(copy=true)`; the cached source is never modified.
-Non-uniform scale is not offered.
+Non-uniform scale is not offered. Every Scale kernel failure is a typed, user-actionable error, and
+the result must stay within ±100,000 mm of the world origin on every axis, so a large factor about
+a distant center fails with advice to reduce the factor or move the center. The document worker
+forwards Scale messages like Draft messages.
 
 Both features own task panels, toolbar/context-menu/palette commands with new colored icons, History
 icons and MCP tools (`create_face_draft`, `update_face_draft`, `create_scale`, `update_scale`) over
@@ -62,7 +65,16 @@ the missing body.
 ## Consequences
 
 - Native face indices, hashes and candidate IDs are never persisted; edits that lose a face require
-  explicit reselection, as for Shell and Chamfer face targets.
+  explicit reselection, as for Shell and Chamfer face targets. A face that resolves to several
+  current candidates is reported as ambiguous, not missing.
+- Only typed Draft and Scale failures replace the localized catalog advice; an untyped kernel
+  failure keeps it.
+- A new Draft defaults its neutral plane to the world XY plane wherever the part sits. For a part
+  that does not rest on XY, the taper hinges on a line outside the body and every drafted face
+  moves at its base; choose the base face, a Datum Plane, or an explicit plane instead. A default
+  through the body's bounding-box base was considered and not adopted: the base of an arbitrary
+  body is not always the face the user means, and the neutral plane is persisted intent that must
+  not change when an upstream edit moves the body.
 - Draft and Scale results publish no semantic roles or lineage tokens, so downstream face references
   to their outputs are exact signature matches. Changing a Scale factor or a Draft angle therefore
   requires reselecting downstream faces.
