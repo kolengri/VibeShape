@@ -383,7 +383,7 @@ export async function clickUncoveredSketchEntity(page: Page, entity: Locator) {
       getPointAtLength?: (length: number) => ScreenPoint
       getScreenCTM?: () => unknown
       getTotalLength?: () => number
-      ownerSVGElement?: Element | null
+      ownerSVGElement?: { contains: (node: unknown) => boolean } | null
     }
     if (!geometry.getPointAtLength || !geometry.getScreenCTM || !geometry.getTotalLength) {
       throw new TypeError("Sketch entity selection requires SVG geometry.")

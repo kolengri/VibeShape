@@ -126,7 +126,13 @@ test("keeps manual consent by default and scopes auto-apply, recovery and Stop t
     // Since the standardized dialog layout, the dialog body around the region is the scroller.
     const scrollerTop = () =>
       details.evaluate((element) => {
-        for (let node: Element | null = element; node; node = node.parentElement)
+        type ScrollNode = {
+          scrollHeight: number
+          clientHeight: number
+          scrollTop: number
+          parentElement: ScrollNode | null
+        }
+        for (let node = element as unknown as ScrollNode | null; node; node = node.parentElement)
           if (node.scrollHeight > node.clientHeight && node.scrollTop > 0) return node.scrollTop
         return 0
       })
