@@ -23,6 +23,7 @@ import {
   readUnionFeatureParameters,
 } from "./part-design-body-combination"
 import { readChamferFeatureParametersV3 } from "./part-design-chamfer"
+import { coilFeatureType, readCoilFeatureParameters } from "./part-design-coil"
 import { connectMountsFeatureType } from "./part-design-connect-mounts"
 import { readDraftFeatureParameters } from "./part-design-draft"
 import { readFdmFeatureParameters } from "./part-design-fdm"
@@ -54,7 +55,7 @@ import {
   SPLIT_POSITIVE_OUTPUT_ROLE,
 } from "./part-design-split"
 import { readBooleanFeatureParametersV2 } from "./part-design-subtract"
-import { sweepFeatureType } from "./part-design-sweep"
+import { sweepFeatureType, sweepFeatureTypeV2 } from "./part-design-sweep"
 import { readThreadFeatureParameters } from "./part-design-thread"
 
 export type PartOperation =
@@ -83,6 +84,8 @@ const newTypes = new Set(
     loftFeatureTypeV2,
     loftFeatureTypeV3,
     sweepFeatureType,
+    sweepFeatureTypeV2,
+    coilFeatureType,
     sphereFeatureType,
     connectMountsFeatureType,
     coneFeatureType,
@@ -165,6 +168,8 @@ function classifyBodySelectionOperation(feature: FeatureRecordV1): PartOperation
   ]
     .map((read) => read(feature)?.targetBody)
     .find((body) => body !== undefined)
+  const coilTarget = readCoilFeatureParameters(feature)?.targetBody
+  if (coilTarget) return { kind: "modify", target: coilTarget, consumed: [] }
   if (target) return { kind: "modify", target, consumed: [] }
   const mirror = classifyMirrorOperation(feature)
   if (mirror) return mirror

@@ -3,53 +3,17 @@ import type { Shape3D } from "replicad"
 import type { gp_Trsf, OpenCascadeInstance, TopoDS_Wire } from "replicad-opencascadejs"
 import { inspectOcctBody } from "./occt-body-validation"
 import { adoptOcctShape, castOcctShape } from "./occt-cast"
+import { type OwnNative, nativeResult as sharedNativeResult } from "./occt-native-scope"
 import { createOcctBox, createOcctCylinder } from "./occt-shapes"
 
 type Deletable = { delete(): void }
 type Point = [number, number, number]
 type Bounds = { min: Point; max: Point }
 type Metrics = { valid: boolean; solidCount: number; volume: number }
-type Own = <T extends Deletable>(resource: T) => T
+type Own = OwnNative
 
-function release(resources: readonly Deletable[]): unknown[] {
-  const failures: unknown[] = []
-  for (const resource of [...new Set(resources)].reverse()) {
-    try {
-      resource.delete()
-    } catch (error) {
-      failures.push(error)
-    }
-  }
-  return failures
-}
-/** Transfers a result only after all acquired temporary wrappers were released successfully. */
 function nativeResult<T extends Deletable>(build: (own: Own) => T): T {
-  const owned: Deletable[] = []
-  const own: Own = (resource) => {
-    owned.push(resource)
-    return resource
-  }
-  let result: T
-  try {
-    result = build(own)
-  } catch (error) {
-    const failures = release(owned)
-    if (failures.length)
-      throw new AggregateError(
-        [error, ...failures],
-        "Thread failed while releasing native resources.",
-      )
-    throw error
-  }
-  const failures = release(owned.filter((resource) => resource !== result))
-  if (failures.length) {
-    const resultFailures = release([result])
-    throw new AggregateError(
-      [...failures, ...resultFailures],
-      "Thread could not release every temporary native resource.",
-    )
-  }
-  return result
+  return sharedNativeResult("Thread", build)
 }
 
 function createHelix(
