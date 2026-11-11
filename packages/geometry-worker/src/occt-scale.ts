@@ -26,7 +26,10 @@ function occtBoundingBox(occt: OpenCascadeInstance, shape: Shape3D): { min: Poin
   const box = new occt.Bnd_Box_1()
   try {
     occt.BRepBndLib.AddOptimal(shape.wrapped, box, false, false)
-    if (box.IsVoid()) throw new ScaleError("Scale cannot measure the body bounding box.")
+    if (box.IsVoid())
+      throw new ScaleError(
+        "Scale cannot measure the body bounding box. Repair or rebuild the target body, then try again.",
+      )
     const min = box.CornerMin()
     try {
       const max = box.CornerMax()

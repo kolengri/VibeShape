@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import {
-  coilMeridianSpan as domainSpan,
   minimumCoilPitch as domainMinimumPitch,
+  coilMeridianSpan as domainSpan,
 } from "@vibeshape/domain/part-design-helix"
 import {
-  coilSectionMeridianSpan as protocolSpan,
   minimumCoilPitch as protocolMinimumPitch,
+  coilSectionMeridianSpan as protocolSpan,
 } from "@vibeshape/protocol"
 
 // The domain cannot import the worker protocol, so it mirrors the Coil clearance rule (ADR-0155).

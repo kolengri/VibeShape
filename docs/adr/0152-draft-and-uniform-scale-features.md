@@ -48,10 +48,10 @@ unitless expression-capable factor bounded to 0.001–1000, and a center: the wo
 axis-aligned bounding-box center of the source body (computed in the worker), or an explicit point
 of three length quantities within ±100,000 mm. The worker copies the source through
 `gp_Trsf.SetScale` and `BRepBuilderAPI_Transform(copy=true)`; the cached source is never modified.
-Non-uniform scale is not offered. Every Scale kernel failure is a typed, user-actionable error, and
-the result must stay within ±100,000 mm of the world origin on every axis, so a large factor about
-a distant center fails with advice to reduce the factor or move the center. The document worker
-forwards Scale messages like Draft messages.
+Non-uniform scale is not offered. Every failure raised by the Scale kernel module is a typed,
+user-actionable error. The result must stay within ±100,000 mm of the world origin on every axis,
+so a large factor about a distant center fails with advice to reduce the factor or move the center.
+The document worker forwards Scale messages like Draft messages.
 
 Both features own task panels, toolbar/context-menu/palette commands with new colored icons, History
 icons and MCP tools (`create_face_draft`, `update_face_draft`, `create_scale`, `update_scale`) over

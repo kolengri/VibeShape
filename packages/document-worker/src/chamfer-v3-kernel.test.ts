@@ -367,7 +367,9 @@ it("reports ambiguity from a duplicated exact topology catalogue without constru
     const failed = await engine.evaluateFeature(request("chamfer", 3, parameters, input), vi.fn())
     expect(failed).toMatchObject({
       ok: false,
-      diagnostic: { message: expect.stringContaining("ambiguous and requires repair") },
+      diagnostic: {
+        message: "Chamfer edge 1 is missing or ambiguous on the current body. Reselect the edge.",
+      },
     })
     expect(engine.getHealth().ownedShapeCount).toBe(ownedBefore)
   } finally {

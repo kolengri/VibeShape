@@ -10,21 +10,21 @@ import { vi } from "../../../tests/unit/support/bun-test"
 
 const id = (value: number) => `0195b5ac-b220-7a2c-8c33-${String(value).padStart(12, "0")}`
 let duplicateEdges = false
-const engine = new ReplicadGeometryEngine(
-  (references, candidates, sourceFeatureId) =>
-    resolveSelectedEdgeCandidates(
-      references,
-      duplicateEdges
-        ? candidates.flatMap((candidate) =>
-            candidate.kind === "edge"
-              ? [candidate, { ...candidate, candidateId: `${candidate.candidateId}:copy` }]
-              : [candidate],
-          )
-        : candidates,
-      sourceFeatureId,
-    ),
-  resolveShellOpeningCandidates,
-)
+let edgeResolverFailure: Error | null = null
+const engine = new ReplicadGeometryEngine((references, candidates, sourceFeatureId) => {
+  if (edgeResolverFailure) throw edgeResolverFailure
+  return resolveSelectedEdgeCandidates(
+    references,
+    duplicateEdges
+      ? candidates.flatMap((candidate) =>
+          candidate.kind === "edge"
+            ? [candidate, { ...candidate, candidateId: `${candidate.candidateId}:copy` }]
+            : [candidate],
+        )
+      : candidates,
+    sourceFeatureId,
+  )
+}, resolveShellOpeningCandidates)
 const documentId = "fillet-v3-kernel"
 let serial = 10
 beforeAll(async () => {
@@ -276,10 +276,30 @@ it("fails with actionable diagnostics for missing and ambiguous references witho
     )
     expect(ambiguous).toMatchObject({
       ok: false,
-      diagnostic: { message: expect.stringContaining("ambiguous and requires repair") },
+      diagnostic: {
+        message: "Fillet edge 1 is missing or ambiguous on the current body. Reselect the edge.",
+      },
     })
   } finally {
     duplicateEdges = false
+  }
+  // An internal resolver exception asks for reselection; its text is never forwarded.
+  edgeResolverFailure = new TypeError("Cannot read properties of undefined (reading 'kind')")
+  try {
+    const internal = await engine.evaluateFeature(
+      featureInput("fillet", 3, { radius: 1, targets: [{ kind: "edge", edge }] }, input),
+      vi.fn(),
+    )
+    expect(internal).toEqual({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature-geometry",
+        message: "Fillet edge 1 is missing or ambiguous on the current body. Reselect the edge.",
+        userActionable: true,
+      },
+    })
+  } finally {
+    edgeResolverFailure = null
   }
   const oversized = await engine.evaluateFeature(
     featureInput("fillet", 3, { radius: 30, targets: [{ kind: "edge", edge }] }, input),

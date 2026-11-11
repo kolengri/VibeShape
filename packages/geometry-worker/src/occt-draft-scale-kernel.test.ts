@@ -234,6 +234,24 @@ describe("OCCT Scale", () => {
     }
   })
 
+  it("asks for a body repair when the source has no measurable bounding box", () => {
+    // An empty compound has a void bounding box; the message must still name a fix.
+    const compound = new occt.TopoDS_Compound()
+    const builder = new occt.TopoDS_Builder()
+    try {
+      builder.MakeCompound(compound)
+      const empty = { wrapped: compound } as unknown as Shape3D
+      const measure = () => occtBoundingBoxCenter(occt, empty)
+      expect(measure).toThrow(ScaleError)
+      expect(measure).toThrow(
+        "Scale cannot measure the body bounding box. Repair or rebuild the target body, then try again.",
+      )
+    } finally {
+      builder.delete()
+      compound.delete()
+    }
+  })
+
   it("fails with a typed, actionable error when the result leaves the world workspace", () => {
     const source = box()
     try {

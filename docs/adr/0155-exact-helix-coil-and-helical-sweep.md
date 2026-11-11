@@ -50,9 +50,14 @@ a screw orbit meets the section half-plane at most once within ±½ turn, so any
 appear as two meridian points one pitch apart, which the span rule excludes.
 
 It is also necessary, and therefore exact, for Coil sections. A circle or rectangle centered on the
-helix is symmetric in the binormal, so its highest and lowest crossings come from points `(n, ±b)`
-at the same radius and the binormal segment between them lies in the section. A pitch at or below
-the span therefore places the next turn's lowest point on that segment. A helical Sweep profile
+helix is symmetric in the binormal, so its highest and lowest crossings come from points `(n, ±b*)`
+and the binormal segment `b ∈ [−b*, b*]` at that `n` lies in the section. Along the segment the
+crossing height `z` is odd in `b` and strictly increasing, while the meridian radius `x` is even in
+`b`, so the segment's meridian image is a curve `x = g(z)` over `[−s/2, s/2]` (`s` the span) with `g`
+even. The next turn carries it to `x = g(z − p)`. For `0 < p ≤ s` the two curves share the interval
+`[p − s/2, s/2]`, and `h(z) = g(z) − g(z − p)` satisfies `h(s/2) = −h(p − s/2)` by the evenness of `g`.
+By the intermediate value theorem `h` vanishes in that interval, so the segment's image meets its
+own one-pitch translate and adjacent turns touch whenever the pitch does not exceed the span. A helical Sweep profile
 need not have that symmetry, so for it the rule is conservative: a profile whose meridian image
 nests with its own one-pitch translate (for example a chevron opening along the axis) is rejected
 even when its turns would not touch. At the computed minimum Coil pitch the

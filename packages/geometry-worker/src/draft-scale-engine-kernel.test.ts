@@ -3,18 +3,13 @@ import { featureEvaluationInputSchema } from "@vibeshape/protocol"
 import { vi } from "../../../tests/unit/support/bun-test"
 import { type FeatureEvaluationInput, ReplicadGeometryEngine } from "./engine"
 
-/** Test-only role that matches every planar face of equal area, as a durable rebinding can. */
-const AMBIGUOUS_ROLE = "test.equal-area-planar-face"
 const engine = new ReplicadGeometryEngine(undefined, (references, candidates) => {
   const ids = references.map((reference) =>
-    candidates.filter((candidate) =>
-      reference.semanticRole === AMBIGUOUS_ROLE
-        ? candidate.signature.geometryClass === "PLANE" &&
-          candidate.signature.measure === reference.signature.measure
-        : JSON.stringify(candidate.signature) === JSON.stringify(reference.signature),
+    candidates.filter(
+      (candidate) => JSON.stringify(candidate.signature) === JSON.stringify(reference.signature),
     ),
   )
-  return ids.every((matches) => matches.length > 0)
+  return ids.every((matches) => matches.length === 1)
     ? {
         ok: true,
         candidateIds: ids.flatMap((matches) => matches.map(({ candidateId }) => candidateId)),
@@ -183,24 +178,6 @@ describe("Draft engine evaluation", () => {
       if (result.ok) throw new Error("Expected Draft to fail.")
       expect(result.diagnostic.message).toContain("Draft face 1 is missing")
       expect(result.diagnostic.userActionable).toBe(true)
-    } finally {
-      engine.disposeDocument(documentId)
-    }
-  })
-
-  it("reports a face that resolves to several candidates as ambiguous, not missing", async () => {
-    try {
-      const source = await box()
-      const [side] = faces(source, isSide)
-      if (!side) throw new Error("Expected a side face.")
-      const result = await engine.evaluateFeature(
-        draftInput(source, [{ ...side, semanticRole: AMBIGUOUS_ROLE }]),
-        vi.fn(),
-      )
-      if (result.ok) throw new Error("Expected Draft to fail.")
-      expect(result.diagnostic.message).toBe(
-        "Draft face 1 is ambiguous. Reselect the faces on the current body.",
-      )
     } finally {
       engine.disposeDocument(documentId)
     }

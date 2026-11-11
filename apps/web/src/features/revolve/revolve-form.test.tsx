@@ -737,7 +737,8 @@ describe("RevolveForm v8 extents and endpoints", () => {
     await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Wall")
     await user.click(screen.getByRole("option", { name: "Wall · result" }))
     await user.click(submit())
-    // A later-deleted #sweep must not break the rebuild through a field the user cannot see.
+    // The saved record keeps no hidden reference to #sweep, so a later out-of-range #sweep value
+    // cannot break the rebuild through a field the user cannot see.
     expect(onSave).toHaveBeenCalledWith(
       4,
       expect.objectContaining({

@@ -197,6 +197,7 @@ import { createOcctCountersink, createOcctDrilledHole } from "./occt-hole-recess
 import { measureOcctInterference } from "./occt-interference"
 import { createOcctLoft } from "./occt-loft"
 import { createOcctLoftPatchNetwork, type LoftEndSupport } from "./occt-loft-filling"
+import { LoftFillingError } from "./occt-loft-residuals"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
 import { mirrorOcctShape } from "./occt-mirror"
 import { PathPatternError, samplePathPatternPlacements } from "./occt-path-sampling"
@@ -4993,6 +4994,7 @@ const actionableGeometryErrors = [
   ChamferV3Error,
   FilletV3Error,
   ConstrainedLoftError,
+  LoftFillingError,
   DraftError,
   ScaleError,
   ThickenError,
@@ -5029,12 +5031,6 @@ function uniqueFaceShapeKey(
   const id =
     resolved.ok && resolved.candidateIds.length === 1 ? resolved.candidateIds[0] : undefined
   return id?.startsWith("face:") ? snapshot.transientShapeKeys.get(id) : undefined
-}
-
-/** Why a body-face resolution did not yield exactly one face; two or more candidates are ambiguous. */
-function bodyFaceResolutionFailure(resolved: ReturnType<GeometryShellOpeningResolver>) {
-  if (!resolved.ok) return resolved.reason
-  return resolved.candidateIds.length > 1 ? "ambiguous" : "missing"
 }
 
 function shellOpeningShapeKeys(candidateIds: readonly string[], snapshot: TopologyCaptureSnapshot) {
@@ -5575,24 +5571,32 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     }
   }
 
+  /** Resolves one saved end support face; any failure asks for reselection with its position. */
   #takeLoftEndSupport(
     entry: LoftFeatureContentParametersV3["start"][number],
     dependencies: readonly Shape3D[],
     input: FeatureEvaluationInput,
+    position: Readonly<{ end: "start" | "end"; index: number }>,
   ) {
     const body = dependencies[entry.supportInputIndex],
       dependency = input.dependencies[entry.supportInputIndex],
       snapshot = body ? this.#topologySnapshots.get(body) : undefined
-    if (!body || !snapshot || !dependency?.outputRole || !this.resolveShellOpenings)
-      throw new Error("Exact named Loft end support topology is unavailable.")
-    const face = takeResolvedBodyFace(
-      body,
-      snapshot,
-      entry.support,
-      { featureId: dependency.featureId, outputRole: dependency.outputRole },
-      this.resolveShellOpenings,
-    )
-    return face
+    try {
+      if (!body || !snapshot || !dependency?.outputRole || !this.resolveShellOpenings)
+        throw new Error("Exact named Loft end support topology is unavailable.")
+      return takeResolvedBodyFace(
+        body,
+        snapshot,
+        entry.support,
+        { featureId: dependency.featureId, outputRole: dependency.outputRole },
+        this.resolveShellOpenings,
+      )
+    } catch (error) {
+      throw new ConstrainedLoftError(
+        `Loft ${position.end} support face ${position.index + 1} is missing or ambiguous on its exact body. Reselect the support face.`,
+        { cause: error },
+      )
+    }
   }
 
   #createConstrainedLoft(
@@ -5602,22 +5606,22 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     input: FeatureEvaluationInput,
   ) {
     const supports: Face[] = []
-    const resolve = (entries: LoftFeatureContentParametersV3["start"]): LoftEndSupport[] =>
-      entries.map((entry) => {
-        const face = this.#takeLoftEndSupport(entry, dependencies, input)
+    const resolve = (
+      entries: LoftFeatureContentParametersV3["start"],
+      end: "start" | "end",
+    ): LoftEndSupport[] =>
+      entries.map((entry, index) => {
+        const face = this.#takeLoftEndSupport(entry, dependencies, input, { end, index })
         supports.push(face)
         return { segmentTrack: entry.segmentTrack, continuity: entry.continuity, support: face }
       })
+    // Typed Loft failures name a fix; any other exception stays unmarked for the catalog advice.
     try {
       return createOcctLoftPatchNetwork(occt, {
         ...parameters,
-        start: resolve(parameters.start),
-        end: resolve(parameters.end),
+        start: resolve(parameters.start, "start"),
+        end: resolve(parameters.end, "end"),
       })
-    } catch (error) {
-      throw new ConstrainedLoftError(
-        error instanceof Error ? error.message : "Exact OCCT constrained Loft construction failed.",
-      )
     } finally {
       for (const face of supports.reverse()) face.delete()
     }
@@ -5719,8 +5723,10 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       throw fail(`Exact ${label} source topology is unavailable.`)
     if (measureShape(occt, target).solidCount !== 1)
       throw fail(`${label} requires one exact solid body.`)
+    /** Any resolver failure asks for reselection; resolver exceptions are not user advice. */
     const edgeKey = (
       reference: ChamferFeatureContentParametersV3["directionOverrides"][number],
+      index: number,
     ) => {
       if (!this.resolveReferences) throw fail(`${label} edge reference resolution is unavailable.`)
       const { outputRole: _role, schemaVersion: _version, ...topology } = reference
@@ -5733,12 +5739,14 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         const keys = resolveSelectedEdgeKeys(ids, snapshot.transientShapeKeys)
         const key = keys[0]
         if (keys.length !== 1 || key === undefined)
-          throw fail(`${label} edge resolution did not identify exactly one edge.`)
+          throw new Error(`${label} edge resolution did not identify exactly one edge.`)
         return key
       } catch (error) {
-        throw fail(
-          error instanceof Error ? error.message : `${label} edge reference requires repair.`,
+        const failure = fail(
+          `${label} edge ${index + 1} is missing or ambiguous on the current body. Reselect the edge.`,
         )
+        failure.cause = error
+        throw failure
       }
     }
     const faceKey = (
@@ -5780,12 +5788,12 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       "Chamfer",
       (message) => new ChamferV3Error(message),
     )
-    const targets: ResolvedChamferTarget[] = parameters.targets.map((selection) =>
+    const targets: ResolvedChamferTarget[] = parameters.targets.map((selection, index) =>
       selection.kind === "face"
         ? { kind: "face", faceKey: faceKey(selection.face) }
         : {
             kind: "edge",
-            edgeKey: edgeKey(selection.edge),
+            edgeKey: edgeKey(selection.edge, index),
             ...(selection.sideFace ? { sideFaceKey: faceKey(selection.sideFace) } : {}),
           },
     )
@@ -5854,7 +5862,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       const key = uniqueFaceShapeKey(resolved, snapshot)
       if (key === undefined)
         throw new Failure(
-          `${label} face ${index + 1} is ${bodyFaceResolutionFailure(resolved)}. Reselect the faces on the current body.`,
+          `${label} face ${index + 1} is ${resolved.ok ? "missing" : resolved.reason}. Reselect the faces on the current body.`,
         )
       return key
     })
@@ -5873,12 +5881,12 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       "Fillet",
       (message) => new FilletV3Error(message),
     )
-    const targets: ResolvedFilletTarget[] = parameters.targets.map((selection) =>
+    const targets: ResolvedFilletTarget[] = parameters.targets.map((selection, index) =>
       selection.kind === "face"
         ? { kind: "face", faceKey: faceKey(selection.face) }
         : {
             kind: "edge",
-            edgeKey: edgeKey(selection.edge),
+            edgeKey: edgeKey(selection.edge, index),
             ...(selection.variableRadius ? { variableRadius: selection.variableRadius } : {}),
           },
     )
