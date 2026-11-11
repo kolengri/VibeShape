@@ -1,5 +1,5 @@
 import { openApplicationMenuItem } from "./application-menu-support"
-import { saved } from "./authored-parts-ui-support"
+import { saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
@@ -35,7 +35,13 @@ test("checks current CAD placement and a rotated print copy against a persistent
   await page.reload()
   await expect(viewport.getByText("Custom printer: 30 × 30 × 25 mm")).toBeVisible()
   await page.screenshot({ path: test.info().outputPath("main-print-bed.png") })
-  await expect(toolbar.getByRole("button", { name: "Undo", exact: true })).toBeDisabled()
+  // Saved Undo survives reload (ADR-0125), so prove that print preparation adds no document
+  // revision, journal event or Undo step by comparing the saved project before and after.
+  const beforePrint = await saveProject(page)
+  const undo = toolbar.getByRole("button", { name: "Undo", exact: true })
+  const redo = toolbar.getByRole("button", { name: "Redo", exact: true })
+  await expect(undo).toBeEnabled()
+  await expect(redo).toBeDisabled()
   await openApplicationMenuItem(page, "Export geometry…")
   const exportDialog = page.getByRole("dialog", { name: "Export model" })
   await exportDialog.getByRole("button", { name: "Prepare print…" }).click()
@@ -70,7 +76,12 @@ test("checks current CAD placement and a rotated print copy against a persistent
 
   await exportDialog.getByRole("button", { name: "Close", exact: true }).click()
   await expect(page.getByRole("button", { name: "Actions for Box 1" })).toBeVisible()
-  await expect(toolbar.getByRole("button", { name: "Undo", exact: true })).toBeDisabled()
+  const afterPrint = await saveProject(page)
+  expect(afterPrint.project.snapshot.revision).toBe(beforePrint.project.snapshot.revision)
+  expect(afterPrint.project.versionedEvents).toHaveLength(
+    beforePrint.project.versionedEvents.length,
+  )
+  await expect(redo).toBeDisabled()
   await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
   await page.getByRole("treeitem", { name: "Box 1", exact: true }).click()
   const original = page.getByRole("form", { name: "Edit box" })

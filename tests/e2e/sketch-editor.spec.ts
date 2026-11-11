@@ -5,7 +5,9 @@ import {
   clickSketchEntity,
   clickSketchEntityAt,
   confirmSketchPlane,
+  constraintManager,
   drawRectangle,
+  expectUncoveredControl,
   openConstraintManager,
   selectModelEdgeInViewport,
   selectOriginPlaneInViewport,
@@ -30,8 +32,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page, "xy")
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await page.getByRole("button", { name: "Point", exact: true }).click()
     await page.keyboard.down("Shift")
@@ -76,8 +77,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page, "xy")
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await selectSketchTool(page, "Circle tools", "Center-point ellipse")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
     await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.55)
@@ -182,14 +182,14 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
-    await expect(sketchPanel.getByText("Vertical", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Vertical", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
-    await expect(sketchPanel.getByText("Vertical", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Vertical", { exact: true })).toBeVisible()
   })
 
   test("wakes an offset model-circle center without activating Use", async ({ page }) => {
@@ -253,12 +253,12 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Coincident", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Coincident", { exact: true })).toBeVisible()
   })
 
   test("wakes a coplanar model vertex without activating Use and preserves the reference", async ({
@@ -303,7 +303,7 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Coincident", { exact: true })).toBeVisible()
     const externalRelation = page.getByRole("button", {
       name: "Select external relation Coincident",
     })
@@ -312,6 +312,44 @@ test.describe("full sketch editor", () => {
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await expect(externalRelation).toHaveAttribute("data-sketch-constraint-source", "external")
+  })
+
+  test("keeps the external reference actions clear of the viewport view controls", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
+    await invokeModelCommand(page, "Primitives", "Box")
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
+      .click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await expectUncoveredControl(
+      page.getByRole("button", { name: "Intersect planar face", exact: true }),
+    )
+    await expectUncoveredControl(
+      page.getByRole("button", { name: "Show all point dimensions", exact: true }),
+    )
+    // Pierce needs one selected sketch point; the Box supplies linear model-edge candidates.
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const free = await unobscuredDrawingBounds(page, drawing)
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(free.x + free.width * 0.2, free.y + free.height * 0.3)
+    await page.keyboard.up("Shift")
+    await selectSketchEntities(page, drawing, "point", [0])
+    const pierce = page.getByRole("button", { name: "Pierce to external line", exact: true })
+    await expect(pierce).toBeEnabled()
+    await expectUncoveredControl(pierce)
   })
 
   test("intersects a planar model face through the real OCCT worker and rebuilds the saved sketch", async ({
@@ -572,7 +610,8 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page)
 
     const passiveViewport = page.locator("section[data-passive='true']")
-    await expect(passiveViewport).toHaveAttribute("aria-hidden", "true")
+    // The passive section hosts the view controls, so only its canvas is hidden from assistive tech.
+    await expect(passiveViewport.locator("canvas")).toHaveAttribute("aria-hidden", "true")
     await expect(passiveViewport).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(passiveViewport.locator("canvas")).toHaveAttribute(
       "data-test-viewport-identity",
@@ -580,8 +619,7 @@ test.describe("full sketch editor", () => {
     )
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.mouse.click(bounds.x + bounds.width * 0.4, bounds.y + bounds.height * 0.55)
     await page.mouse.click(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.45)
@@ -645,8 +683,7 @@ test.describe("full sketch editor", () => {
     await createSketch.click()
     await confirmSketchPlane(page, "xy")
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The first saved sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const firstStart = { x: bounds.x + bounds.width * 0.42, y: bounds.y + bounds.height * 0.5 }
     const firstEnd = { x: bounds.x + bounds.width * 0.62, y: bounds.y + bounds.height * 0.5 }
     await page.getByRole("button", { name: "Line", exact: true }).click()
@@ -735,8 +772,7 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page, "xy")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const drawingBounds = await drawing.boundingBox()
-    if (!drawingBounds) throw new Error("The source sketch canvas is not visible.")
+    const drawingBounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.mouse.click(
       drawingBounds.x + drawingBounds.width * 0.48,
@@ -835,8 +871,7 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page, "xz")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const sourceBounds = await drawing.boundingBox()
-    if (!sourceBounds) throw new Error("The source sketch canvas is not visible.")
+    const sourceBounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.mouse.click(
       sourceBounds.x + sourceBounds.width * 0.62,
@@ -854,8 +889,7 @@ test.describe("full sketch editor", () => {
       .getByRole("button", { name: "Create sketch", exact: true })
       .click()
     await confirmSketchPlane(page, "xy")
-    const targetBounds = await drawing.boundingBox()
-    if (!targetBounds) throw new Error("The target sketch canvas is not visible.")
+    const targetBounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Point", exact: true }).click()
     await page.mouse.click(
       targetBounds.x + targetBounds.width * 0.42,
@@ -905,7 +939,7 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText("Pierce · Sketch 1 · Line 1", { exact: true })).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Coincident", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(drawing.locator("[data-sketch-external-point-id]")).toHaveCount(1)
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
@@ -938,8 +972,7 @@ test.describe("full sketch editor", () => {
     await toolbar.getByRole("button", { name: "Create sketch", exact: true }).click()
     await confirmSketchPlane(page, "xy")
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The model Pierce sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Point", exact: true }).click()
     await page.mouse.click(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.54)
     await page.getByRole("button", { name: "Select", exact: true }).click()
@@ -958,7 +991,7 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(`Pierce · ${edgeLabel}`, { exact: true })).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Coincident", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(drawing.locator("[data-sketch-external-point-id]")).toHaveCount(1)
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
@@ -984,8 +1017,7 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page, "xy")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const drawingBounds = await drawing.boundingBox()
-    if (!drawingBounds) throw new Error("The source sketch canvas is not visible.")
+    const drawingBounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.mouse.click(
       drawingBounds.x + drawingBounds.width * 0.42,
@@ -1054,8 +1086,7 @@ test.describe("full sketch editor", () => {
 
     await createSketch.click()
     await confirmSketchPlane(page, "xy")
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.mouse.click(bounds.x + bounds.width * 0.38, bounds.y + bounds.height * 0.44)
     await page.mouse.click(bounds.x + bounds.width * 0.64, bounds.y + bounds.height * 0.44)
@@ -1106,13 +1137,13 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(/Sketch 1 · Line/)).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on line", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on line", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2", exact: true }).click()
     await expect(sketchPanel.getByText(/Sketch 1 · Line/)).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on line", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on line", { exact: true })).toBeVisible()
     await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
   })
 
@@ -1130,8 +1161,7 @@ test.describe("full sketch editor", () => {
 
     await createSketch.click()
     await confirmSketchPlane(page, "xy")
-    const drawingBounds = await drawing.boundingBox()
-    if (!drawingBounds) throw new Error("The source sketch canvas is not visible.")
+    const drawingBounds = await unobscuredDrawingBounds(page, drawing)
     const start = {
       x: drawingBounds.x + drawingBounds.width * 0.42,
       y: drawingBounds.y + drawingBounds.height * 0.5,
@@ -1266,8 +1296,7 @@ test.describe("full sketch editor", () => {
 
     await createSketch.click()
     await confirmSketchPlane(page, "xy")
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.mouse.click(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.5)
     await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.5)
@@ -1334,8 +1363,7 @@ test.describe("full sketch editor", () => {
 
     await createSketch.click()
     await confirmSketchPlane(page, "xy")
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.mouse.click(bounds.x + bounds.width * 0.38, bounds.y + bounds.height * 0.44)
     await page.mouse.click(bounds.x + bounds.width * 0.58, bounds.y + bounds.height * 0.44)
@@ -1431,8 +1459,7 @@ test.describe("full sketch editor", () => {
 
     await createSketch.click()
     await confirmSketchPlane(page, "xy")
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.keyboard.down("Shift")
     await page.mouse.click(bounds.x + bounds.width * 0.38, bounds.y + bounds.height * 0.44)
@@ -1463,9 +1490,10 @@ test.describe("full sketch editor", () => {
     await expect(precisionTools.getByRole("button", { name: "Equal" })).toBeVisible()
     await precisionTools.getByRole("button", { name: "Equal" }).click()
 
-    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    const equalConstraint = sketchPanel.getByRole("listitem").filter({ hasText: "Equal" })
+    const equalConstraint = constraintManager(page)
+      .getByRole("listitem")
+      .filter({ hasText: "Equal" })
     await expect(equalConstraint).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
@@ -1582,8 +1610,7 @@ test.describe("full sketch editor", () => {
 
     await createSketch.click()
     await confirmSketchPlane(page, "xy")
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Point", exact: true }).click()
     await page.keyboard.down("Shift")
     await page.mouse.click(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.44)
@@ -1615,9 +1642,10 @@ test.describe("full sketch editor", () => {
     await expect(precisionTools.getByRole("button", { name: "Coincident" })).toBeVisible()
     await expect(precisionTools.getByRole("button", { name: "Horizontal" })).toBeVisible()
     await precisionTools.getByRole("button", { name: "Horizontal" }).click()
-    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    const horizontalConstraint = sketchPanel.getByRole("listitem").filter({ hasText: "Horizontal" })
+    const horizontalConstraint = constraintManager(page)
+      .getByRole("listitem")
+      .filter({ hasText: "Horizontal" })
     await expect(horizontalConstraint).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
@@ -1667,8 +1695,7 @@ test.describe("full sketch editor", () => {
 
     await createSketch.click()
     await confirmSketchPlane(page, "xy")
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
     await page.mouse.click(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.44)
     await page.mouse.click(bounds.x + bounds.width * 0.52, bounds.y + bounds.height * 0.44)
@@ -1696,9 +1723,10 @@ test.describe("full sketch editor", () => {
     await expect(precisionTools.getByRole("button", { name: "Concentric" })).toBeVisible()
     await precisionTools.getByRole("button", { name: "Concentric" }).click()
 
-    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    const concentricConstraint = sketchPanel.getByRole("listitem").filter({ hasText: "Concentric" })
+    const concentricConstraint = constraintManager(page)
+      .getByRole("listitem")
+      .filter({ hasText: "Concentric" })
     await expect(concentricConstraint).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
@@ -1753,8 +1781,7 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page, "xy")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
     await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.5)
@@ -1794,8 +1821,7 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page, "xy")
 
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
     await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.5)
@@ -1851,15 +1877,15 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText("Sketch 1 · Circle 1", { exact: true })).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
-    await expect(sketchPanel.getByText("Horizontal", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Horizontal", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2", exact: true }).click()
     await expect(sketchPanel.getByText("Sketch 1 · Circle 1", { exact: true })).toBeVisible()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
-    await expect(sketchPanel.getByText("Horizontal", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Horizontal", { exact: true })).toBeVisible()
     await expect(drawing.locator("[data-sketch-external-curve-count='1']")).toHaveCount(1)
   })
 
@@ -2202,8 +2228,12 @@ test.describe("full sketch editor", () => {
 
     const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
-    await expect(taskPanel.getByText("Vertical distance · 30 mm", { exact: true })).toBeVisible()
+    await expect(
+      constraintManager(page).getByText("Horizontal distance · 80 mm", { exact: true }),
+    ).toBeVisible()
+    await expect(
+      constraintManager(page).getByText("Vertical distance · 30 mm", { exact: true }),
+    ).toBeVisible()
 
     await taskPanel.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await expect(page.getByRole("treeitem", { name: "Sketch 1", exact: true })).toBeVisible()
@@ -2215,8 +2245,12 @@ test.describe("full sketch editor", () => {
     ).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
-    await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
-    await expect(taskPanel.getByText("Vertical distance · 30 mm", { exact: true })).toBeVisible()
+    await expect(
+      constraintManager(page).getByText("Horizontal distance · 80 mm", { exact: true }),
+    ).toBeVisible()
+    await expect(
+      constraintManager(page).getByText("Vertical distance · 30 mm", { exact: true }),
+    ).toBeVisible()
   })
 
   test("keeps optional creation precision inside the viewport at both vertical edges", async ({
@@ -2289,10 +2323,11 @@ test.describe("full sketch editor", () => {
     ).toHaveCount(0)
     await editor.getByRole("button", { name: "Apply dimension" }).click()
 
-    const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
     await expect(
-      taskPanel.getByRole("listitem").filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
+      constraintManager(page)
+        .getByRole("listitem")
+        .filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
     ).toBeVisible()
     const annotation = page
       .getByRole("region", { name: "2D sketch workspace" })
@@ -2318,7 +2353,9 @@ test.describe("full sketch editor", () => {
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
     await expect(
-      taskPanel.getByRole("listitem").filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
+      constraintManager(page)
+        .getByRole("listitem")
+        .filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
     ).toBeVisible()
     await expect(
       page
@@ -2358,9 +2395,9 @@ test.describe("full sketch editor", () => {
       .getByRole("region", { name: "2D sketch workspace" })
       .getByRole("button", { name: "Edit dimension 30 mm" })
     await dimensionAnnotation.dblclick()
-    const panelExpression = page
-      .getByRole("complementary", { name: "Sketch task panel" })
-      .getByRole("combobox", { name: "Driving expression" })
+    const panelExpression = constraintManager(page).getByRole("combobox", {
+      name: "Driving expression",
+    })
     await expect(panelExpression).toHaveValue("30 mm")
     await canvasExpression.fill("35 mm")
     await page.getByRole("button", { name: "Apply dimension" }).click()
@@ -2390,8 +2427,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     for (let index = 0; index < 24; index += 1) {
       await selectSketchTool(page, "Rectangle tools", "Rectangle G")
       const column = index % 6
@@ -2460,8 +2496,7 @@ test.describe("full sketch editor", () => {
       .click()
     await selectOriginPlaneInViewport(page, "yz")
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const clickAt = (horizontal: number, vertical: number) =>
       page.mouse.click(bounds.x + bounds.width * horizontal, bounds.y + bounds.height * vertical)
 
@@ -2508,8 +2543,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Rectangle tools", "Center rectangle R")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
@@ -2544,8 +2578,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Arc tools", "Three-point arc A")
     await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.55)
@@ -2579,8 +2612,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Arc tools", "Center-point arc")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
@@ -2610,13 +2642,12 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-inference="midpoint"]')).toBeVisible()
     await page.mouse.click(midpoint.x, midpoint.y)
 
-    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Midpoint", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Midpoint", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Midpoint", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Midpoint", { exact: true })).toBeVisible()
   })
 
   test("authors an elliptical arc with construction-ellipse preview and local history", async ({
@@ -2634,8 +2665,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Arc tools", "Elliptical arc")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
@@ -2674,8 +2704,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Arc tools", "Elliptical arc")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
@@ -2705,16 +2734,15 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-inference="point-on-curve"]')).toBeVisible()
     await page.mouse.click(arcPoint.x, arcPoint.y)
 
-    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(
       page.getByRole("button", { name: "Select constraint Point on curve" }),
     ).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on curve", { exact: true })).toBeVisible()
   })
 
   test("drives both stable axes of a selected ellipse by diameter", async ({ page }) => {
@@ -2730,8 +2758,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Circle tools", "Center-point ellipse")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
@@ -2771,8 +2798,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Circle tools", "Center-point ellipse")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
@@ -2788,14 +2814,13 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-inference="quadrant"]')).toBeVisible()
     await page.mouse.click(negativePrimary.x, negativePrimary.y)
 
-    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Quadrant", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Quadrant", { exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Select constraint Quadrant" })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Quadrant", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Quadrant", { exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Select constraint Quadrant" })).toBeVisible()
   })
 
@@ -2812,8 +2837,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Circle tools", "Center-point ellipse")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
@@ -2830,16 +2854,15 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-inference="point-on-curve"]')).toBeVisible()
     await page.mouse.click(ellipsePoint.x, ellipsePoint.y)
 
-    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(
       page.getByRole("button", { name: "Select constraint Point on curve" }),
     ).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1", exact: true }).click()
     await openConstraintManager(page)
-    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(constraintManager(page).getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(
       page.getByRole("button", { name: "Select constraint Point on curve" }),
     ).toBeVisible()
@@ -2858,8 +2881,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Circle tools", "Center-point ellipse")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
@@ -2879,9 +2901,8 @@ test.describe("full sketch editor", () => {
     const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
     await precisionTools.getByRole("button", { name: "Point on curve" }).click()
 
-    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await openConstraintManager(page)
-    const constraintRow = sketchPanel
+    const constraintRow = constraintManager(page)
       .getByRole("listitem")
       .getByRole("button", { name: "Point on curve" })
     await expect(constraintRow).toBeVisible()
@@ -2907,8 +2928,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Line tools", "Midpoint line")
     await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.65)
@@ -2944,8 +2964,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const clickAt = (horizontal: number, vertical: number) =>
       page.mouse.click(bounds.x + bounds.width * horizontal, bounds.y + bounds.height * vertical)
 
@@ -2995,8 +3014,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Rectangle tools", "Aligned rectangle")
     await page.mouse.click(bounds.x + bounds.width * 0.25, bounds.y + bounds.height * 0.62)
@@ -3055,8 +3073,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Rectangle tools", "Centered aligned rectangle")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
@@ -3096,8 +3113,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Slot tools", "Centered slot")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
@@ -3179,8 +3195,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await selectSketchTool(page, "Slot tools", "Straight slot")
     await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.6)
@@ -3213,8 +3228,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const clickAt = (horizontal: number, vertical: number) =>
       page.mouse.click(bounds.x + bounds.width * horizontal, bounds.y + bounds.height * vertical)
     const construction = page.getByRole("button", { name: "Construction geometry" })
@@ -3263,6 +3277,65 @@ test.describe("full sketch editor", () => {
     )
   })
 
+  for (const { width, height, theme } of [
+    { width: 512, height: 360, theme: "light" },
+    { width: 1024, height: 720, theme: "light" },
+    { width: 1024, height: 720, theme: "dark" },
+  ] as const) {
+    test(`keeps the Precise transform panel inside the canvas at ${width}x${height} in ${theme} theme`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height })
+      await page.goto("/")
+      await expect(
+        page
+          .getByRole("status", { name: "Project save status", exact: true })
+          .filter({ hasText: /^Saved$/ }),
+      ).toBeVisible()
+      await page
+        .locator("html")
+        .evaluate((node, dark) => node.classList.toggle("dark", dark), theme === "dark")
+      await page
+        .getByRole("toolbar", { name: "Model commands", exact: true })
+        .getByRole("button", { name: "Create sketch", exact: true })
+        .click()
+      // The compact layout hides the Sketch task panel, so pick the plane in the viewport.
+      if (width < 1024) await selectOriginPlaneInViewport(page, "xy")
+      else await confirmSketchPlane(page)
+      const drawing = await drawRectangle(page)
+      await selectSketchEntities(page, drawing, "line", [0, 1, 2, 3])
+      // Narrower toolbars move Transform into the modification-tools menu.
+      const transform = page.getByRole("button", { name: "Transform", exact: true })
+      if (await transform.isVisible()) await transform.click()
+      else {
+        await page.getByRole("button", { name: "Sketch modification tools", exact: true }).click()
+        await page.getByRole("option", { name: "Transform", exact: true }).click()
+      }
+      const exactTransform = page.getByRole("form", { name: "Precise transform" })
+      await expect(exactTransform).toBeVisible()
+      // A short canvas scrolls the panel instead of pushing it above the canvas.
+      // The panel stays inside the free canvas and scrolls instead of growing above it.
+      const canvas = await unobscuredDrawingBounds(page, drawing)
+      const panel = await exactTransform.boundingBox()
+      if (!panel) throw new Error("The Precise transform panel must be measurable.")
+      expect(panel.y).toBeGreaterThanOrEqual(canvas.y)
+      expect(panel.y + panel.height).toBeLessThanOrEqual(canvas.y + canvas.height)
+      if (width < 1024) {
+        expect(
+          await exactTransform.evaluate((element) => element.scrollHeight > element.clientHeight),
+        ).toBe(true)
+        return
+      }
+      for (const control of [
+        exactTransform.getByRole("combobox").first(),
+        exactTransform.getByRole("button", { name: "Apply transform" }),
+      ]) {
+        await control.scrollIntoViewIfNeeded()
+        await expectUncoveredControl(control)
+      }
+    })
+  }
+
   test("transforms selected sketch geometry with one preview and undo entry", async ({ page }) => {
     await page.goto("/")
     await expect(
@@ -3299,6 +3372,7 @@ test.describe("full sketch editor", () => {
     await exactTransform.getByRole("combobox", { name: "Translation X" }).fill("5 mm")
     await exactTransform.getByRole("combobox", { name: "Rotation" }).fill("15 deg")
     await exactTransform.getByRole("combobox", { name: "Scale" }).fill("1.1")
+    await expectUncoveredControl(exactTransform.getByRole("button", { name: "Apply transform" }))
     await exactTransform.getByRole("button", { name: "Apply transform" }).click()
 
     await expect(drawing.locator("[data-sketch-transform-manipulator]")).toHaveCount(0)
@@ -3355,6 +3429,7 @@ test.describe("full sketch editor", () => {
     await pattern.getByRole("checkbox", { name: "Add second direction" }).check()
     await pattern.getByRole("combobox", { name: "Second spacing" }).fill("10 mm")
     await expect(drawing.locator("[data-sketch-linear-pattern-preview] > g")).toHaveCount(5)
+    await expectUncoveredControl(pattern.getByRole("button", { name: "Apply linear pattern" }))
     await pattern.getByRole("button", { name: "Apply linear pattern" }).click()
 
     await expect(lines).toHaveCount(9)
@@ -3390,6 +3465,7 @@ test.describe("full sketch editor", () => {
     await pattern.getByRole("combobox", { name: "Center X" }).fill("10 mm")
     await pattern.getByRole("combobox", { name: "Instance count" }).fill("4")
     await expect(drawing.locator("[data-sketch-circular-pattern-preview] > g")).toHaveCount(4)
+    await expectUncoveredControl(pattern.getByRole("button", { name: "Apply circular pattern" }))
     await pattern.getByRole("button", { name: "Apply circular pattern" }).click()
 
     await expect(lines).toHaveCount(7)
@@ -3414,8 +3490,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const lines = drawing.locator('[data-sketch-entity-type="line"]')
 
     await selectSketchEntities(page, drawing, "line", [0, 1, 2, 3])
@@ -3494,8 +3569,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const canvasPoint = (horizontal: number, vertical: number) => ({
       x: bounds.x + bounds.width * horizontal,
       y: bounds.y + bounds.height * vertical,
@@ -3560,8 +3634,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const canvasPoint = (horizontal: number, vertical: number) => ({
       x: bounds.x + bounds.width * horizontal,
       y: bounds.y + bounds.height * vertical,
@@ -3619,8 +3692,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const canvasPoint = (horizontal: number, vertical: number) => ({
       x: bounds.x + bounds.width * horizontal,
       y: bounds.y + bounds.height * vertical,
@@ -3690,8 +3762,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
     const canvasPoint = (horizontal: number, vertical: number) => ({
       x: bounds.x + bounds.width * horizontal,
       y: bounds.y + bounds.height * vertical,
@@ -3765,8 +3836,7 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const bounds = await drawing.boundingBox()
-    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const bounds = await unobscuredDrawingBounds(page, drawing)
 
     await page.getByRole("button", { name: "Line", exact: true }).click()
     const firstStart = {
