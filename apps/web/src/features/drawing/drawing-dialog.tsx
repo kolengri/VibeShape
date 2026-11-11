@@ -5,6 +5,7 @@ import {
   DRAWING_VIEWS,
   type DrawingSettings,
   type DrawingTitleBlock,
+  stripDrawingControlCharacters,
 } from "@vibeshape/domain/drawing"
 import {
   DRAWING_FILE_FORMATS,
@@ -199,7 +200,12 @@ function TitleBlockFields({ settings, update }: { settings: DrawingSettings; upd
           value={settings.titleBlock[field]}
           maxLength={maxLength}
           onChange={(event) =>
-            update({ titleBlock: { ...settings.titleBlock, [field]: event.currentTarget.value } })
+            update({
+              titleBlock: {
+                ...settings.titleBlock,
+                [field]: stripDrawingControlCharacters(event.currentTarget.value),
+              },
+            })
           }
         />
       ))}

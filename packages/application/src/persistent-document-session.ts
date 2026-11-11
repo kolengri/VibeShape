@@ -962,10 +962,20 @@ export class PersistentDocumentSession {
   ): Promise<PersistentDrawingProjectionResult> {
     return this.#enqueue(async () => {
       const port = this.#rebuildPort
-      if (this.#closed || !port.projectDrawing)
+      if (this.#closed)
         return {
           ok: false,
           diagnostic: diagnostic("session-closed", "The document session is closed."),
+        }
+      if (!port.projectDrawing)
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "export-failed",
+            "This document session cannot project drawings.",
+            false,
+            "drawing-unsupported",
+          ),
         }
       try {
         // Call through the port so session implementations keep their `this` binding.

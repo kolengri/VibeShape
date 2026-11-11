@@ -37,8 +37,10 @@ Identical model and settings produce identical files. Files are named `<project>
 ## Geometry
 
 Views come from exact OCCT hidden-line removal, not from the display mesh. Straight edges, circles
-and arcs keep their exact geometry; other curves are sampled within 0.01 mm. Hidden copies of
-edges that lie exactly behind visible edges are omitted. Mesh-only parts cannot be drawn.
+and arcs keep their exact geometry; other curves are sampled within 0.01 mm. Hidden edges are
+dashed only where no visible edge covers them, including partial overlaps. Mesh parts cannot be
+drawn: **All parts** draws the solid parts and skips meshes, and the Part choice stays available
+whenever the model contains mesh parts.
 
 ## Automation
 
@@ -48,5 +50,6 @@ committed revision; see the [operator reference](../../.agents/skills/vibeshape-
 ## Limits
 
 Manual dimensions, section and detail views, moving views, tolerances and GD&T, multiple sheets,
-embedded PDF fonts (characters outside WinAnsi print as `?` in PDF), DXF line weights and drawings
-saved inside the project are not available.
+embedded PDF fonts (characters outside WinAnsi print as `?` on the PDF page), DXF line weights,
+characters beyond the Basic Multilingual Plane in DXF (written as `?`) and drawings saved inside
+the project are not available.

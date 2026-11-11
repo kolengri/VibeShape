@@ -131,9 +131,15 @@ function n6(value: number) {
   return sheetNumber(value, 6)
 }
 
-/** PDF literal string for document information; non-ASCII becomes octal WinAnsi escapes. */
+/**
+ * Document information is a PDF text string, not font-encoded content: UTF-16BE hex with a byte
+ * order mark preserves every character, including non-BMP ones as surrogate pairs.
+ */
 function infoString(value: string) {
-  return winAnsi(value).literal
+  const units = Array.from({ length: value.length }, (_, index) =>
+    value.charCodeAt(index).toString(16).toUpperCase().padStart(4, "0"),
+  )
+  return `<FEFF${units.join("")}>`
 }
 
 /**

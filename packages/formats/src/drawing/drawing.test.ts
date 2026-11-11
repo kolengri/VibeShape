@@ -278,6 +278,16 @@ describe("drawing writers", () => {
     expect([...dxf].every((character) => character.charCodeAt(0) < 128)).toBe(true)
   })
 
+  it("keeps typed DXF control codes literal and uses the R12 diameter code", () => {
+    const title = "50% %%c \\U+0041 Ø \u{1D538}"
+    const dxf = writeDrawingDxf(
+      sheetFor({ titleBlock: { title, drawingNumber: "", author: "", date: "", material: "" } }),
+    )
+    expect(dxf).toContain("\r\n1\r\n50%%% %%%%%%c \\U+005CU+0041 %%c ?\r\n")
+    expect(dxf).toContain("\r\n1\r\n%%c10\r\n")
+    expect([...dxf].every((character) => character.charCodeAt(0) < 128)).toBe(true)
+  })
+
   it("writes a structurally valid single-page vector PDF", () => {
     const bytes = writeDrawingPdf(sheetFor())
     const text = new TextDecoder("latin1").decode(bytes)
@@ -301,6 +311,25 @@ describe("drawing writers", () => {
     expect(text).toContain("[3 1.5] 0 d")
     expect(text).toContain("/BaseFont /Helvetica")
     expect(text).toContain("(\\330") // Ø as a WinAnsi octal escape
+  })
+
+  it("writes the PDF title as UTF-16BE text with a byte order mark", () => {
+    const pdf = new TextDecoder("latin1").decode(
+      writeDrawingPdf(
+        sheetFor({
+          titleBlock: { title: "€…–—", drawingNumber: "", author: "", date: "", material: "" },
+        }),
+      ),
+    )
+    expect(pdf).toContain("/Title <FEFF20AC202620132014>")
+    const astral = new TextDecoder("latin1").decode(
+      writeDrawingPdf(
+        sheetFor({
+          titleBlock: { title: "\u{1D538}", drawingNumber: "", author: "", date: "", material: "" },
+        }),
+      ),
+    )
+    expect(astral).toContain("/Title <FEFFD835DD38>")
   })
 
   it("produces identical bytes for identical input", () => {

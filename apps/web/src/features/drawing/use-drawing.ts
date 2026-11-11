@@ -9,7 +9,7 @@ import {
   writeDrawingSvg,
 } from "@vibeshape/formats/drawing"
 import type { DrawingProjection, DrawingViewId } from "@vibeshape/protocol"
-import { useEffect, useMemo, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import type { DocumentControllerState } from "../../document/document-controller"
 import { projectActiveDocumentDrawing } from "../../document/document-controller"
 import { composeDocumentDrawing, downloadDrawing } from "./drawing-file"
@@ -98,17 +98,12 @@ export function useDrawing(input: {
   }, [key, project])
 
   const ready = state.status === "ready" && state.key === key ? state : null
-  const sheet = useMemo(() => {
-    if (!ready) return null
-    const parsed = drawingSettingsSchema.safeParse(settings)
-    if (!parsed.success) return null
-    return composeDocumentDrawing({
-      projection: ready.projection,
-      settings: parsed.data,
-      documentName: ready.documentName,
-      copy,
-    })
-  }, [ready, settings, copy])
+  // Typing in the title block defers the preview so recomposition never blocks the input.
+  const previewSettings = useDeferredValue(settings)
+  const sheet = useMemo(
+    () => composeReadySheet(ready, previewSettings, copy),
+    [ready, previewSettings, copy],
+  )
   const previewUrl = useMemo(
     () =>
       sheet
@@ -121,8 +116,11 @@ export function useDrawing(input: {
     sheet,
     previewUrl,
     download(format: DrawingFileFormat) {
-      if (!sheet || !ready) return false
-      downloadDrawing(sheet, format, ready.documentName)
+      // Downloads always use the latest settings, even before the deferred preview catches up.
+      const current =
+        previewSettings === settings ? sheet : composeReadySheet(ready, settings, copy)
+      if (!current || !ready) return false
+      downloadDrawing(current, format, ready.documentName)
       return true
     },
   }
@@ -138,4 +136,20 @@ function drawingStatus(
   if (state.status === "failed" && state.key === key)
     return state.empty ? ("empty" as const) : ("failed" as const)
   return ready ? ("ready" as const) : ("loading" as const)
+}
+
+function composeReadySheet(
+  ready: Extract<ProjectionState, { status: "ready" }> | null,
+  settings: DrawingSettings,
+  copy: DrawingSheetCopy,
+) {
+  if (!ready) return null
+  const parsed = drawingSettingsSchema.safeParse(settings)
+  if (!parsed.success) return null
+  return composeDocumentDrawing({
+    projection: ready.projection,
+    settings: parsed.data,
+    documentName: ready.documentName,
+    copy,
+  })
 }

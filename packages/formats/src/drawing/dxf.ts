@@ -19,15 +19,24 @@ const DXF_LAYERS: Readonly<
 }
 const DEGREES = 180 / Math.PI
 
-/** R12 text is single-byte; characters outside printable ASCII use the `\U+XXXX` escape. */
+/**
+ * R12 TEXT is single-byte and interprets `%%` control codes and `\U+XXXX` escapes. Users' percent
+ * signs become `%%%` and backslashes `\U+005C`, so typed codes print literally; Ø uses the R12
+ * diameter code `%%c`; other characters outside printable ASCII use `\U+XXXX`, and characters
+ * beyond the Basic Multilingual Plane, which the four-digit escape cannot carry, become `?`.
+ */
 function dxfText(value: string) {
-  return [...value]
-    .map((character) => {
-      const code = character.codePointAt(0) ?? 63
-      if (code >= 32 && code < 127) return character
-      return `\\U+${code.toString(16).toUpperCase().padStart(4, "0")}`
-    })
-    .join("")
+  return [...value].map(dxfCharacter).join("")
+}
+
+function dxfCharacter(character: string) {
+  const code = character.codePointAt(0) ?? 63
+  if (character === "%") return "%%%"
+  if (character === "\\") return "\\U+005C"
+  if (character === "Ø") return "%%c"
+  if (code >= 32 && code < 127) return character
+  if (code > 0xffff) return "?"
+  return `\\U+${code.toString(16).toUpperCase().padStart(4, "0")}`
 }
 
 function pairs(...entries: (readonly [number, string | number])[]) {

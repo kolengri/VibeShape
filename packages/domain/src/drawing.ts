@@ -51,7 +51,21 @@ export const drawingScaleSchema = z.discriminatedUnion("mode", [
 ])
 export type DrawingScale = z.infer<typeof drawingScaleSchema>
 
-const field = (maximum: number) => z.string().trim().max(maximum).default("")
+/** C0 controls and DEL are invalid in XML 1.0 text and unprintable in DXF and PDF title blocks. */
+function isControlCharacter(character: string) {
+  const code = character.charCodeAt(0)
+  return code < 0x20 || code === 0x7f
+}
+export function stripDrawingControlCharacters(value: string) {
+  return [...value].filter((character) => !isControlCharacter(character)).join("")
+}
+const field = (maximum: number) =>
+  z
+    .string()
+    .trim()
+    .max(maximum)
+    .refine((value) => ![...value].some(isControlCharacter), "Control characters are not allowed.")
+    .default("")
 export const drawingTitleBlockSchema = z.strictObject({
   title: field(80),
   drawingNumber: field(40),

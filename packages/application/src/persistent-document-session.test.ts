@@ -1266,6 +1266,24 @@ describe("persistent document session", () => {
     })
   })
 
+  it("reports a rebuild port without drawing projection as unsupported, not closed", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const port = state.rebuildPorts[0]
+    if (!port) throw new Error("The rebuild port was not created.")
+    Object.defineProperty(port, "projectDrawing", { value: undefined })
+    await expect(created.session.projectDrawing(["front"])).resolves.toEqual({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "This document session cannot project drawings.",
+        retryable: false,
+        sourceCode: "drawing-unsupported",
+      },
+    })
+    await created.session.close()
+  })
+
   it("preserves validated worker export failures through the persistent session", async () => {
     const state = harness()
     const created = await createSession(state.dependencies)
