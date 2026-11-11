@@ -8,6 +8,8 @@ export const editorCommandIds = {
   placePart: "org.vibeshape.editor.part-design.place-part",
   mirrorPart: "org.vibeshape.editor.part-design.mirror-part",
   shellPart: "org.vibeshape.editor.part-design.shell-part",
+  draftPart: "org.vibeshape.editor.part-design.draft-part",
+  scalePart: "org.vibeshape.editor.part-design.scale-part",
   splitPart: "org.vibeshape.editor.part-design.split-part",
   patternPart: "org.vibeshape.editor.part-design.pattern-part",
   threadPart: "org.vibeshape.editor.part-design.thread-part",
@@ -152,6 +154,8 @@ export type EditorCommandIcon =
   | "lightweighting"
   | "quick-lightweighting"
   | "shell"
+  | "draft"
+  | "scale"
   | "thread"
   | "compound"
   | "union"
@@ -241,6 +245,8 @@ export type EditorCommandLabelKey =
   | "placePart"
   | "mirrorPart"
   | "shellPart"
+  | "draftPart"
+  | "scalePart"
   | "splitPart"
   | "patternPart"
   | "threadPart"
