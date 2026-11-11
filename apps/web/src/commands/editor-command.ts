@@ -342,7 +342,7 @@ export type EditorCommandLabelKey =
   | "workspaceSketch"
 
 export type EditorCommandDisabledReason =
-  | "selectPlanarFace"
+  | "selectBodyFace"
   | "activeFeature"
   | "activeSketch"
   | "documentLoading"

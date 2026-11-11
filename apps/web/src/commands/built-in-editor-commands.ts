@@ -1011,7 +1011,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
       if (!eligibility.enabled) return eligibility
       return context.actions.pressPull && context.state.pressPullAvailable
         ? editorCommandEnabled()
-        : editorCommandDisabled("selectPlanarFace")
+        : editorCommandDisabled("selectBodyFace")
     },
     id: editorCommandIds.pressPull,
     isActive: ({ state }) => state.activePartDesignCommand === "press-pull",

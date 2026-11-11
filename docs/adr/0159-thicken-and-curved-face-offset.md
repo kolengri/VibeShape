@@ -56,6 +56,17 @@ was written. Volumes are compared with analytic values.
    a step: the unified face count of the result differs from the source (frustum cone with the simple
    slab: 3 → 5 faces; a cylinder blending tangentially into a hemisphere: no accepted slab).
 
+5. **Closed selections.** When the selected faces have no free boundary edge (a whole sphere or torus,
+   every face of a cylinder or box), the "slab" is the offset solid itself, and it passes every
+   validity check: a radius 5 sphere thickened 2 mm outward returned the radius 7 ball (1436.76
+   instead of the 913.16 shell), every face of a box thickened 1 mm returned 1728 instead of 728, and a
+   torus thickened 2.9 mm inward returned 1.97 instead of 1774.55.
+6. **Face count is not attachment.** An unchanged unified face count does not prove that neighbours
+   followed the face. A boss whose top is a chamfer cone, beside a second boss of the same height,
+   accepted a 1 mm radius increase (11 → 11 faces) although the chamfer still started at the old radius
+   and the new ledge merged into the other boss's coplanar top; a counterbore's small hole widened by
+   2.5 mm kept 9 faces while consuming the bore floor.
+
 A general per-face offset in which arbitrary neighbours extend or trim (OCCT's `BRepOffset_MakeOffset`
 with per-face offsets, or a remove-and-rebuild through `BRepAlgoAPI_Defeaturing`/`BRepTools_ReShape`)
 is not possible with the bound modules.
@@ -75,11 +86,15 @@ The worker resolves each face through the shared exact/durable body-face resolve
 Draft) and then:
 
 - requires one edge-connected patch and names the first detached face;
+- rejects a closed selection: counting the selected faces' boundary edges with multiplicity, ignoring
+  degenerate edges and seams a face shares only with itself, at least one edge must belong to exactly
+  one selected face. Otherwise the message points to Shell;
 - rejects an offset that reaches the smallest principal curvature radius on the concave side, sampled
   on a 9 × 9 parameter grid of every selected curved face from `BRepAdaptor_Surface::D2`;
 - builds each signed offset slab from its own deep copy, trying the simple thick solid first (walls
-  along the boundary normals, accepted only within an edge-tolerance bound) and the joined thick solid
-  second (faces meeting at sharp edges extend to intersect; free walls follow the neighbouring
+  along the boundary normals, accepted only within an edge-tolerance bound and within Steiner volume
+  bounds `A·|s|·(1 ∓ |s|·k)²` from the face area and sampled curvature, with slack; a native failure
+  falls through) and the joined thick solid second (faces meeting at sharp edges extend to intersect; free walls follow the neighbouring
   faces);
 - fuses the two halves of a symmetric slab, applies the operation, and requires one valid
   positive-volume solid.
@@ -87,12 +102,17 @@ Draft) and then:
 Every selected face is thickened or the feature fails with an actionable message; none is skipped.
 
 **Press Pull version 2** (`org.vibeshape.feature.part-design.press-pull` schema 2) keeps the version 1
-parameters and lifts the planar-only restriction. Planar faces use the unchanged version 1 prism path,
-so results are identical. A curved face is moved by adding or cutting the simple or joined slab, and
-the result is accepted only when the unified face count is unchanged, i.e. every neighbour stays
-attached; otherwise the feature fails closed with a message that suggests Thicken. The same concave
-curvature guard applies. Saved version 1 features stay planar-only; new UI and MCP features are
-version 2.
+parameters and lifts the planar-only restriction. The UI and MCP author version 1 for a planar face
+(unchanged prism path, catalog advice) and version 2 only for a curved face; an update keeps the saved
+version. A curved face is moved by adding or cutting the simple or joined slab, and the result is
+accepted only when Boolean history proves attachment: no body face other than the moved one is
+deleted, and across every boundary edge each slab face touching that edge is either internal to the
+result (coincident with the body, hence deleted) or merges into the image of that edge's own
+neighbour. The unified face count must also be unchanged. In practice only planar neighbours can
+follow: perpendicular ones grow with the face and slanted ones extend along their plane; chamfers,
+fillets and other curved neighbours fail closed with a message that suggests Thicken. The same
+concave curvature guard applies. Every Press Pull kernel failure is a typed, user-actionable error;
+version 2 forwards it to the task panel, while version 1 keeps the catalog advice.
 
 Thicken and Press Pull version 2 forward their kernel messages to the task panel. Thicken has a task
 panel with shared Draft/Shell face picking, a new colored icon, toolbar, context-menu and palette
@@ -108,9 +128,9 @@ over the ordinary draft path.
 - Sharp-edged Thicken selections use the joined construction, whose free walls follow the
   neighbouring body faces instead of the boundary normals. For neighbours perpendicular to the
   selection the two coincide.
-- Curved Press Pull covers neighbours that meet the face at right angles or extend along their own
-  surfaces. Tangent neighbours (for example fillets and blends around the face) are rejected; Thicken
-  with Add or Remove is the alternative. Curvature sampling can miss a sharp local peak on a freeform
+- Curved Press Pull covers planar neighbours only. Chamfers, fillets, tangent blends and other curved
+  neighbours are rejected; Thicken with Add or Remove is the alternative. Closed Thicken selections
+  are rejected in favour of Shell. Curvature sampling can miss a sharp local peak on a freeform
   face; OCCT validity checks remain the final guard.
 - Binding `BRepOffset_MakeOffset` (with `SetOffsetOnFace` and the thickening flag) or
   `BRepAlgoAPI_Defeaturing` in a future WASM build would allow a general offset-face operation and
@@ -127,4 +147,8 @@ tangent neighbour and parity with planar Press Pull. Engine tests cover face res
 Pattern output, forwarded diagnostics with balanced shape ownership on failure, and version 1 versus
 version 2 Press Pull. Domain, form, repair, MCP schema/adapter and Chromium end-to-end tests cover
 bounds, side and operation modes, expressions, content identity, picking, single-flight Apply, undo and
-reopen.
+reopen. Review follow-up tests reject a whole sphere (outward and inward Remove), a whole torus, every
+face of a cylinder and of a box, and the wall of an internal void; reject the chamfered-boss and
+counterbore counterexamples while the exact cases stay accepted; assert zero live native wrappers,
+including explorer- and list-returned handles, after Thicken and face offset success and failure; and
+cover a failing planar Press Pull authored as version 1.

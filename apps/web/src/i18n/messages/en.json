@@ -431,7 +431,7 @@
         "selectSolid": "Create an eligible solid first.",
         "selectHolePoints": "Create and finish a sketch with at least one point first.",
         "selectTwoSolids": "Create at least two eligible solids first.",
-        "selectPlanarFace": "Select a current face of an exact solid."
+        "selectBodyFace": "Select a current face of an exact solid."
       },
       "items": {
         "openShortcutHelp": {
@@ -2797,7 +2797,7 @@
       "description": "Build a solid of uniform thickness from selected faces of this part. The faces must form one connected patch.",
       "parameters": "Thicken parameters",
       "faces": "Faces to thicken",
-      "facesDescription": "Select 1\u2013256 connected faces in 3D, or expand the list below. Planar and curved faces are supported.",
+      "facesDescription": "Select 1\u2013256 connected faces in 3D, or expand the list below. Planar and curved faces are supported; keep at least one free edge, or use Shell for a closed body.",
       "faceCount": "{selected} / {total} faces selected",
       "faceName": "Face {number}",
       "face": "Face {number}: area {area} mm\u00b2; center ({x}, {y}, {z}) mm",
@@ -2824,7 +2824,7 @@
       "cancel": "Cancel",
       "staleRevision": "The document changed. Reopen Thicken and select the current faces.",
       "saveFailed": "Thicken could not be saved. Your values remain available to retry.",
-      "previewFailed": "Thicken could not be built. Reduce the thickness, choose the convex side of curved faces, or thicken sharp-edged faces separately. Apply requires a successful preview."
+      "previewFailed": "Thicken could not be built. Reduce the thickness, choose the convex side of curved faces, thicken sharp-edged faces separately, or use Shell for a closed selection. Apply requires a successful preview."
     },
     "scale": {
       "title": "Scale",
@@ -4516,7 +4516,7 @@
       "cancel": "Cancel",
       "parameters": "Parameters",
       "distance": "Distance",
-      "lengthDescription": "Positive distances extend outward; negative distances cut inward. The complete trimmed face, including holes, moves along its normals. A curved face moves only while its neighbouring faces stay attached.",
+      "lengthDescription": "Positive distances extend outward; negative distances cut inward. The complete trimmed face, including holes, moves along its normals. A curved face moves only while its neighbours are planar and stay attached.",
       "unavailable": "The selected face is unavailable or the source body changed. Cancel and reselect the face.",
       "validationSummary": "Enter a nonzero distance and select a current face.",
       "invalidExpression": "Enter a valid length expression.",
@@ -4524,7 +4524,7 @@
       "invalidRange": "Distance magnitude must be between 0.001 and 100000 mm.",
       "staleRevision": "The document changed. Reopen Press Pull and try again.",
       "saveFailed": "Press Pull could not be saved.",
-      "previewFailed": "Press Pull could not produce one valid solid. Adjust the distance. A curved face needs neighbouring faces that meet it at right angles or extend along their own surfaces.",
+      "previewFailed": "Press Pull could not produce one valid solid. Adjust the distance. A curved face moves only when every neighbour is planar; chamfers, fillets and other curved neighbours cannot follow it.",
       "featureLabel": "Press Pull {number}"
     },
     "viewportContext": {

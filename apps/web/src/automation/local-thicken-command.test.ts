@@ -1,9 +1,17 @@
 import { describe, expect, it } from "bun:test"
 import { isLocalDraftCommand, localOperationSchema } from "@vibeshape/automation-api/local-tools"
 import { commandActorSchema, createLengthQuantity } from "@vibeshape/domain"
-import { pressPullFeatureTypeV2 } from "@vibeshape/domain/part-design-press-pull"
+import {
+  pressPullFeatureType,
+  pressPullFeatureTypeV2,
+} from "@vibeshape/domain/part-design-press-pull"
 import { thickenFeatureType } from "@vibeshape/domain/part-design-thicken"
+import { z } from "zod"
 import { createLocalCadCommand } from "./local-cad-command"
+
+const featureMutationPayloadSchema = z.object({
+  feature: z.object({ type: z.object({ typeId: z.string(), schemaVersion: z.number() }).loose() }),
+})
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
 const targetBody = { schemaVersion: 0, featureId: id(4), outputRole: "pattern.instance.1" }
@@ -78,6 +86,40 @@ describe("named Thicken and Press Pull draft commands", () => {
         payload: { feature: { type, parameters: args.parameters } },
       },
     })
+  })
+
+  it("authors planar Press Pull as version 1 and keeps a saved version on update", () => {
+    const planarFace = { ...face, signature: { ...face.signature, geometryClass: "PLANE" } }
+    const planar = {
+      ...pressPullArgs,
+      parameters: { ...pressPullArgs.parameters, face: planarFace },
+    }
+    const typeOf = (
+      tool: "create_press_pull" | "update_press_pull",
+      args: unknown,
+      saved = null as unknown,
+    ) => {
+      const operation = localOperationSchema.parse({ tool, arguments: args })
+      if (operation.tool !== tool) throw new Error("Operation must remain narrowed.")
+      const request = createLocalCadCommand(
+        operation,
+        actor,
+        id(6),
+        saved as Parameters<typeof createLocalCadCommand>[3],
+      )
+      const payload = featureMutationPayloadSchema.safeParse(request.command.payload)
+      return payload.success ? payload.data.feature.type : null
+    }
+    expect(typeOf("create_press_pull", planar)).toEqual(pressPullFeatureType.type)
+    expect(typeOf("create_press_pull", pressPullArgs)).toEqual(pressPullFeatureTypeV2.type)
+    // An update never migrates the saved version, even for a curved face sent to a v1 feature.
+    expect(typeOf("update_press_pull", planar, pressPullFeatureTypeV2.type)).toEqual(
+      pressPullFeatureTypeV2.type,
+    )
+    expect(typeOf("update_press_pull", pressPullArgs, pressPullFeatureType.type)).toEqual(
+      pressPullFeatureType.type,
+    )
+    expect(typeOf("update_press_pull", planar)).toEqual(pressPullFeatureType.type)
   })
 
   it("rejects foreign faces, unbounded thickness, unknown modes and mismatched targets", () => {

@@ -61,6 +61,17 @@ export const pressPullFeatureTypeV2 = featureTypeDescriptorSchema.parse({
   ...pressPullFeatureType,
   type: { ...pressPullFeatureType.type, schemaVersion: 2 },
 })
+/**
+ * The version a new Press Pull is authored with: planar faces keep version 1 (its prism path and
+ * catalog advice), curved faces need version 2. An update keeps its saved version instead.
+ */
+export function pressPullFeatureTypeForFace(
+  face: Pick<PressPullFeatureParameters["face"], "signature">,
+) {
+  return face.signature.geometryClass === "PLANE"
+    ? pressPullFeatureType.type
+    : pressPullFeatureTypeV2.type
+}
 function pressPullSchemaFor(feature: Pick<FeatureRecord, "type">) {
   const key = featureTypeKey(feature.type)
   if (key === featureTypeKey(pressPullFeatureType.type)) return pressPullFeatureParametersSchema

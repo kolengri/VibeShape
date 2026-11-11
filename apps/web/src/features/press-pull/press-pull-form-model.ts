@@ -11,7 +11,7 @@ import {
   type PressPullFeatureParameters,
   pressPullDistanceSchema,
   pressPullFeatureParametersV2Schema,
-  pressPullFeatureTypeV2,
+  pressPullFeatureTypeForFace,
   readPressPullFeatureParameters,
 } from "@vibeshape/domain/part-design-press-pull"
 import { defaultLengthExpression } from "../../document/document-display-units"
@@ -86,8 +86,8 @@ export function pressPullFormFeature(
       : {
           schemaVersion: 0,
           id: featureId,
-          // New features use version 2, which also offsets curved faces; edits keep their type.
-          type: pressPullFeatureTypeV2.type,
+          // Planar faces author version 1 and curved faces version 2; edits keep their type.
+          type: pressPullFeatureTypeForFace(source.face),
           label: mode.featureLabel,
           parameters,
           dependencies: [source.targetBody.featureId],

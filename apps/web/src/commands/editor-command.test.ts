@@ -84,7 +84,7 @@ it("shares Press Pull eligibility and activation across toolbar, palette, contex
   enabled?.invoke()
   expect(pressPull).toHaveBeenCalledTimes(1)
   const absent = resolve({ ...context.state, pressPullAvailable: false })
-  expect(absent?.eligibility).toEqual({ enabled: false, reason: "selectPlanarFace" })
+  expect(absent?.eligibility).toEqual({ enabled: false, reason: "selectBodyFace" })
   absent?.invoke()
   expect(pressPull).toHaveBeenCalledTimes(1)
   const saving = resolve({

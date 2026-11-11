@@ -84,7 +84,8 @@ The viewport context menu and Properties button provide selection actions, exact
 selected-part STL/3MF export, dependency-aware deletion, Browser/Timeline reveal, and saved visual
 materials with custom colors. Press Pull is a registered, editable exact operation (Q), with signed
 extend/cut distance and ordinary preview/Undo. Version 2 also moves curved faces along their normals
-while every neighbouring face stays attached; tangent neighbours are rejected. See
+when every neighbour is planar and stays attached; chamfers, fillets and other curved neighbours fail
+closed. See
 [Press Pull](press-pull.md).
 See [selection actions](ux-flows.md#viewport-selection-actions).
 
@@ -229,7 +230,7 @@ paths with corners are not accepted
 | Draft faces about a neutral plane |  | ✓ |  |
 | Uniform scale |  | ✓ |  |
 | Thicken faces into a solid (new/add/remove) |  | ✓ |  |
-| Press Pull curved faces with attached neighbours |  | ✓ |  |
+| Press Pull curved faces with planar neighbours |  | ✓ |  |
 | Sweep/pipe |  | ✓ |  |
 | Coil/helix and helical sweep |  | ✓ |  |
 | Loft |  | ✓ |  |
@@ -247,8 +248,9 @@ non-uniform scale are blocked: the pinned OpenCascade WASM build lacks the face-
 
 Thicken builds a solid of uniform thickness from 1–256 connected body-bound faces, outward, inward or
 split across both sides, as a new body or added to or removed from the part; a thickness that reaches
-a concave curvature radius fails. Press Pull version 2 moves a planar or curved face along its normals
-when every neighbour stays attached. A general face move whose arbitrary neighbours extend or trim is
+a concave curvature radius fails, and a closed selection (no free boundary edge) is rejected in favour
+of Shell. Press Pull version 2 moves a curved face along its normals when every neighbour is planar and
+Boolean history proves it stayed attached; planar faces keep version 1. A general face move whose arbitrary neighbours extend or trim is
 blocked because the build lacks `BRepOffset_MakeOffset` and `BRepAlgoAPI_Defeaturing`. See
 [Thicken](thicken.md), [Press Pull](press-pull.md) and
 [ADR-0159](../adr/0159-thicken-and-curved-face-offset.md).

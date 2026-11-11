@@ -607,9 +607,12 @@ offset that reaches the smallest concave principal curvature radius sampled from
 the selected faces' body orientation restored) by `BRepOffsetAPI_MakeThickSolid`: the simple
 construction first, accepted only within an edge-tolerance bound, then the joined construction with
 every non-selected face closing the slab. Symmetric halves are fused; Add and Remove fuse or cut the
-slab with the source and must change its volume. Press Pull version 2 keeps the planar prism path and
-moves a curved face by adding or cutting the same slab, accepted only when
-`ShapeUpgrade_UnifySameDomain` reports an unchanged face count, so every neighbour stays attached.
+slab with the source and must change its volume. Closed selections without a free boundary edge are rejected in favour of Shell, and
+simple slabs must fall within Steiner volume bounds. Press Pull authors version 1 for planar faces
+(unchanged prism path) and version 2 for curved faces, which add or cut the same slab and are
+accepted only when `ShapeUpgrade_UnifySameDomain` reports an unchanged face count and the Boolean
+history shows that no body face was deleted and every slab face at a moved edge is internal or merges
+into that edge's own neighbour; in practice only planar neighbours follow.
 `BRepOffset_MakeOffset` and `BRepAlgoAPI_Defeaturing` are unbound in the pinned build, so a general
 per-face offset with arbitrary neighbour extension is unavailable. Native temporaries are released on
 success and failure.

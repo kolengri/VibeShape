@@ -4,7 +4,10 @@ Select a part, choose **Thicken**, pick the faces to thicken, enter a thickness,
 a result. Faces are toggled by clicking them in 3D or by expanding the face list and checking its rows;
 each row exposes the face area and center on hover or keyboard focus. Planar and curved faces are
 supported. The selected faces must form one connected patch: every face shares an edge with another
-selected face.
+selected face, and the patch must keep a free boundary edge. A closed selection, such as a whole
+sphere or torus, all faces of a cylinder or box, or the wall of an internal void, has no boundary to
+thicken from; the preview then asks you to use **Shell**, which builds a uniform wall around a closed
+body.
 
 **Side** is relative to the outward face normals. **Outward** grows the solid away from the part,
 **Inward** grows it into the part, and **Both sides, split evenly** puts half of the thickness on each
