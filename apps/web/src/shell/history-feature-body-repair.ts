@@ -36,6 +36,9 @@ type BodyRecipe = Readonly<{
 }>
 
 function simpleBodyRecipe(feature: FeatureRecord): BodyRecipe | null {
+  const pathPattern = readPatternFeatureParametersV3(feature)
+  if (pathPattern)
+    return { parameters: pathPattern, retainedDependencies: feature.dependencies.slice(1) }
   const parameters =
     readMirrorFeatureParameters(feature) ??
     readPatternFeatureParameters(feature) ??
@@ -53,9 +56,6 @@ function bodyRecipe(feature: FeatureRecord): BodyRecipe | null {
   if (pattern) return { parameters: pattern, support: pattern.axis }
   const split = readSplitFeatureParametersV2(feature)
   if (split) return { parameters: split, support: split.plane }
-  const pathPattern = readPatternFeatureParametersV3(feature)
-  if (pathPattern)
-    return { parameters: pathPattern, retainedDependencies: feature.dependencies.slice(1) }
   const thread = readThreadFeatureParameters(feature)
   if (thread)
     return {

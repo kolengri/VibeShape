@@ -13,7 +13,13 @@ import {
 import type { SketchPathSelector } from "@vibeshape/domain/sketch-path-selector"
 import { patternFeatureContentParametersV3Schema } from "@vibeshape/protocol"
 import type { SolveSketchRecordResult } from "@vibeshape/sketch-solver"
-import { materializeSelectedPath, type PreparationInput, solvedSketch } from "./sweep-loft-content"
+import {
+  materializeSelectedPath,
+  type PreparationInput,
+  prepareSweepLoftFeatureContent,
+  shouldPrepareSweepLoftFeatureContent,
+  solvedSketch,
+} from "./sweep-loft-content"
 
 type Failure = Extract<DocumentFeatureContentPreparationResult, { ok: false }>
 type Solution = Extract<SolveSketchRecordResult, { ok: true }>["solution"]
@@ -29,8 +35,18 @@ function asPatternFailure(result: Failure): Failure {
   return { ok: false, diagnostic: { ...result.diagnostic, code: CODE } }
 }
 
-export function isPathPatternFeature(feature: FeatureRecord) {
+function isPathPatternFeature(feature: FeatureRecord) {
   return featureTypeKey(feature.type) === featureTypeKey(patternFeatureTypeV3.type)
+}
+
+/** Prepares path Pattern content, or Sweep and Loft content through their own owner. */
+export async function prepareSketchPathFeatureContent(input: PreparationInput) {
+  return (await preparePathPatternFeatureContent(input)) ?? prepareSweepLoftFeatureContent(input)
+}
+
+/** Features whose content needs a solved sketch path: Sweep, Loft and path Pattern. */
+export function shouldPrepareSketchPathFeatureContent(feature: FeatureRecord) {
+  return shouldPrepareSweepLoftFeatureContent(feature) || isPathPatternFeature(feature)
 }
 
 function validateDependencies(input: PreparationInput, parameters: PatternFeatureParametersV3) {
@@ -42,6 +58,18 @@ function validateDependencies(input: PreparationInput, parameters: PatternFeatur
     (id) => !input.features.some((feature) => feature.id === id && !feature.suppressed),
   )
   return unavailable ? failure("dependency-owner-unavailable", { featureId: unavailable }) : null
+}
+
+type Point2 = readonly [number, number]
+
+/** Counterclockwise angle in [0, 2π) of a solved start point on the circle, or null. */
+function startAngleOnCircle(start: Point2 | undefined, center: Point2, radius: number) {
+  if (!start) return null
+  const [dx, dy] = [start[0] - center[0], start[1] - center[1]]
+  if (Math.abs(Math.hypot(dx, dy) - radius) > ON_CIRCLE_TOLERANCE) return null
+  const angle = Math.atan2(dy, dx)
+  const positive = angle < 0 ? angle + 2 * Math.PI : angle
+  return positive >= 2 * Math.PI ? 0 : positive
 }
 
 /**
@@ -56,25 +84,14 @@ function circleGeometry(sketch: SketchRecord, solution: Solution, selector: Sket
   const center = points.get(entity.centerPointId)
   const radius = solution.circles.find((circle) => circle.entityId === entity.id)?.radius
   if (!center || !radius) return failure("path-curve-unsolved", { entityId: entity.id })
-  const circle = { entityId: entity.id, type: "circle" as const, center, radius }
-  if (selector.startPointId === entity.centerPointId)
-    return { ok: true as const, geometry: { kind: "circle" as const, circle, startAngle: 0 } }
-  const start = points.get(selector.startPointId)
-  if (
-    !start ||
-    Math.abs(Math.hypot(start[0] - center[0], start[1] - center[1]) - radius) > ON_CIRCLE_TOLERANCE
-  )
+  const startAngle =
+    selector.startPointId === entity.centerPointId
+      ? 0
+      : startAngleOnCircle(points.get(selector.startPointId), center, radius)
+  if (startAngle === null)
     return failure("path-start-not-on-circle", { startPointId: selector.startPointId })
-  const angle = Math.atan2(start[1] - center[1], start[0] - center[0])
-  const startAngle = angle < 0 ? angle + 2 * Math.PI : angle
-  return {
-    ok: true as const,
-    geometry: {
-      kind: "circle" as const,
-      circle,
-      startAngle: startAngle >= 2 * Math.PI ? 0 : startAngle,
-    },
-  }
+  const circle = { entityId: entity.id, type: "circle" as const, center, radius }
+  return { ok: true as const, geometry: { kind: "circle" as const, circle, startAngle } }
 }
 
 function pathGeometry(sketch: SketchRecord, solution: Solution, selector: SketchPathSelector) {
@@ -127,7 +144,7 @@ async function preparePathPattern(
 }
 
 /** Resolves the authored sketch path now; the kernel receives only directed analytical curves. */
-export async function preparePathPatternFeatureContent(
+async function preparePathPatternFeatureContent(
   input: PreparationInput,
 ): Promise<DocumentFeatureContentPreparationResult | null> {
   if (!isPathPatternFeature(input.feature)) return null

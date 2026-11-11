@@ -2757,10 +2757,9 @@ function useModelFeaturePicking(props: EditorWorkspaceProps) {
     shellPicking,
     edgeSelection: props.modelEdgeSelectionEnabled ? undefined : idleEdges?.edgeSelection,
     viewportContext:
-      holePicking.viewportContext ??
-      patternPathPicking.viewportContext ??
-      edgeTreatmentPicking.viewportContext ??
-      shellPicking.viewportContext ??
+      [holePicking, patternPathPicking, edgeTreatmentPicking, shellPicking]
+        .map(({ viewportContext }) => viewportContext)
+        .find((context) => context !== undefined) ??
       (props.modelEdgeSelectionEnabled ? idleEdges : undefined),
   }
 }

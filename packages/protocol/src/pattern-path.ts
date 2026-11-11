@@ -91,6 +91,24 @@ const patternPathGeometrySchema = z.discriminatedUnion("kind", [
     .strict(),
 ])
 
+function sourceIdsMatch(
+  path: Readonly<{
+    sourceEntityIds: readonly string[]
+    geometry: z.infer<typeof patternPathGeometrySchema>
+  }>,
+) {
+  const ids =
+    path.geometry.kind === "circle"
+      ? [path.geometry.circle.entityId]
+      : path.geometry.segments.map(({ entityId }) => entityId)
+  const sorted = [...new Set(ids)].sort()
+  return (
+    sorted.length === ids.length &&
+    sorted.length === path.sourceEntityIds.length &&
+    sorted.every((id, index) => id === path.sourceEntityIds[index])
+  )
+}
+
 export const patternPathContentSchema = z
   .object({
     sketchId: profileFields.sketchId,
@@ -102,16 +120,7 @@ export const patternPathContentSchema = z
   })
   .strict()
   .superRefine((path, context) => {
-    const ids =
-      path.geometry.kind === "circle"
-        ? [path.geometry.circle.entityId]
-        : path.geometry.segments.map(({ entityId }) => entityId)
-    const sorted = [...new Set(ids)].sort()
-    if (
-      sorted.length !== ids.length ||
-      sorted.length !== path.sourceEntityIds.length ||
-      sorted.some((id, index) => id !== path.sourceEntityIds[index])
-    )
+    if (!sourceIdsMatch(path))
       context.addIssue({
         code: "custom",
         path: ["sourceEntityIds"],

@@ -56,15 +56,14 @@ import {
 } from "./external-sketch-references"
 import { prepareExtrusionEndContent } from "./extrusion-end-content"
 import { prepareFdmContent } from "./fdm-content"
-import { isPathPatternFeature, preparePathPatternFeatureContent } from "./pattern-path-content"
+import {
+  prepareSketchPathFeatureContent,
+  shouldPrepareSketchPathFeatureContent,
+} from "./pattern-path-content"
 import {
   prepareReferenceSupportedFeatureContent,
   shouldPrepareReferenceFrameFeatureContent,
 } from "./reference-frame-content"
-import {
-  prepareSweepLoftFeatureContent,
-  shouldPrepareSweepLoftFeatureContent,
-} from "./sweep-loft-content"
 import { prepareThreadContent } from "./thread-content"
 
 function failure(
@@ -558,7 +557,7 @@ async function prepareFeatureContent(
     modelMaterializationCache,
   })
   if (parametric) return parametric
-  if (shouldPrepareSweepLoftFeatureContent(feature) || isPathPatternFeature(feature)) {
+  if (shouldPrepareSketchPathFeatureContent(feature)) {
     const sketchInput = {
       document,
       features,
@@ -568,17 +567,13 @@ async function prepareFeatureContent(
       solveSketch,
       solvedBySketchId,
     }
-    const pathInput = {
+    return prepareSketchPathFeatureContent({
       document,
       feature,
       features,
       geometry,
-      solveSketch: (sketch: SketchRecord) => solveFeatureSketch(sketchInput, sketch),
-    }
-    return (
-      (await preparePathPatternFeatureContent(pathInput)) ??
-      prepareSweepLoftFeatureContent(pathInput)
-    )
+      solveSketch: (sketch) => solveFeatureSketch(sketchInput, sketch),
+    })
   }
   const datumPlane = readDatumPlaneFeatureParameters(feature)
   if (datumPlane) {
@@ -913,8 +908,7 @@ export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
       readHoleFeatureParameters(feature) ||
       readFdmFeatureParameters(feature) ||
       typeof readThreadFeatureParameters(feature)?.axis === "object" ||
-      shouldPrepareSweepLoftFeatureContent(feature) ||
-      isPathPatternFeature(feature),
+      shouldPrepareSketchPathFeatureContent(feature),
   )
 }
 

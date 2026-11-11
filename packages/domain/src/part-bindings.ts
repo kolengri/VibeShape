@@ -12,7 +12,7 @@ import {
   readPatternFeatureParameters,
   readPatternFeatureParametersV2,
 } from "./part-design-pattern"
-import { patternFeatureTypeV3, readPatternFeatureParametersV3 } from "./part-design-pattern-path"
+import { patternFeatureTypeV3, readAnyPatternFeatureParameters } from "./part-design-pattern-path"
 import {
   classifyPartOperation,
   featureResultBody,
@@ -182,10 +182,7 @@ function resolvedPartOperation(
     )
   )
     return classifyPartOperation(feature)
-  const pattern =
-    readPatternFeatureParameters(feature) ??
-    readPatternFeatureParametersV2(feature) ??
-    readPatternFeatureParametersV3(feature)
+  const pattern = readAnyPatternFeatureParameters(feature)
   if (!pattern) return null
   const resolved = resolveQuantityExpression(pattern.count, variables)
   const count = resolved.ok ? patternCountSchema.safeParse(resolved.quantity) : null

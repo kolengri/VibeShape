@@ -18,6 +18,50 @@ export type SweepLoftCatalogueCopy = Readonly<{
   ) => string
   point: (number: number, position: readonly [number, number, number]) => string
 }>
+type Entity = DocumentSnapshot["sketches"][number]["entities"][number]
+type SolvedPoints = ReadonlyMap<string, unknown>
+
+function openCurveOption(
+  entity: Entity,
+  index: number,
+  pointsById: SolvedPoints,
+  copy: SweepLoftCatalogueCopy,
+) {
+  if (
+    entity.construction ||
+    (entity.type !== "line" &&
+      entity.type !== "arc" &&
+      entity.type !== "cubic-bezier" &&
+      entity.type !== "elliptical-arc") ||
+    !pointsById.has(entity.startPointId) ||
+    !pointsById.has(entity.endPointId)
+  )
+    return null
+  return {
+    id: entity.id,
+    label: copy.curve(entity.type, index + 1),
+    startPointId: entity.startPointId,
+    endPointId: entity.endPointId,
+  }
+}
+
+/** A circle's center point stands in for both endpoints and names its angle-zero start. */
+function circleCurveOption(
+  entity: Entity,
+  index: number,
+  pointsById: SolvedPoints,
+  copy: SweepLoftCatalogueCopy,
+) {
+  if (entity.type !== "circle" || entity.construction || !pointsById.has(entity.centerPointId))
+    return null
+  return {
+    id: entity.id,
+    label: copy.curve("circle", index + 1),
+    startPointId: entity.centerPointId,
+    endPointId: entity.centerPointId,
+  }
+}
+
 export function sweepLoftCatalogue(
   snapshot: DocumentSnapshot,
   displays: readonly SketchDisplay[],
@@ -48,38 +92,10 @@ export function sweepLoftCatalogue(
       display.solvedPoints?.map(({ entityId, position }) => [entityId, position]) ?? [],
     )
     const curves = sketch.entities.flatMap((entity, index) => {
-      if (
-        includeCircles &&
-        entity.type === "circle" &&
-        !entity.construction &&
-        pointsById.has(entity.centerPointId)
-      )
-        return [
-          {
-            id: entity.id,
-            label: copy.curve("circle", index + 1),
-            startPointId: entity.centerPointId,
-            endPointId: entity.centerPointId,
-          },
-        ]
-      if (
-        entity.construction ||
-        (entity.type !== "line" &&
-          entity.type !== "arc" &&
-          entity.type !== "cubic-bezier" &&
-          entity.type !== "elliptical-arc") ||
-        !pointsById.has(entity.startPointId) ||
-        !pointsById.has(entity.endPointId)
-      )
-        return []
-      return [
-        {
-          id: entity.id,
-          label: copy.curve(entity.type, index + 1),
-          startPointId: entity.startPointId,
-          endPointId: entity.endPointId,
-        },
-      ]
+      const option =
+        (includeCircles ? circleCurveOption(entity, index, pointsById, copy) : null) ??
+        openCurveOption(entity, index, pointsById, copy)
+      return option ? [option] : []
     })
     if (!curves.length) continue
     const endpointIds = new Set<SketchEntityId>(

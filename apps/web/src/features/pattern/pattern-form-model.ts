@@ -266,31 +266,50 @@ function parsePathSelector(values: PatternFormValues) {
     }).data ?? null
   )
 }
-function parsePathPattern(
-  values: PatternFormValues,
-  count: ReturnType<typeof createScalarQuantity>,
-  variables: readonly VariableDefinition[],
-  units: DocumentDisplayUnits,
-  copy: PatternValidationCopy,
-): ParsedPatternForm {
-  const length = (raw: string, valid: (quantity: Quantity) => boolean) =>
-    parsePrimitiveLengthExpression(raw, variables, copy, valid, units.length)
-  const offset = length(
+type ParseInput = Readonly<{
+  values: PatternFormValues
+  count: ReturnType<typeof createScalarQuantity>
+  variables: readonly VariableDefinition[]
+  units: DocumentDisplayUnits
+  copy: PatternValidationCopy
+}>
+function parseLength(input: ParseInput, raw: string, valid: (quantity: Quantity) => boolean) {
+  return parsePrimitiveLengthExpression(raw, input.variables, input.copy, valid, input.units.length)
+}
+/** Equal spacing needs no distance; fixed spacing parses its expression. */
+function parsePathDistance(input: ParseInput) {
+  if (input.values.spacingMode !== "fixed") return { ok: true as const, quantity: null }
+  return parseLength(
+    input,
+    input.values.spacing,
+    (quantity) => pathPatternDistanceSchema.safeParse(quantity).success,
+  )
+}
+function pathIssues(
+  input: ParseInput,
+  path: ReturnType<typeof parsePathSelector>,
+  offset: ReturnType<typeof parseLength>,
+  distance: ReturnType<typeof parsePathDistance>,
+): Partial<Record<keyof PatternFormValues, string>> {
+  return {
+    ...(path ? {} : { entityIds: input.copy.invalidPath }),
+    ...(offset.ok ? {} : { startOffset: offset.message }),
+    ...(distance.ok ? {} : { spacing: distance.message }),
+  }
+}
+function parsePathPattern(input: ParseInput): ParsedPatternForm {
+  const { values, count, copy } = input
+  const offset = parseLength(
+    input,
     values.startOffset,
     (quantity) => pathPatternStartOffsetSchema.safeParse(quantity).success,
   )
-  const distance =
-    values.spacingMode === "fixed"
-      ? length(values.spacing, (quantity) => pathPatternDistanceSchema.safeParse(quantity).success)
-      : null
+  const distance = parsePathDistance(input)
   const path = parsePathSelector(values)
-  const issues: Partial<Record<keyof PatternFormValues, string>> = {
-    ...(path ? {} : { entityIds: copy.invalidPath }),
-    ...(offset.ok ? {} : { startOffset: offset.message }),
-    ...(distance && !distance.ok ? { spacing: distance.message } : {}),
-  }
-  if (!path || !offset.ok || (distance && !distance.ok)) return { ok: false, issues }
-  if (distance && offset.quantity.value + (count.value - 1) * distance.quantity.value > 100_000)
+  if (!path || !offset.ok || !distance.ok)
+    return { ok: false, issues: pathIssues(input, path, offset, distance) }
+  const travel = (count.value - 1) * (distance.quantity?.value ?? 0)
+  if (offset.quantity.value + travel > 100_000)
     return { ok: false, issues: { spacing: copy.invalidSpan } }
   return {
     ok: true,
@@ -298,11 +317,59 @@ function parsePathPattern(
       kind: "path",
       count,
       path,
-      spacing: distance ? { mode: "fixed", distance: distance.quantity } : { mode: "equal" },
+      spacing: distance.quantity
+        ? { mode: "fixed", distance: distance.quantity }
+        : { mode: "equal" },
       startOffset: offset.quantity,
       orientation: values.orientation,
       reverse: values.reverse,
     },
+  }
+}
+const ZERO_CENTER = {
+  x: createLengthQuantity(0, "mm"),
+  y: createLengthQuantity(0, "mm"),
+  z: createLengthQuantity(0, "mm"),
+}
+/** A reference axis owns the circular center, so legacy center fields are not parsed. */
+function parseCircularPattern(input: ParseInput, referenceAxis: ReferenceAxis | undefined) {
+  const { values, variables, units, copy, count } = input
+  const angle = parseAngle(values, variables, units, copy)
+  const center = referenceAxis
+    ? { ok: true as const, center: ZERO_CENTER }
+    : parseCenter(values, variables, units, copy)
+  if (!angle.ok || !center.ok)
+    return {
+      ok: false as const,
+      issues: {
+        ...(angle.ok ? {} : { angle: angle.message }),
+        ...(center.ok ? {} : center.issues),
+      },
+    }
+  return {
+    ok: true as const,
+    parameters: {
+      count,
+      axis: values.axis,
+      kind: "circular" as const,
+      angle: angle.quantity,
+      center: center.center,
+    },
+  }
+}
+function parseLinearPattern(input: ParseInput): ParsedPatternForm {
+  const { values, count, copy } = input
+  const spacing = parseLength(
+    input,
+    values.spacing,
+    (quantity) => patternSpacingSchema.safeParse(quantity).success,
+  )
+  if (!spacing.ok) return { ok: false as const, issues: { spacing: spacing.message } }
+  if (Math.abs((count.value - 1) * spacing.quantity.value) > 100_000)
+    return { ok: false as const, issues: { spacing: copy.invalidSpan } }
+  return {
+    ok: true as const,
+    parameters: { count, axis: values.axis, kind: "linear" as const, spacing: spacing.quantity },
   }
 }
 export function parsePatternForm(
@@ -314,53 +381,11 @@ export function parsePatternForm(
 ): ParsedPatternForm {
   const count = parseCount(values, variables, units, copy)
   if (!count.ok) return { ok: false as const, issues: { count: count.message } }
-  if (values.kind === "path")
-    return parsePathPattern(values, count.quantity, variables, units, copy)
-  const common = { count: count.quantity, axis: values.axis }
-  if (values.kind === "circular") {
-    const angle = parseAngle(values, variables, units, copy)
-    const center = referenceAxis
-      ? {
-          ok: true as const,
-          center: {
-            x: createLengthQuantity(0, "mm"),
-            y: createLengthQuantity(0, "mm"),
-            z: createLengthQuantity(0, "mm"),
-          },
-        }
-      : parseCenter(values, variables, units, copy)
-    if (!angle.ok || !center.ok)
-      return {
-        ok: false as const,
-        issues: {
-          ...(angle.ok ? {} : { angle: angle.message }),
-          ...(center.ok ? {} : center.issues),
-        },
-      }
-    return {
-      ok: true as const,
-      parameters: {
-        ...common,
-        kind: "circular" as const,
-        angle: angle.quantity,
-        center: center.center,
-      },
-    }
-  }
-  const spacing = parsePrimitiveLengthExpression(
-    values.spacing,
-    variables,
-    copy,
-    (quantity) => patternSpacingSchema.safeParse(quantity).success,
-    units.length,
-  )
-  if (!spacing.ok) return { ok: false as const, issues: { spacing: spacing.message } }
-  if (Math.abs((count.quantity.value - 1) * spacing.quantity.value) > 100_000)
-    return { ok: false as const, issues: { spacing: copy.invalidSpan } }
-  return {
-    ok: true as const,
-    parameters: { ...common, kind: "linear" as const, spacing: spacing.quantity },
-  }
+  const input = { values, count: count.quantity, variables, units, copy }
+  if (values.kind === "path") return parsePathPattern(input)
+  return values.kind === "circular"
+    ? parseCircularPattern(input, referenceAxis)
+    : parseLinearPattern(input)
 }
 function pathPatternFeatureRecord(
   mode: PatternFormMode,

@@ -895,6 +895,13 @@ function savedPointOrLineSketchId(feature: FeatureRecord) {
   return fdm?.kind === "web" ? fdm.sketchId : null
 }
 
+function sketchPointLineOrPathDependencies(document: DocumentSnapshot, feature: FeatureRecord) {
+  const pathPattern = readPatternFeatureParametersV3(feature)
+  if (pathPattern) return expectedPathPatternDependencyIds(document, pathPattern)
+  const savedSketch = savedPointOrLineSketchId(feature)
+  return savedSketch ? sketchModelFeatureIds(document, savedSketch) : null
+}
+
 function documentSketchSchedulingDependencies(document: DocumentSnapshot, feature: FeatureRecord) {
   const constrainedLoft = readLoftFeatureParametersV3(feature)
   if (constrainedLoft)
@@ -916,10 +923,8 @@ function documentSketchSchedulingDependencies(document: DocumentSnapshot, featur
       [sweep.profile.sketchId, sweep.path.sketchId],
       feature.references.map(({ featureId }) => featureId),
     )
-  const pathPattern = readPatternFeatureParametersV3(feature)
-  if (pathPattern) return expectedPathPatternDependencyIds(document, pathPattern)
-  const savedSketch = savedPointOrLineSketchId(feature)
-  if (savedSketch) return sketchModelFeatureIds(document, savedSketch)
+  const sketchPoint = sketchPointLineOrPathDependencies(document, feature)
+  if (sketchPoint) return sketchPoint
   const extrusion = readExtrusionFeatureParameters(feature)
   const revolve = readRevolveFeatureParameters(feature)
   const parameters = extrusion ?? revolve

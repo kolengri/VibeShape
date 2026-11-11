@@ -86,43 +86,46 @@ function bezierPoints(controls: readonly ViewerVector3[]) {
 }
 
 type Entity = SketchRecord["entities"][number]
-function candidate(
-  sketch: SketchRecord,
+type Position = (id: string) => ViewerVector3 | undefined
+type CurveBase = Readonly<{ label: string; sourceSketchId: string; sourceEntityId: string }>
+
+function arcCandidate(
+  entity: Extract<Entity, { type: "arc" }>,
   frame: Frame,
-  entity: Entity,
-  position: (id: string) => ViewerVector3 | undefined,
-  label: string,
+  position: Position,
+  base: CurveBase,
 ): ViewerSketchReferenceCandidate | null {
-  const base = { label, sourceSketchId: sketch.id }
-  if (entity.type === "line") {
-    const start = position(entity.startPointId)
-    const end = position(entity.endPointId)
-    return start && end ? { ...base, kind: "line", start, end, sourceLineId: entity.id } : null
+  const [center, start, end] = [entity.centerPointId, entity.startPointId, entity.endPointId].map(
+    position,
+  )
+  if (!center || !start || !end) return null
+  const sweep = counterclockwiseSweep(frame, center, start, end)
+  return {
+    ...base,
+    kind: "curve",
+    sourceType: "arc",
+    points: arcPoints(frame, center, start, sweep),
   }
-  const curve = { ...base, kind: "curve" as const, sourceEntityId: entity.id }
-  if (entity.type === "arc") {
-    const [center, start, end] = [entity.centerPointId, entity.startPointId, entity.endPointId].map(
-      position,
-    )
-    return center && start && end
-      ? {
-          ...curve,
-          sourceType: "arc",
-          points: arcPoints(frame, center, start, counterclockwiseSweep(frame, center, start, end)),
-        }
-      : null
-  }
-  if (entity.type === "circle") {
-    const center = position(entity.centerPointId)
-    if (!center) return null
-    const [cx, cy] = local(frame, center)
-    return {
-      ...curve,
-      sourceType: "circle",
-      points: arcPoints(frame, center, world(frame, [cx + entity.radius, cy])),
-    }
-  }
-  if (entity.type !== "cubic-bezier") return null
+}
+
+function circleCandidate(
+  entity: Extract<Entity, { type: "circle" }>,
+  frame: Frame,
+  position: Position,
+  base: CurveBase,
+): ViewerSketchReferenceCandidate | null {
+  const center = position(entity.centerPointId)
+  if (!center) return null
+  const [cx, cy] = local(frame, center)
+  const start = world(frame, [cx + entity.radius, cy])
+  return { ...base, kind: "curve", sourceType: "circle", points: arcPoints(frame, center, start) }
+}
+
+function bezierCandidate(
+  entity: Extract<Entity, { type: "cubic-bezier" }>,
+  position: Position,
+  base: CurveBase,
+): ViewerSketchReferenceCandidate | null {
   const controls = [
     entity.startPointId,
     entity.control1PointId,
@@ -130,15 +133,47 @@ function candidate(
     entity.endPointId,
   ].map(position)
   return controls.every(Boolean)
-    ? { ...curve, sourceType: "cubic-bezier", points: bezierPoints(controls as ViewerVector3[]) }
+    ? {
+        ...base,
+        kind: "curve",
+        sourceType: "cubic-bezier",
+        points: bezierPoints(controls as ViewerVector3[]),
+      }
     : null
+}
+
+function candidate(
+  sketch: SketchRecord,
+  frame: Frame,
+  entity: Entity,
+  position: Position,
+  label: string,
+): ViewerSketchReferenceCandidate | null {
+  const base = { label, sourceSketchId: sketch.id, sourceEntityId: entity.id }
+  switch (entity.type) {
+    case "line": {
+      const start = position(entity.startPointId)
+      const end = position(entity.endPointId)
+      return start && end
+        ? { label, sourceSketchId: sketch.id, kind: "line", start, end, sourceLineId: entity.id }
+        : null
+    }
+    case "arc":
+      return arcCandidate(entity, frame, position, base)
+    case "circle":
+      return circleCandidate(entity, frame, position, base)
+    case "cubic-bezier":
+      return bezierCandidate(entity, position, base)
+    default:
+      return null
+  }
 }
 
 /**
  * Projects selectable non-construction path curves of one solved sketch into world space. Elliptical
  * arcs remain available through the task panel's keyboard list.
  */
-export function patternPathCandidates(
+function patternPathCandidates(
   sketch: SketchRecord,
   display: SketchDisplayRecord,
   label: (kind: CurveKind, number: number) => string,
@@ -196,9 +231,14 @@ export function usePatternPathPicking(
 ) {
   const t = useTranslations("app.bodyPattern")
   const [context, setContext] = useState<PatternPathPickingContext | null>(null)
-  const [request, setRequest] = useState<PatternPathPickingRequest | null>(null)
+  // A request belongs to one document revision so a remounted task never replays an old pick.
+  const [request, setRequest] = useState<Readonly<{
+    revisionKey: string
+    request: PatternPathPickingRequest
+  }> | null>(null)
   const requestId = useRef(0)
   const snapshot = controller.report?.snapshot
+  const revisionKey = snapshot ? `${snapshot.id}:${snapshot.revision}` : ""
   const active =
     context !== null &&
     isPatternTool(activeTool) &&
@@ -237,14 +277,21 @@ export function usePatternPathPicking(
           if (!curve || curve.sketchId !== context.sketchId) return
           requestId.current += 1
           setRequest({
-            requestId: requestId.current,
-            featureId: context.featureId,
-            sketchId: context.sketchId,
-            entityId: curve.entityId,
+            revisionKey,
+            request: {
+              requestId: requestId.current,
+              featureId: context.featureId,
+              sketchId: context.sketchId,
+              entityId: curve.entityId,
+            },
           })
         },
       },
     }
-  }, [candidates, context])
-  return { request: active ? request : null, onContextChange, viewportContext }
+  }, [candidates, context, revisionKey])
+  return {
+    request: active && request?.revisionKey === revisionKey ? request.request : null,
+    onContextChange,
+    viewportContext,
+  }
 }

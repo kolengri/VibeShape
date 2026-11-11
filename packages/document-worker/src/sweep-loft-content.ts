@@ -64,7 +64,7 @@ export type PreparationInput = Readonly<{
   solveSketch: (sketch: SketchRecord) => Promise<SolvedSketch>
 }>
 
-export function sweepLoftFailure(
+function sweepLoftFailure(
   reason: string,
   values: Readonly<Record<string, string | number>> = {},
 ): Failure {

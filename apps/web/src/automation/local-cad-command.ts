@@ -163,14 +163,8 @@ function cadFeatureType(
 ) {
   if (isFaceExtentExtrudeOperation(operation))
     return faceExtentExtrusionType(operation.arguments.parameters)
-  if (operation.tool.endsWith("_loft")) return loftCadFeatureType(operation.arguments.parameters)
-  if (
-    operation.tool === "create_reference_body_pattern" ||
-    operation.tool === "update_reference_body_pattern"
-  )
-    return operation.arguments.parameters.kind === "path"
-      ? patternFeatureTypeV3.type
-      : patternFeatureTypeV2.type
+  const versioned = parameterVersionedFeatureType(operation)
+  if (versioned) return versioned
   if (isThreadOperation(operation)) return threadType(operation.arguments.parameters)
   if (isBodySelectionOperation(operation)) return bodySelectionFeatureType(operation)
   if (
@@ -202,6 +196,24 @@ function faceExtentExtrusionType(
   return new Set(parameters.profiles.profiles.map(({ sketchId }) => sketchId)).size > 1
     ? extrusionFeatureTypeV8.type
     : extrusionFeatureTypeV7.type
+}
+
+/** Tools whose authored parameters select the feature schema version. */
+function parameterVersionedFeatureType(
+  operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
+) {
+  switch (operation.tool) {
+    case "create_loft":
+    case "update_loft":
+      return loftCadFeatureType(operation.arguments.parameters)
+    case "create_reference_body_pattern":
+    case "update_reference_body_pattern":
+      return operation.arguments.parameters.kind === "path"
+        ? patternFeatureTypeV3.type
+        : patternFeatureTypeV2.type
+    default:
+      return null
+  }
 }
 
 function loftCadFeatureType(

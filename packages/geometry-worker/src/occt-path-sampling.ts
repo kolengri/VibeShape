@@ -62,12 +62,12 @@ function dot(left: Vector3, right: Vector3) {
   return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
 }
 
-function cross(left: Vector3, right: Vector3): Vector3 {
-  return [
-    left[1] * right[2] - left[2] * right[1],
-    left[2] * right[0] - left[0] * right[2],
-    left[0] * right[1] - left[1] * right[0],
-  ]
+/** Signed z of `left × right` in a right-handed frame whose normal is `normal`. */
+function tripleProduct(normal: Vector3, left: Vector3, right: Vector3) {
+  const [nx, ny, nz] = normal
+  const [lx, ly, lz] = left
+  const [rx, ry, rz] = right
+  return nx * (ly * rz - lz * ry) + ny * (lz * rx - lx * rz) + nz * (lx * ry - ly * rx)
 }
 
 function subtract(left: Vector3, right: Vector3): Vector3 {
@@ -247,36 +247,48 @@ function formatMillimeters(value: number) {
   return `${Number(value.toFixed(4))} mm`
 }
 
-/** Distances from the reference station along the path, already bounded by its length. */
-export function pathPatternDistances(
-  parameters: Pick<PatternFeatureContentParametersV3, "count" | "spacing" | "startOffset">,
+type Distances = Pick<PatternFeatureContentParametersV3, "count" | "spacing" | "startOffset">
+
+function stationInterval(
+  { count, spacing, startOffset }: Distances,
   length: number,
   closed: boolean,
-): readonly number[] {
+) {
+  if (spacing.mode === "fixed") return spacing.distance
+  return closed ? length / count : (length - startOffset) / (count - 1)
+}
+
+/** Fails closed before any copy is built when the stations do not fit on the path. */
+function assertStationsFit(
+  parameters: Distances,
+  length: number,
+  closed: boolean,
+  interval: number,
+) {
   const { count, spacing, startOffset } = parameters
   if (startOffset >= length - LENGTH_TOLERANCE)
     throw new PathPatternError(
       `Pattern start offset ${formatMillimeters(startOffset)} must be shorter than the path length ${formatMillimeters(length)}.`,
     )
-  const interval =
-    spacing.mode === "fixed"
-      ? spacing.distance
-      : closed
-        ? length / count
-        : (length - startOffset) / (count - 1)
+  if (spacing.mode === "equal") return
   const travel = (count - 1) * interval
-  if (spacing.mode === "fixed" && closed && travel >= length - LENGTH_TOLERANCE)
+  if (closed && travel >= length - LENGTH_TOLERANCE)
     throw new PathPatternError(
       `Fixed spacing ${formatMillimeters(interval)} wraps a closed path of ${formatMillimeters(length)}; the last instance would reach the seed.`,
     )
-  if (spacing.mode === "fixed" && !closed && startOffset + travel > length + LENGTH_TOLERANCE)
+  if (!closed && startOffset + travel > length + LENGTH_TOLERANCE)
     throw new PathPatternError(
       `Fixed spacing overruns the path: ${count} instances need ${formatMillimeters(startOffset + travel)} but the path is ${formatMillimeters(length)}.`,
     )
-  return Array.from({ length: count }, (_, index) =>
-    index === count - 1 && spacing.mode === "equal" && !closed
-      ? length
-      : startOffset + interval * index,
+}
+
+/** Distances from the path start for every instance; open equal spacing ends exactly at the end. */
+function pathPatternDistances(parameters: Distances, length: number, closed: boolean) {
+  const interval = stationInterval(parameters, length, closed)
+  assertStationsFit(parameters, length, closed, interval)
+  const fitsEnd = parameters.spacing.mode === "equal" && !closed
+  return Array.from({ length: parameters.count }, (_, index) =>
+    fitsEnd && index === parameters.count - 1 ? length : parameters.startOffset + interval * index,
   )
 }
 
@@ -284,7 +296,7 @@ function placement(reference: Station, target: Station, follow: boolean, normal:
   const translation = subtract(target.position, reference.position)
   if (!follow) return { translation, rotation: null }
   const angle = Math.atan2(
-    dot(normal, cross(reference.tangent, target.tangent)),
+    tripleProduct(normal, reference.tangent, target.tangent),
     dot(reference.tangent, target.tangent),
   )
   return { translation, rotation: { origin: reference.position, axis: normal, angle } }

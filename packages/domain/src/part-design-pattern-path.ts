@@ -3,7 +3,15 @@ import { bodyReferenceSchema } from "./body-reference"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema, featureTypeKey } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
-import { patternCountSchema, patternFeatureType, resolvePatternField } from "./part-design-pattern"
+import {
+  patternCountSchema,
+  patternFeatureType,
+  readPatternFeatureParameters,
+  readPatternFeatureParametersV2,
+  resolvedPatternExtent,
+  resolvePatternCount,
+  resolvePatternField,
+} from "./part-design-pattern"
 import { sketchPathSelectorSchema } from "./sketch-path-selector"
 import { lengthQuantitySchema } from "./units"
 
@@ -65,6 +73,17 @@ export function readPatternFeatureParametersV3(
   return patternFeatureParametersV3Schema.safeParse(feature.parameters).data ?? null
 }
 
+/** Common target and count of every Pattern schema version, or null for other features. */
+export function readAnyPatternFeatureParameters(
+  feature: Pick<FeatureRecord, "type" | "parameters">,
+) {
+  return (
+    readPatternFeatureParameters(feature) ??
+    readPatternFeatureParametersV2(feature) ??
+    readPatternFeatureParametersV3(feature)
+  )
+}
+
 type Variables = Parameters<NonNullable<TrustedFeatureTypeHandler["resolveParameters"]>>[1]
 
 function resolveSpacing(parameters: PatternFeatureParametersV3, variables: Variables) {
@@ -84,38 +103,24 @@ export const patternFeatureTypeHandlerV3: TrustedFeatureTypeHandler = {
   type: patternFeatureTypeV3.type,
   parametersSchema: patternFeatureParametersV3Schema,
   resolveParameters(parameters, variables) {
-    const parsed = patternFeatureParametersV3Schema.safeParse(parameters)
-    if (!parsed.success) return { ok: true, parameters }
-    const count = resolvePatternField(parsed.data.count, patternCountSchema, "count", variables)
-    if (!count.ok) return count
+    const counted = resolvePatternCount(patternFeatureParametersV3Schema, parameters, variables)
+    if (!("parsed" in counted)) return counted.resolution
     const startOffset = resolvePatternField(
-      parsed.data.startOffset,
+      counted.parsed.startOffset,
       pathPatternStartOffsetSchema,
       "startOffset",
       variables,
     )
     if (!startOffset.ok) return startOffset
-    const spacing = resolveSpacing(parsed.data, variables)
+    const spacing = resolveSpacing(counted.parsed, variables)
     if (!spacing.ok) return spacing
     const result = patternFeatureParametersV3Schema.safeParse({
-      ...parsed.data,
-      count: count.quantity,
+      ...counted.parsed,
+      count: counted.count,
       startOffset: startOffset.quantity,
       spacing: spacing.spacing,
     })
-    return result.success
-      ? { ok: true, parameters: result.data }
-      : {
-          ok: false,
-          diagnostic: {
-            code: "invalid-pattern-extent",
-            message: "The resolved pattern exceeds its parameter bounds.",
-            issues: result.error.issues.map(({ path, message }) => ({
-              path: path.join("."),
-              message,
-            })),
-          },
-        }
+    return resolvedPatternExtent(result)
   },
   validateFeature(feature) {
     const { targetBody } = patternFeatureParametersV3Schema.parse(feature.parameters)

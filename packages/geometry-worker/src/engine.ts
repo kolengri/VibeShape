@@ -4481,13 +4481,7 @@ async function bodyBundleForEvaluation(
       throw new Error("The cached imported source digest does not match its bytes.")
   }
   if (!source.brepHit) {
-    // Path-pattern sketch owners after the target only schedule the path; they are not bodies.
-    validateCombinationSources(
-      opencascade,
-      feature.kind === "pattern" && feature.parameters.kind === "path"
-        ? source.dependencies.slice(0, 1)
-        : source.dependencies,
-    )
+    validateCombinationSources(opencascade, bodyBundleSources(feature, source.dependencies))
     if (feature.kind === "imported")
       throw new Error("Imported source materialization did not produce geometry.")
     if (feature.kind === "split" || feature.kind === "pattern")
@@ -4501,6 +4495,16 @@ async function bodyBundleForEvaluation(
     return { role, shape }
   })
   return { shape: source.shape, outputs }
+}
+
+/** Path-pattern sketch owners after the target only schedule the path; they are not bodies. */
+function bodyBundleSources(
+  feature: Extract<ParsedFeature, { kind: "compound" | "split" | "pattern" | "imported" }>,
+  dependencies: readonly Shape3D[],
+) {
+  return feature.kind === "pattern" && feature.parameters.kind === "path"
+    ? dependencies.slice(0, 1)
+    : dependencies
 }
 
 function bodyBundleFailureMessage(
