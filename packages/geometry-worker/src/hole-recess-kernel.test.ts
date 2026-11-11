@@ -178,34 +178,33 @@ describe("exact hole recess evaluation", () => {
   it.each([
     {
       name: "reverse countersunk",
-      parameters: {
-        ...base,
-        extent: "blind",
-        depth: 10,
-        tipAngle: tip118,
-        treatment: { kind: "countersink", diameter: 8, angle: Math.PI / 2 },
-      },
+      center: 20,
+      direction: "reverse",
+      treatment: { kind: "countersink", diameter: 8, angle: Math.PI / 2 },
       apexZ: 20 - 10 - tipHeight118,
       // The 90-degree countersink replaces a 2 mm cylinder segment with a 4→2 mm frustum.
       extra: (Math.PI * 2 * (4 ** 2 + 4 * 2 + 2 ** 2)) / 3 - Math.PI * 2 ** 2 * 2,
     },
     {
       name: "forward simple",
-      parameters: {
-        ...base,
-        centers: [[0, 0, 0]],
-        direction: "forward",
-        extent: "blind",
-        depth: 10,
-        tipAngle: tip118,
-        treatment: { kind: "simple" },
-      },
+      center: 0,
+      direction: "forward",
+      treatment: { kind: "simple" },
       apexZ: 10 + tipHeight118,
       extra: 0,
     },
-  ] as const)(
+  ])(
     "places the $name drill-point apex on the hole axis beyond the shoulder",
-    async ({ parameters, apexZ, extra }) => {
+    async ({ center, direction, treatment, apexZ, extra }) => {
+      const parameters = {
+        ...base,
+        centers: [[0, 0, center]],
+        direction,
+        extent: "blind",
+        depth: 10,
+        tipAngle: tip118,
+        treatment: { ...treatment },
+      }
       try {
         await engine.evaluateFeature(
           request("org.vibeshape.feature.part-design.box", 1, {
@@ -217,7 +216,7 @@ describe("exact hole recess evaluation", () => {
           vi.fn(),
         )
         const result = await engine.evaluateFeature(
-          request("org.vibeshape.feature.part-design.hole", 4, { ...parameters }, true),
+          request("org.vibeshape.feature.part-design.hole", 4, parameters, true),
           vi.fn(),
         )
         if (!result.ok) throw new Error(result.diagnostic.message)
