@@ -130,7 +130,7 @@ describe("registered exact Coil evaluation", () => {
         vi.fn(),
       )
       if (!result.ok) throw new Error(result.diagnostic.message)
-      const [minimum, maximum] = range(targetVolume, toolVolume)
+      const [minimum = Number.NaN, maximum = Number.NaN] = range(targetVolume, toolVolume)
       expect(result.result.shape).toMatchObject({ valid: true })
       expect(result.result.shape.volume).toBeGreaterThan(minimum)
       expect(result.result.shape.volume).toBeLessThan(maximum)

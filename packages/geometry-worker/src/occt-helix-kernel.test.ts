@@ -332,7 +332,7 @@ function trackedKernel() {
       if (typeof value !== "function" || typeof key !== "string" || !/^[A-Z]/.test(key))
         return value
       return new Proxy(value, {
-        construct(constructor, args) {
+        construct(constructor, args): object {
           const instance = Reflect.construct(constructor, args)
           const record = { deleted: 0, name: key }
           created.push(record)
