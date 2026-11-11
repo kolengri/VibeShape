@@ -182,6 +182,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.fdm",
         "org.vibeshape.feature.part-design.fillet",
         "org.vibeshape.feature.part-design.fillet",
+        "org.vibeshape.feature.part-design.fillet",
         "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.hole",
