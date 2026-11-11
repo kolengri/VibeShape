@@ -831,13 +831,18 @@ test("compares and atomically undoes a connected assistant turn spanning saved s
   const before = panel.getByRole("button", { name: "View before", exact: true })
   await expect(before).toBeEnabled()
   const log = panel.getByRole("log")
-  const readingPosition = await log.evaluate((node) => {
+  // A reader within 48 px of the end follows the live conversation (#360), and a resized log
+  // keeps following it (#462). Let the shortened log settle, then read outside that zone so
+  // the comparison below measures View before/current, not the follow-on-resize contract.
+  const readingPosition = await log.evaluate(async (node) => {
     node.style.flex = "0 0 180px"
     node.style.height = "180px"
-    node.scrollTop = node.scrollHeight - node.clientHeight - 24
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    node.scrollTop = node.scrollHeight - node.clientHeight - 96
     node.dispatchEvent(new Event("scroll"))
     return node.scrollTop
   })
+  expect(readingPosition).toBeGreaterThan(0)
   await expect(before).toBeInViewport({ ratio: 1 })
   await before.click()
   await expect(panel.getByRole("button", { name: "View current", exact: true })).toBeEnabled()
