@@ -45,6 +45,7 @@ import {
   MAX_SKETCH_PATTERN_PREVIEW_INSTANCES,
   MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
+  isSketchExternalModelReference,
   projectedExternalSketchEntities,
   projectPointToSketchEllipse,
   type RegularPolygonMode,
@@ -939,10 +940,36 @@ function displayExternalLine(
   }
 }
 
+function displayExternalSpline(
+  reference: Extract<ExternalReference, { kind: "model-spline" }>,
+  solvedById: ReadonlyMap<string, SketchPoint2>,
+) {
+  const points = reference.projectedPointIds.flatMap((id) => {
+    const solved = solvedById.get(id)
+    return solved
+      ? [
+          {
+            construction: true,
+            id,
+            reusable: false,
+            x: solved.x,
+            y: solved.y,
+          } satisfies DisplayPoint,
+        ]
+      : []
+  })
+  if (points.length !== reference.projectedPointIds.length) return null
+  const curves = projectedExternalSketchEntities([reference]).filter(
+    (entity): entity is DisplayExternalCurve => entity.type === "cubic-bezier",
+  )
+  return { curves, lines: [], points }
+}
+
 function displayExternalReference(
   reference: ExternalReference,
   solvedById: ReadonlyMap<string, SketchPoint2>,
 ) {
+  if (reference.kind === "model-spline") return displayExternalSpline(reference, solvedById)
   if (reference.kind === "curve" || reference.kind === "model-curve") {
     const curve = displayExternalCurve(reference, solvedById)
     return curve ? { curves: [curve.curve], lines: [], points: curve.points } : null
@@ -2169,13 +2196,7 @@ function externalReferenceSourceKey(
   if (reference.kind === "pierce-point") {
     return `pierce:${reference.sourceSketchId}:${reference.sourceLineId}`
   }
-  if (
-    reference.kind === "model-point" ||
-    reference.kind === "model-line" ||
-    reference.kind === "model-pierce-point" ||
-    reference.kind === "model-curve" ||
-    reference.kind === "model-intersection"
-  ) {
+  if (isSketchExternalModelReference(reference)) {
     return `model:${reference.reference.featureId}:${reference.id}`
   }
   const entityId =
@@ -2677,7 +2698,11 @@ function SketchAvailableExternalCandidate({
   candidate,
   highlighted = false,
 }: Readonly<{ candidate: ExternalUseCandidate; highlighted?: boolean }>) {
-  if (candidate.kind === "curve" || candidate.kind === "model-curve") {
+  if (
+    candidate.kind === "curve" ||
+    candidate.kind === "model-curve" ||
+    candidate.kind === "model-spline"
+  ) {
     const points = candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")
     return (
       <>
@@ -2783,7 +2808,8 @@ function availableExternalGeometryId(candidate: ExternalUseCandidate) {
   if (
     candidate.kind === "model-point" ||
     candidate.kind === "model-line" ||
-    candidate.kind === "model-curve"
+    candidate.kind === "model-curve" ||
+    candidate.kind === "model-spline"
   ) {
     return candidate.candidateId
   }
@@ -3221,7 +3247,7 @@ function SketchContextGeometryBounds({
     const modelPoints = modelGeometry.flatMap<SketchPoint2>((candidate) =>
       candidate.kind === "model-line"
         ? [candidate.start, candidate.end]
-        : candidate.kind === "model-curve"
+        : candidate.kind === "model-curve" || candidate.kind === "model-spline"
           ? candidate.points
           : [candidate],
     )
@@ -11140,7 +11166,8 @@ function useExternalReferenceInteraction({
       const next =
         candidate.kind === "model-point" ||
         candidate.kind === "model-line" ||
-        candidate.kind === "model-curve"
+        candidate.kind === "model-curve" ||
+        candidate.kind === "model-spline"
           ? applyExternalModelCandidateSelection(
               draft,
               candidate,
