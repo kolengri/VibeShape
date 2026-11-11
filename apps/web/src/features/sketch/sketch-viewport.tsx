@@ -243,6 +243,14 @@ import {
 import { useSketchPointDimensionVisibility } from "./sketch-point-dimension-visibility"
 import { useSketchCameraProjection, useSketchProjectionStoreApi } from "./sketch-projection-store"
 import {
+  type PendingSpline,
+  PendingSplineShape,
+  placeSplineThroughPoint,
+  SketchInterpolatedSplineInstruction,
+  splineCompletionSnap,
+  splineKeyboardCompletionTarget,
+} from "./sketch-spline-tool"
+import {
   isSketchConstraintEditorTool,
   isSketchModificationTool,
   isSketchSelectionTool,
@@ -398,6 +406,7 @@ type PendingGeometry =
       center: SketchPointTarget
       centerRelations: readonly SketchPointRelationInference[]
     }>
+  | PendingSpline
   | Readonly<{
       kind: "cubic-bezier"
       start: SketchPointTarget
@@ -3523,6 +3532,7 @@ const geometricConstraintLabels: Partial<
   "point-on-elliptical-arc": "⊙",
   "point-on-line": "⊙",
   tangent: "T",
+  "tangent-join": "T",
   symmetric: "S",
   vertical: "V",
   "vertical-points": "V",
@@ -3564,6 +3574,7 @@ const accessibleConstraintMessageKeys: Partial<
   "point-on-line": "pointOnLine",
   symmetric: "constraintSymmetric",
   tangent: "constraintTangent",
+  "tangent-join": "constraintTangent",
   vertical: "constraintVertical",
   "vertical-points": "constraintVertical",
 }
@@ -3616,6 +3627,9 @@ function constraintAnchor(
   if ("curveId" in constraint) return geometryAnchor(constraint.curveId)
   if ("arcId" in constraint) {
     return midpointForIds(constraint.lineId, constraint.arcId, geometryAnchor)
+  }
+  if (constraint.type === "tangent-join") {
+    return midpointForIds(constraint.incomingCurveId, constraint.outgoingCurveId, geometryAnchor)
   }
   if (constraint.type === "offset") {
     const pair = constraint.linePairs[0]
@@ -4773,6 +4787,7 @@ function pendingTargetStart(pending: PendingGeometry): SketchPointTarget | null 
   if (pending.kind === "midpoint-line") return pending.midpoint
   if (hasPendingTargetCenter(pending)) return pending.center
   if ("first" in pending) return pending.first
+  if (pending.kind === "spline") return pending.points[0] ?? null
   return pending.kind === "tangent-arc" ? { kind: "existing", pointId: pending.startPointId } : null
 }
 
@@ -5495,6 +5510,8 @@ function PendingCurveShape({
 }) {
   if (pending.kind === "cubic-bezier")
     return <PendingCubicBezierShape cursor={cursor} pending={pending} sketch={sketch} />
+  if (pending.kind === "spline")
+    return <PendingSplineShape cursor={cursor} pending={pending} sketch={sketch} />
   if (pending.kind === "midpoint-line") {
     const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
     return <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
@@ -6801,6 +6818,15 @@ function placeCubicBezier(input: PlacementInput): PlacementUpdate {
   return { draft: result.sketch, pending: null }
 }
 
+function placeSpline(input: PlacementInput): PlacementUpdate {
+  return placeSplineThroughPoint({
+    construction: input.construction,
+    draft: input.draft,
+    pending: input.pending?.kind === "spline" ? input.pending : null,
+    target: input.target,
+  })
+}
+
 function placeEllipse(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "ellipse-primary" && input.pending?.kind !== "ellipse-secondary") {
     return { draft: null, pending: { center: input.target, kind: "ellipse-primary" } }
@@ -7115,6 +7141,7 @@ const placementBuilders = {
   circle: placeCircle,
   ellipse: placeEllipse,
   "cubic-bezier": placeCubicBezier,
+  spline: placeSpline,
   "elliptical-arc": placeEllipticalArc,
   "circumscribed-polygon": placeCircumscribedPolygon,
   "inscribed-polygon": placeInscribedPolygon,
@@ -8237,6 +8264,7 @@ const pointInferenceSupport = {
   "elliptical-arc": (pending) =>
     pending?.kind !== "elliptical-arc-start" && pending?.kind !== "elliptical-arc-end",
   "cubic-bezier": (pending) => pending?.kind !== "cubic-bezier" || pending.controls.length === 2,
+  spline: alwaysSupportsPointInference,
   "circular-pattern": neverSupportsPointInference,
   "circumscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
@@ -8839,6 +8867,12 @@ function placementInference(input: {
   const anchor = lineInferenceAnchor(input.editorTool, input.pending, input.draft)
   const supportsRelations = supportsPersistentPointRelations(input.editorTool)
   const tolerance = sketchInferenceTolerance(input.bounds, input.rectangle)
+  if (input.pending?.kind === "spline") {
+    const completion = splineCompletionSnap(input.draft, input.pending, input.point, tolerance)
+    if (completion) {
+      return { ...unsnappedInference(pointForTarget(input.draft, completion)), target: completion }
+    }
+  }
   const candidates = input.candidateQuery(input.point, tolerance)
   const references = placementInferenceReferences(input, supportsRelations, candidates)
   return inferSketchPoint({
@@ -9079,6 +9113,17 @@ function consumeRegularPolygonSideCountKey(
   )
 }
 
+function consumeSplineCompletionKey(
+  input: Pick<RegularPolygonKeyInput, "appendAt" | "event">,
+  pending: PendingSpline,
+) {
+  if (input.event.key !== "Enter") return false
+  input.event.preventDefault()
+  const target = splineKeyboardCompletionTarget(pending, input.event.shiftKey)
+  if (target) input.appendAt(target)
+  return true
+}
+
 function handleSketchKeyDown(input: {
   appendAt: (target: SketchPointTarget, inference?: SketchPointInference) => void
   cursor: SketchPoint2 | null
@@ -9103,6 +9148,7 @@ function handleSketchKeyDown(input: {
   ) {
     return
   }
+  if (input.pending?.kind === "spline" && consumeSplineCompletionKey(input, input.pending)) return
   if (!isSketchDeleteKey(input.event) || !input.draft) return
   input.event.preventDefault()
   input.onDraftChange(removeSketchEntities(input.draft, input.selectedEntityIds))
@@ -10200,6 +10246,10 @@ function SketchDrawingView({
       />
       <SketchOffsetInstruction editorTool={configuration.editorTool} pending={state.pending} />
       <SketchSplineInstruction editorTool={configuration.editorTool} pending={state.pending} />
+      <SketchInterpolatedSplineInstruction
+        active={configuration.editorTool === "spline"}
+        pending={state.pending?.kind === "spline" ? state.pending : null}
+      />
       <SketchTransformInstruction
         editorTool={configuration.editorTool}
         selectedEntityCount={configuration.selectedEntityIds.length}

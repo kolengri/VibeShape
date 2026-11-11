@@ -745,7 +745,11 @@
         },
         "sketchSpline": {
           "label": "Spline",
-          "keywords": "spline|cubic Bezier|four control points|smooth sketch curve"
+          "keywords": "spline|interpolating spline|fit points|through points|smooth sketch curve|tangent"
+        },
+        "sketchBezier": {
+          "label": "Bezier curve",
+          "keywords": "Bezier|cubic Bezier|four control points|control polygon|smooth sketch curve"
         },
         "createLoft": {
           "label": "Loft",
@@ -929,6 +933,7 @@
         "sketchToolsLabel": "Sketch geometry tools",
         "sketchViewLabel": "Sketch view controls",
         "slotToolsLabel": "Slot tools",
+        "splineToolsLabel": "Spline tools",
         "workspaceLabel": "Editor workspace",
         "inspectionLabel": "Inspection",
         "partActionsLabel": "Selected part actions",
@@ -2292,6 +2297,7 @@
         "selectConstraint": "Select constraint {label}",
         "selectExternalConstraint": "Select external relation {label}",
         "orientation": "{plane} · {unit}",
+        "interpolatedSplinePlacement": "Spline · {count, plural, one {# through-point} other {# through-points}} · {step, select, start {Click the first through-point.} second {Click the next through-point.} open {Click more through-points. Click the last point again, double-click, or press Enter to finish.} closable {Click more through-points. Click the last point again, double-click, or press Enter to finish; click the first point or press Shift+Enter to close.} other {Click the first through-point.}} Escape cancels.",
         "splinePlacement": "Cubic Bezier · {step, select, start {Place the start point.} control1 {Place the first control point away from the start.} control2 {Place the second control point.} end {Place the end point away from the second control.} other {Place the start point.}} Escape cancels the preview."
       },
       "transform": {

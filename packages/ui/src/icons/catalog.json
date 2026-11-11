@@ -260,6 +260,11 @@
     "legacy": ["SketchSplineIcon", "Spline"]
   },
   {
+    "id": "interpolated-spline",
+    "label": "Interpolated spline",
+    "legacy": []
+  },
+  {
     "id": "inscribed-polygon",
     "label": "Inscribed polygon",
     "legacy": ["InscribedPolygonIcon"]

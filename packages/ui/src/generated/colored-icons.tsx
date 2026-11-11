@@ -6025,6 +6025,169 @@ export const SplineIcon = /* @__PURE__ */ coloredIcon("spline", (instanceId) => 
   </>
 ))
 
+export const InterpolatedSplineIcon = /* @__PURE__ */ coloredIcon(
+  "interpolated-spline",
+  (instanceId) => (
+    <>
+      <defs>
+        <mask
+          id={`${instanceId}-frosted-interpolated-spline-light-visible-action`}
+          x="0"
+          y="0"
+          width="256"
+          height="256"
+          maskUnits="userSpaceOnUse"
+          style={{ maskType: "luminance" }}
+        >
+          <g transform="scale(4)">
+            <g transform="translate(1.855072 1.855072) scale(0.942029)">
+              <path
+                d="M8 46C7.95 35.25 13.25 18 24 18C34.75 18 29.25 46 40 46C50.75 46 56.05 28.75 56 18"
+                fill="none"
+                stroke="black"
+                strokeWidth="3.47763"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle
+                cx="8"
+                cy="46"
+                r="3.6"
+                fill="white"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                stroke="none"
+              />
+              <circle
+                cx="24"
+                cy="18"
+                r="3.6"
+                fill="white"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                stroke="none"
+              />
+              <circle
+                cx="40"
+                cy="46"
+                r="3.6"
+                fill="white"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                stroke="none"
+              />
+              <circle
+                cx="56"
+                cy="18"
+                r="3.6"
+                fill="white"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                stroke="none"
+              />
+            </g>
+          </g>
+        </mask>
+      </defs>
+      <g opacity=".91" data-layer="material">
+        <g transform="scale(4)">
+          <g transform="translate(1.855072 1.855072) scale(0.942029)">
+            <path
+              d="M8 46C7.95 35.25 13.25 18 24 18C34.75 18 29.25 46 40 46C50.75 46 56.05 28.75 56 18"
+              fill="none"
+              stroke="var(--icon-geometry-ink, #5784b0)"
+              strokeWidth="3.47763"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle
+              cx="8"
+              cy="46"
+              r="3.6"
+              fill="var(--icon-action-stroke, #cd7b24)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              stroke="none"
+            />
+            <circle
+              cx="24"
+              cy="18"
+              r="3.6"
+              fill="var(--icon-action-stroke, #cd7b24)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              stroke="none"
+            />
+            <circle
+              cx="40"
+              cy="46"
+              r="3.6"
+              fill="var(--icon-action-stroke, #cd7b24)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              stroke="none"
+            />
+            <circle
+              cx="56"
+              cy="18"
+              r="3.6"
+              fill="var(--icon-action-stroke, #cd7b24)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              stroke="none"
+            />
+          </g>
+        </g>
+      </g>
+      <g
+        mask={`url(#${instanceId}-frosted-interpolated-spline-light-visible-action)`}
+        data-layer="action"
+      >
+        <g transform="scale(4)">
+          <g transform="translate(1.855072 1.855072) scale(0.942029)">
+            <circle
+              cx="8"
+              cy="46"
+              r="3.6"
+              fill="var(--icon-action-stroke, #cd7b24)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              stroke="none"
+            />
+            <circle
+              cx="24"
+              cy="18"
+              r="3.6"
+              fill="var(--icon-action-stroke, #cd7b24)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              stroke="none"
+            />
+            <circle
+              cx="40"
+              cy="46"
+              r="3.6"
+              fill="var(--icon-action-stroke, #cd7b24)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              stroke="none"
+            />
+            <circle
+              cx="56"
+              cy="18"
+              r="3.6"
+              fill="var(--icon-action-stroke, #cd7b24)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              stroke="none"
+            />
+          </g>
+        </g>
+      </g>
+    </>
+  ),
+)
+
 export const InscribedPolygonIcon = /* @__PURE__ */ coloredIcon(
   "inscribed-polygon",
   (instanceId) => (
