@@ -314,6 +314,44 @@ test.describe("full sketch editor", () => {
     await expect(externalRelation).toHaveAttribute("data-sketch-constraint-source", "external")
   })
 
+  test("keeps the external reference actions clear of the viewport view controls", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(
+      page
+        .getByRole("status", { name: "Project save status", exact: true })
+        .filter({ hasText: /^Saved$/ }),
+    ).toBeVisible()
+    await invokeModelCommand(page, "Primitives", "Box")
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box", exact: true })
+      .click()
+    await page
+      .getByRole("toolbar", { name: "Model commands", exact: true })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await expectUncoveredControl(
+      page.getByRole("button", { name: "Intersect planar face", exact: true }),
+    )
+    await expectUncoveredControl(
+      page.getByRole("button", { name: "Show all point dimensions", exact: true }),
+    )
+    // Pierce needs one selected sketch point; the Box supplies linear model-edge candidates.
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const free = await unobscuredDrawingBounds(page, drawing)
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(free.x + free.width * 0.2, free.y + free.height * 0.3)
+    await page.keyboard.up("Shift")
+    await selectSketchEntities(page, drawing, "point", [0])
+    const pierce = page.getByRole("button", { name: "Pierce to external line", exact: true })
+    await expect(pierce).toBeEnabled()
+    await expectUncoveredControl(pierce)
+  })
+
   test("intersects a planar model face through the real OCCT worker and rebuilds the saved sketch", async ({
     page,
   }) => {
@@ -338,11 +376,6 @@ test.describe("full sketch editor", () => {
     const noReferences = page.getByText("No external geometry is in use.", { exact: true })
     await expect(noReferences).toBeVisible()
     const intersection = page.getByRole("button", { name: "Intersect planar face", exact: true })
-    // The reference toolbar and point-dimension toggle stay clear of the viewport view controls.
-    await expectUncoveredControl(intersection)
-    await expectUncoveredControl(
-      page.getByRole("button", { name: "Show all point dimensions", exact: true }),
-    )
     await intersection.click()
 
     const viewport = page.locator("section[data-sketch-context-mode='orbit']")
