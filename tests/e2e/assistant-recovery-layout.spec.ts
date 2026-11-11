@@ -4,10 +4,18 @@ import type {
   AssistantSnapshot,
 } from "../../packages/automation-api/src/assistant"
 import { expect, test } from "./fixtures"
+import { routeNativeProjectAccess } from "./native-project-access-support"
 
-test("keeps recovery copy and retry above message actions in compact chat", async ({ page }) => {
+test("keeps recovery copy and retry in the session tray below message actions in compact chat", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1024, height: 768 })
   await page.emulateMedia({ reducedMotion: "reduce" })
+  await routeNativeProjectAccess(
+    page,
+    { name: "VibeShape assistant", version: "1" },
+    "org.vibeshape.recovery-layout",
+  )
   await page.addInitScript(() => {
     let snapshot: AssistantSnapshot
     let connects = 0
@@ -69,15 +77,16 @@ test("keeps recovery copy and retry above message actions in compact chat", asyn
   await settings.getByRole("combobox", { name: "Agent", exact: true }).click()
   await page.getByRole("option", { name: "Codex", exact: true }).click()
   await settings.getByRole("button", { name: "Connect agent", exact: true }).click()
-  await expect(settings.getByRole("button", { name: "Disconnect", exact: true })).toBeVisible()
-  await settings.getByRole("button", { name: "Close AI settings", exact: true }).click()
+  // AI settings closes itself once the agent and its project access are ready.
+  await expect(settings).toBeHidden()
   const message = panel.getByRole("textbox", { name: "Message", exact: true })
   await expect(message).toBeEnabled()
   await message.fill("Keep this draft through recovery")
   await page.clock.install()
   await page.evaluate("globalThis.interruptAssistant()")
   await expect(panel.getByRole("button", { name: "Cancel reconnect" })).toBeVisible()
-  await page.clock.runFor(25_000)
+  // Five automatic attempts back off 5, 10, 20, 40 and 60 s (#413) before recovery stops.
+  await page.clock.runFor(135_000)
   const retry = panel.getByRole("button", { name: "Retry connection", exact: true })
   await expect(retry).toBeVisible()
   const status = panel.getByRole("status").filter({ hasText: "Connection recovery stopped" })
@@ -85,15 +94,13 @@ test("keeps recovery copy and retry above message actions in compact chat", asyn
   const send = panel.getByRole("button", { name: "Send", exact: true })
   const composer = panel.getByRole("region", { name: "Message", exact: true })
   for (const width of [1440, 1024]) {
-    await page.setViewportSize({ width, height: 900 })
     for (const theme of ["light", "dark"]) {
       await page.locator("html").evaluate((root, dark) => {
         root.classList.toggle("dark", dark)
       }, theme === "dark")
       for (const zoom of [1, 2]) {
-        await page.locator("html").evaluate((root, value) => {
-          root.style.zoom = String(value)
-        }, zoom)
+        // A 200% equivalent viewport; CSS zoom does not scale the viewport units the shell uses.
+        await page.setViewportSize({ width: width / zoom, height: 900 / zoom })
         const bounds = await composer.boundingBox()
         const copyBounds = await status.boundingBox()
         const recoveryBounds = await status.locator("..").boundingBox()
@@ -103,7 +110,8 @@ test("keeps recovery copy and retry above message actions in compact chat", asyn
           throw new Error("Recovery feedback and message actions must have visible bounds.")
         expect(recoveryBounds.width).toBeGreaterThan(bounds.width * 0.8)
         expect(copyBounds.y + copyBounds.height).toBeLessThanOrEqual(retryBounds.y)
-        expect(retryBounds.y + retryBounds.height).toBeLessThanOrEqual(sendBounds.y)
+        // Session controls sit in a tray attached beneath the composer card (#462).
+        expect(sendBounds.y + sendBounds.height).toBeLessThanOrEqual(retryBounds.y)
         expect(retryBounds.x + retryBounds.width).toBeLessThanOrEqual(bounds.x + bounds.width)
         await expect(retry).toBeInViewport({ ratio: 1 })
         await expect(send).toBeInViewport({ ratio: 1 })
