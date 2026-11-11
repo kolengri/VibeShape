@@ -20,7 +20,7 @@ const STYLE = [
   "text{fill:#000;stroke:none;font-family:Helvetica,Arial,sans-serif}",
 ].join("")
 
-/** Drops characters XML 1.0 forbids (same rule as drawing text fields) before escaping markup. */
+/** Drops characters XML 1.0 forbids (the drawing text-field rule) before escaping markup. */
 function escapeXml(value: string) {
   return stripDrawingControlCharacters(value)
     .replace(/&/g, "&amp;")

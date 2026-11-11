@@ -51,10 +51,16 @@ export const drawingScaleSchema = z.discriminatedUnion("mode", [
 ])
 export type DrawingScale = z.infer<typeof drawingScaleSchema>
 
-/** C0 controls and DEL are invalid in XML 1.0 text and unprintable in DXF and PDF title blocks. */
+/**
+ * Characters drawing text never carries: C0 controls and DEL (unprintable in DXF and PDF title
+ * blocks; XML 1.0 forbids all C0 controls but tab, LF and CR, which a one-line field has no use
+ * for), and the code points XML 1.0 excludes outright, the noncharacters U+FFFE and U+FFFF and
+ * unpaired surrogates. `character` is one code point, so a valid surrogate pair has length 2.
+ */
 function isControlCharacter(character: string) {
   const code = character.charCodeAt(0)
-  return code < 0x20 || code === 0x7f
+  const unpairedSurrogate = character.length === 1 && code >= 0xd800 && code <= 0xdfff
+  return code < 0x20 || code === 0x7f || code === 0xfffe || code === 0xffff || unpairedSurrogate
 }
 export function stripDrawingControlCharacters(value: string) {
   return [...value].filter((character) => !isControlCharacter(character)).join("")
@@ -64,7 +70,10 @@ const field = (maximum: number) =>
     .string()
     .trim()
     .max(maximum)
-    .refine((value) => ![...value].some(isControlCharacter), "Control characters are not allowed.")
+    .refine(
+      (value) => ![...value].some(isControlCharacter),
+      "Control characters and invalid Unicode are not allowed.",
+    )
     .default("")
 export const drawingTitleBlockSchema = z.strictObject({
   title: field(80),

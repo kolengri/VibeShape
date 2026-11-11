@@ -2,16 +2,27 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join, relative } from "node:path"
 
 /**
- * Markdown table rows must end with a pipe. A paragraph written directly after a table, without a
- * blank line, becomes an extra cell that GitHub and most renderers silently drop.
+ * Markdown table rows must end with a pipe, and the line after a table must be blank or another
+ * row. A paragraph written directly after a table, without a blank line, becomes an extra cell or
+ * an extra row that GitHub and most renderers render as table content or silently drop.
  */
 export function markdownTableViolations(source: string, label: string): string[] {
   let fenced = false
+  let afterRow = false
   return source.split(/\r?\n/).flatMap((line, index) => {
     if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
     const row = line.trim()
-    if (fenced || !row.startsWith("|") || row.endsWith("|")) return []
-    return [`${label}:${index + 1}: table row must end with "|" (add a blank line after the table)`]
+    const previousRow = afterRow
+    afterRow = !fenced && row.startsWith("|")
+    if (fenced) return []
+    const at = `${label}:${index + 1}`
+    if (afterRow && !row.endsWith("|"))
+      return [`${at}: table row must end with "|" (add a blank line after the table)`]
+    if (previousRow && !afterRow && row !== "")
+      return [
+        `${at}: text directly after a table row joins the table (add a blank line after the table)`,
+      ]
+    return []
   })
 }
 

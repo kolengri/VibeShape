@@ -151,6 +151,50 @@ function calloutRoutes(sheet: DrawingSheet, units: DrawingSettings["units"] = "m
     })
 }
 
+/** Strict-interior Liang–Barsky test: does segment start→end pass through `box`? */
+function crossesBox(start: Point, end: Point, box: SheetBox) {
+  const [dx, dy] = [end[0] - start[0], end[1] - start[1]]
+  let [from, to] = [0, 1]
+  const sides: [number, number][] = [
+    [-dx, start[0] - box[0]],
+    [dx, box[2] - start[0]],
+    [-dy, start[1] - box[1]],
+    [dy, box[3] - start[1]],
+  ]
+  for (const [p, q] of sides) {
+    if (Math.abs(p) < 1e-12) {
+      if (q <= 0) return false
+    } else if (p < 0) from = Math.max(from, q / p)
+    else to = Math.min(to, q / p)
+  }
+  return to - from > 1e-9
+}
+
+/** Texts crossed by a slanted leader, and Ø labels lying on the view's own lines. */
+function calloutClashes(sheet: DrawingSheet) {
+  const leaders = primitivesOf(sheet, ["dimensions"]).filter(
+    (item): item is Line =>
+      item.kind === "line" && item.start[0] !== item.end[0] && item.start[1] !== item.end[1],
+  )
+  const outline = primitivesOf(sheet, ["view-top"]).filter(
+    (item): item is Line => item.kind === "line",
+  )
+  const all = texts(sheet)
+  return [
+    ...leaders.flatMap((leader) =>
+      all
+        .filter((label) => crossesBox(leader.start, leader.end, primitiveBox(label)))
+        .map((label) => `leader through ${label.text}`),
+    ),
+    ...all
+      .filter((label) => label.text.includes("Ø"))
+      .filter((label) =>
+        outline.some((edge) => crossesBox(edge.start, edge.end, primitiveBox(label))),
+      )
+      .map((label) => `${label.text} on a view line`),
+  ]
+}
+
 describe("diameter callout placement", () => {
   const cases: [string, Circle[], string[]][] = [
     [
@@ -203,6 +247,37 @@ describe("diameter callout placement", () => {
     )
     expect(overlappingTexts(sheet)).toEqual([])
     expect(calloutRoutes(sheet, "in").filter(({ routed }) => !routed)).toEqual([])
+  })
+
+  it("keeps leaders out of placed labels", () => {
+    const sheet = compose([
+      [9.1, 8.7, 2.4],
+      [24.5, 23.3, 2.9],
+      [16.6, 19.4, 2.2],
+    ])
+    expect(calloutClashes(sheet)).toEqual([])
+    expect(calloutRoutes(sheet).filter(({ routed }) => !routed)).toEqual([])
+  })
+
+  it("never crosses text with a leader or puts a label on a view line across random layouts", () => {
+    let seed = 11
+    const random = () => {
+      seed = (seed * 16807) % 2147483647
+      return seed / 2147483647
+    }
+    const clashes = Array.from({ length: 300 }, () => {
+      const circles = Array.from({ length: 2 + Math.floor(random() * 3) }, (): Circle => {
+        const radius = Math.round((0.5 + random() * 2.5) * 10) / 10
+        return [
+          Math.round((radius + random() * (40 - 2 * radius)) * 10) / 10,
+          Math.round((radius + random() * (30 - 2 * radius)) * 10) / 10,
+          radius,
+        ]
+      })
+      const sheet = compose(circles)
+      return calloutClashes(sheet).map((clash) => `${clash} in ${JSON.stringify(circles)}`)
+    }).flat()
+    expect(clashes).toEqual([])
   })
 
   it("counts callouts it cannot place instead of drawing them over other text", () => {

@@ -1,17 +1,36 @@
 import type { DrawingCurve } from "@vibeshape/protocol"
+import { coveringSegments } from "./drawing-segment-coverage"
 
 type Point = readonly [number, number]
-type Line = Extract<DrawingCurve, { kind: "line" }>
 type Round = Extract<DrawingCurve, { kind: "circle" | "arc" }>
-export type Box = readonly [minX: number, minY: number, maxX: number, maxY: number]
+type Box = readonly [minX: number, minY: number, maxX: number, maxY: number]
 
+/** A straight covering piece: a line, a polyline segment, or a cached chord of a circle or arc. */
+export type IndexedSegment = Readonly<{ start: Point; end: Point; chord: boolean }>
+
+/** Work counters for deterministic complexity checks; wall time is not a stable measure. */
+export type CoverageStats = { chordBuilds: number; capsuleClips: number }
+
+export type IndexChords = Readonly<{
+  /** Coverage radius; chords stay within a tenth of it of the exact curve. */
+  radius: number
+  /** Largest turn of the curve across one chord. */
+  turn: number
+}>
+
+export type IndexOptions = Readonly<{
+  /** Largest distance at which a query must still find a covering piece. */
+  margin: number
+  chords: IndexChords
+  stats?: CoverageStats | undefined
+}>
+
+const LEAF_CAPACITY = 24
+const MAXIMUM_DEPTH = 24
+/** A split that leaves a child with this share of the entries does not separate them. */
+const SPLIT_GAIN = 0.75
 const KEY_OFFSET = 2 ** 25
 const KEY_SCALE = 2 ** 26
-const MINIMUM_CELL_MM = 0.05
-
-function cellKey(x: number, y: number) {
-  return (x + KEY_OFFSET) * KEY_SCALE + (y + KEY_OFFSET)
-}
 
 function boxesTouch(left: Box, right: Box) {
   return left[0] <= right[2] && right[0] <= left[2] && left[1] <= right[3] && right[1] <= left[3]
@@ -26,151 +45,209 @@ function segmentBox(start: Point, end: Point, margin: number): Box {
   ]
 }
 
-export function roundBox(round: Round): Box {
+function grow(box: Box, margin: number): Box {
+  return [box[0] - margin, box[1] - margin, box[2] + margin, box[3] + margin]
+}
+
+/** Liang–Barsky clipping test: does segment start→end pass through `box`? */
+function segmentTouchesBox(start: Point, end: Point, box: Box) {
+  const dx = end[0] - start[0]
+  const dy = end[1] - start[1]
+  const sides: readonly (readonly [number, number])[] = [
+    [-dx, start[0] - box[0]],
+    [dx, box[2] - start[0]],
+    [-dy, start[1] - box[1]],
+    [dy, box[3] - start[1]],
+  ]
+  let from = 0
+  let to = 1
+  for (const [p, q] of sides) {
+    if (p === 0) {
+      if (q < 0) return false
+    } else if (p < 0) from = Math.max(from, q / p)
+    else to = Math.min(to, q / p)
+  }
+  return from <= to
+}
+
+/** Bounding box of a circle, or of an arc's own sweep including the axis extremes it crosses. */
+function roundBox(round: Round): Box {
+  const [cx, cy] = round.center
+  const r = round.radius
+  if (round.kind === "circle") return [cx - r, cy - r, cx + r, cy + r]
+  const quarter = Math.PI / 2
+  const angles = [round.startAngle, round.endAngle]
+  for (let step = Math.ceil(round.startAngle / quarter); step * quarter < round.endAngle; step += 1)
+    angles.push(step * quarter)
+  const xs = angles.map((angle) => cx + r * Math.cos(angle))
+  const ys = angles.map((angle) => cy + r * Math.sin(angle))
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+}
+
+/** Overall extent of the drawn curves; the quadtree root covers it. */
+export function curvesExtent(curves: readonly DrawingCurve[]): Box {
+  const boxes = curves.flatMap((curve): Box[] => {
+    if (curve.kind === "line") return [segmentBox(curve.start, curve.end, 0)]
+    if (curve.kind === "polyline") return curve.points.map((point) => segmentBox(point, point, 0))
+    return [roundBox(curve)]
+  })
+  if (boxes.length === 0) return [0, 0, 1, 1]
   return [
-    round.center[0] - round.radius,
-    round.center[1] - round.radius,
-    round.center[0] + round.radius,
-    round.center[1] + round.radius,
+    Math.min(...boxes.map((box) => box[0])),
+    Math.min(...boxes.map((box) => box[1])),
+    Math.max(...boxes.map((box) => box[2])),
+    Math.max(...boxes.map((box) => box[3])),
   ]
 }
 
-/** Grid cell sizes from the drawn extent and the number of straight pieces in it. */
-export function indexCellSizes(curves: readonly DrawingCurve[]) {
-  let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity]
-  let pieces = 0
-  const include = (point: Point) => {
-    minX = Math.min(minX, point[0])
-    minY = Math.min(minY, point[1])
-    maxX = Math.max(maxX, point[0])
-    maxY = Math.max(maxY, point[1])
-  }
-  for (const curve of curves) {
-    if (curve.kind === "line") {
-      include(curve.start)
-      include(curve.end)
-      pieces += 1
-    } else if (curve.kind === "polyline") {
-      curve.points.forEach(include)
-      pieces += curve.points.length - 1
-    } else {
-      const [x0, y0, x1, y1] = roundBox(curve)
-      include([x0, y0])
-      include([x1, y1])
-    }
-  }
-  const width = Number.isFinite(minX) ? maxX - minX : 0
-  const height = Number.isFinite(minY) ? maxY - minY : 0
-  const coarse = Math.max(Math.max(width, height) / 32, MINIMUM_CELL_MM)
-  // Aim for a few straight pieces per cell, never coarser than the round grid.
-  const dense = Math.sqrt((Math.max(width, 1) * Math.max(height, 1)) / Math.max(pieces, 1)) * 2
-  return { segment: Math.min(coarse, Math.max(dense, MINIMUM_CELL_MM)), round: coarse }
+type QuadNode = {
+  readonly box: Box
+  readonly depth: number
+  entries: number[]
+  children: QuadNode[] | null
+  /** Entry count that triggers the next split attempt; raised when a split would not help. */
+  limit: number
+}
+
+function quadNode(box: Box, depth: number): QuadNode {
+  return { box, depth, entries: [], children: null, limit: LEAF_CAPACITY }
 }
 
 /**
- * Spatial index of covering geometry. Straight pieces (lines and polyline segments) live in a fine
- * grid, registered only in the cells along the piece within `margin`, so long diagonal edges stay
- * cheap. Circles and arcs live in a coarse grid by bounding box. Queries deduplicate with stamps.
+ * Spatial index of covering geometry. Straight pieces live in an adaptive quadtree: a leaf splits
+ * once it holds more than a few pieces, so dense clusters subdivide locally while sparse areas stay
+ * shallow, and each piece is registered only in the leaves its `margin` capsule reaches. Circles
+ * and arcs contribute their chords once, when added, so coverage queries see only the chords near
+ * the queried segment; they are also kept whole, keyed by centre, for exact concentric matching.
  */
 export class CurveIndex {
-  readonly #segments: Line[] = []
+  readonly #segments: IndexedSegment[] = []
   readonly #segmentBoxes: Box[] = []
-  readonly #segmentCells = new Map<number, number[]>()
-  readonly #rounds: Round[] = []
-  readonly #roundCells = new Map<number, number[]>()
-  readonly #segmentStamps: number[] = []
-  readonly #roundStamps: number[] = []
+  readonly #stamps: number[] = []
+  readonly #root: QuadNode
+  readonly #rounds = new Map<number, Round[]>()
   #stamp = 0
 
-  constructor(
-    readonly segmentCell: number,
-    readonly roundCell: number,
-    /** Largest distance at which a query must still find a covering piece. */
-    readonly margin: number,
-  ) {}
+  readonly margin: number
+  readonly #chords: IndexChords
+  readonly #stats: CoverageStats | undefined
 
-  /** Polylines are indexed as their segments, so coverage sees straight pieces and rounds only. */
+  constructor(extent: Box, options: IndexOptions) {
+    this.margin = options.margin
+    this.#chords = options.chords
+    this.#stats = options.stats
+    const margin = this.margin
+    const side = Math.max(extent[2] - extent[0], extent[3] - extent[1], margin)
+    this.#root = quadNode([extent[0], extent[1], extent[0] + side, extent[1] + side], 0)
+  }
+
   add(curve: DrawingCurve) {
-    if (curve.kind === "line") this.#addSegment(curve.start, curve.end)
+    if (curve.kind === "line") this.#addSegment(curve.start, curve.end, false)
     else if (curve.kind === "polyline")
       curve.points.slice(1).forEach((end, index) => {
-        this.#addSegment(curve.points[index] ?? end, end)
+        this.#addSegment(curve.points[index] ?? end, end, false)
       })
     else this.#addRound(curve)
   }
 
-  /** Straight pieces within the index margin of segment start→end, plus rounds near its box. */
-  nearSegment(start: Point, end: Point): DrawingCurve[] {
+  /** Straight pieces, including round chords, within `margin` of segment start→end. */
+  nearSegments(start: Point, end: Point): IndexedSegment[] {
     const stamp = this.#nextStamp()
-    const box = segmentBox(start, end, this.margin)
-    const found: DrawingCurve[] = []
-    this.#walk(start, end, 0, (key) => {
-      for (const index of this.#segmentCells.get(key) ?? []) {
-        if (this.#segmentStamps[index] === stamp) continue
-        this.#segmentStamps[index] = stamp
-        const segment = this.#segments[index]
-        const bounds = this.#segmentBoxes[index]
-        if (segment && bounds && boxesTouch(bounds, box)) found.push(segment)
-      }
-    })
-    return [...found, ...this.nearRounds(box)]
-  }
-
-  /** Circles and arcs whose bounding boxes touch `box`. */
-  nearRounds(box: Box): Round[] {
-    const stamp = this.#nextStamp()
-    const found: Round[] = []
-    this.#boxCells(box, this.roundCell, (key) => {
-      for (const index of this.#roundCells.get(key) ?? []) {
-        if (this.#roundStamps[index] === stamp) continue
-        this.#roundStamps[index] = stamp
-        const round = this.#rounds[index]
-        if (round && boxesTouch(roundBox(round), box)) found.push(round)
-      }
+    const box = segmentBox(start, end, 0)
+    const found: IndexedSegment[] = []
+    this.#visit(this.#root, start, end, (index) => {
+      if (this.#stamps[index] === stamp) return
+      this.#stamps[index] = stamp
+      const segment = this.#segments[index]
+      const bounds = this.#segmentBoxes[index]
+      if (segment && bounds && boxesTouch(bounds, box)) found.push(segment)
     })
     return found
   }
 
-  #addSegment(start: Point, end: Point) {
-    const index =
-      this.#segments.push({ kind: "line", start: [start[0], start[1]], end: [end[0], end[1]] }) - 1
-    this.#segmentBoxes.push(segmentBox(start, end, this.margin))
-    const cells = new Set<number>()
-    // Query samples are at most a quarter cell from any query point, so registering every cell
-    // within margin + half a cell of this piece's samples finds it from any point within margin.
-    this.#walk(start, end, this.margin + this.segmentCell / 2, (key) => cells.add(key))
-    for (const key of cells) push(this.#segmentCells, key, index)
+  /** Circles and arcs whose centres lie within `tolerance` of `center`. */
+  concentric(center: Point, tolerance: number): Round[] {
+    const found: Round[] = []
+    const [x, y] = this.#roundCell(center)
+    for (let dx = -1; dx <= 1; dx += 1)
+      for (let dy = -1; dy <= 1; dy += 1)
+        for (const round of this.#rounds.get(cellKey(x + dx, y + dy)) ?? [])
+          if (Math.hypot(round.center[0] - center[0], round.center[1] - center[1]) <= tolerance)
+            found.push(round)
+    return found
   }
 
   #addRound(round: Round) {
-    const index = this.#rounds.push(round) - 1
-    const [x0, y0, x1, y1] = roundBox(round)
-    this.#boxCells(
-      [x0 - this.margin, y0 - this.margin, x1 + this.margin, y1 + this.margin],
-      this.roundCell,
-      (key) => push(this.#roundCells, key, index),
-    )
+    const key = cellKey(...this.#roundCell(round.center))
+    const bucket = this.#rounds.get(key)
+    if (bucket) bucket.push(round)
+    else this.#rounds.set(key, [round])
+    if (this.#stats) this.#stats.chordBuilds += 1
+    for (const [start, end] of coveringSegments(round, this.#chords.radius, this.#chords.turn))
+      this.#addSegment(start, end, true)
   }
 
-  /** Visits the fine cells within `reach` of samples spaced at most half a cell along the piece. */
-  #walk(start: Point, end: Point, reach: number, visit: (key: number) => void) {
-    const length = Math.hypot(end[0] - start[0], end[1] - start[1])
-    const steps = Math.max(1, Math.ceil(length / (this.segmentCell / 2)))
-    const spread = Math.max(reach, this.segmentCell / 2)
-    for (let step = 0; step <= steps; step += 1) {
-      const t = step / steps
-      const x = start[0] + (end[0] - start[0]) * t
-      const y = start[1] + (end[1] - start[1]) * t
-      this.#boxCells([x - spread, y - spread, x + spread, y + spread], this.segmentCell, visit)
+  /** Centre cells are at least the margin wide, so a 3×3 neighbourhood finds every match. */
+  #roundCell(center: Point): [number, number] {
+    return [Math.floor(center[0] / this.margin), Math.floor(center[1] / this.margin)]
+  }
+
+  #addSegment(start: Point, end: Point, chord: boolean) {
+    const index = this.#segments.push({ start, end, chord }) - 1
+    this.#segmentBoxes.push(segmentBox(start, end, this.margin))
+    this.#insert(this.#root, index)
+  }
+
+  /** True when the piece's margin capsule may reach the node (conservative at the corners). */
+  #reaches(node: QuadNode, index: number) {
+    const segment = this.#segments[index]
+    const bounds = this.#segmentBoxes[index]
+    if (!segment || !bounds || !boxesTouch(bounds, node.box)) return false
+    return segmentTouchesBox(segment.start, segment.end, grow(node.box, this.margin))
+  }
+
+  #insert(node: QuadNode, index: number) {
+    if (node.children) {
+      for (const child of node.children) if (this.#reaches(child, index)) this.#insert(child, index)
+      return
     }
+    node.entries.push(index)
+    if (node.entries.length > node.limit) this.#split(node)
   }
 
-  #boxCells(box: Box, size: number, visit: (key: number) => void) {
-    const x0 = Math.floor(box[0] / size)
-    const x1 = Math.floor(box[2] / size)
-    const y0 = Math.floor(box[1] / size)
-    const y1 = Math.floor(box[3] / size)
-    for (let x = x0; x <= x1; x += 1) for (let y = y0; y <= y1; y += 1) visit(cellKey(x, y))
+  /**
+   * Splits a full leaf when that separates its pieces. Pieces that all pass through one small area
+   * would be copied into every child, so such a leaf instead waits until it doubles in size.
+   */
+  #split(node: QuadNode) {
+    const [x0, y0, x1, y1] = node.box
+    if (node.depth >= MAXIMUM_DEPTH || x1 - x0 <= this.margin) {
+      node.limit = Infinity
+      return
+    }
+    const [xm, ym] = [(x0 + x1) / 2, (y0 + y1) / 2]
+    const children = [
+      quadNode([x0, y0, xm, ym], node.depth + 1),
+      quadNode([xm, y0, x1, ym], node.depth + 1),
+      quadNode([x0, ym, xm, y1], node.depth + 1),
+      quadNode([xm, ym, x1, y1], node.depth + 1),
+    ]
+    for (const index of node.entries)
+      for (const child of children) if (this.#reaches(child, index)) child.entries.push(index)
+    const largest = Math.max(...children.map((child) => child.entries.length))
+    if (largest > node.entries.length * SPLIT_GAIN) {
+      node.limit = node.entries.length * 2
+      return
+    }
+    node.entries = []
+    node.children = children
+    for (const child of children) if (child.entries.length > child.limit) this.#split(child)
+  }
+
+  #visit(node: QuadNode, start: Point, end: Point, visit: (index: number) => void) {
+    if (!segmentTouchesBox(start, end, node.box)) return
+    if (node.children) for (const child of node.children) this.#visit(child, start, end, visit)
+    else for (const index of node.entries) visit(index)
   }
 
   #nextStamp() {
@@ -179,9 +256,6 @@ export class CurveIndex {
   }
 }
 
-function push(cells: Map<number, number[]>, key: number, index: number) {
-  const bucket = cells.get(key)
-  if (bucket) {
-    if (bucket.at(-1) !== index) bucket.push(index)
-  } else cells.set(key, [index])
+function cellKey(x: number, y: number) {
+  return (x + KEY_OFFSET) * KEY_SCALE + (y + KEY_OFFSET)
 }

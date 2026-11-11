@@ -1,4 +1,5 @@
 import {
+  DRAWING_ANGULAR_TOLERANCE_RAD,
   DRAWING_CHORD_TOLERANCE_MM,
   type DrawingCurve,
   type DrawingEdge,
@@ -6,18 +7,14 @@ import {
   MAX_DRAWING_VIEW_EDGES,
 } from "@vibeshape/protocol"
 import { DrawingBudgetError } from "./drawing-budget"
-import { CurveIndex, indexCellSizes, roundBox } from "./drawing-curve-index"
-import {
-  complement,
-  coveringSegments,
-  type Interval,
-  uncoveredPolylineRuns,
-} from "./drawing-segment-coverage"
+import { type CoverageStats, CurveIndex, curvesExtent } from "./drawing-curve-index"
+import { complement, type Interval, uncoveredPolylineRuns } from "./drawing-segment-coverage"
 
 type Point = readonly [number, number]
 type Line = Extract<DrawingCurve, { kind: "line" }>
 type Round = Extract<DrawingCurve, { kind: "circle" | "arc" }>
 type Polyline = Extract<DrawingCurve, { kind: "polyline" }>
+type CoveringPiece = Readonly<{ start: Point; end: Point }>
 
 /** Distance within which projected edges are treated as the same drawn line. */
 const COINCIDENCE_TOLERANCE_MM = 1e-4
@@ -27,10 +24,12 @@ const COINCIDENCE_TOLERANCE_MM = 1e-4
  */
 const SAMPLED_COVERAGE_TOLERANCE_MM = 2 * DRAWING_CHORD_TOLERANCE_MM + COINCIDENCE_TOLERANCE_MM
 /**
- * Covered stretches shorter than this are crossings, not overlap: a perpendicular crossing covers
- * twice the sampled tolerance, so twice that again leaves crossings above 30° uncut.
+ * Every sampled chord, HLR's and the cleanup's own circle chords alike, stays within the angular
+ * tolerance of the curve's tangent, so two samplings of one curve differ in direction by at most
+ * twice that where they overlap. A covering segment turned further than this crosses the curve;
+ * how long it stays within the distance tolerance only depends on the crossing angle.
  */
-const MINIMUM_COVERED_LENGTH_MM = 4 * SAMPLED_COVERAGE_TOLERANCE_MM
+const CROSSING_ANGLE_RAD = 2 * DRAWING_ANGULAR_TOLERANCE_RAD + 0.02
 const FULL_TURN = 2 * Math.PI
 
 /** Replaces straight sampled curves, such as circles seen edge-on, by exact lines. */
@@ -65,17 +64,24 @@ export function splitPolyline(points: readonly Point[]): DrawingCurve[] {
  * rim of a through-hole) and repeats edges shared by faces. Drawing conventions show a visible line
  * once and dash only what no visible line covers. Lines are compared with collinear lines and
  * circles/arcs with concentric equal-radius curves by merged parameter intervals, so a hidden edge
- * keeps exactly its uncovered pieces. Sampled polylines are covered segment by segment: a segment
- * whose end points and midpoint lie on covering geometry within twice the chordal tolerance is
- * dropped, and the remaining runs are kept.
+ * keeps exactly its uncovered pieces. Sampled polylines are clipped continuously against the
+ * tolerance capsules of near-parallel covering segments (see `uncoveredPolyline`). `stats`
+ * receives work counters for complexity checks.
  */
-export function suppressCoincidentEdges(edges: readonly DrawingEdge[]): DrawingEdge[] {
-  const { segment, round } = indexCellSizes(edges.map(({ curve }) => curve))
-  const margin = SAMPLED_COVERAGE_TOLERANCE_MM + COINCIDENCE_TOLERANCE_MM
-  const visible = new CurveIndex(segment, round, margin)
+export function suppressCoincidentEdges(
+  edges: readonly DrawingEdge[],
+  stats?: CoverageStats,
+): DrawingEdge[] {
+  const extent = curvesExtent(edges.map(({ curve }) => curve))
+  const options = {
+    margin: SAMPLED_COVERAGE_TOLERANCE_MM + COINCIDENCE_TOLERANCE_MM,
+    chords: { radius: SAMPLED_COVERAGE_TOLERANCE_MM, turn: 2 * DRAWING_ANGULAR_TOLERANCE_RAD },
+    stats,
+  }
+  const visible = new CurveIndex(extent, options)
   for (const edge of edges) if (edge.visibility === "visible") visible.add(edge.curve)
-  const keptVisible = new CurveIndex(segment, round, margin)
-  const keptHidden = new CurveIndex(segment, round, margin)
+  const keptVisible = new CurveIndex(extent, options)
+  const keptHidden = new CurveIndex(extent, options)
   const kept: DrawingEdge[] = []
   // Splitting can add edges, so the view budget also applies to the cleaned result.
   const keep = (edge: DrawingEdge, curve: DrawingCurve) => {
@@ -87,14 +93,14 @@ export function suppressCoincidentEdges(edges: readonly DrawingEdge[]): DrawingE
   }
   for (const edge of edges) {
     if (edge.visibility !== "visible") continue
-    for (const curve of uncoveredPieces(edge.curve, [keptVisible])) {
+    for (const curve of uncoveredPieces(edge.curve, [keptVisible], stats)) {
       keptVisible.add(curve)
       keep(edge, curve)
     }
   }
   for (const edge of edges) {
     if (edge.visibility !== "hidden") continue
-    for (const curve of uncoveredPieces(edge.curve, [visible, keptHidden])) {
+    for (const curve of uncoveredPieces(edge.curve, [visible, keptHidden], stats)) {
       keptHidden.add(curve)
       keep(edge, curve)
     }
@@ -102,24 +108,26 @@ export function suppressCoincidentEdges(edges: readonly DrawingEdge[]): DrawingE
   return kept
 }
 
-function uncoveredPieces(curve: DrawingCurve, covers: readonly CurveIndex[]): DrawingCurve[] {
-  if (curve.kind === "polyline") return uncoveredPolyline(curve, covers)
+function uncoveredPieces(
+  curve: DrawingCurve,
+  covers: readonly CurveIndex[],
+  stats: CoverageStats | undefined,
+): DrawingCurve[] {
+  if (curve.kind === "polyline") return uncoveredPolyline(curve, covers, stats)
   if (curve.kind === "line")
     return uncoveredLine(
       curve,
-      covers.flatMap((index) => index.nearSegment(curve.start, curve.end)),
+      covers.flatMap((index) =>
+        index.nearSegments(curve.start, curve.end).filter(({ chord }) => !chord),
+      ),
     )
-  const [x0, y0, x1, y1] = roundBox(curve)
-  const margin = COINCIDENCE_TOLERANCE_MM
   return uncoveredRound(
     curve,
-    covers.flatMap((index) =>
-      index.nearRounds([x0 - margin, y0 - margin, x1 + margin, y1 + margin]),
-    ),
+    covers.flatMap((index) => index.concentric(curve.center, COINCIDENCE_TOLERANCE_MM)),
   )
 }
 
-function uncoveredLine(line: Line, candidates: readonly DrawingCurve[]): DrawingCurve[] {
+function uncoveredLine(line: Line, candidates: readonly CoveringPiece[]): DrawingCurve[] {
   const dx = line.end[0] - line.start[0]
   const dy = line.end[1] - line.start[1]
   const length = Math.hypot(dx, dy)
@@ -128,7 +136,7 @@ function uncoveredLine(line: Line, candidates: readonly DrawingCurve[]): Drawing
   const parameter = (point: Point) =>
     (point[0] - line.start[0]) * direction[0] + (point[1] - line.start[1]) * direction[1]
   const intervals = candidates.flatMap((candidate): Interval[] => {
-    if (candidate.kind !== "line" || !collinear(line, direction, candidate)) return []
+    if (!collinear(line, direction, candidate)) return []
     const a = parameter(candidate.start)
     const b = parameter(candidate.end)
     return [[Math.min(a, b), Math.max(a, b)]]
@@ -145,7 +153,7 @@ function uncoveredLine(line: Line, candidates: readonly DrawingCurve[]): Drawing
  * candidate's extension. Checking only one side misses a short, slightly tilted segment on a long
  * covering line.
  */
-function collinear(line: Line, direction: Point, candidate: Line) {
+function collinear(line: Line, direction: Point, candidate: CoveringPiece) {
   const near = (point: Point, origin: Point, axis: Point) =>
     lineDistance(point, origin, axis) <= COINCIDENCE_TOLERANCE_MM
   if (near(candidate.start, line.start, direction) && near(candidate.end, line.start, direction))
@@ -169,11 +177,10 @@ function sameRound(left: Round, right: Round) {
   )
 }
 
-function uncoveredRound(round: Round, candidates: readonly DrawingCurve[]): DrawingCurve[] {
+function uncoveredRound(round: Round, candidates: readonly Round[]): DrawingCurve[] {
   const range: Interval = round.kind === "arc" ? [round.startAngle, round.endAngle] : [0, FULL_TURN]
   const intervals = candidates.flatMap((candidate): Interval[] => {
-    if ((candidate.kind !== "circle" && candidate.kind !== "arc") || !sameRound(round, candidate))
-      return []
+    if (!sameRound(round, candidate)) return []
     if (candidate.kind === "circle") return [range]
     // Shift the covering arc by whole turns so every overlap with the range is represented.
     return [-2, -1, 0, 1, 2].map(
@@ -209,22 +216,28 @@ function circlePieces(circle: Round, pieces: readonly Interval[]): DrawingCurve[
 
 /**
  * Continuous coverage of a sampled polyline: each segment is clipped against the tolerance
- * capsules of nearby covering segments (lines, polyline segments, and circle/arc chords), and only
- * the uncovered runs remain, stitched across vertices. A single crossing removes nothing.
+ * capsules of nearby near-parallel covering segments (lines, polyline segments, and the cached
+ * chords of circles and arcs), and only the uncovered runs remain, stitched across vertices.
+ * Crossing edges remove nothing.
  */
-function uncoveredPolyline(polyline: Polyline, covers: readonly CurveIndex[]): DrawingCurve[] {
+function uncoveredPolyline(
+  polyline: Polyline,
+  covers: readonly CurveIndex[],
+  stats: CoverageStats | undefined,
+): DrawingCurve[] {
   const radius = SAMPLED_COVERAGE_TOLERANCE_MM
-  const near = (start: Point, end: Point) =>
-    covers.flatMap((index) =>
-      index.nearSegment(start, end).flatMap((candidate) => coveringSegments(candidate, radius)),
-    )
-  const runs = uncoveredPolylineRuns(
-    polyline.points,
-    near,
+  const runs = uncoveredPolylineRuns(polyline.points, {
+    near: (start, end) =>
+      covers.flatMap((index) =>
+        index.nearSegments(start, end).map((piece): [Point, Point] => [piece.start, piece.end]),
+      ),
     radius,
-    MINIMUM_COVERED_LENGTH_MM,
-    radius,
-  )
+    maximumAngle: CROSSING_ANGLE_RAD,
+    // A near-parallel graze shorter than a few tolerances is contact, not a shared stretch.
+    minimumCovered: 4 * radius,
+    dust: radius,
+    stats,
+  })
   return runs === null ? [polyline] : runs.flatMap(splitPolyline)
 }
 

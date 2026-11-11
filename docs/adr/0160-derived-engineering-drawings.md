@@ -46,7 +46,7 @@ kept: a curve longer than 4096 points becomes chained polylines sharing end poin
 needs more than 65,536 samples fails the projection instead of being thinned. A view holds at most
 50,000 edges. Exceeding either budget is a deterministic, non-retryable `drawing-too-complex`
 failure. HLR also reports hidden copies of edges lying exactly behind visible ones and repeats
-shared edges. A grid-indexed coverage pass compares collinear lines and concentric equal-radius
+shared edges. An indexed coverage pass compares collinear lines and concentric equal-radius
 circles and arcs within 1e-4 mm: it merges the parameter or angular intervals of visible curves
 (and of hidden curves already kept) and emits only the uncovered pieces of each curve, so a hidden
 edge partly behind visible edges keeps exactly its hidden gaps. Collinearity is checked both ways,
@@ -54,11 +54,22 @@ so a short tilted segment on a long covering line is covered too. Sampled polyli
 coverage along their arc length: each segment is clipped analytically against the capsules (the
 covering piece swept by a disc) of nearby lines, polyline segments and circle/arc chords, with a
 radius of twice the chordal tolerance plus 1e-4 mm because two samplings of the same curve each
-stay within the chordal tolerance of it. Covered stretches are merged across vertices; stretches
-shorter than four radii are single crossings and cut nothing; uncovered runs reuse the original
-vertices and runs no longer than one radius are dropped. Straight pieces are indexed in a fine grid
-sized from the view's density, registered only along the piece, and circles and arcs in a coarse
-grid, so dense views stay near-linear. Output contains only coordinates, never OCCT
+stay within the chordal tolerance of it. Only near-parallel covering pieces count: every chord, of
+HLR and of the cleanup alike, stays within the 0.05 rad angular tolerance of its curve's tangent,
+so two samplings of one curve differ by at most 0.1 rad where they overlap, and a piece turned more
+than 0.12 rad (about 7°) crosses the curve and cuts nothing however long it stays within the
+radius. A sign change of the signed distance cannot classify crossings here, because two samplings
+of one curve cross each other at every chord. Covered stretches are merged across vertices;
+stretches no longer than four radii only graze the curve and cut nothing; uncovered runs reuse the
+original vertices and runs no longer than one radius are dropped. Straight pieces, including the
+chords each circle or arc contributes once when it is indexed, live in an adaptive quadtree whose
+leaves split above 24 pieces (unless a split would not separate them) and register each piece only
+in the leaves within the radius of it; full circles and arcs are also keyed by centre for the
+concentric test. A query therefore touches only the pieces near the queried segment, never a whole
+circle's chords, and the work is proportional to the number of covering pieces actually within
+tolerance. That is not linear where many sampled curves run within tolerance of each other in one
+spot: those pairs are all genuine candidates, and the 50,000-edge view budget bounds them.
+Output contains only coordinates, never OCCT
 indices.
 
 Drawings and geometry exports only use geometry of the captured revision: before projecting, the
@@ -68,7 +79,9 @@ worker actually projected or exported, which is its last successful rebuild, mus
 
 Without an explicit body selection the projection draws every exact terminal body and skips
 triangle meshes, failing only when none remains; an explicit selection containing a mesh fails.
-Title-block fields reject C0 control characters and DEL.
+Title-block fields reject C0 control characters, DEL and the code points XML 1.0 excludes
+(U+FFFE, U+FFFF and unpaired surrogates); the same rule strips them from external text such as
+the document-name fallback and from every SVG text node.
 
 ### Sheet
 
@@ -85,9 +98,12 @@ Each orthographic view gets overall width and height dimensions and one diameter
 distinct visible full-circle diameter (`n× Ø d` when repeated, at most eight). Callouts are placed
 after the dimensions and view label, greedily in a fixed order (by centre, then radius, so
 concentric rings are placed in turn). Each tries five leader shelves (8 to 28 mm) in four
-directions and takes the first whose label and shoulder keep 0.5 mm clear of every text and line
-box placed so far, and whose label does not cross a visible circle. A callout that fits nowhere is
-omitted and counted, never drawn over other text; the dialog reports the count. Clearance measures
+directions and takes the first that stays readable: its label and shoulder keep 0.5 mm clear of
+every text and line box placed so far; its label crosses no earlier leader, no visible circle and
+no visible line piece of the view (lines, polyline segments and arc chords, looked up in a grid
+built once per projected view); and its leader passes through no placed text. Callouts beyond the
+eight largest diameters, and callouts that fit nowhere, are omitted and counted, never drawn over
+other text or lines; the dialog reports the count. Clearance measures
 the final placed boxes, so scale choice and `fits` include callouts. Isometric views omit
 hidden lines. Sheet text is supplied by the host from the localized catalog; MCP output uses the
 English source catalog.

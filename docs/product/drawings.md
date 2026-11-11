@@ -17,7 +17,7 @@ or changes the `.vshape` file. See [ADR-0160](../adr/0160-derived-engineering-dr
 | Scale | Fit to sheet (largest ISO 5455 scale that fits) or an explicit standard ratio |
 | Dimension units | Millimeters or Inches (geometry stays in millimeters) |
 | Hidden lines | Dashed hidden edges in orthographic views |
-| Dimensions | Overall width and height per orthographic view, diameter callouts for visible holes and bosses |
+| Dimensions | Overall width and height per orthographic view, diameter callouts for visible holes and bosses (up to eight diameters; a callout with no clear position is left out and the preview says how many) |
 | Title block | Title (empty uses the project name), drawing number, author, date, material |
 
 The preview is the exact SVG that **Download SVG** saves. Projection runs once per model

@@ -1,5 +1,6 @@
 import type { DrawingSettings } from "@vibeshape/domain/drawing"
 import type { DrawingCurve } from "@vibeshape/protocol"
+import { type SheetSegment, segmentCrossesBox, viewLines } from "./callout-obstacles"
 import type { ViewPlacement } from "./layout"
 import { type SheetPoint, type SheetPrimitive, sheetNumber } from "./sheet"
 import { primitiveBox } from "./text-metrics"
@@ -88,15 +89,17 @@ export type PlacedCallouts = Readonly<{ primitives: SheetPrimitive[]; omitted: n
  * One leader per distinct diameter of the visible full circles in a view, prefixed with the
  * occurrence count when the same diameter repeats; hidden circles are never called out. Callouts
  * are placed greedily in a fixed order (by centre, then radius, so concentric rings are placed in
- * turn): each tries the leader shelves and directions in order and takes the first whose label and
- * shoulder clear every box placed so far, including `obstacles`. A callout that fits nowhere, or
- * beyond the first eight diameters, is omitted and counted rather than drawn over other text.
+ * turn): each tries the leader shelves and directions in order and takes the first that stays
+ * readable. Its label and shoulder must clear every box placed so far, including `obstacles`; its
+ * label must clear earlier leaders, the view's visible circles and visible line pieces; and its
+ * leader must not pass through any placed text. A callout that fits nowhere, or beyond the first
+ * eight diameters, is omitted and counted rather than drawn over other text or lines.
  */
 export function diameterCallouts(
   placement: ViewPlacement,
   units: DrawingSettings["units"],
   factor: number,
-  obstacles: readonly Box[],
+  obstacles: readonly SheetPrimitive[],
 ): PlacedCallouts {
   const circles = placement.projection.edges.flatMap((edge) =>
     edge.visibility === "visible" && edge.curve.kind === "circle" ? [edge.curve] : [],
@@ -112,28 +115,44 @@ export function diameterCallouts(
   const chosen = ranked
     .slice(0, MAX_DIAMETER_CALLOUTS)
     .sort((left, right) => compareAnchors(left[0], right[0]))
-  const placed = [...obstacles]
-  const rings = uniqueCircles(circles).map(
-    (circle): Ring => ({
-      center: [
-        placement.origin[0] + circle.center[0] * factor,
-        placement.origin[1] + circle.center[1] * factor,
-      ],
-      radius: circle.radius * factor,
-    }),
-  )
+  const avoid: Avoid = {
+    boxes: obstacles.map(primitiveBox),
+    texts: obstacles.filter(({ kind }) => kind === "text").map(primitiveBox),
+    leaders: [],
+    rings: uniqueCircles(circles).map(
+      (circle): Ring => ({
+        center: toSheet(placement, factor, circle.center),
+        radius: circle.radius * factor,
+      }),
+    ),
+    lines: (box) => {
+      const [x, y] = placement.origin
+      return viewLines(placement.projection).crosses([
+        (box[0] - x) / factor,
+        (box[1] - y) / factor,
+        (box[2] - x) / factor,
+        (box[3] - y) / factor,
+      ])
+    },
+  }
   const primitives: SheetPrimitive[] = []
   let omitted = ranked.length - chosen.length
   for (const members of chosen) {
-    const callout = placeCallout(members, placement, units, factor, { boxes: placed, rings })
+    const callout = placeCallout(members, placement, units, factor, avoid)
     if (!callout) {
       omitted += 1
       continue
     }
     primitives.push(...callout.primitives)
-    placed.push(...callout.boxes)
+    avoid.boxes.push(...callout.boxes)
+    avoid.texts.push(callout.textBox)
+    avoid.leaders.push(...callout.leaders)
   }
   return { primitives, omitted }
+}
+
+function toSheet(placement: ViewPlacement, factor: number, point: SheetPoint): SheetPoint {
+  return [placement.origin[0] + point[0] * factor, placement.origin[1] + point[1] * factor]
 }
 
 function compareAnchors(left: Circle | undefined, right: Circle | undefined) {
@@ -142,33 +161,51 @@ function compareAnchors(left: Circle | undefined, right: Circle | undefined) {
 }
 
 type Ring = Readonly<{ center: SheetPoint; radius: number }>
+/** What a callout must keep clear of; the arrays grow as callouts are placed. */
+type Avoid = Readonly<{
+  boxes: Box[]
+  texts: Box[]
+  leaders: SheetSegment[]
+  rings: readonly Ring[]
+  /** True when a visible line piece of the view touches the sheet box. */
+  lines: (box: Box) => boolean
+}>
+type Callout = ReturnType<typeof calloutAt>
 
 function placeCallout(
   members: readonly Circle[],
   placement: ViewPlacement,
   units: DrawingSettings["units"],
   factor: number,
-  avoid: Readonly<{ boxes: readonly Box[]; rings: readonly Ring[] }>,
+  avoid: Avoid,
 ) {
   const circle = members[0]
   if (!circle) return null
-  const center: SheetPoint = [
-    placement.origin[0] + circle.center[0] * factor,
-    placement.origin[1] + circle.center[1] * factor,
-  ]
+  const center = toSheet(placement, factor, circle.center)
   const label = `${members.length > 1 ? `${members.length}× ` : ""}Ø${formatLength(circle.radius * 2, units)}`
   for (const length of LEADER_LENGTHS_MM)
     for (const angle of LEADER_ANGLES) {
       const candidate = calloutAt(center, circle.radius * factor, angle, length, label)
-      const [textBox] = candidate.boxes
-      if (
-        textBox &&
-        candidate.boxes.every((box) => avoid.boxes.every((other) => !boxesOverlap(box, other))) &&
-        avoid.rings.every((ring) => !boxCrossesRing(textBox, ring))
-      )
-        return candidate
+      if (readable(candidate, avoid)) return candidate
     }
   return null
+}
+
+function readable(candidate: Callout, avoid: Avoid) {
+  const clearance = grow(candidate.textBox, CALLOUT_GAP_MM)
+  return (
+    candidate.boxes.every((box) => avoid.boxes.every((other) => !boxesOverlap(box, other))) &&
+    avoid.rings.every((ring) => !boxCrossesRing(candidate.textBox, ring)) &&
+    avoid.leaders.every(([start, end]) => !segmentCrossesBox(start, end, clearance)) &&
+    candidate.leaders.every(([start, end]) =>
+      avoid.texts.every((box) => !segmentCrossesBox(start, end, grow(box, CALLOUT_GAP_MM))),
+    ) &&
+    !avoid.lines(clearance)
+  )
+}
+
+function grow(box: Box, margin: number): Box {
+  return [box[0] - margin, box[1] - margin, box[2] + margin, box[3] + margin]
 }
 
 function calloutAt(
@@ -184,9 +221,15 @@ function calloutAt(
   const elbow: SheetPoint = [tip[0] + length * direction[0], tip[1] + length * direction[1]]
   const end: SheetPoint = [elbow[0] + side * SHOULDER_LENGTH_MM, elbow[1]]
   const value = text([end[0] + side, end[1] - 1], label, side > 0 ? "start" : "end", 0)
+  const textBox = primitiveBox(value)
   return {
     primitives: [line(elbow, tip), line(elbow, end), arrowhead(tip, elbow), value],
-    boxes: [primitiveBox(value), primitiveBox(line(elbow, end))],
+    textBox,
+    boxes: [textBox, primitiveBox(line(elbow, end))],
+    leaders: [
+      [elbow, tip],
+      [elbow, end],
+    ] as SheetSegment[],
   }
 }
 

@@ -230,6 +230,66 @@ describe("hidden edge coverage", () => {
     expect(remaining).toBeGreaterThan(polylineLength(hidden) - 0.0201 * 2 * 5)
   })
 
+  it("classifies a covered stretch by angle: a 10° crossing stays, a 0.5° run is cut", () => {
+    const hidden: Point[] = [
+      [0, 0],
+      [10, 0.001],
+      [20, 0],
+    ]
+    const crossing = (degrees: number, reach: number) => {
+      const angle = (degrees * Math.PI) / 180
+      const [dx, dy] = [Math.cos(angle) * reach, Math.sin(angle) * reach]
+      return edge("visible", line([5 - dx, -dy], [5 + dx, dy]))
+    }
+    const total = polylineLength(hidden)
+    // A 10° crossing overlaps the tolerance capsule for 0.23 mm, yet nothing follows the curve.
+    const steep = suppressCoincidentEdges([
+      crossing(10, 5),
+      edge("hidden", { kind: "polyline", points: hidden }),
+    ])
+    expect(hiddenOf(steep)).toHaveLength(1)
+    expect(curveLength(hiddenOf(steep)[0] ?? line([0, 0], [0, 0]))).toBeCloseTo(total, 9)
+    // At 0.5° the visible line stays within tolerance for about 4.6 mm and hides that stretch.
+    const shallow = suppressCoincidentEdges([
+      crossing(0.5, 5),
+      edge("hidden", { kind: "polyline", points: hidden }),
+    ])
+    const remaining = hiddenOf(shallow).reduce((sum, curve) => sum + curveLength(curve), 0)
+    expect(hiddenOf(shallow)).toHaveLength(2)
+    expect(total - remaining).toBeGreaterThan(4.4)
+    expect(total - remaining).toBeLessThan(4.8)
+  })
+
+  it("chords each circle once and clips only the chords near a hidden segment", () => {
+    let seed = 3
+    const random = () => {
+      seed = (seed * 16807) % 2147483647
+      return seed / 2147483647
+    }
+    const rings = Array.from({ length: 10 }, (_, index) =>
+      edge("visible", { kind: "circle", center: [150, 150], radius: 150 - index * 5 }),
+    )
+    const hidden = Array.from({ length: 2000 }, () => {
+      const [x, y, angle] = [60 + random() * 180, 60 + random() * 180, random() * 2 * Math.PI]
+      const points = Array.from({ length: 20 }, (_, index): Point => {
+        const along = (index / 19) * 10
+        const across = 2 * Math.sin((along / 10) * 2 * Math.PI)
+        return [
+          x + along * Math.cos(angle) - across * Math.sin(angle),
+          y + along * Math.sin(angle) + across * Math.cos(angle),
+        ]
+      })
+      return edge("hidden", { kind: "polyline", points })
+    })
+    const stats = { chordBuilds: 0, capsuleClips: 0 }
+    const result = suppressCoincidentEdges([...rings, ...hidden], stats)
+    expect(hiddenOf(result).length).toBeGreaterThanOrEqual(hidden.length)
+    // The visible ring index and the kept-visible index each chord every ring exactly once.
+    expect(stats.chordBuilds).toBe(2 * rings.length)
+    // Re-chording a whole ring per nearby segment clipped hundreds of chords per segment.
+    expect(stats.capsuleClips).toBeLessThan(hidden.length * 19 * 2)
+  })
+
   it("removes a hidden polyline that a coarser visible sampling follows continuously", () => {
     const result = suppressCoincidentEdges([
       edge("visible", { kind: "polyline", points: quarterEllipse(60) }),

@@ -290,6 +290,19 @@ describe("externally sourced sheet text", () => {
     expect(dxf).not.toMatch(/\\U\+00(?:0|1)[0-9A-F]|\\U\+007F/)
   })
 
+  it("drops XML noncharacters and unpaired surrogates from the title fallback", () => {
+    const sheet = composeDrawingSheet({
+      projection: boxProjection(),
+      settings: drawingSettingsSchema.parse({}),
+      copy,
+      documentTitle: "A\uFFFEB\uFFFFC\uD800D\uDC00E 😀",
+    })
+    expect(sheet.title).toBe("ABCDE 😀")
+    const svg = writeDrawingSvg(sheet)
+    expect(() => new SaxesParser({ xmlns: true }).write(svg).close()).not.toThrow()
+    expect(svg).toContain("<title>ABCDE 😀</title>")
+  })
+
   it("drops control characters that reach the SVG writer directly", () => {
     const sheet = sheetFor()
     const svg = writeDrawingSvg({

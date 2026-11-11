@@ -28,8 +28,12 @@ Optional `settings` accepts:
 | `scale` | `{ "mode": "auto" }` | Or `{ "mode": "explicit", "numerator", "denominator" }`, integers 1–1000 |
 | `units` | `"mm"` | `"mm"` or `"in"` for dimension text only |
 | `hiddenLines` | `true` | Dashed hidden edges in orthographic views |
-| `dimensions` | `true` | Overall dimensions and diameter callouts |
-| `titleBlock` | empty strings | `title` (≤80, empty uses the project name), `drawingNumber` (≤40), `author` (≤60), `date` (≤20), `material` (≤60); control characters are rejected |
+| `dimensions` | `true` | Overall dimensions and diameter callouts for up to eight distinct diameters |
+| `titleBlock` | empty strings | `title` (≤80, empty uses the project name), `drawingNumber` (≤40), `author` (≤60), `date` (≤20), `material` (≤60); control characters, U+FFFE, U+FFFF and unpaired surrogates are rejected |
+
+Diameter callouts beyond the eight largest diameters, or with no position clear of other text and
+view lines, are left out of the sheet. The result does not report them; read the drawing before
+relying on a callout being present.
 
 Front looks along +Y with Z up, top looks down −Z with Y up, right looks along −X; the isometric
 view is seen from +X, −Y, +Z. Automatic scale picks the largest ISO 5455 scale that fits; an

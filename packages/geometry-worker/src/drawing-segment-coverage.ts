@@ -92,18 +92,21 @@ function capsuleRange(
 }
 
 /**
- * Covering segments of a curve. Circles and arcs become chords whose sagitta is at most a tenth
- * of `radius`, so their capsules stay within that margin of the exact tube around the curve.
+ * Chords of a circle or arc. Each chord's sagitta is at most a tenth of `radius`, so its capsule
+ * stays within that margin of the exact tube around the curve, and each chord turns at most
+ * `maximumTurn` so its direction stays within half of that of the curve's tangent.
  */
-export function coveringSegments(curve: DrawingCurve, radius: number): [Point, Point][] {
-  if (curve.kind === "line") return [[curve.start, curve.end]]
-  if (curve.kind === "polyline")
-    return curve.points
-      .slice(1)
-      .map((end, index): [Point, Point] => [curve.points[index] ?? end, end])
+export function coveringSegments(
+  curve: Extract<DrawingCurve, { kind: "circle" | "arc" }>,
+  radius: number,
+  maximumTurn: number,
+): [Point, Point][] {
   const [from, to] = curve.kind === "arc" ? [curve.startAngle, curve.endAngle] : [0, FULL_TURN]
   const sagitta = radius / 10
-  const step = curve.radius <= sagitta ? FULL_TURN / 4 : 2 * Math.acos(1 - sagitta / curve.radius)
+  const step =
+    curve.radius <= sagitta
+      ? maximumTurn
+      : Math.min(maximumTurn, 2 * Math.acos(1 - sagitta / curve.radius))
   const count = Math.max(1, Math.ceil((to - from) / step))
   const at = (index: number): Point => {
     const angle = from + ((to - from) * index) / count
@@ -115,19 +118,31 @@ export function coveringSegments(curve: DrawingCurve, radius: number): [Point, P
   return Array.from({ length: count }, (_, index): [Point, Point] => [at(index), at(index + 1)])
 }
 
+export type PolylineCoverage = Readonly<{
+  /** Covering segments near segment start→end. */
+  near: (start: Point, end: Point) => readonly (readonly [Point, Point])[]
+  /** Capsule radius around each covering segment. */
+  radius: number
+  /** Covering segments turned further than this from a polyline segment only cross it. */
+  maximumAngle: number
+  /** Covered stretches no longer than this only graze the curve and hide nothing. */
+  minimumCovered: number
+  /** Uncovered runs no longer than this are dropped. */
+  dust: number
+  stats?: { capsuleClips: number } | undefined
+}>
+
 /**
  * Continuous coverage of a sampled polyline, measured along its arc length. Each segment is
- * clipped against the capsules of the covering segments `near` returns for it; covered stretches
- * are merged across vertices, and stretches shorter than `minimumCovered` (single crossings) are
- * ignored. The uncovered stretches become point runs that reuse the original vertices; runs no
- * longer than `dust` are dropped. Returns null when nothing is covered.
+ * clipped against the capsules of the near-parallel covering segments `near` returns for it;
+ * steeper covering segments cross the curve rather than follow it, however long they stay inside
+ * the tolerance, and cover nothing. Covered stretches are merged across vertices. The uncovered
+ * stretches become point runs that reuse the original vertices. Returns null when nothing is
+ * covered.
  */
 export function uncoveredPolylineRuns(
   points: readonly Point[],
-  near: (start: Point, end: Point) => readonly [Point, Point][],
-  radius: number,
-  minimumCovered: number,
-  dust: number,
+  coverage: PolylineCoverage,
 ): [number, number][][] | null {
   const offsets = [0]
   const covered: Interval[] = []
@@ -137,21 +152,37 @@ export function uncoveredPolylineRuns(
     const offset = offsets[index] ?? 0
     const length = Math.hypot(end[0] - start[0], end[1] - start[1])
     offsets.push(offset + length)
-    if (length <= EPSILON) continue
-    const direction: Point = [(end[0] - start[0]) / length, (end[1] - start[1]) / length]
-    for (const [from, to] of near(start, end)) {
-      const range = capsuleRange(start, direction, from, to, radius)
-      if (range) covered.push([offset + Math.max(range[0], 0), offset + Math.min(range[1], length)])
-    }
+    for (const [from, to] of segmentCoverage(start, end, length, coverage))
+      covered.push([offset + from, offset + to])
   }
   const total = offsets.at(-1) ?? 0
   const stretches = mergeIntervals(covered, [0, total]).filter(
-    ([from, to]) => to - from > minimumCovered,
+    ([from, to]) => to - from > coverage.minimumCovered,
   )
   if (stretches.length === 0) return null
-  return complement([0, total], stretches, dust).map(([from, to]) =>
+  return complement([0, total], stretches, coverage.dust).map(([from, to]) =>
     pointsBetween(points, offsets, from, to),
   )
+}
+
+/** Parameter intervals of segment start→end inside the capsules of near-parallel covering pieces. */
+function segmentCoverage(
+  start: Point,
+  end: Point,
+  length: number,
+  { near, radius, maximumAngle, stats }: PolylineCoverage,
+): Interval[] {
+  if (length <= EPSILON) return []
+  const direction: Point = [(end[0] - start[0]) / length, (end[1] - start[1]) / length]
+  const steep = Math.sin(maximumAngle)
+  return near(start, end).flatMap(([from, to]): Interval[] => {
+    const span = Math.hypot(to[0] - from[0], to[1] - from[1])
+    const sine = Math.abs(direction[0] * (to[1] - from[1]) - direction[1] * (to[0] - from[0]))
+    if (span <= EPSILON || sine > steep * span) return []
+    if (stats) stats.capsuleClips += 1
+    const range = capsuleRange(start, direction, from, to, radius)
+    return range ? [[Math.max(range[0], 0), Math.min(range[1], length)]] : []
+  })
 }
 
 function pointsBetween(

@@ -184,12 +184,7 @@ function viewAnnotations(
   const label = viewLabel(placement, settings, copy)
   if (!settings.dimensions || !placement.orthographic) return { dimensions: [], label, omitted: 0 }
   const overall = overallDimensions(placement, settings.units)
-  const callouts = diameterCallouts(
-    placement,
-    settings.units,
-    factor,
-    [...overall, label].map(primitiveBox),
-  )
+  const callouts = diameterCallouts(placement, settings.units, factor, [...overall, label])
   return { dimensions: [...overall, ...callouts.primitives], label, omitted: callouts.omitted }
 }
 

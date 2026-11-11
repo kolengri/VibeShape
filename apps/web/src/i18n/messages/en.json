@@ -69,7 +69,7 @@
         "loading": "Projecting views…",
         "scale": "Scale {scale}",
         "notFits": "The views do not fit this sheet at the chosen scale. Choose a smaller scale or a larger sheet.",
-        "omittedCallouts": "{count, plural, one {# diameter callout was} other {# diameter callouts were}} left out to keep labels readable."
+        "omittedCallouts": "{count, plural, one {# diameter callout was} other {# diameter callouts were}} left out: only the eight largest diameters are labeled, and a label is skipped where no clear position exists."
       },
       "download": {
         "svg": "Download SVG",
