@@ -265,6 +265,47 @@ describe("document export availability", () => {
       }),
     )
   })
+  it("offers GLB and OBJ file exports and routes them through the document export", async () => {
+    mocks.exportActiveDocument.mockResolvedValue({
+      ok: true,
+      format: "glb",
+      documentName: "Bracket",
+      file: new Uint8Array([1]),
+      bodyCount: 1,
+    })
+    const user = userEvent.setup()
+    render(dialog({ ...loading, status: "ready", report: readyWithSolid }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    const format = screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement
+    expect([...format.options].map(({ value }) => value)).toEqual([
+      "3mf",
+      "step",
+      "stl",
+      "glb",
+      "obj",
+    ])
+    await user.selectOptions(format, "obj")
+    expect(screen.getByText(/MTL color library, packaged as a ZIP archive/)).toBeTruthy()
+    expect(screen.getByRole("combobox", { name: "Mesh quality" })).toBeTruthy()
+    await user.selectOptions(screen.getByRole("combobox", { name: "File format" }), "glb")
+    expect(screen.getByText(/meters with Y up/)).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Save GLB file" }))
+    await waitFor(() =>
+      expect(mocks.exportActiveDocument).toHaveBeenLastCalledWith("glb", undefined),
+    )
+    expect(mocks.downloadDocumentExport).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps GLB and OBJ out of the slicer handoff formats", async () => {
+    window.vibeshapeSlicer = nativeSlicer()
+    const user = userEvent.setup()
+    render(dialog({ ...loading, status: "ready", report: readyWithSolid }))
+    await user.click(screen.getByRole("button", { name: "Export…" }))
+    await user.selectOptions(screen.getByRole("combobox", { name: "Destination" }), "slicer")
+    const format = screen.getByRole("combobox", { name: "File format" }) as HTMLSelectElement
+    expect([...format.options].map(({ value }) => value)).toEqual(["3mf", "stl"])
+  })
+
   it("shows a recoverable error when slicer preparation unexpectedly rejects", async () => {
     window.vibeshapeSlicer = nativeSlicer()
     mocks.exportActiveDocument.mockRejectedValueOnce(new Error("Worker unavailable"))

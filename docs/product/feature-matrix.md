@@ -315,7 +315,7 @@ The implemented foundation is intentionally narrower: document variables have st
 | Components/instances | P1 |
 | Simple rigid transforms | P1 |
 | Assemblies and mates | P2 |
-| BOM | P2 |
+| BOM | Implemented (assembly workspace and MCP) |
 | Drawings | P2 |
 
 ## Measurement and analysis
@@ -348,13 +348,14 @@ A printability warning is a heuristic, not a guarantee of a successful print.
 | Binary STL | P0 | P0 | Mesh compatibility |
 | 3MF Core | P1 in alpha, P0 for v1 | P0 | Primary printing exchange |
 | SVG/DXF 2D | P1 | P1 | Editable exact Sketch curves through editor and paired MCP source review |
-| OBJ/glTF | P2 | P2 | Visual mesh workflows |
-| IGES | P2 | P2 | Legacy CAD |
+| OBJ (with MTL, ZIP) | P2 | Implemented | Visual mesh workflows |
+| glTF 2.0 binary (GLB) | P2 | Implemented | Colored visual mesh workflows |
+| IGES | P2, blocked | P2, blocked | Legacy CAD; the bundled WASM build has no IGES module |
 | Proprietary CAD | Out | Out | Requires commercial SDKs or converters |
 
 STL import creates a `MeshBody`, not a fake exact `SolidBody`. Automatic mesh-to-B-Rep conversion is not promised.
 
-The implemented export dialog downloads successful terminal bodies as deterministic multi-object 3MF with fixed print tessellation, exact B-Rep STEP, or binary STL. It can also send that 3MF to a remembered OrcaSlicer, Bambu Studio, PrusaSlicer, Snapmaker Orca, or UltiMaker Cura choice through the explicitly paired local bridge in ADR-0020, with an honest download fallback. Signed bridge installers, configurable print profiles, placement, reports, and deeper slicer integration remain later work.
+The implemented export dialog downloads successful terminal bodies as deterministic multi-object 3MF with fixed print tessellation, exact B-Rep STEP, binary STL, binary glTF (GLB) or OBJ with an MTL color library in a ZIP. GLB and OBJ reuse the 3MF print meshes, write one node/object per Part and carry Part appearance as display materials; GLB is in meters with Y up, OBJ in millimeters with Z up. Pure TypeScript writers replace the RWGltf/RWObj modules absent from the WASM build; see [ADR-0153](../adr/0153-gltf-obj-export-and-assembly-bom.md). It can also send that 3MF to a remembered OrcaSlicer, Bambu Studio, PrusaSlicer, Snapmaker Orca, or UltiMaker Cura choice through the explicitly paired local bridge in ADR-0020, with an honest download fallback. Signed bridge installers, configurable print profiles, placement, reports, and deeper slicer integration remain later work.
 
 ## Undo, redo, and history
 

@@ -4,6 +4,8 @@ import {
   BINARY_EXPORT_MAX_BYTES,
   binaryExportChunkSchema,
   binaryExportDescriptorSchema,
+  binaryExportFilename,
+  binaryExportMimeType,
   binaryExportResultMatches,
   localBinaryExportInputs,
 } from "./binary-exports"
@@ -17,7 +19,7 @@ import {
 
 const id = (n: number) => `0195b5ac-b250-7a2c-8c33-${String(n).padStart(12, "0")}`
 describe("MCP export tessellation quality", () => {
-  it.each(["stl", "3mf", "step"] as const)(
+  it.each(["stl", "3mf", "glb", "obj", "step"] as const)(
     "advertises bounded %s quality on both transports",
     (format) => {
       const meshQuality = { chordTolerance: 0.01, angularTolerance: 0.05 }
@@ -63,6 +65,38 @@ const chunk = {
   base64: "AQID",
   nextOffset: 3,
 }
+describe("visual mesh export descriptors", () => {
+  it("names GLB as model/gltf-binary and delivers OBJ with its MTL as a ZIP", () => {
+    expect(binaryExportFilename("glb")).toBe("model.glb")
+    expect(binaryExportMimeType("glb")).toBe("model/gltf-binary")
+    expect(binaryExportFilename("obj")).toBe("model.zip")
+    expect(binaryExportMimeType("obj")).toBe("application/zip")
+    expect(
+      binaryExportDescriptorSchema.safeParse({
+        ...descriptor,
+        format: "obj",
+        filename: "model.zip",
+        mimeType: "application/zip",
+      }).success,
+    ).toBe(true)
+    expect(
+      binaryExportDescriptorSchema.safeParse({
+        ...descriptor,
+        format: "obj",
+        filename: "model.obj",
+        mimeType: "application/zip",
+      }).success,
+    ).toBe(false)
+    expect(
+      binaryExportDescriptorSchema.safeParse({
+        ...descriptor,
+        format: "glb",
+        filename: "model.glb",
+        mimeType: "model/gltf-binary",
+      }).success,
+    ).toBe(true)
+  })
+})
 describe("binary export wire contract", () => {
   it("advertises the same four bounded operations locally and remotely, excluding the legacy monolithic remote export", () => {
     for (const operation of [

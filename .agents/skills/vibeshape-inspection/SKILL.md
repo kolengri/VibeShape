@@ -25,6 +25,7 @@ Use [vibeshape-use](../vibeshape-use/SKILL.md) for connection or session recover
 | Which edge references can a treatment select? | `model_edges` or `draft_edges` |
 | What unsaved intent is in the draft? | `draft_tree`, `draft_entity` at the current draft revision |
 | Which assembly instances/mates, frozen frames, local DOF or exact interference? | `model_assembly`, `inspect_assembly`; explicit pairs and occurrence/source topology page |
+| Which distinct parts, quantities, appearance presets and solid mass does an assembly contain? | `model_assembly_bom`; assign explicit catalog `materials` for mass |
 | What exact clearance/collisions occur at sampled joint poses? | `inspect_motion_clearance`; see [sampled motion clearance](references/motion-clearance.md) |
 | Which immutable local component version is available? | `library_items`, `library_version` |
 | Does the entire draft rebuild correctly? | `preview_draft`, followed by relevant draft reads |
@@ -132,4 +133,18 @@ Report measured values with their declared units, revision, and relevant toleran
 
 Use `model_measurements` and `draft_measurements` for paged feature measurements. Their `scope` defaults to `terminal`; set `scope: "all"` to inspect failed or blocked upstream features. Begin draft paging with a null cursor; another inspection target or draft edit invalidates the detached catalog.
 
-Assembly inspection omits meshes and frozen source bytes. Topology pages bind an occurrence/source to its body and pin revision; use only uniquely resolved analytical recipes for frame binding. Relinking requires fresh selection. Local DOF is mobility at the solved branch, not global uniqueness. Assembly previews retain the original committed base and private draft version; follow the [assembly/library workflow](../vibeshape-modeling/references/assembly-and-library.md).
+Assembly inspection omits meshes and frozen source bytes. Exact-solid occurrences report source
+`volume` in mm³; triangle meshes omit it.
+
+`model_assembly_bom` reads the committed assembly at its exact `revision`: one row per used frozen
+definition, in definition order, with `quantity` equal to its occurrence count (instances are flat;
+there are no nested or patterned occurrences), live Part `appearancePresetIds` and exact
+`unitVolumeMm3`. Mass is computed only for definitions given an explicit
+`materials: [{ definitionId, materialId }]` entry from `list_lightweighting_materials`:
+`unitMassG = unitVolumeMm3 × densityKgM3 × 1e-6`. Appearance presets never imply density. Mesh
+sources, missing volume evidence or an unassigned material leave mass `null`; never estimate it.
+Catalog densities describe solid material, so printed parts with partial infill weigh less. The
+editor's assembly **Bill of materials** shows the same rows and downloads RFC 4180 CSV; its material
+choices are not saved with the project.
+
+Topology pages bind an occurrence/source to its body and pin revision; use only uniquely resolved analytical recipes for frame binding. Relinking requires fresh selection. Local DOF is mobility at the solved branch, not global uniqueness. Assembly previews retain the original committed base and private draft version; follow the [assembly/library workflow](../vibeshape-modeling/references/assembly-and-library.md).

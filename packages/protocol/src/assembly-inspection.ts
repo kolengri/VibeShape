@@ -70,8 +70,13 @@ const occurrence = z
     topologyCandidates: topologyCandidatesSchema.optional(),
     mesh: featureEvaluationEngineResultSchema.shape.mesh,
     bounds: featureEvaluationEngineResultSchema.shape.shape.shape.bounds,
+    /** Exact source solid volume in mm^3; triangle meshes make no volume claim. */
+    volume: z.number().finite().positive().optional(),
   })
   .strict()
+  .refine((value) => value.volume === undefined || value.representation === "exact-solid", {
+    message: "Only exact assembly sources report solid volume.",
+  })
 export const assemblyKinematicsSummarySchema = z
   .object({
     status: z.enum(["fully-constrained", "under-constrained"]),

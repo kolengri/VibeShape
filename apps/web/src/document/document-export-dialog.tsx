@@ -46,7 +46,15 @@ const formatCopy = {
     pending: "status.exportingStl",
     succeeded: "status.exportedStl",
   },
-} as const
+  glb: {
+    pending: "status.exportingGlb",
+    succeeded: "status.exportedGlb",
+  },
+  obj: {
+    pending: "status.exportingObj",
+    succeeded: "status.exportedObj",
+  },
+} as const satisfies Record<GeometryExportFormat, { pending: string; succeeded: string }>
 
 type ExportActivity = Readonly<{
   pendingFormat: GeometryExportFormat | null
@@ -366,7 +374,7 @@ function useExportDestination(
   const format = nativeDestination ? handoff.preference.format : fileFormat
   const changeFormat = (value: GeometryExportFormat) => {
     if (nativeDestination) {
-      if (value === "step") return
+      if (value !== "3mf" && value !== "stl") return
       handoff.choosePreference(handoff.selected?.id ?? null, value)
     }
     actions.setPreferredExportFormat(value)

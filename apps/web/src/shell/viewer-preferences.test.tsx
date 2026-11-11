@@ -103,7 +103,7 @@ describe("browser viewer preferences", () => {
   it("defaults missing or corrupt export choices without losing older preferences", () => {
     for (const choices of [
       {},
-      { lastExportFormat: "obj", exportMeshQuality: { tolerance: 1 }, exportDestination: "cloud" },
+      { lastExportFormat: "iges", exportMeshQuality: { tolerance: 1 }, exportDestination: "cloud" },
       { lastExportFormat: 1, exportMeshQuality: null, exportDestination: true },
     ]) {
       const store = createViewerPreferencesStore({

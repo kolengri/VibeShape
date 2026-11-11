@@ -1234,7 +1234,17 @@ export const featureMeshPolicySchema = z
   })
   .strict()
 
-export const geometryExportFormatSchema = z.enum(["3mf", "step", "stl"])
+export const geometryExportFormatSchema = z.enum(["3mf", "step", "stl", "glb", "obj"])
+/** Display-only part appearance for glTF/OBJ materials; it makes no physical claim. */
+export const exportAppearanceSchema = z
+  .object({
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    metalness: z.number().finite().min(0).max(1),
+    roughness: z.number().finite().min(0).max(1),
+    opacity: z.number().finite().min(0).max(1),
+  })
+  .strict()
+export type ExportAppearance = z.infer<typeof exportAppearanceSchema>
 
 function isNormalized(vector: readonly number[]) {
   return Math.abs(Math.hypot(...vector) - 1) <= 1e-6
